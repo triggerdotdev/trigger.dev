@@ -15,9 +15,27 @@ import {
   type TaskSchema,
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
-import type { ModelMessage, UIMessage, UIMessageChunk, UIMessageStreamOptions, LanguageModelUsage } from "ai";
+import type {
+  ModelMessage,
+  ToolSet,
+  UIMessage,
+  UIMessageChunk,
+  UIMessageStreamOptions,
+  LanguageModelUsage,
+} from "ai";
 import type { StreamWriteResult } from "@trigger.dev/core/v3";
-import { convertToModelMessages, dynamicTool, generateId as generateMessageId, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
+import {
+  convertToModelMessages,
+  dynamicTool,
+  generateId as generateMessageId,
+  jsonSchema,
+  JSONSchema7,
+  Schema,
+  tool as aiTool,
+  Tool,
+  ToolCallOptions,
+  zodSchema,
+} from "ai";
 import { type Attributes, trace } from "@opentelemetry/api";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
@@ -80,10 +98,134 @@ export type ToolOptions<TResult> = {
   experimental_toToolResultContent?: (result: TResult) => ToolResultContent;
 };
 
+/** Satisfies AI SDK `ToolSet` index signature alongside concrete `Tool` input/output types. */
+type ToolSetCompatible<T extends Tool<any, any>> = T & NonNullable<ToolSet[string]>;
+
+function assertTaskUsableAsTool(task: AnyTask): void {
+  if (("schema" in task && !task.schema) || ("jsonSchema" in task && !task.jsonSchema)) {
+    throw new Error(
+      "Cannot convert this task to to a tool because the task has no schema. Make sure to either use schemaTask or a task with an input jsonSchema."
+    );
+  }
+}
+
+/**
+ * Shared implementation: run a task as a tool invocation (`triggerAndSubscribe` + tool metadata).
+ * Used by {@link toolExecute} and the deprecated `ai.tool()` wrapper.
+ */
+function createTaskToolExecuteHandler<
+  TIdentifier extends string,
+  TTaskSchema extends TaskSchema | undefined = undefined,
+  TInput = void,
+  TOutput = unknown,
+>(
+  task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput> | Task<TIdentifier, TInput, TOutput>
+): (input: unknown, toolOpts: ToolCallOptions | undefined) => Promise<TOutput> {
+  assertTaskUsableAsTool(task);
+
+  return async function taskToolExecuteHandler(
+    input: unknown,
+    toolOpts: ToolCallOptions | undefined
+  ): Promise<TOutput> {
+    const toolMeta: ToolCallExecutionOptions = {
+      toolCallId: toolOpts?.toolCallId ?? "",
+    };
+    if (toolOpts?.experimental_context !== undefined) {
+      try {
+        toolMeta.experimental_context = JSON.parse(JSON.stringify(toolOpts.experimental_context));
+      } catch {
+        /* non-serializable */
+      }
+    }
+
+    const chatCtx = locals.get(chatTurnContextKey);
+    if (chatCtx) {
+      toolMeta.chatId = chatCtx.chatId;
+      toolMeta.turn = chatCtx.turn;
+      toolMeta.continuation = chatCtx.continuation;
+      toolMeta.clientData = chatCtx.clientData;
+    }
+
+    const chatLocals: Record<string, unknown> = {};
+    for (const entry of chatLocalRegistry) {
+      const value = locals.get(entry.key);
+      if (value !== undefined) {
+        chatLocals[entry.id] = value;
+      }
+    }
+    if (Object.keys(chatLocals).length > 0) {
+      toolMeta.chatLocals = chatLocals;
+    }
+
+    return await task
+      .triggerAndSubscribe(input as inferSchemaIn<TTaskSchema>, {
+        metadata: {
+          [METADATA_KEY]: toolMeta as any,
+        },
+        tags: toolOpts?.toolCallId ? [`toolCallId:${toolOpts.toolCallId}`] : undefined,
+        signal: toolOpts?.abortSignal,
+      })
+      .unwrap();
+  };
+}
+
+/**
+ * Returns an `execute` function for the AI SDK `tool()` helper (or any compatible tool definition).
+ * Preferred API for task-backed tools: the same Trigger wiring as the deprecated `ai.tool()`
+ * (`triggerAndSubscribe`, tool-call metadata, chat context, `chat.local` serialization) without
+ * building the tool object. You supply `description`, `inputSchema`, and any AI-SDK-only options
+ * (e.g. `experimental_toToolResultContent`) on `tool()` yourself.
+ *
+ * @example
+ * ```ts
+ * import { tool } from "ai";
+ * import { z } from "zod";
+ * import { ai } from "@trigger.dev/sdk/ai";
+ * import { myTask } from "./trigger/myTask";
+ *
+ * export const myTool = tool({
+ *   description: myTask.description ?? "",
+ *   inputSchema: z.object({ id: z.string() }),
+ *   execute: ai.toolExecute(myTask),
+ * });
+ * ```
+ */
+function toolExecute<TIdentifier extends string, TInput = void, TOutput = unknown>(
+  task: Task<TIdentifier, TInput, TOutput>
+): (input: TInput, toolOpts: ToolCallOptions) => Promise<TOutput>;
+function toolExecute<
+  TIdentifier extends string,
+  TTaskSchema extends TaskSchema | undefined = undefined,
+  TOutput = unknown,
+>(
+  task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput>
+): (input: inferSchemaIn<TTaskSchema>, toolOpts: ToolCallOptions) => Promise<TOutput>;
+function toolExecute<
+  TIdentifier extends string,
+  TTaskSchema extends TaskSchema | undefined = undefined,
+  TInput = void,
+  TOutput = unknown,
+>(
+  task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput> | Task<TIdentifier, TInput, TOutput>
+): (
+  input: TTaskSchema extends TaskSchema ? inferSchemaIn<TTaskSchema> : TInput,
+  toolOpts: ToolCallOptions
+) => Promise<TOutput> {
+  return createTaskToolExecuteHandler(task) as (
+    input: TTaskSchema extends TaskSchema ? inferSchemaIn<TTaskSchema> : TInput,
+    toolOpts: ToolCallOptions
+  ) => Promise<TOutput>;
+}
+
+/**
+ * @deprecated Use `tool()` from the `ai` package with `execute: ai.toolExecute(task)` instead.
+ * This helper may be removed in a future major release.
+ */
 function toolFromTask<TIdentifier extends string, TInput = void, TOutput = unknown>(
   task: Task<TIdentifier, TInput, TOutput>,
   options?: ToolOptions<TOutput>
-): Tool<TInput, TOutput>;
+): ToolSetCompatible<Tool<TInput, TOutput>>;
+/** @deprecated Use `tool()` from `ai` with `execute: ai.toolExecute(task)`. */
 function toolFromTask<
   TIdentifier extends string,
   TTaskSchema extends TaskSchema | undefined = undefined,
@@ -91,7 +233,8 @@ function toolFromTask<
 >(
   task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput>,
   options?: ToolOptions<TOutput>
-): Tool<inferSchemaIn<TTaskSchema>, TOutput>;
+): ToolSetCompatible<Tool<inferSchemaIn<TTaskSchema>, TOutput>>;
+/** @deprecated Use `tool()` from `ai` with `execute: ai.toolExecute(task)`. */
 function toolFromTask<
   TIdentifier extends string,
   TTaskSchema extends TaskSchema | undefined = undefined,
@@ -100,68 +243,41 @@ function toolFromTask<
 >(
   task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput> | Task<TIdentifier, TInput, TOutput>,
   options?: ToolOptions<TOutput>
-): TTaskSchema extends TaskSchema
-  ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
-  : Tool<TInput, TOutput> {
-  if (("schema" in task && !task.schema) || ("jsonSchema" in task && !task.jsonSchema)) {
-    throw new Error(
-      "Cannot convert this task to to a tool because the task has no schema. Make sure to either use schemaTask or a task with an input jsonSchema."
-    );
+): ToolSetCompatible<
+  TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+> {
+  const executeFromTaskInput = createTaskToolExecuteHandler(task);
+
+  // Zod-backed tasks: use static `tool()` so runtime shape matches `ToolSet`. Generic task context
+  // prevents `tool()` overloads from inferring input; `as any` is localized to this call only.
+  if ("schema" in task && task.schema && isSchemaZodEsque(task.schema)) {
+    const staticTool = aiTool({
+      description: task.description ?? "",
+      inputSchema: zodSchema(task.schema as any),
+      execute: async (input: unknown, toolOpts: ToolCallOptions) =>
+        executeFromTaskInput(input, toolOpts),
+      ...(options?.experimental_toToolResultContent !== undefined
+        ? { experimental_toToolResultContent: options.experimental_toToolResultContent }
+        : {}),
+    } as any);
+    return staticTool as unknown as ToolSetCompatible<
+      TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+    >;
   }
 
   const toolDefinition = dynamicTool({
     description: task.description,
     inputSchema: convertTaskSchemaToToolParameters(task),
-    execute: async (input, options) => {
-      // Build tool metadata — skip messages (can be large) and abortSignal (non-serializable)
-      const toolMeta: ToolCallExecutionOptions = {
-        toolCallId: options?.toolCallId ?? "",
-      };
-      if (options?.experimental_context !== undefined) {
-        try {
-          toolMeta.experimental_context = JSON.parse(JSON.stringify(options.experimental_context));
-        } catch {
-          // Non-serializable context — skip
-        }
-      }
-
-      // Auto-detect chat context from the parent turn
-      const chatCtx = locals.get(chatTurnContextKey);
-      if (chatCtx) {
-        toolMeta.chatId = chatCtx.chatId;
-        toolMeta.turn = chatCtx.turn;
-        toolMeta.continuation = chatCtx.continuation;
-        toolMeta.clientData = chatCtx.clientData;
-      }
-
-      // Serialize initialized chat.local values for subtask hydration
-      const chatLocals: Record<string, unknown> = {};
-      for (const entry of chatLocalRegistry) {
-        const value = locals.get(entry.key);
-        if (value !== undefined) {
-          chatLocals[entry.id] = value;
-        }
-      }
-      if (Object.keys(chatLocals).length > 0) {
-        toolMeta.chatLocals = chatLocals;
-      }
-
-      return await task
-        .triggerAndSubscribe(input as inferSchemaIn<TTaskSchema>, {
-          metadata: {
-            [METADATA_KEY]: toolMeta as any,
-          },
-          tags: options?.toolCallId ? [`toolCallId:${options.toolCallId}`] : undefined,
-          signal: options?.abortSignal,
-        })
-        .unwrap();
-    },
-    ...options,
+    ...(options?.experimental_toToolResultContent !== undefined
+      ? { experimental_toToolResultContent: options.experimental_toToolResultContent }
+      : {}),
+    execute: async (input: unknown, toolOpts: ToolCallOptions) =>
+      executeFromTaskInput(input, toolOpts),
   });
 
-  return toolDefinition as TTaskSchema extends TaskSchema
-    ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
-    : Tool<TInput, TOutput>;
+  return toolDefinition as unknown as ToolSetCompatible<
+    TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+  >;
 }
 
 function getToolOptionsFromMetadata(): ToolCallExecutionOptions | undefined {
@@ -173,7 +289,7 @@ function getToolOptionsFromMetadata(): ToolCallExecutionOptions | undefined {
 }
 
 /**
- * Get the current tool call ID from inside a subtask invoked via `ai.tool()`.
+ * Get the current tool call ID from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`).
  * Returns `undefined` if not running as a tool subtask.
  */
 function getToolCallId(): string | undefined {
@@ -181,7 +297,7 @@ function getToolCallId(): string | undefined {
 }
 
 /**
- * Get the chat context from inside a subtask invoked via `ai.tool()` within a `chat.task`.
+ * Get the chat context from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`) within a `chat.task`.
  * Pass `typeof yourChatTask` as the type parameter to get typed `clientData`.
  * Returns `undefined` if the parent is not a chat task.
  *
@@ -191,7 +307,9 @@ function getToolCallId(): string | undefined {
  * // ctx?.clientData is typed based on myChat's clientDataSchema
  * ```
  */
-function getToolChatContext<TChatTask extends AnyTask = AnyTask>(): ChatTurnContext<InferChatClientData<TChatTask>> | undefined {
+function getToolChatContext<TChatTask extends AnyTask = AnyTask>():
+  | ChatTurnContext<InferChatClientData<TChatTask>>
+  | undefined {
   const opts = getToolOptionsFromMetadata();
   if (!opts?.chatId) return undefined;
   return {
@@ -212,12 +330,14 @@ function getToolChatContext<TChatTask extends AnyTask = AnyTask>(): ChatTurnCont
  * // ctx.chatId, ctx.clientData are guaranteed non-null
  * ```
  */
-function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatTurnContext<InferChatClientData<TChatTask>> {
+function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatTurnContext<
+  InferChatClientData<TChatTask>
+> {
   const ctx = getToolChatContext<TChatTask>();
   if (!ctx) {
     throw new Error(
       "ai.chatContextOrThrow() called outside of a chat.task context. " +
-        "This helper can only be used inside a subtask invoked via ai.tool() from a chat.task."
+        "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.task."
     );
   }
   return ctx;
@@ -248,9 +368,17 @@ function convertTaskSchemaToToolParameters(
 }
 
 export const ai = {
+  /**
+   * @deprecated Use `tool()` from the `ai` package with `execute: ai.toolExecute(task)` instead.
+   */
   tool: toolFromTask,
+  /**
+   * Preferred: return value for the `execute` field of AI SDK `tool()`. Keeps Trigger subtask and
+   * metadata behavior without coupling to a specific `ai` version’s `Tool` / `ToolSet` types.
+   */
+  toolExecute,
   currentToolOptions: getToolOptionsFromMetadata,
-  /** Get the tool call ID from inside a subtask invoked via `ai.tool()`. */
+  /** Get the tool call ID from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`). */
   toolCallId: getToolCallId,
   /** Get chat context (chatId, turn, clientData, etc.) from inside a subtask of a `chat.task`. Returns undefined if not in a chat context. */
   chatContext: getToolChatContext,
@@ -482,12 +610,13 @@ export type ChatTaskSignals = {
  * The full payload passed to a `chatTask` run function.
  * Extends `ChatTaskPayload` (the wire payload) with abort signals.
  */
-export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> & ChatTaskSignals & {
-  /** Token usage from the previous turn. Undefined on turn 0. */
-  previousTurnUsage?: LanguageModelUsage;
-  /** Cumulative token usage across all completed turns so far. */
-  totalUsage: LanguageModelUsage;
-};
+export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> &
+  ChatTaskSignals & {
+    /** Token usage from the previous turn. Undefined on turn 0. */
+    previousTurnUsage?: LanguageModelUsage;
+    /** Cumulative token usage across all completed turns so far. */
+    totalUsage: LanguageModelUsage;
+  };
 
 // Input streams for bidirectional chat communication
 const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
@@ -515,9 +644,13 @@ const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQue
 const chatPipeCountKey = locals.create<number>("chat.pipeCount");
 const chatStopControllerKey = locals.create<AbortController>("chat.stopController");
 /** Static (task-level) UIMessageStream options, set once during chatTask setup. @internal */
-const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.static");
+const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
+  "chat.uiMessageStreamOptions.static"
+);
 /** Per-turn UIMessageStream options, set via chat.setUIMessageStreamOptions(). @internal */
-const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions>("chat.uiMessageStreamOptions.perTurn");
+const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
+  "chat.uiMessageStreamOptions.perTurn"
+);
 
 // ---------------------------------------------------------------------------
 // Token usage helpers (internal)
@@ -531,7 +664,11 @@ function emptyUsage(): LanguageModelUsage {
     inputTokens: undefined,
     outputTokens: undefined,
     totalTokens: undefined,
-    inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+    inputTokenDetails: {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
     outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
   };
 }
@@ -545,12 +682,21 @@ function addUsage(a: LanguageModelUsage, b: LanguageModelUsage): LanguageModelUs
     totalTokens: add(a.totalTokens, b.totalTokens),
     inputTokenDetails: {
       noCacheTokens: add(a.inputTokenDetails?.noCacheTokens, b.inputTokenDetails?.noCacheTokens),
-      cacheReadTokens: add(a.inputTokenDetails?.cacheReadTokens, b.inputTokenDetails?.cacheReadTokens),
-      cacheWriteTokens: add(a.inputTokenDetails?.cacheWriteTokens, b.inputTokenDetails?.cacheWriteTokens),
+      cacheReadTokens: add(
+        a.inputTokenDetails?.cacheReadTokens,
+        b.inputTokenDetails?.cacheReadTokens
+      ),
+      cacheWriteTokens: add(
+        a.inputTokenDetails?.cacheWriteTokens,
+        b.inputTokenDetails?.cacheWriteTokens
+      ),
     },
     outputTokenDetails: {
       textTokens: add(a.outputTokenDetails?.textTokens, b.outputTokenDetails?.textTokens),
-      reasoningTokens: add(a.outputTokenDetails?.reasoningTokens, b.outputTokenDetails?.reasoningTokens),
+      reasoningTokens: add(
+        a.outputTokenDetails?.reasoningTokens,
+        b.outputTokenDetails?.reasoningTokens
+      ),
     },
   };
 }
@@ -569,7 +715,7 @@ const chatOverrideMessagesKey = locals.create<UIMessage[]>("chat.overrideMessage
  * `onTurnComplete` to compact before the next turn. Takes `UIMessage[]`
  * and converts to `ModelMessage[]` internally.
  */
-function setChatMessages(uiMessages: UIMessage[]): void {
+function setChatMessages<TUIM extends UIMessage = UIMessage>(uiMessages: TUIM[]): void {
   locals.set(chatOverrideMessagesKey, uiMessages);
 }
 
@@ -594,8 +740,12 @@ interface CompactionState {
 
 /** @internal */
 const chatCompactionStateKey = locals.create<CompactionState>("chat.compaction");
-const chatOnCompactedKey = locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
-const chatPrepareMessagesKey = locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>("chat.prepareMessages");
+const chatOnCompactedKey =
+  locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
+const chatPrepareMessagesKey =
+  locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
+    "chat.prepareMessages"
+  );
 
 /**
  * Event passed to `summarize` callbacks.
@@ -626,11 +776,11 @@ export type SummarizeEvent = {
 /**
  * Event passed to `compactUIMessages` and `compactModelMessages` callbacks.
  */
-export type CompactMessagesEvent = {
+export type CompactMessagesEvent<TUIM extends UIMessage = UIMessage> = {
   /** The generated summary text. */
   summary: string;
   /** The current UI messages (full conversation). */
-  uiMessages: UIMessage[];
+  uiMessages: TUIM[];
   /** The current model messages (full conversation). */
   modelMessages: ModelMessage[];
   /** The chat session ID. */
@@ -654,7 +804,7 @@ export type CompactMessagesEvent = {
  * tool-call steps) and the outer loop (between turns, for single-step responses
  * where prepareStep never fires).
  */
-export type ChatTaskCompactionOptions = {
+export type ChatTaskCompactionOptions<TUIM extends UIMessage = UIMessage> = {
   /** Decide whether to compact. Return true to trigger compaction. */
   shouldCompact: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
   /** Generate a summary from the current messages. Return the summary text. */
@@ -679,7 +829,7 @@ export type ChatTaskCompactionOptions = {
    * ],
    * ```
    */
-  compactUIMessages?: (event: CompactMessagesEvent) => UIMessage[] | Promise<UIMessage[]>;
+  compactUIMessages?: (event: CompactMessagesEvent<TUIM>) => TUIM[] | Promise<TUIM[]>;
   /**
    * Transform model messages after compaction (what gets sent to the LLM).
    * Default: replace all with a single summary message.
@@ -693,11 +843,14 @@ export type ChatTaskCompactionOptions = {
    * ],
    * ```
    */
-  compactModelMessages?: (event: CompactMessagesEvent) => ModelMessage[] | Promise<ModelMessage[]>;
+  compactModelMessages?: (
+    event: CompactMessagesEvent<TUIM>
+  ) => ModelMessage[] | Promise<ModelMessage[]>;
 };
 
 /** @internal */
-const chatTaskCompactionKey = locals.create<ChatTaskCompactionOptions>("chat.taskCompaction");
+const chatTaskCompactionKey =
+  locals.create<ChatTaskCompactionOptions<UIMessage>>("chat.taskCompaction");
 
 // ---------------------------------------------------------------------------
 // Pending messages — mid-execution message injection via prepareStep
@@ -706,9 +859,9 @@ const chatTaskCompactionKey = locals.create<ChatTaskCompactionOptions>("chat.tas
 /**
  * Event passed to `shouldInject` and `prepareMessages` callbacks.
  */
-export type PendingMessagesBatchEvent = {
+export type PendingMessagesBatchEvent<TUIM extends UIMessage = UIMessage> = {
   /** All pending UI messages that arrived during streaming (batch). */
-  messages: UIMessage[];
+  messages: TUIM[];
   /** Current model messages in the conversation. */
   modelMessages: ModelMessage[];
   /** Completed steps so far. */
@@ -726,9 +879,9 @@ export type PendingMessagesBatchEvent = {
 /**
  * Event passed to `onReceived` callback (per-message, as they arrive).
  */
-export type PendingMessageReceivedEvent = {
+export type PendingMessageReceivedEvent<TUIM extends UIMessage = UIMessage> = {
   /** The UI message that arrived during streaming. */
-  message: UIMessage;
+  message: TUIM;
   /** Chat session ID. */
   chatId: string;
   /** Current turn number (0-indexed). */
@@ -738,9 +891,9 @@ export type PendingMessageReceivedEvent = {
 /**
  * Event passed to `onInjected` callback (batch, after injection).
  */
-export type PendingMessagesInjectedEvent = {
+export type PendingMessagesInjectedEvent<TUIM extends UIMessage = UIMessage> = {
   /** All UI messages that were injected. */
-  messages: UIMessage[];
+  messages: TUIM[];
   /** The model messages that were injected. */
   injectedModelMessages: ModelMessage[];
   /** Chat session ID. */
@@ -760,23 +913,23 @@ export type PendingMessagesInjectedEvent = {
  * messages is injected between tool-call steps via `prepareStep`.
  * Otherwise, messages queue for the next turn.
  */
-export type PendingMessagesOptions = {
+export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
   /**
    * Decide whether to inject pending messages between tool-call steps.
    * Called once per step boundary with the full batch of pending messages.
    * If absent, no injection happens — messages only queue for the next turn.
    */
-  shouldInject?: (event: PendingMessagesBatchEvent) => boolean | Promise<boolean>;
+  shouldInject?: (event: PendingMessagesBatchEvent<TUIM>) => boolean | Promise<boolean>;
   /**
    * Transform the batch of pending messages before injection.
    * Return the model messages to inject.
    * Default: convert each UI message via `convertToModelMessages`.
    */
-  prepare?: (event: PendingMessagesBatchEvent) => ModelMessage[] | Promise<ModelMessage[]>;
+  prepare?: (event: PendingMessagesBatchEvent<TUIM>) => ModelMessage[] | Promise<ModelMessage[]>;
   /** Called when a message arrives during streaming (per-message). */
-  onReceived?: (event: PendingMessageReceivedEvent) => void | Promise<void>;
+  onReceived?: (event: PendingMessageReceivedEvent<TUIM>) => void | Promise<void>;
   /** Called after a batch of messages is injected via `prepareStep`. */
-  onInjected?: (event: PendingMessagesInjectedEvent) => void | Promise<void>;
+  onInjected?: (event: PendingMessagesInjectedEvent<TUIM>) => void | Promise<void>;
 };
 
 /**
@@ -803,7 +956,7 @@ export type PrepareMessagesEvent<TClientData = unknown> = {
   messages: ModelMessage[];
   /** Why messages are being prepared. */
   reason:
-    | "run"                // Messages being passed to run() for streamText
+    | "run" // Messages being passed to run() for streamText
     | "compaction-rebuild" // Rebuilding from a previous compaction summary
     | "compaction-result"; // Fresh compaction just produced these messages
   /** The chat session ID. */
@@ -955,7 +1108,10 @@ function isStepBoundarySafe(step: {
  * Apply the prepareMessages hook if one is set in locals.
  * @internal
  */
-async function applyPrepareMessages(messages: ModelMessage[], reason: PrepareMessagesEvent["reason"]): Promise<ModelMessage[]> {
+async function applyPrepareMessages(
+  messages: ModelMessage[],
+  reason: PrepareMessagesEvent["reason"]
+): Promise<ModelMessage[]> {
   const hook = locals.get(chatPrepareMessagesKey);
   if (!hook) return messages;
 
@@ -1041,10 +1197,13 @@ async function chatCompact(
   if (state && isStepBoundarySafe(currentStep)) {
     return {
       type: "rebuilt",
-      messages: await applyPrepareMessages([
-        { role: "user" as const, content: state.summary },
-        ...currentStep.response.messages.slice(state.baseResponseMessageCount),
-      ], "compaction-rebuild"),
+      messages: await applyPrepareMessages(
+        [
+          { role: "user" as const, content: state.summary },
+          ...currentStep.response.messages.slice(state.baseResponseMessageCount),
+        ],
+        "compaction-rebuild"
+      ),
     };
   }
 
@@ -1074,7 +1233,7 @@ async function chatCompact(
         turn: turnCtx?.turn,
         clientData: turnCtx?.clientData,
       })
-    : (totalTokens != null && options.threshold != null && totalTokens > options.threshold);
+    : totalTokens != null && options.threshold != null && totalTokens > options.threshold;
 
   if (!shouldTrigger) {
     return { type: "skipped" };
@@ -1110,7 +1269,10 @@ async function chatCompact(
           // The summary becomes the model message history for the next turn,
           // while accumulatedUIMessages keeps the full conversation for display.
           locals.set(chatOverrideModelMessagesKey, [
-            { role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] },
+            {
+              role: "assistant" as const,
+              content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+            },
           ]);
 
           // Fire onCompacted hook — pass the existing writer so the callback
@@ -1201,7 +1363,12 @@ async function chatCompact(
  * });
  * ```
  */
-function chatCompactionStep(options: CompactionOptions): (args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined> {
+function chatCompactionStep(
+  options: CompactionOptions
+): (args: {
+  messages: ModelMessage[];
+  steps: CompactionStep[];
+}) => Promise<{ messages: ModelMessage[] } | undefined> {
   return async ({ messages, steps }) => {
     const result = await chatCompact(messages, steps, options);
     return result.type === "skipped" ? undefined : result;
@@ -1223,7 +1390,7 @@ async function drainSteeringQueue(
   config: PendingMessagesOptions,
   messages: ModelMessage[],
   steps: CompactionStep[],
-  queueOverride?: SteeringQueueEntry[],
+  queueOverride?: SteeringQueueEntry[]
 ): Promise<ModelMessage[]> {
   const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
   if (!queue || queue.length === 0) return [];
@@ -1243,19 +1410,20 @@ async function drainSteeringQueue(
   };
 
   // Call shouldInject once for the whole batch
-  const shouldInject = config.shouldInject
-    ? await config.shouldInject(batchEvent)
-    : false;
+  const shouldInject = config.shouldInject ? await config.shouldInject(batchEvent) : false;
 
   if (!shouldInject) return [];
 
   // Extract message texts for span attributes
-  const messageTexts = uiMessages.map((m) =>
-    (m.parts ?? []).filter((p: any) => p.type === "text").map((p: any) => p.text).join("") || ""
+  const messageTexts = uiMessages.map(
+    (m) =>
+      (m.parts ?? [])
+        .filter((p: any) => p.type === "text")
+        .map((p: any) => p.text)
+        .join("") || ""
   );
-  const previewText = messageTexts.length === 1
-    ? messageTexts[0]!.slice(0, 80)
-    : `${queue.length} messages`;
+  const previewText =
+    messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
     "pending message injected",
@@ -1293,7 +1461,9 @@ async function drainSteeringQueue(
             },
           });
           await waitUntilComplete();
-        } catch { /* non-fatal — stream write failed */ }
+        } catch {
+          /* non-fatal — stream write failed */
+        }
       }
 
       // Fire onInjected callback
@@ -1306,7 +1476,9 @@ async function drainSteeringQueue(
             turn: ctx?.turn ?? 0,
             stepNumber,
           });
-        } catch { /* non-fatal */ }
+        } catch {
+          /* non-fatal */
+        }
       }
 
       return injected;
@@ -1321,7 +1493,10 @@ async function drainSteeringQueue(
         ...(ctx?.turn != null ? { "pending.turn": ctx.turn } : {}),
         ...accessoryAttributes({
           items: [
-            { text: `${uiMessages.length} message${uiMessages.length === 1 ? "" : "s"}`, variant: "normal" },
+            {
+              text: `${uiMessages.length} message${uiMessages.length === 1 ? "" : "s"}`,
+              variant: "normal",
+            },
             { text: `between steps ${stepNumber} and ${stepNumber + 1}`, variant: "normal" },
           ],
           style: "codepath",
@@ -1364,17 +1539,19 @@ function isCompactionSafe(messages: UIMessage[]): boolean {
  * A resolved prompt stored via `chat.prompt.set()`. Either a full `ResolvedPrompt`
  * from `prompts.define().resolve()`, or a lightweight wrapper around a plain string.
  */
-export type ChatPromptValue = ResolvedPrompt | {
-  text: string;
-  model: undefined;
-  config: undefined;
-  promptId: string;
-  version: number;
-  labels: string[];
-  toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
-    experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
-  };
-};
+export type ChatPromptValue =
+  | ResolvedPrompt
+  | {
+      text: string;
+      model: undefined;
+      config: undefined;
+      promptId: string;
+      version: number;
+      labels: string[];
+      toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
+        experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+      };
+    };
 
 /** @internal */
 const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
@@ -1470,7 +1647,13 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   const taskPendingMessages = locals.get(chatPendingMessagesKey);
 
   {
-    result.prepareStep = async ({ messages, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+    result.prepareStep = async ({
+      messages,
+      steps,
+    }: {
+      messages: ModelMessage[];
+      steps: CompactionStep[];
+    }) => {
       let resultMessages: ModelMessage[] | undefined;
 
       // 1. Compaction
@@ -1501,7 +1684,7 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
         const injected = await drainSteeringQueue(
           taskPendingMessages,
           resultMessages ?? messages,
-          steps,
+          steps
         );
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
@@ -1557,8 +1740,8 @@ export type PipeChatOptions = {
  * Use `streamText`'s `onFinish` for custom finish handling, or drop down to
  * raw task mode with `chat.pipe()` for full control.
  */
-export type ChatUIMessageStreamOptions = Omit<
-  UIMessageStreamOptions<UIMessage>,
+export type ChatUIMessageStreamOptions<TUIM extends UIMessage = UIMessage> = Omit<
+  UIMessageStreamOptions<TUIM>,
   "onFinish" | "originalMessages" | "generateMessageId"
 >;
 
@@ -1583,7 +1766,9 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
 }
 
 function isReadableStream(value: unknown): value is ReadableStream<unknown> {
-  return typeof value === "object" && value !== null && typeof (value as any).getReader === "function";
+  return (
+    typeof value === "object" && value !== null && typeof (value as any).getReader === "function"
+  );
 }
 
 /**
@@ -1717,13 +1902,13 @@ export type ChatStartEvent<TClientData = unknown> = {
 /**
  * Event passed to the `onTurnStart` callback.
  */
-export type TurnStartEvent<TClientData = unknown> = {
+export type TurnStartEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The accumulated model-ready messages (all turns so far, including new user message). */
   messages: ModelMessage[];
   /** The accumulated UI messages (all turns so far, including new user message). */
-  uiMessages: UIMessage[];
+  uiMessages: TUIM[];
   /** The turn number (0-indexed). */
   turn: number;
   /** The Trigger.dev run ID for this conversation. */
@@ -1749,7 +1934,7 @@ export type TurnStartEvent<TClientData = unknown> = {
 /**
  * Event passed to the `onTurnComplete` callback.
  */
-export type TurnCompleteEvent<TClientData = unknown> = {
+export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
   /** The unique identifier for the chat session. */
   chatId: string;
   /** The full accumulated conversation in model format (all turns so far). */
@@ -1758,7 +1943,7 @@ export type TurnCompleteEvent<TClientData = unknown> = {
    * The full accumulated conversation in UI format (all turns so far).
    * This is the format expected by `useChat` — store this for persistence.
    */
-  uiMessages: UIMessage[];
+  uiMessages: TUIM[];
   /**
    * Only the new model messages from this turn (user message(s) + assistant response).
    * Useful for appending to an existing conversation record.
@@ -1768,15 +1953,15 @@ export type TurnCompleteEvent<TClientData = unknown> = {
    * Only the new UI messages from this turn (user message(s) + assistant response).
    * Useful for inserting individual message records instead of overwriting the full history.
    */
-  newUIMessages: UIMessage[];
+  newUIMessages: TUIM[];
   /** The assistant's response for this turn, with aborted parts cleaned up when `stopped` is true. Undefined if `pipeChat` was used manually. */
-  responseMessage: UIMessage | undefined;
+  responseMessage: TUIM | undefined;
   /**
    * The raw assistant response before abort cleanup. Includes incomplete tool parts
    * (`input-available`, `partial-call`) and streaming reasoning/text parts.
    * Use this if you need custom cleanup logic. Same as `responseMessage` when not stopped.
    */
-  rawResponseMessage: UIMessage | undefined;
+  rawResponseMessage: TUIM | undefined;
   /** The turn number (0-indexed). */
   turn: number;
   /** The Trigger.dev run ID for this conversation. */
@@ -1805,7 +1990,10 @@ export type TurnCompleteEvent<TClientData = unknown> = {
  * Event passed to the `onBeforeTurnComplete` callback.
  * Same as `TurnCompleteEvent` but includes a `writer` since the stream is still open.
  */
-export type BeforeTurnCompleteEvent<TClientData = unknown> = TurnCompleteEvent<TClientData> & {
+export type BeforeTurnCompleteEvent<
+  TClientData = unknown,
+  TUIM extends UIMessage = UIMessage,
+> = TurnCompleteEvent<TClientData, TUIM> & {
   /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
   writer: ChatWriter;
 };
@@ -1813,7 +2001,15 @@ export type BeforeTurnCompleteEvent<TClientData = unknown> = TurnCompleteEvent<T
 export type ChatTaskOptions<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
-> = Omit<TaskOptions<TIdentifier, ChatTaskWirePayload, unknown>, "run"> & {
+  TUIMessage extends UIMessage = UIMessage,
+> = Omit<
+  TaskOptions<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >,
+  "run"
+> & {
   /**
    * Schema for validating `clientData` from the frontend.
    * Accepts Zod, ArkType, Valibot, or any supported schema library.
@@ -1889,7 +2085,9 @@ export type ChatTaskOptions<
    * }
    * ```
    */
-  onTurnStart?: (event: TurnStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+  onTurnStart?: (
+    event: TurnStartEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
 
   /**
    * Called after the response is captured but before the stream closes.
@@ -1909,7 +2107,9 @@ export type ChatTaskOptions<
    * }
    * ```
    */
-  onBeforeTurnComplete?: (event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+  onBeforeTurnComplete?: (
+    event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
 
   /**
    * Called when conversation compaction occurs (via `chat.compact()` or
@@ -1952,7 +2152,7 @@ export type ChatTaskOptions<
    * });
    * ```
    */
-  compaction?: ChatTaskCompactionOptions;
+  compaction?: ChatTaskCompactionOptions<TUIMessage>;
 
   /**
    * Configure how messages that arrive during streaming are handled.
@@ -1969,9 +2169,10 @@ export type ChatTaskOptions<
    * },
    * ```
    */
-  pendingMessages?: PendingMessagesOptions;
+  pendingMessages?: PendingMessagesOptions<TUIMessage>;
 
   /**
+   * Called after each assistant response completes. Use to persist the
    * conversation to your database after each assistant response.
    *
    * @example
@@ -1981,7 +2182,9 @@ export type ChatTaskOptions<
    * }
    * ```
    */
-  onTurnComplete?: (event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+  onTurnComplete?: (
+    event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
 
   /**
    * Maximum number of conversational turns (message round-trips) a single run
@@ -2063,7 +2266,9 @@ export type ChatTaskOptions<
    * }
    * ```
    */
-  prepareMessages?: (event: PrepareMessagesEvent<inferSchemaOut<TClientDataSchema>>) => ModelMessage[] | Promise<ModelMessage[]>;
+  prepareMessages?: (
+    event: PrepareMessagesEvent<inferSchemaOut<TClientDataSchema>>
+  ) => ModelMessage[] | Promise<ModelMessage[]>;
 
   /**
    * Default options for `toUIMessageStream()` when auto-piping or using
@@ -2092,7 +2297,7 @@ export type ChatTaskOptions<
    * });
    * ```
    */
-  uiMessageStreamOptions?: ChatUIMessageStreamOptions;
+  uiMessageStreamOptions?: ChatUIMessageStreamOptions<TUIMessage>;
 };
 
 /**
@@ -2125,9 +2330,10 @@ export type ChatTaskOptions<
 function chatTask<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
 >(
-  options: ChatTaskOptions<TIdentifier, TClientDataSchema>
-): Task<TIdentifier, ChatTaskWirePayload<UIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
+  options: ChatTaskOptions<TIdentifier, TClientDataSchema, TUIMessage>
+): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
     clientDataSchema,
@@ -2150,13 +2356,18 @@ function chatTask<
     ...restOptions
   } = options;
 
-  const parseClientData = clientDataSchema
-    ? getSchemaParseFn(clientDataSchema)
-    : undefined;
+  const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
 
-  return createTask<TIdentifier, ChatTaskWirePayload<UIMessage, inferSchemaIn<TClientDataSchema>>, unknown>({
+  return createTask<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >({
     ...restOptions,
-    run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
+    run: async (
+      payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+      { signal: runSignal }
+    ) => {
       // Set gen_ai.conversation.id on the run-level span for dashboard context
       const activeSpan = trace.getActiveSpan();
       if (activeSpan) {
@@ -2178,7 +2389,10 @@ function chatTask<
       }
 
       if (compaction) {
-        locals.set(chatTaskCompactionKey, compaction);
+        locals.set(
+          chatTaskCompactionKey,
+          compaction as unknown as ChatTaskCompactionOptions<UIMessage>
+        );
       }
 
       if (pendingMessagesConfig) {
@@ -2197,7 +2411,7 @@ function chatTask<
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
-      let accumulatedUIMessages: UIMessage[] = [];
+      let accumulatedUIMessages: TUIMessage[] = [];
 
       // Token usage tracking across turns
       let previousTurnUsage: LanguageModelUsage | undefined;
@@ -2236,9 +2450,9 @@ function chatTask<
           }
 
           // Parse client data for the preload hook
-          const preloadClientData = (parseClientData
-            ? await parseClientData(payload.metadata)
-            : payload.metadata) as inferSchemaOut<TClientDataSchema>;
+          const preloadClientData = (
+            parseClientData ? await parseClientData(payload.metadata) : payload.metadata
+          ) as inferSchemaOut<TClientDataSchema>;
 
           // Fire onPreload hook
           if (onPreload) {
@@ -2268,14 +2482,12 @@ function chatTask<
 
           // Wait for the first real message — use preload-specific timeouts if configured
           const effectivePreloadIdleTimeout =
-            payload.idleTimeoutInSeconds
-            ?? preloadIdleTimeoutInSeconds
-            ?? idleTimeoutInSeconds;
+            payload.idleTimeoutInSeconds ?? preloadIdleTimeoutInSeconds ?? idleTimeoutInSeconds;
 
           const effectivePreloadTimeout =
-            (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined)
-            ?? preloadTimeout
-            ?? turnTimeout;
+            (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ??
+            preloadTimeout ??
+            turnTimeout;
 
           const preloadResult = await messagesInput.waitWithIdleTimeout({
             idleTimeoutInSeconds: effectivePreloadIdleTimeout,
@@ -2289,15 +2501,18 @@ function chatTask<
 
           let firstMessage = preloadResult.output;
 
-          currentWirePayload = firstMessage;
+          currentWirePayload = firstMessage as ChatTaskWirePayload<
+            TUIMessage,
+            inferSchemaIn<TClientDataSchema>
+          >;
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
           // Extract turn-level context before entering the span
           const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
-          const clientData = (parseClientData
-            ? await parseClientData(wireMetadata)
-            : wireMetadata) as inferSchemaOut<TClientDataSchema>;
+          const clientData = (
+            parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+          ) as inferSchemaOut<TClientDataSchema>;
           const lastUserMessage = extractLastUserMessageText(uiMessages);
 
           const turnAttributes: Attributes = {
@@ -2314,9 +2529,7 @@ function chatTask<
 
             // Show a truncated preview of the user message as an accessory
             const preview =
-              lastUserMessage.length > 80
-                ? lastUserMessage.slice(0, 80) + "..."
-                : lastUserMessage;
+              lastUserMessage.length > 80 ? lastUserMessage.slice(0, 80) + "..." : lastUserMessage;
             Object.assign(
               turnAttributes,
               accessoryAttributes({
@@ -2343,7 +2556,7 @@ function chatTask<
               // survive into the next turn. The queue is drained before run().
               locals.set(chatInjectedMessageIdsKey, new Set());
 
-              // Store chat context for auto-detection by ai.tool subtasks
+              // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
               locals.set(chatTurnContextKey, {
                 chatId: currentWirePayload.chatId,
                 turn,
@@ -2362,7 +2575,10 @@ function chatTask<
               const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
               // Buffer messages that arrive during streaming
-              const pendingMessages: ChatTaskWirePayload[] = [];
+              const pendingMessages: ChatTaskWirePayload<
+                TUIMessage,
+                inferSchemaIn<TClientDataSchema>
+              >[] = [];
               const pmConfig = locals.get(chatPendingMessagesKey);
               const msgSub = messagesInput.on(async (msg) => {
                 // If pendingMessages is configured, route to the steering queue
@@ -2374,29 +2590,41 @@ function chatTask<
                     if (pmConfig.onReceived) {
                       try {
                         await pmConfig.onReceived({
-                          message: lastUIMessage,
+                          message: lastUIMessage as TUIMessage,
                           chatId: currentWirePayload.chatId,
                           turn,
                         });
-                      } catch { /* non-fatal */ }
+                      } catch {
+                        /* non-fatal */
+                      }
                     }
 
                     try {
                       const queue = locals.get(chatSteeringQueueKey) ?? [];
                       // Deduplicate by message ID — guards against double-sends
-                      if (lastUIMessage.id && queue.some((e) => e.uiMessage.id === lastUIMessage.id)) {
+                      if (
+                        lastUIMessage.id &&
+                        queue.some((e) => e.uiMessage.id === lastUIMessage.id)
+                      ) {
                         return;
                       }
                       const modelMsgs = await toModelMessages([lastUIMessage]);
-                      queue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                      queue.push({
+                        uiMessage: lastUIMessage as UIMessage,
+                        modelMessages: modelMsgs,
+                      });
                       locals.set(chatSteeringQueueKey, queue);
-                    } catch { /* conversion failed — skip steering queue */ }
+                    } catch {
+                      /* conversion failed — skip steering queue */
+                    }
                   }
                   return; // Don't add to wire buffer — frontend handles non-injected case
                 }
 
                 // No pendingMessages config — standard wire buffer for next turn
-                pendingMessages.push(msg);
+                pendingMessages.push(
+                  msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+                );
               });
 
               // Clean up any incomplete tool parts in the incoming history.
@@ -2415,7 +2643,7 @@ function chatTask<
 
               // Track new messages for this turn (user input + assistant response).
               const turnNewModelMessages: ModelMessage[] = [];
-              const turnNewUIMessages: UIMessage[] = [];
+              const turnNewUIMessages: TUIMessage[] = [];
 
               if (turn === 0) {
                 accumulatedMessages = incomingModelMessages;
@@ -2520,7 +2748,7 @@ function chatTask<
                     const turnStartOverride = locals.get(chatOverrideMessagesKey);
                     if (turnStartOverride) {
                       locals.set(chatOverrideMessagesKey, undefined);
-                      accumulatedUIMessages = [...turnStartOverride];
+                      accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(turnStartOverride);
                     }
                   },
@@ -2541,7 +2769,7 @@ function chatTask<
               }
 
               // Captured by the onFinish callback below — works even on abort/stop.
-              let capturedResponseMessage: UIMessage | undefined;
+              let capturedResponseMessage: TUIMessage | undefined;
 
               // Promise that resolves when the AI SDK's onFinish fires.
               // On abort, the stream's cancel() handler calls onFinish
@@ -2549,7 +2777,9 @@ function chatTask<
               // this to avoid a race where we check capturedResponseMessage
               // before it's been set.
               let resolveOnFinish: () => void;
-              const onFinishPromise = new Promise<void>((r) => { resolveOnFinish = r; });
+              const onFinishPromise = new Promise<void>((r) => {
+                resolveOnFinish = r;
+              });
               let onFinishAttached = false;
               let runResult: unknown;
 
@@ -2582,7 +2812,7 @@ function chatTask<
                   const uiStream = runResult.toUIMessageStream({
                     ...resolveUIMessageStreamOptions(),
                     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
-                      capturedResponseMessage = responseMessage;
+                      capturedResponseMessage = responseMessage as TUIMessage;
                       resolveOnFinish!();
                     },
                   });
@@ -2614,7 +2844,9 @@ function chatTask<
               if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
                 try {
                   turnUsage = await (runResult as any).totalUsage;
-                } catch { /* non-fatal — usage capture failed */ }
+                } catch {
+                  /* non-fatal — usage capture failed */
+                }
               }
               if (turnUsage) {
                 cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
@@ -2631,13 +2863,22 @@ function chatTask<
                   turnSpan.setAttribute("gen_ai.usage.total_tokens", turnUsage.totalTokens);
                 }
                 if (cumulativeUsage.totalTokens != null) {
-                  turnSpan.setAttribute("gen_ai.usage.cumulative_total_tokens", cumulativeUsage.totalTokens);
+                  turnSpan.setAttribute(
+                    "gen_ai.usage.cumulative_total_tokens",
+                    cumulativeUsage.totalTokens
+                  );
                 }
                 if (cumulativeUsage.inputTokens != null) {
-                  turnSpan.setAttribute("gen_ai.usage.cumulative_input_tokens", cumulativeUsage.inputTokens);
+                  turnSpan.setAttribute(
+                    "gen_ai.usage.cumulative_input_tokens",
+                    cumulativeUsage.inputTokens
+                  );
                 }
                 if (cumulativeUsage.outputTokens != null) {
-                  turnSpan.setAttribute("gen_ai.usage.cumulative_output_tokens", cumulativeUsage.outputTokens);
+                  turnSpan.setAttribute(
+                    "gen_ai.usage.cumulative_output_tokens",
+                    cumulativeUsage.outputTokens
+                  );
                 }
               }
 
@@ -2647,7 +2888,7 @@ function chatTask<
               const runOverride = locals.get(chatOverrideMessagesKey);
               if (runOverride) {
                 locals.set(chatOverrideMessagesKey, undefined);
-                accumulatedUIMessages = [...runOverride];
+                accumulatedUIMessages = [...runOverride] as TUIMessage[];
                 accumulatedMessages = await toModelMessages(runOverride);
               }
 
@@ -2659,7 +2900,7 @@ function chatTask<
                 const taskCompactionConfig = locals.get(chatTaskCompactionKey);
                 locals.set(chatOverrideModelMessagesKey, undefined);
 
-                const compactEvent: CompactMessagesEvent = {
+                const compactEvent: CompactMessagesEvent<TUIMessage> = {
                   summary: compactionSummary,
                   uiMessages: accumulatedUIMessages,
                   modelMessages: accumulatedMessages,
@@ -2676,9 +2917,10 @@ function chatTask<
 
                 // Apply UI messages: callback or default (preserve all)
                 if (taskCompactionConfig?.compactUIMessages) {
-                  accumulatedUIMessages = await taskCompactionConfig.compactUIMessages(compactEvent);
+                  accumulatedUIMessages = (await taskCompactionConfig.compactUIMessages(
+                    compactEvent
+                  )) as TUIMessage[];
                 }
-
               }
 
               // Determine if the user stopped generation this turn (not a full run cancel).
@@ -2687,7 +2929,7 @@ function chatTask<
               // Append the assistant's response (partial or complete) to the accumulator.
               // The onFinish callback fires even on abort/stop, so partial responses
               // from stopped generation are captured correctly.
-              let rawResponseMessage: UIMessage | undefined;
+              let rawResponseMessage: TUIMessage | undefined;
               if (capturedResponseMessage) {
                 // Keep the raw message before cleanup for users who want custom handling
                 rawResponseMessage = capturedResponseMessage;
@@ -2779,7 +3021,7 @@ function chatTask<
 
                           // Apply compactModelMessages/compactUIMessages callbacks, or defaults.
 
-                          const outerCompactEvent: CompactMessagesEvent = {
+                          const outerCompactEvent: CompactMessagesEvent<TUIMessage> = {
                             summary,
                             uiMessages: accumulatedUIMessages,
                             modelMessages: accumulatedMessages,
@@ -2792,11 +3034,23 @@ function chatTask<
                           // Model messages: callback or default (replace with summary)
                           accumulatedMessages = outerCompaction.compactModelMessages
                             ? await outerCompaction.compactModelMessages(outerCompactEvent)
-                            : [{ role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] }];
+                            : [
+                                {
+                                  role: "assistant" as const,
+                                  content: [
+                                    {
+                                      type: "text" as const,
+                                      text: `[Conversation summary]\n\n${summary}`,
+                                    },
+                                  ],
+                                },
+                              ];
 
                           // UI messages: callback or default (preserve all)
                           if (outerCompaction.compactUIMessages) {
-                            accumulatedUIMessages = await outerCompaction.compactUIMessages(outerCompactEvent);
+                            accumulatedUIMessages = (await outerCompaction.compactUIMessages(
+                              outerCompactEvent
+                            )) as TUIMessage[];
                           }
 
                           // Fire onCompacted hook
@@ -2836,7 +3090,9 @@ function chatTask<
                         "compaction.message_count": accumulatedMessages.length,
                         "compaction.outer_loop": true,
                         "compaction.turn": turn,
-                        ...(currentWirePayload.chatId ? { "compaction.chat_id": currentWirePayload.chatId } : {}),
+                        ...(currentWirePayload.chatId
+                          ? { "compaction.chat_id": currentWirePayload.chatId }
+                          : {}),
                         ...accessoryAttributes({
                           items: [
                             { text: `${turnUsage.totalTokens ?? 0} tokens`, variant: "normal" },
@@ -2885,7 +3141,7 @@ function chatTask<
                     const override = locals.get(chatOverrideMessagesKey);
                     if (override) {
                       locals.set(chatOverrideMessagesKey, undefined);
-                      accumulatedUIMessages = [...override];
+                      accumulatedUIMessages = [...override] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(override);
                       // Update event so onTurnComplete sees compacted messages
                       turnCompleteEvent.messages = accumulatedMessages;
@@ -2923,7 +3179,7 @@ function chatTask<
                     const turnCompleteOverride = locals.get(chatOverrideMessagesKey);
                     if (turnCompleteOverride) {
                       locals.set(chatOverrideMessagesKey, undefined);
-                      accumulatedUIMessages = [...turnCompleteOverride];
+                      accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
                       accumulatedMessages = await toModelMessages(turnCompleteOverride);
                     }
                   },
@@ -2940,10 +3196,18 @@ function chatTask<
                       "chat.messages.count": accumulatedMessages.length,
                       "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,
                       "chat.new_messages.count": turnNewUIMessages.length,
-                      ...(turnUsage?.inputTokens != null ? { "gen_ai.usage.input_tokens": turnUsage.inputTokens } : {}),
-                      ...(turnUsage?.outputTokens != null ? { "gen_ai.usage.output_tokens": turnUsage.outputTokens } : {}),
-                      ...(turnUsage?.totalTokens != null ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens } : {}),
-                      ...(cumulativeUsage.totalTokens != null ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens } : {}),
+                      ...(turnUsage?.inputTokens != null
+                        ? { "gen_ai.usage.input_tokens": turnUsage.inputTokens }
+                        : {}),
+                      ...(turnUsage?.outputTokens != null
+                        ? { "gen_ai.usage.output_tokens": turnUsage.outputTokens }
+                        : {}),
+                      ...(turnUsage?.totalTokens != null
+                        ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens }
+                        : {}),
+                      ...(cumulativeUsage.totalTokens != null
+                        ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens }
+                        : {}),
                     },
                   }
                 );
@@ -2964,7 +3228,8 @@ function chatTask<
 
               // Wait for the next message — stay idle briefly, then suspend
               const effectiveIdleTimeout =
-                (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ?? idleTimeoutInSeconds;
+                (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+                idleTimeoutInSeconds;
               const effectiveTurnTimeout =
                 (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
@@ -2978,7 +3243,10 @@ function chatTask<
                 return "exit";
               }
 
-              currentWirePayload = next.output;
+              currentWirePayload = next.output as ChatTaskWirePayload<
+                TUIMessage,
+                inferSchemaIn<TClientDataSchema>
+              >;
               return "continue";
             },
             {
@@ -2994,6 +3262,55 @@ function chatTask<
       }
     },
   });
+}
+
+/**
+ * Optional config for {@link chat.withUIMessage}. `streamOptions` become default
+ * static `toUIMessageStream()` settings; inner `chat.task({ uiMessageStreamOptions })`
+ * shallow-merges on top (task wins on conflicts).
+ */
+export type ChatWithUIMessageConfig<TUIM extends UIMessage = UIMessage> = {
+  streamOptions?: ChatUIMessageStreamOptions<TUIM>;
+};
+
+/**
+ * Fix the UI message type for a chat task (AI SDK `UIMessage` generics) while
+ * keeping `id` and `clientDataSchema` inference on the inner {@link chat.task} call.
+ *
+ * @example
+ * ```ts
+ * type AgentUiMessage = UIMessage<unknown, UIDataTypes, UITools>;
+ *
+ * export const myChat = chat.withUIMessage<AgentUiMessage>({
+ *   streamOptions: { sendReasoning: true },
+ * }).task({
+ *   id: "my-chat",
+ *   run: async ({ messages, signal }) => { ... },
+ * });
+ * ```
+ */
+function withUIMessage<TUIM extends UIMessage = UIMessage>(
+  config?: ChatWithUIMessageConfig<TUIM>
+): {
+  task: <TIdentifier extends string, TClientDataSchema extends TaskSchema | undefined = undefined>(
+    options: ChatTaskOptions<TIdentifier, TClientDataSchema, TUIM>
+  ) => Task<TIdentifier, ChatTaskWirePayload<TUIM, inferSchemaIn<TClientDataSchema>>, unknown>;
+} {
+  function taskWithUiMessage<
+    TIdentifier extends string,
+    TClientDataSchema extends TaskSchema | undefined = undefined,
+  >(options: ChatTaskOptions<TIdentifier, TClientDataSchema, TUIM>) {
+    const mergedUiStream =
+      config?.streamOptions && options.uiMessageStreamOptions
+        ? { ...config.streamOptions, ...options.uiMessageStreamOptions }
+        : options.uiMessageStreamOptions ?? config?.streamOptions;
+    return chatTask<TIdentifier, TClientDataSchema, TUIM>({
+      ...options,
+      uiMessageStreamOptions: mergedUiStream,
+    });
+  }
+
+  return { task: taskWithUiMessage };
 }
 
 /**
@@ -3107,7 +3424,7 @@ function setIdleTimeoutInSeconds(seconds: number): void {
  * }
  * ```
  */
-function setUIMessageStreamOptions(options: ChatUIMessageStreamOptions): void {
+function setUIMessageStreamOptions(options: ChatUIMessageStreamOptions<UIMessage>): void {
   locals.set(chatUIStreamPerTurnKey, options);
 }
 
@@ -3120,7 +3437,7 @@ function setUIMessageStreamOptions(options: ChatUIMessageStreamOptions): void {
  * so it doesn't leak into subsequent turns.
  * @internal
  */
-function resolveUIMessageStreamOptions(): ChatUIMessageStreamOptions {
+function resolveUIMessageStreamOptions(): ChatUIMessageStreamOptions<UIMessage> {
   const staticOptions = locals.get(chatUIStreamStaticKey) ?? {};
   const perTurnOptions = locals.get(chatUIStreamPerTurnKey) ?? {};
   // Clear per-turn override so it doesn't leak into subsequent turns
@@ -3251,7 +3568,7 @@ function injectBackgroundContext(messages: ModelMessage[]): void {
  * }
  * ```
  */
-function cleanupAbortedParts(message: UIMessage): UIMessage {
+function cleanupAbortedParts<TUIM extends UIMessage>(message: TUIM): TUIM {
   if (!message.parts) return message;
 
   const isToolPart = (part: any) =>
@@ -3269,7 +3586,9 @@ function cleanupAbortedParts(message: UIMessage): UIMessage {
         // input-available: input was complete but tool never ran.
         // input-streaming: input was mid-stream.
         const state = part.toolInvocation?.state ?? part.state;
-        return state !== "partial-call" && state !== "input-available" && state !== "input-streaming";
+        return (
+          state !== "partial-call" && state !== "input-available" && state !== "input-streaming"
+        );
       })
       .map((part: any) => {
         // Mark streaming reasoning as done
@@ -3282,7 +3601,7 @@ function cleanupAbortedParts(message: UIMessage): UIMessage {
         }
         return part;
       }),
-  };
+  } as TUIM;
 }
 
 // ---------------------------------------------------------------------------
@@ -3308,15 +3627,25 @@ function cleanupAbortedParts(message: UIMessage): UIMessage {
  * stop.cleanup();
  * ```
  */
-function createStopSignal(): { readonly signal: AbortSignal; reset: () => void; cleanup: () => void } {
+function createStopSignal(): {
+  readonly signal: AbortSignal;
+  reset: () => void;
+  cleanup: () => void;
+} {
   let controller = new AbortController();
   const sub = stopInput.on((data) => {
     controller.abort(data?.message || "stopped");
   });
   return {
-    get signal() { return controller.signal; },
-    reset() { controller = new AbortController(); },
-    cleanup() { sub.off(); },
+    get signal() {
+      return controller.signal;
+    },
+    reset() {
+      controller = new AbortController();
+    },
+    cleanup() {
+      sub.off();
+    },
   };
 }
 
@@ -3356,7 +3685,9 @@ async function pipeChatAndCapture(
 ): Promise<UIMessage | undefined> {
   let captured: UIMessage | undefined;
   let resolveOnFinish: () => void;
-  const onFinishPromise = new Promise<void>((r) => { resolveOnFinish = r; });
+  const onFinishPromise = new Promise<void>((r) => {
+    resolveOnFinish = r;
+  });
 
   const uiStream = source.toUIMessageStream({
     ...resolveUIMessageStreamOptions(),
@@ -3366,7 +3697,10 @@ async function pipeChatAndCapture(
     },
   });
 
-  await pipeChat(uiStream, { signal: options?.signal, spanName: options?.spanName ?? "stream response" });
+  await pipeChat(uiStream, {
+    signal: options?.signal,
+    spanName: options?.spanName ?? "stream response",
+  });
   await onFinishPromise;
 
   return captured;
@@ -3397,7 +3731,10 @@ class ChatMessageAccumulator {
   private _pendingMessages?: PendingMessagesOptions;
   private _steeringQueue: SteeringQueueEntry[] = [];
 
-  constructor(options?: { compaction?: ChatTaskCompactionOptions; pendingMessages?: PendingMessagesOptions }) {
+  constructor(options?: {
+    compaction?: ChatTaskCompactionOptions;
+    pendingMessages?: PendingMessagesOptions;
+  }) {
     this._compaction = options?.compaction;
     this._pendingMessages = options?.pendingMessages;
   }
@@ -3406,14 +3743,8 @@ class ChatMessageAccumulator {
    * Add incoming messages from the transport payload.
    * Returns the full accumulated model messages for `streamText`.
    */
-  async addIncoming(
-    messages: UIMessage[],
-    trigger: string,
-    turn: number
-  ): Promise<ModelMessage[]> {
-    const cleaned = messages.map((m) =>
-      m.role === "assistant" ? cleanupAbortedParts(m) : m
-    );
+  async addIncoming(messages: UIMessage[], trigger: string, turn: number): Promise<ModelMessage[]> {
+    const cleaned = messages.map((m) => (m.role === "assistant" ? cleanupAbortedParts(m) : m));
     const model = await toModelMessages(cleaned);
 
     if (turn === 0 || trigger === "regenerate-message") {
@@ -3486,7 +3817,12 @@ class ChatMessageAccumulator {
    * Returns a `prepareStep` function that handles both compaction and
    * pending message injection. Pass to `streamText({ prepareStep: conversation.prepareStep() })`.
    */
-  prepareStep(): ((args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined>) | undefined {
+  prepareStep():
+    | ((args: {
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+      }) => Promise<{ messages: ModelMessage[] } | undefined>)
+    | undefined {
     if (!this._compaction && !this._pendingMessages) return undefined;
     const comp = this._compaction;
     const pm = this._pendingMessages;
@@ -3508,12 +3844,7 @@ class ChatMessageAccumulator {
 
       // 2. Pending message injection
       if (pm && queue.length > 0) {
-        const injected = await drainSteeringQueue(
-          pm,
-          resultMessages ?? messages,
-          steps,
-          queue,
-        );
+        const injected = await drainSteeringQueue(pm, resultMessages ?? messages, steps, queue);
         if (injected.length > 0) {
           resultMessages = [...(resultMessages ?? messages), ...injected];
         }
@@ -3530,12 +3861,15 @@ class ChatMessageAccumulator {
    *
    * @returns `true` if compaction was performed, `false` otherwise.
    */
-  async compactIfNeeded(usage: LanguageModelUsage | undefined, context?: {
-    chatId?: string;
-    turn?: number;
-    clientData?: unknown;
-    totalUsage?: LanguageModelUsage;
-  }): Promise<boolean> {
+  async compactIfNeeded(
+    usage: LanguageModelUsage | undefined,
+    context?: {
+      chatId?: string;
+      turn?: number;
+      clientData?: unknown;
+      totalUsage?: LanguageModelUsage;
+    }
+  ): Promise<boolean> {
     if (!this._compaction || !usage) return false;
 
     const shouldTrigger = await this._compaction.shouldCompact({
@@ -3575,7 +3909,12 @@ class ChatMessageAccumulator {
 
     this.modelMessages = this._compaction.compactModelMessages
       ? await this._compaction.compactModelMessages(compactEvent)
-      : [{ role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] }];
+      : [
+          {
+            role: "assistant" as const,
+            content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+          },
+        ];
 
     if (this._compaction.compactUIMessages) {
       this.uiMessages = await this._compaction.compactUIMessages(compactEvent);
@@ -3658,7 +3997,12 @@ export type ChatTurn = {
    * pending message injection. Pass to `streamText({ prepareStep: turn.prepareStep() })`.
    * Only needed when not using `chat.toStreamTextOptions()` (which auto-injects it).
    */
-  prepareStep(): ((args: { messages: ModelMessage[]; steps: CompactionStep[] }) => Promise<{ messages: ModelMessage[] } | undefined>) | undefined;
+  prepareStep():
+    | ((args: {
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+      }) => Promise<{ messages: ModelMessage[] } | undefined>)
+    | undefined;
 };
 
 /**
@@ -3784,12 +4128,16 @@ function createChatSession(
                       chatId: currentPayload.chatId,
                       turn,
                     });
-                  } catch { /* non-fatal */ }
+                  } catch {
+                    /* non-fatal */
+                  }
                 }
                 try {
                   const modelMsgs = await toModelMessages([lastUIMessage]);
                   turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
-                } catch { /* non-fatal */ }
+                } catch {
+                  /* non-fatal */
+                }
               }
             }
           });
@@ -3798,7 +4146,7 @@ function createChatSession(
           const messages = await accumulator.addIncoming(
             currentPayload.messages,
             currentPayload.trigger,
-            turn,
+            turn
           );
 
           const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
@@ -3808,10 +4156,16 @@ function createChatSession(
             chatId: currentPayload.chatId,
             trigger: currentPayload.trigger,
             clientData: currentPayload.metadata,
-            get messages() { return accumulator.modelMessages; },
-            get uiMessages() { return accumulator.uiMessages; },
+            get messages() {
+              return accumulator.modelMessages;
+            },
+            get uiMessages() {
+              return accumulator.uiMessages;
+            },
             signal: combinedSignal,
-            get stopped() { return stop.signal.aborted && !runSignal.aborted; },
+            get stopped() {
+              return stop.signal.aborted && !runSignal.aborted;
+            },
             continuation: currentPayload.continuation ?? false,
             previousTurnUsage,
             totalUsage: cumulativeUsage,
@@ -3839,9 +4193,10 @@ function createChatSession(
               }
 
               if (response) {
-                const cleaned = (stop.signal.aborted && !runSignal.aborted)
-                  ? cleanupAbortedParts(response)
-                  : response;
+                const cleaned =
+                  stop.signal.aborted && !runSignal.aborted
+                    ? cleanupAbortedParts(response)
+                    : response;
                 await accumulator.addResponse(cleaned);
               }
 
@@ -3853,7 +4208,9 @@ function createChatSession(
                   turnUsage = usage;
                   previousTurnUsage = usage;
                   cumulativeUsage = addUsage(cumulativeUsage, usage);
-                } catch { /* non-fatal */ }
+                } catch {
+                  /* non-fatal */
+                }
               }
 
               // Outer-loop compaction (same logic as chat.task)
@@ -3894,10 +4251,19 @@ function createChatSession(
 
                   accumulator.modelMessages = sessionCompaction.compactModelMessages
                     ? await sessionCompaction.compactModelMessages(compactEvent)
-                    : [{ role: "assistant" as const, content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }] }];
+                    : [
+                        {
+                          role: "assistant" as const,
+                          content: [
+                            { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
+                          ],
+                        },
+                      ];
 
                   if (sessionCompaction.compactUIMessages) {
-                    accumulator.uiMessages = await sessionCompaction.compactUIMessages(compactEvent);
+                    accumulator.uiMessages = await sessionCompaction.compactUIMessages(
+                      compactEvent
+                    );
                   }
                 }
               }
@@ -3921,13 +4287,20 @@ function createChatSession(
               const hasPending = !!sessionPendingMessages;
               if (!hasCompaction && !hasPending) return undefined;
 
-              return async ({ messages: stepMsgs, steps }: { messages: ModelMessage[]; steps: CompactionStep[] }) => {
+              return async ({
+                messages: stepMsgs,
+                steps,
+              }: {
+                messages: ModelMessage[];
+                steps: CompactionStep[];
+              }) => {
                 let resultMessages: ModelMessage[] | undefined;
 
                 if (sessionCompaction) {
                   const compactResult = await chatCompact(stepMsgs, steps, {
                     shouldCompact: sessionCompaction.shouldCompact,
-                    summarize: (msgs) => sessionCompaction.summarize({ messages: msgs, source: "inner" }),
+                    summarize: (msgs) =>
+                      sessionCompaction.summarize({ messages: msgs, source: "inner" }),
                   });
                   if (compactResult.type !== "skipped") {
                     resultMessages = compactResult.messages;
@@ -3939,7 +4312,7 @@ function createChatSession(
                     sessionPendingMessages,
                     resultMessages ?? stepMsgs,
                     steps,
-                    turnSteeringQueue,
+                    turnSteeringQueue
                   );
                   if (injected.length > 0) {
                     resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
@@ -3983,7 +4356,7 @@ const chatLocalRegistry = new Set<ChatLocalEntry>();
 const chatLocalsHydratedKey = locals.create<boolean>("chat.locals.hydrated");
 
 /**
- * Hydrate chat.local values from subtask metadata (set by toolFromTask).
+ * Hydrate chat.local values from subtask metadata (set by `ai.toolExecute()` or legacy `ai.tool()`).
  * Runs once per run — subsequent calls are no-ops.
  * @internal
  */
@@ -4024,7 +4397,7 @@ export type ChatLocal<T extends Record<string, unknown>> = T & {
  *
  * The `id` is required and must be unique across all `chat.local()` calls in
  * your project. It's used to serialize values into subtask metadata so that
- * `ai.tool()` subtasks can auto-hydrate parent locals (read-only).
+ * `ai.toolExecute()` (or legacy `ai.tool()`) subtasks can auto-hydrate parent locals (read-only).
  *
  * @example
  * ```ts
@@ -4094,9 +4467,7 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
             current = locals.get(localKey);
           }
           if (current === undefined) {
-            throw new Error(
-              "local.get() called before initialization. Call local.init() first."
-            );
+            throw new Error("local.get() called before initialization. Call local.init() first.");
           }
           return { ...current };
         };
@@ -4197,9 +4568,30 @@ export type InferChatClientData<TTask extends AnyTask> = TTask extends Task<
   ? TMetadata
   : unknown;
 
+/**
+ * Extracts the UI message type from a chat task (wire payload `messages` items).
+ *
+ * @example
+ * ```ts
+ * import type { InferChatUIMessage } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
+ *
+ * type Msg = InferChatUIMessage<typeof myChat>;
+ * ```
+ */
+export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
+  string,
+  ChatTaskWirePayload<infer TUIM extends UIMessage, any>,
+  any
+>
+  ? TUIM
+  : UIMessage;
+
 export const chat = {
   /** Create a chat task. See {@link chatTask}. */
   task: chatTask,
+  /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
+  withUIMessage,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
   /** Create a per-run typed local. See {@link chatLocal}. */
@@ -4270,7 +4662,10 @@ export const chat = {
  * The frontend transport intercepts this to close the ReadableStream for the current turn.
  * @internal
  */
-async function writeTurnCompleteChunk(chatId?: string, publicAccessToken?: string): Promise<StreamWriteResult> {
+async function writeTurnCompleteChunk(
+  chatId?: string,
+  publicAccessToken?: string
+): Promise<StreamWriteResult> {
   const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
     spanName: "turn complete",
     collapsed: true,
