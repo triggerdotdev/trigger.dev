@@ -49,7 +49,12 @@ class ManagedSupervisor {
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
 
   constructor() {
-    const { TRIGGER_WORKER_TOKEN, MANAGED_WORKER_SECRET, ...envWithoutSecrets } = env;
+    const {
+      TRIGGER_WORKER_TOKEN,
+      MANAGED_WORKER_SECRET,
+      COMPUTE_GATEWAY_AUTH_TOKEN,
+      ...envWithoutSecrets
+    } = env;
 
     if (env.DEBUG) {
       this.logger.debug("Starting up", { envWithoutSecrets });

@@ -139,7 +139,7 @@ export class ComputeTemplateCreationService {
     });
 
     if (hasComputeAccess) {
-      return "required";
+      return "shadow";
     }
 
     const rolloutPct = Number(env.COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT ?? "0");
