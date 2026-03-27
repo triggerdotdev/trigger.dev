@@ -404,7 +404,7 @@ function FiltersBar({
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
-      <div className="flex flex-row flex-wrap items-center gap-1">
+      <div className="flex flex-row flex-wrap items-center gap-2">
         {list ? (
           <>
             <StatusFilter />
