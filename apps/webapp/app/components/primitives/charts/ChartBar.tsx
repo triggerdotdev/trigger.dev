@@ -174,6 +174,7 @@ export function ChartBarRenderer({
         }
         labelFormatter={tooltipLabelFormatter}
         allowEscapeViewBox={{ x: false, y: true }}
+        animationDuration={0}
       />
 
       {/* Zoom selection area - rendered before bars to appear behind them */}
