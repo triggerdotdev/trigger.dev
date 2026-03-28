@@ -870,12 +870,28 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
             }
           }
 
+          // Skip suspend if requested — return as if timed out
+          if (options.skipSuspend) {
+            span.setAttribute("wait.resolved", "skipped");
+            return { ok: false as const, error: undefined };
+          }
+
+          // Fire onSuspend callback before entering cold phase
+          if (options.onSuspend) {
+            await options.onSuspend();
+          }
+
           // Cold phase: suspend via .wait() — creates a child span
           span.setAttribute("wait.resolved", "suspended");
           const waitResult = await self.wait({
             timeout: options.timeout,
             spanName: "suspended",
           });
+
+          // Fire onResume callback after successful resume
+          if (waitResult.ok && options.onResume) {
+            await options.onResume();
+          }
 
           return waitResult;
         },
