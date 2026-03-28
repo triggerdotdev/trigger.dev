@@ -67,19 +67,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { orgId } = ParamsSchema.parse(params);
   const body = await request.json();
 
-  const featureFlags =
-    body === null || (typeof body === "object" && Object.keys(body).length === 0)
-      ? Prisma.JsonNull
-      : (() => {
-          const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
-          if (!validationResult.success) {
-            throw json(
-              { error: "Invalid feature flags", details: validationResult.error.issues },
-              { status: 400 }
-            );
-          }
-          return validationResult.data;
-        })();
+  let featureFlags: typeof Prisma.JsonNull | Record<string, unknown>;
+
+  if (body === null || (typeof body === "object" && Object.keys(body).length === 0)) {
+    featureFlags = Prisma.JsonNull;
+  } else {
+    const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
+    if (!validationResult.success) {
+      throw json(
+        { error: "Invalid feature flags", details: validationResult.error.issues },
+        { status: 400 }
+      );
+    }
+    featureFlags = validationResult.data;
+  }
 
   try {
     await prisma.organization.update({
