@@ -162,6 +162,34 @@ export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
 }
 
+// Utility types for catalog-driven UI rendering
+export type FlagControlType =
+  | { type: "boolean" }
+  | { type: "enum"; options: string[] }
+  | { type: "string" };
+
+export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
+  const typeName = schema._def.typeName;
+
+  if (typeName === "ZodBoolean") {
+    return { type: "boolean" };
+  }
+
+  if (typeName === "ZodEnum") {
+    return { type: "enum", options: schema._def.values as string[] };
+  }
+
+  return { type: "string" };
+}
+
+export function getAllFlagControlTypes(): Record<string, FlagControlType> {
+  const result: Record<string, FlagControlType> = {};
+  for (const [key, schema] of Object.entries(FeatureFlagCatalog)) {
+    result[key] = getFlagControlType(schema);
+  }
+  return result;
+}
+
 // Utility function to set multiple feature flags at once
 export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma) {
   return async function setMultipleFlags(
