@@ -126,7 +126,9 @@ export function FeatureFlagsDialog({
             <div className="py-8 text-center text-sm text-text-dimmed">Loading flags...</div>
           ) : data ? (
             <div className="flex flex-col gap-1.5">
-              {sortedFlagKeys.map((key) => {
+              {sortedFlagKeys
+                .filter((key) => key !== "defaultWorkerInstanceGroupId")
+                .map((key) => {
                 const control = data.controlTypes[key];
                 const isOverridden = key in overrides;
                 const globalValue = data.globalFlags[key as keyof typeof data.globalFlags];
@@ -137,10 +139,10 @@ export function FeatureFlagsDialog({
                   <div
                     key={key}
                     className={cn(
-                      "flex items-center justify-between rounded-md px-3 py-2.5",
+                      "flex items-center justify-between rounded-md border px-3 py-2.5",
                       isOverridden
-                        ? "border border-indigo-500/20 bg-indigo-500/5"
-                        : "bg-charcoal-750"
+                        ? "border-indigo-500/20 bg-indigo-500/5"
+                        : "border-transparent bg-charcoal-750"
                     )}
                   >
                     <div className="min-w-0 flex-1">
