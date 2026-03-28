@@ -124,7 +124,7 @@ export function FeatureFlagsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] overflow-y-auto">
+        <div className="max-h-[60vh] overflow-y-auto pt-3">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-text-dimmed">Loading flags...</div>
           ) : data ? (

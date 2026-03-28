@@ -125,16 +125,15 @@ export default function AdminDashboardRoute() {
                     <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
                     <TableCell isSticky={true}>
+                      <div className="flex items-center gap-2">
                       <Button
                         variant="tertiary/small"
                         onClick={() => openFlagsDialog(org.id, org.title)}
-                        className="mr-2"
                       >
                         Flags
                       </Button>
                       <LinkButton
                         to={`/@/orgs/${org.slug}`}
-                        className="mr-2"
                         variant="tertiary/small"
                         shortcut={
                           organizations.length === 1
@@ -144,6 +143,7 @@ export default function AdminDashboardRoute() {
                       >
                         Impersonate
                       </LinkButton>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
