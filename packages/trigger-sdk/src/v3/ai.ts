@@ -43,7 +43,8 @@ import { locals } from "./locals.js";
 import { metadata } from "./metadata.js";
 import type { ResolvedPrompt } from "./prompt.js";
 import { streams } from "./streams.js";
-import { createTask } from "./shared.js";
+import { createTask, trigger as triggerTaskInternal } from "./shared.js";
+import type { TriggerChatTaskParams, TriggerChatTaskResult } from "./chat.js";
 import { tracer } from "./tracer.js";
 
 /** Re-export for typing `ctx` in `chat.task` hooks without importing `@trigger.dev/core`. */
@@ -5125,6 +5126,63 @@ export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
   ? TUIM
   : UIMessage;
 
+/**
+ * Options for {@link createChatTriggerAction}.
+ */
+export type CreateChatTriggerActionOptions = {
+  /** TTL for the run-scoped public access token. @default "1h" */
+  tokenTTL?: string | number | Date;
+};
+
+/**
+ * Creates a function that triggers a chat task and returns a run-scoped session.
+ *
+ * Wrap the returned function in a Next.js server action (or any server-side handler)
+ * to keep task triggering on the server. The function calls `tasks.trigger()` with
+ * the secret key and mints a run-scoped PAT for stream subscription + input stream writes.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * export const triggerChat = chat.createTriggerAction("my-chat");
+ * ```
+ *
+ * Then pass it to the transport:
+ * ```tsx
+ * const transport = useTriggerChatTransport({
+ *   task: "my-chat",
+ *   triggerTask: triggerChat,
+ * });
+ * ```
+ */
+function createChatTriggerAction(
+  taskId: string,
+  options?: CreateChatTriggerActionOptions
+): (params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult> {
+  return async (params: TriggerChatTaskParams): Promise<TriggerChatTaskResult> => {
+    const handle = await triggerTaskInternal(taskId, params.payload, {
+      tags: params.options.tags,
+      queue: params.options.queue,
+      maxAttempts: params.options.maxAttempts,
+      machine: params.options.machine as any,
+      priority: params.options.priority,
+    });
+
+    const publicAccessToken = await auth.createPublicToken({
+      scopes: {
+        read: { runs: handle.id },
+        write: { inputStreams: handle.id },
+      },
+      expirationTime: options?.tokenTTL ?? "1h",
+    });
+
+    return { runId: handle.id, publicAccessToken };
+  };
+}
+
 export const chat = {
   /** Create a chat task. See {@link chatTask}. */
   task: chatTask,
@@ -5132,6 +5190,8 @@ export const chat = {
   withUIMessage,
   /** Create a chat task with a fixed client data schema. See {@link withClientData}. */
   withClientData,
+  /** Create a server-side trigger action helper. See {@link createChatTriggerAction}. */
+  createTriggerAction: createChatTriggerAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
   /** Create a per-run typed local. See {@link chatLocal}. */

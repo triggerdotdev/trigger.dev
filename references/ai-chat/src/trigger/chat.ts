@@ -167,7 +167,6 @@ export const aiChat = chat
   })
   .onChatSuspend(async ({ phase, ctx }) => {
     logger.debug("Chat suspending", { phase, runId: ctx.run.id });
-
     await disposeCodeSandboxForRun(ctx.run.id);
   })
   .onChatResume(async ({ phase, ctx }) => {
