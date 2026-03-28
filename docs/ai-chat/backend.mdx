@@ -9,7 +9,7 @@ description: "Three approaches to building your chat backend — chat.task(), se
 The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
 
 <Tip>
-  To fix a **custom** `UIMessage` subtype (typed custom data parts, tool map, etc.), use [`chat.withUIMessage<...>().task({...})`](/ai-chat/types) instead of `chat.task({...})`. Options are the same; defaults for `toUIMessageStream()` can be set on `withUIMessage`.
+  To fix a **custom** `UIMessage` subtype or typed client data schema, use the [ChatBuilder](/ai-chat/types#chatbuilder) via `chat.withUIMessage<...>()` and/or `chat.withClientData({ schema })`. Builder-level hooks can also be chained before `.task()`. See [Types](/ai-chat/types).
 </Tip>
 
 ### Simple: return a StreamTextResult
@@ -71,7 +71,9 @@ async function runAgentLoop(messages: ModelMessage[]) {
 
 Every chat lifecycle callback and the **`run`** payload include **`ctx`**: the same run context object as `task({ run: (payload, { ctx }) => ... })`. Import the type with **`import type { TaskRunContext } from "@trigger.dev/sdk"`** (the **`Context`** export is the same type). Use **`ctx`** for tags, metadata, or any API that needs the full run record. The string **`runId`** on chat events is always **`ctx.run.id`** (both are provided for convenience). See [Task context (`ctx`)](/ai-chat/reference#task-context-ctx) in the API reference.
 
-Standard **[task lifecycle hooks](/tasks/overview)** — **`onWait`**, **`onResume`**, **`onComplete`**, **`onFailure`**, etc. — are also available on **`chat.task()`** with the same shapes as on a normal `task()`. For example, tear down an external sandbox **right before the run suspends** waiting for the next message using **`onWait`** when **`wait.type === "token"`**. See the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
+Standard **[task lifecycle hooks](/tasks/overview)** — **`onWait`**, **`onResume`**, **`onComplete`**, **`onFailure`**, etc. — are also available on **`chat.task()`** with the same shapes as on a normal `task()`.
+
+Chat tasks also have two dedicated suspension hooks — **`onChatSuspend`** and **`onChatResume`** — that fire at the idle-to-suspended transition with full chat context. Use them for resource cleanup (e.g. tearing down sandboxes) and re-initialization. See [onChatSuspend / onChatResume](#onchatsuspend--onchatresume) and the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
 
 #### onPreload
 
@@ -275,6 +277,69 @@ export const myChat = chat.task({
 <Tip>
   For a full **conversation + session** persistence pattern (including preload, continuation, and token renewal), see [Database persistence](/ai-chat/patterns/database-persistence).
 </Tip>
+
+#### onChatSuspend / onChatResume
+
+Chat-specific hooks that fire at the **idle-to-suspended** transition — the moment the run stops using compute and waits for the next message. These replace the need for the generic `onWait` / `onResume` task hooks for chat-specific work.
+
+The `phase` discriminator tells you **when** the suspend/resume happened:
+
+- `"preload"` — after `onPreload`, waiting for the first message
+- `"turn"` — after `onTurnComplete`, waiting for the next message
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  onChatSuspend: async (event) => {
+    // Tear down expensive resources before suspending
+    await disposeCodeSandbox(event.ctx.run.id);
+    if (event.phase === "turn") {
+      logger.info("Suspending after turn", { turn: event.turn });
+    }
+  },
+  onChatResume: async (event) => {
+    // Re-initialize after waking up
+    logger.info("Resumed", { phase: event.phase });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+| Field        | Type             | Description                                                  |
+| ------------ | ---------------- | ------------------------------------------------------------ |
+| `phase`      | `"preload" \| "turn"` | Whether this is a preload or post-turn suspension       |
+| `ctx`        | `TaskRunContext` | Full task run context                                        |
+| `chatId`     | `string`         | Chat session ID                                              |
+| `runId`      | `string`         | The Trigger.dev run ID                                       |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                   |
+| `turn`       | `number`         | Turn number (**`"turn"` phase only**)                        |
+| `messages`   | `ModelMessage[]` | Accumulated model messages (**`"turn"` phase only**)         |
+| `uiMessages` | `UIMessage[]`    | Accumulated UI messages (**`"turn"` phase only**)            |
+
+<Tip>
+  Unlike `onWait` (which fires for all wait types — duration, task, batch, token), `onChatSuspend` fires only at chat suspension points with full chat context. No need to filter on `wait.type`.
+</Tip>
+
+#### exitAfterPreloadIdle
+
+When set to `true`, a preloaded run completes successfully after the idle timeout elapses instead of suspending. Use this for "fire and forget" preloads — if the user doesn't send a message during the idle window, the run ends cleanly.
+
+```ts
+export const myChat = chat.task({
+  id: "my-chat",
+  preloadIdleTimeoutInSeconds: 10,
+  exitAfterPreloadIdle: true,
+  onPreload: async ({ chatId, clientData }) => {
+    // Eagerly set up state — if no message comes, the run just ends
+    await initializeChat(chatId, clientData);
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
 
 ### Using prompts
 
