@@ -23,7 +23,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { orgId } = ParamsSchema.parse(params);
 
   const [organization, globalFlags] = await Promise.all([
-    prisma.organization.findUnique({
+    prisma.organization.findFirst({
       where: { id: orgId },
       select: {
         id: true,
