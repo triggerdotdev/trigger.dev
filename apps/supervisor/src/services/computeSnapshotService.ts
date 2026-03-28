@@ -2,15 +2,10 @@ import pLimit from "p-limit";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import type { SupervisorHttpClient } from "@trigger.dev/core/v3/workers";
-import {
-  SnapshotCallbackPayloadSchema,
-  type SnapshotCallbackPayload,
-} from "@internal/compute";
+import { type SnapshotCallbackPayload } from "@internal/compute";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import { TimerWheel } from "./timerWheel.js";
 import type { OtlpTraceService } from "./otlpTraceService.js";
-
-export { SnapshotCallbackPayloadSchema, type SnapshotCallbackPayload };
 
 type DelayedSnapshot = {
   runnerId: string;

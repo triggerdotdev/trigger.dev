@@ -80,6 +80,10 @@ pnpm run changeset:add
 
 When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file instead. See `.server-changes/README.md` for format and documentation.
 
+## Dependency Pinning
+
+Zod is pinned to a single version across the entire monorepo (currently `3.25.76`). When adding zod to a new or existing package, use the **exact same version** as the rest of the repo - never a different version or a range. Mismatched zod versions cause runtime type incompatibilities (e.g., schemas from one package can't be used as body validators in another).
+
 ## Architecture Overview
 
 ### Request Flow

@@ -24,9 +24,9 @@ import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOn
 import { type IncomingMessage } from "node:http";
 import { register } from "../metrics.js";
 import { env } from "../env.js";
+import { SnapshotCallbackPayloadSchema } from "@internal/compute";
 import {
   ComputeSnapshotService,
-  SnapshotCallbackPayloadSchema,
   type RunTraceContext,
 } from "../services/computeSnapshotService.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
