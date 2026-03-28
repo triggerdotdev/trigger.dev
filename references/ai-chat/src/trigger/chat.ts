@@ -162,9 +162,19 @@ export const aiChat = chat
       },
     },
   })
+  .withClientData({
+    schema: z.object({ model: z.string().optional(), userId: z.string() }),
+  })
+  .onChatSuspend(async ({ phase, ctx }) => {
+    logger.debug("Chat suspending", { phase, runId: ctx.run.id });
+
+    await disposeCodeSandboxForRun(ctx.run.id);
+  })
+  .onChatResume(async ({ phase, ctx }) => {
+    logger.debug("Chat resumed", { phase, runId: ctx.run.id });
+  })
   .task({
     id: "ai-chat",
-    clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
     idleTimeoutInSeconds: 60,
     chatAccessTokenTTL: "1m",
 
@@ -348,18 +358,6 @@ export const aiChat = chat
       );
     },
     // #endregion
-
-    onWait: async ({ wait, ctx }) => {
-      if (wait.type === "token") {
-        await disposeCodeSandboxForRun(ctx.run.id);
-      }
-    },
-
-    onResume: async ({ wait, ctx }) => {
-      if (wait.type === "token") {
-        logger.debug("Chat resumed after input-stream wait", { runId: ctx.run.id });
-      }
-    },
 
     onComplete: async ({ ctx }) => {
       await disposeCodeSandboxForRun(ctx.run.id);
