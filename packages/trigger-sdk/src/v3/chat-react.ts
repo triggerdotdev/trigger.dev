@@ -86,11 +86,11 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
 ): TriggerChatTransport {
   const ref = useRef<TriggerChatTransport | null>(null);
   if (ref.current === null) {
-    ref.current = new TriggerChatTransport(options);
+    ref.current = new TriggerChatTransport(options as TriggerChatTransportOptions);
   }
 
-  // Keep onSessionChange up to date without recreating the transport
-  const { onSessionChange, renewRunAccessToken } = options;
+  // Keep callbacks up to date without recreating the transport
+  const { onSessionChange, renewRunAccessToken, triggerTask } = options;
   useEffect(() => {
     ref.current?.setOnSessionChange(onSessionChange);
   }, [onSessionChange]);
@@ -98,6 +98,10 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   useEffect(() => {
     ref.current?.setRenewRunAccessToken(renewRunAccessToken);
   }, [renewRunAccessToken]);
+
+  useEffect(() => {
+    ref.current?.setTriggerTask(triggerTask);
+  }, [triggerTask]);
 
   return ref.current;
 }

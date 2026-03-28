@@ -31,7 +31,8 @@
       "./extensions/typescript": "./src/extensions/typescript.ts",
       "./extensions/puppeteer": "./src/extensions/puppeteer.ts",
       "./extensions/playwright": "./src/extensions/playwright.ts",
-      "./extensions/lightpanda": "./src/extensions/lightpanda.ts"
+      "./extensions/lightpanda": "./src/extensions/lightpanda.ts",
+      "./extensions/secureExec": "./src/extensions/secureExec.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -65,6 +66,9 @@
       ],
       "extensions/lightpanda": [
         "dist/commonjs/extensions/lightpanda.d.ts"
+      ],
+      "extensions/secureExec": [
+        "dist/commonjs/extensions/secureExec.d.ts"
       ]
     }
   },
@@ -206,6 +210,17 @@
       "require": {
         "types": "./dist/commonjs/extensions/lightpanda.d.ts",
         "default": "./dist/commonjs/extensions/lightpanda.js"
+      }
+    },
+    "./extensions/secureExec": {
+      "import": {
+        "@triggerdotdev/source": "./src/extensions/secureExec.ts",
+        "types": "./dist/esm/extensions/secureExec.d.ts",
+        "default": "./dist/esm/extensions/secureExec.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/extensions/secureExec.d.ts",
+        "default": "./dist/commonjs/extensions/secureExec.js"
       }
     }
   },

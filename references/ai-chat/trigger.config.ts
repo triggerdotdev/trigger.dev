@@ -1,5 +1,6 @@
 import { defineConfig } from "@trigger.dev/sdk";
 import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
+import { secureExec } from "@trigger.dev/build/extensions/secureExec";
 
 export default defineConfig({
   project: process.env.TRIGGER_PROJECT_REF!,
@@ -10,6 +11,7 @@ export default defineConfig({
       prismaExtension({
         mode: "modern",
       }),
+      secureExec(),
     ],
   },
 });
