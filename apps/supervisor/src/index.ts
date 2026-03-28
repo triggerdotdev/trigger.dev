@@ -110,6 +110,7 @@ class ManagedSupervisor {
         snapshots: {
           enabled: env.COMPUTE_SNAPSHOTS_ENABLED,
           delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+          dispatchLimit: env.COMPUTE_SNAPSHOT_DISPATCH_LIMIT,
           callbackUrl,
         },
         tracing: this.tracing,

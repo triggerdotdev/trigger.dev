@@ -20,6 +20,7 @@ type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
   snapshots: {
     enabled: boolean;
     delayMs: number;
+    dispatchLimit: number;
     callbackUrl: string;
   };
   tracing?: OtlpTraceService;
@@ -54,6 +55,10 @@ export class ComputeWorkloadManager implements WorkloadManager {
 
   get snapshotDelayMs(): number {
     return this.opts.snapshots.delayMs;
+  }
+
+  get snapshotDispatchLimit(): number {
+    return this.opts.snapshots.dispatchLimit;
   }
 
   get traceSpansEnabled(): boolean {

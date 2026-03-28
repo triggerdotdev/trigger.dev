@@ -86,6 +86,7 @@ const Env = z
     COMPUTE_TRACE_SPANS_ENABLED: BoolEnv.default(true),
     COMPUTE_TRACE_OTLP_ENDPOINT: z.string().url().optional(), // Override for span export (derived from TRIGGER_API_URL if unset)
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
+    COMPUTE_SNAPSHOT_DISPATCH_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),

@@ -120,10 +120,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   // hours later after a checkpoint/restore cycle. Using a capped map avoids unbounded
   // growth while keeping recent contexts available. Oldest entries are evicted first.
   private static readonly MAX_TRACE_CONTEXTS = 10_000;
-  private static readonly SNAPSHOT_CONCURRENCY = 10;
   private readonly runTraceContexts = new Map<string, RunTraceContext>();
   private readonly snapshotDelayWheel?: TimerWheel<DelayedSnapshot>;
-  private readonly snapshotLimit = pLimit(WorkloadServer.SNAPSHOT_CONCURRENCY);
+  private readonly snapshotLimit?: ReturnType<typeof pLimit>;
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -137,10 +136,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.tracing = opts.tracing;
 
     if (this.computeManager?.snapshotsEnabled) {
+      const snapshotLimit = pLimit(this.computeManager.snapshotDispatchLimit);
+      this.snapshotLimit = snapshotLimit;
       this.snapshotDelayWheel = new TimerWheel<DelayedSnapshot>({
         delayMs: this.computeManager.snapshotDelayMs,
         onExpire: (item) => {
-          this.snapshotLimit(() => this.dispatchComputeSnapshot(item.data)).catch((error) => {
+          snapshotLimit(() => this.dispatchComputeSnapshot(item.data)).catch((error) => {
             this.logger.error("Compute snapshot dispatch failed", {
               runId: item.data.runFriendlyId,
               runnerId: item.data.runnerId,
