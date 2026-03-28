@@ -7,7 +7,7 @@ import {
   type WorkloadManagerOptions,
 } from "./types.js";
 import { ComputeClient, stripImageDigest } from "@internal/compute";
-import { getRunnerId } from "../util.js";
+import { extractTraceparent, getRunnerId } from "../util.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import { tryCatch } from "@trigger.dev/core";
 
@@ -213,14 +213,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
   #emitProvisionSpan(opts: WorkloadManagerCreateOptions, startMs: number, timing?: unknown) {
     if (!this.traceSpansEnabled) return;
 
-    const traceparent =
-      opts.traceContext &&
-      "traceparent" in opts.traceContext &&
-      typeof opts.traceContext.traceparent === "string"
-        ? opts.traceContext.traceparent
-        : undefined;
-
-    const parsed = parseTraceparent(traceparent);
+    const parsed = parseTraceparent(extractTraceparent(opts.traceContext));
     if (!parsed) return;
 
     const endMs = performance.now();
@@ -342,14 +335,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
   ) {
     if (!this.traceSpansEnabled) return;
 
-    const traceparent =
-      opts.traceContext &&
-      "traceparent" in opts.traceContext &&
-      typeof opts.traceContext.traceparent === "string"
-        ? opts.traceContext.traceparent
-        : undefined;
-
-    const parsed = parseTraceparent(traceparent);
+    const parsed = parseTraceparent(extractTraceparent(opts.traceContext));
     if (!parsed || !opts.envId || !opts.orgId || !opts.projectId) return;
 
     const endMs = performance.now();

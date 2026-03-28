@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildOtlpTracePayload } from "../otlpPayload.js";
+import { buildPayload } from "./otlpTraceService.js";
 
-describe("buildOtlpTracePayload", () => {
+describe("buildPayload", () => {
   it("builds valid OTLP JSON with timing attributes", () => {
-    const payload = buildOtlpTracePayload({
+    const payload = buildPayload({
       traceId: "abcd1234abcd1234abcd1234abcd1234",
       parentSpanId: "1234567890abcdef",
       spanName: "compute.provision",
@@ -55,7 +55,7 @@ describe("buildOtlpTracePayload", () => {
   });
 
   it("generates a valid 16-char hex span ID", () => {
-    const payload = buildOtlpTracePayload({
+    const payload = buildPayload({
       traceId: "abcd1234abcd1234abcd1234abcd1234",
       spanName: "test",
       startTimeMs: 1000,
@@ -69,7 +69,7 @@ describe("buildOtlpTracePayload", () => {
   });
 
   it("converts timestamps to nanoseconds", () => {
-    const payload = buildOtlpTracePayload({
+    const payload = buildPayload({
       traceId: "abcd1234abcd1234abcd1234abcd1234",
       spanName: "test",
       startTimeMs: 1000,
@@ -84,7 +84,7 @@ describe("buildOtlpTracePayload", () => {
   });
 
   it("omits parentSpanId when not provided", () => {
-    const payload = buildOtlpTracePayload({
+    const payload = buildPayload({
       traceId: "abcd1234abcd1234abcd1234abcd1234",
       spanName: "test",
       startTimeMs: 1000,
@@ -98,7 +98,7 @@ describe("buildOtlpTracePayload", () => {
   });
 
   it("handles double values for non-integer numbers", () => {
-    const payload = buildOtlpTracePayload({
+    const payload = buildPayload({
       traceId: "abcd1234abcd1234abcd1234abcd1234",
       spanName: "test",
       startTimeMs: 1000,

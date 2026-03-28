@@ -1,9 +1,19 @@
+import { randomBytes } from "crypto";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { buildOtlpTracePayload, type OtlpTraceOptions } from "../otlpPayload.js";
 
 export type OtlpTraceServiceOptions = {
   endpointUrl: string;
   timeoutMs?: number;
+};
+
+export type OtlpTraceSpan = {
+  traceId: string;
+  parentSpanId?: string;
+  spanName: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  resourceAttributes: Record<string, string | number | boolean>;
+  spanAttributes: Record<string, string | number | boolean>;
 };
 
 export class OtlpTraceService {
@@ -12,8 +22,8 @@ export class OtlpTraceService {
   constructor(private opts: OtlpTraceServiceOptions) {}
 
   /** Fire-and-forget: build payload and send to the configured OTLP endpoint */
-  emit(opts: OtlpTraceOptions): void {
-    const payload = buildOtlpTracePayload(opts);
+  emit(span: OtlpTraceSpan): void {
+    const payload = buildPayload(span);
 
     fetch(`${this.opts.endpointUrl}/v1/traces`, {
       method: "POST",
@@ -26,4 +36,58 @@ export class OtlpTraceService {
       });
     });
   }
+}
+
+// ── Payload builder (internal) ───────────────────────────────────────────────
+
+/** @internal Exported for tests only */
+export function buildPayload(span: OtlpTraceSpan) {
+  const spanId = randomBytes(8).toString("hex");
+
+  return {
+    resourceSpans: [
+      {
+        resource: {
+          attributes: [
+            { key: "$trigger", value: { boolValue: true } },
+            ...toOtlpAttributes(span.resourceAttributes),
+          ],
+        },
+        scopeSpans: [
+          {
+            scope: { name: "supervisor.compute" },
+            spans: [
+              {
+                traceId: span.traceId,
+                spanId,
+                parentSpanId: span.parentSpanId,
+                name: span.spanName,
+                kind: 3, // SPAN_KIND_CLIENT
+                startTimeUnixNano: String(span.startTimeMs * 1_000_000),
+                endTimeUnixNano: String(span.endTimeMs * 1_000_000),
+                attributes: toOtlpAttributes(span.spanAttributes),
+                status: { code: 1 }, // STATUS_CODE_OK
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function toOtlpAttributes(
+  attrs: Record<string, string | number | boolean>
+): Array<{ key: string; value: Record<string, unknown> }> {
+  return Object.entries(attrs).map(([key, value]) => ({
+    key,
+    value: toOtlpValue(value),
+  }));
+}
+
+function toOtlpValue(value: string | number | boolean): Record<string, unknown> {
+  if (typeof value === "string") return { stringValue: value };
+  if (typeof value === "boolean") return { boolValue: value };
+  if (Number.isInteger(value)) return { intValue: value };
+  return { doubleValue: value };
 }

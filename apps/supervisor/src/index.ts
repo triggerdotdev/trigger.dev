@@ -27,6 +27,7 @@ import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
+import { extractTraceparent } from "./util.js";
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
@@ -255,12 +256,7 @@ class ManagedSupervisor {
         // (cold create, restore, warm start). Re-registration on restore is safe
         // since dequeue always provides fresh context.
         if (this.computeManager?.traceSpansEnabled) {
-          const traceparent =
-            message.run.traceContext &&
-            "traceparent" in message.run.traceContext &&
-            typeof message.run.traceContext.traceparent === "string"
-              ? message.run.traceContext.traceparent
-              : undefined;
+          const traceparent = extractTraceparent(message.run.traceContext);
 
           if (traceparent) {
             this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
