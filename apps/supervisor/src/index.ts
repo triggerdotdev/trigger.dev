@@ -44,6 +44,7 @@ class ManagedSupervisor {
 
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
+  private readonly tracing?: OtlpTraceService;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
@@ -92,6 +93,12 @@ class ManagedSupervisor {
 
       const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
 
+      if (env.COMPUTE_TRACE_SPANS_ENABLED) {
+        this.tracing = new OtlpTraceService({
+          endpointUrl: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        });
+      }
+
       const computeManager = new ComputeWorkloadManager({
         ...workloadManagerOptions,
         gateway: {
@@ -104,9 +111,7 @@ class ManagedSupervisor {
           delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
           callbackUrl,
         },
-        tracing: env.COMPUTE_TRACE_SPANS_ENABLED
-          ? new OtlpTraceService({ endpointUrl: env.OTEL_EXPORTER_OTLP_ENDPOINT })
-          : undefined,
+        tracing: this.tracing,
         runner: {
           instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
           otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
@@ -404,6 +409,7 @@ class ManagedSupervisor {
       workerClient: this.workerSession.httpClient,
       checkpointClient: this.checkpointClient,
       computeManager: this.computeManager,
+      tracing: this.tracing,
     });
 
     this.workloadServer.on("runConnected", this.onRunConnected.bind(this));
