@@ -27,8 +27,7 @@ import { env } from "../env.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import { TimerWheel } from "../services/timerWheel.js";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { buildOtlpTracePayload } from "../otlpPayload.js";
-import { sendOtlpTrace } from "../otlpTrace.js";
+import type { OtlpTraceService } from "../services/otlpTraceService.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -86,11 +85,13 @@ type WorkloadServerOptions = {
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
   computeManager?: ComputeWorkloadManager;
+  tracing?: OtlpTraceService;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private checkpointClient?: CheckpointClient;
   private computeManager?: ComputeWorkloadManager;
+  private readonly tracing?: OtlpTraceService;
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
 
@@ -130,10 +131,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
     this.computeManager = opts.computeManager;
+    this.tracing = opts.tracing;
 
-    if (this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
+    if (this.computeManager?.snapshotsEnabled) {
       this.snapshotDelayWheel = new TimerWheel<DelayedSnapshot>({
-        delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+        delayMs: this.computeManager.snapshotDelayMs,
         onExpire: (item) => {
           this.dispatchComputeSnapshot(item.data).catch((error) => {
             this.logger.error("Compute snapshot dispatch failed", {
@@ -286,7 +288,12 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             const deploymentVersion = this.deploymentVersionFromRequest(req);
             const projectRef = this.projectRefFromRequest(req);
 
-            this.logger.debug("Suspend request", { params, runnerId, deploymentVersion, projectRef });
+            this.logger.debug("Suspend request", {
+              params,
+              runnerId,
+              deploymentVersion,
+              projectRef,
+            });
 
             if (!runnerId || !deploymentVersion || !projectRef) {
               this.logger.error("Invalid headers for suspend request", {
@@ -306,22 +313,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            if (this.snapshotDelayWheel && this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
-              if (!env.TRIGGER_WORKLOAD_API_DOMAIN) {
-                this.logger.error(
-                  "TRIGGER_WORKLOAD_API_DOMAIN is not set, cannot create snapshot callback URL"
-                );
-                reply.json(
-                  {
-                    ok: false,
-                    error: "Snapshot callbacks not configured",
-                  } satisfies WorkloadSuspendRunResponseBody,
-                  false,
-                  500
-                );
-                return;
-              }
-
+            if (this.snapshotDelayWheel) {
               // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
               // If the run continues before the delay expires, the snapshot is cancelled.
               reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
@@ -333,8 +325,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               });
 
               this.logger.debug("Snapshot delayed", {
-                runId: params.runFriendlyId,
-                delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+                runFriendlyId: params.runFriendlyId,
+                snapshotFriendlyId: params.snapshotFriendlyId,
+                delayMs: this.computeManager?.snapshotDelayMs,
               });
 
               return;
@@ -666,7 +659,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
 
       socket.on("disconnecting", (reason, description) => {
-        socketLogger.verbose("Socket disconnecting", { ...getSocketMetadata(), reason, description });
+        socketLogger.verbose("Socket disconnecting", {
+          ...getSocketMetadata(),
+          reason,
+          description,
+        });
 
         if (socket.data.runFriendlyId) {
           runDisconnected(socket.data.runFriendlyId);
@@ -766,11 +763,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private async dispatchComputeSnapshot(snapshot: DelayedSnapshot): Promise<void> {
     if (!this.computeManager) return;
 
-    const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
-
     const result = await this.computeManager.snapshot({
       runnerId: snapshot.runnerId,
-      callbackUrl,
       metadata: {
         runId: snapshot.runFriendlyId,
         snapshotFriendlyId: snapshot.snapshotFriendlyId,
@@ -786,7 +780,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   #emitSnapshotSpan(runFriendlyId: string, durationMs?: number, snapshotId?: string) {
-    if (!env.COMPUTE_TRACE_SPANS_ENABLED) return;
+    if (!this.tracing) return;
 
     const ctx = this.runTraceContexts.get(runFriendlyId);
     if (!ctx) return;
@@ -809,7 +803,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       spanAttributes["compute.snapshot_id"] = snapshotId;
     }
 
-    const payload = buildOtlpTracePayload({
+    this.tracing?.emit({
       traceId: parsed.traceId,
       parentSpanId: parsed.spanId,
       spanName: "compute.snapshot",
@@ -823,8 +817,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       },
       spanAttributes,
     });
-
-    sendOtlpTrace(payload);
   }
 
   registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
