@@ -11,6 +11,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { Switch } from "~/components/primitives/Switch";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Input } from "~/components/primitives/Input";
+import { Callout } from "~/components/primitives/Callout";
 import { cn } from "~/utils/cn";
 import type { FlagControlType } from "~/v3/featureFlags.server";
 
@@ -212,6 +213,10 @@ export function FeatureFlagsDialog({
               {jsonPreview}
             </pre>
           </details>
+        )}
+
+        {saveFetcher.data?.error && (
+          <Callout variant="error">{saveFetcher.data.error}</Callout>
         )}
 
         <DialogFooter>
