@@ -29,6 +29,9 @@ Options for `chat.task()`.
 | `preloadIdleTimeoutInSeconds` | `number`                                                    | Same as `idleTimeoutInSeconds` | Idle timeout after `onPreload` fires                                                                |
 | `preloadTimeout`              | `string`                                                    | Same as `turnTimeout`          | Suspend timeout for preloaded runs                                                                  |
 | `uiMessageStreamOptions`      | `ChatUIMessageStreamOptions`                                | —                              | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
+| `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/backend#onchatsuspend--onchatresume) |
+| `onChatResume`                | `(event: ChatResumeEvent) => Promise<void> \| void`         | —                              | Fires right after the run resumes from suspension                                                   |
+| `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/backend#exitafterpreloadidle) |
 
 Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Those hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
 
@@ -147,6 +150,36 @@ Passed to the `onBeforeTurnComplete` callback. Same fields as `TurnCompleteEvent
 | -------------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
 | _(all TurnCompleteEvent fields)_ |                             | See [TurnCompleteEvent](#turncompleteevent) (includes `ctx`)                  |
 | `writer`                         | [`ChatWriter`](#chatwriter) | Stream writer — the stream is still open so chunks appear in the current turn |
+
+## ChatSuspendEvent
+
+Passed to the `onChatSuspend` callback. A discriminated union on `phase`.
+
+| Field        | Type                        | Description                                              |
+| ------------ | --------------------------- | -------------------------------------------------------- |
+| `phase`      | `"preload" \| "turn"`       | Whether this is a preload or post-turn suspension        |
+| `ctx`        | `TaskRunContext`            | Full task run context                                    |
+| `chatId`     | `string`                    | Chat session ID                                          |
+| `runId`      | `string`                    | The Trigger.dev run ID                                   |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
+| `turn`       | `number`                    | Turn number (**`"turn"` phase only**)                    |
+| `messages`   | `ModelMessage[]`            | Accumulated model messages (**`"turn"` phase only**)     |
+| `uiMessages` | `UIMessage[]`               | Accumulated UI messages (**`"turn"` phase only**)        |
+
+## ChatResumeEvent
+
+Passed to the `onChatResume` callback. Same discriminated union shape as `ChatSuspendEvent`.
+
+| Field        | Type                        | Description                                              |
+| ------------ | --------------------------- | -------------------------------------------------------- |
+| `phase`      | `"preload" \| "turn"`       | Whether this is a preload or post-turn resumption        |
+| `ctx`        | `TaskRunContext`            | Full task run context                                    |
+| `chatId`     | `string`                    | Chat session ID                                          |
+| `runId`      | `string`                    | The Trigger.dev run ID                                   |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
+| `turn`       | `number`                    | Turn number (**`"turn"` phase only**)                    |
+| `messages`   | `ModelMessage[]`            | Accumulated model messages (**`"turn"` phase only**)     |
+| `uiMessages` | `UIMessage[]`               | Accumulated UI messages (**`"turn"` phase only**)        |
 
 ## ChatWriter
 
@@ -322,16 +355,15 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.cleanupAbortedParts(message)`         | Remove incomplete parts from a stopped response message                                                                      |
 | `chat.stream`                               | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()`                                                |
 | `chat.MessageAccumulator`                   | Class that accumulates conversation messages across turns                                                                    |
-| `chat.withUIMessage(config?).task(options)` | Same as `chat.task`, but fixes a custom `UIMessage` subtype and optional default stream options. See [Types](/ai-chat/types) |
+| `chat.withUIMessage(config?)`               | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. See [Types](/ai-chat/types)            |
+| `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chatwithclientdata) |
 
 ## `chat.withUIMessage`
 
-Returns `{ task }`, where `task` is like [`chat.task`](#chat-namespace) but parameterized on a UI message type `TUIM`.
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. Chain `.withClientData()`, hook methods, and `.task()`.
 
 ```ts
-chat.withUIMessage<TUIM>(config?: ChatWithUIMessageConfig<TUIM>): {
-  task: (options: ChatTaskOptions<..., ..., TUIM>) => Task<...>;
-};
+chat.withUIMessage<TUIM>(config?: ChatWithUIMessageConfig<TUIM>): ChatBuilder<TUIM>;
 ```
 
 | Parameter              | Type                               | Description                                                                                                                                           |
@@ -339,6 +371,20 @@ chat.withUIMessage<TUIM>(config?: ChatWithUIMessageConfig<TUIM>): {
 | `config.streamOptions` | `ChatUIMessageStreamOptions<TUIM>` | Optional defaults for `toUIMessageStream()`. Shallow-merged with `uiMessageStreamOptions` on the inner `.task({ ... })` (task wins on key conflicts). |
 
 Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data-*` parts / `InferUITools` to line up across backend hooks and `useChat`. Full guide: [Types](/ai-chat/types).
+
+## `chat.withClientData`
+
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. All hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.task()` options.
+
+```ts
+chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchema>;
+```
+
+| Parameter | Type         | Description                                        |
+| --------- | ------------ | -------------------------------------------------- |
+| `schema`  | `TaskSchema` | Zod, ArkType, Valibot, or any supported schema lib |
+
+Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
 
 ## `ChatWithUIMessageConfig`
 
