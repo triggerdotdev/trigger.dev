@@ -4,7 +4,6 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
 } from "~/components/primitives/Dialog";
@@ -117,14 +116,12 @@ export function FeatureFlagsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Feature Flags - {orgTitle}</DialogTitle>
-          <DialogDescription>
-            Org-level overrides. Unset flags inherit from global defaults.
-          </DialogDescription>
-        </DialogHeader>
+        <DialogHeader>Feature Flags - {orgTitle}</DialogHeader>
+        <DialogDescription>
+          Org-level overrides. Unset flags inherit from global defaults.
+        </DialogDescription>
 
-        <div className="max-h-[60vh] overflow-y-auto pt-3">
+        <div className="max-h-[60vh] overflow-y-auto">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-text-dimmed">Loading flags...</div>
           ) : data ? (
