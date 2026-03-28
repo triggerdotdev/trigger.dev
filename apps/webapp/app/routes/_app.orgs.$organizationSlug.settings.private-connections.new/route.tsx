@@ -24,7 +24,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { featuresForRequest } from "~/features.server";
+import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
@@ -56,8 +56,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
-  const { hasPrivateConnections } = featuresForRequest(request);
-  if (!hasPrivateConnections) {
+  const canAccess = await canAccessPrivateConnections({ organizationSlug, userId });
+  if (!canAccess) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
