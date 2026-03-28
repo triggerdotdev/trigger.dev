@@ -264,6 +264,12 @@ export type InputStreamWaitWithIdleTimeoutOptions = {
   timeout?: string;
   /** Override the default span name for the outer operation. */
   spanName?: string;
+  /** Called right before suspending (after idle phase times out). Not called if data arrives during idle. */
+  onSuspend?: () => void | Promise<void>;
+  /** Called right after resuming from suspension with data. Not called if data arrived during idle or on timeout. */
+  onResume?: () => void | Promise<void>;
+  /** When true, skip the suspend phase entirely. If idle times out, return `{ ok: false }` immediately. */
+  skipSuspend?: boolean;
 };
 
 export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
