@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
 import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
 import type { aiChat, aiChatRaw, aiChatSession } from "@/trigger/chat";
 import type { ChatUiMessage } from "@/lib/chat-tools";
@@ -28,6 +29,14 @@ export async function getChatToken(
   const task: TaskIdentifierForChat = !isChatReferenceTaskId(id) ? "ai-chat" : id;
   return auth.createTriggerPublicToken(task, { expirationTime: CHAT_EXAMPLE_PAT_TTL });
 }
+
+/**
+ * Server-side trigger action — delegates run creation to the server.
+ * Pass this to `useTriggerChatTransport({ triggerTask: triggerChat })`.
+ */
+export const triggerChat = chat.createTriggerAction("ai-chat", {
+  tokenTTL: CHAT_EXAMPLE_PAT_TTL,
+});
 
 /**
  * Mint a fresh run-scoped PAT for an existing chat run (same scopes as the task’s turn token).
