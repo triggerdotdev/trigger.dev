@@ -26,6 +26,7 @@ import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
+import { OtlpTraceService } from "./services/otlpTraceService.js";
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
@@ -40,7 +41,6 @@ class ManagedSupervisor {
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
-  private readonly isComputeMode: boolean;
 
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
@@ -85,14 +85,33 @@ class ManagedSupervisor {
         : new DockerResourceMonitor(new Docker())
       : new NoopResourceMonitor();
 
-    this.isComputeMode = !!env.COMPUTE_GATEWAY_URL;
-
     if (env.COMPUTE_GATEWAY_URL) {
+      if (!env.TRIGGER_WORKLOAD_API_DOMAIN) {
+        throw new Error("TRIGGER_WORKLOAD_API_DOMAIN is not set, cannot create compute manager");
+      }
+
+      const callbackUrl = `${env.TRIGGER_WORKLOAD_API_PROTOCOL}://${env.TRIGGER_WORKLOAD_API_DOMAIN}:${env.TRIGGER_WORKLOAD_API_PORT_EXTERNAL}/api/v1/compute/snapshot-complete`;
+
       const computeManager = new ComputeWorkloadManager({
         ...workloadManagerOptions,
-        gatewayUrl: env.COMPUTE_GATEWAY_URL,
-        gatewayAuthToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
-        gatewayTimeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
+        gateway: {
+          url: env.COMPUTE_GATEWAY_URL,
+          authToken: env.COMPUTE_GATEWAY_AUTH_TOKEN,
+          timeoutMs: env.COMPUTE_GATEWAY_TIMEOUT_MS,
+        },
+        snapshots: {
+          enabled: env.COMPUTE_SNAPSHOTS_ENABLED,
+          delayMs: env.COMPUTE_SNAPSHOT_DELAY_MS,
+          callbackUrl,
+        },
+        tracing: env.COMPUTE_TRACE_SPANS_ENABLED
+          ? new OtlpTraceService({ endpointUrl: env.OTEL_EXPORTER_OTLP_ENDPOINT })
+          : undefined,
+        runner: {
+          instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
+          otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+          prettyLogs: env.RUNNER_PRETTY_LOGS,
+        },
       });
       this.computeManager = computeManager;
       this.workloadManager = computeManager;
@@ -208,158 +227,164 @@ class ManagedSupervisor {
       this.workloadServer.notifyRun({ run });
     });
 
-    this.workerSession.on("runQueueMessage", async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
-      this.logger.verbose(`Received message with timestamp ${time.toLocaleString()}`, message);
+    this.workerSession.on(
+      "runQueueMessage",
+      async ({ time, message, dequeueResponseMs, pollingIntervalMs }) => {
+        this.logger.verbose(`Received message with timestamp ${time.toLocaleString()}`, message);
 
-      if (message.completedWaitpoints.length > 0) {
-        this.logger.debug("Run has completed waitpoints", {
-          runId: message.run.id,
-          completedWaitpoints: message.completedWaitpoints.length,
-        });
-      }
-
-      if (!message.image) {
-        this.logger.error("Run has no image", { runId: message.run.id });
-        return;
-      }
-
-      const { checkpoint, ...rest } = message;
-
-      // Register trace context early so snapshot spans work for all paths
-      // (cold create, restore, warm start). Re-registration on restore is safe
-      // since dequeue always provides fresh context.
-      if (this.isComputeMode && env.COMPUTE_TRACE_SPANS_ENABLED) {
-        const traceparent =
-          message.run.traceContext &&
-          "traceparent" in message.run.traceContext &&
-          typeof message.run.traceContext.traceparent === "string"
-            ? message.run.traceContext.traceparent
-            : undefined;
-
-        if (traceparent) {
-          this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
-            traceparent,
-            envId: message.environment.id,
-            orgId: message.organization.id,
-            projectId: message.project.id,
+        if (message.completedWaitpoints.length > 0) {
+          this.logger.debug("Run has completed waitpoints", {
+            runId: message.run.id,
+            completedWaitpoints: message.completedWaitpoints.length,
           });
         }
-      }
 
-      if (checkpoint) {
-        this.logger.debug("Restoring run", { runId: message.run.id });
+        if (!message.image) {
+          this.logger.error("Run has no image", { runId: message.run.id });
+          return;
+        }
 
-        if (this.isComputeMode && this.computeManager && env.COMPUTE_SNAPSHOTS_ENABLED) {
-          try {
-            // Derive runnerId unique per restore cycle (matches iceman's pattern)
-            const runIdShort = message.run.friendlyId.replace("run_", "");
-            const checkpointSuffix = checkpoint.id.slice(-8);
-            const runnerId = `runner-${runIdShort}-${checkpointSuffix}`;
+        const { checkpoint, ...rest } = message;
 
-            const didRestore = await this.computeManager.restore({
-              snapshotId: checkpoint.location,
-              runnerId,
-              runFriendlyId: message.run.friendlyId,
-              snapshotFriendlyId: message.snapshot.friendlyId,
-              machine: message.run.machine,
-              traceContext: message.run.traceContext,
+        // Register trace context early so snapshot spans work for all paths
+        // (cold create, restore, warm start). Re-registration on restore is safe
+        // since dequeue always provides fresh context.
+        if (this.computeManager?.traceSpansEnabled) {
+          const traceparent =
+            message.run.traceContext &&
+            "traceparent" in message.run.traceContext &&
+            typeof message.run.traceContext.traceparent === "string"
+              ? message.run.traceContext.traceparent
+              : undefined;
+
+          if (traceparent) {
+            this.workloadServer.registerRunTraceContext(message.run.friendlyId, {
+              traceparent,
               envId: message.environment.id,
               orgId: message.organization.id,
               projectId: message.project.id,
-              dequeuedAt: message.dequeuedAt,
+            });
+          }
+        }
+
+        if (checkpoint) {
+          this.logger.debug("Restoring run", { runId: message.run.id });
+
+          if (this.computeManager) {
+            try {
+              // Derive runnerId unique per restore cycle (matches iceman's pattern)
+              const runIdShort = message.run.friendlyId.replace("run_", "");
+              const checkpointSuffix = checkpoint.id.slice(-8);
+              const runnerId = `runner-${runIdShort}-${checkpointSuffix}`;
+
+              const didRestore = await this.computeManager.restore({
+                snapshotId: checkpoint.location,
+                runnerId,
+                runFriendlyId: message.run.friendlyId,
+                snapshotFriendlyId: message.snapshot.friendlyId,
+                machine: message.run.machine,
+                traceContext: message.run.traceContext,
+                envId: message.environment.id,
+                orgId: message.organization.id,
+                projectId: message.project.id,
+                dequeuedAt: message.dequeuedAt,
+              });
+
+              if (didRestore) {
+                this.logger.debug("Compute restore successful", {
+                  runId: message.run.id,
+                  runnerId,
+                });
+              } else {
+                this.logger.error("Compute restore failed", { runId: message.run.id, runnerId });
+              }
+            } catch (error) {
+              this.logger.error("Failed to restore run (compute)", { error });
+            }
+
+            return;
+          }
+
+          if (!this.checkpointClient) {
+            this.logger.error("No checkpoint client", { runId: message.run.id });
+            return;
+          }
+
+          try {
+            const didRestore = await this.checkpointClient.restoreRun({
+              runFriendlyId: message.run.friendlyId,
+              snapshotFriendlyId: message.snapshot.friendlyId,
+              body: {
+                ...rest,
+                checkpoint,
+              },
             });
 
             if (didRestore) {
-              this.logger.debug("Compute restore successful", { runId: message.run.id, runnerId });
+              this.logger.debug("Restore successful", { runId: message.run.id });
             } else {
-              this.logger.error("Compute restore failed", { runId: message.run.id, runnerId });
+              this.logger.error("Restore failed", { runId: message.run.id });
             }
           } catch (error) {
-            this.logger.error("Failed to restore run (compute)", { error });
+            this.logger.error("Failed to restore run", { error });
           }
 
           return;
         }
 
-        if (!this.checkpointClient) {
-          this.logger.error("No checkpoint client", { runId: message.run.id });
+        this.logger.debug("Scheduling run", { runId: message.run.id });
+
+        const warmStartStart = performance.now();
+        const didWarmStart = await this.tryWarmStart(message);
+        const warmStartCheckMs = Math.round(performance.now() - warmStartStart);
+
+        if (didWarmStart) {
+          this.logger.debug("Warm start successful", { runId: message.run.id });
           return;
         }
 
         try {
-          const didRestore = await this.checkpointClient.restoreRun({
+          if (!message.deployment.friendlyId) {
+            // mostly a type guard, deployments always exists for deployed environments
+            // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
+            throw new Error("Deployment is missing");
+          }
+
+          await this.workloadManager.create({
+            dequeuedAt: message.dequeuedAt,
+            dequeueResponseMs,
+            pollingIntervalMs,
+            warmStartCheckMs,
+            envId: message.environment.id,
+            envType: message.environment.type,
+            image: message.image,
+            machine: message.run.machine,
+            orgId: message.organization.id,
+            projectId: message.project.id,
+            deploymentFriendlyId: message.deployment.friendlyId,
+            deploymentVersion: message.backgroundWorker.version,
+            runId: message.run.id,
             runFriendlyId: message.run.friendlyId,
+            version: message.version,
+            nextAttemptNumber: message.run.attemptNumber,
+            snapshotId: message.snapshot.id,
             snapshotFriendlyId: message.snapshot.friendlyId,
-            body: {
-              ...rest,
-              checkpoint,
-            },
+            placementTags: message.placementTags,
+            traceContext: message.run.traceContext,
+            annotations: message.run.annotations,
+            hasPrivateLink: message.organization.hasPrivateLink,
           });
 
-          if (didRestore) {
-            this.logger.debug("Restore successful", { runId: message.run.id });
-          } else {
-            this.logger.error("Restore failed", { runId: message.run.id });
-          }
+          // Disabled for now
+          // this.resourceMonitor.blockResources({
+          //   cpu: message.run.machine.cpu,
+          //   memory: message.run.machine.memory,
+          // });
         } catch (error) {
-          this.logger.error("Failed to restore run", { error });
+          this.logger.error("Failed to create workload", { error });
         }
-
-        return;
       }
-
-      this.logger.debug("Scheduling run", { runId: message.run.id });
-
-      const warmStartStart = performance.now();
-      const didWarmStart = await this.tryWarmStart(message);
-      const warmStartCheckMs = Math.round(performance.now() - warmStartStart);
-
-      if (didWarmStart) {
-        this.logger.debug("Warm start successful", { runId: message.run.id });
-        return;
-      }
-
-      try {
-        if (!message.deployment.friendlyId) {
-          // mostly a type guard, deployments always exists for deployed environments
-          // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
-          throw new Error("Deployment is missing");
-        }
-
-        await this.workloadManager.create({
-          dequeuedAt: message.dequeuedAt,
-          dequeueResponseMs,
-          pollingIntervalMs,
-          warmStartCheckMs,
-          envId: message.environment.id,
-          envType: message.environment.type,
-          image: message.image,
-          machine: message.run.machine,
-          orgId: message.organization.id,
-          projectId: message.project.id,
-          deploymentFriendlyId: message.deployment.friendlyId,
-          deploymentVersion: message.backgroundWorker.version,
-          runId: message.run.id,
-          runFriendlyId: message.run.friendlyId,
-          version: message.version,
-          nextAttemptNumber: message.run.attemptNumber,
-          snapshotId: message.snapshot.id,
-          snapshotFriendlyId: message.snapshot.friendlyId,
-          placementTags: message.placementTags,
-          traceContext: message.run.traceContext,
-          annotations: message.run.annotations,
-          hasPrivateLink: message.organization.hasPrivateLink,
-        });
-
-        // Disabled for now
-        // this.resourceMonitor.blockResources({
-        //   cpu: message.run.machine.cpu,
-        //   memory: message.run.machine.memory,
-        // });
-      } catch (error) {
-        this.logger.error("Failed to create workload", { error });
-      }
-    });
+    );
 
     if (env.METRICS_ENABLED) {
       this.metricsServer = new HttpServer({

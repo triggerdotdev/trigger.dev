@@ -7,16 +7,27 @@ import {
   type WorkloadManagerOptions,
 } from "./types.js";
 import { ComputeClient, stripImageDigest } from "@internal/compute";
-import { env } from "../env.js";
 import { getRunnerId } from "../util.js";
-import { buildOtlpTracePayload } from "../otlpPayload.js";
-import { sendOtlpTrace } from "../otlpTrace.js";
+import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import { tryCatch } from "@trigger.dev/core";
 
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
-  gatewayUrl: string;
-  gatewayAuthToken?: string;
-  gatewayTimeoutMs: number;
+  gateway: {
+    url: string;
+    authToken?: string;
+    timeoutMs: number;
+  };
+  snapshots: {
+    enabled: boolean;
+    delayMs: number;
+    callbackUrl: string;
+  };
+  tracing?: OtlpTraceService;
+  runner: {
+    instanceName: string;
+    otelEndpoint: string;
+    prettyLogs: boolean;
+  };
 };
 
 export class ComputeWorkloadManager implements WorkloadManager {
@@ -31,17 +42,29 @@ export class ComputeWorkloadManager implements WorkloadManager {
     }
 
     this.compute = new ComputeClient({
-      gatewayUrl: opts.gatewayUrl,
-      authToken: opts.gatewayAuthToken,
-      timeoutMs: opts.gatewayTimeoutMs,
+      gatewayUrl: opts.gateway.url,
+      authToken: opts.gateway.authToken,
+      timeoutMs: opts.gateway.timeoutMs,
     });
+  }
+
+  get snapshotsEnabled(): boolean {
+    return this.opts.snapshots.enabled;
+  }
+
+  get snapshotDelayMs(): number {
+    return this.opts.snapshots.delayMs;
+  }
+
+  get traceSpansEnabled(): boolean {
+    return !!this.opts.tracing;
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     const envVars: Record<string, string> = {
-      OTEL_EXPORTER_OTLP_ENDPOINT: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      OTEL_EXPORTER_OTLP_ENDPOINT: this.opts.runner.otelEndpoint,
       TRIGGER_DEQUEUED_AT_MS: String(opts.dequeuedAt.getTime()),
       TRIGGER_POD_SCHEDULED_AT_MS: String(Date.now()),
       TRIGGER_ENV_ID: opts.envId,
@@ -52,18 +75,18 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_SUPERVISOR_API_PROTOCOL: this.opts.workloadApiProtocol,
       TRIGGER_SUPERVISOR_API_PORT: String(this.opts.workloadApiPort),
       TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",
-      TRIGGER_WORKER_INSTANCE_NAME: env.TRIGGER_WORKER_INSTANCE_NAME,
+      TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
       TRIGGER_RUNNER_ID: runnerId,
       TRIGGER_MACHINE_CPU: String(opts.machine.cpu),
       TRIGGER_MACHINE_MEMORY: String(opts.machine.memory),
-      PRETTY_LOGS: String(env.RUNNER_PRETTY_LOGS),
+      PRETTY_LOGS: String(this.opts.runner.prettyLogs),
     };
 
     if (this.opts.warmStartUrl) {
       envVars.TRIGGER_WARM_START_URL = this.opts.warmStartUrl;
     }
 
-    if (env.COMPUTE_SNAPSHOTS_ENABLED && this.opts.metadataUrl) {
+    if (this.snapshotsEnabled && this.opts.metadataUrl) {
       envVars.TRIGGER_METADATA_URL = this.opts.metadataUrl;
     }
 
@@ -96,7 +119,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       deploymentVersion: opts.deploymentVersion,
       machine: opts.machine.name,
       // Environment
-      instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
+      instanceName: this.opts.runner.instanceName,
       // Supervisor timing
       dequeueResponseMs: opts.dequeueResponseMs,
       pollingIntervalMs: opts.pollingIntervalMs,
@@ -150,15 +173,11 @@ export class ComputeWorkloadManager implements WorkloadManager {
     }
   }
 
-  async snapshot(opts: {
-    runnerId: string;
-    callbackUrl: string;
-    metadata: Record<string, string>;
-  }): Promise<boolean> {
+  async snapshot(opts: { runnerId: string; metadata: Record<string, string> }): Promise<boolean> {
     const [error] = await tryCatch(
       this.compute.instances.snapshot(opts.runnerId, {
         callback: {
-          url: opts.callbackUrl,
+          url: this.opts.snapshots.callbackUrl,
           metadata: opts.metadata,
         },
       })
@@ -191,12 +210,9 @@ export class ComputeWorkloadManager implements WorkloadManager {
     return true;
   }
 
-  #emitProvisionSpan(
-    opts: WorkloadManagerCreateOptions,
-    startMs: number,
-    timing?: unknown
-  ) {
-    if (!env.COMPUTE_TRACE_SPANS_ENABLED) return;
+  #emitProvisionSpan(opts: WorkloadManagerCreateOptions, startMs: number, timing?: unknown) {
+    if (!this.traceSpansEnabled) return;
+
     const traceparent =
       opts.traceContext &&
       "traceparent" in opts.traceContext &&
@@ -220,7 +236,9 @@ export class ComputeWorkloadManager implements WorkloadManager {
     const spanAttributes: Record<string, string | number | boolean> = {
       "compute.type": "create",
       "compute.provision_start_ms": provisionStartEpochMs,
-      ...(timing ? (flattenAttributes(timing, "compute") as Record<string, string | number | boolean>) : {}),
+      ...(timing
+        ? (flattenAttributes(timing, "compute") as Record<string, string | number | boolean>)
+        : {}),
     };
 
     if (opts.dequeueResponseMs !== undefined) {
@@ -230,7 +248,8 @@ export class ComputeWorkloadManager implements WorkloadManager {
       spanAttributes["supervisor.warm_start_check_ms"] = opts.warmStartCheckMs;
     }
 
-    const payload = buildOtlpTracePayload({
+    // Use the platform API URL, not the runner OTLP endpoint (which may be a VM gateway IP)
+    this.opts.tracing?.emit({
       traceId: parsed.traceId,
       parentSpanId: parsed.spanId,
       spanName: "compute.provision",
@@ -244,9 +263,6 @@ export class ComputeWorkloadManager implements WorkloadManager {
       },
       spanAttributes,
     });
-
-    // Use the platform API URL, not the runner OTLP endpoint (which may be a VM gateway IP)
-    sendOtlpTrace(payload);
   }
 
   async restore(opts: {
@@ -269,7 +285,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_SUPERVISOR_API_PROTOCOL: this.opts.workloadApiProtocol,
       TRIGGER_SUPERVISOR_API_PORT: String(this.opts.workloadApiPort),
       TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",
-      TRIGGER_WORKER_INSTANCE_NAME: env.TRIGGER_WORKER_INSTANCE_NAME,
+      TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
     };
 
     this.logger.verbose("restore request body", {
@@ -324,7 +340,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     },
     startMs: number
   ) {
-    if (!env.COMPUTE_TRACE_SPANS_ENABLED) return;
+    if (!this.traceSpansEnabled) return;
 
     const traceparent =
       opts.traceContext &&
@@ -344,7 +360,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Subtract 1ms so restore span always sorts before the attempt span
     const startEpochMs = (opts.dequeuedAt?.getTime() ?? restoreStartEpochMs) - 1;
 
-    const payload = buildOtlpTracePayload({
+    this.opts.tracing?.emit({
       traceId: parsed.traceId,
       parentSpanId: parsed.spanId,
       spanName: "compute.restore",
@@ -361,7 +377,5 @@ export class ComputeWorkloadManager implements WorkloadManager {
         "compute.snapshot_id": opts.snapshotId,
       },
     });
-
-    sendOtlpTrace(payload);
   }
 }
