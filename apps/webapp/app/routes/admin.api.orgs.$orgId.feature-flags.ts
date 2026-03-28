@@ -22,15 +22,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { orgId } = ParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: orgId },
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      featureFlags: true,
-    },
-  });
+  const [organization, globalFlags] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        featureFlags: true,
+      },
+    }),
+    getGlobalFlags(),
+  ]);
 
   if (!organization) {
     throw new Response("Organization not found", { status: 404 });
@@ -41,7 +44,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     : ({ success: false } as const);
 
   const orgFlags = orgFlagsResult.success ? orgFlagsResult.data : {};
-  const globalFlags = await getGlobalFlags();
   const controlTypes = getAllFlagControlTypes();
 
   return json({
@@ -63,39 +65,33 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const { orgId } = ParamsSchema.parse(params);
-
-  const organization = await prisma.organization.findUnique({
-    where: { id: orgId },
-    select: { id: true },
-  });
-
-  if (!organization) {
-    throw new Response("Organization not found", { status: 404 });
-  }
-
   const body = await request.json();
 
-  // body is the full overrides object (or null to clear all)
-  if (body === null || (typeof body === "object" && Object.keys(body).length === 0)) {
+  const featureFlags =
+    body === null || (typeof body === "object" && Object.keys(body).length === 0)
+      ? Prisma.JsonNull
+      : (() => {
+          const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
+          if (!validationResult.success) {
+            throw json(
+              { error: "Invalid feature flags", details: validationResult.error.issues },
+              { status: 400 }
+            );
+          }
+          return validationResult.data;
+        })();
+
+  try {
     await prisma.organization.update({
       where: { id: orgId },
-      data: { featureFlags: Prisma.JsonNull },
+      data: { featureFlags },
     });
-    return json({ success: true });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+      throw new Response("Organization not found", { status: 404 });
+    }
+    throw e;
   }
-
-  const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
-  if (!validationResult.success) {
-    return json(
-      { error: "Invalid feature flags", details: validationResult.error.issues },
-      { status: 400 }
-    );
-  }
-
-  await prisma.organization.update({
-    where: { id: orgId },
-    data: { featureFlags: validationResult.data },
-  });
 
   return json({ success: true });
 }

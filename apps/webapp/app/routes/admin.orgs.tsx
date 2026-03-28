@@ -49,12 +49,11 @@ export default function AdminDashboardRoute() {
   const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
 
   const [flagsOrgId, setFlagsOrgId] = useState<string | null>(null);
-  const [flagsOrgTitle, setFlagsOrgTitle] = useState("");
   const [flagsOpen, setFlagsOpen] = useState(false);
+  const flagsOrgTitle = organizations.find((o) => o.id === flagsOrgId)?.title ?? "";
 
-  const openFlagsDialog = (orgId: string, orgTitle: string) => {
+  const openFlagsDialog = (orgId: string) => {
     setFlagsOrgId(orgId);
-    setFlagsOrgTitle(orgTitle);
     setFlagsOpen(true);
   };
 
@@ -126,23 +125,23 @@ export default function AdminDashboardRoute() {
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
                     <TableCell isSticky={true}>
                       <div className="flex items-center gap-2">
-                      <Button
-                        variant="tertiary/small"
-                        onClick={() => openFlagsDialog(org.id, org.title)}
-                      >
-                        Flags
-                      </Button>
-                      <LinkButton
-                        to={`/@/orgs/${org.slug}`}
-                        variant="tertiary/small"
-                        shortcut={
-                          organizations.length === 1
-                            ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                            : undefined
-                        }
-                      >
-                        Impersonate
-                      </LinkButton>
+                        <Button
+                          variant="tertiary/small"
+                          onClick={() => openFlagsDialog(org.id)}
+                        >
+                          Flags
+                        </Button>
+                        <LinkButton
+                          to={`/@/orgs/${org.slug}`}
+                          variant="tertiary/small"
+                          shortcut={
+                            organizations.length === 1
+                              ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                              : undefined
+                          }
+                        >
+                          Impersonate
+                        </LinkButton>
                       </div>
                     </TableCell>
                   </TableRow>

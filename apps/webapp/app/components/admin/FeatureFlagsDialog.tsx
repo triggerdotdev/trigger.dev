@@ -1,5 +1,5 @@
 import { useFetcher } from "@remix-run/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,10 @@ import { Select, SelectItem } from "~/components/primitives/Select";
 import { Input } from "~/components/primitives/Input";
 import { cn } from "~/utils/cn";
 import type { FlagControlType } from "~/v3/featureFlags.server";
+
+const UNSET_VALUE = "__unset__";
+
+const HIDDEN_FLAGS = ["defaultWorkerInstanceGroupId"];
 
 type LoaderData = {
   org: { id: string; title: string; slug: string };
@@ -42,18 +46,15 @@ export function FeatureFlagsDialog({
   const loadFetcher = useFetcher<LoaderData>();
   const saveFetcher = useFetcher<ActionData>();
 
-  // Local state for edits - keyed by flag name, value is the override or undefined (unset)
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   const [initialOverrides, setInitialOverrides] = useState<Record<string, unknown>>({});
 
-  // Load flags when dialog opens
   useEffect(() => {
     if (open && orgId) {
       loadFetcher.load(`/admin/api/orgs/${orgId}/feature-flags`);
     }
   }, [open, orgId]);
 
-  // Sync loaded data into local state
   useEffect(() => {
     if (loadFetcher.data) {
       const loaded = loadFetcher.data.orgFlags ?? {};
@@ -62,7 +63,6 @@ export function FeatureFlagsDialog({
     }
   }, [loadFetcher.data]);
 
-  // Close on successful save
   useEffect(() => {
     if (saveFetcher.data?.success) {
       onOpenChange(false);
@@ -73,45 +73,40 @@ export function FeatureFlagsDialog({
     return JSON.stringify(overrides) !== JSON.stringify(initialOverrides);
   }, [overrides, initialOverrides]);
 
-  const setFlagValue = useCallback((key: string, value: unknown) => {
+  const setFlagValue = (key: string, value: unknown) => {
     setOverrides((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  };
 
-  const unsetFlag = useCallback((key: string) => {
+  const unsetFlag = (key: string) => {
     setOverrides((prev) => {
       const next = { ...prev };
       delete next[key];
       return next;
     });
-  }, []);
+  };
 
-  const handleSave = useCallback(() => {
+  const handleSave = () => {
     if (!orgId) return;
-
     const body = Object.keys(overrides).length === 0 ? null : overrides;
-
     saveFetcher.submit(JSON.stringify(body), {
       method: "POST",
       action: `/admin/api/orgs/${orgId}/feature-flags`,
       encType: "application/json",
     });
-  }, [orgId, overrides, saveFetcher]);
+  };
 
   const data = loadFetcher.data;
   const isLoading = loadFetcher.state === "loading";
   const isSaving = saveFetcher.state === "submitting";
 
-  // Build JSON preview
-  const jsonPreview = useMemo(() => {
-    if (Object.keys(overrides).length === 0) return "null";
-    return JSON.stringify(overrides, null, 2);
-  }, [overrides]);
+  const jsonPreview =
+    Object.keys(overrides).length === 0 ? "null" : JSON.stringify(overrides, null, 2);
 
-  // Sort flag keys alphabetically
-  const sortedFlagKeys = useMemo(() => {
-    if (!data) return [];
-    return Object.keys(data.controlTypes).sort();
-  }, [data]);
+  const sortedFlagKeys = data
+    ? Object.keys(data.controlTypes)
+        .filter((key) => !HIDDEN_FLAGS.includes(key))
+        .sort()
+    : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -126,9 +121,7 @@ export function FeatureFlagsDialog({
             <div className="py-8 text-center text-sm text-text-dimmed">Loading flags...</div>
           ) : data ? (
             <div className="flex flex-col gap-1.5">
-              {sortedFlagKeys
-                .filter((key) => key !== "defaultWorkerInstanceGroupId")
-                .map((key) => {
+              {sortedFlagKeys.map((key) => {
                 const control = data.controlTypes[key];
                 const isOverridden = key in overrides;
                 const globalValue = data.globalFlags[key as keyof typeof data.globalFlags];
@@ -179,7 +172,7 @@ export function FeatureFlagsDialog({
                           value={isOverridden ? (overrides[key] as string) : undefined}
                           options={control.options}
                           onChange={(val) => {
-                            if (val === "__unset__") {
+                            if (val === UNSET_VALUE) {
                               unsetFlag(key);
                             } else {
                               setFlagValue(key, val);
@@ -210,7 +203,6 @@ export function FeatureFlagsDialog({
           ) : null}
         </div>
 
-        {/* JSON Preview */}
         {data && (
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-text-dimmed hover:text-text-bright">
@@ -271,21 +263,21 @@ function EnumControl({
   onChange: (val: string) => void;
   dimmed: boolean;
 }) {
-  const items = ["__unset__", ...options];
+  const items = [UNSET_VALUE, ...options];
 
   return (
     <Select
       variant="tertiary/small"
-      value={value ?? "__unset__"}
+      value={value ?? UNSET_VALUE}
       setValue={onChange}
       items={items}
-      text={(val) => (val === "__unset__" ? "unset" : val)}
+      text={(val) => (val === UNSET_VALUE ? "unset" : val)}
       className={cn(dimmed && "opacity-50")}
     >
       {(items) =>
         items.map((item) => (
           <SelectItem key={item} value={item}>
-            {item === "__unset__" ? "unset" : item}
+            {item === UNSET_VALUE ? "unset" : item}
           </SelectItem>
         ))
       }
