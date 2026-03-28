@@ -1,7 +1,6 @@
 import { type Namespace, Server, type Socket } from "socket.io";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import EventEmitter from "node:events";
-import pLimit from "p-limit";
 import { z } from "zod";
 import {
   type SupervisorHttpClient,
@@ -25,9 +24,12 @@ import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOn
 import { type IncomingMessage } from "node:http";
 import { register } from "../metrics.js";
 import { env } from "../env.js";
+import {
+  ComputeSnapshotService,
+  SnapshotCallbackPayloadSchema,
+  type RunTraceContext,
+} from "../services/computeSnapshotService.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
-import { TimerWheel } from "../services/timerWheel.js";
-import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
@@ -58,28 +60,6 @@ type WorkloadServerEvents = {
   ];
 };
 
-const ComputeSnapshotCallbackBody = z.object({
-  snapshot_id: z.string(),
-  instance_id: z.string(),
-  status: z.enum(["completed", "failed"]),
-  error: z.string().optional(),
-  metadata: z.record(z.string()).optional(),
-  duration_ms: z.number().optional(),
-});
-
-type DelayedSnapshot = {
-  runnerId: string;
-  runFriendlyId: string;
-  snapshotFriendlyId: string;
-};
-
-type RunTraceContext = {
-  traceparent: string;
-  envId: string;
-  orgId: string;
-  projectId: string;
-};
-
 type WorkloadServerOptions = {
   port: number;
   host?: string;
@@ -91,8 +71,7 @@ type WorkloadServerOptions = {
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private checkpointClient?: CheckpointClient;
-  private computeManager?: ComputeWorkloadManager;
-  private readonly tracing?: OtlpTraceService;
+  private readonly snapshotService?: ComputeSnapshotService;
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
 
@@ -115,14 +94,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   >();
 
   private readonly workerClient: SupervisorHttpClient;
-  // Bounded map for trace contexts used by compute snapshot spans.
-  // Entries are added on dequeue and consumed on snapshot callback, which may arrive
-  // hours later after a checkpoint/restore cycle. Using a capped map avoids unbounded
-  // growth while keeping recent contexts available. Oldest entries are evicted first.
-  private static readonly MAX_TRACE_CONTEXTS = 10_000;
-  private readonly runTraceContexts = new Map<string, RunTraceContext>();
-  private readonly snapshotDelayWheel?: TimerWheel<DelayedSnapshot>;
-  private readonly snapshotLimit?: ReturnType<typeof pLimit>;
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -132,25 +103,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
-    this.computeManager = opts.computeManager;
-    this.tracing = opts.tracing;
 
-    if (this.computeManager?.snapshotsEnabled) {
-      const snapshotLimit = pLimit(this.computeManager.snapshotDispatchLimit);
-      this.snapshotLimit = snapshotLimit;
-      this.snapshotDelayWheel = new TimerWheel<DelayedSnapshot>({
-        delayMs: this.computeManager.snapshotDelayMs,
-        onExpire: (item) => {
-          snapshotLimit(() => this.dispatchComputeSnapshot(item.data)).catch((error) => {
-            this.logger.error("Compute snapshot dispatch failed", {
-              runId: item.data.runFriendlyId,
-              runnerId: item.data.runnerId,
-              error,
-            });
-          });
-        },
+    if (opts.computeManager?.snapshotsEnabled) {
+      this.snapshotService = new ComputeSnapshotService({
+        computeManager: opts.computeManager,
+        workerClient: opts.workerClient,
+        tracing: opts.tracing,
       });
-      this.snapshotDelayWheel.start();
     }
 
     this.httpServer = this.createHttpServer({ host, port });
@@ -317,21 +276,15 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            if (this.snapshotDelayWheel) {
+            if (this.snapshotService) {
               // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
               // If the run continues before the delay expires, the snapshot is cancelled.
               reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 
-              this.snapshotDelayWheel.submit(params.runFriendlyId, {
+              this.snapshotService.schedule(params.runFriendlyId, {
                 runnerId,
                 runFriendlyId: params.runFriendlyId,
                 snapshotFriendlyId: params.snapshotFriendlyId,
-              });
-
-              this.logger.debug("Snapshot delayed", {
-                runFriendlyId: params.runFriendlyId,
-                snapshotFriendlyId: params.snapshotFriendlyId,
-                delayMs: this.computeManager?.snapshotDelayMs,
               });
 
               return;
@@ -385,9 +338,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             this.logger.debug("Run continuation request", { params });
 
             // Cancel any pending delayed snapshot for this run
-            if (this.snapshotDelayWheel?.cancel(params.runFriendlyId)) {
-              this.logger.debug("Cancelled delayed snapshot", { runId: params.runFriendlyId });
-            }
+            this.snapshotService?.cancel(params.runFriendlyId);
 
             const continuationResult = await this.workerClient.continueRunExecution(
               params.runFriendlyId,
@@ -487,75 +438,15 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     // Compute snapshot callback endpoint
     httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
-      bodySchema: ComputeSnapshotCallbackBody,
+      bodySchema: SnapshotCallbackPayloadSchema,
       handler: async ({ reply, body }) => {
-        this.logger.debug("Compute snapshot callback", {
-          snapshotId: body.snapshot_id,
-          instanceId: body.instance_id,
-          status: body.status,
-          error: body.error,
-          metadata: body.metadata,
-          durationMs: body.duration_ms,
-        });
-
-        const runId = body.metadata?.runId;
-        const snapshotFriendlyId = body.metadata?.snapshotFriendlyId;
-
-        if (!runId || !snapshotFriendlyId) {
-          this.logger.error("Compute snapshot callback missing metadata", { body });
-          reply.empty(400);
+        if (!this.snapshotService) {
+          reply.empty(404);
           return;
         }
 
-        // Emit snapshot span (best-effort - requires trace context from dequeue on this instance)
-        this.#emitSnapshotSpan(runId, body.duration_ms, body.snapshot_id);
-
-        if (body.status === "completed") {
-          const result = await this.workerClient.submitSuspendCompletion({
-            runId,
-            snapshotId: snapshotFriendlyId,
-            body: {
-              success: true,
-              checkpoint: {
-                type: "COMPUTE",
-                location: body.snapshot_id,
-              },
-            },
-          });
-
-          if (result.success) {
-            this.logger.debug("Suspend completion submitted", {
-              runId,
-              instanceId: body.instance_id,
-              snapshotId: body.snapshot_id,
-            });
-          } else {
-            this.logger.error("Failed to submit suspend completion", {
-              runId,
-              snapshotFriendlyId,
-              error: result.error,
-            });
-          }
-        } else {
-          const result = await this.workerClient.submitSuspendCompletion({
-            runId,
-            snapshotId: snapshotFriendlyId,
-            body: {
-              success: false,
-              error: body.error ?? "Snapshot failed",
-            },
-          });
-
-          if (!result.success) {
-            this.logger.error("Failed to submit suspend failure", {
-              runId,
-              snapshotFriendlyId,
-              error: result.error,
-            });
-          }
-        }
-
-        reply.empty(200);
+        const result = await this.snapshotService.handleCallback(body);
+        reply.empty(result.status);
       },
     });
 
@@ -760,82 +651,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     }
   }
 
-  /**
-   * Dispatch a compute snapshot request to the gateway. Called by the timer wheel
-   * when the delay expires, or immediately during drain.
-   */
-  private async dispatchComputeSnapshot(snapshot: DelayedSnapshot): Promise<void> {
-    if (!this.computeManager) return;
-
-    const result = await this.computeManager.snapshot({
-      runnerId: snapshot.runnerId,
-      metadata: {
-        runId: snapshot.runFriendlyId,
-        snapshotFriendlyId: snapshot.snapshotFriendlyId,
-      },
-    });
-
-    if (!result) {
-      this.logger.error("Failed to request compute snapshot", {
-        runId: snapshot.runFriendlyId,
-        runnerId: snapshot.runnerId,
-      });
-    }
-  }
-
-  #emitSnapshotSpan(runFriendlyId: string, durationMs?: number, snapshotId?: string) {
-    if (!this.tracing) return;
-
-    const ctx = this.runTraceContexts.get(runFriendlyId);
-    if (!ctx) return;
-
-    const parsed = parseTraceparent(ctx.traceparent);
-    if (!parsed) return;
-
-    const endEpochMs = Date.now();
-    const startEpochMs = durationMs ? endEpochMs - durationMs : endEpochMs;
-
-    const spanAttributes: Record<string, string | number | boolean> = {
-      "compute.type": "snapshot",
-    };
-
-    if (durationMs !== undefined) {
-      spanAttributes["compute.total_ms"] = durationMs;
-    }
-
-    if (snapshotId) {
-      spanAttributes["compute.snapshot_id"] = snapshotId;
-    }
-
-    this.tracing?.emit({
-      traceId: parsed.traceId,
-      parentSpanId: parsed.spanId,
-      spanName: "compute.snapshot",
-      startTimeMs: startEpochMs,
-      endTimeMs: endEpochMs,
-      resourceAttributes: {
-        "ctx.environment.id": ctx.envId,
-        "ctx.organization.id": ctx.orgId,
-        "ctx.project.id": ctx.projectId,
-        "ctx.run.id": runFriendlyId,
-      },
-      spanAttributes,
-    });
-  }
-
   registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
-    // Evict oldest entries if we've hit the cap. This is best-effort: on a busy
-    // supervisor, entries for long-lived runs may be evicted before their snapshot
-    // callback arrives, causing those snapshot spans to be silently dropped.
-    // That's acceptable - trace spans are observability sugar, not correctness.
-    if (this.runTraceContexts.size >= WorkloadServer.MAX_TRACE_CONTEXTS) {
-      const firstKey = this.runTraceContexts.keys().next().value;
-      if (firstKey) {
-        this.runTraceContexts.delete(firstKey);
-      }
-    }
-
-    this.runTraceContexts.set(runFriendlyId, ctx);
+    this.snapshotService?.registerTraceContext(runFriendlyId, ctx);
   }
 
   async start() {
@@ -843,20 +660,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   async stop() {
-    // Intentionally drop pending snapshots rather than dispatching them. The supervisor
-    // is shutting down, so our callback URL will be dead by the time the gateway responds.
-    // Runners detect the supervisor is gone and reconnect to a new instance, which
-    // re-triggers the snapshot workflow. Snapshots are an optimization, not a correctness
-    // requirement - runs continue fine without them.
-    const remaining = this.snapshotDelayWheel?.stop() ?? [];
-    if (remaining.length > 0) {
-      this.logger.info("Snapshot delay wheel stopped, dropped pending snapshots", {
-        count: remaining.length,
-      });
-      this.logger.debug("Dropped snapshot details", {
-        runs: remaining.map((item) => item.key),
-      });
-    }
+    this.snapshotService?.stop();
     await this.httpServer.stop();
   }
 }

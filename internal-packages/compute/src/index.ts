@@ -8,6 +8,7 @@ export {
   InstanceCreateResponseSchema,
   InstanceSnapshotRequestSchema,
   SnapshotRestoreRequestSchema,
+  SnapshotCallbackPayloadSchema,
 } from "./types.js";
 export type {
   TemplateCreateRequest,
@@ -16,4 +17,5 @@ export type {
   InstanceCreateResponse,
   InstanceSnapshotRequest,
   SnapshotRestoreRequest,
+  SnapshotCallbackPayload,
 } from "./types.js";

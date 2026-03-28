@@ -6,7 +6,7 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
-    "zod": "3.23.8"
+    "zod": "3.25.76"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
