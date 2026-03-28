@@ -6,6 +6,7 @@ import { z } from "zod";
 import os from "node:os";
 import TurndownService from "turndown";
 import { codeSandboxRun, runWithCodeSandbox } from "@/lib/code-sandbox";
+import { runInSecureSandbox } from "@/lib/secure-sandbox";
 
 const turndown = new TurndownService();
 
@@ -283,6 +284,30 @@ export const executeCode = tool({
   },
 });
 
+export const executeJs = tool({
+  description:
+    "Run JavaScript code in an isolated V8 sandbox (secure-exec). " +
+    "Use for calculations, data transformations, or quick JS snippets. " +
+    "The code runs as a CommonJS module — assign results to module.exports. " +
+    "Example: module.exports = { sum: 1 + 2 };",
+  inputSchema: z.object({
+    code: z.string().describe("JavaScript code to execute. Assign results to module.exports."),
+  }),
+  execute: async ({ code }) => {
+    return runInSecureSandbox(async (runtime) => {
+      const result = await runtime.run<unknown>(code);
+
+      if (result.code !== 0) {
+        return {
+          error: result.errorMessage ?? `Exit code ${result.code}`,
+        };
+      }
+
+      return { result: result.exports };
+    });
+  },
+});
+
 /** Tool set passed to `streamText` for the main `chat.task` run (includes PostHog). */
 export const chatTools = {
   inspectEnvironment,
@@ -290,6 +315,7 @@ export const chatTools = {
   deepResearch,
   posthogQuery,
   executeCode,
+  executeJs,
 };
 
 type ChatToolSet = typeof chatTools;

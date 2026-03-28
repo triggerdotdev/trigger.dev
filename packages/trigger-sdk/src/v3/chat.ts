@@ -66,28 +66,48 @@ export type ResolveChatAccessTokenParams = {
 };
 
 /**
- * Options for creating a TriggerChatTransport.
+ * Payload passed to the {@link TriggerChatTransportOptions.triggerTask} callback.
  */
-export type TriggerChatTransportOptions<TClientData = unknown> = {
+export type TriggerChatTaskParams = {
+  /** The full payload to pass to the task. */
+  payload: {
+    messages: UIMessage[];
+    chatId: string;
+    trigger: "submit-message" | "regenerate-message" | "preload";
+    messageId?: string;
+    metadata?: Record<string, unknown>;
+    continuation?: boolean;
+    previousRunId?: string;
+    idleTimeoutInSeconds?: number;
+  };
+  /** Trigger options (tags, queue, etc.) — pre-merged by the transport. */
+  options: {
+    tags: string[];
+    queue?: string;
+    maxAttempts?: number;
+    machine?: string;
+    priority?: number;
+  };
+};
+
+/**
+ * Return value from the {@link TriggerChatTransportOptions.triggerTask} callback.
+ */
+export type TriggerChatTaskResult = {
+  /** The run ID from the triggered task. */
+  runId: string;
+  /** A run-scoped public access token for stream subscription and input stream writes. */
+  publicAccessToken: string;
+};
+
+/** Common options shared by all TriggerChatTransport configurations. */
+type TriggerChatTransportOptionsBase<TClientData = unknown> = {
   /**
    * The Trigger.dev task ID to trigger for chat completions.
    * This task should be defined using `chatTask()` from `@trigger.dev/sdk/ai`,
    * or a regular `task()` that uses `pipeChat()`.
    */
   task: string;
-
-  /**
-   * An access token for authenticating with the Trigger.dev API.
-   *
-   * This must be a token with permission to trigger the task. You can use:
-   * - A **trigger public token** created via `auth.createTriggerPublicToken(taskId)` (recommended for frontend use)
-   * - A **secret API key** (for server-side use only — never expose in the browser)
-   *
-   * Can also be a function that returns a token string (sync or async),
-   * useful for dynamic token refresh or passing a Next.js server action directly.
-   * The function receives `chatId` and `purpose` (`trigger` vs `preload`) so you can mint or log per conversation.
-   */
-  accessToken: string | ((params: ResolveChatAccessTokenParams) => string | Promise<string>);
 
   /**
    * Base URL for the Trigger.dev API.
@@ -239,6 +259,51 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
   ) => string | undefined | null | Promise<string | undefined | null>;
 };
 
+/** Access token used for frontend-triggered runs. */
+type AccessTokenOption =
+  | string
+  | ((params: ResolveChatAccessTokenParams) => string | Promise<string>);
+
+/**
+ * Options for creating a TriggerChatTransport.
+ *
+ * Provide either `accessToken` (frontend triggering) or `triggerTask` (server-side triggering).
+ * When `triggerTask` is provided, `accessToken` is optional.
+ */
+export type TriggerChatTransportOptions<TClientData = unknown> =
+  | (TriggerChatTransportOptionsBase<TClientData> & {
+      /** Access token for frontend-triggered runs. Required when `triggerTask` is not set. */
+      accessToken: AccessTokenOption;
+      triggerTask?: undefined;
+    })
+  | (TriggerChatTransportOptionsBase<TClientData> & {
+      /**
+       * Delegate run triggering to a server-side callback (e.g. a Next.js server action).
+       *
+       * When provided, the transport calls this function instead of triggering the task directly
+       * from the browser. The callback should trigger the task using the secret key and return
+       * both the `runId` and a run-scoped `publicAccessToken` for stream subscription.
+       *
+       * Use `chat.createTriggerAction(taskId)` to create the callback body.
+       *
+       * @example
+       * ```ts
+       * // actions.ts ("use server")
+       * import { chat } from "@trigger.dev/sdk/ai";
+       * export const triggerChat = chat.createTriggerAction("my-chat");
+       *
+       * // component.tsx
+       * const transport = useTriggerChatTransport({
+       *   task: "my-chat",
+       *   triggerTask: triggerChat,
+       * });
+       * ```
+       */
+      triggerTask: (params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult>;
+      /** Optional when `triggerTask` is set. Only needed if the transport needs to resolve tokens for other purposes. */
+      accessToken?: AccessTokenOption;
+    });
+
 /**
  * Internal state for tracking active chat sessions.
  * @internal
@@ -286,6 +351,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly resolveAccessTokenFn:
     | ((params: ResolveChatAccessTokenParams) => string | Promise<string>)
     | undefined;
+  private triggerTaskFn:
+    | ((params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult>)
+    | undefined;
   private readonly baseURL: string;
   private readonly streamKey: string;
   private readonly extraHeaders: Record<string, string>;
@@ -306,12 +374,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
-    if (typeof options.accessToken === "function") {
-      this.staticAccessToken = undefined;
-      this.resolveAccessTokenFn = options.accessToken;
-    } else {
-      this.staticAccessToken = options.accessToken;
-      this.resolveAccessTokenFn = undefined;
+    this.triggerTaskFn = options.triggerTask;
+    if (options.accessToken) {
+      if (typeof options.accessToken === "function") {
+        this.staticAccessToken = undefined;
+        this.resolveAccessTokenFn = options.accessToken;
+      } else {
+        this.staticAccessToken = options.accessToken;
+        this.resolveAccessTokenFn = undefined;
+      }
+    } else if (!options.triggerTask) {
+      throw new Error(
+        "TriggerChatTransport: either `accessToken` or `triggerTask` must be provided."
+      );
     }
     this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
     this.streamKey = options.streamKey ?? DEFAULT_STREAM_KEY;
@@ -425,43 +500,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
 
     // First message or run has ended — trigger a new run
-    const currentToken = await this.resolveAccessToken({ chatId, purpose: "trigger" });
-    const apiClient = new ApiClient(this.baseURL, currentToken);
-
-    // Auto-tag with chatId; merge with user-provided tags (API limit: 5 tags)
-    const autoTags = [`chat:${chatId}`];
-    const userTags = this.triggerOptions?.tags ?? [];
-    const tags = [...autoTags, ...userTags].slice(0, 5);
-
-    const triggerResponse = await apiClient.triggerTask(this.taskId, {
-      payload: {
-        ...payload,
-        continuation: isContinuation,
-        ...(previousRunId ? { previousRunId } : {}),
-      },
-      options: {
-        payloadType: "application/json",
-        tags,
-        queue: this.triggerOptions?.queue ? { name: this.triggerOptions.queue } : undefined,
-        maxAttempts: this.triggerOptions?.maxAttempts,
-        machine: this.triggerOptions?.machine,
-        priority: this.triggerOptions?.priority,
-      },
-    });
-
-    const runId = triggerResponse.id;
-    const publicAccessToken =
-      "publicAccessToken" in triggerResponse
-        ? (triggerResponse as { publicAccessToken?: string }).publicAccessToken
-        : undefined;
-
-    const newSession: ChatSessionState = {
-      runId,
-      publicAccessToken: publicAccessToken ?? currentToken,
+    const triggerPayload = {
+      ...payload,
+      continuation: isContinuation,
+      ...(previousRunId ? { previousRunId } : {}),
     };
+
+    const { runId, publicAccessToken } = await this.triggerNewRun(chatId, triggerPayload, "trigger");
+
+    const newSession: ChatSessionState = { runId, publicAccessToken };
     this.sessions.set(chatId, newSession);
     this.notifySessionChange(chatId, newSession);
-    return this.subscribeToStream(runId, publicAccessToken ?? currentToken, abortSignal, chatId);
+    return this.subscribeToStream(runId, publicAccessToken, abortSignal, chatId);
   };
 
   /**
@@ -606,6 +656,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   }
 
   /**
+   * Update the server-side trigger callback without recreating the transport.
+   */
+  setTriggerTask(
+    fn: ((params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult>) | undefined
+  ): void {
+    this.triggerTaskFn = fn;
+  }
+
+  /**
    * Eagerly trigger a run for a chat before the first message is sent.
    * This allows initialization (DB setup, context loading) to happen
    * while the user is still typing, reducing first-response latency.
@@ -631,12 +690,50 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         : {}),
     };
 
-    const currentToken = await this.resolveAccessToken({ chatId, purpose: "preload" });
-    const apiClient = new ApiClient(this.baseURL, currentToken);
+    const { runId, publicAccessToken } = await this.triggerNewRun(chatId, payload, "preload");
 
-    const autoTags = [`chat:${chatId}`, "preload:true"];
+    const newSession: ChatSessionState = { runId, publicAccessToken };
+    this.sessions.set(chatId, newSession);
+    this.notifySessionChange(chatId, newSession);
+  }
+
+  private async resolveAccessToken(params: ResolveChatAccessTokenParams): Promise<string> {
+    if (this.staticAccessToken !== undefined) {
+      return this.staticAccessToken;
+    }
+    if (this.resolveAccessTokenFn) {
+      return await this.resolveAccessTokenFn(params);
+    }
+    throw new Error(
+      "TriggerChatTransport: accessToken is required for this operation but was not provided."
+    );
+  }
+
+  private async triggerNewRun(
+    chatId: string,
+    payload: Record<string, unknown>,
+    purpose: "trigger" | "preload"
+  ): Promise<{ runId: string; publicAccessToken: string }> {
+    const autoTags =
+      purpose === "preload" ? [`chat:${chatId}`, "preload:true"] : [`chat:${chatId}`];
     const userTags = this.triggerOptions?.tags ?? [];
     const tags = [...autoTags, ...userTags].slice(0, 5);
+
+    if (this.triggerTaskFn) {
+      return await this.triggerTaskFn({
+        payload: payload as TriggerChatTaskParams["payload"],
+        options: {
+          tags,
+          queue: this.triggerOptions?.queue,
+          maxAttempts: this.triggerOptions?.maxAttempts,
+          machine: this.triggerOptions?.machine,
+          priority: this.triggerOptions?.priority,
+        },
+      });
+    }
+
+    const currentToken = await this.resolveAccessToken({ chatId, purpose });
+    const apiClient = new ApiClient(this.baseURL, currentToken);
 
     const triggerResponse = await apiClient.triggerTask(this.taskId, {
       payload,
@@ -656,19 +753,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         ? (triggerResponse as { publicAccessToken?: string }).publicAccessToken
         : undefined;
 
-    const newSession: ChatSessionState = {
-      runId,
-      publicAccessToken: publicAccessToken ?? currentToken,
-    };
-    this.sessions.set(chatId, newSession);
-    this.notifySessionChange(chatId, newSession);
-  }
-
-  private async resolveAccessToken(params: ResolveChatAccessTokenParams): Promise<string> {
-    if (this.staticAccessToken !== undefined) {
-      return this.staticAccessToken;
-    }
-    return await this.resolveAccessTokenFn!(params);
+    return { runId, publicAccessToken: publicAccessToken ?? currentToken };
   }
 
   private notifySessionChange(chatId: string, session: ChatSessionState | null): void {
