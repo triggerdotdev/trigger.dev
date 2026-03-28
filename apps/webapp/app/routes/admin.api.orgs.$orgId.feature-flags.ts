@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
@@ -78,7 +79,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (body === null || (typeof body === "object" && Object.keys(body).length === 0)) {
     await prisma.organization.update({
       where: { id: orgId },
-      data: { featureFlags: null },
+      data: { featureFlags: Prisma.JsonNull },
     });
     return json({ success: true });
   }

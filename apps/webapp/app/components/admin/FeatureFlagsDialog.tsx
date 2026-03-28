@@ -278,6 +278,7 @@ function EnumControl({
       value={value ?? "__unset__"}
       setValue={onChange}
       items={items}
+      text={(val) => (val === "__unset__" ? "unset" : val)}
       className={cn(dimmed && "opacity-50")}
     >
       {(items) =>
