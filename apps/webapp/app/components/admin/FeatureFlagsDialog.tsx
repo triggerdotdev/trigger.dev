@@ -49,9 +49,11 @@ export function FeatureFlagsDialog({
 
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   const [initialOverrides, setInitialOverrides] = useState<Record<string, unknown>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && orgId) {
+      setSaveError(null);
       loadFetcher.load(`/admin/api/orgs/${orgId}/feature-flags`);
     }
   }, [open, orgId]);
@@ -67,6 +69,8 @@ export function FeatureFlagsDialog({
   useEffect(() => {
     if (saveFetcher.data?.success) {
       onOpenChange(false);
+    } else if (saveFetcher.data?.error) {
+      setSaveError(saveFetcher.data.error);
     }
   }, [saveFetcher.data]);
 
@@ -215,8 +219,8 @@ export function FeatureFlagsDialog({
           </details>
         )}
 
-        {saveFetcher.data?.error && (
-          <Callout variant="error">{saveFetcher.data.error}</Callout>
+        {saveError && (
+          <Callout variant="error">{saveError}</Callout>
         )}
 
         <DialogFooter>
