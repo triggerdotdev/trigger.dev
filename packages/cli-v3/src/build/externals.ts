@@ -402,6 +402,14 @@ function createExternalsCollector(
                 return markExternal("binding.gyp exists");
               }
 
+              // Check if the package distributes platform-specific native binaries
+              // via optionalDependencies (common pattern for Rust/napi-rs packages).
+              // These packages use createRequire(import.meta.url).resolve() at runtime
+              // to locate the correct platform binary, which breaks when bundled.
+              if (hasPlatformSpecificOptionalDeps(packageJson)) {
+                return markExternal("has platform-specific optionalDependencies");
+              }
+
               // Cache the negative result
               isExternalCache.set(packageRoot, false);
 
@@ -654,4 +662,29 @@ async function findNearestPackageJson(
 
   cache.set(baseDir, packageJsonPath);
   return packageJsonPath;
+}
+
+// Matches platform/arch identifiers commonly found in native binary package names
+// e.g. @secure-exec/v8-darwin-arm64, @rollup/rollup-linux-x64-gnu, esbuild-windows-64
+const platformPattern =
+  /[-.](darwin|linux|win32|windows|freebsd|android|macos|sunos|openbsd|aix)/i;
+
+function hasPlatformSpecificOptionalDeps(packageJson: Record<string, unknown>): boolean {
+  const optionalDeps = packageJson.optionalDependencies;
+
+  if (!optionalDeps || typeof optionalDeps !== "object") {
+    return false;
+  }
+
+  const depNames = Object.keys(optionalDeps);
+
+  if (depNames.length === 0) {
+    return false;
+  }
+
+  // If a significant portion of optionalDependencies match platform patterns,
+  // this is likely a native binary distributor package
+  const platformDeps = depNames.filter((name) => platformPattern.test(name));
+
+  return platformDeps.length >= 2;
 }
