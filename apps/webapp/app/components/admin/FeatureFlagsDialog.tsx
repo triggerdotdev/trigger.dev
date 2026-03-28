@@ -158,11 +158,13 @@ export function FeatureFlagsDialog({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {isOverridden && (
-                        <Button variant="minimal/small" onClick={() => unsetFlag(key)}>
-                          unset
-                        </Button>
-                      )}
+                      <Button
+                        variant="minimal/small"
+                        onClick={() => unsetFlag(key)}
+                        className={cn(!isOverridden && "invisible")}
+                      >
+                        unset
+                      </Button>
 
                       {control.type === "boolean" && (
                         <BooleanControl
