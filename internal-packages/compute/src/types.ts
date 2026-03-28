@@ -5,7 +5,7 @@ import { z } from "zod";
 export const TemplateCreateRequestSchema = z.object({
   image: z.string(),
   cpu: z.number(),
-  memory_mb: z.number(),
+  memory_gb: z.number(),
   background: z.boolean().optional(),
   callback: z
     .object({
@@ -58,6 +58,6 @@ export const SnapshotRestoreRequestSchema = z.object({
   name: z.string(),
   metadata: z.record(z.string()),
   cpu: z.number(),
-  memory_mb: z.number(),
+  memory_gb: z.number(),
 });
 export type SnapshotRestoreRequest = z.infer<typeof SnapshotRestoreRequestSchema>;

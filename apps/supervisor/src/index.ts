@@ -27,7 +27,7 @@ import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
-import { extractTraceparent } from "./util.js";
+import { extractTraceparent, getRestoreRunnerId } from "./util.js";
 
 if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
@@ -96,7 +96,7 @@ class ManagedSupervisor {
 
       if (env.COMPUTE_TRACE_SPANS_ENABLED) {
         this.tracing = new OtlpTraceService({
-          endpointUrl: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+          endpointUrl: env.COMPUTE_TRACE_OTLP_ENDPOINT,
         });
       }
 
@@ -273,10 +273,7 @@ class ManagedSupervisor {
 
           if (this.computeManager) {
             try {
-              // Derive runnerId unique per restore cycle (matches iceman's pattern)
-              const runIdShort = message.run.friendlyId.replace("run_", "");
-              const checkpointSuffix = checkpoint.id.slice(-8);
-              const runnerId = `runner-${runIdShort}-${checkpointSuffix}`;
+              const runnerId = getRestoreRunnerId(message.run.friendlyId, checkpoint.id);
 
               const didRestore = await this.computeManager.restore({
                 snapshotId: checkpoint.location,

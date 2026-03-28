@@ -154,6 +154,8 @@ export class ComputeWorkloadManager implements WorkloadManager {
         event.error = error instanceof Error ? error.message : String(error);
         event.errorType =
           error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "fetch";
+        // Intentional: errors are captured in the wide event, not thrown. This matches
+        // the Docker/K8s managers. The run will eventually time out if scheduling fails.
         return;
       }
 
@@ -293,7 +295,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
         name: opts.runnerId,
         metadata,
         cpu: opts.machine.cpu,
-        memory_mb: opts.machine.memory * 1024,
+        memory_gb: opts.machine.memory,
       })
     );
 

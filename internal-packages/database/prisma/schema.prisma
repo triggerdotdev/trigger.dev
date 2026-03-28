@@ -1100,6 +1100,7 @@ model TaskRunCheckpoint {
 enum TaskRunCheckpointType {
   DOCKER
   KUBERNETES
+  COMPUTE
 }
 
 /// A Waitpoint blocks a run from continuing until it's completed

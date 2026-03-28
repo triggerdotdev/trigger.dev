@@ -169,7 +169,7 @@ export class ComputeTemplateCreationService {
       await this.client.templates.create({
         image: stripImageDigest(imageReference),
         cpu: machine.cpu,
-        memory_mb: machine.memory * 1024,
+        memory_gb: machine.memory,
         background: options?.background,
       });
       return { success: true };

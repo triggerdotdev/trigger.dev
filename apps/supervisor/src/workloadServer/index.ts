@@ -1,6 +1,7 @@
 import { type Namespace, Server, type Socket } from "socket.io";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import EventEmitter from "node:events";
+import pLimit from "p-limit";
 import { z } from "zod";
 import {
   type SupervisorHttpClient,
@@ -119,8 +120,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   // hours later after a checkpoint/restore cycle. Using a capped map avoids unbounded
   // growth while keeping recent contexts available. Oldest entries are evicted first.
   private static readonly MAX_TRACE_CONTEXTS = 10_000;
+  private static readonly SNAPSHOT_CONCURRENCY = 10;
   private readonly runTraceContexts = new Map<string, RunTraceContext>();
   private readonly snapshotDelayWheel?: TimerWheel<DelayedSnapshot>;
+  private readonly snapshotLimit = pLimit(WorkloadServer.SNAPSHOT_CONCURRENCY);
 
   constructor(opts: WorkloadServerOptions) {
     super();
@@ -137,7 +140,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       this.snapshotDelayWheel = new TimerWheel<DelayedSnapshot>({
         delayMs: this.computeManager.snapshotDelayMs,
         onExpire: (item) => {
-          this.dispatchComputeSnapshot(item.data).catch((error) => {
+          this.snapshotLimit(() => this.dispatchComputeSnapshot(item.data)).catch((error) => {
             this.logger.error("Compute snapshot dispatch failed", {
               runId: item.data.runFriendlyId,
               runnerId: item.data.runnerId,
@@ -513,7 +516,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             body: {
               success: true,
               checkpoint: {
-                type: "KUBERNETES",
+                type: "COMPUTE",
                 location: body.snapshot_id,
               },
             },
@@ -820,7 +823,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   }
 
   registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
-    // Evict oldest entries if we've hit the cap
+    // Evict oldest entries if we've hit the cap. This is best-effort: on a busy
+    // supervisor, entries for long-lived runs may be evicted before their snapshot
+    // callback arrives, causing those snapshot spans to be silently dropped.
+    // That's acceptable - trace spans are observability sugar, not correctness.
     if (this.runTraceContexts.size >= WorkloadServer.MAX_TRACE_CONTEXTS) {
       const firstKey = this.runTraceContexts.keys().next().value;
       if (firstKey) {

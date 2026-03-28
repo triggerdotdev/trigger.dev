@@ -14,10 +14,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-ecr": "^3.839.0",
-    "@kubernetes/client-node": "^1.0.0",
     "@internal/compute": "workspace:*",
+    "@kubernetes/client-node": "^1.0.0",
     "@trigger.dev/core": "workspace:*",
     "dockerode": "^4.0.6",
+    "p-limit": "^6.2.0",
     "prom-client": "^15.1.0",
     "socket.io": "4.7.4",
     "std-env": "^3.8.0",

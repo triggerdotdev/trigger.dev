@@ -35,3 +35,10 @@ export function getRunnerId(runId: string, attemptNumber?: number) {
 
   return parts.join("-");
 }
+
+/** Derive a unique runnerId for a restore cycle using the checkpoint suffix */
+export function getRestoreRunnerId(runFriendlyId: string, checkpointId: string) {
+  const runIdShort = runFriendlyId.replace("run_", "");
+  const checkpointSuffix = checkpointId.slice(-8);
+  return `runner-${runIdShort}-${checkpointSuffix}`;
+}
