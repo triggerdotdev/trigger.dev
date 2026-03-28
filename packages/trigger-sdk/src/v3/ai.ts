@@ -2020,6 +2020,78 @@ export type BeforeTurnCompleteEvent<
   writer: ChatWriter;
 };
 
+/**
+ * Discriminated event passed to the `onChatSuspend` callback.
+ * Use `phase` to distinguish preload vs turn suspension.
+ */
+export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
+  | {
+      /** Suspend is happening after onPreload, before the first message. */
+      phase: "preload";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
+  | {
+      /** Suspend is happening after a completed turn, waiting for the next message. */
+      phase: "turn";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** The turn number (0-indexed) that just completed. */
+      turn: number;
+      /** The accumulated model messages after the completed turn. */
+      messages: ModelMessage[];
+      /** The accumulated UI messages after the completed turn. */
+      uiMessages: TUIM[];
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    };
+
+/**
+ * Discriminated event passed to the `onChatResume` callback.
+ * Use `phase` to distinguish preload vs turn resumption.
+ */
+export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
+  | {
+      /** First message arrived after preload suspension. */
+      phase: "preload";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
+  | {
+      /** Next message arrived after turn suspension. */
+      phase: "turn";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** The turn number that was completed before suspension. */
+      turn: number;
+      /** The accumulated model messages (from before suspension). */
+      messages: ModelMessage[];
+      /** The accumulated UI messages (from before suspension). */
+      uiMessages: TUIM[];
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    };
+
 export type ChatTaskOptions<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
@@ -2322,6 +2394,66 @@ export type ChatTaskOptions<
    * ```
    */
   uiMessageStreamOptions?: ChatUIMessageStreamOptions<TUIMessage>;
+
+  /**
+   * Called right before the run suspends to wait for a message.
+   *
+   * The `phase` discriminator tells you when the suspend happened:
+   * - `"preload"`: after `onPreload`, waiting for the first message
+   * - `"turn"`: after `onTurnComplete`, waiting for the next message
+   *
+   * Use this for cleanup before suspension (e.g. disposing sandboxes, closing connections).
+   *
+   * @example
+   * ```ts
+   * onChatSuspend: async (event) => {
+   *   await disposeExpensiveResources(event.ctx.run.id);
+   *   if (event.phase === "turn") {
+   *     logger.info("Suspending after turn", { turn: event.turn });
+   *   }
+   * }
+   * ```
+   */
+  onChatSuspend?: (
+    event: ChatSuspendEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * Called right after the run resumes from suspension with a new message.
+   *
+   * The `phase` discriminator tells you when the resume happened:
+   * - `"preload"`: first message arrived after preload suspension
+   * - `"turn"`: next message arrived after turn suspension
+   *
+   * Use this for re-initialization after wake (e.g. warming caches, reconnecting).
+   *
+   * @example
+   * ```ts
+   * onChatResume: async (event) => {
+   *   warmCache(event.ctx.run.id);
+   *   if (event.phase === "turn") {
+   *     logger.info("Resumed after turn", { turn: event.turn });
+   *   }
+   * }
+   * ```
+   */
+  onChatResume?: (
+    event: ChatResumeEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * When `true`, the run exits successfully after the preload idle timeout
+   * instead of suspending and waiting. The run completes with no turn executed.
+   *
+   * Use this for "fire and forget" preloads where you only want to do eager
+   * initialization. If the user doesn't send a message during the idle window,
+   * the run ends cleanly.
+   *
+   * Only applies to preloaded runs (triggered via `transport.preload()`).
+   *
+   * @default false
+   */
+  exitAfterPreloadIdle?: boolean;
 };
 
 /**
@@ -2377,6 +2509,9 @@ function chatTask<
     preloadIdleTimeoutInSeconds,
     preloadTimeout,
     uiMessageStreamOptions,
+    onChatSuspend,
+    onChatResume,
+    exitAfterPreloadIdle = false,
     ...restOptions
   } = options;
 
@@ -2520,6 +2655,55 @@ function chatTask<
             idleTimeoutInSeconds: effectivePreloadIdleTimeout,
             timeout: effectivePreloadTimeout,
             spanName: "waiting for first message",
+            skipSuspend: exitAfterPreloadIdle,
+            onSuspend: onChatSuspend
+              ? async () => {
+                  await tracer.startActiveSpan(
+                    "onChatSuspend()",
+                    async () => {
+                      await onChatSuspend({
+                        phase: "preload",
+                        ctx,
+                        chatId: payload.chatId,
+                        runId: currentRunId,
+                        clientData: preloadClientData,
+                      });
+                    },
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": payload.chatId,
+                        "chat.suspend.phase": "preload",
+                      },
+                    }
+                  );
+                }
+              : undefined,
+            onResume: onChatResume
+              ? async () => {
+                  await tracer.startActiveSpan(
+                    "onChatResume()",
+                    async () => {
+                      await onChatResume({
+                        phase: "preload",
+                        ctx,
+                        chatId: payload.chatId,
+                        runId: currentRunId,
+                        clientData: preloadClientData,
+                      });
+                    },
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": payload.chatId,
+                        "chat.resume.phase": "preload",
+                      },
+                    }
+                  );
+                }
+              : undefined,
           });
 
           if (!preloadResult.ok) {
@@ -3269,6 +3453,62 @@ function chatTask<
                 idleTimeoutInSeconds: effectiveIdleTimeout,
                 timeout: effectiveTurnTimeout,
                 spanName: "waiting for next message",
+                onSuspend: onChatSuspend
+                  ? async () => {
+                      await tracer.startActiveSpan(
+                        "onChatSuspend()",
+                        async () => {
+                          await onChatSuspend({
+                            phase: "turn",
+                            ctx,
+                            chatId: currentWirePayload.chatId,
+                            runId: ctx.run.id,
+                            turn,
+                            messages: accumulatedMessages,
+                            uiMessages: accumulatedUIMessages,
+                            clientData,
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.suspend.phase": "turn",
+                            "chat.turn": turn + 1,
+                          },
+                        }
+                      );
+                    }
+                  : undefined,
+                onResume: onChatResume
+                  ? async () => {
+                      await tracer.startActiveSpan(
+                        "onChatResume()",
+                        async () => {
+                          await onChatResume({
+                            phase: "turn",
+                            ctx,
+                            chatId: currentWirePayload.chatId,
+                            runId: ctx.run.id,
+                            turn,
+                            messages: accumulatedMessages,
+                            uiMessages: accumulatedUIMessages,
+                            clientData,
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.resume.phase": "turn",
+                            "chat.turn": turn + 1,
+                          },
+                        }
+                      );
+                    }
+                  : undefined,
               });
 
               if (!next.ok) {
@@ -3305,9 +3545,261 @@ export type ChatWithUIMessageConfig<TUIM extends UIMessage = UIMessage> = {
   streamOptions?: ChatUIMessageStreamOptions<TUIM>;
 };
 
+// ---------------------------------------------------------------------------
+// Chat builder
+// ---------------------------------------------------------------------------
+
+/**
+ * A chainable builder for configuring chat tasks with fixed UI message types,
+ * client data schemas, and builder-level hooks that compose with task-level hooks.
+ *
+ * Obtain a builder via {@link chat.withUIMessage} or {@link chat.withClientData}.
+ *
+ * @example
+ * ```ts
+ * export const myChat = chat
+ *   .withUIMessage<AgentUiMessage>({ streamOptions: { sendReasoning: true } })
+ *   .withClientData({ schema: z.object({ userId: z.string() }) })
+ *   .onChatSuspend(async ({ ctx }) => { await disposeResources(ctx.run.id) })
+ *   .task({
+ *     id: "my-chat",
+ *     run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+ *   });
+ * ```
+ */
+export interface ChatBuilder<
+  TUIMessage extends UIMessage = UIMessage,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+> {
+  /** Fix the UI message type. Returns a new builder preserving all accumulated state. */
+  withUIMessage<TUIM extends UIMessage = UIMessage>(
+    config?: ChatWithUIMessageConfig<TUIM>
+  ): ChatBuilder<TUIM, TClientDataSchema>;
+
+  /** Fix the client data schema. Returns a new builder preserving all accumulated state. */
+  withClientData<TSchema extends TaskSchema>(config: {
+    schema: TSchema;
+  }): ChatBuilder<TUIMessage, TSchema>;
+
+  /** Register a builder-level `onPreload` hook. Runs before the task-level hook if both are set. */
+  onPreload(
+    fn: (event: PreloadEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onChatStart` hook. Runs before the task-level hook if both are set. */
+  onChatStart(
+    fn: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onTurnStart` hook. Runs before the task-level hook if both are set. */
+  onTurnStart(
+    fn: (
+      event: TurnStartEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onBeforeTurnComplete` hook. Runs before the task-level hook if both are set. */
+  onBeforeTurnComplete(
+    fn: (
+      event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onTurnComplete` hook. Runs before the task-level hook if both are set. */
+  onTurnComplete(
+    fn: (
+      event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onCompacted` hook. Runs before the task-level hook if both are set. */
+  onCompacted(fn: (event: CompactedEvent) => Promise<void> | void): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onChatSuspend` hook. Runs before the task-level hook if both are set. */
+  onChatSuspend(
+    fn: (
+      event: ChatSuspendEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onChatResume` hook. Runs before the task-level hook if both are set. */
+  onChatResume(
+    fn: (
+      event: ChatResumeEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /**
+   * Create the chat task with the accumulated builder configuration.
+   *
+   * When `withClientData` was called, `clientDataSchema` is injected automatically
+   * and omitted from options. Otherwise, it can still be set directly in options
+   * (backwards compatible).
+   */
+  task: [TClientDataSchema] extends [undefined]
+    ? <TId extends string, TInfer extends TaskSchema | undefined = undefined>(
+        options: ChatTaskOptions<TId, TInfer, TUIMessage>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
+    : <TId extends string>(
+        options: Omit<ChatTaskOptions<TId, TClientDataSchema, TUIMessage>, "clientDataSchema">
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+}
+
+/** @internal */
+type ChatBuilderHooks = {
+  onPreload?: (event: any) => Promise<void> | void;
+  onChatStart?: (event: any) => Promise<void> | void;
+  onTurnStart?: (event: any) => Promise<void> | void;
+  onBeforeTurnComplete?: (event: any) => Promise<void> | void;
+  onTurnComplete?: (event: any) => Promise<void> | void;
+  onCompacted?: (event: any) => Promise<void> | void;
+  onChatSuspend?: (event: any) => Promise<void> | void;
+  onChatResume?: (event: any) => Promise<void> | void;
+};
+
+/** @internal */
+type ChatBuilderConfig = {
+  uiStreamOptions?: ChatUIMessageStreamOptions<any>;
+  clientDataSchema?: TaskSchema;
+  hooks: ChatBuilderHooks;
+};
+
+function composeHooks<T>(
+  builderHook: ((event: T) => Promise<void> | void) | undefined,
+  taskHook: ((event: T) => Promise<void> | void) | undefined
+): ((event: T) => Promise<void>) | undefined {
+  if (!builderHook) return taskHook as any;
+  if (!taskHook) return builderHook as any;
+  return async (event: T) => {
+    await builderHook(event);
+    await taskHook(event);
+  };
+}
+
+function createChatBuilder<
+  TUIMessage extends UIMessage = UIMessage,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+>(config: ChatBuilderConfig): ChatBuilder<TUIMessage, TClientDataSchema> {
+  return {
+    withUIMessage<TUIM extends UIMessage = UIMessage>(uimConfig?: ChatWithUIMessageConfig<TUIM>) {
+      return createChatBuilder<TUIM, TClientDataSchema>({
+        ...config,
+        uiStreamOptions: uimConfig?.streamOptions ?? config.uiStreamOptions,
+      });
+    },
+
+    withClientData<TSchema extends TaskSchema>(cdConfig: { schema: TSchema }) {
+      return createChatBuilder<TUIMessage, TSchema>({
+        ...config,
+        clientDataSchema: cdConfig.schema,
+      });
+    },
+
+    onPreload(
+      fn: (event: PreloadEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onPreload: fn },
+      });
+    },
+    onChatStart(
+      fn: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onChatStart: fn },
+      });
+    },
+    onTurnStart(
+      fn: (
+        event: TurnStartEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onTurnStart: fn },
+      });
+    },
+    onBeforeTurnComplete(
+      fn: (
+        event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onBeforeTurnComplete: fn },
+      });
+    },
+    onTurnComplete(
+      fn: (
+        event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onTurnComplete: fn },
+      });
+    },
+    onCompacted(fn: (event: CompactedEvent) => Promise<void> | void) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onCompacted: fn },
+      });
+    },
+    onChatSuspend(
+      fn: (
+        event: ChatSuspendEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onChatSuspend: fn },
+      });
+    },
+    onChatResume(
+      fn: (
+        event: ChatResumeEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onChatResume: fn },
+      });
+    },
+
+    task(options: any) {
+      const mergedUiStream =
+        config.uiStreamOptions && options.uiMessageStreamOptions
+          ? { ...config.uiStreamOptions, ...options.uiMessageStreamOptions }
+          : options.uiMessageStreamOptions ?? config.uiStreamOptions;
+
+      return chatTask({
+        ...options,
+        ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
+        uiMessageStreamOptions: mergedUiStream,
+        onPreload: composeHooks(config.hooks.onPreload, options.onPreload),
+        onChatStart: composeHooks(config.hooks.onChatStart, options.onChatStart),
+        onTurnStart: composeHooks(config.hooks.onTurnStart, options.onTurnStart),
+        onBeforeTurnComplete: composeHooks(
+          config.hooks.onBeforeTurnComplete,
+          options.onBeforeTurnComplete
+        ),
+        onTurnComplete: composeHooks(config.hooks.onTurnComplete, options.onTurnComplete),
+        onCompacted: composeHooks(config.hooks.onCompacted, options.onCompacted),
+        onChatSuspend: composeHooks(config.hooks.onChatSuspend, options.onChatSuspend),
+        onChatResume: composeHooks(config.hooks.onChatResume, options.onChatResume),
+      });
+    },
+  } as unknown as ChatBuilder<TUIMessage, TClientDataSchema>;
+}
+
 /**
  * Fix the UI message type for a chat task (AI SDK `UIMessage` generics) while
  * keeping `id` and `clientDataSchema` inference on the inner {@link chat.task} call.
+ *
+ * Returns a {@link ChatBuilder} that supports chaining `.withClientData()`,
+ * hook methods (`.onPreload()`, `.onChatSuspend()`, etc.), and `.task()`.
  *
  * @example
  * ```ts
@@ -3323,26 +3815,40 @@ export type ChatWithUIMessageConfig<TUIM extends UIMessage = UIMessage> = {
  */
 function withUIMessage<TUIM extends UIMessage = UIMessage>(
   config?: ChatWithUIMessageConfig<TUIM>
-): {
-  task: <TIdentifier extends string, TClientDataSchema extends TaskSchema | undefined = undefined>(
-    options: ChatTaskOptions<TIdentifier, TClientDataSchema, TUIM>
-  ) => Task<TIdentifier, ChatTaskWirePayload<TUIM, inferSchemaIn<TClientDataSchema>>, unknown>;
-} {
-  function taskWithUiMessage<
-    TIdentifier extends string,
-    TClientDataSchema extends TaskSchema | undefined = undefined,
-  >(options: ChatTaskOptions<TIdentifier, TClientDataSchema, TUIM>) {
-    const mergedUiStream =
-      config?.streamOptions && options.uiMessageStreamOptions
-        ? { ...config.streamOptions, ...options.uiMessageStreamOptions }
-        : options.uiMessageStreamOptions ?? config?.streamOptions;
-    return chatTask<TIdentifier, TClientDataSchema, TUIM>({
-      ...options,
-      uiMessageStreamOptions: mergedUiStream,
-    });
-  }
+): ChatBuilder<TUIM, undefined> {
+  return createChatBuilder<TUIM, undefined>({
+    uiStreamOptions: config?.streamOptions,
+    hooks: {},
+  });
+}
 
-  return { task: taskWithUiMessage };
+/**
+ * Fix the client data schema for a chat task, providing typed `clientData`
+ * in all hooks and the `run` function.
+ *
+ * Returns a {@link ChatBuilder} that supports chaining `.withUIMessage()`,
+ * hook methods (`.onPreload()`, `.onChatSuspend()`, etc.), and `.task()`.
+ *
+ * @example
+ * ```ts
+ * export const myChat = chat
+ *   .withClientData({ schema: z.object({ userId: z.string() }) })
+ *   .task({
+ *     id: "my-chat",
+ *     onPreload: async ({ clientData }) => {
+ *       // clientData is typed as { userId: string }
+ *     },
+ *     run: async ({ messages, signal }) => { ... },
+ *   });
+ * ```
+ */
+function withClientData<TSchema extends TaskSchema>(config: {
+  schema: TSchema;
+}): ChatBuilder<UIMessage, TSchema> {
+  return createChatBuilder<UIMessage, TSchema>({
+    clientDataSchema: config.schema,
+    hooks: {},
+  });
 }
 
 /**
@@ -4624,6 +5130,8 @@ export const chat = {
   task: chatTask,
   /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
   withUIMessage,
+  /** Create a chat task with a fixed client data schema. See {@link withClientData}. */
+  withClientData,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
   /** Create a per-run typed local. See {@link chatLocal}. */
