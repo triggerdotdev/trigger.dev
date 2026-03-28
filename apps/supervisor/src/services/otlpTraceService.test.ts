@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildOtlpTracePayload } from "./otlpPayload.js";
+import { buildOtlpTracePayload } from "../otlpPayload.js";
 
 describe("buildOtlpTracePayload", () => {
   it("builds valid OTLP JSON with timing attributes", () => {
