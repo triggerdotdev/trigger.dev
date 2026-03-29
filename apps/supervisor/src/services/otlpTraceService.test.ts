@@ -83,6 +83,71 @@ describe("buildPayload", () => {
     expect(span.endTimeUnixNano).toBe("1250000000");
   });
 
+  it("converts real epoch timestamps without precision loss", () => {
+    // Date.now() values exceed Number.MAX_SAFE_INTEGER when multiplied by 1e6
+    const startMs = 1711929600000; // 2024-04-01T00:00:00Z
+    const endMs = 1711929600250;
+
+    const payload = buildPayload({
+      traceId: "abcd1234abcd1234abcd1234abcd1234",
+      spanName: "test",
+      startTimeMs: startMs,
+      endTimeMs: endMs,
+      resourceAttributes: {},
+      spanAttributes: {},
+    });
+
+    const span = payload.resourceSpans[0]!.scopeSpans[0]!.spans[0]!;
+    expect(span.startTimeUnixNano).toBe("1711929600000000000");
+    expect(span.endTimeUnixNano).toBe("1711929600250000000");
+  });
+
+  it("preserves sub-millisecond precision from performance.now() arithmetic", () => {
+    // provisionStartEpochMs = Date.now() - (performance.now() - startMs) produces fractional ms.
+    // Use small epoch + fraction to avoid IEEE 754 noise in the fractional part.
+    const startMs = 1000.322;
+    const endMs = 1045.789;
+
+    const payload = buildPayload({
+      traceId: "abcd1234abcd1234abcd1234abcd1234",
+      spanName: "test",
+      startTimeMs: startMs,
+      endTimeMs: endMs,
+      resourceAttributes: {},
+      spanAttributes: {},
+    });
+
+    const span = payload.resourceSpans[0]!.scopeSpans[0]!.spans[0]!;
+    expect(span.startTimeUnixNano).toBe("1000322000");
+    expect(span.endTimeUnixNano).toBe("1045789000");
+  });
+
+  it("sub-ms precision affects ordering for real epoch values", () => {
+    // Two spans within the same millisecond should have different nanosecond timestamps
+    const spanA = buildPayload({
+      traceId: "abcd1234abcd1234abcd1234abcd1234",
+      spanName: "a",
+      startTimeMs: 1711929600000.3,
+      endTimeMs: 1711929600001,
+      resourceAttributes: {},
+      spanAttributes: {},
+    });
+
+    const spanB = buildPayload({
+      traceId: "abcd1234abcd1234abcd1234abcd1234",
+      spanName: "b",
+      startTimeMs: 1711929600000.7,
+      endTimeMs: 1711929600001,
+      resourceAttributes: {},
+      spanAttributes: {},
+    });
+
+    const startA = BigInt(spanA.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.startTimeUnixNano);
+    const startB = BigInt(spanB.resourceSpans[0]!.scopeSpans[0]!.spans[0]!.startTimeUnixNano);
+    // A should sort before B (both in the same ms but different sub-ms positions)
+    expect(startA).toBeLessThan(startB);
+  });
+
   it("omits parentSpanId when not provided", () => {
     const payload = buildPayload({
       traceId: "abcd1234abcd1234abcd1234abcd1234",

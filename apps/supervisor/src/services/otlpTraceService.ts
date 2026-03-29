@@ -63,8 +63,8 @@ export function buildPayload(span: OtlpTraceSpan) {
                 parentSpanId: span.parentSpanId,
                 name: span.spanName,
                 kind: 3, // SPAN_KIND_CLIENT
-                startTimeUnixNano: String(span.startTimeMs * 1_000_000),
-                endTimeUnixNano: String(span.endTimeMs * 1_000_000),
+                startTimeUnixNano: msToNano(span.startTimeMs),
+                endTimeUnixNano: msToNano(span.endTimeMs),
                 attributes: toOtlpAttributes(span.spanAttributes),
                 status: { code: 1 }, // STATUS_CODE_OK
               },
@@ -90,4 +90,15 @@ function toOtlpValue(value: string | number | boolean): Record<string, unknown> 
   if (typeof value === "boolean") return { boolValue: value };
   if (Number.isInteger(value)) return { intValue: value };
   return { doubleValue: value };
+}
+
+/**
+ * Convert epoch milliseconds to nanosecond string, preserving sub-ms precision.
+ * Fractional ms from performance.now() arithmetic carry meaningful microsecond
+ * data that affects span sort ordering when events happen within the same ms.
+ */
+function msToNano(ms: number): string {
+  const wholeMs = Math.trunc(ms);
+  const fracNs = Math.round((ms - wholeMs) * 1_000_000);
+  return String(BigInt(wholeMs) * 1_000_000n + BigInt(fracNs));
 }
