@@ -428,7 +428,7 @@ function ConfirmDialog({
           These changes affect all organizations globally. Please review carefully.
         </DialogDescription>
 
-        <div className="flex flex-col gap-2 py-2">
+        <div className="flex flex-col gap-2 pb-2">
           {changes.length === 0 ? (
             <p className="text-sm text-text-dimmed">No changes to apply.</p>
           ) : (
