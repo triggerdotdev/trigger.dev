@@ -15,7 +15,7 @@ async function authenticateAdmin(request: Request) {
     return { error: json({ error: "Invalid or Missing API key" }, { status: 401 }) };
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where: {
       id: authenticationResult.userId,
     },
@@ -41,7 +41,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
+  const organization = await prisma.organization.findFirst({
     where: {
       id: organizationId,
     },
@@ -78,7 +78,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
+  const organization = await prisma.organization.findFirst({
     where: {
       id: organizationId,
     },
