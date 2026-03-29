@@ -14,8 +14,23 @@ import {
 import type { FlagControlType } from "~/v3/featureFlags.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogDescription,
+  DialogFooter,
+} from "~/components/primitives/Dialog";
 import { cn } from "~/utils/cn";
-import { UNSET_VALUE, BooleanControl, EnumControl, StringControl } from "~/components/admin/FlagControls";
+import {
+  UNSET_VALUE,
+  BooleanControl,
+  EnumControl,
+  StringControl,
+} from "~/components/admin/FlagControls";
+import { Select, SelectItem } from "~/components/primitives/Select";
+
+type WorkerGroup = { id: string; name: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -23,10 +38,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect("/");
   }
 
-  const globalFlags = await getGlobalFlags();
+  const [globalFlags, workerGroups] = await Promise.all([
+    getGlobalFlags(),
+    prisma.workerInstanceGroup.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
   const controlTypes = getAllFlagControlTypes();
 
-  return typedjson({ globalFlags, controlTypes });
+  return typedjson({ globalFlags, controlTypes, workerGroups });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -41,11 +62,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const controlTypes = getAllFlagControlTypes();
   const catalogKeys = Object.keys(controlTypes);
 
-  // For each catalog key: if value is present in newFlags, upsert it. If absent, delete the row.
   for (const key of catalogKeys) {
     if (key in newFlags) {
       const value = newFlags[key];
-      // Validate the value against its schema
       const partial = { [key]: value };
       const result = validatePartialFeatureFlags(partial);
       if (result.success) {
@@ -56,7 +75,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         });
       }
     } else {
-      // Unset - delete the row if it exists
       await prisma.featureFlag.deleteMany({ where: { key } });
     }
   }
@@ -65,14 +83,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function AdminFeatureFlagsRoute() {
-  const { globalFlags, controlTypes } = useTypedLoaderData<typeof loader>();
+  const { globalFlags, controlTypes, workerGroups } = useTypedLoaderData<typeof loader>();
   const saveFetcher = useFetcher<{ success?: boolean; error?: string }>();
 
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Sync loader data into local state
   useEffect(() => {
     const loaded = (globalFlags ?? {}) as Record<string, unknown>;
     setValues({ ...loaded });
@@ -82,8 +100,8 @@ export default function AdminFeatureFlagsRoute() {
   useEffect(() => {
     if (saveFetcher.data?.success) {
       setSaveError(null);
-      // Update initial to match saved state
       setInitialValues({ ...values });
+      setConfirmOpen(false);
     } else if (saveFetcher.data?.error) {
       setSaveError(saveFetcher.data.error);
     }
@@ -111,6 +129,15 @@ export default function AdminFeatureFlagsRoute() {
     });
   };
 
+  const workerGroupMap = new Map(
+    (workerGroups as WorkerGroup[]).map((wg) => [wg.id, wg.name])
+  );
+
+  const resolveWorkerGroupDisplay = (id: string) => {
+    const name = workerGroupMap.get(id);
+    return name ? `${name} (${id.slice(0, 8)}...)` : id;
+  };
+
   const sortedFlagKeys = Object.keys(controlTypes as Record<string, FlagControlType>).sort();
 
   return (
@@ -125,6 +152,8 @@ export default function AdminFeatureFlagsRoute() {
           {sortedFlagKeys.map((key) => {
             const control = (controlTypes as Record<string, FlagControlType>)[key];
             const isSet = key in values;
+
+            const isWorkerGroup = key === "defaultWorkerInstanceGroupId";
 
             return (
               <div
@@ -143,10 +172,14 @@ export default function AdminFeatureFlagsRoute() {
                       isSet ? "text-text-bright" : "text-text-dimmed"
                     )}
                   >
-                    {key}
+                    {isWorkerGroup ? "defaultWorkerInstanceGroup" : key}
                   </div>
                   <div className="text-xs text-charcoal-400">
-                    {isSet ? `value: ${String(values[key])}` : "not set"}
+                    {isSet
+                      ? isWorkerGroup
+                        ? resolveWorkerGroupDisplay(values[key] as string)
+                        : `value: ${String(values[key])}`
+                      : "not set"}
                   </div>
                 </div>
 
@@ -159,18 +192,10 @@ export default function AdminFeatureFlagsRoute() {
                     unset
                   </Button>
 
-                  {control.type === "boolean" && (
-                    <BooleanControl
-                      value={isSet ? (values[key] as boolean) : undefined}
-                      onChange={(val) => setFlagValue(key, val)}
-                      dimmed={!isSet}
-                    />
-                  )}
-
-                  {control.type === "enum" && (
-                    <EnumControl
+                  {isWorkerGroup ? (
+                    <WorkerGroupControl
                       value={isSet ? (values[key] as string) : undefined}
-                      options={control.options}
+                      workerGroups={workerGroups as WorkerGroup[]}
                       onChange={(val) => {
                         if (val === UNSET_VALUE) {
                           unsetFlag(key);
@@ -180,20 +205,45 @@ export default function AdminFeatureFlagsRoute() {
                       }}
                       dimmed={!isSet}
                     />
-                  )}
+                  ) : (
+                    <>
+                      {control.type === "boolean" && (
+                        <BooleanControl
+                          value={isSet ? (values[key] as boolean) : undefined}
+                          onChange={(val) => setFlagValue(key, val)}
+                          dimmed={!isSet}
+                        />
+                      )}
 
-                  {control.type === "string" && (
-                    <StringControl
-                      value={isSet ? (values[key] as string) : ""}
-                      onChange={(val) => {
-                        if (val === "") {
-                          unsetFlag(key);
-                        } else {
-                          setFlagValue(key, val);
-                        }
-                      }}
-                      dimmed={!isSet}
-                    />
+                      {control.type === "enum" && (
+                        <EnumControl
+                          value={isSet ? (values[key] as string) : undefined}
+                          options={control.options}
+                          onChange={(val) => {
+                            if (val === UNSET_VALUE) {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isSet}
+                        />
+                      )}
+
+                      {control.type === "string" && (
+                        <StringControl
+                          value={isSet ? (values[key] as string) : ""}
+                          onChange={(val) => {
+                            if (val === "") {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isSet}
+                        />
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -206,13 +256,177 @@ export default function AdminFeatureFlagsRoute() {
         <div className="flex justify-end gap-2">
           <Button
             variant="primary/small"
-            onClick={handleSave}
+            onClick={() => setConfirmOpen(true)}
             disabled={!isDirty || isSaving}
           >
-            {isSaving ? "Saving..." : "Save Changes"}
+            Review Changes
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        initialValues={initialValues}
+        newValues={values}
+        controlTypes={controlTypes as Record<string, FlagControlType>}
+        workerGroupMap={workerGroupMap}
+        onConfirm={handleSave}
+        isSaving={isSaving}
+      />
     </main>
+  );
+}
+
+// --- Worker Group Select ---
+
+function WorkerGroupControl({
+  value,
+  workerGroups,
+  onChange,
+  dimmed,
+}: {
+  value: string | undefined;
+  workerGroups: WorkerGroup[];
+  onChange: (val: string) => void;
+  dimmed: boolean;
+}) {
+  const items = [UNSET_VALUE, ...workerGroups.map((wg) => wg.id)];
+
+  return (
+    <Select
+      variant="tertiary/small"
+      value={value ?? UNSET_VALUE}
+      setValue={onChange}
+      items={items}
+      text={(val) => {
+        if (val === UNSET_VALUE) return "unset";
+        const wg = workerGroups.find((w) => w.id === val);
+        return wg ? wg.name : val;
+      }}
+      className={cn(dimmed && "opacity-50")}
+    >
+      {(items) =>
+        items.map((item) => {
+          const wg = workerGroups.find((w) => w.id === item);
+          return (
+            <SelectItem key={item} value={item}>
+              {item === UNSET_VALUE ? "unset" : wg ? wg.name : item}
+            </SelectItem>
+          );
+        })
+      }
+    </Select>
+  );
+}
+
+// --- Confirmation Dialog with Diff ---
+
+function ConfirmDialog({
+  open,
+  onOpenChange,
+  initialValues,
+  newValues,
+  controlTypes,
+  workerGroupMap,
+  onConfirm,
+  isSaving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialValues: Record<string, unknown>;
+  newValues: Record<string, unknown>;
+  controlTypes: Record<string, FlagControlType>;
+  workerGroupMap: Map<string, string>;
+  onConfirm: () => void;
+  isSaving: boolean;
+}) {
+  const allKeys = Object.keys(controlTypes).sort();
+
+  const changes = allKeys.flatMap((key) => {
+    const wasSet = key in initialValues;
+    const isSet = key in newValues;
+    const oldVal = initialValues[key];
+    const newVal = newValues[key];
+
+    if (!wasSet && !isSet) return [];
+    if (wasSet && isSet && stableStringify(oldVal) === stableStringify(newVal)) return [];
+
+    const displayKey =
+      key === "defaultWorkerInstanceGroupId" ? "defaultWorkerInstanceGroup" : key;
+
+    const formatVal = (val: unknown) => {
+      if (key === "defaultWorkerInstanceGroupId" && typeof val === "string") {
+        const name = workerGroupMap.get(val);
+        return name ? `${name} (${val.slice(0, 8)}...)` : String(val);
+      }
+      return String(val);
+    };
+
+    if (!wasSet && isSet) {
+      return [{ key: displayKey, type: "added" as const, newVal: formatVal(newVal) }];
+    }
+    if (wasSet && !isSet) {
+      return [{ key: displayKey, type: "removed" as const, oldVal: formatVal(oldVal) }];
+    }
+    return [
+      {
+        key: displayKey,
+        type: "changed" as const,
+        oldVal: formatVal(oldVal),
+        newVal: formatVal(newVal),
+      },
+    ];
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>Confirm Feature Flag Changes</DialogHeader>
+        <DialogDescription>
+          These changes affect all organizations globally. Please review carefully.
+        </DialogDescription>
+
+        <div className="flex flex-col gap-2 py-2">
+          {changes.length === 0 ? (
+            <p className="text-sm text-text-dimmed">No changes to apply.</p>
+          ) : (
+            changes.map((change) => (
+              <div
+                key={change.key}
+                className="rounded-md border border-charcoal-600 bg-charcoal-800 px-3 py-2 font-mono text-xs"
+              >
+                <div className="font-sans text-sm text-text-bright">{change.key}</div>
+                {change.type === "added" && (
+                  <div className="mt-1 text-green-400">+ {change.newVal}</div>
+                )}
+                {change.type === "removed" && (
+                  <div className="mt-1 text-red-400">- {change.oldVal} (unset)</div>
+                )}
+                {change.type === "changed" && (
+                  <>
+                    <div className="mt-1 text-red-400">- {change.oldVal}</div>
+                    <div className="text-green-400">+ {change.newVal}</div>
+                  </>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="tertiary/small" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger/small"
+            onClick={onConfirm}
+            disabled={isSaving || changes.length === 0}
+          >
+            {isSaving ? "Saving..." : "Apply Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
