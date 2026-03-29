@@ -51,6 +51,8 @@ export function FeatureFlagsDialog({
   useEffect(() => {
     if (open && orgId) {
       setSaveError(null);
+      setOverrides({});
+      setInitialOverrides({});
       loadFetcher.load(`/admin/api/v2/orgs/${orgId}/feature-flags`);
     }
   }, [open, orgId]);

@@ -128,7 +128,6 @@ export default function AdminFeatureFlagsRoute() {
   useEffect(() => {
     if (saveFetcher.data?.success) {
       setSaveError(null);
-      setInitialValues({ ...values });
       setConfirmOpen(false);
     } else if (saveFetcher.data?.error) {
       setSaveError(saveFetcher.data.error);
