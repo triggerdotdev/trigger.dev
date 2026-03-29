@@ -364,7 +364,12 @@ function ConfirmDialog({
 }) {
   const allKeys = Object.keys(controlTypes).sort();
 
-  const changes = allKeys.flatMap((key) => {
+  type Change =
+    | { key: string; type: "added"; newVal: string }
+    | { key: string; type: "removed"; oldVal: string }
+    | { key: string; type: "changed"; oldVal: string; newVal: string };
+
+  const changes = allKeys.flatMap<Change>((key) => {
     const wasSet = key in initialValues;
     const isSet = key in newValues;
     const oldVal = initialValues[key];
