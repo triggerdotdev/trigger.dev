@@ -764,6 +764,9 @@ ${buildArgs}
 ${buildEnvVars}
 
 COPY --chown=bun:bun package.json ./
+# Strip workspaces from package.json before bun install to avoid "Workspace not found" error
+# Bun strictly validates workspaces exist, unlike npm/node which just warns
+RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.workspaces;fs.writeFileSync('package.json',JSON.stringify(p,null,2))"
 RUN bun install --production --no-save
 
 # Now copy all the files
