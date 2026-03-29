@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import stableStringify from "json-stable-stringify";
 import { json } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import {
@@ -58,20 +59,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const body = await request.json();
-
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    Array.isArray(body) ||
-    typeof body.flags !== "object" ||
-    body.flags === null ||
-    Array.isArray(body.flags)
-  ) {
+  const payloadSchema = z.object({ flags: z.record(z.unknown()) });
+  const parsed = payloadSchema.safeParse(body);
+  if (!parsed.success) {
     return json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const newFlags = body.flags as Record<string, unknown>;
-  const validationResult = validatePartialFeatureFlags(newFlags);
+  const validationResult = validatePartialFeatureFlags(parsed.data.flags);
   if (!validationResult.success) {
     return json(
       { error: "Invalid feature flags", details: validationResult.error.issues },
