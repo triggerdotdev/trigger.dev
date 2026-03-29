@@ -51,7 +51,7 @@ export function FeatureFlagsDialog({
   useEffect(() => {
     if (open && orgId) {
       setSaveError(null);
-      loadFetcher.load(`/admin/api/orgs/${orgId}/feature-flags`);
+      loadFetcher.load(`/admin/api/v2/orgs/${orgId}/feature-flags`);
     }
   }, [open, orgId]);
 
@@ -90,7 +90,7 @@ export function FeatureFlagsDialog({
     const body = Object.keys(overrides).length === 0 ? null : overrides;
     saveFetcher.submit(JSON.stringify(body), {
       method: "POST",
-      action: `/admin/api/orgs/${orgId}/feature-flags`,
+      action: `/admin/api/v2/orgs/${orgId}/feature-flags`,
       encType: "application/json",
     });
   };

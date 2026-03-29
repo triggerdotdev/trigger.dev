@@ -7,8 +7,13 @@ import { requireUser } from "~/services/session.server";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags, getAllFlagControlTypes } from "~/v3/featureFlags";
 
+// Session-auth route for the admin feature flags dialog.
+// Uses replace semantics: the action writes the full flag set (or null to clear).
+// Compare with v1 (admin.api.v1.orgs.$organizationId.feature-flags.ts) which
+// uses PAT auth and merge semantics for programmatic use.
+
 const ParamsSchema = z.object({
-  orgId: z.string(),
+  organizationId: z.string(),
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -17,11 +22,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Unauthorized", { status: 403 });
   }
 
-  const { orgId } = ParamsSchema.parse(params);
+  const { organizationId } = ParamsSchema.parse(params);
 
   const [organization, globalFlags] = await Promise.all([
     prisma.organization.findFirst({
-      where: { id: orgId },
+      where: { id: organizationId },
       select: {
         id: true,
         title: true,
@@ -61,7 +66,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     throw new Response("Unauthorized", { status: 403 });
   }
 
-  const { orgId } = ParamsSchema.parse(params);
+  const { organizationId } = ParamsSchema.parse(params);
 
   let body: unknown;
   try {
@@ -90,7 +95,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     await prisma.organization.update({
-      where: { id: orgId },
+      where: { id: organizationId },
       data: { featureFlags: featureFlags as Prisma.InputJsonValue },
     });
   } catch (e) {
