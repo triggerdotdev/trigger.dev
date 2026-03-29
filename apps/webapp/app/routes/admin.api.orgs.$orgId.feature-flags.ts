@@ -85,7 +85,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     await prisma.organization.update({
       where: { id: orgId },
-      data: { featureFlags },
+      data: { featureFlags: featureFlags as Prisma.InputJsonValue },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {

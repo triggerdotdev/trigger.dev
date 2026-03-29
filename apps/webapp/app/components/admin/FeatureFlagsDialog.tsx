@@ -1,5 +1,6 @@
 import { useFetcher } from "@remix-run/react";
 import { useEffect, useState } from "react";
+import stableStringify from "json-stable-stringify";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +71,7 @@ export function FeatureFlagsDialog({
     }
   }, [saveFetcher.data]);
 
-  const isDirty = JSON.stringify(overrides) !== JSON.stringify(initialOverrides);
+  const isDirty = stableStringify(overrides) !== stableStringify(initialOverrides);
 
   const setFlagValue = (key: string, value: unknown) => {
     setOverrides((prev) => ({ ...prev, [key]: value }));
