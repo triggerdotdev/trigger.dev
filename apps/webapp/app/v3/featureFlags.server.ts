@@ -1,15 +1,7 @@
 import { z } from "zod";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
-
-export const FEATURE_FLAG = {
-  defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
-  runsListRepository: "runsListRepository",
-  taskEventRepository: "taskEventRepository",
-  hasQueryAccess: "hasQueryAccess",
-  hasLogsPageAccess: "hasLogsPageAccess",
-  hasAiAccess: "hasAiAccess",
-  hasAiModelsAccess: "hasAiModelsAccess",
-} as const;
+export { FEATURE_FLAG } from "~/v3/featureFlags";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 
 const FeatureFlagCatalog = {
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),

@@ -7,8 +7,8 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
-  FEATURE_FLAG,
   flags as getGlobalFlags,
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
