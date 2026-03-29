@@ -69,7 +69,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   let featureFlags: typeof Prisma.JsonNull | Record<string, unknown>;
 
-  if (body === null || (typeof body === "object" && Object.keys(body).length === 0)) {
+  if (body === null || (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)) {
     featureFlags = Prisma.JsonNull;
   } else {
     const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);

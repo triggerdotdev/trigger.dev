@@ -58,28 +58,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const body = await request.json();
-  const { flags: newFlags } = body as { flags: Record<string, unknown> };
 
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    Array.isArray(body) ||
+    typeof body.flags !== "object" ||
+    body.flags === null ||
+    Array.isArray(body.flags)
+  ) {
+    return json({ error: "Invalid payload" }, { status: 400 });
+  }
+
+  const newFlags = body.flags as Record<string, unknown>;
+  const validationResult = validatePartialFeatureFlags(newFlags);
+  if (!validationResult.success) {
+    return json(
+      { error: "Invalid feature flags", details: validationResult.error.issues },
+      { status: 400 }
+    );
+  }
+
+  const validatedFlags = validationResult.data as Record<string, unknown>;
   const controlTypes = getAllFlagControlTypes();
   const catalogKeys = Object.keys(controlTypes);
 
-  // Split keys into upserts and deletes
   const keysToDelete: string[] = [];
   const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
 
   for (const key of catalogKeys) {
-    if (key in newFlags) {
-      const result = validatePartialFeatureFlags({ [key]: newFlags[key] });
-      if (result.success) {
-        const validatedValue = (result.data as Record<string, unknown>)[key];
-        upsertOps.push(
-          prisma.featureFlag.upsert({
-            where: { key },
-            create: { key, value: validatedValue as any },
-            update: { value: validatedValue as any },
-          })
-        );
-      }
+    if (key in validatedFlags) {
+      upsertOps.push(
+        prisma.featureFlag.upsert({
+          where: { key },
+          create: { key, value: validatedFlags[key] as any },
+          update: { value: validatedFlags[key] as any },
+        })
+      );
     } else {
       keysToDelete.push(key);
     }
