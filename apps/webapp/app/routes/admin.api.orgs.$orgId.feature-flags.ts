@@ -74,7 +74,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } else {
     const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
     if (!validationResult.success) {
-      throw json(
+      return json(
         { error: "Invalid feature flags", details: validationResult.error.issues },
         { status: 400 }
       );
