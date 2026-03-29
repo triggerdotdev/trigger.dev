@@ -254,6 +254,14 @@ export default function AdminFeatureFlagsRoute() {
         {saveError && <Callout variant="error">{saveError}</Callout>}
 
         <div className="flex justify-end gap-2">
+          {isDirty && (
+            <Button
+              variant="tertiary/small"
+              onClick={() => setValues({ ...initialValues })}
+            >
+              Discard
+            </Button>
+          )}
           <Button
             variant="primary/small"
             onClick={() => setConfirmOpen(true)}
