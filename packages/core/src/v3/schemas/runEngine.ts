@@ -177,7 +177,8 @@ export type CompleteRunAttemptResult = z.infer<typeof CompleteRunAttemptResult>;
 export const CheckpointTypeEnum = {
   DOCKER: "DOCKER",
   KUBERNETES: "KUBERNETES",
-} satisfies Enum<DB_TYPES.CheckpointType>;
+  COMPUTE: "COMPUTE",
+} satisfies Enum<DB_TYPES.TaskRunCheckpointType>;
 export type CheckpointTypeEnum = (typeof CheckpointTypeEnum)[keyof typeof CheckpointTypeEnum];
 
 export const CheckpointType = z.enum(Object.values(CheckpointTypeEnum) as [CheckpointTypeEnum]);

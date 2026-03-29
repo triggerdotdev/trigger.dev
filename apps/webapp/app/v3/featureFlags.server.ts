@@ -9,6 +9,7 @@ export const FEATURE_FLAG = {
   hasLogsPageAccess: "hasLogsPageAccess",
   hasAiAccess: "hasAiAccess",
   hasAiModelsAccess: "hasAiModelsAccess",
+  hasComputeAccess: "hasComputeAccess",
 } as const;
 
 const FeatureFlagCatalog = {
@@ -19,6 +20,7 @@ const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiModelsAccess]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
 };
 
 type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

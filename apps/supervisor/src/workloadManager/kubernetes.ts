@@ -100,7 +100,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
+    this.logger.verbose("[KubernetesWorkloadManager] Creating container", { opts });
 
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
