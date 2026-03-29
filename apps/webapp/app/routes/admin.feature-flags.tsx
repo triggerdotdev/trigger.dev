@@ -7,13 +7,13 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
-  flags as getGlobalFlags,
+  FEATURE_FLAG,
+  type FlagControlType,
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
-} from "~/v3/featureFlags.server";
-import type { FlagControlType } from "~/v3/featureFlags.server";
+} from "~/v3/featureFlags";
+import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import {
@@ -157,9 +157,7 @@ export default function AdminFeatureFlagsRoute() {
     });
   };
 
-  const workerGroupMap = new Map(
-    (workerGroups as WorkerGroup[]).map((wg) => [wg.id, wg.name])
-  );
+  const workerGroupMap = new Map((workerGroups as WorkerGroup[]).map((wg) => [wg.id, wg.name]));
 
   const resolveWorkerGroupDisplay = (id: string) => {
     const name = workerGroupMap.get(id);
@@ -172,8 +170,8 @@ export default function AdminFeatureFlagsRoute() {
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4 lg:order-last">
       <div className="max-w-2xl space-y-4">
         <p className="text-sm text-text-dimmed">
-          Global defaults for all organizations. Org-level overrides take precedence.
-          When not set, each consumer uses its own default.
+          Global defaults for all organizations. Org-level overrides take precedence. When not set,
+          each consumer uses its own default.
         </p>
 
         <div className="flex flex-col gap-1.5">
@@ -283,10 +281,7 @@ export default function AdminFeatureFlagsRoute() {
 
         <div className="flex justify-end gap-2">
           {isDirty && (
-            <Button
-              variant="tertiary/small"
-              onClick={() => setValues({ ...initialValues })}
-            >
+            <Button variant="tertiary/small" onClick={() => setValues({ ...initialValues })}>
               Discard
             </Button>
           )}

@@ -4,11 +4,8 @@ import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
-import {
-  flags as getGlobalFlags,
-  validatePartialFeatureFlags,
-  getAllFlagControlTypes,
-} from "~/v3/featureFlags.server";
+import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
+import { validatePartialFeatureFlags, getAllFlagControlTypes } from "~/v3/featureFlags";
 
 const ParamsSchema = z.object({
   orgId: z.string(),
@@ -75,7 +72,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   let featureFlags: typeof Prisma.JsonNull | Record<string, unknown>;
 
-  if (body === null || (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)) {
+  if (
+    body === null ||
+    (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)
+  ) {
     featureFlags = Prisma.JsonNull;
   } else {
     const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);

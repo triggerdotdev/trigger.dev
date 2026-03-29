@@ -11,8 +11,7 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { cn } from "~/utils/cn";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import type { FlagControlType } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, type FlagControlType } from "~/v3/featureFlags";
 import { UNSET_VALUE, BooleanControl, EnumControl, StringControl } from "./FlagControls";
 
 const HIDDEN_FLAGS = [FEATURE_FLAG.defaultWorkerInstanceGroupId];
@@ -126,8 +125,7 @@ export function FeatureFlagsDialog({
                 const control = data.controlTypes[key];
                 const isOverridden = key in overrides;
                 const globalValue = data.globalFlags[key as keyof typeof data.globalFlags];
-                const globalDisplay =
-                  globalValue !== undefined ? String(globalValue) : "unset";
+                const globalDisplay = globalValue !== undefined ? String(globalValue) : "unset";
 
                 return (
                   <div
@@ -215,19 +213,13 @@ export function FeatureFlagsDialog({
           </details>
         )}
 
-        {saveError && (
-          <Callout variant="error">{saveError}</Callout>
-        )}
+        {saveError && <Callout variant="error">{saveError}</Callout>}
 
         <DialogFooter>
           <Button variant="tertiary/small" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="primary/small"
-            onClick={handleSave}
-            disabled={!isDirty || isSaving}
-          >
+          <Button variant="primary/small" onClick={handleSave} disabled={!isDirty || isSaving}>
             {isSaving ? "Saving..." : "Save changes"}
           </Button>
         </DialogFooter>
@@ -235,4 +227,3 @@ export function FeatureFlagsDialog({
     </Dialog>
   );
 }
-
