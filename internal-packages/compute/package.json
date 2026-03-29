@@ -1,0 +1,14 @@
+{
+  "name": "@internal/compute",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "dependencies": {
+    "zod": "3.25.76"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

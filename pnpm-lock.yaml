@@ -190,6 +190,9 @@ importers:
       '@aws-sdk/client-ecr':
         specifier: ^3.839.0
         version: 3.839.0
+      '@internal/compute':
+        specifier: workspace:*
+        version: link:../../internal-packages/compute
       '@kubernetes/client-node':
         specifier: ^1.0.0
         version: 1.0.0(patch_hash=ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745)(bufferutil@4.0.9)(encoding@0.1.13)
@@ -199,6 +202,9 @@ importers:
       dockerode:
         specifier: ^4.0.6
         version: 4.0.6
+      p-limit:
+        specifier: ^6.2.0
+        version: 6.2.0
       prom-client:
         specifier: ^15.1.0
         version: 15.1.0
@@ -305,6 +311,9 @@ importers:
       '@internal/cache':
         specifier: workspace:*
         version: link:../../internal-packages/cache
+      '@internal/compute':
+        specifier: workspace:*
+        version: link:../../internal-packages/compute
       '@internal/llm-model-catalog':
         specifier: workspace:*
         version: link:../../internal-packages/llm-model-catalog
@@ -1080,6 +1089,12 @@ importers:
       rimraf:
         specifier: 6.0.1
         version: 6.0.1
+
+  internal-packages/compute:
+    dependencies:
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
 
   internal-packages/database:
     dependencies:
@@ -23247,7 +23262,7 @@ snapshots:
   '@epic-web/test-server@0.1.0(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
-      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)
+      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)
       '@open-draft/deferred-promise': 2.2.0
       '@types/ws': 8.5.12
       hono: 4.5.11
@@ -24002,7 +24017,7 @@ snapshots:
     dependencies:
       hono: 4.11.8
 
-  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
+  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
       ws: 8.18.3(bufferutil@4.0.9)
