@@ -112,7 +112,7 @@ export function FeatureFlagsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader>Feature Flags - {orgTitle}</DialogHeader>
+        <DialogHeader>Feature flags - {orgTitle}</DialogHeader>
         <DialogDescription>
           Org-level overrides. Unset flags inherit from global defaults.
         </DialogDescription>
