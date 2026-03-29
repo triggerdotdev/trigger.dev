@@ -228,7 +228,7 @@ export function FeatureFlagsDialog({
             onClick={handleSave}
             disabled={!isDirty || isSaving}
           >
-            {isSaving ? "Saving..." : "Save Changes"}
+            {isSaving ? "Saving..." : "Save changes"}
           </Button>
         </DialogFooter>
       </DialogContent>

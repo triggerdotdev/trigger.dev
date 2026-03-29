@@ -295,7 +295,7 @@ export default function AdminFeatureFlagsRoute() {
             onClick={() => setConfirmOpen(true)}
             disabled={!isDirty || isSaving}
           >
-            Review Changes
+            Review changes
           </Button>
         </div>
       </div>
@@ -423,7 +423,7 @@ function ConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        <DialogHeader>Confirm Feature Flag Changes</DialogHeader>
+        <DialogHeader>Confirm feature flag changes</DialogHeader>
         <DialogDescription>
           These changes affect all organizations globally. Please review carefully.
         </DialogDescription>
@@ -464,7 +464,7 @@ function ConfirmDialog({
             onClick={onConfirm}
             disabled={isSaving || changes.length === 0}
           >
-            {isSaving ? "Saving..." : "Apply Changes"}
+            {isSaving ? "Saving..." : "Apply changes"}
           </Button>
         </DialogFooter>
       </DialogContent>
