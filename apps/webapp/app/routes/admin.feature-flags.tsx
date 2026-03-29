@@ -1,6 +1,7 @@
 import { useFetcher } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
+import stableStringify from "json-stable-stringify";
 import { json } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { prisma } from "~/db.server";
@@ -88,7 +89,7 @@ export default function AdminFeatureFlagsRoute() {
     }
   }, [saveFetcher.data]);
 
-  const isDirty = JSON.stringify(values) !== JSON.stringify(initialValues);
+  const isDirty = stableStringify(values) !== stableStringify(initialValues);
   const isSaving = saveFetcher.state === "submitting";
 
   const setFlagValue = (key: string, value: unknown) => {
@@ -117,6 +118,7 @@ export default function AdminFeatureFlagsRoute() {
       <div className="max-w-2xl space-y-4">
         <p className="text-sm text-text-dimmed">
           Global defaults for all organizations. Org-level overrides take precedence.
+          When not set, each consumer uses its own default.
         </p>
 
         <div className="flex flex-col gap-1.5">
