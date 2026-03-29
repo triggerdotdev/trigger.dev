@@ -7,6 +7,7 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import {
+  FEATURE_FLAG,
   flags as getGlobalFlags,
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
@@ -62,22 +63,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const controlTypes = getAllFlagControlTypes();
   const catalogKeys = Object.keys(controlTypes);
 
+  // Split keys into upserts and deletes
+  const keysToDelete: string[] = [];
+  const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
+
   for (const key of catalogKeys) {
     if (key in newFlags) {
-      const value = newFlags[key];
-      const partial = { [key]: value };
-      const result = validatePartialFeatureFlags(partial);
+      const result = validatePartialFeatureFlags({ [key]: newFlags[key] });
       if (result.success) {
-        await prisma.featureFlag.upsert({
-          where: { key },
-          create: { key, value: value as any },
-          update: { value: value as any },
-        });
+        const validatedValue = (result.data as Record<string, unknown>)[key];
+        upsertOps.push(
+          prisma.featureFlag.upsert({
+            where: { key },
+            create: { key, value: validatedValue as any },
+            update: { value: validatedValue as any },
+          })
+        );
       }
     } else {
-      await prisma.featureFlag.deleteMany({ where: { key } });
+      keysToDelete.push(key);
     }
   }
+
+  await prisma.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [prisma.featureFlag.deleteMany({ where: { key: { in: keysToDelete } } })]
+      : []),
+  ]);
 
   return json({ success: true });
 };
@@ -153,7 +166,7 @@ export default function AdminFeatureFlagsRoute() {
             const control = (controlTypes as Record<string, FlagControlType>)[key];
             const isSet = key in values;
 
-            const isWorkerGroup = key === "defaultWorkerInstanceGroupId";
+            const isWorkerGroup = key === FEATURE_FLAG.defaultWorkerInstanceGroupId;
 
             return (
               <div
@@ -361,10 +374,10 @@ function ConfirmDialog({
     if (wasSet && isSet && stableStringify(oldVal) === stableStringify(newVal)) return [];
 
     const displayKey =
-      key === "defaultWorkerInstanceGroupId" ? "defaultWorkerInstanceGroup" : key;
+      key === FEATURE_FLAG.defaultWorkerInstanceGroupId ? "defaultWorkerInstanceGroup" : key;
 
     const formatVal = (val: unknown) => {
-      if (key === "defaultWorkerInstanceGroupId" && typeof val === "string") {
+      if (key === FEATURE_FLAG.defaultWorkerInstanceGroupId && typeof val === "string") {
         const name = workerGroupMap.get(val);
         return name ? `${name} (${val.slice(0, 8)}...)` : String(val);
       }

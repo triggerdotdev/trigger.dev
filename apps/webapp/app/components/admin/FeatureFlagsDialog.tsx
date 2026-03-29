@@ -11,10 +11,11 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { cn } from "~/utils/cn";
+import { FEATURE_FLAG } from "~/v3/featureFlags.server";
 import type { FlagControlType } from "~/v3/featureFlags.server";
 import { UNSET_VALUE, BooleanControl, EnumControl, StringControl } from "./FlagControls";
 
-const HIDDEN_FLAGS = ["defaultWorkerInstanceGroupId"];
+const HIDDEN_FLAGS = [FEATURE_FLAG.defaultWorkerInstanceGroupId];
 
 type LoaderData = {
   org: { id: string; title: string; slug: string };

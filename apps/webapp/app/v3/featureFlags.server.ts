@@ -39,7 +39,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   async function flag<T extends FeatureFlagKey>(
     opts: FlagsOptions<T>
   ): Promise<z.infer<(typeof FeatureFlagCatalog)[T]> | undefined> {
-    const value = await _prisma.featureFlag.findUnique({
+    const value = await _prisma.featureFlag.findFirst({
       where: {
         key: opts.key,
       },
