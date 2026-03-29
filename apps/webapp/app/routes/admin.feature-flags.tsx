@@ -58,7 +58,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     throw new Response("Unauthorized", { status: 403 });
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
   const payloadSchema = z.object({ flags: z.record(z.unknown()) });
   const parsed = payloadSchema.safeParse(body);
   if (!parsed.success) {

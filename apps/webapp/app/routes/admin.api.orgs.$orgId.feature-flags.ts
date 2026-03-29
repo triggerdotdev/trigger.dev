@@ -65,7 +65,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const { orgId } = ParamsSchema.parse(params);
-  const body = await request.json();
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   let featureFlags: typeof Prisma.JsonNull | Record<string, unknown>;
 
