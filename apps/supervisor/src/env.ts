@@ -196,13 +196,22 @@ const Env = z
 
             const keyValue = entry.slice(0, colonIdx);
             const eqIdx = keyValue.indexOf("=");
+            const key = eqIdx === -1 ? keyValue : keyValue.slice(0, eqIdx);
+
+            if (!key) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Invalid toleration format (empty key): "${entry}"`,
+              });
+              return z.NEVER;
+            }
 
             if (eqIdx === -1) {
-              return { key: keyValue, operator: "Exists" as const, effect };
+              return { key, operator: "Exists" as const, effect };
             }
 
             return {
-              key: keyValue.slice(0, eqIdx),
+              key,
               operator: "Equal" as const,
               value: keyValue.slice(eqIdx + 1),
               effect,
