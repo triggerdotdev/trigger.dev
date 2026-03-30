@@ -123,8 +123,16 @@ const Env = z
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
     // Large machine affinity settings - large-* presets prefer a dedicated pool
     KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED: BoolEnv.default(false),
-    KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY: z.string().trim().min(1).default("node.cluster.x-k8s.io/machinepool"),
-    KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE: z.string().trim().min(1).default("large-machines"),
+    KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY: z
+      .string()
+      .trim()
+      .min(1)
+      .default("node.cluster.x-k8s.io/machinepool"),
+    KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_VALUE: z
+      .string()
+      .trim()
+      .min(1)
+      .default("large-machines"),
     KUBERNETES_LARGE_MACHINE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(100),
 
     // Project affinity settings - pods from the same project prefer the same node
@@ -137,11 +145,82 @@ const Env = z
       .default("kubernetes.io/hostname"),
 
     // Schedule affinity settings - runs from schedule trees prefer a dedicated pool
-    KUBERNETES_SCHEDULE_AFFINITY_ENABLED: BoolEnv.default(false),
-    KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY: z.string().trim().min(1).default("node.cluster.x-k8s.io/machinepool"),
-    KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE: z.string().trim().min(1).default("scheduled-runs"),
-    KUBERNETES_SCHEDULE_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(80),
-    KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(20),
+    KUBERNETES_SCHEDULED_RUN_AFFINITY_ENABLED: BoolEnv.default(false),
+    KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_KEY: z
+      .string()
+      .trim()
+      .min(1)
+      .default("node.cluster.x-k8s.io/machinepool"),
+    KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_VALUE: z
+      .string()
+      .trim()
+      .min(1)
+      .default("scheduled-runs"),
+    KUBERNETES_SCHEDULED_RUN_AFFINITY_WEIGHT: z.coerce.number().int().min(1).max(100).default(80),
+    KUBERNETES_SCHEDULED_RUN_ANTI_AFFINITY_WEIGHT: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(20),
+
+    // Schedule toleration settings - scheduled runs tolerate taints on the dedicated pool
+    // Comma-separated list of tolerations in the format: key=value:effect
+    // For Exists operator (no value): key:effect
+    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: z
+      .string()
+      .transform((val, ctx) => {
+        const tolerations = val
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+          .map((entry) => {
+            const colonIdx = entry.lastIndexOf(":");
+            if (colonIdx === -1) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Invalid toleration format (missing effect): "${entry}"`,
+              });
+              return z.NEVER;
+            }
+
+            const effect = entry.slice(colonIdx + 1);
+            const validEffects = ["NoSchedule", "NoExecute", "PreferNoSchedule"];
+            if (!validEffects.includes(effect)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(", ")}`,
+              });
+              return z.NEVER;
+            }
+
+            const keyValue = entry.slice(0, colonIdx);
+            const eqIdx = keyValue.indexOf("=");
+            const key = eqIdx === -1 ? keyValue : keyValue.slice(0, eqIdx);
+
+            if (!key) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Invalid toleration format (empty key): "${entry}"`,
+              });
+              return z.NEVER;
+            }
+
+            if (eqIdx === -1) {
+              return { key, operator: "Exists" as const, effect };
+            }
+
+            return {
+              key,
+              operator: "Equal" as const,
+              value: keyValue.slice(eqIdx + 1),
+              effect,
+            };
+          });
+
+        return tolerations;
+      })
+      .optional(),
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),
