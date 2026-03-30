@@ -4,7 +4,7 @@ import { cn } from "~/utils/cn";
 const styles: Record<ErrorGroupStatus, string> = {
   UNRESOLVED: "bg-error/10 text-error",
   RESOLVED: "bg-success/10 text-success",
-  IGNORED: "bg-charcoal-750 text-text-dimmed",
+  IGNORED: "bg-blue-500/10 text-blue-400",
 };
 
 const labels: Record<ErrorGroupStatus, string> = {
