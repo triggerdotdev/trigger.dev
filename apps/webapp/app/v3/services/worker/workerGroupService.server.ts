@@ -2,7 +2,8 @@ import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/datab
 import { WithRunEngine } from "../baseService.server";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG, makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
 
 export class WorkerGroupService extends WithRunEngine {
   private readonly defaultNamePrefix = "worker_group";

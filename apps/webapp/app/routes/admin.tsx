@@ -37,6 +37,10 @@ export default function Page() {
               to: "/admin/llm-models",
             },
             {
+              label: "Feature Flags",
+              to: "/admin/feature-flags",
+            },
+            {
               label: "Notifications",
               to: "/admin/notifications",
             },

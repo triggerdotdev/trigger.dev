@@ -109,3 +109,12 @@ The `triggerTask.server.ts` service is the **highest-throughput code path** in t
   2. **Dequeue time** (`dequeueSystem.ts`): Full `BackgroundWorkerTask` is loaded and retry config, machine config, maxDuration, etc. are resolved against task defaults.
 - If you need to add a new task-level default, **add it to the existing `select` clause** in the `backgroundWorkerTask.findFirst()` query — do NOT add a second query. If the default doesn't need to be known at trigger time, resolve it at dequeue time instead.
 - Batch triggers (`batchTriggerV3.server.ts`) follow the same pattern — keep batch paths equally fast.
+
+## Prisma Query Patterns
+
+- **Always use `findFirst` instead of `findUnique`.** Prisma's `findUnique` has an implicit DataLoader that batches concurrent calls into a single `IN` query. This batching cannot be disabled and has active bugs even in Prisma 6.x: uppercase UUIDs returning null (#25484, confirmed 6.4.1), composite key SQL correctness issues (#22202), and 5-10x worse performance than manual DataLoader (#6573, open since 2021). `findFirst` is never batched and avoids this entire class of issues.
+
+## React Patterns
+
+- Only use `useCallback`/`useMemo` for context provider values, expensive derived data that is a dependency elsewhere, or stable refs required by a dependency array. Don't wrap ordinary event handlers or trivial computations.
+- Use named constants for sentinel/placeholder values (e.g. `const UNSET_VALUE = "__unset__"`) instead of raw string literals scattered across comparisons.

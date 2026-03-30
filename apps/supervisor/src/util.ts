@@ -14,6 +14,18 @@ export function getDockerHostDomain() {
   return isMacOS || isWindows ? "host.docker.internal" : "localhost";
 }
 
+/** Extract the W3C traceparent string from an untyped trace context record */
+export function extractTraceparent(traceContext?: Record<string, unknown>): string | undefined {
+  if (
+    traceContext &&
+    "traceparent" in traceContext &&
+    typeof traceContext.traceparent === "string"
+  ) {
+    return traceContext.traceparent;
+  }
+  return undefined;
+}
+
 export function getRunnerId(runId: string, attemptNumber?: number) {
   const parts = ["runner", runId.replace("run_", "")];
 
@@ -22,4 +34,11 @@ export function getRunnerId(runId: string, attemptNumber?: number) {
   }
 
   return parts.join("-");
+}
+
+/** Derive a unique runnerId for a restore cycle using the checkpoint suffix */
+export function getRestoreRunnerId(runFriendlyId: string, checkpointId: string) {
+  const runIdShort = runFriendlyId.replace("run_", "");
+  const checkpointSuffix = checkpointId.slice(-8);
+  return `runner-${runIdShort}-${checkpointSuffix}`;
 }

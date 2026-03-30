@@ -100,7 +100,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   async create(opts: WorkloadManagerCreateOptions) {
-    this.logger.log("[KubernetesWorkloadManager] Creating container", { opts });
+    this.logger.verbose("[KubernetesWorkloadManager] Creating container", { opts });
 
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
@@ -121,6 +121,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
           spec: {
             ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
             affinity: this.#getAffinity(opts),
+            tolerations: this.#getScheduleTolerations(this.#isScheduledRun(opts)),
             terminationGracePeriodSeconds: 60 * 60,
             containers: [
               {
@@ -340,7 +341,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getSharedLabels(opts: WorkloadManagerCreateOptions): Record<string, string> {
-    return {
+    const labels: Record<string, string> = {
       env: opts.envId,
       envtype: this.#envTypeToLabelValue(opts.envType),
       org: opts.orgId,
@@ -352,6 +353,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       // and pool-level scheduling decisions; finer-grained source breakdowns live in run annotations.
       scheduled: String(this.#isScheduledRun(opts)),
     };
+
+    // Add privatelink label for CiliumNetworkPolicy matching
+    if (opts.hasPrivateLink) {
+      labels.privatelink = opts.orgId;
+    }
+
+    return labels;
   }
 
   #getResourceRequestsForMachine(preset: MachinePreset): ResourceQuantities {
@@ -478,7 +486,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getScheduleNodeAffinityRules(isScheduledRun: boolean): k8s.V1NodeAffinity | undefined {
-    if (!env.KUBERNETES_SCHEDULE_AFFINITY_ENABLED || !env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE) {
+    if (!env.KUBERNETES_SCHEDULED_RUN_AFFINITY_ENABLED || !env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_VALUE) {
       return undefined;
     }
 
@@ -487,13 +495,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       return {
         preferredDuringSchedulingIgnoredDuringExecution: [
           {
-            weight: env.KUBERNETES_SCHEDULE_AFFINITY_WEIGHT,
+            weight: env.KUBERNETES_SCHEDULED_RUN_AFFINITY_WEIGHT,
             preference: {
               matchExpressions: [
                 {
-                  key: env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY,
+                  key: env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_KEY,
                   operator: "In",
-                  values: [env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE],
+                  values: [env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_VALUE],
                 },
               ],
             },
@@ -506,19 +514,27 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     return {
       preferredDuringSchedulingIgnoredDuringExecution: [
         {
-          weight: env.KUBERNETES_SCHEDULE_ANTI_AFFINITY_WEIGHT,
+          weight: env.KUBERNETES_SCHEDULED_RUN_ANTI_AFFINITY_WEIGHT,
           preference: {
             matchExpressions: [
               {
-                key: env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_KEY,
+                key: env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_KEY,
                 operator: "NotIn",
-                values: [env.KUBERNETES_SCHEDULE_AFFINITY_POOL_LABEL_VALUE],
+                values: [env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_VALUE],
               },
             ],
           },
         },
       ],
     };
+  }
+
+  #getScheduleTolerations(isScheduledRun: boolean): k8s.V1Toleration[] | undefined {
+    if (!isScheduledRun || !env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS?.length) {
+      return undefined;
+    }
+
+    return env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS;
   }
 
   #getProjectPodAffinity(projectId: string): k8s.V1PodAffinity | undefined {

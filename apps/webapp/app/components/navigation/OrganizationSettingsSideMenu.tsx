@@ -3,11 +3,13 @@ import {
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
+  LockClosedIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
@@ -19,6 +21,7 @@ import {
   rootPath,
   v3BillingAlertsPath,
   v3BillingPath,
+  v3PrivateConnectionsPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
@@ -47,6 +50,7 @@ export function OrganizationSettingsSideMenu({
   buildInfo: BuildInfo;
 }) {
   const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
   const currentPlan = useCurrentPlan();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
@@ -102,6 +106,15 @@ export function OrganizationSettingsSideMenu({
                 data-action="billing-alerts"
               />
             </>
+          )}
+          {featureFlags.hasPrivateConnections && (
+            <SideMenuItem
+              name="Private Connections"
+              icon={LockClosedIcon}
+              activeIconColor="text-purple-500"
+              to={v3PrivateConnectionsPath(organization)}
+              data-action="private-connections"
+            />
           )}
           <SideMenuItem
             name="Team"

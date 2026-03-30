@@ -333,6 +333,11 @@ const EnvironmentSchema = z
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
 
+    // Compute gateway (template creation during deploy finalize)
+    COMPUTE_GATEWAY_URL: z.string().optional(),
+    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
+    COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
+
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
@@ -1385,6 +1390,10 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
+
+    // Private connections
+    PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
+    PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

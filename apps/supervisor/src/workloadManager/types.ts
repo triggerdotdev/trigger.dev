@@ -24,6 +24,10 @@ export interface WorkloadManagerCreateOptions {
   nextAttemptNumber?: number;
   dequeuedAt: Date;
   placementTags?: PlacementTag[];
+  // Timing context (populated by supervisor handler, included in wide event)
+  dequeueResponseMs?: number;
+  pollingIntervalMs?: number;
+  warmStartCheckMs?: number;
   // identifiers
   envId: string;
   envType: EnvironmentType;
@@ -35,5 +39,9 @@ export interface WorkloadManagerCreateOptions {
   runFriendlyId: string;
   snapshotId: string;
   snapshotFriendlyId: string;
+  // Trace context for OTel span emission (W3C format: { traceparent: "00-...", tracestate?: "..." })
+  traceContext?: Record<string, unknown>;
   annotations?: RunAnnotations;
+  // private networking
+  hasPrivateLink?: boolean;
 }
