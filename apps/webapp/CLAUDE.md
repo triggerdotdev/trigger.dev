@@ -99,6 +99,17 @@ The `app/v3/` directory name is misleading - most code is actively used by V2. O
 
 Some services (e.g., `cancelTaskRun.server.ts`, `batchTriggerV3.server.ts`) branch on `RunEngineVersion` to support both V1 and V2. When editing these, only modify V2 code paths.
 
+## Performance: Trigger Hot Path
+
+The `triggerTask.server.ts` service is the **highest-throughput code path** in the system. Every API trigger call goes through it. Keep it fast:
+
+- **Do NOT add database queries** to `triggerTask.server.ts` or `batchTriggerV3.server.ts`. Task defaults (TTL, etc.) are resolved via `backgroundWorkerTask.findFirst()` in the queue concern (`queues.server.ts`) - one query per request, in mutually exclusive branches depending on locked/non-locked path. Piggyback on the existing query instead of adding new ones.
+- **Two-stage resolution pattern**: Task metadata is resolved in two stages by design:
+  1. **Trigger time** (`triggerTask.server.ts`): Only TTL is resolved from task defaults. Everything else uses whatever the caller provides.
+  2. **Dequeue time** (`dequeueSystem.ts`): Full `BackgroundWorkerTask` is loaded and retry config, machine config, maxDuration, etc. are resolved against task defaults.
+- If you need to add a new task-level default, **add it to the existing `select` clause** in the `backgroundWorkerTask.findFirst()` query — do NOT add a second query. If the default doesn't need to be known at trigger time, resolve it at dequeue time instead.
+- Batch triggers (`batchTriggerV3.server.ts`) follow the same pattern — keep batch paths equally fast.
+
 ## Prisma Query Patterns
 
 - **Always use `findFirst` instead of `findUnique`.** Prisma's `findUnique` has an implicit DataLoader that batches concurrent calls into a single `IN` query. This batching cannot be disabled and has active bugs even in Prisma 6.x: uppercase UUIDs returning null (#25484, confirmed 6.4.1), composite key SQL correctness issues (#22202), and 5-10x worse performance than manual DataLoader (#6573, open since 2021). `findFirst` is never batched and avoids this entire class of issues.

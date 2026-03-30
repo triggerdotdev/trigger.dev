@@ -648,6 +648,8 @@ model BackgroundWorkerTask {
 
   maxDurationInSeconds Int?
 
+  ttl String?
+
   triggerSource TaskTriggerSource @default(STANDARD)
 
   payloadSchema Json?
