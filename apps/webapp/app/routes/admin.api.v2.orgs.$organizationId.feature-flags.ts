@@ -5,7 +5,8 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
-import { validatePartialFeatureFlags, getAllFlagControlTypes } from "~/v3/featureFlags";
+import { FEATURE_FLAG, validatePartialFeatureFlags, getAllFlagControlTypes } from "~/v3/featureFlags";
+import { featuresForRequest } from "~/features.server";
 
 // Session-auth route for the admin feature flags dialog.
 // Uses replace semantics: the action writes the full flag set (or null to clear).
@@ -24,7 +25,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const [organization, globalFlags] = await Promise.all([
+  const [organization, globalFlags, workerGroups] = await Promise.all([
     prisma.organization.findFirst({
       where: { id: organizationId },
       select: {
@@ -35,6 +36,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       },
     }),
     getGlobalFlags(),
+    prisma.workerInstanceGroup.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   if (!organization) {
@@ -48,6 +53,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const orgFlags = orgFlagsResult.success ? orgFlagsResult.data : {};
   const controlTypes = getAllFlagControlTypes();
 
+  // Resolve worker group name for display
+  const workerGroupId = (globalFlags as Record<string, unknown>)?.[
+    FEATURE_FLAG.defaultWorkerInstanceGroupId
+  ];
+  let workerGroupName: string | undefined;
+  if (typeof workerGroupId === "string") {
+    const wg = await prisma.workerInstanceGroup.findFirst({
+      where: { id: workerGroupId },
+      select: { name: true },
+    });
+    workerGroupName = wg?.name;
+  }
+
+  const { isManagedCloud } = featuresForRequest(request);
+
   return json({
     org: {
       id: organization.id,
@@ -57,6 +77,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     orgFlags,
     globalFlags,
     controlTypes,
+    workerGroupName,
+    workerGroups,
+    isManagedCloud,
   });
 }
 

@@ -5,17 +5,22 @@ import stableStringify from "json-stable-stringify";
 import { json } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { LockClosedIcon } from "@heroicons/react/20/solid";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { requireUser } from "~/services/session.server";
 import {
   FEATURE_FLAG,
+  GLOBAL_LOCKED_FLAGS,
   type FlagControlType,
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
+import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,10 +34,9 @@ import {
   BooleanControl,
   EnumControl,
   StringControl,
+  WorkerGroupControl,
+  type WorkerGroup,
 } from "~/components/admin/FlagControls";
-import { Select, SelectItem } from "~/components/primitives/Select";
-
-type WorkerGroup = { id: string; name: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
@@ -49,7 +53,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
   const controlTypes = getAllFlagControlTypes();
 
-  return typedjson({ globalFlags, controlTypes, workerGroups });
+  // Resolve env-based defaults for locked flags
+  const resolvedDefaults: Record<string, string> = {
+    [FEATURE_FLAG.runsListRepository]: "clickhouse",
+    [FEATURE_FLAG.taskEventRepository]: env.EVENT_REPOSITORY_DEFAULT_STORE,
+  };
+
+  // Look up worker group name if the flag is set
+  const workerGroupId = (globalFlags as Record<string, unknown>)?.[
+    FEATURE_FLAG.defaultWorkerInstanceGroupId
+  ];
+  const workerGroupName =
+    typeof workerGroupId === "string"
+      ? workerGroups.find((wg) => wg.id === workerGroupId)?.name
+      : undefined;
+
+  const { isManagedCloud } = featuresForRequest(request);
+
+  return typedjson({
+    globalFlags,
+    controlTypes,
+    resolvedDefaults,
+    workerGroupName,
+    workerGroups,
+    isManagedCloud,
+  });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -71,6 +99,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: "Invalid payload" }, { status: 400 });
   }
 
+  const { isManagedCloud } = featuresForRequest(request);
+
+  // On managed cloud, reject if payload includes locked flags
+  if (isManagedCloud) {
+    const lockedInPayload = Object.keys(parsed.data.flags).filter((key) =>
+      GLOBAL_LOCKED_FLAGS.includes(key)
+    );
+    if (lockedInPayload.length > 0) {
+      return json(
+        { error: `Cannot modify locked flags: ${lockedInPayload.join(", ")}` },
+        { status: 400 }
+      );
+    }
+  }
+
   const validationResult = validatePartialFeatureFlags(parsed.data.flags);
   if (!validationResult.success) {
     return json(
@@ -81,12 +124,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const validatedFlags = validationResult.data as Record<string, unknown>;
   const controlTypes = getAllFlagControlTypes();
-  const catalogKeys = Object.keys(controlTypes);
+  const lockedKeys = isManagedCloud ? GLOBAL_LOCKED_FLAGS : [];
+  const editableKeys = Object.keys(controlTypes).filter(
+    (key) => !lockedKeys.includes(key)
+  );
 
   const keysToDelete: string[] = [];
   const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
 
-  for (const key of catalogKeys) {
+  for (const key of editableKeys) {
     if (key in validatedFlags) {
       upsertOps.push(
         prisma.featureFlag.upsert({
@@ -111,19 +157,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function AdminFeatureFlagsRoute() {
-  const { globalFlags, controlTypes, workerGroups } = useTypedLoaderData<typeof loader>();
+  const {
+    globalFlags,
+    controlTypes,
+    resolvedDefaults,
+    workerGroupName,
+    workerGroups,
+    isManagedCloud,
+  } = useTypedLoaderData<typeof loader>();
   const saveFetcher = useFetcher<{ success?: boolean; error?: string }>();
 
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [initialValues, setInitialValues] = useState<Record<string, unknown>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+
+  const isLocked = (key: string) => !unlocked && GLOBAL_LOCKED_FLAGS.includes(key);
 
   useEffect(() => {
     const loaded = (globalFlags ?? {}) as Record<string, unknown>;
-    setValues({ ...loaded });
-    setInitialValues({ ...loaded });
-  }, [globalFlags]);
+    // Only track editable flags in state
+    const editable: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(loaded)) {
+      if (!isLocked(key)) {
+        editable[key] = value;
+      }
+    }
+    setValues({ ...editable });
+    setInitialValues({ ...editable });
+  }, [globalFlags, unlocked]);
 
   useEffect(() => {
     if (saveFetcher.data?.success) {
@@ -156,14 +219,14 @@ export default function AdminFeatureFlagsRoute() {
     });
   };
 
+  const sortedFlagKeys = Object.keys(controlTypes as Record<string, FlagControlType>).sort();
+  const allFlags = (globalFlags ?? {}) as Record<string, unknown>;
   const workerGroupMap = new Map((workerGroups as WorkerGroup[]).map((wg) => [wg.id, wg.name]));
 
   const resolveWorkerGroupDisplay = (id: string) => {
     const name = workerGroupMap.get(id);
     return name ? `${name} (${id.slice(0, 8)}...)` : id;
   };
-
-  const sortedFlagKeys = Object.keys(controlTypes as Record<string, FlagControlType>).sort();
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4 lg:order-last">
@@ -173,11 +236,39 @@ export default function AdminFeatureFlagsRoute() {
           each consumer uses its own default.
         </p>
 
+        <div className={isManagedCloud ? "cursor-not-allowed" : undefined}>
+          <CheckboxWithLabel
+            variant="simple/small"
+            label={
+              isManagedCloud
+                ? "Unlock read-only flags (only in unmanaged cloud)"
+                : "Unlock read-only flags"
+            }
+            defaultChecked={unlocked}
+            onChange={setUnlocked}
+            disabled={isManagedCloud}
+            className={isManagedCloud ? "pointer-events-none" : undefined}
+          />
+        </div>
+
         <div className="flex flex-col gap-1.5">
           {sortedFlagKeys.map((key) => {
             const control = (controlTypes as Record<string, FlagControlType>)[key];
-            const isSet = key in values;
+            const locked = isLocked(key);
 
+            if (locked) {
+              return (
+                <LockedFlagRow
+                  key={key}
+                  flagKey={key}
+                  value={allFlags[key]}
+                  resolvedDefault={(resolvedDefaults as Record<string, string>)[key]}
+                  workerGroupName={workerGroupName as string | undefined}
+                />
+              );
+            }
+
+            const isSet = key in values;
             const isWorkerGroup = key === FEATURE_FLAG.defaultWorkerInstanceGroupId;
 
             return (
@@ -300,7 +391,7 @@ export default function AdminFeatureFlagsRoute() {
         initialValues={initialValues}
         newValues={values}
         controlTypes={controlTypes as Record<string, FlagControlType>}
-        workerGroupMap={workerGroupMap}
+        lockedKeys={unlocked ? [] : GLOBAL_LOCKED_FLAGS}
         onConfirm={handleSave}
         isSaving={isSaving}
       />
@@ -308,45 +399,54 @@ export default function AdminFeatureFlagsRoute() {
   );
 }
 
-// --- Worker Group Select ---
+// --- Locked Flag Row ---
 
-function WorkerGroupControl({
+function LockedFlagRow({
+  flagKey,
   value,
-  workerGroups,
-  onChange,
-  dimmed,
+  resolvedDefault,
+  workerGroupName,
 }: {
-  value: string | undefined;
-  workerGroups: WorkerGroup[];
-  onChange: (val: string) => void;
-  dimmed: boolean;
+  flagKey: string;
+  value: unknown;
+  resolvedDefault: string | undefined;
+  workerGroupName: string | undefined;
 }) {
-  const items = [UNSET_VALUE, ...workerGroups.map((wg) => wg.id)];
+  const isSet = value !== undefined;
+  const isWorkerGroup = flagKey === FEATURE_FLAG.defaultWorkerInstanceGroupId;
+
+  let displayValue: string;
+  if (isSet) {
+    if (isWorkerGroup && workerGroupName) {
+      displayValue = `${workerGroupName} (${String(value).slice(0, 8)}...)`;
+    } else {
+      displayValue = String(value);
+    }
+  } else if (resolvedDefault) {
+    displayValue = `${resolvedDefault} (from env)`;
+  } else {
+    displayValue = "not set (required)";
+  }
 
   return (
-    <Select
-      variant="tertiary/small"
-      value={value ?? UNSET_VALUE}
-      setValue={onChange}
-      items={items}
-      text={(val) => {
-        if (val === UNSET_VALUE) return "unset";
-        const wg = workerGroups.find((w) => w.id === val);
-        return wg ? wg.name : val;
-      }}
-      className={cn(dimmed && "opacity-50")}
+    <div
+      className={cn(
+        "flex items-center justify-between rounded-md border px-3 py-2.5",
+        isSet ? "border-indigo-500/20 bg-indigo-500/5" : "border-transparent bg-charcoal-750"
+      )}
+      title="Managed via database - not editable from this UI"
     >
-      {(items) =>
-        items.map((item) => {
-          const wg = workerGroups.find((w) => w.id === item);
-          return (
-            <SelectItem key={item} value={item}>
-              {item === UNSET_VALUE ? "unset" : wg ? wg.name : item}
-            </SelectItem>
-          );
-        })
-      }
-    </Select>
+      <div className="min-w-0 flex-1">
+        <div
+          className={cn("truncate text-sm", isSet ? "text-text-bright" : "text-text-dimmed")}
+        >
+          {isWorkerGroup ? "defaultWorkerInstanceGroup" : flagKey}
+        </div>
+        <div className="text-xs text-charcoal-400">{displayValue}</div>
+      </div>
+
+      <LockClosedIcon className="size-4 text-charcoal-500" />
+    </div>
   );
 }
 
@@ -358,7 +458,7 @@ function ConfirmDialog({
   initialValues,
   newValues,
   controlTypes,
-  workerGroupMap,
+  lockedKeys,
   onConfirm,
   isSaving,
 }: {
@@ -367,18 +467,20 @@ function ConfirmDialog({
   initialValues: Record<string, unknown>;
   newValues: Record<string, unknown>;
   controlTypes: Record<string, FlagControlType>;
-  workerGroupMap: Map<string, string>;
+  lockedKeys: readonly string[];
   onConfirm: () => void;
   isSaving: boolean;
 }) {
-  const allKeys = Object.keys(controlTypes).sort();
+  const editableKeys = Object.keys(controlTypes)
+    .filter((key) => !lockedKeys.includes(key))
+    .sort();
 
   type Change =
     | { key: string; type: "added"; newVal: string }
     | { key: string; type: "removed"; oldVal: string }
     | { key: string; type: "changed"; oldVal: string; newVal: string };
 
-  const changes = allKeys.flatMap<Change>((key) => {
+  const changes = editableKeys.flatMap<Change>((key) => {
     const wasSet = key in initialValues;
     const isSet = key in newValues;
     const oldVal = initialValues[key];
@@ -387,29 +489,18 @@ function ConfirmDialog({
     if (!wasSet && !isSet) return [];
     if (wasSet && isSet && stableStringify(oldVal) === stableStringify(newVal)) return [];
 
-    const displayKey =
-      key === FEATURE_FLAG.defaultWorkerInstanceGroupId ? "defaultWorkerInstanceGroup" : key;
-
-    const formatVal = (val: unknown) => {
-      if (key === FEATURE_FLAG.defaultWorkerInstanceGroupId && typeof val === "string") {
-        const name = workerGroupMap.get(val);
-        return name ? `${name} (${val.slice(0, 8)}...)` : String(val);
-      }
-      return String(val);
-    };
-
     if (!wasSet && isSet) {
-      return [{ key: displayKey, type: "added" as const, newVal: formatVal(newVal) }];
+      return [{ key, type: "added" as const, newVal: String(newVal) }];
     }
     if (wasSet && !isSet) {
-      return [{ key: displayKey, type: "removed" as const, oldVal: formatVal(oldVal) }];
+      return [{ key, type: "removed" as const, oldVal: String(oldVal) }];
     }
     return [
       {
-        key: displayKey,
+        key,
         type: "changed" as const,
-        oldVal: formatVal(oldVal),
-        newVal: formatVal(newVal),
+        oldVal: String(oldVal),
+        newVal: String(newVal),
       },
     ];
   });

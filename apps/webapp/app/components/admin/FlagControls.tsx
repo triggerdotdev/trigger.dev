@@ -57,6 +57,48 @@ export function EnumControl({
   );
 }
 
+export type WorkerGroup = { id: string; name: string };
+
+export function WorkerGroupControl({
+  value,
+  workerGroups,
+  onChange,
+  dimmed,
+}: {
+  value: string | undefined;
+  workerGroups: WorkerGroup[];
+  onChange: (val: string) => void;
+  dimmed: boolean;
+}) {
+  const items = [UNSET_VALUE, ...workerGroups.map((wg) => wg.id)];
+
+  return (
+    <Select
+      variant="tertiary/small"
+      value={value ?? UNSET_VALUE}
+      setValue={onChange}
+      items={items}
+      text={(val) => {
+        if (val === UNSET_VALUE) return "unset";
+        const wg = workerGroups.find((w) => w.id === val);
+        return wg ? wg.name : val;
+      }}
+      className={cn(dimmed && "opacity-50")}
+    >
+      {(items) =>
+        items.map((item) => {
+          const wg = workerGroups.find((w) => w.id === item);
+          return (
+            <SelectItem key={item} value={item}>
+              {item === UNSET_VALUE ? "unset" : wg ? wg.name : item}
+            </SelectItem>
+          );
+        })
+      }
+    </Select>
+  );
+}
+
 export function StringControl({
   value,
   onChange,

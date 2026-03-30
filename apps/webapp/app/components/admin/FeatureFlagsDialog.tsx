@@ -10,17 +10,27 @@ import {
 } from "~/components/primitives/Dialog";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { LockClosedIcon } from "@heroicons/react/20/solid";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { cn } from "~/utils/cn";
-import { FEATURE_FLAG, type FlagControlType } from "~/v3/featureFlags";
-import { UNSET_VALUE, BooleanControl, EnumControl, StringControl } from "./FlagControls";
-
-const HIDDEN_FLAGS = [FEATURE_FLAG.defaultWorkerInstanceGroupId];
+import { FEATURE_FLAG, ORG_LOCKED_FLAGS, type FlagControlType } from "~/v3/featureFlags";
+import {
+  UNSET_VALUE,
+  BooleanControl,
+  EnumControl,
+  StringControl,
+  WorkerGroupControl,
+  type WorkerGroup,
+} from "./FlagControls";
 
 type LoaderData = {
   org: { id: string; title: string; slug: string };
   orgFlags: Record<string, unknown>;
   globalFlags: Record<string, unknown>;
   controlTypes: Record<string, FlagControlType>;
+  workerGroupName?: string;
+  workerGroups?: WorkerGroup[];
+  isManagedCloud?: boolean;
 };
 
 type ActionData = {
@@ -47,6 +57,9 @@ export function FeatureFlagsDialog({
   const [overrides, setOverrides] = useState<Record<string, unknown>>({});
   const [initialOverrides, setInitialOverrides] = useState<Record<string, unknown>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+
+  const isLocked = (key: string) => !unlocked && ORG_LOCKED_FLAGS.includes(key);
 
   useEffect(() => {
     if (open && orgId) {
@@ -104,11 +117,7 @@ export function FeatureFlagsDialog({
   const jsonPreview =
     Object.keys(overrides).length === 0 ? "null" : JSON.stringify(overrides, null, 2);
 
-  const sortedFlagKeys = data
-    ? Object.keys(data.controlTypes)
-        .filter((key) => !HIDDEN_FLAGS.includes(key))
-        .sort()
-    : [];
+  const sortedFlagKeys = data ? Object.keys(data.controlTypes).sort() : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -118,6 +127,23 @@ export function FeatureFlagsDialog({
           Org-level overrides. Unset flags inherit from global defaults.
         </DialogDescription>
 
+        {data && (
+          <div className={data.isManagedCloud ? "cursor-not-allowed" : undefined}>
+            <CheckboxWithLabel
+              variant="simple/small"
+              label={
+                data.isManagedCloud
+                  ? "Unlock read-only flags (only in unmanaged cloud)"
+                  : "Unlock read-only flags"
+              }
+              defaultChecked={unlocked}
+              onChange={setUnlocked}
+              disabled={data.isManagedCloud}
+              className={data.isManagedCloud ? "pointer-events-none" : undefined}
+            />
+          </div>
+        )}
+
         <div className="max-h-[60vh] overflow-y-auto">
           {isLoading ? (
             <div className="py-8 text-center text-sm text-text-dimmed">Loading flags...</div>
@@ -125,9 +151,33 @@ export function FeatureFlagsDialog({
             <div className="flex flex-col gap-1.5">
               {sortedFlagKeys.map((key) => {
                 const control = data.controlTypes[key];
-                const isOverridden = key in overrides;
+                const locked = isLocked(key);
                 const globalValue = data.globalFlags[key as keyof typeof data.globalFlags];
-                const globalDisplay = globalValue !== undefined ? String(globalValue) : "unset";
+                const isWorkerGroup = key === FEATURE_FLAG.defaultWorkerInstanceGroupId;
+                const globalDisplay =
+                  isWorkerGroup && data.workerGroupName && globalValue !== undefined
+                    ? `${data.workerGroupName} (${String(globalValue).slice(0, 8)}...)`
+                    : globalValue !== undefined
+                      ? String(globalValue)
+                      : "unset";
+
+                if (locked) {
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between rounded-md border border-transparent bg-charcoal-750 px-3 py-2.5"
+                      title="Global-level setting - not editable per org"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm text-text-dimmed">{key}</div>
+                        <div className="text-xs text-charcoal-400">global: {globalDisplay}</div>
+                      </div>
+                      <LockClosedIcon className="size-4 text-charcoal-500" />
+                    </div>
+                  );
+                }
+
+                const isOverridden = key in overrides;
 
                 return (
                   <div
@@ -160,15 +210,26 @@ export function FeatureFlagsDialog({
                         unset
                       </Button>
 
-                      {control.type === "boolean" && (
+                      {isWorkerGroup && data.workerGroups ? (
+                        <WorkerGroupControl
+                          value={isOverridden ? (overrides[key] as string) : undefined}
+                          workerGroups={data.workerGroups as WorkerGroup[]}
+                          onChange={(val) => {
+                            if (val === UNSET_VALUE) {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isOverridden}
+                        />
+                      ) : control.type === "boolean" ? (
                         <BooleanControl
                           value={isOverridden ? (overrides[key] as boolean) : undefined}
                           onChange={(val) => setFlagValue(key, val)}
                           dimmed={!isOverridden}
                         />
-                      )}
-
-                      {control.type === "enum" && (
+                      ) : control.type === "enum" ? (
                         <EnumControl
                           value={isOverridden ? (overrides[key] as string) : undefined}
                           options={control.options}
@@ -181,9 +242,7 @@ export function FeatureFlagsDialog({
                           }}
                           dimmed={!isOverridden}
                         />
-                      )}
-
-                      {control.type === "string" && (
+                      ) : control.type === "string" ? (
                         <StringControl
                           value={isOverridden ? (overrides[key] as string) : ""}
                           onChange={(val) => {
@@ -195,7 +254,7 @@ export function FeatureFlagsDialog({
                           }}
                           dimmed={!isOverridden}
                         />
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );

@@ -26,6 +26,22 @@ export const FeatureFlagCatalog = {
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 
+// Infrastructure flags that are read-only on the global flags page.
+// Shown with current/resolved value but no controls.
+export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
+  FEATURE_FLAG.defaultWorkerInstanceGroupId,
+  FEATURE_FLAG.runsListRepository,
+  FEATURE_FLAG.taskEventRepository,
+];
+
+// Flags that are read-only on the org-level dialog.
+// Shown with global value but no controls (org can't override these).
+export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
+  FEATURE_FLAG.defaultWorkerInstanceGroupId,
+  FEATURE_FLAG.runsListRepository,
+  FEATURE_FLAG.taskEventRepository,
+];
+
 // Create a Zod schema from the existing catalog
 export const FeatureFlagCatalogSchema = z.object(FeatureFlagCatalog);
 export type FeatureFlagCatalog = z.infer<typeof FeatureFlagCatalogSchema>;
