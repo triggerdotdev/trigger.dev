@@ -81,6 +81,7 @@ export function OrganizationSettingsSideMenu({
                 name="Usage"
                 icon={ChartBarIcon}
                 activeIconColor="text-indigo-500"
+                inactiveIconColor="text-indigo-500"
                 to={v3UsagePath(organization)}
                 data-action="usage"
               />
@@ -88,6 +89,7 @@ export function OrganizationSettingsSideMenu({
                 name="Billing"
                 icon={CreditCardIcon}
                 activeIconColor="text-emerald-500"
+                inactiveIconColor="text-emerald-500"
                 to={v3BillingPath(organization)}
                 data-action="billing"
                 badge={
@@ -100,6 +102,7 @@ export function OrganizationSettingsSideMenu({
                 name="Billing alerts"
                 icon={BellAlertIcon}
                 activeIconColor="text-rose-500"
+                inactiveIconColor="text-rose-500"
                 to={v3BillingAlertsPath(organization)}
                 data-action="billing-alerts"
               />
@@ -110,6 +113,7 @@ export function OrganizationSettingsSideMenu({
               name="Private Connections"
               icon={LockClosedIcon}
               activeIconColor="text-purple-500"
+              inactiveIconColor="text-purple-500"
               to={v3PrivateConnectionsPath(organization)}
               data-action="private-connections"
             />
@@ -118,6 +122,7 @@ export function OrganizationSettingsSideMenu({
             name="Team"
             icon={UserGroupIcon}
             activeIconColor="text-amber-500"
+            inactiveIconColor="text-amber-500"
             to={organizationTeamPath(organization)}
             data-action="team"
           />
@@ -125,6 +130,7 @@ export function OrganizationSettingsSideMenu({
             name="Settings"
             icon={Cog8ToothIcon}
             activeIconColor="text-orgSettings"
+            inactiveIconColor="text-orgSettings"
             to={organizationSettingsPath(organization)}
             data-action="settings"
           />
@@ -137,6 +143,8 @@ export function OrganizationSettingsSideMenu({
             name="Vercel"
             icon={VercelLogo}
             activeIconColor="text-white"
+            inactiveIconColor="text-white"
+            iconClassName="size-4 ml-0.5"
             to={organizationVercelIntegrationPath(organization)}
             data-action="integrations"
           />
@@ -144,6 +152,7 @@ export function OrganizationSettingsSideMenu({
             name="Slack"
             icon={SlackIcon}
             activeIconColor="text-white"
+            inactiveIconColor="text-white"
             to={organizationSlackIntegrationPath(organization)}
             data-action="integrations"
           />
