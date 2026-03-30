@@ -119,7 +119,7 @@ export function ChatSidebar({
             onChange={(e) => onTaskModeChange(e.target.value)}
             className="flex-1 rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-600 outline-none focus:border-blue-500"
           >
-            <option value="ai-chat">ai-chat (chat.task)</option>
+            <option value="ai-chat">ai-chat (chat.agent)</option>
             <option value="ai-chat-raw">ai-chat-raw (raw task)</option>
             <option value="ai-chat-session">ai-chat-session (session)</option>
           </select>

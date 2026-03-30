@@ -42,6 +42,7 @@ const RunListInputOptionsSchema = z.object({
   queues: z.array(z.string()).optional(),
   machines: MachinePresetName.array().optional(),
   errorId: z.string().optional(),
+  taskKinds: z.array(z.string()).optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
@@ -53,6 +54,7 @@ export type RunListInputFilters = Omit<
 export type ParsedRunFilters = RunListInputFilters & {
   cursor?: string;
   direction?: "forward" | "backward";
+  sources?: string[];
 };
 
 export type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
@@ -102,6 +104,7 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     metadataType: true;
     machinePreset: true;
     queue: true;
+    annotations: true;
   };
 }>;
 

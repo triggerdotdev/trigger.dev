@@ -28,6 +28,7 @@
   ],
   "dependencies": {
     "@ai-sdk/openai": "^1.3.23",
+    "@ai-sdk/react": "^3.0.0",
     "@ariakit/react": "^0.4.6",
     "@ariakit/react-core": "^0.4.6",
     "@aws-sdk/client-ecr": "^3.931.0",

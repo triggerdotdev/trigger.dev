@@ -1,11 +1,11 @@
 /**
  * E2B sandboxes keyed by Trigger run id.
  *
- * - Warmed from `chat.task` `onTurnStart` (non-blocking) so the first `executeCode` tool call is faster.
- * - Disposed in task `onWait` when `wait.type === "token"` (input-stream suspend, same path as `wait.for` tokens).
- * - `onComplete` disposes any leftover sandbox if the run ends without hitting another token wait.
+ * - Warmed from `chat.agent` `onTurnStart` (non-blocking) so the first `executeCode` tool call is faster.
+ * - Disposed in `onChatSuspend` before the run suspends waiting for the next message.
+ * - `onComplete` disposes any leftover sandbox if the run ends without hitting another suspend.
  *
- * No extra `chat.task` SDK hook is required for the suspend boundary — platform `onWait` is sufficient.
+ * No extra SDK hook is required beyond `onChatSuspend` and `onComplete`.
  */
 import { chat } from "@trigger.dev/sdk/ai";
 import { Sandbox } from "@e2b/code-interpreter";

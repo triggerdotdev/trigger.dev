@@ -44,10 +44,11 @@ import { metadata } from "./metadata.js";
 import type { ResolvedPrompt } from "./prompt.js";
 import { streams } from "./streams.js";
 import { createTask, trigger as triggerTaskInternal } from "./shared.js";
+import { resourceCatalog } from "@trigger.dev/core/v3";
 import type { TriggerChatTaskParams, TriggerChatTaskResult } from "./chat.js";
 import { tracer } from "./tracer.js";
 
-/** Re-export for typing `ctx` in `chat.task` hooks without importing `@trigger.dev/core`. */
+/** Re-export for typing `ctx` in `chat.agent` hooks without importing `@trigger.dev/core`. */
 export type { TaskRunContext } from "@trigger.dev/core/v3";
 import {
   CHAT_STREAM_KEY as _CHAT_STREAM_KEY,
@@ -69,7 +70,7 @@ function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
 export type ToolCallExecutionOptions = {
   toolCallId: string;
   experimental_context?: unknown;
-  /** Chat context — only present when the tool runs inside a chat.task turn. */
+  /** Chat context — only present when the tool runs inside a chat.agent turn. */
   chatId?: string;
   turn?: number;
   continuation?: boolean;
@@ -78,7 +79,7 @@ export type ToolCallExecutionOptions = {
   chatLocals?: Record<string, unknown>;
 };
 
-/** Chat context stored in locals during each chat.task turn for auto-detection. */
+/** Chat context stored in locals during each chat.agent turn for auto-detection. */
 type ChatTurnContext<TClientData = unknown> = {
   chatId: string;
   turn: number;
@@ -89,14 +90,14 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
 
 type ToolResultContent = Array<
   | {
-      type: "text";
-      text: string;
-    }
+    type: "text";
+    text: string;
+  }
   | {
-      type: "image";
-      data: string;
-      mimeType?: string;
-    }
+    type: "image";
+    data: string;
+    mimeType?: string;
+  }
 >;
 
 export type ToolOptions<TResult> = {
@@ -302,7 +303,7 @@ function getToolCallId(): string | undefined {
 }
 
 /**
- * Get the chat context from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`) within a `chat.task`.
+ * Get the chat context from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`) within a `chat.agent`.
  * Pass `typeof yourChatTask` as the type parameter to get typed `clientData`.
  * Returns `undefined` if the parent is not a chat task.
  *
@@ -341,8 +342,8 @@ function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatT
   const ctx = getToolChatContext<TChatTask>();
   if (!ctx) {
     throw new Error(
-      "ai.chatContextOrThrow() called outside of a chat.task context. " +
-        "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.task."
+      "ai.chatContextOrThrow() called outside of a chat.agent context. " +
+      "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.agent."
     );
   }
   return ctx;
@@ -385,7 +386,7 @@ export const ai = {
   currentToolOptions: getToolOptionsFromMetadata,
   /** Get the tool call ID from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`). */
   toolCallId: getToolCallId,
-  /** Get chat context (chatId, turn, clientData, etc.) from inside a subtask of a `chat.task`. Returns undefined if not in a chat context. */
+  /** Get chat context (chatId, turn, clientData, etc.) from inside a subtask of a `chat.agent`. Returns undefined if not in a chat context. */
   chatContext: getToolChatContext,
   /** Get chat context or throw if not in a chat context. Pass `typeof yourChatTask` for typed clientData. */
   chatContextOrThrow: getToolChatContextOrThrow,
@@ -420,7 +421,7 @@ function createChatAccessToken<TTask extends AnyTask>(
 
 /**
  * The default stream key used for chat transport communication.
- * Both `TriggerChatTransport` (frontend) and `pipeChat`/`chatTask` (backend)
+ * Both `TriggerChatTransport` (frontend) and `pipeChat`/`chatAgent` (backend)
  * use this key by default.
  */
 export const CHAT_STREAM_KEY = _CHAT_STREAM_KEY;
@@ -432,7 +433,7 @@ export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
  * Typed chat output stream. Provides `.writer()`, `.pipe()`, `.append()`,
  * and `.read()` methods pre-bound to the chat stream key and typed to `UIMessageChunk`.
  *
- * Use from within a `chat.task` run to write custom chunks:
+ * Use from within a `chat.agent` run to write custom chunks:
  * ```ts
  * const { waitUntilComplete } = chat.stream.writer({
  *   execute: ({ write }) => {
@@ -561,7 +562,7 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
 };
 
 /**
- * The payload shape passed to the `chatTask` run function.
+ * The payload shape passed to the `chatAgent` run function.
  *
  * - `messages` contains model-ready messages (converted via `convertToModelMessages`) —
  *   pass these directly to `streamText`.
@@ -600,7 +601,7 @@ export type ChatTaskPayload<TClientData = unknown> = {
 };
 
 /**
- * Abort signals provided to the `chatTask` run function.
+ * Abort signals provided to the `chatAgent` run function.
  */
 export type ChatTaskSignals = {
   /** Combined signal — fires on run cancel OR stop generation. Pass to `streamText`. */
@@ -612,7 +613,7 @@ export type ChatTaskSignals = {
 };
 
 /**
- * The full payload passed to a `chatTask` run function.
+ * The full payload passed to a `chatAgent` run function.
  * Extends `ChatTaskPayload` (the wire payload) with abort signals.
  */
 export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> &
@@ -653,7 +654,7 @@ const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQue
  */
 const chatPipeCountKey = locals.create<number>("chat.pipeCount");
 const chatStopControllerKey = locals.create<AbortController>("chat.stopController");
-/** Static (task-level) UIMessageStream options, set once during chatTask setup. @internal */
+/** Static (task-level) UIMessageStream options, set once during chatAgent setup. @internal */
 const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
   "chat.uiMessageStreamOptions.static"
 );
@@ -752,8 +753,8 @@ interface CompactionState {
 const chatCompactionStateKey = locals.create<CompactionState>("chat.compaction");
 const chatOnCompactedKey =
   locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
-/** @internal Full task `ctx` for the active `chat.task` run (for hooks invoked from nested compaction). */
-const chatTaskRunContextKey = locals.create<TaskRunContext>("chat.taskRunContext");
+/** @internal Full task `ctx` for the active `chat.agent` run (for hooks invoked from nested compaction). */
+const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunContext");
 const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
@@ -767,13 +768,13 @@ export type SummarizeEvent = {
   messages: ModelMessage[];
   /** Full usage object from the triggering step/turn. */
   usage?: LanguageModelUsage;
-  /** Cumulative token usage across all completed turns. Present in chat.task contexts. */
+  /** Cumulative token usage across all completed turns. Present in chat.agent contexts. */
   totalUsage?: LanguageModelUsage;
-  /** The chat session ID (if running inside a chat.task). */
+  /** The chat session ID (if running inside a chat.agent). */
   chatId?: string;
-  /** The current turn number (0-indexed, if inside a chat.task). */
+  /** The current turn number (0-indexed, if inside a chat.agent). */
   turn?: number;
-  /** Custom data from the frontend (if inside a chat.task). */
+  /** Custom data from the frontend (if inside a chat.agent). */
   clientData?: unknown;
   /**
    * Where compaction is running:
@@ -810,13 +811,13 @@ export type CompactMessagesEvent<TUIM extends UIMessage = UIMessage> = {
 };
 
 /**
- * Options for the `compaction` field on `chat.task()`.
+ * Options for the `compaction` field on `chat.agent()`.
  *
  * Handles compaction automatically in both the inner loop (prepareStep, between
  * tool-call steps) and the outer loop (between turns, for single-step responses
  * where prepareStep never fires).
  */
-export type ChatTaskCompactionOptions<TUIM extends UIMessage = UIMessage> = {
+export type ChatAgentCompactionOptions<TUIM extends UIMessage = UIMessage> = {
   /** Decide whether to compact. Return true to trigger compaction. */
   shouldCompact: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
   /** Generate a summary from the current messages. Return the summary text. */
@@ -861,8 +862,8 @@ export type ChatTaskCompactionOptions<TUIM extends UIMessage = UIMessage> = {
 };
 
 /** @internal */
-const chatTaskCompactionKey =
-  locals.create<ChatTaskCompactionOptions<UIMessage>>("chat.taskCompaction");
+const chatAgentCompactionKey =
+  locals.create<ChatAgentCompactionOptions<UIMessage>>("chat.agentCompaction");
 
 // ---------------------------------------------------------------------------
 // Pending messages — mid-execution message injection via prepareStep
@@ -917,7 +918,7 @@ export type PendingMessagesInjectedEvent<TUIM extends UIMessage = UIMessage> = {
 };
 
 /**
- * Options for the `pendingMessages` field on `chat.task()`, `chat.createSession()`,
+ * Options for the `pendingMessages` field on `chat.agent()`, `chat.createSession()`,
  * or `ChatMessageAccumulator`.
  *
  * Configures how messages that arrive during streaming are handled. When
@@ -968,9 +969,9 @@ export type PrepareMessagesEvent<TClientData = unknown> = {
   messages: ModelMessage[];
   /** Why messages are being prepared. */
   reason:
-    | "run" // Messages being passed to run() for streamText
-    | "compaction-rebuild" // Rebuilding from a previous compaction summary
-    | "compaction-result"; // Fresh compaction just produced these messages
+  | "run" // Messages being passed to run() for streamText
+  | "compaction-rebuild" // Rebuilding from a previous compaction summary
+  | "compaction-result"; // Fresh compaction just produced these messages
   /** The chat session ID. */
   chatId: string;
   /** The current turn number (0-indexed). */
@@ -992,7 +993,7 @@ export type CompactionChunkData = {
  * Event passed to the `onCompacted` callback.
  */
 export type CompactedEvent = {
-  /** Task run context — same as `task` lifecycle hooks and `chat.task` `run({ ctx })`. */
+  /** Task run context — same as `task` lifecycle hooks and `chat.agent` `run({ ctx })`. */
   ctx: TaskRunContext;
   /** The generated summary text. */
   summary: string;
@@ -1010,9 +1011,9 @@ export type CompactedEvent = {
   outputTokens: number | undefined;
   /** The step number where compaction occurred (0-indexed). */
   stepNumber: number;
-  /** The chat session ID (if running inside a chat.task). */
+  /** The chat session ID (if running inside a chat.agent). */
   chatId?: string;
-  /** The current turn number (if running inside a chat.task). */
+  /** The current turn number (if running inside a chat.agent). */
   turn?: number;
   /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
   writer: ChatWriter;
@@ -1032,13 +1033,13 @@ export type ShouldCompactEvent = {
   outputTokens: number | undefined;
   /** Full usage object from the triggering step/turn. */
   usage?: LanguageModelUsage;
-  /** Cumulative token usage across all completed turns. Present in chat.task contexts. */
+  /** Cumulative token usage across all completed turns. Present in chat.agent contexts. */
   totalUsage?: LanguageModelUsage;
-  /** The chat session ID (if running inside a chat.task). */
+  /** The chat session ID (if running inside a chat.agent). */
   chatId?: string;
-  /** The current turn number (0-indexed, if inside a chat.task). */
+  /** The current turn number (0-indexed, if inside a chat.agent). */
   turn?: number;
-  /** Custom data from the frontend (if inside a chat.task). */
+  /** Custom data from the frontend (if inside a chat.agent). */
   clientData?: unknown;
   /**
    * Where this check is running:
@@ -1235,18 +1236,18 @@ async function chatCompact(
 
   const shouldTrigger = options.shouldCompact
     ? await options.shouldCompact({
-        messages,
-        totalTokens,
-        inputTokens,
-        outputTokens,
-        usage: currentStep.usage,
-        source: "inner",
-        stepNumber,
-        steps,
-        chatId: turnCtx?.chatId,
-        turn: turnCtx?.turn,
-        clientData: turnCtx?.clientData,
-      })
+      messages,
+      totalTokens,
+      inputTokens,
+      outputTokens,
+      usage: currentStep.usage,
+      source: "inner",
+      stepNumber,
+      steps,
+      chatId: turnCtx?.chatId,
+      turn: turnCtx?.turn,
+      clientData: turnCtx?.clientData,
+    })
     : totalTokens != null && options.threshold != null && totalTokens > options.threshold;
 
   if (!shouldTrigger) {
@@ -1294,7 +1295,7 @@ async function chatCompact(
           const onCompactedHook = locals.get(chatOnCompactedKey);
           if (onCompactedHook) {
             await onCompactedHook({
-              ctx: locals.get(chatTaskRunContextKey)!,
+              ctx: locals.get(chatAgentRunContextKey)!,
               summary,
               messages,
               messageCount: messages.length,
@@ -1557,16 +1558,16 @@ function isCompactionSafe(messages: UIMessage[]): boolean {
 export type ChatPromptValue =
   | ResolvedPrompt
   | {
-      text: string;
-      model: undefined;
-      config: undefined;
-      promptId: string;
-      version: number;
-      labels: string[];
-      toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
-        experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
-      };
+    text: string;
+    model: undefined;
+    config: undefined;
+    promptId: string;
+    version: number;
+    labels: string[];
+    toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
+      experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
     };
+  };
 
 /** @internal */
 const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
@@ -1658,7 +1659,7 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   Object.assign(result, telemetry);
 
   // Auto-inject prepareStep for compaction, pending messages, and background context injection.
-  const taskCompaction = locals.get(chatTaskCompactionKey);
+  const taskCompaction = locals.get(chatAgentCompactionKey);
   const taskPendingMessages = locals.get(chatPendingMessagesKey);
 
   {
@@ -1747,7 +1748,7 @@ export type PipeChatOptions = {
  * Options for customizing the `toUIMessageStream()` call used when piping
  * `streamText` results to the frontend.
  *
- * Set static defaults via `uiMessageStreamOptions` on `chat.task()`, or
+ * Set static defaults via `uiMessageStreamOptions` on `chat.agent()`, or
  * override per-turn via `chat.setUIMessageStreamOptions()`.
  *
  * `onFinish`, `originalMessages`, and `generateMessageId` are omitted because
@@ -1841,7 +1842,7 @@ async function pipeChat(
   } else {
     throw new Error(
       "pipeChat: source must be a StreamTextResult (with .toUIMessageStream()), " +
-        "an AsyncIterable, or a ReadableStream"
+      "an AsyncIterable, or a ReadableStream"
     );
   }
 
@@ -2027,35 +2028,35 @@ export type BeforeTurnCompleteEvent<
  */
 export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
   | {
-      /** Suspend is happening after onPreload, before the first message. */
-      phase: "preload";
-      /** Task run context. */
-      ctx: TaskRunContext;
-      /** The chat session ID. */
-      chatId: string;
-      /** The Trigger.dev run ID. */
-      runId: string;
-      /** Custom data from the frontend. */
-      clientData?: TClientData;
-    }
+    /** Suspend is happening after onPreload, before the first message. */
+    phase: "preload";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  }
   | {
-      /** Suspend is happening after a completed turn, waiting for the next message. */
-      phase: "turn";
-      /** Task run context. */
-      ctx: TaskRunContext;
-      /** The chat session ID. */
-      chatId: string;
-      /** The Trigger.dev run ID. */
-      runId: string;
-      /** The turn number (0-indexed) that just completed. */
-      turn: number;
-      /** The accumulated model messages after the completed turn. */
-      messages: ModelMessage[];
-      /** The accumulated UI messages after the completed turn. */
-      uiMessages: TUIM[];
-      /** Custom data from the frontend. */
-      clientData?: TClientData;
-    };
+    /** Suspend is happening after a completed turn, waiting for the next message. */
+    phase: "turn";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** The turn number (0-indexed) that just completed. */
+    turn: number;
+    /** The accumulated model messages after the completed turn. */
+    messages: ModelMessage[];
+    /** The accumulated UI messages after the completed turn. */
+    uiMessages: TUIM[];
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  };
 
 /**
  * Discriminated event passed to the `onChatResume` callback.
@@ -2063,37 +2064,37 @@ export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIM
  */
 export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
   | {
-      /** First message arrived after preload suspension. */
-      phase: "preload";
-      /** Task run context. */
-      ctx: TaskRunContext;
-      /** The chat session ID. */
-      chatId: string;
-      /** The Trigger.dev run ID. */
-      runId: string;
-      /** Custom data from the frontend. */
-      clientData?: TClientData;
-    }
+    /** First message arrived after preload suspension. */
+    phase: "preload";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  }
   | {
-      /** Next message arrived after turn suspension. */
-      phase: "turn";
-      /** Task run context. */
-      ctx: TaskRunContext;
-      /** The chat session ID. */
-      chatId: string;
-      /** The Trigger.dev run ID. */
-      runId: string;
-      /** The turn number that was completed before suspension. */
-      turn: number;
-      /** The accumulated model messages (from before suspension). */
-      messages: ModelMessage[];
-      /** The accumulated UI messages (from before suspension). */
-      uiMessages: TUIM[];
-      /** Custom data from the frontend. */
-      clientData?: TClientData;
-    };
+    /** Next message arrived after turn suspension. */
+    phase: "turn";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** The turn number that was completed before suspension. */
+    turn: number;
+    /** The accumulated model messages (from before suspension). */
+    messages: ModelMessage[];
+    /** The accumulated UI messages (from before suspension). */
+    uiMessages: TUIM[];
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  };
 
-export type ChatTaskOptions<
+export type ChatAgentOptions<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
@@ -2114,7 +2115,7 @@ export type ChatTaskOptions<
    * ```ts
    * import { z } from "zod";
    *
-   * chat.task({
+   * chat.agent({
    *   id: "my-chat",
    *   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
    *   run: async ({ messages, clientData, ctx, signal }) => {
@@ -2235,7 +2236,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * chat.task({
+   * chat.agent({
    *   id: "my-chat",
    *   compaction: {
    *     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
@@ -2249,7 +2250,7 @@ export type ChatTaskOptions<
    * });
    * ```
    */
-  compaction?: ChatTaskCompactionOptions<TUIMessage>;
+  compaction?: ChatAgentCompactionOptions<TUIMessage>;
 
   /**
    * Configure how messages that arrive during streaming are handled.
@@ -2384,7 +2385,7 @@ export type ChatTaskOptions<
    *
    * @example
    * ```ts
-   * chat.task({
+   * chat.agent({
    *   id: "my-chat",
    *   uiMessageStreamOptions: {
    *     sendReasoning: true,
@@ -2472,7 +2473,7 @@ export type ChatTaskOptions<
  * import { streamText, convertToModelMessages } from "ai";
  * import { openai } from "@ai-sdk/openai";
  *
- * export const myChat = chat.task({
+ * export const myChat = chat.agent({
  *   id: "my-chat",
  *   run: async ({ messages, signal }) => {
  *     return streamText({
@@ -2484,12 +2485,12 @@ export type ChatTaskOptions<
  * });
  * ```
  */
-function chatTask<
+function chatAgent<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
 >(
-  options: ChatTaskOptions<TIdentifier, TClientDataSchema, TUIMessage>
+  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
@@ -2518,17 +2519,20 @@ function chatTask<
 
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
 
-  return createTask<
+  const task = createTask<
     TIdentifier,
     ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
     unknown
   >({
+    retry: { maxAttempts: 1 },
     ...restOptions,
+    triggerSource: "agent",
+    agentConfig: { type: "ai-sdk-chat" },
     run: async (
       payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
       { signal: runSignal, ctx }
     ) => {
-      locals.set(chatTaskRunContextKey, ctx);
+      locals.set(chatAgentRunContextKey, ctx);
 
       // Set gen_ai.conversation.id on the run-level span for dashboard context
       const activeSpan = trace.getActiveSpan();
@@ -2552,8 +2556,8 @@ function chatTask<
 
       if (compaction) {
         locals.set(
-          chatTaskCompactionKey,
-          compaction as unknown as ChatTaskCompactionOptions<UIMessage>
+          chatAgentCompactionKey,
+          compaction as unknown as ChatAgentCompactionOptions<UIMessage>
         );
       }
 
@@ -2659,51 +2663,51 @@ function chatTask<
             skipSuspend: exitAfterPreloadIdle,
             onSuspend: onChatSuspend
               ? async () => {
-                  await tracer.startActiveSpan(
-                    "onChatSuspend()",
-                    async () => {
-                      await onChatSuspend({
-                        phase: "preload",
-                        ctx,
-                        chatId: payload.chatId,
-                        runId: currentRunId,
-                        clientData: preloadClientData,
-                      });
+                await tracer.startActiveSpan(
+                  "onChatSuspend()",
+                  async () => {
+                    await onChatSuspend({
+                      phase: "preload",
+                      ctx,
+                      chatId: payload.chatId,
+                      runId: currentRunId,
+                      clientData: preloadClientData,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": payload.chatId,
+                      "chat.suspend.phase": "preload",
                     },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": payload.chatId,
-                        "chat.suspend.phase": "preload",
-                      },
-                    }
-                  );
-                }
+                  }
+                );
+              }
               : undefined,
             onResume: onChatResume
               ? async () => {
-                  await tracer.startActiveSpan(
-                    "onChatResume()",
-                    async () => {
-                      await onChatResume({
-                        phase: "preload",
-                        ctx,
-                        chatId: payload.chatId,
-                        runId: currentRunId,
-                        clientData: preloadClientData,
-                      });
+                await tracer.startActiveSpan(
+                  "onChatResume()",
+                  async () => {
+                    await onChatResume({
+                      phase: "preload",
+                      ctx,
+                      chatId: payload.chatId,
+                      runId: currentRunId,
+                      clientData: preloadClientData,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": payload.chatId,
+                      "chat.resume.phase": "preload",
                     },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": payload.chatId,
-                        "chat.resume.phase": "preload",
-                      },
-                    }
-                  );
-                }
+                  }
+                );
+              }
               : undefined,
           });
 
@@ -2720,730 +2724,839 @@ function chatTask<
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
-          // Extract turn-level context before entering the span
-          const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
-          const clientData = (
-            parseClientData ? await parseClientData(wireMetadata) : wireMetadata
-          ) as inferSchemaOut<TClientDataSchema>;
-          const lastUserMessage = extractLastUserMessageText(uiMessages);
+          try {
+              // Extract turn-level context before entering the span
+              const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
+              const clientData = (
+                parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+              ) as inferSchemaOut<TClientDataSchema>;
+              const lastUserMessage = extractLastUserMessageText(uiMessages);
 
-          const turnAttributes: Attributes = {
-            "turn.number": turn + 1,
-            "gen_ai.conversation.id": currentWirePayload.chatId,
-            "gen_ai.operation.name": "chat",
-            "chat.trigger": currentWirePayload.trigger,
-            [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-chatbot",
-            [SemanticInternalAttributes.ENTITY_TYPE]: "chat-turn",
-          };
-
-          if (lastUserMessage) {
-            turnAttributes["chat.user_message"] = lastUserMessage;
-
-            // Show a truncated preview of the user message as an accessory
-            const preview =
-              lastUserMessage.length > 80 ? lastUserMessage.slice(0, 80) + "..." : lastUserMessage;
-            Object.assign(
-              turnAttributes,
-              accessoryAttributes({
-                items: [{ text: preview, variant: "normal" }],
-                style: "codepath",
-              })
-            );
-          }
-
-          if (wireMetadata !== undefined) {
-            turnAttributes["chat.client_data"] =
-              typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
-          }
-
-          const turnResult = await tracer.startActiveSpan(
-            `chat turn ${turn + 1}`,
-            async (turnSpan) => {
-              locals.set(chatPipeCountKey, 0);
-              locals.set(chatDeferKey, new Set());
-              locals.set(chatCompactionStateKey, undefined);
-              locals.set(chatSteeringQueueKey, []);
-              // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
-              // by deferred work from the previous turn's onTurnComplete need to
-              // survive into the next turn. The queue is drained before run().
-              locals.set(chatInjectedMessageIdsKey, new Set());
-
-              // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
-              locals.set(chatTurnContextKey, {
-                chatId: currentWirePayload.chatId,
-                turn,
-                continuation,
-                clientData,
-              });
-
-              // Per-turn stop controller (reset each turn)
-              const stopController = new AbortController();
-              currentStopController = stopController;
-              locals.set(chatStopControllerKey, stopController);
-
-              // Three signals for the user's run function
-              const stopSignal = stopController.signal;
-              const cancelSignal = runSignal;
-              const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
-
-              // Buffer messages that arrive during streaming
-              const pendingMessages: ChatTaskWirePayload<
-                TUIMessage,
-                inferSchemaIn<TClientDataSchema>
-              >[] = [];
-              const pmConfig = locals.get(chatPendingMessagesKey);
-              const msgSub = messagesInput.on(async (msg) => {
-                // If pendingMessages is configured, route to the steering queue
-                // instead of the wire buffer. The frontend handles re-sending
-                // non-injected messages via sendMessage on turn complete.
-                if (pmConfig) {
-                  const lastUIMessage = msg.messages?.[msg.messages.length - 1];
-                  if (lastUIMessage) {
-                    if (pmConfig.onReceived) {
-                      try {
-                        await pmConfig.onReceived({
-                          message: lastUIMessage as TUIMessage,
-                          chatId: currentWirePayload.chatId,
-                          turn,
-                        });
-                      } catch {
-                        /* non-fatal */
-                      }
-                    }
-
-                    try {
-                      const queue = locals.get(chatSteeringQueueKey) ?? [];
-                      // Deduplicate by message ID — guards against double-sends
-                      if (
-                        lastUIMessage.id &&
-                        queue.some((e) => e.uiMessage.id === lastUIMessage.id)
-                      ) {
-                        return;
-                      }
-                      const modelMsgs = await toModelMessages([lastUIMessage]);
-                      queue.push({
-                        uiMessage: lastUIMessage as UIMessage,
-                        modelMessages: modelMsgs,
-                      });
-                      locals.set(chatSteeringQueueKey, queue);
-                    } catch {
-                      /* conversion failed — skip steering queue */
-                    }
-                  }
-                  return; // Don't add to wire buffer — frontend handles non-injected case
-                }
-
-                // No pendingMessages config — standard wire buffer for next turn
-                pendingMessages.push(
-                  msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
-                );
-              });
-
-              // Clean up any incomplete tool parts in the incoming history.
-              // When a previous run was stopped mid-tool-call, the frontend's
-              // useChat state may still contain assistant messages with tool parts
-              // in partial/input-available state. These cause API errors (e.g.
-              // Anthropic requires every tool_use to have a matching tool_result).
-              const cleanedUIMessages = uiMessages.map((msg) =>
-                msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
-              );
-
-              // Convert the incoming UIMessages to model messages and update the accumulator.
-              // Turn 1: full history from the frontend → replaces the accumulator.
-              // Turn 2+: only the new message(s) → appended to the accumulator.
-              const incomingModelMessages = await toModelMessages(cleanedUIMessages);
-
-              // Track new messages for this turn (user input + assistant response).
-              const turnNewModelMessages: ModelMessage[] = [];
-              const turnNewUIMessages: TUIMessage[] = [];
-
-              if (turn === 0) {
-                accumulatedMessages = incomingModelMessages;
-                accumulatedUIMessages = [...cleanedUIMessages];
-                // On first turn, the "new" messages are just the last user message
-                // (the rest is history). We'll add the response after streaming.
-                if (cleanedUIMessages.length > 0) {
-                  turnNewUIMessages.push(cleanedUIMessages[cleanedUIMessages.length - 1]!);
-                  const lastModel = incomingModelMessages[incomingModelMessages.length - 1];
-                  if (lastModel) turnNewModelMessages.push(lastModel);
-                }
-              } else if (currentWirePayload.trigger === "regenerate-message") {
-                // Regenerate: frontend sent full history with last assistant message
-                // removed. Reset the accumulator to match.
-                accumulatedMessages = incomingModelMessages;
-                accumulatedUIMessages = [...cleanedUIMessages];
-                // No new user messages for regenerate — just the response (added below)
-              } else {
-                // Submit: frontend sent only the new user message(s). Append to accumulator.
-                accumulatedMessages.push(...incomingModelMessages);
-                accumulatedUIMessages.push(...cleanedUIMessages);
-                turnNewModelMessages.push(...incomingModelMessages);
-                turnNewUIMessages.push(...cleanedUIMessages);
-              }
-
-              // Mint a scoped public access token once per turn, reused for
-              // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
-              const currentRunId = ctx.run.id;
-              let turnAccessToken = "";
-              if (currentRunId) {
-                try {
-                  turnAccessToken = await auth.createPublicToken({
-                    scopes: {
-                      read: { runs: currentRunId },
-                      write: { inputStreams: currentRunId },
-                    },
-                    expirationTime: chatAccessTokenTTL,
-                  });
-                } catch {
-                  // Token creation failed
-                }
-              }
-
-              // Fire onChatStart on the first turn
-              if (turn === 0 && onChatStart) {
-                await tracer.startActiveSpan(
-                  "onChatStart()",
-                  async () => {
-                    await withChatWriter(async (writer) => {
-                      await onChatStart({
-                        ctx,
-                        chatId: currentWirePayload.chatId,
-                        messages: accumulatedMessages,
-                        clientData,
-                        runId: currentRunId,
-                        chatAccessToken: turnAccessToken,
-                        continuation,
-                        previousRunId,
-                        preloaded,
-                        writer,
-                      });
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": currentWirePayload.chatId,
-                      "chat.messages.count": accumulatedMessages.length,
-                      "chat.continuation": continuation,
-                      "chat.preloaded": preloaded,
-                      ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
-                    },
-                  }
-                );
-              }
-
-              // Fire onTurnStart before running user code — persist messages
-              // so a mid-stream page refresh still shows the user's message.
-              if (onTurnStart) {
-                await tracer.startActiveSpan(
-                  "onTurnStart()",
-                  async () => {
-                    await withChatWriter(async (writer) => {
-                      await onTurnStart({
-                        ctx,
-                        chatId: currentWirePayload.chatId,
-                        messages: accumulatedMessages,
-                        uiMessages: accumulatedUIMessages,
-                        turn,
-                        runId: currentRunId,
-                        chatAccessToken: turnAccessToken,
-                        clientData,
-                        continuation,
-                        previousRunId,
-                        preloaded,
-                        previousTurnUsage,
-                        totalUsage: cumulativeUsage,
-                        writer,
-                      });
-                    });
-
-                    // Check if onTurnStart replaced messages (compaction)
-                    const turnStartOverride = locals.get(chatOverrideMessagesKey);
-                    if (turnStartOverride) {
-                      locals.set(chatOverrideMessagesKey, undefined);
-                      accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
-                      accumulatedMessages = await toModelMessages(turnStartOverride);
-                    }
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": currentWirePayload.chatId,
-                      "chat.turn": turn + 1,
-                      "chat.messages.count": accumulatedMessages.length,
-                      "chat.trigger": currentWirePayload.trigger,
-                      "chat.continuation": continuation,
-                      "chat.preloaded": preloaded,
-                      ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
-                    },
-                  }
-                );
-              }
-
-              // Captured by the onFinish callback below — works even on abort/stop.
-              let capturedResponseMessage: TUIMessage | undefined;
-
-              // Promise that resolves when the AI SDK's onFinish fires.
-              // On abort, the stream's cancel() handler calls onFinish
-              // asynchronously AFTER pipeChat resolves, so we must await
-              // this to avoid a race where we check capturedResponseMessage
-              // before it's been set.
-              let resolveOnFinish: () => void;
-              const onFinishPromise = new Promise<void>((r) => {
-                resolveOnFinish = r;
-              });
-              let onFinishAttached = false;
-              let runResult: unknown;
-
-              try {
-                // Drain any messages injected by background work (e.g. self-review from previous turn)
-                const bgQueue = locals.get(chatBackgroundQueueKey);
-                if (bgQueue && bgQueue.length > 0) {
-                  accumulatedMessages.push(...bgQueue.splice(0));
-                }
-
-                runResult = await userRun({
-                  ...restWire,
-                  messages: await applyPrepareMessages(accumulatedMessages, "run"),
-                  clientData,
-                  continuation,
-                  previousRunId,
-                  preloaded,
-                  previousTurnUsage,
-                  totalUsage: cumulativeUsage,
-                  ctx,
-                  signal: combinedSignal,
-                  cancelSignal,
-                  stopSignal,
-                } as any);
-
-                // Auto-pipe if the run function returned a StreamTextResult or similar,
-                // but only if pipeChat() wasn't already called manually during this turn.
-                // We call toUIMessageStream ourselves to attach onFinish for response capture.
-                if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
-                  onFinishAttached = true;
-                  const uiStream = runResult.toUIMessageStream({
-                    ...resolveUIMessageStreamOptions(),
-                    onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
-                      capturedResponseMessage = responseMessage as TUIMessage;
-                      resolveOnFinish!();
-                    },
-                  });
-                  await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
-                }
-              } catch (error) {
-                // Handle AbortError from streamText gracefully
-                if (error instanceof Error && error.name === "AbortError") {
-                  if (runSignal.aborted) {
-                    return "exit"; // Full run cancellation — exit
-                  }
-                  // Stop generation — fall through to continue the loop
-                } else {
-                  throw error;
-                }
-              } finally {
-                msgSub.off();
-              }
-
-              // Wait for onFinish to fire — on abort this may resolve slightly
-              // after pipeChat, since the stream's cancel() handler is async.
-              if (onFinishAttached) {
-                await onFinishPromise;
-              }
-
-              // Capture token usage from the streamText result (if available).
-              // totalUsage is a PromiseLike that resolves after the stream is consumed.
-              let turnUsage: LanguageModelUsage | undefined;
-              if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
-                try {
-                  turnUsage = await (runResult as any).totalUsage;
-                } catch {
-                  /* non-fatal — usage capture failed */
-                }
-              }
-              if (turnUsage) {
-                cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
-                previousTurnUsage = turnUsage;
-
-                // Add usage attributes to the turn span
-                if (turnUsage.inputTokens != null) {
-                  turnSpan.setAttribute("gen_ai.usage.input_tokens", turnUsage.inputTokens);
-                }
-                if (turnUsage.outputTokens != null) {
-                  turnSpan.setAttribute("gen_ai.usage.output_tokens", turnUsage.outputTokens);
-                }
-                if (turnUsage.totalTokens != null) {
-                  turnSpan.setAttribute("gen_ai.usage.total_tokens", turnUsage.totalTokens);
-                }
-                if (cumulativeUsage.totalTokens != null) {
-                  turnSpan.setAttribute(
-                    "gen_ai.usage.cumulative_total_tokens",
-                    cumulativeUsage.totalTokens
-                  );
-                }
-                if (cumulativeUsage.inputTokens != null) {
-                  turnSpan.setAttribute(
-                    "gen_ai.usage.cumulative_input_tokens",
-                    cumulativeUsage.inputTokens
-                  );
-                }
-                if (cumulativeUsage.outputTokens != null) {
-                  turnSpan.setAttribute(
-                    "gen_ai.usage.cumulative_output_tokens",
-                    cumulativeUsage.outputTokens
-                  );
-                }
-              }
-
-              // Check if run() (e.g. via prepareStep) replaced messages during this turn.
-              // This supports intra-turn compaction — the compacted messages become the
-              // new base, and the response gets appended on top.
-              const runOverride = locals.get(chatOverrideMessagesKey);
-              if (runOverride) {
-                locals.set(chatOverrideMessagesKey, undefined);
-                accumulatedUIMessages = [...runOverride] as TUIMessage[];
-                accumulatedMessages = await toModelMessages(runOverride);
-              }
-
-              // Check if compaction set a model-only override (preserves UI messages).
-              // Apply compactUIMessages/compactModelMessages callbacks if configured.
-              const modelOnlyOverride = locals.get(chatOverrideModelMessagesKey);
-              if (modelOnlyOverride) {
-                const compactionSummary = locals.get(chatCompactionStateKey)?.summary ?? "";
-                const taskCompactionConfig = locals.get(chatTaskCompactionKey);
-                locals.set(chatOverrideModelMessagesKey, undefined);
-
-                const compactEvent: CompactMessagesEvent<TUIMessage> = {
-                  summary: compactionSummary,
-                  uiMessages: accumulatedUIMessages,
-                  modelMessages: accumulatedMessages,
-                  chatId: currentWirePayload.chatId,
-                  turn,
-                  clientData,
-                  source: "inner",
-                };
-
-                // Apply model messages: callback or default (use override)
-                accumulatedMessages = taskCompactionConfig?.compactModelMessages
-                  ? await taskCompactionConfig.compactModelMessages(compactEvent)
-                  : modelOnlyOverride;
-
-                // Apply UI messages: callback or default (preserve all)
-                if (taskCompactionConfig?.compactUIMessages) {
-                  accumulatedUIMessages = (await taskCompactionConfig.compactUIMessages(
-                    compactEvent
-                  )) as TUIMessage[];
-                }
-              }
-
-              // Determine if the user stopped generation this turn (not a full run cancel).
-              const wasStopped = stopController.signal.aborted && !runSignal.aborted;
-
-              // Append the assistant's response (partial or complete) to the accumulator.
-              // The onFinish callback fires even on abort/stop, so partial responses
-              // from stopped generation are captured correctly.
-              let rawResponseMessage: TUIMessage | undefined;
-              if (capturedResponseMessage) {
-                // Keep the raw message before cleanup for users who want custom handling
-                rawResponseMessage = capturedResponseMessage;
-                // Clean up aborted parts (streaming tool calls, reasoning) when stopped
-                if (wasStopped) {
-                  capturedResponseMessage = cleanupAbortedParts(capturedResponseMessage);
-                }
-                // Ensure the response message has an ID (the stream's onFinish
-                // may produce a message with an empty ID since IDs are normally
-                // assigned by the frontend's useChat).
-                if (!capturedResponseMessage.id) {
-                  capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
-                }
-                accumulatedUIMessages.push(capturedResponseMessage);
-                turnNewUIMessages.push(capturedResponseMessage);
-                try {
-                  const responseModelMessages = await toModelMessages([
-                    stripProviderMetadata(capturedResponseMessage),
-                  ]);
-                  accumulatedMessages.push(...responseModelMessages);
-                  turnNewModelMessages.push(...responseModelMessages);
-                } catch {
-                  // Conversion failed — skip accumulation for this turn
-                }
-              }
-              // TODO: When the user calls `pipeChat` manually instead of returning a
-              // StreamTextResult, we don't have access to onFinish. A future iteration
-              // should let manual-mode users report back response messages for
-              // accumulation (e.g. via a `chat.addMessages()` helper).
-
-              if (runSignal.aborted) return "exit";
-
-              // Await deferred background work (e.g. DB writes from onTurnStart)
-              // before firing hooks so they can rely on the work being done.
-              const deferredWork = locals.get(chatDeferKey);
-              if (deferredWork && deferredWork.size > 0) {
-                await Promise.race([
-                  Promise.allSettled(deferredWork),
-                  new Promise<void>((r) => setTimeout(r, 5_000)),
-                ]);
-              }
-
-              // Outer-loop compaction: runs between turns for single-step responses
-              // where prepareStep never fires (no tool calls = no step boundaries).
-              // Only triggers when: task has compaction configured, prepareStep didn't
-              // already compact this turn, and shouldCompact returns true.
-              const outerCompaction = locals.get(chatTaskCompactionKey);
-              const innerCompactionState = locals.get(chatCompactionStateKey);
-
-              if (outerCompaction && !innerCompactionState && turnUsage && !wasStopped) {
-                const shouldTrigger = await outerCompaction.shouldCompact({
-                  messages: accumulatedMessages,
-                  totalTokens: turnUsage.totalTokens,
-                  inputTokens: turnUsage.inputTokens,
-                  outputTokens: turnUsage.outputTokens,
-                  usage: turnUsage,
-                  totalUsage: cumulativeUsage,
-                  chatId: currentWirePayload.chatId,
-                  turn,
-                  clientData,
-                  source: "outer",
-                });
-
-                if (shouldTrigger) {
-                  await tracer.startActiveSpan(
-                    "context compaction (outer loop)",
-                    async (compactionSpan) => {
-                      const compactionId = generateMessageId();
-
-                      const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
-                        spanName: "stream compaction chunks",
-                        collapsed: true,
-                        execute: async ({ write, merge }) => {
-                          write({
-                            type: "data-compaction",
-                            id: compactionId,
-                            data: { status: "compacting", totalTokens: turnUsage.totalTokens },
-                          });
-
-                          const summary = await outerCompaction.summarize({
-                            messages: accumulatedMessages,
-                            usage: turnUsage,
-                            totalUsage: cumulativeUsage,
-                            chatId: currentWirePayload.chatId,
-                            turn,
-                            clientData,
-                            source: "outer",
-                          });
-
-                          // Apply compactModelMessages/compactUIMessages callbacks, or defaults.
-
-                          const outerCompactEvent: CompactMessagesEvent<TUIMessage> = {
-                            summary,
-                            uiMessages: accumulatedUIMessages,
-                            modelMessages: accumulatedMessages,
-                            chatId: currentWirePayload.chatId,
-                            turn,
-                            clientData,
-                            source: "outer",
-                          };
-
-                          // Model messages: callback or default (replace with summary)
-                          accumulatedMessages = outerCompaction.compactModelMessages
-                            ? await outerCompaction.compactModelMessages(outerCompactEvent)
-                            : [
-                                {
-                                  role: "assistant" as const,
-                                  content: [
-                                    {
-                                      type: "text" as const,
-                                      text: `[Conversation summary]\n\n${summary}`,
-                                    },
-                                  ],
-                                },
-                              ];
-
-                          // UI messages: callback or default (preserve all)
-                          if (outerCompaction.compactUIMessages) {
-                            accumulatedUIMessages = (await outerCompaction.compactUIMessages(
-                              outerCompactEvent
-                            )) as TUIMessage[];
-                          }
-
-                          // Fire onCompacted hook
-                          const onCompactedHook = locals.get(chatOnCompactedKey);
-                          if (onCompactedHook) {
-                            await onCompactedHook({
-                              ctx,
-                              summary,
-                              messages: accumulatedMessages,
-                              messageCount: accumulatedMessages.length,
-                              usage: turnUsage,
-                              totalTokens: turnUsage.totalTokens,
-                              inputTokens: turnUsage.inputTokens,
-                              outputTokens: turnUsage.outputTokens,
-                              stepNumber: -1, // outer loop, not a step
-                              chatId: currentWirePayload.chatId,
-                              turn,
-                              writer: { write, merge },
-                            });
-                          }
-
-                          compactionSpan.setAttribute("compaction.summary_length", summary.length);
-
-                          write({
-                            type: "data-compaction",
-                            id: compactionId,
-                            data: { status: "complete", totalTokens: turnUsage.totalTokens },
-                          });
-                        },
-                      });
-                      await waitUntilComplete();
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "tabler-scissors",
-                        "compaction.total_tokens": turnUsage.totalTokens ?? 0,
-                        "compaction.input_tokens": turnUsage.inputTokens ?? 0,
-                        "compaction.message_count": accumulatedMessages.length,
-                        "compaction.outer_loop": true,
-                        "compaction.turn": turn,
-                        ...(currentWirePayload.chatId
-                          ? { "compaction.chat_id": currentWirePayload.chatId }
-                          : {}),
-                        ...accessoryAttributes({
-                          items: [
-                            { text: `${turnUsage.totalTokens ?? 0} tokens`, variant: "normal" },
-                            { text: `${accumulatedMessages.length} msgs`, variant: "normal" },
-                            { text: "outer loop", variant: "normal" },
-                          ],
-                          style: "codepath",
-                        }),
-                      },
-                    }
-                  );
-                }
-              }
-
-              const turnCompleteEvent = {
-                ctx,
-                chatId: currentWirePayload.chatId,
-                messages: accumulatedMessages,
-                uiMessages: accumulatedUIMessages,
-                newMessages: turnNewModelMessages,
-                newUIMessages: turnNewUIMessages,
-                responseMessage: capturedResponseMessage,
-                rawResponseMessage,
-                turn,
-                runId: currentRunId,
-                chatAccessToken: turnAccessToken,
-                clientData,
-                stopped: wasStopped,
-                continuation,
-                previousRunId,
-                preloaded,
-                usage: turnUsage,
-                totalUsage: cumulativeUsage,
+              const turnAttributes: Attributes = {
+                "turn.number": turn + 1,
+                "gen_ai.conversation.id": currentWirePayload.chatId,
+                "gen_ai.operation.name": "chat",
+                "chat.trigger": currentWirePayload.trigger,
+                [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-chatbot",
+                [SemanticInternalAttributes.ENTITY_TYPE]: "chat-turn",
               };
 
-              // Fire onBeforeTurnComplete — stream is still open so the hook
-              // can write custom chunks to the frontend (e.g. compaction progress).
-              if (onBeforeTurnComplete) {
-                await tracer.startActiveSpan(
-                  "onBeforeTurnComplete()",
-                  async () => {
-                    await withChatWriter(async (writer) => {
-                      await onBeforeTurnComplete({ ...turnCompleteEvent, writer });
-                    });
+              if (lastUserMessage) {
+                turnAttributes["chat.user_message"] = lastUserMessage;
 
-                    // Check if the hook replaced messages (compaction)
-                    const override = locals.get(chatOverrideMessagesKey);
-                    if (override) {
-                      locals.set(chatOverrideMessagesKey, undefined);
-                      accumulatedUIMessages = [...override] as TUIMessage[];
-                      accumulatedMessages = await toModelMessages(override);
-                      // Update event so onTurnComplete sees compacted messages
-                      turnCompleteEvent.messages = accumulatedMessages;
-                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
-                    }
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": currentWirePayload.chatId,
-                      "chat.turn": turn + 1,
-                    },
-                  }
+                // Show a truncated preview of the user message as an accessory
+                const preview =
+                  lastUserMessage.length > 80 ? lastUserMessage.slice(0, 80) + "..." : lastUserMessage;
+                Object.assign(
+                  turnAttributes,
+                  accessoryAttributes({
+                    items: [{ text: preview, variant: "normal" }],
+                    style: "codepath",
+                  })
                 );
               }
 
-              // Write turn-complete control chunk — closes the frontend stream.
-              const turnCompleteResult = await writeTurnCompleteChunk(
-                currentWirePayload.chatId,
-                turnAccessToken
+              if (wireMetadata !== undefined) {
+                turnAttributes["chat.client_data"] =
+                  typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
+              }
+
+              const turnResult = await tracer.startActiveSpan(
+                `chat turn ${turn + 1}`,
+                async (turnSpan) => {
+                  // (errors are caught by the outer try/catch which writes an error chunk)
+                  locals.set(chatPipeCountKey, 0);
+                  locals.set(chatDeferKey, new Set());
+                  locals.set(chatCompactionStateKey, undefined);
+                  locals.set(chatSteeringQueueKey, []);
+                  // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
+                  // by deferred work from the previous turn's onTurnComplete need to
+                  // survive into the next turn. The queue is drained before run().
+                  locals.set(chatInjectedMessageIdsKey, new Set());
+
+                  // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
+                  locals.set(chatTurnContextKey, {
+                    chatId: currentWirePayload.chatId,
+                    turn,
+                    continuation,
+                    clientData,
+                  });
+
+                  // Per-turn stop controller (reset each turn)
+                  const stopController = new AbortController();
+                  currentStopController = stopController;
+                  locals.set(chatStopControllerKey, stopController);
+
+                  // Three signals for the user's run function
+                  const stopSignal = stopController.signal;
+                  const cancelSignal = runSignal;
+                  const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
+
+                  // Buffer messages that arrive during streaming
+                  const pendingMessages: ChatTaskWirePayload<
+                    TUIMessage,
+                    inferSchemaIn<TClientDataSchema>
+                  >[] = [];
+                  const pmConfig = locals.get(chatPendingMessagesKey);
+                  const msgSub = messagesInput.on(async (msg) => {
+                    // If pendingMessages is configured, route to the steering queue
+                    // instead of the wire buffer. The frontend handles re-sending
+                    // non-injected messages via sendMessage on turn complete.
+                    if (pmConfig) {
+                      const lastUIMessage = msg.messages?.[msg.messages.length - 1];
+                      if (lastUIMessage) {
+                        if (pmConfig.onReceived) {
+                          try {
+                            await pmConfig.onReceived({
+                              message: lastUIMessage as TUIMessage,
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                            });
+                          } catch {
+                            /* non-fatal */
+                          }
+                        }
+
+                        try {
+                          const queue = locals.get(chatSteeringQueueKey) ?? [];
+                          // Deduplicate by message ID — guards against double-sends
+                          if (
+                            lastUIMessage.id &&
+                            queue.some((e) => e.uiMessage.id === lastUIMessage.id)
+                          ) {
+                            return;
+                          }
+                          const modelMsgs = await toModelMessages([lastUIMessage]);
+                          queue.push({
+                            uiMessage: lastUIMessage as UIMessage,
+                            modelMessages: modelMsgs,
+                          });
+                          locals.set(chatSteeringQueueKey, queue);
+                        } catch {
+                          /* conversion failed — skip steering queue */
+                        }
+                      }
+                      return; // Don't add to wire buffer — frontend handles non-injected case
+                    }
+
+                    // No pendingMessages config — standard wire buffer for next turn
+                    pendingMessages.push(
+                      msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+                    );
+                  });
+
+                  // Clean up any incomplete tool parts in the incoming history.
+                  // When a previous run was stopped mid-tool-call, the frontend's
+                  // useChat state may still contain assistant messages with tool parts
+                  // in partial/input-available state. These cause API errors (e.g.
+                  // Anthropic requires every tool_use to have a matching tool_result).
+                  const cleanedUIMessages = uiMessages.map((msg) =>
+                    msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+                  );
+
+                  // Convert the incoming UIMessages to model messages and update the accumulator.
+                  // Turn 1: full history from the frontend → replaces the accumulator.
+                  // Turn 2+: only the new message(s) → appended to the accumulator.
+                  const incomingModelMessages = await toModelMessages(cleanedUIMessages);
+
+                  // Track new messages for this turn (user input + assistant response).
+                  const turnNewModelMessages: ModelMessage[] = [];
+                  const turnNewUIMessages: TUIMessage[] = [];
+
+                  if (turn === 0) {
+                    accumulatedMessages = incomingModelMessages;
+                    accumulatedUIMessages = [...cleanedUIMessages];
+                    // On first turn, the "new" messages are just the last user message
+                    // (the rest is history). We'll add the response after streaming.
+                    if (cleanedUIMessages.length > 0) {
+                      turnNewUIMessages.push(cleanedUIMessages[cleanedUIMessages.length - 1]!);
+                      const lastModel = incomingModelMessages[incomingModelMessages.length - 1];
+                      if (lastModel) turnNewModelMessages.push(lastModel);
+                    }
+                  } else if (currentWirePayload.trigger === "regenerate-message") {
+                    // Regenerate: frontend sent full history with last assistant message
+                    // removed. Reset the accumulator to match.
+                    accumulatedMessages = incomingModelMessages;
+                    accumulatedUIMessages = [...cleanedUIMessages];
+                    // No new user messages for regenerate — just the response (added below)
+                  } else {
+                    // Submit: frontend sent only the new user message(s). Append to accumulator.
+                    accumulatedMessages.push(...incomingModelMessages);
+                    accumulatedUIMessages.push(...cleanedUIMessages);
+                    turnNewModelMessages.push(...incomingModelMessages);
+                    turnNewUIMessages.push(...cleanedUIMessages);
+                  }
+
+                  // Mint a scoped public access token once per turn, reused for
+                  // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
+                  const currentRunId = ctx.run.id;
+                  let turnAccessToken = "";
+                  if (currentRunId) {
+                    try {
+                      turnAccessToken = await auth.createPublicToken({
+                        scopes: {
+                          read: { runs: currentRunId },
+                          write: { inputStreams: currentRunId },
+                        },
+                        expirationTime: chatAccessTokenTTL,
+                      });
+                    } catch {
+                      // Token creation failed
+                    }
+                  }
+
+                  // Fire onChatStart on the first turn
+                  if (turn === 0 && onChatStart) {
+                    await tracer.startActiveSpan(
+                      "onChatStart()",
+                      async () => {
+                        await withChatWriter(async (writer) => {
+                          await onChatStart({
+                            ctx,
+                            chatId: currentWirePayload.chatId,
+                            messages: accumulatedMessages,
+                            clientData,
+                            runId: currentRunId,
+                            chatAccessToken: turnAccessToken,
+                            continuation,
+                            previousRunId,
+                            preloaded,
+                            writer,
+                          });
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.messages.count": accumulatedMessages.length,
+                          "chat.continuation": continuation,
+                          "chat.preloaded": preloaded,
+                          ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                        },
+                      }
+                    );
+                  }
+
+                  // Fire onTurnStart before running user code — persist messages
+                  // so a mid-stream page refresh still shows the user's message.
+                  if (onTurnStart) {
+                    await tracer.startActiveSpan(
+                      "onTurnStart()",
+                      async () => {
+                        await withChatWriter(async (writer) => {
+                          await onTurnStart({
+                            ctx,
+                            chatId: currentWirePayload.chatId,
+                            messages: accumulatedMessages,
+                            uiMessages: accumulatedUIMessages,
+                            turn,
+                            runId: currentRunId,
+                            chatAccessToken: turnAccessToken,
+                            clientData,
+                            continuation,
+                            previousRunId,
+                            preloaded,
+                            previousTurnUsage,
+                            totalUsage: cumulativeUsage,
+                            writer,
+                          });
+                        });
+
+                        // Check if onTurnStart replaced messages (compaction)
+                        const turnStartOverride = locals.get(chatOverrideMessagesKey);
+                        if (turnStartOverride) {
+                          locals.set(chatOverrideMessagesKey, undefined);
+                          accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
+                          accumulatedMessages = await toModelMessages(turnStartOverride);
+                        }
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.messages.count": accumulatedMessages.length,
+                          "chat.trigger": currentWirePayload.trigger,
+                          "chat.continuation": continuation,
+                          "chat.preloaded": preloaded,
+                          ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                        },
+                      }
+                    );
+                  }
+
+                  // Captured by the onFinish callback below — works even on abort/stop.
+                  let capturedResponseMessage: TUIMessage | undefined;
+
+                  // Promise that resolves when the AI SDK's onFinish fires.
+                  // On abort, the stream's cancel() handler calls onFinish
+                  // asynchronously AFTER pipeChat resolves, so we must await
+                  // this to avoid a race where we check capturedResponseMessage
+                  // before it's been set.
+                  let resolveOnFinish: () => void;
+                  const onFinishPromise = new Promise<void>((r) => {
+                    resolveOnFinish = r;
+                  });
+                  let onFinishAttached = false;
+                  let runResult: unknown;
+
+                  try {
+                    // Drain any messages injected by background work (e.g. self-review from previous turn)
+                    const bgQueue = locals.get(chatBackgroundQueueKey);
+                    if (bgQueue && bgQueue.length > 0) {
+                      accumulatedMessages.push(...bgQueue.splice(0));
+                    }
+
+                    runResult = await userRun({
+                      ...restWire,
+                      messages: await applyPrepareMessages(accumulatedMessages, "run"),
+                      clientData,
+                      continuation,
+                      previousRunId,
+                      preloaded,
+                      previousTurnUsage,
+                      totalUsage: cumulativeUsage,
+                      ctx,
+                      signal: combinedSignal,
+                      cancelSignal,
+                      stopSignal,
+                    } as any);
+
+                    // Auto-pipe if the run function returned a StreamTextResult or similar,
+                    // but only if pipeChat() wasn't already called manually during this turn.
+                    // We call toUIMessageStream ourselves to attach onFinish for response capture.
+                    if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
+                      onFinishAttached = true;
+                      const uiStream = runResult.toUIMessageStream({
+                        ...resolveUIMessageStreamOptions(),
+                        onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
+                          capturedResponseMessage = responseMessage as TUIMessage;
+                          resolveOnFinish!();
+                        },
+                      });
+                      await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
+                    }
+                  } catch (error) {
+                    // Handle AbortError from streamText gracefully
+                    if (error instanceof Error && error.name === "AbortError") {
+                      if (runSignal.aborted) {
+                        return "exit"; // Full run cancellation — exit
+                      }
+                      // Stop generation — fall through to continue the loop
+                    } else {
+                      throw error;
+                    }
+                  } finally {
+                    msgSub.off();
+                  }
+
+                  // Wait for onFinish to fire — on abort this may resolve slightly
+                  // after pipeChat, since the stream's cancel() handler is async.
+                  if (onFinishAttached) {
+                    await onFinishPromise;
+                  }
+
+                  // Capture token usage from the streamText result (if available).
+                  // totalUsage is a PromiseLike that resolves after the stream is consumed.
+                  let turnUsage: LanguageModelUsage | undefined;
+                  if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
+                    try {
+                      turnUsage = await (runResult as any).totalUsage;
+                    } catch {
+                      /* non-fatal — usage capture failed */
+                    }
+                  }
+                  if (turnUsage) {
+                    cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
+                    previousTurnUsage = turnUsage;
+
+                    // Add usage attributes to the turn span
+                    if (turnUsage.inputTokens != null) {
+                      turnSpan.setAttribute("gen_ai.usage.input_tokens", turnUsage.inputTokens);
+                    }
+                    if (turnUsage.outputTokens != null) {
+                      turnSpan.setAttribute("gen_ai.usage.output_tokens", turnUsage.outputTokens);
+                    }
+                    if (turnUsage.totalTokens != null) {
+                      turnSpan.setAttribute("gen_ai.usage.total_tokens", turnUsage.totalTokens);
+                    }
+                    if (cumulativeUsage.totalTokens != null) {
+                      turnSpan.setAttribute(
+                        "gen_ai.usage.cumulative_total_tokens",
+                        cumulativeUsage.totalTokens
+                      );
+                    }
+                    if (cumulativeUsage.inputTokens != null) {
+                      turnSpan.setAttribute(
+                        "gen_ai.usage.cumulative_input_tokens",
+                        cumulativeUsage.inputTokens
+                      );
+                    }
+                    if (cumulativeUsage.outputTokens != null) {
+                      turnSpan.setAttribute(
+                        "gen_ai.usage.cumulative_output_tokens",
+                        cumulativeUsage.outputTokens
+                      );
+                    }
+                  }
+
+                  // Check if run() (e.g. via prepareStep) replaced messages during this turn.
+                  // This supports intra-turn compaction — the compacted messages become the
+                  // new base, and the response gets appended on top.
+                  const runOverride = locals.get(chatOverrideMessagesKey);
+                  if (runOverride) {
+                    locals.set(chatOverrideMessagesKey, undefined);
+                    accumulatedUIMessages = [...runOverride] as TUIMessage[];
+                    accumulatedMessages = await toModelMessages(runOverride);
+                  }
+
+                  // Check if compaction set a model-only override (preserves UI messages).
+                  // Apply compactUIMessages/compactModelMessages callbacks if configured.
+                  const modelOnlyOverride = locals.get(chatOverrideModelMessagesKey);
+                  if (modelOnlyOverride) {
+                    const compactionSummary = locals.get(chatCompactionStateKey)?.summary ?? "";
+                    const taskCompactionConfig = locals.get(chatAgentCompactionKey);
+                    locals.set(chatOverrideModelMessagesKey, undefined);
+
+                    const compactEvent: CompactMessagesEvent<TUIMessage> = {
+                      summary: compactionSummary,
+                      uiMessages: accumulatedUIMessages,
+                      modelMessages: accumulatedMessages,
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      clientData,
+                      source: "inner",
+                    };
+
+                    // Apply model messages: callback or default (use override)
+                    accumulatedMessages = taskCompactionConfig?.compactModelMessages
+                      ? await taskCompactionConfig.compactModelMessages(compactEvent)
+                      : modelOnlyOverride;
+
+                    // Apply UI messages: callback or default (preserve all)
+                    if (taskCompactionConfig?.compactUIMessages) {
+                      accumulatedUIMessages = (await taskCompactionConfig.compactUIMessages(
+                        compactEvent
+                      )) as TUIMessage[];
+                    }
+                  }
+
+                  // Determine if the user stopped generation this turn (not a full run cancel).
+                  const wasStopped = stopController.signal.aborted && !runSignal.aborted;
+
+                  // Append the assistant's response (partial or complete) to the accumulator.
+                  // The onFinish callback fires even on abort/stop, so partial responses
+                  // from stopped generation are captured correctly.
+                  let rawResponseMessage: TUIMessage | undefined;
+                  if (capturedResponseMessage) {
+                    // Keep the raw message before cleanup for users who want custom handling
+                    rawResponseMessage = capturedResponseMessage;
+                    // Clean up aborted parts (streaming tool calls, reasoning) when stopped
+                    if (wasStopped) {
+                      capturedResponseMessage = cleanupAbortedParts(capturedResponseMessage);
+                    }
+                    // Ensure the response message has an ID (the stream's onFinish
+                    // may produce a message with an empty ID since IDs are normally
+                    // assigned by the frontend's useChat).
+                    if (!capturedResponseMessage.id) {
+                      capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
+                    }
+                    accumulatedUIMessages.push(capturedResponseMessage);
+                    turnNewUIMessages.push(capturedResponseMessage);
+                    try {
+                      const responseModelMessages = await toModelMessages([
+                        stripProviderMetadata(capturedResponseMessage),
+                      ]);
+                      accumulatedMessages.push(...responseModelMessages);
+                      turnNewModelMessages.push(...responseModelMessages);
+                    } catch {
+                      // Conversion failed — skip accumulation for this turn
+                    }
+                  }
+                  // TODO: When the user calls `pipeChat` manually instead of returning a
+                  // StreamTextResult, we don't have access to onFinish. A future iteration
+                  // should let manual-mode users report back response messages for
+                  // accumulation (e.g. via a `chat.addMessages()` helper).
+
+                  if (runSignal.aborted) return "exit";
+
+                  // Await deferred background work (e.g. DB writes from onTurnStart)
+                  // before firing hooks so they can rely on the work being done.
+                  const deferredWork = locals.get(chatDeferKey);
+                  if (deferredWork && deferredWork.size > 0) {
+                    await Promise.race([
+                      Promise.allSettled(deferredWork),
+                      new Promise<void>((r) => setTimeout(r, 5_000)),
+                    ]);
+                  }
+
+                  // Outer-loop compaction: runs between turns for single-step responses
+                  // where prepareStep never fires (no tool calls = no step boundaries).
+                  // Only triggers when: task has compaction configured, prepareStep didn't
+                  // already compact this turn, and shouldCompact returns true.
+                  const outerCompaction = locals.get(chatAgentCompactionKey);
+                  const innerCompactionState = locals.get(chatCompactionStateKey);
+
+                  if (outerCompaction && !innerCompactionState && turnUsage && !wasStopped) {
+                    const shouldTrigger = await outerCompaction.shouldCompact({
+                      messages: accumulatedMessages,
+                      totalTokens: turnUsage.totalTokens,
+                      inputTokens: turnUsage.inputTokens,
+                      outputTokens: turnUsage.outputTokens,
+                      usage: turnUsage,
+                      totalUsage: cumulativeUsage,
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      clientData,
+                      source: "outer",
+                    });
+
+                    if (shouldTrigger) {
+                      await tracer.startActiveSpan(
+                        "context compaction (outer loop)",
+                        async (compactionSpan) => {
+                          const compactionId = generateMessageId();
+
+                          const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+                            spanName: "stream compaction chunks",
+                            collapsed: true,
+                            execute: async ({ write, merge }) => {
+                              write({
+                                type: "data-compaction",
+                                id: compactionId,
+                                data: { status: "compacting", totalTokens: turnUsage.totalTokens },
+                              });
+
+                              const summary = await outerCompaction.summarize({
+                                messages: accumulatedMessages,
+                                usage: turnUsage,
+                                totalUsage: cumulativeUsage,
+                                chatId: currentWirePayload.chatId,
+                                turn,
+                                clientData,
+                                source: "outer",
+                              });
+
+                              // Apply compactModelMessages/compactUIMessages callbacks, or defaults.
+
+                              const outerCompactEvent: CompactMessagesEvent<TUIMessage> = {
+                                summary,
+                                uiMessages: accumulatedUIMessages,
+                                modelMessages: accumulatedMessages,
+                                chatId: currentWirePayload.chatId,
+                                turn,
+                                clientData,
+                                source: "outer",
+                              };
+
+                              // Model messages: callback or default (replace with summary)
+                              accumulatedMessages = outerCompaction.compactModelMessages
+                                ? await outerCompaction.compactModelMessages(outerCompactEvent)
+                                : [
+                                  {
+                                    role: "assistant" as const,
+                                    content: [
+                                      {
+                                        type: "text" as const,
+                                        text: `[Conversation summary]\n\n${summary}`,
+                                      },
+                                    ],
+                                  },
+                                ];
+
+                              // UI messages: callback or default (preserve all)
+                              if (outerCompaction.compactUIMessages) {
+                                accumulatedUIMessages = (await outerCompaction.compactUIMessages(
+                                  outerCompactEvent
+                                )) as TUIMessage[];
+                              }
+
+                              // Fire onCompacted hook
+                              const onCompactedHook = locals.get(chatOnCompactedKey);
+                              if (onCompactedHook) {
+                                await onCompactedHook({
+                                  ctx,
+                                  summary,
+                                  messages: accumulatedMessages,
+                                  messageCount: accumulatedMessages.length,
+                                  usage: turnUsage,
+                                  totalTokens: turnUsage.totalTokens,
+                                  inputTokens: turnUsage.inputTokens,
+                                  outputTokens: turnUsage.outputTokens,
+                                  stepNumber: -1, // outer loop, not a step
+                                  chatId: currentWirePayload.chatId,
+                                  turn,
+                                  writer: { write, merge },
+                                });
+                              }
+
+                              compactionSpan.setAttribute("compaction.summary_length", summary.length);
+
+                              write({
+                                type: "data-compaction",
+                                id: compactionId,
+                                data: { status: "complete", totalTokens: turnUsage.totalTokens },
+                              });
+                            },
+                          });
+                          await waitUntilComplete();
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "tabler-scissors",
+                            "compaction.total_tokens": turnUsage.totalTokens ?? 0,
+                            "compaction.input_tokens": turnUsage.inputTokens ?? 0,
+                            "compaction.message_count": accumulatedMessages.length,
+                            "compaction.outer_loop": true,
+                            "compaction.turn": turn,
+                            ...(currentWirePayload.chatId
+                              ? { "compaction.chat_id": currentWirePayload.chatId }
+                              : {}),
+                            ...accessoryAttributes({
+                              items: [
+                                { text: `${turnUsage.totalTokens ?? 0} tokens`, variant: "normal" },
+                                { text: `${accumulatedMessages.length} msgs`, variant: "normal" },
+                                { text: "outer loop", variant: "normal" },
+                              ],
+                              style: "codepath",
+                            }),
+                          },
+                        }
+                      );
+                    }
+                  }
+
+                  const turnCompleteEvent = {
+                    ctx,
+                    chatId: currentWirePayload.chatId,
+                    messages: accumulatedMessages,
+                    uiMessages: accumulatedUIMessages,
+                    newMessages: turnNewModelMessages,
+                    newUIMessages: turnNewUIMessages,
+                    responseMessage: capturedResponseMessage,
+                    rawResponseMessage,
+                    turn,
+                    runId: currentRunId,
+                    chatAccessToken: turnAccessToken,
+                    clientData,
+                    stopped: wasStopped,
+                    continuation,
+                    previousRunId,
+                    preloaded,
+                    usage: turnUsage,
+                    totalUsage: cumulativeUsage,
+                  };
+
+                  // Fire onBeforeTurnComplete — stream is still open so the hook
+                  // can write custom chunks to the frontend (e.g. compaction progress).
+                  if (onBeforeTurnComplete) {
+                    await tracer.startActiveSpan(
+                      "onBeforeTurnComplete()",
+                      async () => {
+                        await withChatWriter(async (writer) => {
+                          await onBeforeTurnComplete({ ...turnCompleteEvent, writer });
+                        });
+
+                        // Check if the hook replaced messages (compaction)
+                        const override = locals.get(chatOverrideMessagesKey);
+                        if (override) {
+                          locals.set(chatOverrideMessagesKey, undefined);
+                          accumulatedUIMessages = [...override] as TUIMessage[];
+                          accumulatedMessages = await toModelMessages(override);
+                          // Update event so onTurnComplete sees compacted messages
+                          turnCompleteEvent.messages = accumulatedMessages;
+                          turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                        }
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                        },
+                      }
+                    );
+                  }
+
+                  // Write turn-complete control chunk — closes the frontend stream.
+                  const turnCompleteResult = await writeTurnCompleteChunk(
+                    currentWirePayload.chatId,
+                    turnAccessToken
+                  );
+
+                  // Fire onTurnComplete — stream is closed, use for persistence.
+                  if (onTurnComplete) {
+                    await tracer.startActiveSpan(
+                      "onTurnComplete()",
+                      async () => {
+                        await onTurnComplete({
+                          ...turnCompleteEvent,
+                          lastEventId: turnCompleteResult.lastEventId,
+                        });
+
+                        // Check if onTurnComplete replaced messages (compaction)
+                        const turnCompleteOverride = locals.get(chatOverrideMessagesKey);
+                        if (turnCompleteOverride) {
+                          locals.set(chatOverrideMessagesKey, undefined);
+                          accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
+                          accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                        }
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.stopped": wasStopped,
+                          "chat.continuation": continuation,
+                          "chat.preloaded": preloaded,
+                          ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                          "chat.messages.count": accumulatedMessages.length,
+                          "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,
+                          "chat.new_messages.count": turnNewUIMessages.length,
+                          ...(turnUsage?.inputTokens != null
+                            ? { "gen_ai.usage.input_tokens": turnUsage.inputTokens }
+                            : {}),
+                          ...(turnUsage?.outputTokens != null
+                            ? { "gen_ai.usage.output_tokens": turnUsage.outputTokens }
+                            : {}),
+                          ...(turnUsage?.totalTokens != null
+                            ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens }
+                            : {}),
+                          ...(cumulativeUsage.totalTokens != null
+                            ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens }
+                            : {}),
+                        },
+                      }
+                    );
+                  }
+
+                  // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
+                  // Promises deferred in onTurnComplete (e.g. background self-review via
+                  // chat.defer + chat.inject) run during the idle wait. If they complete
+                  // before the next message, their injected context is picked up in prepareStep.
+                  // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
+
+                  // If messages arrived during streaming (without pendingMessages config),
+                  // use the first one immediately as the next turn.
+                  if (pendingMessages.length > 0) {
+                    currentWirePayload = pendingMessages[0]!;
+                    return "continue";
+                  }
+
+                  // Wait for the next message — stay idle briefly, then suspend
+                  const effectiveIdleTimeout =
+                    (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+                    idleTimeoutInSeconds;
+                  const effectiveTurnTimeout =
+                    (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
+
+                  const next = await messagesInput.waitWithIdleTimeout({
+                    idleTimeoutInSeconds: effectiveIdleTimeout,
+                    timeout: effectiveTurnTimeout,
+                    spanName: "waiting for next message",
+                    onSuspend: onChatSuspend
+                      ? async () => {
+                        await tracer.startActiveSpan(
+                          "onChatSuspend()",
+                          async () => {
+                            await onChatSuspend({
+                              phase: "turn",
+                              ctx,
+                              chatId: currentWirePayload.chatId,
+                              runId: ctx.run.id,
+                              turn,
+                              messages: accumulatedMessages,
+                              uiMessages: accumulatedUIMessages,
+                              clientData,
+                            });
+                          },
+                          {
+                            attributes: {
+                              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                              [SemanticInternalAttributes.COLLAPSED]: true,
+                              "chat.id": currentWirePayload.chatId,
+                              "chat.suspend.phase": "turn",
+                              "chat.turn": turn + 1,
+                            },
+                          }
+                        );
+                      }
+                      : undefined,
+                    onResume: onChatResume
+                      ? async () => {
+                        await tracer.startActiveSpan(
+                          "onChatResume()",
+                          async () => {
+                            await onChatResume({
+                              phase: "turn",
+                              ctx,
+                              chatId: currentWirePayload.chatId,
+                              runId: ctx.run.id,
+                              turn,
+                              messages: accumulatedMessages,
+                              uiMessages: accumulatedUIMessages,
+                              clientData,
+                            });
+                          },
+                          {
+                            attributes: {
+                              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                              [SemanticInternalAttributes.COLLAPSED]: true,
+                              "chat.id": currentWirePayload.chatId,
+                              "chat.resume.phase": "turn",
+                              "chat.turn": turn + 1,
+                            },
+                          }
+                        );
+                      }
+                      : undefined,
+                  });
+
+                  if (!next.ok) {
+                    return "exit";
+                  }
+
+                  currentWirePayload = next.output as ChatTaskWirePayload<
+                    TUIMessage,
+                    inferSchemaIn<TClientDataSchema>
+                  >;
+                  return "continue";
+                },
+                {
+                  attributes: turnAttributes,
+                }
               );
 
-              // Fire onTurnComplete — stream is closed, use for persistence.
-              if (onTurnComplete) {
-                await tracer.startActiveSpan(
-                  "onTurnComplete()",
-                  async () => {
-                    await onTurnComplete({
-                      ...turnCompleteEvent,
-                      lastEventId: turnCompleteResult.lastEventId,
-                    });
-
-                    // Check if onTurnComplete replaced messages (compaction)
-                    const turnCompleteOverride = locals.get(chatOverrideMessagesKey);
-                    if (turnCompleteOverride) {
-                      locals.set(chatOverrideMessagesKey, undefined);
-                      accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
-                      accumulatedMessages = await toModelMessages(turnCompleteOverride);
-                    }
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": currentWirePayload.chatId,
-                      "chat.turn": turn + 1,
-                      "chat.stopped": wasStopped,
-                      "chat.continuation": continuation,
-                      "chat.preloaded": preloaded,
-                      ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
-                      "chat.messages.count": accumulatedMessages.length,
-                      "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,
-                      "chat.new_messages.count": turnNewUIMessages.length,
-                      ...(turnUsage?.inputTokens != null
-                        ? { "gen_ai.usage.input_tokens": turnUsage.inputTokens }
-                        : {}),
-                      ...(turnUsage?.outputTokens != null
-                        ? { "gen_ai.usage.output_tokens": turnUsage.outputTokens }
-                        : {}),
-                      ...(turnUsage?.totalTokens != null
-                        ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens }
-                        : {}),
-                      ...(cumulativeUsage.totalTokens != null
-                        ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens }
-                        : {}),
-                    },
-                  }
-                );
+              if (turnResult === "exit") return;
+              // "continue" means proceed to next iteration
+            } catch (turnError) {
+              // Turn error handler: write an error chunk + turn-complete to the stream
+              // so the client sees the error, then wait for the next message instead
+              // of killing the entire run. This keeps the conversation alive.
+              if (turnError instanceof Error && turnError.name === "AbortError" && runSignal.aborted) {
+                // Full run cancellation — exit immediately
+                throw turnError;
               }
 
-              // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
-              // Promises deferred in onTurnComplete (e.g. background self-review via
-              // chat.defer + chat.inject) run during the idle wait. If they complete
-              // before the next message, their injected context is picked up in prepareStep.
-              // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
-
-              // If messages arrived during streaming (without pendingMessages config),
-              // use the first one immediately as the next turn.
-              if (pendingMessages.length > 0) {
-                currentWirePayload = pendingMessages[0]!;
-                return "continue";
+              try {
+                await withChatWriter(async (writer) => {
+                  const errorText =
+                    turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+                  writer.write({ type: "error", errorText } as any);
+                });
+                // Signal turn complete so the client knows this turn is done
+                await writeTurnCompleteChunk(currentWirePayload.chatId);
+              } catch {
+                // Best-effort — if stream write fails, let the run continue anyway
               }
 
-              // Wait for the next message — stay idle briefly, then suspend
+              // Wait for the next message — same as after a successful turn
               const effectiveIdleTimeout =
                 (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
                 idleTimeoutInSeconds;
@@ -3453,93 +3566,40 @@ function chatTask<
               const next = await messagesInput.waitWithIdleTimeout({
                 idleTimeoutInSeconds: effectiveIdleTimeout,
                 timeout: effectiveTurnTimeout,
-                spanName: "waiting for next message",
-                onSuspend: onChatSuspend
-                  ? async () => {
-                      await tracer.startActiveSpan(
-                        "onChatSuspend()",
-                        async () => {
-                          await onChatSuspend({
-                            phase: "turn",
-                            ctx,
-                            chatId: currentWirePayload.chatId,
-                            runId: ctx.run.id,
-                            turn,
-                            messages: accumulatedMessages,
-                            uiMessages: accumulatedUIMessages,
-                            clientData,
-                          });
-                        },
-                        {
-                          attributes: {
-                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                            [SemanticInternalAttributes.COLLAPSED]: true,
-                            "chat.id": currentWirePayload.chatId,
-                            "chat.suspend.phase": "turn",
-                            "chat.turn": turn + 1,
-                          },
-                        }
-                      );
-                    }
-                  : undefined,
-                onResume: onChatResume
-                  ? async () => {
-                      await tracer.startActiveSpan(
-                        "onChatResume()",
-                        async () => {
-                          await onChatResume({
-                            phase: "turn",
-                            ctx,
-                            chatId: currentWirePayload.chatId,
-                            runId: ctx.run.id,
-                            turn,
-                            messages: accumulatedMessages,
-                            uiMessages: accumulatedUIMessages,
-                            clientData,
-                          });
-                        },
-                        {
-                          attributes: {
-                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                            [SemanticInternalAttributes.COLLAPSED]: true,
-                            "chat.id": currentWirePayload.chatId,
-                            "chat.resume.phase": "turn",
-                            "chat.turn": turn + 1,
-                          },
-                        }
-                      );
-                    }
-                  : undefined,
+                spanName: "waiting for next message (after error)",
               });
 
               if (!next.ok) {
-                return "exit";
+                return; // Timed out — end run gracefully
               }
 
               currentWirePayload = next.output as ChatTaskWirePayload<
                 TUIMessage,
                 inferSchemaIn<TClientDataSchema>
               >;
-              return "continue";
-            },
-            {
-              attributes: turnAttributes,
+              // Continue to next iteration of the for loop
             }
-          );
-
-          if (turnResult === "exit") return;
-          // "continue" means proceed to next iteration
+          }
+        } finally {
+          stopSub.off();
         }
-      } finally {
-        stopSub.off();
-      }
-    },
+    }
   });
+
+  // Register clientDataSchema so the CLI converts it to JSONSchema
+  // and stores it as payloadSchema — used by the Playground UI
+  if (clientDataSchema) {
+    resourceCatalog.updateTaskMetadata(options.id, {
+      schema: clientDataSchema as any,
+    });
+  }
+
+  return task;
 }
 
 /**
  * Optional config for {@link chat.withUIMessage}. `streamOptions` become default
- * static `toUIMessageStream()` settings; inner `chat.task({ uiMessageStreamOptions })`
+ * static `toUIMessageStream()` settings; inner `chat.agent({ uiMessageStreamOptions })`
  * shallow-merges on top (task wins on conflicts).
  */
 export type ChatWithUIMessageConfig<TUIM extends UIMessage = UIMessage> = {
@@ -3631,19 +3691,19 @@ export interface ChatBuilder<
   ): ChatBuilder<TUIMessage, TClientDataSchema>;
 
   /**
-   * Create the chat task with the accumulated builder configuration.
+   * Create the chat agent with the accumulated builder configuration.
    *
    * When `withClientData` was called, `clientDataSchema` is injected automatically
    * and omitted from options. Otherwise, it can still be set directly in options
    * (backwards compatible).
    */
-  task: [TClientDataSchema] extends [undefined]
-    ? <TId extends string, TInfer extends TaskSchema | undefined = undefined>(
-        options: ChatTaskOptions<TId, TInfer, TUIMessage>
-      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
-    : <TId extends string>(
-        options: Omit<ChatTaskOptions<TId, TClientDataSchema, TUIMessage>, "clientDataSchema">
-      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+  agent: [TClientDataSchema] extends [undefined]
+  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined>(
+    options: ChatAgentOptions<TId, TInfer, TUIMessage>
+  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
+  : <TId extends string>(
+    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage>, "clientDataSchema">
+  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 }
 
 /** @internal */
@@ -3769,13 +3829,13 @@ function createChatBuilder<
       });
     },
 
-    task(options: any) {
+    agent(options: any) {
       const mergedUiStream =
         config.uiStreamOptions && options.uiMessageStreamOptions
           ? { ...config.uiStreamOptions, ...options.uiMessageStreamOptions }
           : options.uiMessageStreamOptions ?? config.uiStreamOptions;
 
-      return chatTask({
+      return chatAgent({
         ...options,
         ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
         uiMessageStreamOptions: mergedUiStream,
@@ -3797,7 +3857,7 @@ function createChatBuilder<
 
 /**
  * Fix the UI message type for a chat task (AI SDK `UIMessage` generics) while
- * keeping `id` and `clientDataSchema` inference on the inner {@link chat.task} call.
+ * keeping `id` and `clientDataSchema` inference on the inner {@link chat.agent} call.
  *
  * Returns a {@link ChatBuilder} that supports chaining `.withClientData()`,
  * hook methods (`.onPreload()`, `.onChatSuspend()`, etc.), and `.task()`.
@@ -3860,7 +3920,7 @@ function withClientData<TSchema extends TaskSchema>(config: {
  * import { chat } from "@trigger.dev/sdk/ai";
  *
  * // Define a chat task
- * export const myChat = chat.task({
+ * export const myChat = chat.agent({
  *   id: "my-chat",
  *   run: async ({ messages, signal }) => {
  *     return streamText({ model, messages, abortSignal: signal });
@@ -3888,7 +3948,7 @@ const IDLE_TIMEOUT_METADATA_KEY = "chat.idleTimeout";
  * waiting for the next user message. When it expires, the run completes
  * gracefully and the next message starts a fresh run.
  *
- * Call from inside a `chatTask` run function to adjust based on context.
+ * Call from inside a `chatAgent` run function to adjust based on context.
  *
  * @param duration - A duration string (e.g. `"5m"`, `"1h"`, `"30s"`)
  *
@@ -3950,7 +4010,7 @@ function setIdleTimeoutInSeconds(seconds: number): void {
  * message metadata, etc.
  *
  * Per-turn options are merged on top of the static `uiMessageStreamOptions`
- * set on `chat.task()`. Per-turn values win on conflicts.
+ * set on `chat.agent()`. Per-turn values win on conflicts.
  *
  * @example
  * ```ts
@@ -3969,7 +4029,7 @@ function setUIMessageStreamOptions(options: ChatUIMessageStreamOptions<UIMessage
 
 /**
  * Resolve the effective UIMessageStream options by merging:
- * 1. Static task-level options (from `chat.task({ uiMessageStreamOptions })`)
+ * 1. Static task-level options (from `chat.agent({ uiMessageStreamOptions })`)
  * 2. Per-turn overrides (from `chat.setUIMessageStreamOptions()`)
  *
  * Per-turn values win on conflicts. Clears the per-turn override after reading
@@ -3991,7 +4051,7 @@ function resolveUIMessageStreamOptions(): ChatUIMessageStreamOptions<UIMessage> 
 /**
  * Check whether the user stopped generation during the current turn.
  *
- * Works from **anywhere** inside a `chat.task` run — including inside
+ * Works from **anywhere** inside a `chat.agent` run — including inside
  * `streamText`'s `onFinish` callback — without needing to thread the
  * `stopSignal` through closures.
  *
@@ -4093,14 +4153,14 @@ function injectBackgroundContext(messages: ModelMessage[]): void {
  * - Incomplete tool parts removed entirely
  * - Reasoning and text parts marked as `"done"`
  *
- * `chat.task` calls this automatically when stop is detected before passing
+ * `chat.agent` calls this automatically when stop is detected before passing
  * the response to `onTurnComplete`. Use this manually when calling `pipeChat`
  * directly and capturing response messages yourself.
  *
  * @example
  * ```ts
  * onTurnComplete: async ({ responseMessage, stopped }) => {
- *   // Already cleaned automatically by chat.task — but if you captured
+ *   // Already cleaned automatically by chat.agent — but if you captured
  *   // your own message via pipeChat, clean it manually:
  *   const cleaned = chat.cleanupAbortedParts(myMessage);
  *   await db.messages.save(cleaned);
@@ -4266,12 +4326,12 @@ async function pipeChatAndCapture(
 class ChatMessageAccumulator {
   modelMessages: ModelMessage[] = [];
   uiMessages: UIMessage[] = [];
-  private _compaction?: ChatTaskCompactionOptions;
+  private _compaction?: ChatAgentCompactionOptions;
   private _pendingMessages?: PendingMessagesOptions;
   private _steeringQueue: SteeringQueueEntry[] = [];
 
   constructor(options?: {
-    compaction?: ChatTaskCompactionOptions;
+    compaction?: ChatAgentCompactionOptions;
     pendingMessages?: PendingMessagesOptions;
   }) {
     this._compaction = options?.compaction;
@@ -4358,9 +4418,9 @@ class ChatMessageAccumulator {
    */
   prepareStep():
     | ((args: {
-        messages: ModelMessage[];
-        steps: CompactionStep[];
-      }) => Promise<{ messages: ModelMessage[] } | undefined>)
+      messages: ModelMessage[];
+      steps: CompactionStep[];
+    }) => Promise<{ messages: ModelMessage[] } | undefined>)
     | undefined {
     if (!this._compaction && !this._pendingMessages) return undefined;
     const comp = this._compaction;
@@ -4449,11 +4509,11 @@ class ChatMessageAccumulator {
     this.modelMessages = this._compaction.compactModelMessages
       ? await this._compaction.compactModelMessages(compactEvent)
       : [
-          {
-            role: "assistant" as const,
-            content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
-          },
-        ];
+        {
+          role: "assistant" as const,
+          content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+        },
+      ];
 
     if (this._compaction.compactUIMessages) {
       this.uiMessages = await this._compaction.compactUIMessages(compactEvent);
@@ -4476,9 +4536,9 @@ export type ChatSessionOptions = {
   timeout?: string;
   /** Max turns before ending. @default 100 */
   maxTurns?: number;
-  /** Automatic context compaction — same options as `chat.task({ compaction })`. */
-  compaction?: ChatTaskCompactionOptions;
-  /** Configure mid-execution message injection — same options as `chat.task({ pendingMessages })`. */
+  /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
+  compaction?: ChatAgentCompactionOptions;
+  /** Configure mid-execution message injection — same options as `chat.agent({ pendingMessages })`. */
   pendingMessages?: PendingMessagesOptions;
 };
 
@@ -4538,9 +4598,9 @@ export type ChatTurn = {
    */
   prepareStep():
     | ((args: {
-        messages: ModelMessage[];
-        steps: CompactionStep[];
-      }) => Promise<{ messages: ModelMessage[] } | undefined>)
+      messages: ModelMessage[];
+      steps: CompactionStep[];
+    }) => Promise<{ messages: ModelMessage[] } | undefined>)
     | undefined;
 };
 
@@ -4752,7 +4812,7 @@ function createChatSession(
                 }
               }
 
-              // Outer-loop compaction (same logic as chat.task)
+              // Outer-loop compaction (same logic as chat.agent)
               if (sessionCompaction && turnUsage && !turnObj.stopped) {
                 const shouldTrigger = await sessionCompaction.shouldCompact({
                   messages: accumulator.modelMessages,
@@ -4791,13 +4851,13 @@ function createChatSession(
                   accumulator.modelMessages = sessionCompaction.compactModelMessages
                     ? await sessionCompaction.compactModelMessages(compactEvent)
                     : [
-                        {
-                          role: "assistant" as const,
-                          content: [
-                            { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
-                          ],
-                        },
-                      ];
+                      {
+                        role: "assistant" as const,
+                        content: [
+                          { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
+                        ],
+                      },
+                    ];
 
                   if (sessionCompaction.compactUIMessages) {
                     accumulator.uiMessages = await sessionCompaction.compactUIMessages(
@@ -4945,7 +5005,7 @@ export type ChatLocal<T extends Record<string, unknown>> = T & {
  * const userPrefs = chat.local<{ theme: string; language: string }>({ id: "userPrefs" });
  * const gameState = chat.local<{ score: number; streak: number }>({ id: "gameState" });
  *
- * export const myChat = chat.task({
+ * export const myChat = chat.agent({
  *   id: "my-chat",
  *   onChatStart: async ({ clientData }) => {
  *     const prefs = await db.prefs.findUnique({ where: { userId: clientData.userId } });
@@ -5041,7 +5101,7 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
       if (current === undefined) {
         throw new Error(
           "chat.local can only be modified after initialization. " +
-            "Call local.init() in onChatStart or run() first."
+          "Call local.init() in onChatStart or run() first."
         );
       }
       locals.set(localKey, { ...current, [prop]: value });
@@ -5184,8 +5244,8 @@ function createChatTriggerAction(
 }
 
 export const chat = {
-  /** Create a chat task. See {@link chatTask}. */
-  task: chatTask,
+  /** Create a chat agent. See {@link chatAgent}. */
+  agent: chatAgent,
   /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
   withUIMessage,
   /** Create a chat task with a fixed client data schema. See {@link withClientData}. */

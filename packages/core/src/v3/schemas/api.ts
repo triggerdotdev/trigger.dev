@@ -1115,6 +1115,7 @@ const CommonRunFields = {
   baseCostInCents: z.number(),
   durationMs: z.number(),
   metadata: z.record(z.any()).optional(),
+  taskKind: z.string().optional(),
 };
 
 const RetrieveRunCommandFields = {

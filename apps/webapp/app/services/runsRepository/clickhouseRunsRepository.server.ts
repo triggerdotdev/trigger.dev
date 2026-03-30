@@ -151,6 +151,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         metadataType: true,
         machinePreset: true,
         queue: true,
+        annotations: true,
       },
     });
 
@@ -333,5 +334,23 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
       errorFingerprint: ErrorId.toId(options.errorId),
     });
+  }
+
+  if (options.taskKinds && options.taskKinds.length > 0) {
+    const includesStandard = options.taskKinds.includes("STANDARD");
+    // Include empty string when filtering for STANDARD (default value for pre-existing runs)
+    const effectiveKinds = includesStandard
+      ? [...options.taskKinds, ""]
+      : options.taskKinds;
+
+    if (effectiveKinds.length === 1) {
+      queryBuilder.where("task_kind = {taskKind: String}", {
+        taskKind: effectiveKinds[0]!,
+      });
+    } else {
+      queryBuilder.where("task_kind IN {taskKinds: Array(String)}", {
+        taskKinds: effectiveKinds,
+      });
+    }
   }
 }

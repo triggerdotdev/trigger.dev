@@ -387,6 +387,12 @@ type CommonTaskOptions<
    * Should be a valid JSON Schema Draft 7 object.
    */
   jsonSchema?: JSONSchema;
+
+  /** @internal Set by SDK internals (e.g. `chat.agent()`, `schedules.task()`). */
+  triggerSource?: string;
+
+  /** @internal Agent configuration, only set when `triggerSource` is `"agent"`. */
+  agentConfig?: { type: string };
 };
 
 export type TaskOptions<

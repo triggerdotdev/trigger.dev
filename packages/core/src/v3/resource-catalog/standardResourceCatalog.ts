@@ -1,3 +1,5 @@
+import { trail } from "agentcrumbs"; // @crumbs
+const _coreCrumb = trail("core"); // @crumbs
 import {
   PromptManifest,
   PromptMetadata,
@@ -73,6 +75,15 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
+    // #region @crumbs
+    _coreCrumb("registerTaskMetadata", {
+      taskId: task.id,
+      triggerSource: metadata.triggerSource,
+      agentConfig: metadata.agentConfig,
+      metadataKeys: Object.keys(metadata),
+    });
+    // #endregion @crumbs
+
     this._taskFileMetadata.set(task.id, {
       ...this._currentFileContext,
     });
@@ -86,24 +97,30 @@ export class StandardResourceCatalog implements ResourceCatalog {
   }
 
   updateTaskMetadata(id: string, updates: Partial<TaskMetadataWithFunctions>): void {
+    const { fns, schema, ...metadataUpdates } = updates;
+
     const existingMetadata = this._taskMetadata.get(id);
 
-    if (existingMetadata) {
+    if (existingMetadata && Object.keys(metadataUpdates).length > 0) {
       this._taskMetadata.set(id, {
         ...existingMetadata,
-        ...updates,
+        ...metadataUpdates,
       });
     }
 
-    if (updates.fns) {
+    if (fns) {
       const existingFunctions = this._taskFunctions.get(id);
 
       if (existingFunctions) {
         this._taskFunctions.set(id, {
           ...existingFunctions,
-          ...updates.fns,
+          ...fns,
         });
       }
+    }
+
+    if (schema) {
+      this._taskSchemas.set(id, schema);
     }
   }
 
@@ -122,6 +139,18 @@ export class StandardResourceCatalog implements ResourceCatalog {
         ...metadata,
         ...fileMetadata,
       };
+
+      // #region @crumbs
+      if (metadata.triggerSource || metadata.agentConfig) {
+        _coreCrumb("listTaskManifests building manifest", {
+          taskId: id,
+          triggerSource: metadata.triggerSource,
+          agentConfig: metadata.agentConfig,
+          manifestTriggerSource: taskManifest.triggerSource,
+          manifestAgentConfig: (taskManifest as any).agentConfig,
+        });
+      }
+      // #endregion @crumbs
 
       result.push(taskManifest);
     }

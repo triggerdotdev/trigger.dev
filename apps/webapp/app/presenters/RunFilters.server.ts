@@ -36,6 +36,7 @@ export async function getRunFiltersFromRequest(request: Request): Promise<Filter
     queues,
     machines,
     errorId,
+    sources,
   } = TaskRunListSearchFilters.parse(s);
 
   return {
@@ -56,5 +57,6 @@ export async function getRunFiltersFromRequest(request: Request): Promise<Filter
     queues,
     machines,
     errorId,
+    sources,
   };
 }

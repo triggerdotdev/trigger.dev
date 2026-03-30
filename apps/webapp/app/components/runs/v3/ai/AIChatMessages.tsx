@@ -259,7 +259,7 @@ function ToolUseSection({ tools }: { tools: ToolUse[] }) {
 
 type ToolTab = "input" | "output" | "details";
 
-function ToolUseRow({ tool }: { tool: ToolUse }) {
+export function ToolUseRow({ tool }: { tool: ToolUse }) {
   const hasInput = tool.inputJson !== "{}";
   const hasResult = !!tool.resultOutput;
   const hasDetails = !!tool.description || !!tool.parametersJson;

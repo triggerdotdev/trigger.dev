@@ -10,6 +10,7 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  CpuChipIcon,
   CubeIcon,
   ExclamationTriangleIcon,
   FolderIcon,
@@ -69,7 +70,9 @@ import {
   organizationTeamPath,
   queryPath,
   regionsPath,
+  v3AgentsPath,
   v3ApiKeysPath,
+  v3PlaygroundPath,
   v3BatchesPath,
   v3BillingPath,
   v3BuiltInDashboardPath,
@@ -467,6 +470,22 @@ export function SideMenu({
                 initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
                 onCollapseToggle={handleSectionToggle("ai")}
               >
+                <SideMenuItem
+                  name="Agents"
+                  icon={CpuChipIcon}
+                  activeIconColor="text-indigo-500"
+                  inactiveIconColor="text-indigo-500"
+                  to={v3AgentsPath(organization, project, environment)}
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Playground"
+                  icon={BeakerIcon}
+                  activeIconColor="text-indigo-400"
+                  inactiveIconColor="text-indigo-400"
+                  to={v3PlaygroundPath(organization, project, environment)}
+                  isCollapsed={isCollapsed}
+                />
                 <SideMenuItem
                   name="Prompts"
                   icon={AIPromptsIcon}
