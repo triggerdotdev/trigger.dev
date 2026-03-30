@@ -304,6 +304,7 @@ export class ApiRunListPresenter extends BasePresenter {
             durationMs: run.usageDurationMs,
             depth: run.depth,
             metadata,
+            taskKind: run.taskKind,
             ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
               ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion)
             ),

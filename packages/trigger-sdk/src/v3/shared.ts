@@ -1,4 +1,6 @@
 import { SpanKind } from "@opentelemetry/api";
+import { trail } from "agentcrumbs"; // @crumbs
+const _sdkCrumb = trail("sdk"); // @crumbs
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
@@ -250,12 +252,25 @@ export function createTask<
 
   registerTaskLifecycleHooks(params.id, params);
 
+  // #region @crumbs
+  _sdkCrumb("createTask registerTaskMetadata", {
+    taskId: params.id,
+    triggerSource: params.triggerSource,
+    agentConfig: params.agentConfig,
+    hasTriggerSource: "triggerSource" in params,
+    hasAgentConfig: "agentConfig" in params,
+    paramKeys: Object.keys(params).filter((k: string) => k.includes("trigger") || k.includes("agent") || k.includes("config")),
+  });
+  // #endregion @crumbs
+
   resourceCatalog.registerTaskMetadata({
     id: params.id,
     description: params.description,
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
+    triggerSource: params.triggerSource,
+    agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
     ttl: params.ttl,
     payloadSchema: params.jsonSchema,
@@ -408,6 +423,8 @@ export function createSchemaTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
+    triggerSource: params.triggerSource,
+    agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
     ttl: params.ttl,
     fns: {

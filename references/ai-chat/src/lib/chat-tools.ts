@@ -308,7 +308,7 @@ export const executeJs = tool({
   },
 });
 
-/** Tool set passed to `streamText` for the main `chat.task` run (includes PostHog). */
+/** Tool set passed to `streamText` for the main `chat.agent` run (includes PostHog). */
 export const chatTools = {
   inspectEnvironment,
   webFetch,

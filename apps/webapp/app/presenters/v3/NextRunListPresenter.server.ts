@@ -1,5 +1,6 @@
 import { type ClickHouse } from "@internal/clickhouse";
 import { MachinePresetName } from "@trigger.dev/core/v3";
+import { RunAnnotations } from "@trigger.dev/core/v3/schemas";
 import {
   type PrismaClient,
   type PrismaClientOrTransaction,
@@ -34,6 +35,7 @@ export type RunListOptions = {
   queues?: string[];
   machines?: MachinePresetName[];
   errorId?: string;
+  sources?: string[];
   //pagination
   direction?: Direction;
   cursor?: string;
@@ -72,6 +74,7 @@ export class NextRunListPresenter {
       queues,
       machines,
       errorId,
+      sources,
       from,
       to,
       direction = "forward",
@@ -89,6 +92,7 @@ export class NextRunListPresenter {
     const hasStatusFilters = statuses && statuses.length > 0;
 
     const hasFilters =
+      (sources !== undefined && sources.length > 0) ||
       (tasks !== undefined && tasks.length > 0) ||
       (versions !== undefined && versions.length > 0) ||
       hasStatusFilters ||
@@ -186,6 +190,7 @@ export class NextRunListPresenter {
       queues,
       machines,
       errorId,
+      taskKinds: sources,
       page: {
         size: pageSize,
         cursor,
@@ -250,6 +255,7 @@ export class NextRunListPresenter {
             name: run.queue.replace("task/", ""),
             type: run.queue.startsWith("task/") ? "task" : "custom",
           },
+          taskKind: RunAnnotations.safeParse(run.annotations).data?.taskKind ?? "STANDARD",
         };
       }),
       pagination: {

@@ -314,6 +314,31 @@ export function v3TestTaskPath(
   )}`;
 }
 
+export function v3PlaygroundPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/playground`;
+}
+
+export function v3PlaygroundAgentPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  agentSlug: string
+) {
+  return `${v3PlaygroundPath(organization, project, environment)}/${encodeURIComponent(agentSlug)}`;
+}
+
+export function v3AgentsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/agents`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,

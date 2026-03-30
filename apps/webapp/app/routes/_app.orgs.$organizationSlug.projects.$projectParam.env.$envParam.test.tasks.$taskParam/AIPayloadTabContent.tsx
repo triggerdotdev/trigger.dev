@@ -31,11 +31,17 @@ export function AIPayloadTabContent({
   payloadSchema,
   taskIdentifier,
   getCurrentPayload,
+  generateButtonLabel = "Generate payload",
+  placeholder,
+  examplePromptsOverride,
 }: {
   onPayloadGenerated: (payload: string) => void;
   payloadSchema?: unknown;
   taskIdentifier: string;
   getCurrentPayload?: () => string;
+  generateButtonLabel?: string;
+  placeholder?: string;
+  examplePromptsOverride?: string[];
 }) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -191,7 +197,7 @@ export function AIPayloadTabContent({
     }
   }, [error]);
 
-  const examplePrompts = payloadSchema
+  const examplePrompts = examplePromptsOverride ?? (payloadSchema
     ? [
         "Generate a valid payload",
         "Generate a payload with edge cases",
@@ -201,7 +207,7 @@ export function AIPayloadTabContent({
         "Generate a simple JSON payload",
         "Generate a payload with nested objects",
         "Generate a payload with an array of items",
-      ];
+      ]);
 
   return (
     <div className="space-y-2">
@@ -215,9 +221,9 @@ export function AIPayloadTabContent({
               ref={textareaRef}
               name="prompt"
               placeholder={
-                payloadSchema
+                placeholder ?? (payloadSchema
                   ? "e.g. generate a payload for a new user signup"
-                  : "e.g. generate a JSON payload with name, email, and age fields"
+                  : "e.g. generate a JSON payload with name, email, and age fields")
               }
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -251,7 +257,7 @@ export function AIPayloadTabContent({
                   className={cn(!prompt.trim() && "opacity-50")}
                   onClick={() => handleSubmit()}
                 >
-                  Generate payload
+                  {generateButtonLabel}
                 </Button>
               )}
             </div>
