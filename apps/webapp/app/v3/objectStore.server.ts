@@ -196,11 +196,48 @@ export async function downloadPacketFromObjectStore(
   });
 }
 
+export type GeneratePacketPresignOptions = {
+  /**
+   * When true (v1 packet PUT only), unprefixed keys use the legacy default object store only.
+   * When false/omitted (v2 packet PUT), unprefixed keys also use OBJECT_STORE_DEFAULT_PROTOCOL.
+   * Ignored for GET — reads never infer protocol from env for unprefixed keys.
+   */
+  forceNoPrefix?: boolean;
+};
+
+/**
+ * Resolve object-store protocol for packet presigns.
+ * GET: never apply OBJECT_STORE_DEFAULT_PROTOCOL to unprefixed keys.
+ * PUT: optional forceNoPrefix for v1 legacy upload behavior.
+ */
+export function resolveStoreProtocolForPacketPresign(
+  filename: string,
+  method: "PUT" | "GET",
+  forceNoPrefix?: boolean
+): { path: string; storeProtocol: string | undefined } {
+  const { protocol: explicitProtocol, path } = parseStorageUri(filename);
+
+  if (method === "GET") {
+    return { path, storeProtocol: explicitProtocol };
+  }
+
+  if (explicitProtocol !== undefined) {
+    return { path, storeProtocol: explicitProtocol };
+  }
+
+  if (forceNoPrefix) {
+    return { path, storeProtocol: undefined };
+  }
+
+  return { path, storeProtocol: env.OBJECT_STORE_DEFAULT_PROTOCOL };
+}
+
 export async function generatePresignedRequest(
   projectRef: string,
   envSlug: string,
   filename: string,
-  method: "PUT" | "GET" = "PUT"
+  method: "PUT" | "GET" = "PUT",
+  options?: GeneratePacketPresignOptions
 ): Promise<
   | {
       success: false;
@@ -209,23 +246,29 @@ export async function generatePresignedRequest(
   | {
       success: true;
       request: Request;
+      /** Canonical pointer for IOPacket.data (PUT only). */
+      storagePath?: string;
     }
 > {
-  const { protocol, path } = parseStorageUri(filename);
+  const { path, storeProtocol } = resolveStoreProtocolForPacketPresign(
+    filename,
+    method,
+    options?.forceNoPrefix
+  );
 
-  const config = getObjectStoreConfig(protocol);
+  const config = getObjectStoreConfig(storeProtocol);
   if (!config?.baseUrl) {
     return {
       success: false,
-      error: `Object store is not configured for protocol: ${protocol || "default"}`,
+      error: `Object store is not configured for protocol: ${storeProtocol || "default"}`,
     };
   }
 
-  const client = getObjectStoreClient(protocol);
+  const client = getObjectStoreClient(storeProtocol);
   if (!client) {
     return {
       success: false,
-      error: `Object store is not configured for protocol: ${protocol || "default"}`,
+      error: `Object store is not configured for protocol: ${storeProtocol || "default"}`,
     };
   }
 
@@ -239,12 +282,15 @@ export async function generatePresignedRequest(
       projectRef,
       envSlug,
       filename,
-      protocol: protocol || "default",
+      protocol: storeProtocol || "default",
     });
+
+    const storagePath = method === "PUT" ? formatStorageUri(path, storeProtocol) : undefined;
 
     return {
       success: true,
       request: new Request(url, { method }),
+      storagePath,
     };
   } catch (error) {
     return {
@@ -260,7 +306,8 @@ export async function generatePresignedUrl(
   projectRef: string,
   envSlug: string,
   filename: string,
-  method: "PUT" | "GET" = "PUT"
+  method: "PUT" | "GET" = "PUT",
+  options?: GeneratePacketPresignOptions
 ): Promise<
   | {
       success: false;
@@ -269,9 +316,10 @@ export async function generatePresignedUrl(
   | {
       success: true;
       url: string;
+      storagePath?: string;
     }
 > {
-  const signed = await generatePresignedRequest(projectRef, envSlug, filename, method);
+  const signed = await generatePresignedRequest(projectRef, envSlug, filename, method, options);
 
   if (!signed.success) {
     return {
@@ -283,5 +331,6 @@ export async function generatePresignedUrl(
   return {
     success: true,
     url: signed.request.url,
+    storagePath: signed.storagePath,
   };
 }

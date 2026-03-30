@@ -788,6 +788,8 @@ export const DeploymentEventFromString = z
 
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
+  /** Present on `/api/v2/packets` PUT (upload handshake); omitted on v1 GET download presign. */
+  storagePath: z.string().optional(),
 });
 
 export const WorkersListResponseBody = z

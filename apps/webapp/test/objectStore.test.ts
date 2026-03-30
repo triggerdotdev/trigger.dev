@@ -10,6 +10,7 @@ import {
   generatePresignedUrl,
   hasObjectStoreClient,
   parseStorageUri,
+  resolveStoreProtocolForPacketPresign,
   uploadPacketToObjectStore,
 } from "~/v3/objectStore.server";
 
@@ -100,6 +101,36 @@ describe("Object Storage", () => {
     it("should format URI without protocol", () => {
       const result = formatStorageUri("run_abc123/payload.json");
       expect(result).toBe("run_abc123/payload.json");
+    });
+  });
+
+  describe("resolveStoreProtocolForPacketPresign", () => {
+    afterEach(() => {
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = originalEnvObj.OBJECT_STORE_DEFAULT_PROTOCOL;
+    });
+
+    it("GET uses legacy default for unprefixed keys even when OBJECT_STORE_DEFAULT_PROTOCOL is set", () => {
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = "s3";
+      expect(resolveStoreProtocolForPacketPresign("a/b.json", "GET").storeProtocol).toBeUndefined();
+    });
+
+    it("PUT without forceNoPrefix uses OBJECT_STORE_DEFAULT_PROTOCOL for unprefixed keys", () => {
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = "s3";
+      expect(resolveStoreProtocolForPacketPresign("a/b.json", "PUT", false).storeProtocol).toBe(
+        "s3"
+      );
+    });
+
+    it("PUT with forceNoPrefix skips OBJECT_STORE_DEFAULT_PROTOCOL for unprefixed keys", () => {
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = "s3";
+      expect(resolveStoreProtocolForPacketPresign("a/b.json", "PUT", true).storeProtocol).toBeUndefined();
+    });
+
+    it("explicit protocol in key wins for PUT with forceNoPrefix", () => {
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = "r2";
+      expect(resolveStoreProtocolForPacketPresign("s3://x/y.json", "PUT", true).storeProtocol).toBe(
+        "s3"
+      );
     });
   });
 
@@ -356,6 +387,7 @@ describe("Object Storage", () => {
       const putResult = await generatePresignedUrl(projectRef, envSlug, filename, "PUT");
       expect(putResult.success).toBe(true);
       if (!putResult.success) throw new Error(putResult.error);
+      expect(putResult.storagePath).toBe(filename);
 
       const putResponse = await fetch(putResult.url, {
         method: "PUT",
@@ -368,10 +400,103 @@ describe("Object Storage", () => {
       const getResult = await generatePresignedUrl(projectRef, envSlug, filename, "GET");
       expect(getResult.success).toBe(true);
       if (!getResult.success) throw new Error(getResult.error);
+      expect(getResult.storagePath).toBeUndefined();
 
       const getResponse = await fetch(getResult.url);
       expect(getResponse.ok).toBe(true);
       expect(await getResponse.text()).toBe(data);
+    }
+  );
+
+  postgresAndMinioTest(
+    "generatePresignedUrl - PUT unprefixed with OBJECT_STORE_DEFAULT_PROTOCOL returns s3 storagePath",
+    async ({ minioConfig }) => {
+      env.OBJECT_STORE_BASE_URL = undefined;
+      env.OBJECT_STORE_ACCESS_KEY_ID = undefined;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = undefined;
+      env.OBJECT_STORE_REGION = undefined;
+
+      process.env.OBJECT_STORE_S3_BASE_URL = minioConfig.baseUrl;
+      process.env.OBJECT_STORE_S3_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      process.env.OBJECT_STORE_S3_REGION = minioConfig.region;
+      process.env.OBJECT_STORE_S3_SERVICE = "s3";
+
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = "s3";
+
+      const projectRef = "proj_presign_v2_style";
+      const envSlug = "dev";
+      const filename = "v2-style/payload.json";
+      const data = JSON.stringify({ v2: true });
+
+      const putResult = await generatePresignedUrl(projectRef, envSlug, filename, "PUT");
+      expect(putResult.success).toBe(true);
+      if (!putResult.success) throw new Error(putResult.error);
+      expect(putResult.storagePath).toBe(`s3://${filename}`);
+
+      const putResponse = await fetch(putResult.url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: data,
+      });
+      expect(putResponse.ok).toBe(true);
+
+      const getResult = await generatePresignedUrl(projectRef, envSlug, putResult.storagePath!, "GET");
+      expect(getResult.success).toBe(true);
+      if (!getResult.success) throw new Error(getResult.error);
+
+      const getResponse = await fetch(getResult.url);
+      expect(getResponse.ok).toBe(true);
+      expect(await getResponse.text()).toBe(data);
+
+      delete process.env.OBJECT_STORE_S3_BASE_URL;
+      delete process.env.OBJECT_STORE_S3_ACCESS_KEY_ID;
+      delete process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY;
+      delete process.env.OBJECT_STORE_S3_REGION;
+      delete process.env.OBJECT_STORE_S3_SERVICE;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
+    }
+  );
+
+  postgresAndMinioTest(
+    "generatePresignedUrl - forceNoPrefix PUT fails without legacy default when only S3 named",
+    async ({ minioConfig }) => {
+      env.OBJECT_STORE_BASE_URL = undefined;
+      env.OBJECT_STORE_ACCESS_KEY_ID = undefined;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = undefined;
+      env.OBJECT_STORE_REGION = undefined;
+
+      process.env.OBJECT_STORE_S3_BASE_URL = minioConfig.baseUrl;
+      process.env.OBJECT_STORE_S3_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      process.env.OBJECT_STORE_S3_REGION = minioConfig.region;
+      process.env.OBJECT_STORE_S3_SERVICE = "s3";
+
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = "s3";
+
+      const putLegacy = await generatePresignedUrl(
+        "proj_force_noprefix",
+        "dev",
+        "only-legacy/payload.json",
+        "PUT",
+        { forceNoPrefix: true }
+      );
+      expect(putLegacy.success).toBe(false);
+
+      const getUnprefixed = await generatePresignedUrl(
+        "proj_force_noprefix",
+        "dev",
+        "any.json",
+        "GET"
+      );
+      expect(getUnprefixed.success).toBe(false);
+
+      delete process.env.OBJECT_STORE_S3_BASE_URL;
+      delete process.env.OBJECT_STORE_S3_ACCESS_KEY_ID;
+      delete process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY;
+      delete process.env.OBJECT_STORE_S3_REGION;
+      delete process.env.OBJECT_STORE_S3_SERVICE;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
     }
   );
 
@@ -398,6 +523,7 @@ describe("Object Storage", () => {
       const putResult = await generatePresignedUrl(projectRef, envSlug, filename, "PUT");
       expect(putResult.success).toBe(true);
       if (!putResult.success) throw new Error(putResult.error);
+      expect(putResult.storagePath).toBe(filename);
 
       const putResponse = await fetch(putResult.url, {
         method: "PUT",
