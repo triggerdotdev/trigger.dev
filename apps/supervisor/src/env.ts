@@ -167,7 +167,51 @@ const Env = z
     // Schedule toleration settings - scheduled runs tolerate taints on the dedicated pool
     // Comma-separated list of tolerations in the format: key=value:effect
     // For Exists operator (no value): key:effect
-    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: z.string().optional(),
+    KUBERNETES_SCHEDULED_RUN_TOLERATIONS: z
+      .string()
+      .transform((val, ctx) => {
+        const tolerations = val
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+          .map((entry) => {
+            const colonIdx = entry.lastIndexOf(":");
+            if (colonIdx === -1) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Invalid toleration format (missing effect): "${entry}"`,
+              });
+              return z.NEVER;
+            }
+
+            const effect = entry.slice(colonIdx + 1);
+            const validEffects = ["NoSchedule", "NoExecute", "PreferNoSchedule"];
+            if (!validEffects.includes(effect)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(", ")}`,
+              });
+              return z.NEVER;
+            }
+
+            const keyValue = entry.slice(0, colonIdx);
+            const eqIdx = keyValue.indexOf("=");
+
+            if (eqIdx === -1) {
+              return { key: keyValue, operator: "Exists" as const, effect };
+            }
+
+            return {
+              key: keyValue.slice(0, eqIdx),
+              operator: "Equal" as const,
+              value: keyValue.slice(eqIdx + 1),
+              effect,
+            };
+          });
+
+        return tolerations;
+      })
+      .optional(),
 
     // Placement tags settings
     PLACEMENT_TAGS_ENABLED: BoolEnv.default(false),

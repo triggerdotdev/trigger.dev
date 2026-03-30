@@ -530,37 +530,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getScheduleTolerations(isScheduledRun: boolean): k8s.V1Toleration[] | undefined {
-    if (!isScheduledRun || !env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS) {
+    if (!isScheduledRun || !env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS?.length) {
       return undefined;
     }
 
-    return env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS.split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0)
-      .map((entry) => {
-        // Format: key=value:effect or key:effect (Exists operator)
-        const colonIdx = entry.lastIndexOf(":");
-        if (colonIdx === -1) {
-          throw new Error(`Invalid toleration format (missing effect): "${entry}"`);
-        }
-
-        const effect = entry.slice(colonIdx + 1) as k8s.V1Toleration["effect"];
-        const keyValue = entry.slice(0, colonIdx);
-        const eqIdx = keyValue.indexOf("=");
-
-        if (eqIdx === -1) {
-          // key:effect -> Exists operator
-          return { key: keyValue, operator: "Exists" as const, effect };
-        }
-
-        // key=value:effect -> Equal operator
-        return {
-          key: keyValue.slice(0, eqIdx),
-          operator: "Equal" as const,
-          value: keyValue.slice(eqIdx + 1),
-          effect,
-        };
-      });
+    return env.KUBERNETES_SCHEDULED_RUN_TOLERATIONS;
   }
 
   #getProjectPodAffinity(projectId: string): k8s.V1PodAffinity | undefined {
