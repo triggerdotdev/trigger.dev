@@ -30,7 +30,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
 
     const flagSchema = FeatureFlagCatalog[opts.key];
 
-    if (opts.overrides?.[opts.key]) {
+    if (opts.overrides?.[opts.key] !== undefined) {
       const parsed = flagSchema.safeParse(opts.overrides[opts.key]);
 
       if (parsed.success) {
@@ -38,13 +38,15 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
       }
     }
 
-    const parsed = flagSchema.safeParse(value?.value);
+    if (value !== null) {
+      const parsed = flagSchema.safeParse(value.value);
 
-    if (!parsed.success) {
-      return opts.defaultValue;
+      if (parsed.success) {
+        return parsed.data;
+      }
     }
 
-    return parsed.data;
+    return opts.defaultValue;
   }
 
   return flag;
