@@ -1331,6 +1331,10 @@ model WorkerInstanceGroup {
 
   workloadType WorkloadType @default(CONTAINER)
 
+  /// When true, runs enqueued to this worker queue may skip the intermediate queue
+  /// and be pushed directly to the worker queue when concurrency is available.
+  enableFastPath Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

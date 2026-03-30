@@ -36,6 +36,7 @@ export class EnqueueSystem {
     runnerId,
     skipRunLock,
     includeTtl = false,
+    enableFastPath = false,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -57,6 +58,8 @@ export class EnqueueSystem {
     skipRunLock?: boolean;
     /** When true, include TTL in the queued message (only for first enqueue from trigger). Default false. */
     includeTtl?: boolean;
+    /** When true, allow the queue to push directly to worker queue if concurrency is available. */
+    enableFastPath?: boolean;
   }) {
     const prisma = tx ?? this.$.prisma;
 
@@ -98,6 +101,7 @@ export class EnqueueSystem {
       await this.$.runQueue.enqueueMessage({
         env,
         workerQueue,
+        enableFastPath,
         message: {
           runId: run.id,
           taskIdentifier: run.taskIdentifier,

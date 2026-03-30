@@ -70,7 +70,7 @@ export interface QueueManager {
   getWorkerQueue(
     env: AuthenticatedEnvironment,
     regionOverride?: string
-  ): Promise<string | undefined>;
+  ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined>;
 }
 
 export interface PayloadProcessor {

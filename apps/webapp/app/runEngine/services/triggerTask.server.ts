@@ -290,7 +290,12 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
+      const workerQueueResult = await this.queueConcern.getWorkerQueue(
+        environment,
+        body.options?.region
+      );
+      const workerQueue = workerQueueResult?.masterQueue;
+      const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
       // Build annotations for this run
       const triggerSource = options.triggerSource ?? "api";
@@ -344,6 +349,7 @@ export class RunEngineTriggerTaskService {
                 queue: queueName,
                 lockedQueueId,
                 workerQueue,
+                enableFastPath,
                 isTest: body.options?.test ?? false,
                 delayUntil,
                 queuedAt: delayUntil ? undefined : new Date(),
