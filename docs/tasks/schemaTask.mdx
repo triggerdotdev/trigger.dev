@@ -172,7 +172,7 @@ export const chartTool = tool({
 });
 ```
 
-Inside the task run, you can read tool execution context with **`ai.currentToolOptions()`** (and helpers like `ai.toolCallId()`, `ai.chatContext()` when running inside a [`chat.task`](/ai-chat/overview)):
+Inside the task run, you can read tool execution context with **`ai.currentToolOptions()`** (and helpers like `ai.toolCallId()`, `ai.chatContext()` when running inside a [`chat.agent`](/ai-chat/overview)):
 
 ```ts
 import { ai } from "@trigger.dev/sdk/ai";

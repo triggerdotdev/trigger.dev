@@ -31,7 +31,7 @@ Messages are appended to the model messages before the next LLM inference call. 
 The most powerful pattern combines `chat.defer()` (background work) with `chat.inject()` (inject results). Background work runs in parallel with the idle wait between turns, and results are injected before the next response.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ messages }) => {
     // Kick off background analysis — doesn't block the turn
@@ -95,7 +95,7 @@ Focus on:
 Be concise. Only flag issues worth fixing.`,
 });
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ messages }) => {
     chat.defer(

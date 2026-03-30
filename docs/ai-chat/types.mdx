@@ -1,14 +1,14 @@
 ---
 title: "Types"
 sidebarTitle: "Types"
-description: "TypeScript types for AI Chat tasks, UI messages, and the frontend transport."
+description: "TypeScript types for AI Agents, UI messages, and the frontend transport."
 ---
 
 TypeScript patterns for [AI Chat](/ai-chat/overview). This page covers how to pin a custom AI SDK [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype with `chat.withUIMessage`, fix a typed `clientData` schema with `chat.withClientData`, chain builder-level hooks, and align types on the client.
 
 ## Custom `UIMessage` with `chat.withUIMessage`
 
-`chat.task()` types the wire payload with the base AI SDK `UIMessage`. That is enough for many apps.
+`chat.agent()` types the wire payload with the base AI SDK `UIMessage`. That is enough for many apps.
 
 When you add **custom `data-*` parts** (via `chat.stream` / `writer`) or a **typed tool map** (e.g. `InferUITools<typeof tools>`), you want a **narrower** `UIMessage` generic so that:
 
@@ -16,7 +16,7 @@ When you add **custom `data-*` parts** (via `chat.stream` / `writer`) or a **typ
 - Stream options like `sendReasoning` align with your message shape
 - The frontend can treat `useChat` messages as the same subtype end-to-end
 
-`chat.withUIMessage<YourUIMessage>(config?)` returns a [ChatBuilder](#chatbuilder) where `.task(...)` accepts the **same options as** [`chat.task()`](/ai-chat/backend#chat-task) but fixes `YourUIMessage` as the UI message type for that chat task.
+`chat.withUIMessage<YourUIMessage>(config?)` returns a [ChatBuilder](#chatbuilder) where `.agent(...)` accepts the **same options as** [`chat.agent()`](/ai-chat/backend#chat-agent) but fixes `YourUIMessage` as the UI message type for that chat agent.
 
 ### Defining a `UIMessage` subtype
 
@@ -46,9 +46,9 @@ export type MyChatUIMessage = UIMessage<unknown, MyChatDataTypes, MyChatTools>;
 
 Task-backed tools should use AI SDK [`tool()`](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling) with `execute: ai.toolExecute(schemaTask)` where needed — see [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools).
 
-### Backend: `chat.withUIMessage(...).task(...)`
+### Backend: `chat.withUIMessage(...).agent(...)`
 
-Call `withUIMessage` **once**, then chain `.task({ ... })` instead of `chat.task({ ... })`. You can also chain `.withClientData()` and hook methods before `.task()`:
+Call `withUIMessage` **once**, then chain `.agent({ ... })` instead of `chat.agent({ ... })`. You can also chain `.withClientData()` and hook methods before `.agent()`:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -76,7 +76,7 @@ export const myChat = chat
   .withClientData({
     schema: z.object({ userId: z.string() }),
   })
-  .task({
+  .agent({
     id: "my-chat",
     onTurnStart: async ({ uiMessages, writer }) => {
       // uiMessages is MyChatUIMessage[] — custom data parts are typed
@@ -98,9 +98,9 @@ export const myChat = chat
 
 ### Default stream options
 
-The optional `streamOptions` object becomes the **default** [`uiMessageStreamOptions`](/ai-chat/reference#chat-task-options) for `toUIMessageStream()`.
+The optional `streamOptions` object becomes the **default** [`uiMessageStreamOptions`](/ai-chat/reference#chat-agent-options) for `toUIMessageStream()`.
 
-If you also set `uiMessageStreamOptions` on the inner `.task({ ... })`, the two objects are **shallow-merged** — keys on the **task** win on conflicts. Per-turn overrides via [`chat.setUIMessageStreamOptions()`](/ai-chat/backend#stream-options) still apply on top.
+If you also set `uiMessageStreamOptions` on the inner `.agent({ ... })`, the two objects are **shallow-merged** — keys on the **agent** win on conflicts. Per-turn overrides via [`chat.setUIMessageStreamOptions()`](/ai-chat/backend#stream-options) still apply on top.
 
 ### Frontend: `InferChatUIMessage`
 
@@ -131,7 +131,7 @@ You can also import `InferChatUIMessage` from `@trigger.dev/sdk/ai` in non-React
 
 ## Typed client data with `chat.withClientData`
 
-`chat.withClientData({ schema })` returns a [ChatBuilder](#chatbuilder) that fixes the client data schema. All hooks and `run` receive typed `clientData` without needing `clientDataSchema` in `.task()` options.
+`chat.withClientData({ schema })` returns a [ChatBuilder](#chatbuilder) that fixes the client data schema. All hooks and `run` receive typed `clientData` without needing `clientDataSchema` in `.agent()` options.
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -141,7 +141,7 @@ export const myChat = chat
   .withClientData({
     schema: z.object({ userId: z.string(), model: z.string().optional() }),
   })
-  .task({
+  .agent({
     id: "my-chat",
     onPreload: async ({ clientData }) => {
       // clientData is typed as { userId: string; model?: string }
@@ -159,7 +159,7 @@ export const myChat = chat
 
 ## ChatBuilder
 
-Both `chat.withUIMessage()` and `chat.withClientData()` return a **ChatBuilder** — a chainable object that accumulates configuration before creating the task with `.task()`.
+Both `chat.withUIMessage()` and `chat.withClientData()` return a **ChatBuilder** — a chainable object that accumulates configuration before creating the agent with `.agent()`.
 
 Builder methods can be chained in any order:
 
@@ -177,7 +177,7 @@ export const myChat = chat
   .onChatResume(async ({ ctx }) => {
     warmCache(ctx.run.id);
   })
-  .task({
+  .agent({
     id: "my-chat",
     run: async ({ messages, signal }) => {
       return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
@@ -198,7 +198,7 @@ chat
     // Runs first — shared setup across tasks using this builder
     await initializeSharedState(event.chatId);
   })
-  .task({
+  .agent({
     id: "my-chat",
     onPreload: async (event) => {
       // Runs second — task-specific logic
@@ -214,13 +214,13 @@ chat
   Set types first (`.withUIMessage()`, `.withClientData()`), then hooks. Hook parameters are typed based on the builder's current generics — so hooks registered after `.withClientData()` get typed `clientData`.
 </Tip>
 
-### When plain `chat.task()` is enough
+### When plain `chat.agent()` is enough
 
-If you do not rely on custom `UIMessage` generics (only default text, reasoning, and built-in tool UI types), **`chat.task()` alone is fine** — no need for `withUIMessage`.
+If you do not rely on custom `UIMessage` generics (only default text, reasoning, and built-in tool UI types), **`chat.agent()` alone is fine** — no need for `withUIMessage`.
 
 ## See also
 
-- [Backend — `chat.task()`](/ai-chat/backend#chat-task)
+- [Backend — `chat.agent()`](/ai-chat/backend#chat-agent)
 - [Backend — Lifecycle hooks](/ai-chat/backend#lifecycle-hooks)
 - [Frontend — transport & `useChat`](/ai-chat/frontend)
 - [API reference — `chat.withUIMessage`](/ai-chat/reference#chat-withuimessage)
