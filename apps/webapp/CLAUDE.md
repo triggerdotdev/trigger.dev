@@ -98,3 +98,12 @@ The `app/v3/` directory name is misleading - most code is actively used by V2. O
 - `app/v3/sharedSocketConnection.ts`
 
 Some services (e.g., `cancelTaskRun.server.ts`, `batchTriggerV3.server.ts`) branch on `RunEngineVersion` to support both V1 and V2. When editing these, only modify V2 code paths.
+
+## Prisma Query Patterns
+
+- **Always use `findFirst` instead of `findUnique`.** Prisma's `findUnique` has an implicit DataLoader that batches concurrent calls into a single `IN` query. This batching cannot be disabled and has active bugs even in Prisma 6.x: uppercase UUIDs returning null (#25484, confirmed 6.4.1), composite key SQL correctness issues (#22202), and 5-10x worse performance than manual DataLoader (#6573, open since 2021). `findFirst` is never batched and avoids this entire class of issues.
+
+## React Patterns
+
+- Only use `useCallback`/`useMemo` for context provider values, expensive derived data that is a dependency elsewhere, or stable refs required by a dependency array. Don't wrap ordinary event handlers or trivial computations.
+- Use named constants for sentinel/placeholder values (e.g. `const UNSET_VALUE = "__unset__"`) instead of raw string literals scattered across comparisons.

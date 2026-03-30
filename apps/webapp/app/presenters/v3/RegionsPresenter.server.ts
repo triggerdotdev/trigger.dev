@@ -1,6 +1,7 @@
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { makeFlag } from "~/v3/featureFlags.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 

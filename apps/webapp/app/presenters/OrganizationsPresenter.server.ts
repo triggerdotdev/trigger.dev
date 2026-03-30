@@ -11,7 +11,8 @@ import {
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
 import { env } from "~/env.server";
-import { flags, validatePartialFeatureFlags } from "~/v3/featureFlags.server";
+import { flags } from "~/v3/featureFlags.server";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
