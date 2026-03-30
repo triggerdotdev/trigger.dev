@@ -1,13 +1,12 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { fromPromise } from "neverthrow";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { SlackIcon } from "@trigger.dev/companyicons";
 import { TrashIcon } from "@heroicons/react/20/solid";
 import { Button } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +16,14 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
-import { Header1 } from "~/components/primitives/Headers";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
+import {
+  MainHorizontallyCenteredContainer,
+  PageBody,
+  PageContainer,
+} from "~/components/layout/AppLayout";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   Table,
@@ -33,18 +38,6 @@ import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
 import { OrganizationParamsSchema, organizationSettingsPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  }).format(date);
-}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -187,8 +180,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function SlackIntegrationPage() {
-  const { slackIntegration, alertChannels, teamName } =
-    useTypedLoaderData<typeof loader>();
+  const { slackIntegration, alertChannels, teamName } = useTypedLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isUninstalling =
@@ -197,14 +189,21 @@ export default function SlackIntegrationPage() {
   if (!slackIntegration) {
     return (
       <PageContainer>
+        <NavBar>
+          <PageTitle title="Slack integration" />
+        </NavBar>
         <PageBody>
-          <div className="flex flex-col items-center justify-center py-8">
-            <Header1>No Slack Integration Found</Header1>
-            <Paragraph className="mt-2 text-center text-text-dimmed">
-              This organization doesn't have a Slack integration configured. You can connect Slack
-              when setting up alert channels in your project settings.
-            </Paragraph>
-          </div>
+          <MainHorizontallyCenteredContainer>
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <Header3 className="mb-2">No Slack integration found</Header3>
+                <Paragraph variant="small">
+                  This organization doesn't have a Slack integration configured. You can connect
+                  Slack when setting up alert channels in your project settings.
+                </Paragraph>
+              </div>
+            </div>
+          </MainHorizontallyCenteredContainer>
         </PageBody>
       </PageContainer>
     );
@@ -212,114 +211,133 @@ export default function SlackIntegrationPage() {
 
   return (
     <PageContainer>
+      <NavBar>
+        <PageTitle title="Slack integration" />
+      </NavBar>
       <PageBody>
-        <div className="mb-8">
-          <Header1>Slack Integration</Header1>
-          <Paragraph className="mt-2 text-text-dimmed">
-            Manage your organization's Slack integration and connected alert channels.
-          </Paragraph>
-        </div>
-
-        {/* Integration Info Section */}
-        <div className="mb-8 rounded-lg border border-grid-bright bg-background-bright p-6">
-          <div className="flex items-center justify-between">
+        <MainHorizontallyCenteredContainer>
+          <div className="flex flex-col gap-6">
             <div>
-              <h2 className="text-lg font-medium text-text-bright">Integration Details</h2>
-              <div className="mt-2 space-y-1 text-sm text-text-dimmed">
+              <div className="mb-3 border-b border-grid-dimmed pb-3">
+                <Header2>Integration details</Header2>
+              </div>
+              <div className="flex flex-col gap-1">
                 {teamName && (
-                  <div>
-                    <span className="font-medium">Slack Workspace:</span> {teamName}
-                  </div>
+                  <Paragraph variant="small">
+                    <span className="text-text-dimmed">Workspace:</span>{" "}
+                    <span className="text-text-bright">{teamName}</span>
+                  </Paragraph>
                 )}
-                <div>
-                  <span className="font-medium">Installed:</span>{" "}
-                  {formatDate(new Date(slackIntegration.createdAt))}
-                </div>
+                <Paragraph variant="small">
+                  <span className="text-text-dimmed">Installed:</span>{" "}
+                  <span className="text-text-bright">
+                    <DateTime date={slackIntegration.createdAt} />
+                  </span>
+                </Paragraph>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="danger/medium" LeadingIcon={TrashIcon} disabled={isUninstalling}>
-                    Remove Integration
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Remove Slack Integration</DialogTitle>
-                  </DialogHeader>
-                  <DialogDescription>
-                    This will remove the Slack integration and disable all connected alert channels.
-                    This action cannot be undone.
-                  </DialogDescription>
-                  <FormButtons
-                    confirmButton={
-                      <Form method="post">
-                        <input type="hidden" name="intent" value="uninstall" />
-                        <Button
-                          variant="danger/medium"
-                          LeadingIcon={TrashIcon}
-                          type="submit"
-                          disabled={isUninstalling}
-                        >
-                          {isUninstalling ? "Removing..." : "Remove Integration"}
-                        </Button>
-                      </Form>
-                    }
-                    cancelButton={
-                      <DialogClose asChild>
-                        <Button variant="tertiary/medium">Cancel</Button>
-                      </DialogClose>
-                    }
-                  />
-                </DialogContent>
-              </Dialog>
-              {actionData?.error && (
-                <Paragraph variant="small" className="text-error">
-                  {actionData.error}
+
+            <div>
+              <div className="mb-3 border-b border-grid-dimmed pb-3">
+                <Header3>
+                  Connected alert channels
+                  <span className="ml-1 text-text-dimmed">({alertChannels.length})</span>
+                </Header3>
+              </div>
+              {alertChannels.length === 0 ? (
+                <Paragraph variant="small" className="text-text-dimmed">
+                  No alert channels are currently connected to this Slack integration.
                 </Paragraph>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>Channel</TableHeaderCell>
+                      <TableHeaderCell>Project</TableHeaderCell>
+                      <TableHeaderCell>Status</TableHeaderCell>
+                      <TableHeaderCell>Created</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {alertChannels.map((channel) => (
+                      <TableRow key={channel.id}>
+                        <TableCell>{channel.name}</TableCell>
+                        <TableCell>{channel.project.name}</TableCell>
+                        <TableCell>
+                          <EnabledStatus enabled={channel.enabled} />
+                        </TableCell>
+                        <TableCell>
+                          <DateTime date={channel.createdAt} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </div>
-          </div>
-        </div>
 
-        {/* Connected Alert Channels Section */}
-        <div>
-          <h2 className="mb-4 text-lg font-medium text-text-bright">
-            Connected Alert Channels ({alertChannels.length})
-          </h2>
-
-          {alertChannels.length === 0 ? (
-            <div className="rounded-lg border border-grid-bright bg-background-bright p-6 text-center">
-              <Paragraph className="text-text-dimmed">
-                No alert channels are currently connected to this Slack integration.
-              </Paragraph>
+            <div>
+              <Header2 spacing>Danger zone</Header2>
+              <div className="w-full rounded-sm border border-rose-500/40 p-4">
+                <Header3 spacing>Remove integration</Header3>
+                <Hint>
+                  This will remove the Slack integration and disable all connected alert channels.
+                  This action cannot be undone.
+                </Hint>
+                {actionData?.error && (
+                  <Paragraph variant="small" className="mt-2 text-error">
+                    {actionData.error}
+                  </Paragraph>
+                )}
+                <FormButtons
+                  className="mt-2"
+                  confirmButton={
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="danger/small"
+                          LeadingIcon={TrashIcon}
+                          disabled={isUninstalling}
+                        >
+                          Remove integration
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Remove Slack integration</DialogTitle>
+                        </DialogHeader>
+                        <DialogDescription className="mb-2">
+                          This will remove the Slack integration and disable all connected alert
+                          channels. This action cannot be undone.
+                        </DialogDescription>
+                        <FormButtons
+                          confirmButton={
+                            <Form method="post">
+                              <input type="hidden" name="intent" value="uninstall" />
+                              <Button
+                                variant="danger/medium"
+                                LeadingIcon={TrashIcon}
+                                type="submit"
+                                disabled={isUninstalling}
+                              >
+                                {isUninstalling ? "Removing…" : "Remove integration"}
+                              </Button>
+                            </Form>
+                          }
+                          cancelButton={
+                            <DialogClose asChild>
+                              <Button variant="tertiary/medium">Cancel</Button>
+                            </DialogClose>
+                          }
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  }
+                />
+              </div>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHeaderCell>Channel Name</TableHeaderCell>
-                  <TableHeaderCell>Project</TableHeaderCell>
-                  <TableHeaderCell>Status</TableHeaderCell>
-                  <TableHeaderCell>Created</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {alertChannels.map((channel) => (
-                  <TableRow key={channel.id}>
-                    <TableCell>{channel.name}</TableCell>
-                    <TableCell>{channel.project.name}</TableCell>
-                    <TableCell>
-                      <EnabledStatus enabled={channel.enabled} />
-                    </TableCell>
-                    <TableCell>{formatDate(new Date(channel.createdAt))}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+          </div>
+        </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
   );
