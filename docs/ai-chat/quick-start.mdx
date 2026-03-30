@@ -1,12 +1,12 @@
 ---
 title: "Quick Start"
 sidebarTitle: "Quick Start"
-description: "Get a working AI chat in 3 steps — define a task, generate a token, and wire up the frontend."
+description: "Get a working AI agent in 3 steps — define an agent, generate a token, and wire up the frontend."
 ---
 
 <Steps>
-  <Step title="Define a chat task">
-    Use `chat.task` from `@trigger.dev/sdk/ai` to define a task that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
+  <Step title="Define a chat agent">
+    Use `chat.agent` from `@trigger.dev/sdk/ai` to define an agent that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
 
     If you return a `StreamTextResult`, it's **automatically piped** to the frontend.
 
@@ -15,7 +15,7 @@ description: "Get a working AI chat in 3 steps — define a task, generate a tok
     import { streamText } from "ai";
     import { openai } from "@ai-sdk/openai";
 
-    export const myChat = chat.task({
+    export const myChat = chat.agent({
       id: "my-chat",
       run: async ({ messages, signal }) => {
         // messages is ModelMessage[] — pass directly to streamText
@@ -30,13 +30,13 @@ description: "Get a working AI chat in 3 steps — define a task, generate a tok
     ```
 
     <Tip>
-      For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the task with [`chat.withUIMessage<...>().task({...})`](/ai-chat/types) instead of `chat.task`.
+      For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the agent with [`chat.withUIMessage<...>().agent({...})`](/ai-chat/types) instead of `chat.agent`.
     </Tip>
 
   </Step>
 
   <Step title="Generate an access token">
-    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat task. The transport calls your function with `chatId` and `purpose` (`"trigger"` or `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` so the signature matches — see [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
+    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat agent. The transport calls your function with `chatId` and `purpose` (`"trigger"` or `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` so the signature matches — see [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
 
     ```ts app/actions.ts
     "use server";

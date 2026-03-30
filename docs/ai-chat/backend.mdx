@@ -1,15 +1,15 @@
 ---
 title: "Backend"
 sidebarTitle: "Backend"
-description: "Three approaches to building your chat backend — chat.task(), session iterator, or raw task primitives."
+description: "Three approaches to building your chat backend — chat.agent(), session iterator, or raw task primitives."
 ---
 
-## chat.task()
+## chat.agent()
 
 The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
 
 <Tip>
-  To fix a **custom** `UIMessage` subtype or typed client data schema, use the [ChatBuilder](/ai-chat/types#chatbuilder) via `chat.withUIMessage<...>()` and/or `chat.withClientData({ schema })`. Builder-level hooks can also be chained before `.task()`. See [Types](/ai-chat/types).
+  To fix a **custom** `UIMessage` subtype or typed client data schema, use the [ChatBuilder](/ai-chat/types#chatbuilder) via `chat.withUIMessage<...>()` and/or `chat.withClientData({ schema })`. Builder-level hooks can also be chained before `.agent()`. See [Types](/ai-chat/types).
 </Tip>
 
 ### Simple: return a StreamTextResult
@@ -21,7 +21,7 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const simpleChat = chat.task({
+export const simpleChat = chat.agent({
   id: "simple-chat",
   run: async ({ messages, signal }) => {
     return streamText({
@@ -44,7 +44,7 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import type { ModelMessage } from "ai";
 
-export const agentChat = chat.task({
+export const agentChat = chat.agent({
   id: "agent-chat",
   run: async ({ messages }) => {
     // Don't return anything — chat.pipe is called inside
@@ -71,9 +71,9 @@ async function runAgentLoop(messages: ModelMessage[]) {
 
 Every chat lifecycle callback and the **`run`** payload include **`ctx`**: the same run context object as `task({ run: (payload, { ctx }) => ... })`. Import the type with **`import type { TaskRunContext } from "@trigger.dev/sdk"`** (the **`Context`** export is the same type). Use **`ctx`** for tags, metadata, or any API that needs the full run record. The string **`runId`** on chat events is always **`ctx.run.id`** (both are provided for convenience). See [Task context (`ctx`)](/ai-chat/reference#task-context-ctx) in the API reference.
 
-Standard **[task lifecycle hooks](/tasks/overview)** — **`onWait`**, **`onResume`**, **`onComplete`**, **`onFailure`**, etc. — are also available on **`chat.task()`** with the same shapes as on a normal `task()`.
+Standard **[task lifecycle hooks](/tasks/overview)** — **`onWait`**, **`onResume`**, **`onComplete`**, **`onFailure`**, etc. — are also available on **`chat.agent()`** with the same shapes as on a normal `task()`.
 
-Chat tasks also have two dedicated suspension hooks — **`onChatSuspend`** and **`onChatResume`** — that fire at the idle-to-suspended transition with full chat context. Use them for resource cleanup (e.g. tearing down sandboxes) and re-initialization. See [onChatSuspend / onChatResume](#onchatsuspend--onchatresume) and the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
+Chat agents also have two dedicated suspension hooks — **`onChatSuspend`** and **`onChatResume`** — that fire at the idle-to-suspended transition with full chat context. Use them for resource cleanup (e.g. tearing down sandboxes) and re-initialization. See [onChatSuspend / onChatResume](#onchatsuspend--onchatresume) and the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
 
 #### onPreload
 
@@ -82,7 +82,7 @@ Fires when a preloaded run starts — before any messages arrive. Use it to eage
 Preloaded runs are triggered by calling `transport.preload(chatId)` on the frontend. See [Preload](/ai-chat/features#preload) for details.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({ userId: z.string() }),
   onPreload: async ({ ctx, chatId, clientData, runId, chatAccessToken }) => {
@@ -125,7 +125,7 @@ Fires once on the first turn (turn 0) before `run()` executes. Use it to create 
 The `continuation` field tells you whether this is a brand new chat or a continuation of an existing one (where the previous run timed out or was cancelled). The `preloaded` field tells you whether `onPreload` already ran.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onChatStart: async ({ chatId, clientData, continuation, preloaded }) => {
     if (preloaded) return; // Already set up in onPreload
@@ -167,7 +167,7 @@ Fires at the start of every turn, after message accumulation and `onChatStart` (
 | `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks                 |
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
     await db.chat.update({
@@ -196,7 +196,7 @@ export const myChat = chat.task({
 Fires after the response is captured but **before** the stream closes. The `writer` can send custom chunks that appear in the current turn — use this for post-processing indicators, compaction progress, or any data the user should see before the turn ends.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onBeforeTurnComplete: async ({ writer, usage, uiMessages }) => {
     // Write a custom data part while the stream is still open
@@ -245,7 +245,7 @@ Fires after each turn completes — after the response is captured and the strea
 | `rawResponseMessage` | `UIMessage \| undefined` | The raw assistant response before abort cleanup (same as `responseMessage` when not stopped) |
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
     await db.chat.update({
@@ -288,7 +288,7 @@ The `phase` discriminator tells you **when** the suspend/resume happened:
 - `"turn"` — after `onTurnComplete`, waiting for the next message
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onChatSuspend: async (event) => {
     // Tear down expensive resources before suspending
@@ -327,7 +327,7 @@ export const myChat = chat.task({
 When set to `true`, a preloaded run completes successfully after the idle timeout elapses instead of suspending. Use this for "fire and forget" preloads — if the user doesn't send a message during the idle window, the run ends cleanly.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   preloadIdleTimeoutInSeconds: 10,
   exitAfterPreloadIdle: true,
@@ -362,7 +362,7 @@ const systemPrompt = prompts.define({
   content: `You are a helpful assistant for {{name}}.`,
 });
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({ userId: z.string() }),
   onChatStart: async ({ clientData }) => {
@@ -404,7 +404,7 @@ The `run` function receives three abort signals:
 | `cancelSignal` | Run cancel, expire, or maxDuration exceeded | Cleanup that should only happen on full cancellation                   |
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal, stopSignal, cancelSignal }) => {
     return streamText({
@@ -426,7 +426,7 @@ export const myChat = chat.task({
 The `onTurnComplete` event includes a `stopped` boolean that indicates whether the user stopped generation during that turn:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ chatId, uiMessages, stopped }) => {
     await db.chat.update({
@@ -446,7 +446,7 @@ You can also check stop status from **anywhere** during a turn using `chat.isSto
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) => {
     return streamText({
@@ -469,7 +469,7 @@ export const myChat = chat.task({
 
 When stop happens mid-stream, the captured response message can contain parts in an incomplete state — tool calls stuck in `partial-call`, reasoning blocks still marked as `streaming`, etc. These can cause UI issues like permanent spinners.
 
-`chat.task` automatically cleans up the `responseMessage` when stop is detected before passing it to `onTurnComplete`. If you use `chat.pipe()` manually and capture response messages yourself, use `chat.cleanupAbortedParts()`:
+`chat.agent` automatically cleans up the `responseMessage` when stop is detected before passing it to `onTurnComplete`. If you use `chat.pipe()` manually and capture response messages yourself, use `chat.cleanupAbortedParts()`:
 
 ```ts
 const cleaned = chat.cleanupAbortedParts(rawResponseMessage);
@@ -508,7 +508,7 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { db } from "@/lib/db";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({
     userId: z.string(),
@@ -660,7 +660,7 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
 Users can send messages while the agent is executing tool calls. With `pendingMessages`, these messages are injected between tool-call steps, steering the agent mid-execution:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   pendingMessages: {
     shouldInject: ({ steps }) => steps.length > 0,
@@ -690,7 +690,7 @@ On the frontend, the `usePendingMessages` hook handles sending, tracking, and re
 Inject context from background work into the conversation using `chat.inject()`. Combine with `chat.defer()` to run analysis between turns and inject results before the next response — self-review, RAG augmentation, safety checks, etc.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ messages }) => {
     chat.defer(
@@ -727,7 +727,7 @@ Transform model messages before they're used anywhere — in `run()`, in compact
 Use this for Anthropic cache breaks, injecting system context, stripping PII, etc.
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   prepareMessages: ({ messages, reason }) => {
     // Add Anthropic cache breaks to the last message
@@ -798,7 +798,7 @@ When `streamText` encounters an error mid-stream (rate limits, API failures, net
 By default, the raw error message is sent to the frontend. Use `onError` to sanitize errors and avoid leaking internal details:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   uiMessageStreamOptions: {
     onError: (error) => {
@@ -836,7 +836,7 @@ const { messages, sendMessage } = useChat({
 Control which AI SDK features are forwarded to the frontend:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   uiMessageStreamOptions: {
     sendReasoning: true, // Forward model reasoning (default: true)
@@ -862,7 +862,7 @@ run: async ({ messages, clientData, signal }) => {
 },
 ```
 
-`chat.setUIMessageStreamOptions()` works across all abstraction levels — `chat.task()`, `chat.createSession()` / `turn.complete()`, and `chat.pipeAndCapture()`.
+`chat.setUIMessageStreamOptions()` works across all abstraction levels — `chat.agent()`, `chat.createSession()` / `turn.complete()`, and `chat.pipeAndCapture()`.
 
 See [ChatUIMessageStreamOptions](/ai-chat/reference#chatuimessagestreamoptions) for the full reference.
 
@@ -900,14 +900,14 @@ export const manualChat = task({
 <Warning>
   Manual mode does not get automatic message accumulation or the `onTurnComplete`/`onChatStart`
   lifecycle hooks. The `responseMessage` field in `onTurnComplete` will be `undefined` when using
-  `chat.pipe()` directly. Use `chat.task()` for the full multi-turn experience.
+  `chat.pipe()` directly. Use `chat.agent()` for the full multi-turn experience.
 </Warning>
 
 ---
 
 ## chat.createSession()
 
-A middle ground between `chat.task()` and raw primitives. You get an async iterator that yields `ChatTurn` objects — each turn handles stop signals, message accumulation, and turn-complete signaling automatically. You control initialization, model/tool selection, persistence, and any custom per-turn logic.
+A middle ground between `chat.agent()` and raw primitives. You get an async iterator that yields `ChatTurn` objects — each turn handles stop signals, message accumulation, and turn-complete signaling automatically. You control initialization, model/tool selection, persistence, and any custom per-turn logic.
 
 Use `chat.createSession()` inside a standard `task()`:
 

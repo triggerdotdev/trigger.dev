@@ -209,9 +209,9 @@ const result = await generateText({
 });
 ```
 
-## Using with chat.task()
+## Using with chat.agent()
 
-Prompts integrate with `chat.task()` via `chat.prompt` — a run-scoped store for the resolved prompt. Store a prompt once in a lifecycle hook, then access it anywhere during the run.
+Prompts integrate with `chat.agent()` via `chat.prompt` — a run-scoped store for the resolved prompt. Store a prompt once in a lifecycle hook, then access it anywhere during the run.
 
 ### chat.prompt.set() and chat.prompt()
 
@@ -232,7 +232,7 @@ const systemPrompt = prompts.define({
   content: `You are a helpful assistant for {{name}}.`,
 });
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onChatStart: async ({ clientData }) => {
     const resolved = await systemPrompt.resolve({ name: clientData.name });

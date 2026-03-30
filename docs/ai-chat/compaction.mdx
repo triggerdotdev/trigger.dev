@@ -8,7 +8,7 @@ description: "Automatic context compaction to keep long conversations within tok
 
 Long conversations accumulate tokens across turns. Eventually the context window fills up, causing errors or degraded responses. Compaction solves this by automatically summarizing the conversation when token usage exceeds a threshold, then using that summary as the context for future turns.
 
-The `compaction` option on `chat.task()` handles this in both paths:
+The `compaction` option on `chat.agent()` handles this in both paths:
 
 - **Between tool-call steps** (inner loop) — via the AI SDK's `prepareStep`, compaction runs between tool calls within a single turn
 - **Between turns** (outer loop) — for single-step responses with no tool calls, where `prepareStep` never fires
@@ -22,7 +22,7 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   compaction: {
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
@@ -71,7 +71,7 @@ Replace older messages with a summary but keep the last few exchanges visible:
 ```ts
 import { generateId } from "ai";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   compaction: {
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
@@ -175,7 +175,7 @@ The `summarize` callback receives similar context:
 Track compaction events for logging, billing, or analytics:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   compaction: { ... },
   onCompacted: async ({ summary, totalTokens, messageCount, chatId, turn }) => {
@@ -292,5 +292,5 @@ prepareStep: chat.compactionStep({
 ```
 
 <Note>
-  The fully manual APIs only handle inner-loop compaction (between tool-call steps). For outer-loop coverage, use the `compaction` option on `chat.task()`, `chat.createSession()`, or `MessageAccumulator`.
+  The fully manual APIs only handle inner-loop compaction (between tool-call steps). For outer-loop coverage, use the `compaction` option on `chat.agent()`, `chat.createSession()`, or `MessageAccumulator`.
 </Note>

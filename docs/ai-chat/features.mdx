@@ -30,7 +30,7 @@ const userContext = chat.local<{
   messageCount: number;
 }>({ id: "userContext" });
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({ userId: z.string() }),
   onChatStart: async ({ clientData }) => {
@@ -105,7 +105,7 @@ const analyzeData = tool({
   execute: ai.toolExecute(analyzeDataTask),
 });
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onChatStart: async ({ clientData }) => {
     userContext.init({ name: "Alice", plan: "pro" });
@@ -165,7 +165,7 @@ Use `chat.defer()` to run background work in parallel with streaming. The deferr
 This moves non-blocking work (DB writes, analytics, etc.) out of the critical path:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onTurnStart: async ({ chatId, uiMessages }) => {
     // Persist messages without blocking the LLM call
@@ -188,7 +188,7 @@ export const myChat = chat.task({
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) => {
     // Write a custom data part to the chat stream.
@@ -286,7 +286,7 @@ const research = tool({
   execute: ai.toolExecute(researchTask),
 });
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) => {
     return streamText({
@@ -320,7 +320,7 @@ On the frontend, render the custom data part:
 The `target` option accepts:
 - `"self"` — current run (default)
 - `"parent"` — parent task's run
-- `"root"` — root task's run (the chat task)
+- `"root"` — root task's run (the chat agent)
 - A specific run ID string
 
 ---
@@ -409,7 +409,7 @@ When the transport needs a trigger token for preload, your `accessToken` callbac
 On the backend, the `onPreload` hook fires immediately. The run then waits for the first message. When the user sends a message, `onChatStart` fires with `preloaded: true` — you can skip initialization that was already done in `onPreload`:
 
 ```ts
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   onPreload: async ({ chatId, clientData }) => {
     // Eagerly initialize — runs before the first message

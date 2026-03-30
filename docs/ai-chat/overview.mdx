@@ -1,21 +1,21 @@
 ---
-title: "AI Chat"
+title: "AI Agents"
 sidebarTitle: "Overview"
-description: "Run AI SDK chat completions as durable Trigger.dev tasks with built-in realtime streaming, multi-turn conversations, and message persistence."
+description: "Run AI SDK chat completions as durable Trigger.dev agents with built-in realtime streaming, multi-turn conversations, and message persistence."
 ---
 
 ## Overview
 
-The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) for the Vercel AI SDK's `useChat` hook. This lets you run chat completions as **durable Trigger.dev tasks** instead of fragile API routes — with automatic retries, observability, and realtime streaming built in.
+The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) for the Vercel AI SDK's `useChat` hook. This lets you run chat completions as **durable Trigger.dev agents** instead of fragile API routes — with automatic retries, observability, and realtime streaming built in.
 
 **How it works:**
 1. The frontend sends messages via `useChat` through `TriggerChatTransport`
-2. The first message triggers a Trigger.dev task; subsequent messages resume the **same run** via input streams
-3. The task streams `UIMessageChunk` events back via Trigger.dev's realtime streams
+2. The first message triggers a Trigger.dev agent; subsequent messages resume the **same run** via input streams
+3. The agent streams `UIMessageChunk` events back via Trigger.dev's realtime streams
 4. The AI SDK's `useChat` processes the stream natively — text, tool calls, reasoning, etc.
 5. Between turns, the run stays idle briefly then suspends (freeing compute) until the next message
 
-No custom API routes needed. Your chat backend is a Trigger.dev task.
+No custom API routes needed. Your chat backend is a Trigger.dev agent.
 
 <Accordion title="How it works (sequence diagrams)">
 
@@ -26,7 +26,7 @@ sequenceDiagram
     participant User
     participant useChat as useChat + Transport
     participant API as Trigger.dev API
-    participant Task as chat.task Worker
+    participant Task as chat.agent Worker
     participant LLM as LLM Provider
 
     User->>useChat: sendMessage("Hello")
@@ -57,7 +57,7 @@ sequenceDiagram
     participant User
     participant useChat as useChat + Transport
     participant API as Trigger.dev API
-    participant Task as chat.task Worker
+    participant Task as chat.agent Worker
     participant LLM as LLM Provider
 
     Note over Task: Suspended, waiting for message
@@ -88,7 +88,7 @@ sequenceDiagram
     participant User
     participant useChat as useChat + Transport
     participant API as Trigger.dev API
-    participant Task as chat.task Worker
+    participant Task as chat.agent Worker
     participant LLM as LLM Provider
 
     Note over Task: Streaming response...
@@ -116,7 +116,7 @@ sequenceDiagram
 
 ### One run, many turns
 
-The entire conversation lives in a **single Trigger.dev run**. After each AI response, the run waits for the next message via input streams. The frontend transport handles this automatically — it triggers a new run for the first message, and sends subsequent messages to the existing run.
+The entire conversation lives in a **single Trigger.dev run**. After each AI response, the run waits for the next message via input streams. The frontend transport handles this automatically — it triggers a new run for the first message and sends subsequent messages to the existing run.
 
 This means your conversation has full observability in the Trigger.dev dashboard: every turn is a span inside the same run.
 
@@ -135,12 +135,14 @@ If no message arrives within the turn timeout, the run ends gracefully. The next
 
 ### What the backend accumulates
 
-The backend automatically accumulates the full conversation history across turns. After the first turn, the frontend transport only sends the new user message — not the entire history. This is handled transparently by the transport and task.
+The backend automatically accumulates the full conversation history across turns. After the first turn, the frontend transport only sends the new user message — not the entire history. This is handled transparently by the transport and agent.
 
 The accumulated messages are available in:
 - `run()` as `messages` (`ModelMessage[]`) — for passing to `streamText`
 - `onTurnStart()` as `uiMessages` (`UIMessage[]`) — for persisting before streaming
 - `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persisting after the response
+
+Agents appear in the **Agents** section of the dashboard (not Tasks) and can be tested via the **Playground**.
 
 ## Three approaches
 
@@ -148,7 +150,7 @@ There are three ways to build the backend, from most opinionated to most flexibl
 
 | Approach | Use when | What you get |
 |----------|----------|--------------|
-| [chat.task()](/ai-chat/backend#chattask) | Most apps | Auto-piping, lifecycle hooks, message accumulation, stop handling |
+| [chat.agent()](/ai-chat/backend#chatagent) | Most apps | Auto-piping, lifecycle hooks, message accumulation, stop handling |
 | [chat.createSession()](/ai-chat/backend#chatcreatesession) | Need a loop but not hooks | Async iterator with per-turn helpers, message accumulation, stop handling |
 | [Raw task + primitives](/ai-chat/backend#raw-task-with-primitives) | Full control | Manual control of every step — use `chat.messages`, `chat.createStopSignal()`, etc. |
 

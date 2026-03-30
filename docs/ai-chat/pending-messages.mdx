@@ -20,16 +20,16 @@ The `pendingMessages` option enables this by injecting user messages between too
 6. A `data-pending-message-injected` stream chunk confirms injection to the frontend
 7. If `prepareStep` never fires (no tool calls), the message becomes the next turn
 
-## Backend: chat.task
+## Backend: chat.agent
 
-Add `pendingMessages` to your `chat.task` configuration:
+Add `pendingMessages` to your `chat.agent` configuration:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   pendingMessages: {
     // Only inject when there are completed steps (tool calls happened)

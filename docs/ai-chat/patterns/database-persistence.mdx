@@ -58,7 +58,7 @@ If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`**
 
 ## Token renewal (app server)
 
-Turn tokens expire (see **`chatAccessTokenTTL`** on **`chat.task`**). When the transport gets **401** on realtime or input streams, mint a **new** public access token with the **same** scopes the task uses — typically **read** for that **`runId`** and **write** for **input streams** on that run — then **persist** it on your **session** row.
+Turn tokens expire (see **`chatAccessTokenTTL`** on **`chat.agent`**). When the transport gets **401** on realtime or input streams, mint a **new** public access token with the **same** scopes the task uses — typically **read** for that **`runId`** and **write** for **input streams** on that run — then **persist** it on your **session** row.
 
 Your **Next.js server action**, **Remix action**, or **API route** should:
 
@@ -73,7 +73,7 @@ No Trigger task code needs to run for renewal.
 ```typescript
 // Pseudocode — replace saveConversation / saveSession with your DB layer.
 
-chat.task({
+chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({ userId: z.string() }),
 

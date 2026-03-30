@@ -34,7 +34,7 @@ The transport is created once on first render and reused across re-renders. Pass
 
 ## Typed messages (`chat.withUIMessage`)
 
-If your chat task is defined with [`chat.withUIMessage<YourUIMessage>()`](/ai-chat/types) (custom `data-*` parts, typed tools, etc.), pass the same message type through `useChat` so `messages` and `message.parts` are narrowed on the client:
+If your chat agent is defined with [`chat.withUIMessage<YourUIMessage>()`](/ai-chat/types) (custom `data-*` parts, typed tools, etc.), pass the same message type through `useChat` so `messages` and `message.parts` are narrowed on the client:
 
 ```tsx
 import { useChat } from "@ai-sdk/react";
@@ -189,7 +189,7 @@ sendMessage({ text: "Hello" }, { metadata: { model: "gpt-4o", priority: "high" }
 
 ### Typed client data with clientDataSchema
 
-Instead of manually parsing `clientData` with Zod in every hook, pass a `clientDataSchema` to `chat.task`. The schema validates the data once per turn, and `clientData` is typed in all hooks and `run`:
+Instead of manually parsing `clientData` with Zod in every hook, pass a `clientDataSchema` to `chat.agent`. The schema validates the data once per turn, and `clientData` is typed in all hooks and `run`:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -197,7 +197,7 @@ import { streamText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 
-export const myChat = chat.task({
+export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({
     model: z.string().optional(),
