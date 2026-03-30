@@ -5,6 +5,7 @@ import {
   IconAlarmSnooze as IconAlarmSnoozeBase,
   IconArrowBackUp as IconArrowBackUpBase,
   IconBugOff as IconBugOffBase,
+  IconCircleDotted,
 } from "@tabler/icons-react";
 
 const AlarmSnoozeIcon = ({ className }: { className?: string }) => (
@@ -687,7 +688,7 @@ function IgnoredDetails({
     >
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1">
-          <IconAlarmSnoozeBase className="size-5 text-text-bright" />
+          <IconAlarmSnoozeBase className="size-5 text-blue-500" />
           <Header3 className="text-text-bright">
             {ignoredForever ? "Ignored permanently" : "Ignored with conditions"}
           </Header3>
@@ -765,7 +766,8 @@ function ErrorStatusDropdown({
   return (
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-        <PopoverArrowTrigger variant="tertiary" disabled={isSubmitting}>
+        <PopoverArrowTrigger variant="primary" disabled={isSubmitting} className="items-center">
+          <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-text-bright" />
           Mark error as…
         </PopoverArrowTrigger>
         <PopoverContent className="inline-flex !min-w-0 flex-col p-1" align="end">
@@ -779,7 +781,7 @@ function ErrorStatusDropdown({
               />
               <PopoverMenuItem
                 icon={AlarmSnoozeIcon}
-                leadingIconClassName="text-text-bright"
+                leadingIconClassName="text-blue-500"
                 title="Ignored for 1 hour"
                 onClick={() =>
                   act({
@@ -791,7 +793,7 @@ function ErrorStatusDropdown({
               />
               <PopoverMenuItem
                 icon={AlarmSnoozeIcon}
-                leadingIconClassName="text-text-bright"
+                leadingIconClassName="text-blue-500"
                 title="Ignored for 24 hours"
                 onClick={() =>
                   act({
@@ -803,13 +805,13 @@ function ErrorStatusDropdown({
               />
               <PopoverMenuItem
                 icon={BugOffIcon}
-                leadingIconClassName="text-text-bright"
+                leadingIconClassName="text-blue-500"
                 title="Ignored forever"
                 onClick={() => act({ taskIdentifier, action: "ignore" })}
               />
               <PopoverMenuItem
                 icon={AlarmSnoozeIcon}
-                leadingIconClassName="text-text-bright"
+                leadingIconClassName="text-blue-500"
                 title="Ignored with custom condition…"
                 onClick={() => {
                   setPopoverOpen(false);
@@ -850,7 +852,10 @@ function ErrorStatusDropdown({
       <Dialog open={customIgnoreOpen} onOpenChange={setCustomIgnoreOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Custom ignore condition</DialogTitle>
+            <DialogTitle className="flex items-center gap-1.5">
+              <IconAlarmSnoozeBase className="-ml-1.5 size-6 text-blue-500" />
+              Custom ignore condition
+            </DialogTitle>
           </DialogHeader>
           <CustomIgnoreForm
             taskIdentifier={taskIdentifier}
