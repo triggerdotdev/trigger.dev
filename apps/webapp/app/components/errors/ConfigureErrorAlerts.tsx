@@ -26,8 +26,11 @@ import { Select, SelectItem } from "~/components/primitives/Select";
 import { UnorderedList } from "~/components/primitives/UnorderedList";
 import type { ErrorAlertChannelData } from "~/presenters/v3/ErrorAlertChannelPresenter.server";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
+import { organizationSlackIntegrationPath } from "~/utils/pathBuilder";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { TextLink } from "~/components/primitives/TextLink";
 import { BellAlertIcon } from "@heroicons/react/24/solid";
 
 export const ErrorAlertsFormSchema = z.object({
@@ -59,6 +62,7 @@ export function ConfigureErrorAlerts({
   connectToSlackHref,
   formAction,
 }: ConfigureErrorAlertsProps) {
+  const organization = useOrganization();
   const fetcher = useFetcher<{ ok?: boolean }>();
   const navigate = useNavigate();
   const toast = useToast();
@@ -177,6 +181,7 @@ export function ConfigureErrorAlerts({
             {/* Slack section */}
             <div>
               <Header3 className="mb-1">Slack</Header3>
+
               <InputGroup fullWidth>
                 {slack.status === "READY" ? (
                   <>
@@ -222,6 +227,11 @@ export function ConfigureErrorAlerts({
                         <InlineCode variant="extra-small">/invite @Trigger.dev</InlineCode>.
                       </Callout>
                     )}
+                    <Hint>
+                      <TextLink to={organizationSlackIntegrationPath(organization)}>
+                        Manage Slack connection
+                      </TextLink>
+                    </Hint>
                     <input
                       type="hidden"
                       name={slackIntegrationId.name}
