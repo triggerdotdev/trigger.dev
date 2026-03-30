@@ -180,6 +180,10 @@ export const ScheduleMetadata = z.object({
   environments: z.array(EnvironmentType).optional(),
 });
 
+const AgentConfig = z.object({
+  type: z.string(),
+});
+
 const taskMetadata = {
   id: z.string(),
   description: z.string().optional(),
@@ -187,6 +191,7 @@ const taskMetadata = {
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
+  agentConfig: AgentConfig.optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),

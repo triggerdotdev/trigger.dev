@@ -185,7 +185,7 @@ export class RunEngineTriggerTaskService {
         if (debounceDelayError || !debounceDelayUntil) {
           throw new ServiceValidationError(
             `Invalid debounce delay: ${body.options.debounce.delay}. ` +
-              `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+            `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
           );
         }
       }
@@ -193,11 +193,11 @@ export class RunEngineTriggerTaskService {
       // Get parent run if specified
       const parentRun = body.options?.parentRunId
         ? await this.prisma.taskRun.findFirst({
-            where: {
-              id: RunId.fromFriendlyId(body.options.parentRunId),
-              runtimeEnvironmentId: environment.id,
-            },
-          })
+          where: {
+            id: RunId.fromFriendlyId(body.options.parentRunId),
+            runtimeEnvironmentId: environment.id,
+          },
+        })
         : undefined;
 
       // Validate parent run
@@ -231,21 +231,21 @@ export class RunEngineTriggerTaskService {
 
       const lockedToBackgroundWorker = body.options?.lockToVersion
         ? await this.prisma.backgroundWorker.findFirst({
-            where: {
-              projectId: environment.projectId,
-              runtimeEnvironmentId: environment.id,
-              version: body.options?.lockToVersion,
-            },
-            select: {
-              id: true,
-              version: true,
-              sdkVersion: true,
-              cliVersion: true,
-            },
-          })
+          where: {
+            projectId: environment.projectId,
+            runtimeEnvironmentId: environment.id,
+            version: body.options?.lockToVersion,
+          },
+          select: {
+            id: true,
+            version: true,
+            sdkVersion: true,
+            cliVersion: true,
+          },
+        })
         : undefined;
 
-      const { queueName, lockedQueueId, taskTtl } =
+      const { queueName, lockedQueueId, taskTtl, taskKind } =
         await this.queueConcern.resolveQueueProperties(
           triggerRequest,
           lockedToBackgroundWorker ?? undefined
@@ -281,10 +281,10 @@ export class RunEngineTriggerTaskService {
 
       const metadataPacket = body.options?.metadata
         ? handleMetadataPacket(
-            body.options?.metadata,
-            body.options?.metadataType ?? "application/json",
-            this.metadataMaximumSize
-          )
+          body.options?.metadata,
+          body.options?.metadataType ?? "application/json",
+          this.metadataMaximumSize
+        )
         : undefined;
 
       const tags = (
@@ -313,6 +313,7 @@ export class RunEngineTriggerTaskService {
         triggerAction,
         rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
         rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
+        taskKind: taskKind ?? "STANDARD",
       };
 
       try {
@@ -369,9 +370,9 @@ export class RunEngineTriggerTaskService {
                 rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
                 batch: options?.batchId
                   ? {
-                      id: options.batchId,
-                      index: options.batchIndex ?? 0,
-                    }
+                    id: options.batchId,
+                    index: options.batchIndex ?? 0,
+                  }
                   : undefined,
                 resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
                 depth,
@@ -402,26 +403,26 @@ export class RunEngineTriggerTaskService {
                 onDebounced:
                   body.options?.debounce && body.options?.resumeParentOnCompletion
                     ? async ({ existingRun, waitpoint, debounceKey }) => {
-                        return await this.traceEventConcern.traceDebouncedRun(
-                          triggerRequest,
-                          parentRun?.taskEventStore,
-                          {
-                            existingRun,
-                            debounceKey,
-                            incomplete: waitpoint.status === "PENDING",
-                            isError: waitpoint.outputIsError,
-                          },
-                          async (spanEvent) => {
-                            const spanId =
-                              options?.parentAsLinkType === "replay"
-                                ? spanEvent.spanId
-                                : spanEvent.traceparent?.spanId
+                      return await this.traceEventConcern.traceDebouncedRun(
+                        triggerRequest,
+                        parentRun?.taskEventStore,
+                        {
+                          existingRun,
+                          debounceKey,
+                          incomplete: waitpoint.status === "PENDING",
+                          isError: waitpoint.outputIsError,
+                        },
+                        async (spanEvent) => {
+                          const spanId =
+                            options?.parentAsLinkType === "replay"
+                              ? spanEvent.spanId
+                              : spanEvent.traceparent?.spanId
                                 ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
                                 : spanEvent.spanId;
-                            return spanId;
-                          }
-                        );
-                      }
+                          return spanId;
+                        }
+                      );
+                    }
                     : undefined,
               },
               this.prisma

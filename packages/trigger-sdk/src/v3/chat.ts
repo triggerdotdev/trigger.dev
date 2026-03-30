@@ -4,7 +4,7 @@
  * Browser-safe module for AI SDK chat transport integration.
  * Use this on the frontend with the AI SDK's `useChat` hook.
  *
- * For backend helpers (`chatTask`, `pipeChat`), use `@trigger.dev/sdk/ai` instead.
+ * For backend helpers (`chatAgent`, `pipeChat`), use `@trigger.dev/sdk/ai` instead.
  *
  * @example
  * ```tsx
@@ -104,7 +104,7 @@ export type TriggerChatTaskResult = {
 type TriggerChatTransportOptionsBase<TClientData = unknown> = {
   /**
    * The Trigger.dev task ID to trigger for chat completions.
-   * This task should be defined using `chatTask()` from `@trigger.dev/sdk/ai`,
+   * This task should be defined using `chatAgent()` from `@trigger.dev/sdk/ai`,
    * or a regular `task()` that uses `pipeChat()`.
    */
   task: string;
@@ -117,7 +117,7 @@ type TriggerChatTransportOptionsBase<TClientData = unknown> = {
 
   /**
    * The stream key where the task pipes UIMessageChunk data.
-   * When using `chatTask()` or `pipeChat()`, this is handled automatically.
+   * When using `chatAgent()` or `pipeChat()`, this is handled automatically.
    * Only set this if you're using a custom stream key.
    *
    * @default "chat"
@@ -665,6 +665,22 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   }
 
   /**
+   * Inject or update a session for a chat. Useful for resuming conversations
+   * from persisted state without recreating the transport.
+   */
+  setSession(
+    chatId: string,
+    session: { runId: string; publicAccessToken: string; lastEventId?: string }
+  ): void {
+    this.sessions.set(chatId, {
+      runId: session.runId,
+      publicAccessToken: session.publicAccessToken,
+      lastEventId: session.lastEventId,
+    });
+    this.notifySessionChange(chatId, this.sessions.get(chatId)!);
+  }
+
+  /**
    * Eagerly trigger a run for a chat before the first message is sent.
    * This allows initialization (DB setup, context loading) to happen
    * while the user is still typing, reducing first-response latency.
@@ -676,15 +692,23 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    *
    * No-op if a session already exists for this chatId.
    */
-  async preload(chatId: string, options?: { idleTimeoutInSeconds?: number }): Promise<void> {
+  async preload(
+    chatId: string,
+    options?: { idleTimeoutInSeconds?: number; metadata?: Record<string, unknown> }
+  ): Promise<void> {
     // Don't preload if session already exists
     if (this.sessions.get(chatId)?.runId) return;
+
+    const mergedMetadata =
+      this.defaultMetadata || options?.metadata
+        ? { ...(this.defaultMetadata ?? {}), ...(options?.metadata ?? {}) }
+        : undefined;
 
     const payload = {
       messages: [] as never[],
       chatId,
       trigger: "preload" as const,
-      metadata: this.defaultMetadata,
+      metadata: mergedMetadata,
       ...(options?.idleTimeoutInSeconds !== undefined
         ? { idleTimeoutInSeconds: options.idleTimeoutInSeconds }
         : {}),

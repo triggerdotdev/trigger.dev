@@ -2,6 +2,7 @@ import * as Ariakit from "@ariakit/react";
 import {
   CalendarIcon,
   ClockIcon,
+  CpuChipIcon,
   FingerPrintIcon,
   RectangleStackIcon,
   Squares2X2Icon,
@@ -184,6 +185,9 @@ export const TaskRunListSearchFilters = z.object({
     `Machine presets to filter by (${machines.join(", ")})`
   ),
   errorId: z.string().optional().describe("Error ID to filter runs by (e.g. error_abc123)"),
+  sources: StringOrStringArray.describe(
+    "Task trigger sources to filter by (STANDARD, SCHEDULED, AGENT)"
+  ),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -225,6 +229,8 @@ export function filterTitle(filterKey: string) {
       return "Version";
     case "errorId":
       return "Error ID";
+    case "sources":
+      return "Source";
     default:
       return filterKey;
   }
@@ -265,6 +271,8 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <IconRotateClockwise2 className="size-4" />;
     case "errorId":
       return <IconBugFilled className="size-4" />;
+    case "sources":
+      return <CpuChipIcon className="size-4" />;
     default:
       return undefined;
   }
@@ -312,6 +320,10 @@ export function getRunFiltersFromSearchParams(
         ? searchParams.getAll("versions")
         : undefined,
     errorId: searchParams.get("errorId") ?? undefined,
+    sources:
+      searchParams.getAll("sources").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("sources")
+        : undefined,
   };
 
   const parsed = TaskRunListSearchFilters.safeParse(params);
@@ -353,7 +365,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("queues") ||
     searchParams.has("machines") ||
     searchParams.has("versions") ||
-    searchParams.has("errorId");
+    searchParams.has("errorId") ||
+    searchParams.has("sources");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -390,6 +403,7 @@ const filterTypes = [
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
   { name: "error", title: "Error ID", icon: <IconBugFilled className="size-4" /> },
+  { name: "source", title: "Source", icon: <CpuChipIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -445,6 +459,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedScheduleIdFilter />
       <AppliedBulkActionsFilter bulkActions={bulkActions} />
       <AppliedErrorIdFilter />
+      <AppliedSourceFilter />
     </>
   );
 }
@@ -483,6 +498,8 @@ function Menu(props: MenuProps) {
       return <VersionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "error":
       return <ErrorIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "source":
+      return <SourceDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -1885,6 +1902,104 @@ function AppliedErrorIdFilter() {
                 icon={filterIcon("errorId")}
                 value={errorId}
                 onRemove={() => del(["errorId", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+const sourceOptions: { value: TaskTriggerSource; title: string }[] = [
+  { value: "STANDARD", title: "Standard" },
+  { value: "SCHEDULED", title: "Scheduled" },
+  { value: "AGENT", title: "Agent" },
+];
+
+function SourceDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const { values, replace } = useSearchParams();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({ sources: values, cursor: undefined, direction: undefined });
+  };
+
+  const filtered = useMemo(() => {
+    return sourceOptions.filter((item) =>
+      item.title.toLowerCase().includes(searchValue.toLowerCase())
+    );
+  }, [searchValue]);
+
+  return (
+    <SelectProvider value={values("sources")} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(240px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+          return true;
+        }}
+      >
+        <ComboBox placeholder={"Filter by source..."} value={searchValue} />
+        <SelectList>
+          {filtered.map((item, index) => (
+            <SelectItem
+              key={item.value}
+              value={item.value}
+              icon={
+                <TaskTriggerSourceIcon source={item.value} className="size-4 flex-none" />
+              }
+              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
+            >
+              {item.title}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedSourceFilter() {
+  const { values, del } = useSearchParams();
+  const sources = values("sources");
+
+  if (sources.length === 0 || sources.every((v) => v === "")) {
+    return null;
+  }
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <SourceDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Source"
+                icon={<CpuChipIcon className="size-4" />}
+                value={appliedSummary(
+                  sources.map(
+                    (v) => sourceOptions.find((o) => o.value === v)?.title ?? v
+                  )
+                )}
+                onRemove={() => del(["sources", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>

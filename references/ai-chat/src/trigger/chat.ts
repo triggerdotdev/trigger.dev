@@ -146,7 +146,7 @@ const userContext = chat.local<{
 // #endregion
 
 // ============================================================================
-// chat.task — the main chat agent
+// chat.agent — the main chat agent
 // ============================================================================
 
 export const aiChat = chat
@@ -172,7 +172,7 @@ export const aiChat = chat
   .onChatResume(async ({ phase, ctx }) => {
     logger.debug("Chat resumed", { phase, runId: ctx.run.id });
   })
-  .task({
+  .agent({
     id: "ai-chat",
     idleTimeoutInSeconds: 60,
     chatAccessTokenTTL: "1m",
@@ -442,7 +442,7 @@ export const aiChat = chat
     },
     // #endregion
 
-    // #region run — just return streamText(), chat.task handles everything else
+    // #region run — just return streamText(), chat.agent handles everything else
     run: async ({ messages, clientData, stopSignal }) => {
       userContext.messageCount++;
       if (clientData?.model) {
