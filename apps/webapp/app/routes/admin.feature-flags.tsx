@@ -124,15 +124,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const validatedFlags = validationResult.data as Record<string, unknown>;
   const controlTypes = getAllFlagControlTypes();
-  const lockedKeys = isManagedCloud ? GLOBAL_LOCKED_FLAGS : [];
-  const editableKeys = Object.keys(controlTypes).filter(
-    (key) => !lockedKeys.includes(key)
-  );
+  const catalogKeys = Object.keys(controlTypes);
 
   const keysToDelete: string[] = [];
   const upsertOps: ReturnType<typeof prisma.featureFlag.upsert>[] = [];
 
-  for (const key of editableKeys) {
+  for (const key of catalogKeys) {
     if (key in validatedFlags) {
       upsertOps.push(
         prisma.featureFlag.upsert({
@@ -142,7 +139,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         })
       );
     } else {
-      keysToDelete.push(key);
+      // On cloud, never delete locked flags (they're not in the payload
+      // because the UI doesn't include them). Locally, delete everything
+      // the user didn't include - full control.
+      const isProtected = isManagedCloud && GLOBAL_LOCKED_FLAGS.includes(key);
+      if (!isProtected) {
+        keysToDelete.push(key);
+      }
     }
   }
 
@@ -219,8 +222,10 @@ export default function AdminFeatureFlagsRoute() {
     });
   };
 
-  const sortedFlagKeys = Object.keys(controlTypes as Record<string, FlagControlType>).sort();
+  const typedControlTypes = controlTypes as Record<string, FlagControlType>;
+  const typedResolvedDefaults = resolvedDefaults as Record<string, string>;
   const allFlags = (globalFlags ?? {}) as Record<string, unknown>;
+  const sortedFlagKeys = Object.keys(typedControlTypes).sort();
   const workerGroupMap = new Map((workerGroups as WorkerGroup[]).map((wg) => [wg.id, wg.name]));
 
   const resolveWorkerGroupDisplay = (id: string) => {
@@ -253,7 +258,7 @@ export default function AdminFeatureFlagsRoute() {
 
         <div className="flex flex-col gap-1.5">
           {sortedFlagKeys.map((key) => {
-            const control = (controlTypes as Record<string, FlagControlType>)[key];
+            const control = typedControlTypes[key];
             const locked = isLocked(key);
 
             if (locked) {
@@ -262,7 +267,7 @@ export default function AdminFeatureFlagsRoute() {
                   key={key}
                   flagKey={key}
                   value={allFlags[key]}
-                  resolvedDefault={(resolvedDefaults as Record<string, string>)[key]}
+                  resolvedDefault={typedResolvedDefaults[key]}
                   workerGroupName={workerGroupName as string | undefined}
                 />
               );
@@ -295,7 +300,9 @@ export default function AdminFeatureFlagsRoute() {
                       ? isWorkerGroup
                         ? resolveWorkerGroupDisplay(values[key] as string)
                         : `value: ${String(values[key])}`
-                      : "not set"}
+                      : typedResolvedDefaults[key]
+                        ? `${typedResolvedDefaults[key]} (from env)`
+                        : "not set"}
                   </div>
                 </div>
 
@@ -390,7 +397,7 @@ export default function AdminFeatureFlagsRoute() {
         onOpenChange={setConfirmOpen}
         initialValues={initialValues}
         newValues={values}
-        controlTypes={controlTypes as Record<string, FlagControlType>}
+        controlTypes={typedControlTypes}
         lockedKeys={unlocked ? [] : GLOBAL_LOCKED_FLAGS}
         onConfirm={handleSave}
         isSaving={isSaving}
