@@ -88,6 +88,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { cn } from "~/utils/cn";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
+import { CodeBlock } from "~/components/code/CodeBlock";
 import { getSeriesColor } from "~/components/code/chartColors";
 import {
   Popover,
@@ -597,9 +598,14 @@ function ErrorDetailSidebar({
             <Property.Item>
               <Property.Label>Error</Property.Label>
               <Property.Value>
-                <Paragraph variant="small" className="break-words font-mono">
-                  {errorGroup.errorMessage}
-                </Paragraph>
+                <CodeBlock
+                  code={errorGroup.errorMessage}
+                  showCopyButton
+                  showLineNumbers={false}
+                  showOpenInModal={false}
+                  language="typescript"
+                  wrap
+                />
               </Property.Value>
             </Property.Item>
             <Property.Item>
