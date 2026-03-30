@@ -10,6 +10,7 @@ import {
 } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
+import { env } from "~/env.server";
 import { flags, validatePartialFeatureFlags } from "~/v3/featureFlags.server";
 
 export class OrganizationsPresenter {
@@ -154,8 +155,12 @@ export class OrganizationsPresenter {
       },
     });
 
-    // Get global feature flags (no overrides or defaults)
-    const globalFlags = await flags();
+    // Get global feature flags with env-var-based defaults
+    const globalFlags = await flags({
+      defaultValues: {
+        hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+      },
+    });
 
     return orgs.map((org) => {
       const orgFlagsResult = org.featureFlags
