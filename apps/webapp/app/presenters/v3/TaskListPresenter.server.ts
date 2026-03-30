@@ -61,6 +61,7 @@ export class TaskListPresenter {
     const tasks = await this._replica.backgroundWorkerTask.findMany({
       where: {
         workerId: currentWorker.id,
+        triggerSource: { not: "AGENT" },
       },
       select: {
         id: true,

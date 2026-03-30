@@ -227,6 +227,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^1.3.23
         version: 1.3.23(zod@3.25.76)
+      '@ai-sdk/react':
+        specifier: ^3.0.0
+        version: 3.0.51(react@18.2.0)(zod@3.25.76)
       '@ariakit/react':
         specifier: ^0.4.6
         version: 0.4.6(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -21443,6 +21446,16 @@ snapshots:
       throttleit: 2.1.0
     optionalDependencies:
       zod: 3.25.76
+
+  '@ai-sdk/react@3.0.51(react@18.2.0)(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider-utils': 4.0.9(zod@3.25.76)
+      ai: 6.0.49(zod@3.25.76)
+      react: 18.2.0
+      swr: 2.2.5(react@18.2.0)
+      throttleit: 2.1.0
+    transitivePeerDependencies:
+      - zod
 
   '@ai-sdk/react@3.0.51(react@19.1.0)(zod@3.25.76)':
     dependencies:
