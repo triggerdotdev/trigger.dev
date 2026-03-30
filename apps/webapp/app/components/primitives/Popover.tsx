@@ -205,6 +205,18 @@ const popoverArrowTriggerVariants = {
     text: "group-hover:text-text-bright",
     icon: "text-text-dimmed group-hover:text-text-bright",
   },
+  primary: {
+    trigger:
+      "bg-indigo-600 border border-indigo-500 text-text-bright hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
+    text: "text-text-bright hover:text-white",
+    icon: "text-text-bright",
+  },
+  secondary: {
+    trigger:
+      "bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 disabled:opacity-60 disabled:pointer-events-none",
+    text: "text-text-bright",
+    icon: "text-text-bright",
+  },
   tertiary: {
     trigger: "bg-tertiary text-text-bright hover:bg-charcoal-600",
     text: "text-text-bright",
