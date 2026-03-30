@@ -1,12 +1,12 @@
 ---
 title: "Code execution sandbox"
 sidebarTitle: "Code sandbox"
-description: "Warm an isolated sandbox on each chat turn, run an AI SDK executeCode tool, and tear down right before the run suspends — using chat.task hooks and chat.local."
+description: "Warm an isolated sandbox on each chat turn, run an AI SDK executeCode tool, and tear down right before the run suspends — using chat.agent hooks and chat.local."
 ---
 
 Use a **hosted code sandbox** (for example [E2B](https://e2b.dev)) when the model should run short scripts to analyze tool output (PostHog queries, CSV-like data, math) without executing arbitrary code on the Trigger worker host.
 
-This page describes a **durable chat** pattern that fits `chat.task()`:
+This page describes a **durable chat** pattern that fits `chat.agent()`:
 
 - **Warm** the sandbox at the start of each turn (**non-blocking**).
 - **Reuse** it for every `executeCode` tool call during that turn (and across turns in the same run if you keep the handle).
@@ -83,7 +83,7 @@ The **`executeCode`** tool reads `codeSandboxRun.runId` and awaits the sandbox p
 Use **`onChatSuspend`** to dispose the sandbox right before the run suspends, and **`onComplete`** as a safety net when the run ends entirely.
 
 ```ts
-export const aiChat = chat.task({
+export const aiChat = chat.agent({
   id: "ai-chat",
   // ...
   onChatSuspend: async ({ phase, ctx }) => {
@@ -109,7 +109,7 @@ Set **`E2B_API_KEY`** (or your provider’s secret) on the **Trigger environment
 
 ## Typing `ctx`
 
-Every `chat.task` lifecycle event and the `run` payload include **`ctx`**: the same **[`TaskRunContext`](/ai-chat/reference#task-context-ctx)** shape as `task({ run: (payload, { ctx }) => ... })`.
+Every `chat.agent` lifecycle event and the `run` payload include **`ctx`**: the same **[`TaskRunContext`](/ai-chat/reference#task-context-ctx)** shape as `task({ run: (payload, { ctx }) => ... })`.
 
 ```ts
 import type { TaskRunContext } from "@trigger.dev/sdk";

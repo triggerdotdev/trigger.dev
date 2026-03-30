@@ -85,7 +85,7 @@
             "pages": [
               "ai/prompts",
               {
-                "group": "Chat",
+                "group": "Agents",
                 "pages": [
                   "ai-chat/overview",
                   "ai-chat/quick-start",
