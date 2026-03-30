@@ -196,42 +196,6 @@ export async function downloadPacketFromObjectStore(
   });
 }
 
-export async function uploadDataToObjectStore(
-  filename: string,
-  data: string,
-  contentType: string,
-  prefix?: string,
-  storageProtocol?: string
-): Promise<string> {
-  return await startActiveSpan("uploadDataToObjectStore()", async (span) => {
-    const protocol = storageProtocol || env.OBJECT_STORE_DEFAULT_PROTOCOL;
-    const client = getObjectStoreClient(protocol);
-
-    if (!client) {
-      throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
-    }
-
-    const config = getObjectStoreConfig(protocol);
-
-    span.setAttributes({
-      prefix,
-      filename,
-      protocol: protocol || "default",
-    });
-
-    const key = prefix ? `${prefix}/${filename}` : filename;
-
-    logger.debug("Uploading to object store", { key, protocol: protocol || "default" });
-
-    await client.putObject(key, data, contentType);
-
-    // Return a full URL for the caller (reconstruct from baseUrl + key)
-    const url = new URL(config!.baseUrl);
-    url.pathname = `/${key}`;
-    return url.href;
-  });
-}
-
 export async function generatePresignedRequest(
   projectRef: string,
   envSlug: string,
@@ -285,7 +249,9 @@ export async function generatePresignedRequest(
   } catch (error) {
     return {
       success: false,
-      error: `Failed to generate presigned URL: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to generate presigned URL: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     };
   }
 }

@@ -3,7 +3,7 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 interface IObjectStoreClient {
-  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<void>;
+  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string>;
   getObject(key: string): Promise<string>;
   presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string>;
 }
@@ -36,8 +36,9 @@ class Aws4FetchClient implements IObjectStoreClient {
     return url.toString();
   }
 
-  async putObject(key: string, body: ReadableStream | string, contentType: string): Promise<void> {
-    const response = await this.awsClient.fetch(this.buildUrl(key), {
+  async putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
+    const objectUrl = this.buildUrl(key);
+    const response = await this.awsClient.fetch(objectUrl, {
       method: "PUT",
       headers: { "Content-Type": contentType },
       body,
@@ -45,6 +46,7 @@ class Aws4FetchClient implements IObjectStoreClient {
     if (!response.ok) {
       throw new Error(`Failed to upload to object store: ${response.statusText}`);
     }
+    return objectUrl;
   }
 
   async getObject(key: string): Promise<string> {
@@ -69,7 +71,7 @@ class Aws4FetchClient implements IObjectStoreClient {
 
 type AwsSdkConfig = {
   bucket: string;
-  baseUrl?: string;
+  baseUrl: string;
   region?: string;
 };
 
@@ -78,25 +80,47 @@ class AwsSdkClient implements IObjectStoreClient {
 
   constructor(private readonly config: AwsSdkConfig) {
     this.s3Client = new S3Client({
-      ...(config.baseUrl ? { endpoint: config.baseUrl, forcePathStyle: true } : {}),
+      endpoint: config.baseUrl,
+      forcePathStyle: true,
       ...(config.region ? { region: config.region } : {}),
     });
   }
 
-  async putObject(key: string, body: ReadableStream | string, contentType: string): Promise<void> {
+  /**
+   * Callers use a single logical key (same as aws4fetch path: `bucket/object/...`).
+   * S3 APIs take Bucket + Key where Key must not repeat the bucket name.
+   */
+  private toS3ObjectKey(logicalKey: string): string {
+    const prefix = `${this.config.bucket}/`;
+    if (logicalKey.startsWith(prefix)) {
+      return logicalKey.slice(prefix.length);
+    }
+    return logicalKey;
+  }
+
+  private logicalObjectUrl(logicalKey: string): string {
+    const url = new URL(this.config.baseUrl);
+    url.pathname = `/${logicalKey}`;
+    return url.href;
+  }
+
+  async putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
+    const s3Key = this.toS3ObjectKey(key);
     await this.s3Client.send(
       new PutObjectCommand({
         Bucket: this.config.bucket,
-        Key: key,
-        Body: body as string,
+        Key: s3Key,
+        Body: body,
         ContentType: contentType,
       })
     );
+    return this.logicalObjectUrl(key);
   }
 
   async getObject(key: string): Promise<string> {
+    const s3Key = this.toS3ObjectKey(key);
     const response = await this.s3Client.send(
-      new GetObjectCommand({ Bucket: this.config.bucket, Key: key })
+      new GetObjectCommand({ Bucket: this.config.bucket, Key: s3Key })
     );
     if (!response.Body) {
       throw new Error(`Empty response body from object store for key: ${key}`);
@@ -105,10 +129,11 @@ class AwsSdkClient implements IObjectStoreClient {
   }
 
   async presign(key: string, method: "PUT" | "GET", expiresIn: number): Promise<string> {
+    const s3Key = this.toS3ObjectKey(key);
     const command =
       method === "PUT"
-        ? new PutObjectCommand({ Bucket: this.config.bucket, Key: key })
-        : new GetObjectCommand({ Bucket: this.config.bucket, Key: key });
+        ? new PutObjectCommand({ Bucket: this.config.bucket, Key: s3Key })
+        : new GetObjectCommand({ Bucket: this.config.bucket, Key: s3Key });
 
     return getSignedUrl(this.s3Client, command, { expiresIn });
   }
@@ -123,8 +148,12 @@ export type ObjectStoreClientConfig = {
   service?: string;
 };
 
-export class ObjectStoreClient {
-  private constructor(private readonly impl: IObjectStoreClient) {}
+export class ObjectStoreClient implements IObjectStoreClient {
+  private constructor(
+    private readonly impl: IObjectStoreClient,
+    /** When set, logical keys may start with `${bucket}/…`; AwsSdkClient strips that prefix for S3 APIs. */
+    readonly bucket: string | undefined
+  ) {}
 
   static create(config: ObjectStoreClientConfig): ObjectStoreClient {
     if (config.accessKeyId && config.secretAccessKey) {
@@ -135,7 +164,8 @@ export class ObjectStoreClient {
           secretAccessKey: config.secretAccessKey,
           region: config.region,
           service: config.service,
-        })
+        }),
+        config.bucket
       );
     }
 
@@ -151,11 +181,12 @@ export class ObjectStoreClient {
         bucket: config.bucket,
         baseUrl: config.baseUrl,
         region: config.region,
-      })
+      }),
+      config.bucket
     );
   }
 
-  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<void> {
+  putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
     return this.impl.putObject(key, body, contentType);
   }
 

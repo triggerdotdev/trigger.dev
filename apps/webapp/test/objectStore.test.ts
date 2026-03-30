@@ -1,7 +1,6 @@
 import { postgresAndMinioTest } from "@internal/testcontainers";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { type IOPacket } from "@trigger.dev/core/v3";
-import { PrismaClient } from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { env } from "~/env.server";
 import {
@@ -11,28 +10,8 @@ import {
   generatePresignedUrl,
   hasObjectStoreClient,
   parseStorageUri,
-  uploadDataToObjectStore,
   uploadPacketToObjectStore,
 } from "~/v3/objectStore.server";
-
-async function getObjectContent(
-  baseUrl: string,
-  bucket: string,
-  key: string,
-  credentials: { accessKeyId: string; secretAccessKey: string; region: string }
-): Promise<string> {
-  const client = new S3Client({
-    endpoint: baseUrl,
-    forcePathStyle: true,
-    region: credentials.region,
-    credentials: {
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-    },
-  });
-  const response = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  return response.Body!.transformToString();
-}
 
 // Extend the timeout for container tests
 vi.setConfig({ testTimeout: 60_000 });
@@ -358,103 +337,6 @@ describe("Object Storage", () => {
       delete process.env.OBJECT_STORE_S3_BASE_URL;
     });
   });
-
-  postgresAndMinioTest(
-    "uploadDataToObjectStore - static credentials (aws4fetch path)",
-    async ({ minioConfig }) => {
-      // Named protocol — controlled via process.env; pass "s3" as storageProtocol explicitly
-      process.env.OBJECT_STORE_S3_BASE_URL = minioConfig.baseUrl;
-      process.env.OBJECT_STORE_S3_ACCESS_KEY_ID = minioConfig.accessKeyId;
-      process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
-      process.env.OBJECT_STORE_S3_REGION = minioConfig.region;
-      process.env.OBJECT_STORE_S3_SERVICE = "s3";
-
-      const data = JSON.stringify({ uploaded: true });
-
-      // With prefix — key = packets/data.json → bucket=packets, object=data.json in MinIO
-      const urlWithPrefix = await uploadDataToObjectStore(
-        "data.json",
-        data,
-        "application/json",
-        "packets",
-        "s3"
-      );
-      expect(urlWithPrefix).toContain("packets/data.json");
-      const contentWithPrefix = await getObjectContent(
-        minioConfig.baseUrl,
-        "packets",
-        "data.json",
-        minioConfig
-      );
-      expect(contentWithPrefix).toBe(data);
-
-      // Without prefix — key = packets/bare.json → bucket=packets, object=bare.json
-      const urlWithoutPrefix = await uploadDataToObjectStore(
-        "packets/bare.json",
-        data,
-        "application/json",
-        undefined,
-        "s3"
-      );
-      expect(urlWithoutPrefix).toContain("packets/bare.json");
-      const contentWithoutPrefix = await getObjectContent(
-        minioConfig.baseUrl,
-        "packets",
-        "bare.json",
-        minioConfig
-      );
-      expect(contentWithoutPrefix).toBe(data);
-
-      delete process.env.OBJECT_STORE_S3_BASE_URL;
-      delete process.env.OBJECT_STORE_S3_ACCESS_KEY_ID;
-      delete process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY;
-      delete process.env.OBJECT_STORE_S3_REGION;
-      delete process.env.OBJECT_STORE_S3_SERVICE;
-    }
-  );
-
-  postgresAndMinioTest(
-    "uploadDataToObjectStore - IAM credential chain (AWS SDK path)",
-    async ({ minioConfig }) => {
-      // Named protocol — controlled via process.env; pass "s3" as storageProtocol explicitly
-      process.env.OBJECT_STORE_S3_BASE_URL = minioConfig.baseUrl;
-      process.env.OBJECT_STORE_S3_BUCKET = "packets";
-      process.env.OBJECT_STORE_S3_REGION = minioConfig.region;
-      delete process.env.OBJECT_STORE_S3_ACCESS_KEY_ID;
-      delete process.env.OBJECT_STORE_S3_SECRET_ACCESS_KEY;
-      // AWS SDK picks up credentials from AWS_* env vars (ECS task role equivalent)
-      process.env.AWS_ACCESS_KEY_ID = minioConfig.accessKeyId;
-      process.env.AWS_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
-      process.env.AWS_REGION = minioConfig.region;
-
-      const data = JSON.stringify({ iam: true });
-
-      const url = await uploadDataToObjectStore(
-        "iam-data.json",
-        data,
-        "application/json",
-        "logs",
-        "s3"
-      );
-      expect(url).toContain("logs/iam-data.json");
-
-      // AwsSdkClient stores at fixed bucket + key (prefix/filename)
-      const content = await getObjectContent(
-        minioConfig.baseUrl,
-        "packets",
-        "logs/iam-data.json",
-        minioConfig
-      );
-      expect(content).toBe(data);
-
-      delete process.env.OBJECT_STORE_S3_BASE_URL;
-      delete process.env.OBJECT_STORE_S3_BUCKET;
-      delete process.env.OBJECT_STORE_S3_REGION;
-      delete process.env.AWS_ACCESS_KEY_ID;
-      delete process.env.AWS_SECRET_ACCESS_KEY;
-      delete process.env.AWS_REGION;
-    }
-  );
 
   postgresAndMinioTest(
     "generatePresignedUrl - PUT then GET round-trip (static credentials / aws4fetch path)",
