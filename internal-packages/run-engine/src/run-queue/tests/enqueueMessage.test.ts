@@ -1,7 +1,7 @@
 import { assertNonNullable, redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { describe } from "node:test";
+import { describe } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
@@ -39,7 +39,7 @@ const messageDev: InputPayload = {
   taskIdentifier: "task/my-task",
   orgId: "o1234",
   projectId: "p1234",
-  environmentId: "e4321",
+  environmentId: "e1234",
   environmentType: "DEVELOPMENT",
   queue: "task/my-task",
   timestamp: Date.now(),
