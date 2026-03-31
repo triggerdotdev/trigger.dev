@@ -23,9 +23,9 @@ type ErrorAlertPayload = {
   };
 };
 
-let testChannelId: string;
-let testProjectId: string;
-let testOrganizationId: string;
+let testChannelId: string = "";
+let testProjectId: string = "";
+let testOrganizationId: string = "";
 let webhookServer: ReturnType<typeof createWebhookServer> | null = null;
 
 interface WebhookCall {
@@ -74,8 +74,8 @@ function createMockErrorPayload(
     at processPayment (src/tasks/payment.ts:42:15)
     at Object.run (src/tasks/payment.ts:15:20)
     at TaskExecutor.execute (node_modules/@trigger.dev/core/dist/index.js:234:18)`,
-    firstSeen: new Date().toISOString(),
-    lastSeen: new Date().toISOString(),
+    firstSeen: Date.now().toString(),
+    lastSeen: Date.now().toString(),
     occurrenceCount: 42,
     ...errorOverrides,
   };
