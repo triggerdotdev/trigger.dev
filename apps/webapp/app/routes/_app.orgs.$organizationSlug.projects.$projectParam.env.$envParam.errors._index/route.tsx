@@ -507,7 +507,7 @@ function ErrorsList({
       <TableBody>
         {errorGroups.map((errorGroup) => (
           <ErrorGroupRow
-            key={errorGroup.fingerprint}
+            key={`${errorGroup.taskIdentifier}::${errorGroup.fingerprint}`}
             errorGroup={errorGroup}
             occurrences={occurrences}
             organizationSlug={organizationSlug}
