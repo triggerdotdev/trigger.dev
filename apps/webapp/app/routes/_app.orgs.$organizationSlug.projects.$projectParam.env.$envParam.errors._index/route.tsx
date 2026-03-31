@@ -52,7 +52,7 @@ import { PopoverSectionHeader } from "~/components/primitives/Popover";
 import {
   ErrorStatusMenuItems,
   CustomIgnoreDialog,
-  ignoreActionToastMessage,
+  statusActionToastMessage,
 } from "~/components/errors/ErrorStatusMenu";
 import { useToast } from "~/components/primitives/Toast";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
@@ -652,7 +652,7 @@ function ErrorActionsCell({
                 taskIdentifier={errorGroup.taskIdentifier}
                 onAction={(data) => {
                   close();
-                  pendingToast.current = ignoreActionToastMessage(data);
+                  pendingToast.current = statusActionToastMessage(data);
                   fetcher.submit(data, { method: "post", action: actionUrl });
                 }}
                 onCustomIgnore={() => {

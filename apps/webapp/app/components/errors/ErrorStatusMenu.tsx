@@ -32,16 +32,23 @@ const BugOffIcon = ({ className }: { className?: string }) => (
   <IconBugOffBase className={className} size={18} />
 );
 
-export function ignoreActionToastMessage(data: Record<string, string>): string | undefined {
-  if (data.action !== "ignore") return undefined;
-
-  const duration = data.duration ? Number(data.duration) : undefined;
-  if (!duration) return "Error ignored indefinitely";
-
-  const hours = duration / (60 * 60 * 1000);
-  if (hours < 24) return `Error ignored for ${hours} ${hours === 1 ? "hour" : "hours"}`;
-  const days = hours / 24;
-  return `Error ignored for ${days} ${days === 1 ? "day" : "days"}`;
+export function statusActionToastMessage(data: Record<string, string>): string {
+  switch (data.action) {
+    case "resolve":
+      return "Error marked as resolved";
+    case "unresolve":
+      return "Error marked as unresolved";
+    case "ignore": {
+      const duration = data.duration ? Number(data.duration) : undefined;
+      if (!duration) return "Error ignored indefinitely";
+      const hours = duration / (60 * 60 * 1000);
+      if (hours < 24) return `Error ignored for ${hours} ${hours === 1 ? "hour" : "hours"}`;
+      const days = hours / 24;
+      return `Error ignored for ${days} ${days === 1 ? "day" : "days"}`;
+    }
+    default:
+      return "Error status updated";
+  }
 }
 
 export function ErrorStatusMenuItems({

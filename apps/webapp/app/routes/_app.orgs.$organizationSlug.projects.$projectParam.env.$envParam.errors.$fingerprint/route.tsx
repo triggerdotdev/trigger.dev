@@ -79,7 +79,7 @@ import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import {
   ErrorStatusMenuItems,
   CustomIgnoreDialog,
-  ignoreActionToastMessage,
+  statusActionToastMessage,
 } from "~/components/errors/ErrorStatusMenu";
 import { useToast } from "~/components/primitives/Toast";
 
@@ -752,7 +752,7 @@ function ErrorStatusDropdown({
 
   const act = (data: Record<string, string>) => {
     setPopoverOpen(false);
-    pendingToast.current = ignoreActionToastMessage(data);
+    pendingToast.current = statusActionToastMessage(data);
     fetcher.submit(data, { method: "post" });
   };
 
