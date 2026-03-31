@@ -1,9 +1,8 @@
-import { IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
+import { type IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { env } from "~/env.server";
 import { uploadPacketToObjectStore } from "~/v3/objectStore.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
-import { startActiveSpan } from "~/v3/tracer.server";
 
 function packetExtensionForDataType(dataType: string): string {
   switch (dataType) {
@@ -28,42 +27,37 @@ export async function processWaitpointCompletionPacket(
   environment: AuthenticatedEnvironment,
   pathPrefix: string
 ): Promise<IOPacket> {
-  return await startActiveSpan("processWaitpointCompletionPacket()", async (span) => {
-    if (!packet.data) {
-      return packet;
-    }
+  if (!packet.data) {
+    return packet;
+  }
 
-    const { needsOffloading, size } = packetRequiresOffloading(
-      packet,
-      env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
-    );
+  const { needsOffloading, size } = packetRequiresOffloading(
+    packet,
+    env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
+  );
 
-    span.setAttribute("needsOffloading", needsOffloading);
-    span.setAttribute("size", size);
+  if (!needsOffloading) {
+    return packet;
+  }
 
-    if (!needsOffloading) {
-      return packet;
-    }
+  const filename = `${pathPrefix}.${packetExtensionForDataType(packet.dataType)}`;
 
-    const filename = `${pathPrefix}.${packetExtensionForDataType(packet.dataType)}`;
+  const [uploadError, uploadedFilename] = await tryCatch(
+    uploadPacketToObjectStore(
+      filename,
+      packet.data,
+      packet.dataType,
+      environment,
+      env.OBJECT_STORE_DEFAULT_PROTOCOL
+    )
+  );
 
-    const [uploadError, uploadedFilename] = await tryCatch(
-      uploadPacketToObjectStore(
-        filename,
-        packet.data,
-        packet.dataType,
-        environment,
-        env.OBJECT_STORE_DEFAULT_PROTOCOL
-      )
-    );
+  if (uploadError) {
+    throw new ServiceValidationError("Failed to upload large waitpoint to object store", 500);
+  }
 
-    if (uploadError) {
-      throw new ServiceValidationError("Failed to upload large waitpoint to object store", 500);
-    }
-
-    return {
-      data: uploadedFilename!,
-      dataType: "application/store",
-    };
-  });
+  return {
+    data: uploadedFilename!,
+    dataType: "application/store",
+  };
 }

@@ -1,10 +1,8 @@
+import { type IOPacket } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { tracer } from "~/v3/tracer.server";
-import { startSpan } from "~/v3/tracing.server";
-import { IOPacket } from "@trigger.dev/core/v3";
 import { ObjectStoreClient, type ObjectStoreClientConfig } from "./objectStoreClient.server";
 
 /**
@@ -129,30 +127,21 @@ export async function uploadPacketToObjectStore(
   environment: AuthenticatedEnvironment,
   storageProtocol?: string
 ): Promise<string> {
-  return await startSpan(tracer, "uploadPacketToObjectStore()", async (span) => {
-    const protocol = storageProtocol || env.OBJECT_STORE_DEFAULT_PROTOCOL;
-    const client = getObjectStoreClient(protocol);
+  const protocol = storageProtocol || env.OBJECT_STORE_DEFAULT_PROTOCOL;
+  const client = getObjectStoreClient(protocol);
 
-    if (!client) {
-      throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
-    }
+  if (!client) {
+    throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
+  }
 
-    span.setAttributes({
-      projectRef: environment.project.externalRef,
-      environmentSlug: environment.slug,
-      filename,
-      protocol: protocol || "default",
-    });
+  const key = `packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
 
-    const key = `packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
+  logger.debug("Uploading to object store", { key, protocol: protocol || "default" });
 
-    logger.debug("Uploading to object store", { key, protocol: protocol || "default" });
+  await client.putObject(key, data, contentType);
 
-    await client.putObject(key, data, contentType);
-
-    // Return filename with protocol prefix if specified
-    return formatStorageUri(filename, protocol);
-  });
+  // Return filename with protocol prefix if specified
+  return formatStorageUri(filename, protocol);
 }
 
 export async function downloadPacketFromObjectStore(
@@ -163,38 +152,29 @@ export async function downloadPacketFromObjectStore(
     return packet;
   }
 
-  return await startSpan(tracer, "downloadPacketFromObjectStore()", async (span) => {
-    // There shouldn't be an offloaded packet with undefined data…
-    if (!packet.data) {
-      logger.error("Object store packet has undefined data", { packet, environment });
-      return {
-        dataType: "application/json",
-        data: undefined,
-      };
-    }
+  // There shouldn't be an offloaded packet with undefined data…
+  if (!packet.data) {
+    logger.error("Object store packet has undefined data", { packet, environment });
+    return {
+      dataType: "application/json",
+      data: undefined,
+    };
+  }
 
-    const { protocol, path } = parseStorageUri(packet.data);
-    const client = getObjectStoreClient(protocol);
+  const { protocol, path } = parseStorageUri(packet.data);
+  const client = getObjectStoreClient(protocol);
 
-    if (!client) {
-      throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
-    }
+  if (!client) {
+    throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
+  }
 
-    span.setAttributes({
-      projectRef: environment.project.externalRef,
-      environmentSlug: environment.slug,
-      filename: packet.data,
-      protocol: protocol || "default",
-    });
+  const key = `packets/${environment.project.externalRef}/${environment.slug}/${path}`;
 
-    const key = `packets/${environment.project.externalRef}/${environment.slug}/${path}`;
+  logger.debug("Downloading from object store", { key, protocol: protocol || "default" });
 
-    logger.debug("Downloading from object store", { key, protocol: protocol || "default" });
+  const data = await client.getObject(key);
 
-    const data = await client.getObject(key);
-
-    return { data, dataType: "application/json" };
-  });
+  return { data, dataType: "application/json" };
 }
 
 export type GeneratePacketPresignOptions = {
