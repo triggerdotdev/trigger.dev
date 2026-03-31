@@ -6,29 +6,31 @@ sidebarTitle: "Migrating from n8n"
 
 If you've been building with n8n and are ready to move to code-first workflows, this guide is for you. This page maps them to their Trigger.dev equivalents and walks through common patterns side by side.
 
+Your task code runs on Trigger.dev's managed infrastructure, so there are no servers for you to provision or maintain.
+
 ## Concept map
 
-| n8n                                               | Trigger.dev                                                                                                          |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Workflow                                          | [`task`](/tasks/overview) plus its config (`queue`, `retry`, `onFailure`)                                            |
-| Schedule Trigger                                  | [`schedules.task`](/tasks/scheduled)                                                                                 |
-| Webhook node                                      | Route handler + [`task.trigger()`](/triggering)                                                                      |
-| Node                                              | A step or library call inside `run()`                                                                                |
-| Execute Sub-workflow node (wait for completion)   | [`tasks.triggerAndWait()`](/triggering#yourtask-triggerandwait)                                                      |
-| Execute Sub-workflow node (execute in background) | [`tasks.trigger()`](/triggering)                                                                                     |
-| Loop over N items → Execute Sub-workflow → Merge  | [`tasks.batchTriggerAndWait()`](/tasks#yourtask-batchtriggerandwait)                                                 |
-| Loop Over Items (Split in Batches)                | `for` loop or `.map()`                                                                                               |
-| IF / Switch node                                  | `if` / `switch` statements                                                                                           |
-| Wait node (time interval or specific time)        | [`wait.for()`](/wait-for) or [`wait.until()`](/wait-until)                                                           |
-| Error Trigger node / Error Workflow               | [`onFailure`](/tasks/overview#onfailure-function) hook (both collapse into one concept in Trigger.dev)               |
-| Continue On Fail                                  | `try/catch` around an individual step                                                                                |
-| Stop And Error                                    | `throw new Error(...)`                                                                                               |
-| Code node                                         | A function or step within `run()`                                                                                    |
-| Credentials                                       | [Environment variable secret](/deploy-environment-variables)                                                         |
-| Execution                                         | Run (visible in the dashboard with full logs)                                                                        |
-| Retry on Fail (per-node setting)                  | [`retry.maxAttempts`](/tasks/overview#retry) (retries the whole `run()`, not a single step)                          |
-| AI Agent node                                     | Any AI SDK called inside `run()` (Vercel AI SDK, Claude SDK, OpenAI SDK, etc.)                                       |
-| Respond to Webhook node                           | Route handler + [`task.triggerAndWait()`](/triggering#yourtask-triggerandwait) returning the result as HTTP response |
+| n8n                                               | Trigger.dev                                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Workflow                                          | [task](/tasks/overview) plus its config (queue, retry, onFailure)                                                  |
+| Schedule Trigger                                  | [schedules.task](/tasks/scheduled)                                                                                 |
+| Webhook node                                      | Route handler + [task.trigger()](/triggering)                                                                      |
+| Node                                              | A step or library call inside `run()`                                                                              |
+| Execute Sub-workflow node (wait for completion)   | [tasks.triggerAndWait()](/triggering#yourtask-triggerandwait)                                                      |
+| Execute Sub-workflow node (execute in background) | [tasks.trigger()](/triggering)                                                                                     |
+| Loop over N items → Execute Sub-workflow → Merge  | [tasks.batchTriggerAndWait()](/tasks#yourtask-batchtriggerandwait)                                                 |
+| Loop Over Items (Split in Batches)                | `for` loop or `.map()`                                                                                             |
+| IF / Switch node                                  | `if` / `switch` statements                                                                                         |
+| Wait node (time interval or specific time)        | [wait.for()](/wait-for) or [wait.until()](/wait-until)                                                             |
+| Error Trigger node / Error Workflow               | [onFailure](/tasks/overview#onfailure-function) hook (both collapse into one concept in Trigger.dev)               |
+| Continue On Fail                                  | `try/catch` around an individual step                                                                              |
+| Stop And Error                                    | `throw new Error(...)`                                                                                             |
+| Code node                                         | A function or step within `run()`                                                                                  |
+| Credentials                                       | [Environment variable secret](/deploy-environment-variables)                                                       |
+| Execution                                         | Run (visible in the dashboard with full logs)                                                                      |
+| Retry on Fail (per-node setting)                  | [retry.maxAttempts](/tasks/overview#retry) (retries the whole `run()`, not a single step)                          |
+| AI Agent node                                     | Any AI SDK called inside `run()` (Vercel AI SDK, Claude SDK, OpenAI SDK, etc.)                                     |
+| Respond to Webhook node                           | Route handler + [task.triggerAndWait()](/triggering#yourtask-triggerandwait) returning the result as HTTP response |
 
 ---
 
@@ -76,18 +78,6 @@ In Trigger.dev, your existing route handler receives the webhook and triggers th
 
 <CodeGroup>
 
-```ts trigger/process-webhook.ts
-import { task } from "@trigger.dev/sdk";
-
-export const processWebhook = task({
-  id: "process-webhook",
-  run: async (payload: { event: string; data: Record<string, unknown> }) => {
-    // handle the webhook payload
-    await handleEvent(payload.event, payload.data);
-  },
-});
-```
-
 ```ts app/api/webhook/route.ts
 import { processWebhook } from "@/trigger/process-webhook";
 
@@ -101,6 +91,18 @@ export async function POST(request: Request) {
 
   return Response.json({ received: true });
 }
+```
+
+```ts trigger/process-webhook.ts
+import { task } from "@trigger.dev/sdk";
+
+export const processWebhook = task({
+  id: "process-webhook",
+  run: async (payload: { event: string; data: Record<string, unknown> }) => {
+    // handle the webhook payload
+    await handleEvent(payload.event, payload.data);
+  },
+});
 ```
 
 </CodeGroup>
