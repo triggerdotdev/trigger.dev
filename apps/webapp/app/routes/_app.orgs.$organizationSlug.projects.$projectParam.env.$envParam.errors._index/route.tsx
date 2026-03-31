@@ -661,7 +661,7 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
 
   return (
     <div className="flex items-start gap-1.5">
-      <div className="h-6 w-[5.125rem] rounded-sm">
+      <div className="h-6 w-[7rem] rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, maxCount || 1]} hide />
@@ -713,7 +713,7 @@ const ErrorActivityTooltip = ({ active, payload }: TooltipProps<number, string>)
 
 function ErrorActivityBlankState() {
   return (
-    <div className="flex h-6 w-[5.125rem] items-end gap-px rounded-sm">
+    <div className="flex h-6 w-[7rem] items-end gap-px rounded-sm">
       {[...Array(24)].map((_, i) => (
         <div key={i} className="h-full flex-1 bg-[#212327]" />
       ))}
