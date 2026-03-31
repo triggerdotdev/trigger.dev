@@ -1,4 +1,4 @@
-import { AdjustmentsHorizontalIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { AdjustmentsHorizontalIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useNavigate } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useMemo, useState } from "react";
@@ -7,8 +7,10 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
+import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { SearchInput } from "~/components/primitives/SearchInput";
+import { Switch } from "~/components/primitives/Switch";
 import {
   SelectProvider,
   SelectTrigger,
@@ -84,9 +86,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 // --- Helpers ---
 
 const FEATURE_OPTIONS = [
-  { value: "structuredOutput", label: "Structured Output" },
-  { value: "parallelToolCalls", label: "Parallel Tool Calls" },
-  { value: "streamingToolCalls", label: "Streaming Tool Calls" },
+  { value: "structuredOutput", label: "Structured output" },
+  { value: "parallelToolCalls", label: "Parallel tool calls" },
+  { value: "streamingToolCalls", label: "Streaming tool calls" },
 ] as const;
 
 type FeatureKey = (typeof FEATURE_OPTIONS)[number]["value"];
@@ -221,12 +223,16 @@ function FiltersBar({
   compareSet,
   onClearCompare,
   onCompare,
+  showAllDetails,
+  onToggleAllDetails,
 }: {
   allProviders: string[];
   allCapabilities: string[];
   compareSet: Set<string>;
   onClearCompare: () => void;
   onCompare: () => void;
+  showAllDetails: boolean;
+  onToggleAllDetails: (checked: boolean) => void;
 }) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -249,33 +255,53 @@ function FiltersBar({
           </Form>
         )}
       </div>
-      {compareSet.size >= 2 && (
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-xs text-text-dimmed">{compareSet.size} selected</span>
-          <Button variant="tertiary/small" onClick={onClearCompare}>
-            Clear
-          </Button>
-          <Button variant="primary/small" onClick={onCompare}>
-            Compare ({compareSet.size})
-          </Button>
-        </div>
-      )}
+      <div className="flex shrink-0 items-center gap-2">
+        {compareSet.size >= 2 && (
+          <>
+            <span className="text-xs text-text-dimmed">{compareSet.size} selected</span>
+            <Button variant="tertiary/small" onClick={onClearCompare}>
+              Clear
+            </Button>
+            <Button variant="primary/small" onClick={onCompare}>
+              Compare ({compareSet.size})
+            </Button>
+          </>
+        )}
+        <Switch
+          variant="secondary/small"
+          label="All details"
+          checked={showAllDetails}
+          onCheckedChange={onToggleAllDetails}
+        />
+      </div>
     </div>
   );
 }
 
 // --- Models Table ---
 
+function BooleanCell({ value, path }: { value: boolean; path: string }) {
+  return (
+    <TableCell to={path} alignment="center">
+      {value ? (
+        <CheckIcon className="size-4 text-text-dimmed group-hover/table-row:text-text-bright" />
+      ) : null}
+    </TableCell>
+  );
+}
+
 function ModelsList({
   models,
   popularMap,
   compareSet,
   onToggleCompare,
+  showAllDetails,
 }: {
   models: ModelCatalogItem[];
   popularMap: Map<string, PopularModel>;
   compareSet: Set<string>;
   onToggleCompare: (modelName: string) => void;
+  showAllDetails: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -299,6 +325,16 @@ function ModelsList({
           <TableHeaderCell alignment="right">Input $/1M</TableHeaderCell>
           <TableHeaderCell alignment="right">Output $/1M</TableHeaderCell>
           <TableHeaderCell alignment="right">Context</TableHeaderCell>
+          {showAllDetails && (
+            <>
+              <TableHeaderCell alignment="right">Max output</TableHeaderCell>
+              <TableHeaderCell>Capabilities</TableHeaderCell>
+              <TableHeaderCell>Release date</TableHeaderCell>
+              <TableHeaderCell alignment="center">Structured output</TableHeaderCell>
+              <TableHeaderCell alignment="center">Parallel tools</TableHeaderCell>
+              <TableHeaderCell alignment="center">Streaming tools</TableHeaderCell>
+            </>
+          )}
           <TableHeaderCell alignment="right">p50 TTFC</TableHeaderCell>
           <TableHeaderCell alignment="right">Calls (7d)</TableHeaderCell>
         </TableRow>
@@ -316,22 +352,44 @@ function ModelsList({
                 />
               </TableCell>
               <TableCell to={path} isTabbableCell>
-                <span className="font-medium text-text-bright">{model.displayId}</span>
+                {model.displayId}
               </TableCell>
               <TableCell to={path}>{formatProviderName(model.provider)}</TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell to={path} alignment="right" className="tabular-nums">
                 {formatModelPrice(model.inputPrice)}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell to={path} alignment="right" className="tabular-nums">
                 {formatModelPrice(model.outputPrice)}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell to={path} alignment="right" className="tabular-nums">
                 {formatTokenCount(model.contextWindow)}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              {showAllDetails && (
+                <>
+                  <TableCell to={path} alignment="right" className="tabular-nums">
+                    {formatTokenCount(model.maxOutputTokens)}
+                  </TableCell>
+                  <TableCell to={path}>
+                    {model.capabilities.length > 0
+                      ? model.capabilities.map(formatCapability).join(", ")
+                      : "—"}
+                  </TableCell>
+                  <TableCell to={path}>
+                    {model.releaseDate ? (
+                      <DateTime date={model.releaseDate} includeTime={false} />
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <BooleanCell value={model.supportsStructuredOutput} path={path} />
+                  <BooleanCell value={model.supportsParallelToolCalls} path={path} />
+                  <BooleanCell value={model.supportsStreamingToolCalls} path={path} />
+                </>
+              )}
+              <TableCell to={path} alignment="right" className="tabular-nums">
                 {popular && popular.ttfcP50 > 0 ? `${popular.ttfcP50.toFixed(0)}ms` : "—"}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell to={path} alignment="right" className="tabular-nums">
                 {popular && popular.callCount > 0 ? formatNumberCompact(popular.callCount) : "—"}
               </TableCell>
             </TableRow>
@@ -358,6 +416,7 @@ export default function ModelsPage() {
   const selectedCapabilities = searchValues("capabilities");
   const selectedFeatures = searchValues("features") as FeatureKey[];
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
+  const [showAllDetails, setShowAllDetails] = useState(false);
 
   const popularMap = useMemo(() => {
     const map = new Map<string, PopularModel>();
@@ -420,12 +479,15 @@ export default function ModelsPage() {
                 `${v3ModelComparePath(organization, project, environment)}?models=${params}`
               );
             }}
+            showAllDetails={showAllDetails}
+            onToggleAllDetails={(checked) => setShowAllDetails(checked)}
           />
           <ModelsList
             models={filteredModels}
             popularMap={popularMap}
             compareSet={compareSet}
             onToggleCompare={toggleCompare}
+            showAllDetails={showAllDetails}
           />
         </div>
       </PageBody>
