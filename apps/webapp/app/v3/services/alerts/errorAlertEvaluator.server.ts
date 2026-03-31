@@ -148,6 +148,7 @@ export class ErrorAlertEvaluator {
       const envChannels = channelsByEnvId.get(alertable.error.environment_id) ?? [];
       for (const channel of envChannels) {
         await alertsWorker.enqueue({
+          id: `deliverErrorGroupAlert:${channel.id}:${alertable.error.error_fingerprint}:${scheduledAt}`,
           job: "v3.deliverErrorGroupAlert",
           payload: {
             channelId: channel.id,
