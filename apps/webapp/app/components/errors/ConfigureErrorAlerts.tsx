@@ -133,8 +133,13 @@ export function ConfigureErrorAlerts({
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <fetcher.Form method="post" action={formAction} {...form.props}>
+      <fetcher.Form
+        method="post"
+        action={formAction}
+        {...form.props}
+        className="contents"
+      >
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Fieldset className="flex flex-col gap-4 p-4">
             <div className="flex flex-col">
               <Header3>Receive alerts when</Header3>
@@ -328,23 +333,22 @@ export function ConfigureErrorAlerts({
 
             <FormError>{form.error}</FormError>
           </Fieldset>
-        </fetcher.Form>
-      </div>
+        </div>
 
-      <div className="flex items-center justify-between border-t border-grid-bright px-3 py-3">
-        <LinkButton variant="secondary/medium" to={closeHref}>
-          Cancel
-        </LinkButton>
-        <Button
-          variant="primary/medium"
-          type="submit"
-          form="configure-error-alerts"
-          disabled={isSubmitting}
-          isLoading={isSubmitting}
-        >
-          {isSubmitting ? "Saving…" : "Save"}
-        </Button>
-      </div>
+        <div className="flex items-center justify-between border-t border-grid-bright px-3 py-3">
+          <LinkButton variant="secondary/medium" to={closeHref}>
+            Cancel
+          </LinkButton>
+          <Button
+            variant="primary/medium"
+            type="submit"
+            disabled={isSubmitting}
+            isLoading={isSubmitting}
+          >
+            {isSubmitting ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </fetcher.Form>
     </div>
   );
 }
