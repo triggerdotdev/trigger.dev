@@ -672,7 +672,13 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
               wrapperStyle={{ zIndex: 1000 }}
               animationDuration={0}
             />
-            <Bar dataKey="count" fill="#6366F1" strokeWidth={0} isAnimationActive={false} />
+            <Bar
+              dataKey="count"
+              fill="#6366F1"
+              strokeWidth={0}
+              isAnimationActive={false}
+              minPointSize={1}
+            />
             <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
             {maxCount > 0 && (
               <ReferenceLine y={maxCount} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
