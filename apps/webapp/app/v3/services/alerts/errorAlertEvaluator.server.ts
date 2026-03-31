@@ -74,120 +74,125 @@ export class ErrorAlertEvaluator {
     }
 
     const allEnvTypes = this.collectEnvironmentTypes(channels);
-    const [project, environments] = await Promise.all([
-      this._replica.project.findFirst({
-        where: { id: projectId },
-        select: { organizationId: true },
-      }),
-      this.resolveEnvironments(projectId, allEnvTypes),
-    ]);
 
-    if (!project) {
-      logger.error("[ErrorAlertEvaluator] Project not found", { projectId });
-      return;
-    }
+    try {
+      const [project, environments] = await Promise.all([
+        this._replica.project.findFirst({
+          where: { id: projectId },
+          select: { organizationId: true },
+        }),
+        this.resolveEnvironments(projectId, allEnvTypes),
+      ]);
 
-    if (environments.length === 0) {
-      logger.info("[ErrorAlertEvaluator] No matching environments found", { projectId });
-      await this.selfChain(projectId, nextScheduledAt, minIntervalMs);
-      return;
-    }
-
-    const envIds = environments.map((e) => e.id);
-    const envMap = new Map(environments.map((e) => [e.id, e]));
-    const channelsByEnvId = this.buildChannelsByEnvId(channels, environments);
-
-    const activeErrors = await this.getActiveErrors(
-      project.organizationId,
-      projectId,
-      envIds,
-      scheduledAt
-    );
-
-    if (activeErrors.length === 0) {
-      await this.selfChain(projectId, nextScheduledAt, minIntervalMs);
-      return;
-    }
-
-    const states = await this.getErrorGroupStates(activeErrors);
-    const stateMap = this.buildStateMap(states);
-
-    const occurrenceCounts = await this.getOccurrenceCountsSince(
-      project.organizationId,
-      projectId,
-      envIds,
-      scheduledAt
-    );
-    const occurrenceMap = this.buildOccurrenceMap(occurrenceCounts);
-
-    const alertableErrors: AlertableError[] = [];
-
-    for (const error of activeErrors) {
-      const key = `${error.environment_id}:${error.task_identifier}:${error.error_fingerprint}`;
-      const state = stateMap.get(key);
-      const env = envMap.get(error.environment_id);
-      const firstSeenMs = Number(error.first_seen);
-
-      const classification = this.classifyError(error, state, firstSeenMs, scheduledAt, {
-        occurrencesSince: occurrenceMap.get(key) ?? 0,
-        windowMs,
-        totalOccurrenceCount: error.occurrence_count,
-      });
-
-      if (classification) {
-        alertableErrors.push({
-          classification,
-          error,
-          environmentSlug: env?.slug ?? "",
-          environmentName: env?.displayName ?? error.environment_id,
-        });
+      if (!project) {
+        logger.error("[ErrorAlertEvaluator] Project not found", { projectId });
+        return;
       }
-    }
 
-    for (const alertable of alertableErrors) {
-      const envChannels = channelsByEnvId.get(alertable.error.environment_id) ?? [];
-      for (const channel of envChannels) {
-        await alertsWorker.enqueue({
-          id: `deliverErrorGroupAlert:${channel.id}:${alertable.error.error_fingerprint}:${scheduledAt}`,
-          job: "v3.deliverErrorGroupAlert",
-          payload: {
-            channelId: channel.id,
-            projectId,
-            classification: alertable.classification,
-            error: {
-              fingerprint: alertable.error.error_fingerprint,
-              environmentId: alertable.error.environment_id,
-              environmentSlug: alertable.environmentSlug,
-              environmentName: alertable.environmentName,
-              taskIdentifier: alertable.error.task_identifier,
-              errorType: alertable.error.error_type,
-              errorMessage: alertable.error.error_message,
-              sampleStackTrace: alertable.error.sample_stack_trace,
-              firstSeen: alertable.error.first_seen,
-              lastSeen: alertable.error.last_seen,
-              occurrenceCount: alertable.error.occurrence_count,
+      if (environments.length === 0) {
+        return;
+      }
+
+      const envIds = environments.map((e) => e.id);
+      const envMap = new Map(environments.map((e) => [e.id, e]));
+      const channelsByEnvId = this.buildChannelsByEnvId(channels, environments);
+
+      const activeErrors = await this.getActiveErrors(
+        project.organizationId,
+        projectId,
+        envIds,
+        scheduledAt
+      );
+
+      if (activeErrors.length === 0) {
+        return;
+      }
+
+      const states = await this.getErrorGroupStates(activeErrors);
+      const stateMap = this.buildStateMap(states);
+
+      const occurrenceCounts = await this.getOccurrenceCountsSince(
+        project.organizationId,
+        projectId,
+        envIds,
+        scheduledAt
+      );
+      const occurrenceMap = this.buildOccurrenceMap(occurrenceCounts);
+
+      const alertableErrors: AlertableError[] = [];
+
+      for (const error of activeErrors) {
+        const key = `${error.environment_id}:${error.task_identifier}:${error.error_fingerprint}`;
+        const state = stateMap.get(key);
+        const env = envMap.get(error.environment_id);
+        const firstSeenMs = Number(error.first_seen);
+
+        const classification = this.classifyError(error, state, firstSeenMs, scheduledAt, {
+          occurrencesSince: occurrenceMap.get(key) ?? 0,
+          windowMs,
+          totalOccurrenceCount: error.occurrence_count,
+        });
+
+        if (classification) {
+          alertableErrors.push({
+            classification,
+            error,
+            environmentSlug: env?.slug ?? "",
+            environmentName: env?.displayName ?? error.environment_id,
+          });
+        }
+      }
+
+      for (const alertable of alertableErrors) {
+        const envChannels = channelsByEnvId.get(alertable.error.environment_id) ?? [];
+        for (const channel of envChannels) {
+          await alertsWorker.enqueue({
+            id: `deliverErrorGroupAlert:${channel.id}:${alertable.error.error_fingerprint}:${scheduledAt}`,
+            job: "v3.deliverErrorGroupAlert",
+            payload: {
+              channelId: channel.id,
+              projectId,
+              classification: alertable.classification,
+              error: {
+                fingerprint: alertable.error.error_fingerprint,
+                environmentId: alertable.error.environment_id,
+                environmentSlug: alertable.environmentSlug,
+                environmentName: alertable.environmentName,
+                taskIdentifier: alertable.error.task_identifier,
+                errorType: alertable.error.error_type,
+                errorMessage: alertable.error.error_message,
+                sampleStackTrace: alertable.error.sample_stack_trace,
+                firstSeen: alertable.error.first_seen,
+                lastSeen: alertable.error.last_seen,
+                occurrenceCount: alertable.error.occurrence_count,
+              },
             },
-          },
-        });
+          });
+        }
       }
+
+      const stateUpdates = alertableErrors.filter(
+        (a) => a.classification === "regression" || a.classification === "unignored"
+      );
+      await this.updateErrorGroupStates(stateUpdates, stateMap);
+
+      logger.info("[ErrorAlertEvaluator] Evaluation complete", {
+        projectId,
+        activeErrors: activeErrors.length,
+        alertableErrors: alertableErrors.length,
+        deliveryJobsEnqueued: alertableErrors.reduce(
+          (sum, a) => sum + (channelsByEnvId.get(a.error.environment_id)?.length ?? 0),
+          0
+        ),
+      });
+    } catch (error) {
+      logger.error("[ErrorAlertEvaluator] Evaluation failed, will retry on next cycle", {
+        projectId,
+        error,
+      });
+    } finally {
+      await this.selfChain(projectId, nextScheduledAt, minIntervalMs);
     }
-
-    const stateUpdates = alertableErrors.filter(
-      (a) => a.classification === "regression" || a.classification === "unignored"
-    );
-    await this.updateErrorGroupStates(stateUpdates, stateMap);
-
-    logger.info("[ErrorAlertEvaluator] Evaluation complete", {
-      projectId,
-      activeErrors: activeErrors.length,
-      alertableErrors: alertableErrors.length,
-      deliveryJobsEnqueued: alertableErrors.reduce(
-        (sum, a) => sum + (channelsByEnvId.get(a.error.environment_id)?.length ?? 0),
-        0
-      ),
-    });
-
-    await this.selfChain(projectId, nextScheduledAt, minIntervalMs);
   }
 
   private classifyError(
