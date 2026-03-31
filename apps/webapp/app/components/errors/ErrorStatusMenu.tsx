@@ -4,10 +4,11 @@ import {
   IconArrowBackUp as IconArrowBackUpBase,
   IconBugOff as IconBugOffBase,
 } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
-import { Form, useNavigation, useSubmit } from "@remix-run/react";
+import { useFetcher } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
+import { useToast } from "~/components/primitives/Toast";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -30,6 +31,18 @@ const ArrowBackUpIcon = ({ className }: { className?: string }) => (
 const BugOffIcon = ({ className }: { className?: string }) => (
   <IconBugOffBase className={className} size={18} />
 );
+
+export function ignoreActionToastMessage(data: Record<string, string>): string | undefined {
+  if (data.action !== "ignore") return undefined;
+
+  const duration = data.duration ? Number(data.duration) : undefined;
+  if (!duration) return "Error ignored indefinitely";
+
+  const hours = duration / (60 * 60 * 1000);
+  if (hours < 24) return `Error ignored for ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  const days = hours / 24;
+  return `Error ignored for ${days} ${days === 1 ? "day" : "days"}`;
+}
 
 export function ErrorStatusMenuItems({
   status,
@@ -131,10 +144,19 @@ export function CustomIgnoreDialog({
   taskIdentifier: string;
   formAction?: string;
 }) {
-  const submit = useSubmit();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state !== "idle";
+  const fetcher = useFetcher<{ ok?: boolean }>();
+  const isSubmitting = fetcher.state !== "idle";
   const [conditionError, setConditionError] = useState<string | null>(null);
+  const toast = useToast();
+  const hasHandledSuccess = useRef(false);
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok && !hasHandledSuccess.current) {
+      hasHandledSuccess.current = true;
+      toast.success("Error ignored with custom condition");
+      onOpenChange(false);
+    }
+  }, [fetcher.state, fetcher.data, onOpenChange, toast]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -145,7 +167,7 @@ export function CustomIgnoreDialog({
             Custom ignore condition
           </DialogTitle>
         </DialogHeader>
-        <Form
+        <fetcher.Form
           method="post"
           action={formAction}
           onSubmit={(e) => {
@@ -160,8 +182,8 @@ export function CustomIgnoreDialog({
             }
 
             setConditionError(null);
-            submit(e.currentTarget, { method: "post", action: formAction });
-            setTimeout(() => onOpenChange(false), 100);
+            hasHandledSuccess.current = false;
+            fetcher.submit(e.currentTarget, { method: "post", action: formAction });
           }}
         >
           <input type="hidden" name="action" value="ignore" />
@@ -214,7 +236,7 @@ export function CustomIgnoreDialog({
               {isSubmitting ? "Ignoring…" : "Ignore error"}
             </Button>
           </DialogFooter>
-        </Form>
+        </fetcher.Form>
       </DialogContent>
     </Dialog>
   );

@@ -5,7 +5,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconBugFilled } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
-import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -49,7 +49,12 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { PopoverSectionHeader } from "~/components/primitives/Popover";
-import { ErrorStatusMenuItems, CustomIgnoreDialog } from "~/components/errors/ErrorStatusMenu";
+import {
+  ErrorStatusMenuItems,
+  CustomIgnoreDialog,
+  ignoreActionToastMessage,
+} from "~/components/errors/ErrorStatusMenu";
+import { useToast } from "~/components/primitives/Toast";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
@@ -615,8 +620,17 @@ function ErrorActionsCell({
   projectParam: string;
   envParam: string;
 }) {
-  const fetcher = useFetcher();
+  const fetcher = useFetcher<{ ok?: boolean }>();
   const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
+  const toast = useToast();
+  const pendingToast = useRef<string | undefined>();
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok && pendingToast.current) {
+      toast.success(pendingToast.current);
+      pendingToast.current = undefined;
+    }
+  }, [fetcher.state, fetcher.data, toast]);
 
   const actionUrl = v3ErrorPath(
     { slug: organizationSlug },
@@ -638,6 +652,7 @@ function ErrorActionsCell({
                 taskIdentifier={errorGroup.taskIdentifier}
                 onAction={(data) => {
                   close();
+                  pendingToast.current = ignoreActionToastMessage(data);
                   fetcher.submit(data, { method: "post", action: actionUrl });
                 }}
                 onCustomIgnore={() => {
