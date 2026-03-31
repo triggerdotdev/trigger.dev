@@ -170,9 +170,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         qb.groupBy("error_fingerprint, task_identifier");
 
         const [err, results] = await qb.execute();
-        if (!err && results && results.length > 0) {
-          occurrenceCountAtIgnoreTime = results[0].occurrence_count;
+        if (err || !results || results.length === 0) {
+          return json(
+            { error: "Failed to fetch current occurrence count. Please try again." },
+            { status: 500 }
+          );
         }
+        occurrenceCountAtIgnoreTime = results[0].occurrence_count;
       }
 
       await actions.ignoreError(identifier, {

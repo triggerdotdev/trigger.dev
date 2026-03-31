@@ -87,8 +87,10 @@ export function ConfigureErrorAlerts({
     return qs ? `?${qs}` : location.pathname;
   })();
 
+  const hasHandledSuccess = useRef(false);
   useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.ok) {
+    if (fetcher.state === "idle" && fetcher.data?.ok && !hasHandledSuccess.current) {
+      hasHandledSuccess.current = true;
       toast.success("Alert settings saved");
       navigate(closeHref, { replace: true });
     }

@@ -368,7 +368,7 @@ export class ErrorGroupPresenter extends BasePresenter {
 
     let ignoredByUserDisplayName: string | null = null;
     if (row.ignoredByUserId) {
-      const user = await this.replica.user.findUnique({
+      const user = await this.replica.user.findFirst({
         where: { id: row.ignoredByUserId },
         select: { displayName: true, name: true, email: true },
       });
