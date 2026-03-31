@@ -1301,6 +1301,9 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
 
+    // Organization data stores registry
+    ORGANIZATION_DATA_STORES_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
+
     // LLM cost tracking
     LLM_COST_TRACKING_ENABLED: BoolEnv.default(true),
     LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
