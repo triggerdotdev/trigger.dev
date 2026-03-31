@@ -3,6 +3,7 @@ import { type IOPacket } from "@trigger.dev/core/v3";
 import { type PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { env } from "~/env.server";
+import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import {
   downloadPacketFromObjectStore,
   formatStorageUri,
@@ -65,6 +66,7 @@ const originalEnvObj = {
   OBJECT_STORE_SECRET_ACCESS_KEY: env.OBJECT_STORE_SECRET_ACCESS_KEY,
   OBJECT_STORE_REGION: env.OBJECT_STORE_REGION,
   OBJECT_STORE_DEFAULT_PROTOCOL: env.OBJECT_STORE_DEFAULT_PROTOCOL,
+  TASK_PAYLOAD_OFFLOAD_THRESHOLD: env.TASK_PAYLOAD_OFFLOAD_THRESHOLD,
 };
 
 describe("Object Storage", () => {
@@ -344,6 +346,66 @@ describe("Object Storage", () => {
     }
   );
 
+  postgresAndMinioTest(
+    "processWaitpointCompletionPacket offloads above threshold and round-trips download",
+    async ({ minioConfig, prisma }) => {
+      env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
+      env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      env.OBJECT_STORE_REGION = minioConfig.region;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
+
+      const savedThreshold = env.TASK_PAYLOAD_OFFLOAD_THRESHOLD;
+      env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = 256;
+
+      const environment = await createTestEnvironment(prisma);
+      const pathPrefix = `waitpoint_completiontest/token`;
+
+      try {
+        const smallPacket: IOPacket = {
+          data: JSON.stringify({ ok: true }),
+          dataType: "application/json",
+        };
+        const smallResult = await processWaitpointCompletionPacket(
+          smallPacket,
+          environment as any,
+          pathPrefix
+        );
+        expect(smallResult).toEqual(smallPacket);
+
+        const largeBody = "x".repeat(400);
+        const largePacket: IOPacket = {
+          data: largeBody,
+          dataType: "text/plain",
+        };
+        const largeResult = await processWaitpointCompletionPacket(
+          largePacket,
+          environment as any,
+          pathPrefix
+        );
+
+        expect(largeResult.dataType).toBe("application/store");
+        expect(largeResult.data).toBe(`${pathPrefix}.txt`);
+
+        const downloadedPacket = await downloadPacketFromObjectStore(
+          {
+            data: largeResult.data,
+            dataType: "application/store",
+          },
+          environment as any
+        );
+
+        expect(downloadedPacket.data).toBe(largeBody);
+      } finally {
+        env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = savedThreshold;
+
+        await prisma.runtimeEnvironment.delete({ where: { id: environment.id } });
+        await prisma.project.delete({ where: { id: environment.projectId } });
+        await prisma.organization.delete({ where: { id: environment.organizationId } });
+      }
+    }
+  );
+
   describe("hasObjectStoreClient", () => {
     it("returns false when no store is configured", () => {
       env.OBJECT_STORE_BASE_URL = undefined;
@@ -582,5 +644,6 @@ describe("Object Storage", () => {
     env.OBJECT_STORE_SECRET_ACCESS_KEY = originalEnvObj.OBJECT_STORE_SECRET_ACCESS_KEY;
     env.OBJECT_STORE_REGION = originalEnvObj.OBJECT_STORE_REGION;
     env.OBJECT_STORE_DEFAULT_PROTOCOL = originalEnvObj.OBJECT_STORE_DEFAULT_PROTOCOL;
+    env.TASK_PAYLOAD_OFFLOAD_THRESHOLD = originalEnvObj.TASK_PAYLOAD_OFFLOAD_THRESHOLD;
   });
 });

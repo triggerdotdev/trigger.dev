@@ -2,7 +2,6 @@ import { json } from "@remix-run/server-runtime";
 import {
   CompleteWaitpointTokenRequestBody,
   type CompleteWaitpointTokenResponseBody,
-  conditionallyExportPacket,
   stringifyIO,
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
@@ -10,6 +9,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 
@@ -52,9 +52,10 @@ const { action, loader } = createActionApiRoute(
       }
 
       const stringifiedData = await stringifyIO(body.data);
-      const finalData = await conditionallyExportPacket(
+      const finalData = await processWaitpointCompletionPacket(
         stringifiedData,
-        `${waitpointId}/waitpoint/token`
+        authentication.environment,
+        `${WaitpointId.toFriendlyId(waitpointId)}/token`
       );
 
       const result = await engine.completeWaitpoint({
