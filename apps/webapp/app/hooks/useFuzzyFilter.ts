@@ -28,7 +28,7 @@ export function useFuzzyFilter<T extends Object>({
   keys,
 }: {
   items: T[];
-  keys: Extract<keyof T, string>[];
+  keys: string[];
 }) {
   const [filterText, setFilterText] = useState("");
 
