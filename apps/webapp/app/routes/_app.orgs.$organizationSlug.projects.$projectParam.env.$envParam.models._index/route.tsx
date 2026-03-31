@@ -1,13 +1,14 @@
 import { AdjustmentsHorizontalIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, useNavigate } from "@remix-run/react";
+import { Form, type MetaFunction, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
@@ -33,6 +34,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type ModelCatalogItem,
+  type ModelComparisonItem,
   type PopularModel,
   ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
@@ -47,8 +49,12 @@ import {
   formatTokenCount,
   formatCapability,
   formatProviderName,
+  formatModelCost,
 } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Models | Trigger.dev" }];
@@ -221,7 +227,6 @@ function FiltersBar({
   allProviders,
   allCapabilities,
   compareSet,
-  onClearCompare,
   onCompare,
   showAllDetails,
   onToggleAllDetails,
@@ -229,7 +234,6 @@ function FiltersBar({
   allProviders: string[];
   allCapabilities: string[];
   compareSet: Set<string>;
-  onClearCompare: () => void;
   onCompare: () => void;
   showAllDetails: boolean;
   onToggleAllDetails: (checked: boolean) => void;
@@ -241,6 +245,8 @@ function FiltersBar({
     searchParams.has("capabilities") ||
     searchParams.has("features") ||
     searchParams.has("search");
+
+  const compareDisabled = compareSet.size < 2;
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
@@ -256,16 +262,20 @@ function FiltersBar({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {compareSet.size >= 2 && (
-          <>
-            <span className="text-xs text-text-dimmed">{compareSet.size} selected</span>
-            <Button variant="tertiary/small" onClick={onClearCompare}>
-              Clear
-            </Button>
-            <Button variant="primary/small" onClick={onCompare}>
-              Compare ({compareSet.size})
-            </Button>
-          </>
+        {compareDisabled ? (
+          <SimpleTooltip
+            button={
+              <Button variant="secondary/small" disabled>
+                Compare
+              </Button>
+            }
+            content="Choose 2–4 models to compare"
+            asChild
+          />
+        ) : (
+          <Button variant="secondary/small" onClick={onCompare}>
+            Compare ({compareSet.size})
+          </Button>
         )}
         <Switch
           variant="secondary/small"
@@ -349,6 +359,12 @@ function ModelsList({
                 <Checkbox
                   checked={compareSet.has(model.modelName)}
                   onChange={() => onToggleCompare(model.modelName)}
+                  disabled={compareSet.size >= 4 && !compareSet.has(model.modelName)}
+                  className={
+                    compareSet.size >= 4 && !compareSet.has(model.modelName)
+                      ? "opacity-35"
+                      : undefined
+                  }
                 />
               </TableCell>
               <TableCell to={path} isTabbableCell>
@@ -400,15 +416,259 @@ function ModelsList({
   );
 }
 
+// --- Compare Dialog ---
+
+type ComparisonRow = {
+  label: string;
+  values: React.ReactNode[];
+  bestIndex?: number;
+};
+
+function buildComparisonRows(
+  models: string[],
+  catalogModels: ModelCatalogItem[],
+  comparison: ModelComparisonItem[]
+): ComparisonRow[] {
+  const catalogMap = new Map<string, ModelCatalogItem>();
+  for (const item of catalogModels) {
+    catalogMap.set(item.modelName, item);
+  }
+
+  const dataMap = new Map<string, ModelComparisonItem>();
+  for (const item of comparison) {
+    dataMap.set(item.responseModel, item);
+  }
+
+  const getCatalog = (model: string) => catalogMap.get(model);
+  const getMetric = (model: string, key: keyof ModelComparisonItem) => {
+    const d = dataMap.get(model);
+    return d ? d[key] : 0;
+  };
+
+  const findBest = (values: number[], lowerIsBetter: boolean) => {
+    if (values.every((v) => v === 0)) return undefined;
+    const filtered = values.map((v, i) => ({ v, i })).filter(({ v }) => v > 0);
+    if (filtered.length === 0) return undefined;
+    const best = lowerIsBetter
+      ? filtered.reduce((a, b) => (a.v < b.v ? a : b))
+      : filtered.reduce((a, b) => (a.v > b.v ? a : b));
+    return best.i;
+  };
+
+  const inputPrices = models.map((m) => getCatalog(m)?.inputPrice ?? 0);
+  const outputPrices = models.map((m) => getCatalog(m)?.outputPrice ?? 0);
+  const contextWindows = models.map((m) => getCatalog(m)?.contextWindow ?? 0);
+  const maxOutputs = models.map((m) => getCatalog(m)?.maxOutputTokens ?? 0);
+  const callValues = models.map((m) => Number(getMetric(m, "callCount")));
+  const ttfcP50Values = models.map((m) => Number(getMetric(m, "ttfcP50")));
+  const ttfcP90Values = models.map((m) => Number(getMetric(m, "ttfcP90")));
+  const tpsP50Values = models.map((m) => Number(getMetric(m, "tpsP50")));
+  const tpsP90Values = models.map((m) => Number(getMetric(m, "tpsP90")));
+  const costValues = models.map((m) => Number(getMetric(m, "totalCost")));
+
+  return [
+    {
+      label: "Provider",
+      values: models.map((m) => {
+        const c = getCatalog(m);
+        return c ? formatProviderName(c.provider) : dataMap.get(m)?.genAiSystem ?? "—";
+      }),
+    },
+    {
+      label: "Input $/1M",
+      values: inputPrices.map((v) => formatModelPrice(v)),
+      bestIndex: findBest(inputPrices, true),
+    },
+    {
+      label: "Output $/1M",
+      values: outputPrices.map((v) => formatModelPrice(v)),
+      bestIndex: findBest(outputPrices, true),
+    },
+    {
+      label: "Context window",
+      values: contextWindows.map((v) => formatTokenCount(v)),
+      bestIndex: findBest(contextWindows, false),
+    },
+    {
+      label: "Max output",
+      values: maxOutputs.map((v) => formatTokenCount(v)),
+      bestIndex: findBest(maxOutputs, false),
+    },
+    {
+      label: "Capabilities",
+      values: models.map((m) => {
+        const c = getCatalog(m);
+        return c && c.capabilities.length > 0
+          ? c.capabilities.map(formatCapability).join(", ")
+          : "—";
+      }),
+    },
+    {
+      label: "Release date",
+      values: models.map((m) => {
+        const c = getCatalog(m);
+        return c?.releaseDate
+          ? new Date(c.releaseDate).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "—";
+      }),
+    },
+    {
+      label: "Structured output",
+      values: models.map((m) =>
+        getCatalog(m)?.supportsStructuredOutput ? (
+          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
+        ) : (
+          "—"
+        )
+      ),
+    },
+    {
+      label: "Parallel tools",
+      values: models.map((m) =>
+        getCatalog(m)?.supportsParallelToolCalls ? (
+          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
+        ) : (
+          "—"
+        )
+      ),
+    },
+    {
+      label: "Streaming tools",
+      values: models.map((m) =>
+        getCatalog(m)?.supportsStreamingToolCalls ? (
+          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
+        ) : (
+          "—"
+        )
+      ),
+    },
+    {
+      label: "Total calls (7d)",
+      values: callValues.map((v) => formatNumberCompact(v)),
+      bestIndex: findBest(callValues, false),
+    },
+    {
+      label: "p50 TTFC",
+      values: ttfcP50Values.map((v) => (v > 0 ? `${v.toFixed(0)}ms` : "—")),
+      bestIndex: findBest(ttfcP50Values, true),
+    },
+    {
+      label: "p90 TTFC",
+      values: ttfcP90Values.map((v) => (v > 0 ? `${v.toFixed(0)}ms` : "—")),
+      bestIndex: findBest(ttfcP90Values, true),
+    },
+    {
+      label: "Tokens/sec (p50)",
+      values: tpsP50Values.map((v) => (v > 0 ? v.toFixed(0) : "—")),
+      bestIndex: findBest(tpsP50Values, false),
+    },
+    {
+      label: "Tokens/sec (p90)",
+      values: tpsP90Values.map((v) => (v > 0 ? v.toFixed(0) : "—")),
+      bestIndex: findBest(tpsP90Values, false),
+    },
+    {
+      label: "Total cost (7d)",
+      values: costValues.map((v) => (v > 0 ? formatModelCost(v) : "—")),
+      bestIndex: findBest(costValues, true),
+    },
+  ];
+}
+
+function CompareDialog({
+  open,
+  onOpenChange,
+  models,
+  catalogModels,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  models: string[];
+  catalogModels: ModelCatalogItem[];
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const fetcher = useFetcher<typeof compareLoader>();
+
+  const isLoading = fetcher.state === "loading";
+  const comparison = (fetcher.data as any)?.comparison as ModelComparisonItem[] | undefined;
+  const rows = useMemo(
+    () => buildComparisonRows(models, catalogModels, comparison ?? []),
+    [comparison, models, catalogModels]
+  );
+
+  useEffect(() => {
+    if (open && models.length >= 2) {
+      const params = models.join(",");
+      fetcher.load(`${v3ModelComparePath(organization, project, environment)}?models=${params}`);
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!w-fit !px-0 !pb-0 sm:!max-w-[90vw]">
+        <DialogHeader className="px-4">
+          <DialogTitle>Compare models</DialogTitle>
+        </DialogHeader>
+        {rows.length > 0 ? (
+          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto [&_tbody_tr:last-child]:after:hidden">
+            <Table showTopBorder={false}>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>Metric</TableHeaderCell>
+                  {models.map((model) => (
+                    <TableHeaderCell key={model} alignment="right">
+                      {model}
+                    </TableHeaderCell>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.label}>
+                    <TableCell>
+                      <span className="text-xs font-medium text-text-dimmed group-hover/table-row:text-text-bright">
+                        {row.label}
+                      </span>
+                    </TableCell>
+                    {row.values.map((value, i) => (
+                      <TableCell key={i} alignment="right">
+                        <div
+                          className={`flex items-center justify-end tabular-nums ${
+                            row.bestIndex === i
+                              ? "font-medium text-success/70 group-hover/table-row:text-success"
+                              : "text-text-dimmed group-hover/table-row:text-text-bright"
+                          }`}
+                        >
+                          {value}
+                        </div>
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-12 text-sm text-text-dimmed">
+            No comparison data available for these models.
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // --- Main Page ---
 
 export default function ModelsPage() {
   const { catalog, popularModels, allProviders, allCapabilities } =
     useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const navigate = useNavigate();
   const { values: searchValues, value: searchValue } = useSearchParams();
 
   const search = searchValue("search") ?? "";
@@ -417,6 +677,7 @@ export default function ModelsPage() {
   const selectedFeatures = searchValues("features") as FeatureKey[];
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
   const [showAllDetails, setShowAllDetails] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const popularMap = useMemo(() => {
     const map = new Map<string, PopularModel>();
@@ -461,6 +722,9 @@ export default function ModelsPage() {
     });
   };
 
+  const compareModels = useMemo(() => Array.from(compareSet), [compareSet]);
+  const allModels = useMemo(() => catalog.flatMap((g) => g.models), [catalog]);
+
   return (
     <PageContainer>
       <NavBar>
@@ -472,13 +736,7 @@ export default function ModelsPage() {
             allProviders={allProviders}
             allCapabilities={allCapabilities}
             compareSet={compareSet}
-            onClearCompare={() => setCompareSet(new Set())}
-            onCompare={() => {
-              const params = Array.from(compareSet).join(",");
-              navigate(
-                `${v3ModelComparePath(organization, project, environment)}?models=${params}`
-              );
-            }}
+            onCompare={() => setCompareOpen(true)}
             showAllDetails={showAllDetails}
             onToggleAllDetails={(checked) => setShowAllDetails(checked)}
           />
@@ -491,6 +749,12 @@ export default function ModelsPage() {
           />
         </div>
       </PageBody>
+      <CompareDialog
+        open={compareOpen}
+        onOpenChange={setCompareOpen}
+        models={compareModels}
+        catalogModels={allModels}
+      />
     </PageContainer>
   );
 }
