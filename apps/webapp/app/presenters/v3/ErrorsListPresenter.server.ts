@@ -234,13 +234,13 @@ export class ErrorsListPresenter extends BasePresenter {
 
     if (statusFilter.includeKeys) {
       queryBuilder.where(
-        "concat(task_identifier, '::', error_fingerprint) IN ({statusIncludeKeys: Array(String)})",
+        "concat(task_identifier, '::', error_fingerprint) IN {statusIncludeKeys: Array(String)}",
         { statusIncludeKeys: statusFilter.includeKeys }
       );
     }
     if (statusFilter.excludeKeys) {
       queryBuilder.where(
-        "concat(task_identifier, '::', error_fingerprint) NOT IN ({statusExcludeKeys: Array(String)})",
+        "concat(task_identifier, '::', error_fingerprint) NOT IN {statusExcludeKeys: Array(String)}",
         { statusExcludeKeys: statusFilter.excludeKeys }
       );
     }

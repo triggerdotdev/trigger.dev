@@ -23,10 +23,11 @@ type ErrorAlertPayload = {
   };
 };
 
-// Test context for database setup
 let testChannelId: string;
 let testProjectId: string;
 let testOrganizationId: string;
+let testSecretKey: string;
+let testSecretReferenceId: string;
 
 // Helper to create mock error payloads
 function createMockErrorPayload(
@@ -90,20 +91,20 @@ describe.skipIf(!hasSlackCredentials)("Slack Error Alert Visual Tests", () => {
     });
     testProjectId = project.id;
 
-    // Create secret reference for Slack token
     const secretStore = getSecretStore("DATABASE");
-    const secretKey = `slack-test-token-${Date.now()}`;
+    testSecretKey = `slack-test-token-${Date.now()}`;
 
-    await secretStore.setSecret(secretKey, {
+    await secretStore.setSecret(testSecretKey, {
       botAccessToken: process.env.TEST_SLACK_BOT_TOKEN!,
     });
 
     const secretReference = await prisma.secretReference.create({
       data: {
-        key: secretKey,
+        key: testSecretKey,
         provider: "DATABASE",
       },
     });
+    testSecretReferenceId = secretReference.id;
 
     // Create Slack organization integration
     const integration = await prisma.organizationIntegration.create({
@@ -136,11 +137,24 @@ describe.skipIf(!hasSlackCredentials)("Slack Error Alert Visual Tests", () => {
   });
 
   afterAll(async () => {
-    // Clean up test data
     if (testChannelId) {
       await prisma.projectAlertChannel.deleteMany({
         where: { id: testChannelId },
       });
+    }
+    if (testOrganizationId) {
+      await prisma.organizationIntegration.deleteMany({
+        where: { organizationId: testOrganizationId },
+      });
+    }
+    if (testSecretReferenceId) {
+      await prisma.secretReference.deleteMany({
+        where: { id: testSecretReferenceId },
+      });
+    }
+    if (testSecretKey) {
+      const secretStore = getSecretStore("DATABASE");
+      await secretStore.deleteSecret(testSecretKey);
     }
     if (testProjectId) {
       await prisma.project.deleteMany({
@@ -148,9 +162,6 @@ describe.skipIf(!hasSlackCredentials)("Slack Error Alert Visual Tests", () => {
       });
     }
     if (testOrganizationId) {
-      await prisma.organizationIntegration.deleteMany({
-        where: { organizationId: testOrganizationId },
-      });
       await prisma.organization.deleteMany({
         where: { id: testOrganizationId },
       });

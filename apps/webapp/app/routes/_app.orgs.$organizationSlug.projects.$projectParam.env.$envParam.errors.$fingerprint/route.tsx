@@ -1,10 +1,7 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type MetaFunction, Form, useNavigation, useSubmit } from "@remix-run/react";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
-import {
-  IconAlarmSnooze as IconAlarmSnoozeBase,
-  IconCircleDotted,
-} from "@tabler/icons-react";
+import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
@@ -77,11 +74,7 @@ import { cn } from "~/utils/cn";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { getSeriesColor } from "~/components/code/chartColors";
-import {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-} from "~/components/primitives/Popover";
+import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import { ErrorStatusMenuItems, CustomIgnoreDialog } from "~/components/errors/ErrorStatusMenu";
 
@@ -573,7 +566,7 @@ function ErrorDetailSidebar({
             </Property.Item>
 
             {/* Error message */}
-            <Property.Item>
+            <Property.Item className="gap-1">
               <Property.Label>Error</Property.Label>
               <Property.Value>
                 <CodeBlock

@@ -1,10 +1,8 @@
 import {
   type ChatPostMessageArguments,
   ErrorCode,
-  type WebAPIHTTPError,
   type WebAPIPlatformError,
   type WebAPIRateLimitedError,
-  type WebAPIRequestError,
 } from "@slack/web-api";
 import { type ProjectAlertChannelType } from "@trigger.dev/database";
 import assertNever from "assert-never";

@@ -3,7 +3,7 @@ import type { ErrorWebhook } from "@trigger.dev/core/v3/schemas";
 
 export type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
 
-export interface ErrorGroupAlertData {
+export type ErrorGroupAlertData = {
   classification: ErrorAlertClassification;
   error: {
     fingerprint: string;
@@ -29,7 +29,7 @@ export interface ErrorGroupAlertData {
     name: string;
   };
   dashboardUrl: string;
-}
+};
 
 /**
  * Generates a webhook payload for an error group alert that conforms to the

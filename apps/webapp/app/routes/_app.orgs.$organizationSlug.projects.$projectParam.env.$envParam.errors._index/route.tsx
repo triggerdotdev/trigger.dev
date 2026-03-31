@@ -403,7 +403,10 @@ function FiltersBar({
     searchParams.has("status") ||
     searchParams.has("tasks") ||
     searchParams.has("versions") ||
-    searchParams.has("search");
+    searchParams.has("search") ||
+    searchParams.has("period") ||
+    searchParams.has("from") ||
+    searchParams.has("to");
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">

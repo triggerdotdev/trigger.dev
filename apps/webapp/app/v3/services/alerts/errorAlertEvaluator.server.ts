@@ -74,7 +74,18 @@ export class ErrorAlertEvaluator {
     }
 
     const allEnvTypes = this.collectEnvironmentTypes(channels);
-    const environments = await this.resolveEnvironments(projectId, allEnvTypes);
+    const [project, environments] = await Promise.all([
+      this._replica.project.findFirst({
+        where: { id: projectId },
+        select: { organizationId: true },
+      }),
+      this.resolveEnvironments(projectId, allEnvTypes),
+    ]);
+
+    if (!project) {
+      logger.error("[ErrorAlertEvaluator] Project not found", { projectId });
+      return;
+    }
 
     if (environments.length === 0) {
       logger.info("[ErrorAlertEvaluator] No matching environments found", { projectId });
@@ -86,7 +97,12 @@ export class ErrorAlertEvaluator {
     const envMap = new Map(environments.map((e) => [e.id, e]));
     const channelsByEnvId = this.buildChannelsByEnvId(channels, environments);
 
-    const activeErrors = await this.getActiveErrors(projectId, envIds, scheduledAt);
+    const activeErrors = await this.getActiveErrors(
+      project.organizationId,
+      projectId,
+      envIds,
+      scheduledAt
+    );
 
     if (activeErrors.length === 0) {
       await this.selfChain(projectId, nextScheduledAt, minIntervalMs);
@@ -96,7 +112,12 @@ export class ErrorAlertEvaluator {
     const states = await this.getErrorGroupStates(activeErrors);
     const stateMap = this.buildStateMap(states);
 
-    const occurrenceCounts = await this.getOccurrenceCountsSince(projectId, envIds, scheduledAt);
+    const occurrenceCounts = await this.getOccurrenceCountsSince(
+      project.organizationId,
+      projectId,
+      envIds,
+      scheduledAt
+    );
     const occurrenceMap = this.buildOccurrenceMap(occurrenceCounts);
 
     const alertableErrors: AlertableError[] = [];
@@ -301,11 +322,13 @@ export class ErrorAlertEvaluator {
   }
 
   private async getActiveErrors(
+    organizationId: string,
     projectId: string,
     envIds: string[],
     scheduledAt: number
   ): Promise<ActiveErrorsSinceQueryResult[]> {
     const qb = this._clickhouse.errors.activeErrorsSinceQueryBuilder();
+    qb.where("organization_id = {organizationId: String}", { organizationId });
     qb.where("project_id = {projectId: String}", { projectId });
     qb.where("environment_id IN {envIds: Array(String)}", { envIds });
     qb.groupBy("environment_id, task_identifier, error_fingerprint");
@@ -346,6 +369,7 @@ export class ErrorAlertEvaluator {
   }
 
   private async getOccurrenceCountsSince(
+    organizationId: string,
     projectId: string,
     envIds: string[],
     scheduledAt: number
@@ -358,6 +382,7 @@ export class ErrorAlertEvaluator {
     }>
   > {
     const qb = this._clickhouse.errors.occurrenceCountsSinceQueryBuilder();
+    qb.where("organization_id = {organizationId: String}", { organizationId });
     qb.where("project_id = {projectId: String}", { projectId });
     qb.where("environment_id IN {envIds: Array(String)}", { envIds });
     qb.where("minute >= toStartOfMinute(fromUnixTimestamp64Milli({scheduledAt: Int64}))", {

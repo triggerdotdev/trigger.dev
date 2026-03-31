@@ -87,6 +87,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const { emails, webhooks, slackChannel, slackIntegrationId } = submission.value;
 
+  const emailEnabled = env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined;
+  const slackEnabled = !!slackIntegrationId;
+
   const existingChannels = await prisma.projectAlertChannel.findMany({
     where: {
       projectId: project.id,
@@ -99,19 +102,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const environmentTypes = [environment.type];
   const processedChannelIds = new Set<string>();
 
-  for (const email of emails) {
-    const options: CreateAlertChannelOptions = {
-      name: `Error alert to ${email}`,
-      alertTypes: ["ERROR_GROUP"],
-      environmentTypes,
-      deduplicationKey: `error-email:${email}:${environment.type}`,
-      channel: { type: "EMAIL", email },
-    };
-    const channel = await service.call(project.externalRef, userId, options);
-    processedChannelIds.add(channel.id);
+  if (emailEnabled) {
+    for (const email of emails) {
+      const options: CreateAlertChannelOptions = {
+        name: `Error alert to ${email}`,
+        alertTypes: ["ERROR_GROUP"],
+        environmentTypes,
+        deduplicationKey: `error-email:${email}:${environment.type}`,
+        channel: { type: "EMAIL", email },
+      };
+      const channel = await service.call(project.externalRef, userId, options);
+      processedChannelIds.add(channel.id);
+    }
   }
 
-  if (slackChannel) {
+  if (slackEnabled && slackChannel) {
     const [channelId, channelName] = slackChannel.split("/");
     if (channelId && channelName) {
       const options: CreateAlertChannelOptions = {
@@ -144,10 +149,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const editableTypes = new Set<string>(["WEBHOOK"]);
-  if (env.ALERT_FROM_EMAIL !== undefined && env.ALERT_RESEND_API_KEY !== undefined) {
+  if (emailEnabled) {
     editableTypes.add("EMAIL");
   }
-  if (slackIntegrationId) {
+  if (slackEnabled) {
     editableTypes.add("SLACK");
   }
 
