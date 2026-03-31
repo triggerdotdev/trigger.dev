@@ -38,7 +38,7 @@ import {
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
-import { OrganizationParamsSchema, organizationSettingsPath } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, organizationSlackIntegrationPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -178,7 +178,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     integrationId: slackIntegration.id,
   });
 
-  return redirect(organizationSettingsPath({ slug: organizationSlug }));
+  return redirect(organizationSlackIntegrationPath({ slug: organizationSlug }));
 };
 
 export default function SlackIntegrationPage() {
@@ -239,12 +239,10 @@ export default function SlackIntegrationPage() {
             </div>
 
             <div>
-              <div className="mb-3 border-b border-grid-dimmed pb-3">
-                <Header3>
-                  Connected alert channels
-                  <span className="ml-1 text-text-dimmed">({alertChannels.length})</span>
-                </Header3>
-              </div>
+              <Header3 spacing>
+                Connected alert channels
+                <span className="ml-1 text-text-dimmed">({alertChannels.length})</span>
+              </Header3>
               {alertChannels.length === 0 ? (
                 <Paragraph variant="small" className="text-text-dimmed">
                   No alert channels are currently connected to this Slack integration.
