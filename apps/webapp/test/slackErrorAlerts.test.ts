@@ -1,9 +1,10 @@
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
-import { DeliverErrorGroupAlertService } from "../app/v3/services/alerts/deliverErrorGroupAlert.server.js";
-import { prisma } from "../app/db.server.js";
-import { getSecretStore } from "../app/services/secrets/secretStore.server.js";
+import type { PrismaClient } from "@trigger.dev/database";
 
-// Helper type matching the service's ErrorAlertPayload
+let DeliverErrorGroupAlertService: typeof import("../app/v3/services/alerts/deliverErrorGroupAlert.server.js").DeliverErrorGroupAlertService;
+let prisma: PrismaClient;
+let getSecretStore: typeof import("../app/services/secrets/secretStore.server.js").getSecretStore;
+
 type ErrorAlertPayload = {
   channelId: string;
   projectId: string;
@@ -71,7 +72,15 @@ const hasSlackCredentials =
 
 describe.skipIf(!hasSlackCredentials)("Slack Error Alert Visual Tests", () => {
   beforeAll(async () => {
-    // Create test organization
+    const dbModule = await import("../app/db.server.js");
+    prisma = dbModule.prisma;
+    const secretModule = await import("../app/services/secrets/secretStore.server.js");
+    getSecretStore = secretModule.getSecretStore;
+    const alertModule = await import(
+      "../app/v3/services/alerts/deliverErrorGroupAlert.server.js"
+    );
+    DeliverErrorGroupAlertService = alertModule.DeliverErrorGroupAlertService;
+
     const organization = await prisma.organization.create({
       data: {
         title: "Slack Test Org",
