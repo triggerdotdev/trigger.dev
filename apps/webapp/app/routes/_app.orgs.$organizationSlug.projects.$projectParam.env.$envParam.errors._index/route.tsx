@@ -621,6 +621,7 @@ function ErrorActionsCell({
   envParam: string;
 }) {
   const fetcher = useFetcher<{ ok?: boolean }>();
+  const revalidator = useRevalidator();
   const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
   const toast = useToast();
   const pendingToast = useRef<string | undefined>();
@@ -629,8 +630,9 @@ function ErrorActionsCell({
     if (fetcher.state === "idle" && fetcher.data?.ok && pendingToast.current) {
       toast.success(pendingToast.current);
       pendingToast.current = undefined;
+      revalidator.revalidate();
     }
-  }, [fetcher.state, fetcher.data, toast]);
+  }, [fetcher.state, fetcher.data, toast, revalidator]);
 
   const actionUrl = v3ErrorPath(
     { slug: organizationSlug },
