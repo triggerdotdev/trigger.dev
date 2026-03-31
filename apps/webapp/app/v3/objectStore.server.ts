@@ -2,7 +2,8 @@ import { env } from "~/env.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { startActiveSpan } from "./tracer.server";
+import { tracer } from "~/v3/tracer.server";
+import { startSpan } from "~/v3/tracing.server";
 import { IOPacket } from "@trigger.dev/core/v3";
 import { ObjectStoreClient, type ObjectStoreClientConfig } from "./objectStoreClient.server";
 
@@ -128,7 +129,7 @@ export async function uploadPacketToObjectStore(
   environment: AuthenticatedEnvironment,
   storageProtocol?: string
 ): Promise<string> {
-  return await startActiveSpan("uploadPacketToObjectStore()", async (span) => {
+  return await startSpan(tracer, "uploadPacketToObjectStore()", async (span) => {
     const protocol = storageProtocol || env.OBJECT_STORE_DEFAULT_PROTOCOL;
     const client = getObjectStoreClient(protocol);
 
@@ -162,7 +163,7 @@ export async function downloadPacketFromObjectStore(
     return packet;
   }
 
-  return await startActiveSpan("downloadPacketFromObjectStore()", async (span) => {
+  return await startSpan(tracer, "downloadPacketFromObjectStore()", async (span) => {
     // There shouldn't be an offloaded packet with undefined data…
     if (!packet.data) {
       logger.error("Object store packet has undefined data", { packet, environment });
