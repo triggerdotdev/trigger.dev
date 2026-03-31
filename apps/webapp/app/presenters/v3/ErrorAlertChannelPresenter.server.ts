@@ -35,6 +35,7 @@ export class ErrorAlertChannelPresenter extends BasePresenter {
           break;
         }
         case "SLACK": {
+          if (!channel.enabled) break;
           const parsed = ProjectAlertSlackProperties.safeParse(channel.properties);
           if (parsed.success) {
             slackChannel = {
