@@ -73,7 +73,7 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { cn } from "~/utils/cn";
 import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { getSeriesColor } from "~/components/code/chartColors";
+
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 import { ErrorStatusMenuItems, CustomIgnoreDialog } from "~/components/errors/ErrorStatusMenu";
@@ -776,7 +776,11 @@ function ActivityChart({
   activity: ErrorGroupActivity;
   versions: ErrorGroupActivityVersions;
 }) {
-  const colors = useMemo(() => versions.map((_, i) => getSeriesColor(i)), [versions]);
+  const ERROR_CHART_COLORS = ["#6c5ce7", "#ec4899"];
+  const colors = useMemo(
+    () => versions.map((_, i) => ERROR_CHART_COLORS[i % ERROR_CHART_COLORS.length]),
+    [versions]
+  );
 
   const data = useMemo(
     () =>
