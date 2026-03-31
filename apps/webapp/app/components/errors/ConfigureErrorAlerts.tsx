@@ -323,14 +323,16 @@ export function ConfigureErrorAlerts({
         </fetcher.Form>
       </div>
 
-      <div className="border-t border-grid-bright px-4 py-3">
+      <div className="flex items-center justify-between border-t border-grid-bright px-3 py-3">
+        <LinkButton variant="secondary/medium" to={closeHref}>
+          Cancel
+        </LinkButton>
         <Button
           variant="primary/medium"
           type="submit"
           form="configure-error-alerts"
           disabled={isSubmitting}
           isLoading={isSubmitting}
-          fullWidth
         >
           {isSubmitting ? "Saving…" : "Save"}
         </Button>
