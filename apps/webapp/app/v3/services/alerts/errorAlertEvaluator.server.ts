@@ -171,10 +171,12 @@ export class ErrorAlertEvaluator {
         }
       }
 
-      const stateUpdates = alertableErrors.filter(
-        (a) => a.classification === "regression" || a.classification === "unignored"
+      await this.updateErrorGroupStates(
+        alertableErrors,
+        stateMap,
+        project.organizationId,
+        projectId
       );
-      await this.updateErrorGroupStates(stateUpdates, stateMap);
 
       logger.info("[ErrorAlertEvaluator] Evaluation complete", {
         projectId,
@@ -424,14 +426,16 @@ export class ErrorAlertEvaluator {
 
   private async updateErrorGroupStates(
     alertableErrors: AlertableError[],
-    stateMap: Map<string, ErrorGroupState>
+    stateMap: Map<string, ErrorGroupState>,
+    organizationId: string,
+    projectId: string
   ): Promise<void> {
     for (const alertable of alertableErrors) {
       const key = `${alertable.error.environment_id}:${alertable.error.task_identifier}:${alertable.error.error_fingerprint}`;
       const state = stateMap.get(key);
-      if (!state) continue;
 
-      await this._prisma.errorGroupState.update({
+      if (state) {
+        await this._prisma.errorGroupState.update({
           where: { id: state.id },
           data: {
             status: "UNRESOLVED",
@@ -447,6 +451,18 @@ export class ErrorAlertEvaluator {
             resolvedBy: null,
           },
         });
+      } else if (alertable.classification === "new_issue") {
+        await this._prisma.errorGroupState.create({
+          data: {
+            organizationId,
+            projectId,
+            environmentId: alertable.error.environment_id,
+            taskIdentifier: alertable.error.task_identifier,
+            errorFingerprint: alertable.error.error_fingerprint,
+            status: "UNRESOLVED",
+          },
+        });
+      }
     }
   }
 
