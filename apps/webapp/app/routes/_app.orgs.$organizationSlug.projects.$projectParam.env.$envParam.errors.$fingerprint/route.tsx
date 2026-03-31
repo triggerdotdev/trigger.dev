@@ -1,22 +1,10 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type MetaFunction, Form, useNavigation, useSubmit } from "@remix-run/react";
-import { BellAlertIcon, CheckIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon } from "@heroicons/react/20/solid";
 import {
   IconAlarmSnooze as IconAlarmSnoozeBase,
-  IconArrowBackUp as IconArrowBackUpBase,
-  IconBugOff as IconBugOffBase,
   IconCircleDotted,
 } from "@tabler/icons-react";
-
-const AlarmSnoozeIcon = ({ className }: { className?: string }) => (
-  <IconAlarmSnoozeBase className={className} size={18} />
-);
-const ArrowBackUpIcon = ({ className }: { className?: string }) => (
-  <IconArrowBackUpBase className={className} size={18} />
-);
-const BugOffIcon = ({ className }: { className?: string }) => (
-  <IconBugOffBase className={className} size={18} />
-);
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
@@ -55,9 +43,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
+
 import { formatDistanceToNow, isPast } from "date-fns";
 
 import * as Property from "~/components/primitives/PropertyTable";
@@ -95,18 +81,9 @@ import {
   Popover,
   PopoverArrowTrigger,
   PopoverContent,
-  PopoverMenuItem,
 } from "~/components/primitives/Popover";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
-import { FormError } from "~/components/primitives/FormError";
+import { ErrorStatusMenuItems, CustomIgnoreDialog } from "~/components/errors/ErrorStatusMenu";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -771,184 +748,24 @@ function ErrorStatusDropdown({
           Mark error as…
         </PopoverArrowTrigger>
         <PopoverContent className="inline-flex !min-w-0 flex-col p-1" align="end">
-          {state.status === "UNRESOLVED" && (
-            <>
-              <PopoverMenuItem
-                icon={CheckIcon}
-                leadingIconClassName="text-success"
-                title="Resolved"
-                onClick={() => act({ taskIdentifier, action: "resolve" })}
-              />
-              <PopoverMenuItem
-                icon={AlarmSnoozeIcon}
-                leadingIconClassName="text-blue-500"
-                title="Ignored for 1 hour"
-                onClick={() =>
-                  act({
-                    taskIdentifier,
-                    action: "ignore",
-                    duration: String(60 * 60 * 1000),
-                  })
-                }
-              />
-              <PopoverMenuItem
-                icon={AlarmSnoozeIcon}
-                leadingIconClassName="text-blue-500"
-                title="Ignored for 24 hours"
-                onClick={() =>
-                  act({
-                    taskIdentifier,
-                    action: "ignore",
-                    duration: String(24 * 60 * 60 * 1000),
-                  })
-                }
-              />
-              <PopoverMenuItem
-                icon={BugOffIcon}
-                leadingIconClassName="text-blue-500"
-                title="Ignored forever"
-                onClick={() => act({ taskIdentifier, action: "ignore" })}
-              />
-              <PopoverMenuItem
-                icon={AlarmSnoozeIcon}
-                leadingIconClassName="text-blue-500"
-                title="Ignored with custom condition…"
-                onClick={() => {
-                  setPopoverOpen(false);
-                  setCustomIgnoreOpen(true);
-                }}
-              />
-            </>
-          )}
-
-          {state.status === "IGNORED" && (
-            <>
-              <PopoverMenuItem
-                icon={CheckIcon}
-                leadingIconClassName="text-success"
-                title="Resolved"
-                onClick={() => act({ taskIdentifier, action: "resolve" })}
-              />
-              <PopoverMenuItem
-                icon={ArrowBackUpIcon}
-                leadingIconClassName="text-error"
-                title="Unresolved"
-                onClick={() => act({ taskIdentifier, action: "unresolve" })}
-              />
-            </>
-          )}
-
-          {state.status === "RESOLVED" && (
-            <PopoverMenuItem
-              icon={ArrowBackUpIcon}
-              leadingIconClassName="text-error"
-              title="Unresolved"
-              onClick={() => act({ taskIdentifier, action: "unresolve" })}
-            />
-          )}
+          <ErrorStatusMenuItems
+            status={state.status}
+            taskIdentifier={taskIdentifier}
+            onAction={act}
+            onCustomIgnore={() => {
+              setPopoverOpen(false);
+              setCustomIgnoreOpen(true);
+            }}
+          />
         </PopoverContent>
       </Popover>
 
-      <Dialog open={customIgnoreOpen} onOpenChange={setCustomIgnoreOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-1.5">
-              <IconAlarmSnoozeBase className="-ml-1.5 size-6 text-blue-500" />
-              Custom ignore condition
-            </DialogTitle>
-          </DialogHeader>
-          <CustomIgnoreForm
-            taskIdentifier={taskIdentifier}
-            onClose={() => setCustomIgnoreOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <CustomIgnoreDialog
+        open={customIgnoreOpen}
+        onOpenChange={setCustomIgnoreOpen}
+        taskIdentifier={taskIdentifier}
+      />
     </>
-  );
-}
-
-function CustomIgnoreForm({
-  taskIdentifier,
-  onClose,
-}: {
-  taskIdentifier: string;
-  onClose: () => void;
-}) {
-  const submit = useSubmit();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state !== "idle";
-  const [conditionError, setConditionError] = useState<string | null>(null);
-
-  return (
-    <Form
-      method="post"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget);
-        const rate = formData.get("occurrenceRate")?.toString().trim();
-        const total = formData.get("totalOccurrences")?.toString().trim();
-
-        if (!rate && !total) {
-          setConditionError("At least one unignore condition is required");
-          return;
-        }
-
-        setConditionError(null);
-        submit(e.currentTarget, { method: "post" });
-        setTimeout(onClose, 100);
-      }}
-    >
-      <input type="hidden" name="action" value="ignore" />
-      <input type="hidden" name="taskIdentifier" value={taskIdentifier} />
-
-      <div className="flex flex-col gap-4 py-4">
-        <InputGroup fullWidth>
-          <Label htmlFor="occurrenceRate" variant="small">
-            Unignore when occurrence rate exceeds (per minute)
-          </Label>
-          <Input
-            id="occurrenceRate"
-            name="occurrenceRate"
-            type="number"
-            min={1}
-            placeholder="e.g. 10"
-            onChange={() => conditionError && setConditionError(null)}
-          />
-        </InputGroup>
-
-        <InputGroup fullWidth>
-          <Label htmlFor="totalOccurrences" variant="small">
-            Unignore when total occurrences exceed
-          </Label>
-          <Input
-            id="totalOccurrences"
-            name="totalOccurrences"
-            type="number"
-            min={1}
-            placeholder="e.g. 100"
-            onChange={() => conditionError && setConditionError(null)}
-          />
-        </InputGroup>
-
-        {conditionError && <FormError>{conditionError}</FormError>}
-
-        <InputGroup fullWidth>
-          <Label htmlFor="reason" variant="small" required={false}>
-            Reason
-          </Label>
-          <Input id="reason" name="reason" type="text" placeholder="e.g. Known flaky test" />
-        </InputGroup>
-      </div>
-
-      <DialogFooter>
-        <Button variant="tertiary/medium" type="button" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button variant="primary/medium" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Ignoring…" : "Ignore error"}
-        </Button>
-      </DialogFooter>
-    </Form>
   );
 }
 

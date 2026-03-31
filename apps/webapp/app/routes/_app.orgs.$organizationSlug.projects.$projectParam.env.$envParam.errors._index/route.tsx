@@ -1,11 +1,11 @@
 import * as Ariakit from "@ariakit/react";
 import { BellAlertIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { IconBugFilled } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { type ErrorGroupStatus } from "@trigger.dev/database";
-import { Suspense, useCallback, useMemo, type ReactNode } from "react";
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -43,10 +43,13 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { PopoverSectionHeader } from "~/components/primitives/Popover";
+import { ErrorStatusMenuItems, CustomIgnoreDialog } from "~/components/errors/ErrorStatusMenu";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
@@ -588,7 +591,68 @@ function ErrorGroupRow({
       <TableCell to={errorPath} className="tabular-nums">
         <RelativeDateTime date={errorGroup.lastSeen} />
       </TableCell>
+      <ErrorActionsCell
+        errorGroup={errorGroup}
+        organizationSlug={organizationSlug}
+        projectParam={projectParam}
+        envParam={envParam}
+      />
     </TableRow>
+  );
+}
+
+function ErrorActionsCell({
+  errorGroup,
+  organizationSlug,
+  projectParam,
+  envParam,
+}: {
+  errorGroup: ErrorGroup;
+  organizationSlug: string;
+  projectParam: string;
+  envParam: string;
+}) {
+  const fetcher = useFetcher();
+  const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
+
+  const actionUrl = v3ErrorPath(
+    { slug: organizationSlug },
+    { slug: projectParam },
+    { slug: envParam },
+    { fingerprint: errorGroup.fingerprint }
+  );
+
+  return (
+    <>
+      <TableCellMenu
+        isSticky
+        popoverContent={(close) => (
+          <>
+            <PopoverSectionHeader title="Mark error as…" />
+            <div className="flex flex-col gap-1 p-1">
+              <ErrorStatusMenuItems
+                status={errorGroup.status}
+                taskIdentifier={errorGroup.taskIdentifier}
+                onAction={(data) => {
+                  close();
+                  fetcher.submit(data, { method: "post", action: actionUrl });
+                }}
+                onCustomIgnore={() => {
+                  close();
+                  setCustomIgnoreOpen(true);
+                }}
+              />
+            </div>
+          </>
+        )}
+      />
+      <CustomIgnoreDialog
+        open={customIgnoreOpen}
+        onOpenChange={setCustomIgnoreOpen}
+        taskIdentifier={errorGroup.taskIdentifier}
+        formAction={actionUrl}
+      />
+    </>
   );
 }
 
