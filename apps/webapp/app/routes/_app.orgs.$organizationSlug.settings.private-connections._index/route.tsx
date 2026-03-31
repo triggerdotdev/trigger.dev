@@ -13,7 +13,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { featuresForRequest } from "~/features.server";
+import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { logger } from "~/services/logger.server";
 import { getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
@@ -44,8 +44,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
-  const { hasPrivateConnections } = featuresForRequest(request);
-  if (!hasPrivateConnections) {
+  const canAccess = await canAccessPrivateConnections({ organizationSlug, userId });
+  if (!canAccess) {
     return redirect(organizationPath({ slug: organizationSlug }));
   }
 
@@ -173,7 +173,7 @@ export default function Page() {
     disabled: !hasInProgressConnections,
   });
 
-  const hasPrivateNetworking = true;
+  const hasPrivateNetworking = plan?.v3Subscription?.plan?.limits?.hasPrivateNetworking ?? false;
   const limit = plan?.v3Subscription?.plan?.limits?.privateLinkConnectionLimit ?? 2;
   const canAdd = connections.filter((c) => c.status !== "DELETING").length < limit;
 

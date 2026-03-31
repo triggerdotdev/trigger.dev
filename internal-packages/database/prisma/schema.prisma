@@ -649,6 +649,8 @@ model BackgroundWorkerTask {
 
   maxDurationInSeconds Int?
 
+  ttl String?
+
   triggerSource TaskTriggerSource @default(STANDARD)
 
   payloadSchema Json?
@@ -1101,6 +1103,7 @@ model TaskRunCheckpoint {
 enum TaskRunCheckpointType {
   DOCKER
   KUBERNETES
+  COMPUTE
 }
 
 /// A Waitpoint blocks a run from continuing until it's completed
@@ -1290,6 +1293,11 @@ enum WorkerInstanceGroupType {
   UNMANAGED
 }
 
+enum WorkloadType {
+  CONTAINER
+  MICROVM
+}
+
 model WorkerInstanceGroup {
   id   String                  @id @default(cuid())
   type WorkerInstanceGroupType
@@ -1323,6 +1331,12 @@ model WorkerInstanceGroup {
   /// "usa", "europe", etc. Used like a pseudo enum for things like flags
   location      String?
   staticIPs     String?
+
+  workloadType WorkloadType @default(CONTAINER)
+
+  /// When true, runs enqueued to this worker queue may skip the intermediate queue
+  /// and be pushed directly to the worker queue when concurrency is available.
+  enableFastPath Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -9,7 +9,12 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*"
   },
+  "devDependencies": {
+    "@internal/testcontainers": "workspace:*",
+    "vitest": "3.1.4"
+  },
   "scripts": {
+    "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "typecheck": "tsc --noEmit",
     "generate": "node scripts/generate.mjs",
     "sync-prices": "bash scripts/sync-model-prices.sh && node scripts/generate.mjs",

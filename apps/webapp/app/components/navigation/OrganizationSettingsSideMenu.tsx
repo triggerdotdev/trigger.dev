@@ -9,6 +9,7 @@ import {
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
@@ -48,7 +49,8 @@ export function OrganizationSettingsSideMenu({
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
 }) {
-  const { isManagedCloud, hasPrivateConnections } = useFeatures();
+  const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
   const currentPlan = useCurrentPlan();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
@@ -108,7 +110,7 @@ export function OrganizationSettingsSideMenu({
               />
             </>
           )}
-          {hasPrivateConnections && (
+          {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"
               icon={LockClosedIcon}
