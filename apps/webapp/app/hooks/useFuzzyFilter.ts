@@ -1,14 +1,6 @@
 import { useMemo, useState } from "react";
 import { matchSorter } from "match-sorter";
 
-type DotPath<T, Depth extends unknown[] = []> = Depth["length"] extends 4
-  ? never
-  : T extends object
-    ? {
-        [K in keyof T & string]: K | `${K}.${DotPath<T[K], [...Depth, unknown]>}`;
-      }[keyof T & string]
-    : never;
-
 /**
  * A hook that provides fuzzy filtering functionality for a list of objects.
  * Uses match-sorter to perform the filtering across multiple object properties and
@@ -36,7 +28,7 @@ export function useFuzzyFilter<T extends Object>({
   keys,
 }: {
   items: T[];
-  keys: DotPath<T>[];
+  keys: string[];
 }) {
   const [filterText, setFilterText] = useState("");
 
