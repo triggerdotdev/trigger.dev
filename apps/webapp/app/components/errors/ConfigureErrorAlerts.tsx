@@ -187,7 +187,7 @@ export function ConfigureErrorAlerts({
                   <>
                     <Select
                       name={slackChannel.name}
-                      placeholder="Select a Slack channel"
+                      placeholder={<span className="text-text-dimmed">Select a Slack channel</span>}
                       heading="Filter channels…"
                       defaultValue={selectedSlackChannelValue}
                       dropdownIcon
@@ -202,13 +202,21 @@ export function ConfigureErrorAlerts({
                       text={(value) => {
                         const channel = slack.channels.find((s) => value === `${s.id}/${s.name}`);
                         if (!channel) return;
-                        return <SlackChannelTitle {...channel} />;
+                        return (
+                          <span className="text-text-bright">
+                            <SlackChannelTitle {...channel} />
+                          </span>
+                        );
                       }}
                     >
                       {(matches) => (
                         <>
                           {matches?.map((channel) => (
-                            <SelectItem key={channel.id} value={`${channel.id}/${channel.name}`}>
+                            <SelectItem
+                              key={channel.id}
+                              value={`${channel.id}/${channel.name}`}
+                              className="text-text-bright"
+                            >
                               <SlackChannelTitle {...channel} />
                             </SelectItem>
                           ))}
@@ -240,7 +248,7 @@ export function ConfigureErrorAlerts({
                   </>
                 ) : slack.status === "NOT_CONFIGURED" ? (
                   connectToSlackHref ? (
-                    <LinkButton variant="tertiary/large" to={connectToSlackHref} fullWidth>
+                    <LinkButton variant="tertiary/medium" to={connectToSlackHref} fullWidth>
                       <span className="flex items-center gap-2 text-text-bright">
                         <SlackIcon className="size-5" /> Connect to Slack
                       </span>
