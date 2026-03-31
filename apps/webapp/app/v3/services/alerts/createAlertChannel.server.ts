@@ -1,7 +1,7 @@
 import {
-  ProjectAlertChannel,
-  ProjectAlertType,
-  RuntimeEnvironmentType,
+  type ProjectAlertChannel,
+  type ProjectAlertType,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { env } from "~/env.server";
@@ -69,6 +69,7 @@ export class CreateAlertChannelService extends BaseService {
           type: options.channel.type,
           properties: await this.#createProperties(options.channel),
           environmentTypes,
+          enabled: true,
         },
       });
 
