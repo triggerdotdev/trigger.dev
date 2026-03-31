@@ -295,9 +295,9 @@ export class DefaultQueueManager implements QueueManager {
   async getWorkerQueue(
     environment: AuthenticatedEnvironment,
     regionOverride?: string
-  ): Promise<string | undefined> {
+  ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined> {
     if (environment.type === "DEVELOPMENT") {
-      return environment.id;
+      return { masterQueue: environment.id, enableFastPath: true };
     }
 
     const workerGroupService = new WorkerGroupService({
@@ -320,7 +320,10 @@ export class DefaultQueueManager implements QueueManager {
       throw new ServiceValidationError("No worker group found");
     }
 
-    return workerGroup.masterQueue;
+    return {
+      masterQueue: workerGroup.masterQueue,
+      enableFastPath: workerGroup.enableFastPath,
+    };
   }
 }
 

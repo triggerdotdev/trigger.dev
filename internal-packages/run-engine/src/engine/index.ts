@@ -462,6 +462,7 @@ export class RunEngine {
       cliVersion,
       concurrencyKey,
       workerQueue,
+      enableFastPath,
       queue,
       lockedQueueId,
       isTest,
@@ -799,6 +800,7 @@ export class RunEngine {
               tx: prisma,
               skipRunLock: true,
               includeTtl: true,
+              enableFastPath,
             });
           } catch (enqueueError) {
             this.logger.error("engine.trigger(): failed to schedule TTL or enqueue run", {
