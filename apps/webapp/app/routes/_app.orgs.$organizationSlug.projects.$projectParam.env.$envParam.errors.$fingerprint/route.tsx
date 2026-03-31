@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type MetaFunction, Form, useNavigation, useSubmit } from "@remix-run/react";
+import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
 import { parse } from "@conform-to/zod";
@@ -35,7 +35,7 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { AnimatePresence, motion } from "framer-motion";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Callout } from "~/components/primitives/Callout";
@@ -76,7 +76,12 @@ import { CodeBlock } from "~/components/code/CodeBlock";
 
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
-import { ErrorStatusMenuItems, CustomIgnoreDialog } from "~/components/errors/ErrorStatusMenu";
+import {
+  ErrorStatusMenuItems,
+  CustomIgnoreDialog,
+  ignoreActionToastMessage,
+} from "~/components/errors/ErrorStatusMenu";
+import { useToast } from "~/components/primitives/Toast";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -729,15 +734,26 @@ function ErrorStatusDropdown({
   state: ErrorGroupState;
   taskIdentifier: string;
 }) {
-  const submit = useSubmit();
-  const navigation = useNavigation();
+  const fetcher = useFetcher<{ ok?: boolean }>();
+  const revalidator = useRevalidator();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [customIgnoreOpen, setCustomIgnoreOpen] = useState(false);
-  const isSubmitting = navigation.state !== "idle";
+  const isSubmitting = fetcher.state !== "idle";
+  const toast = useToast();
+  const pendingToast = useRef<string | undefined>();
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.ok && pendingToast.current) {
+      toast.success(pendingToast.current);
+      pendingToast.current = undefined;
+      revalidator.revalidate();
+    }
+  }, [fetcher.state, fetcher.data, toast, revalidator]);
 
   const act = (data: Record<string, string>) => {
     setPopoverOpen(false);
-    submit(data, { method: "post" });
+    pendingToast.current = ignoreActionToastMessage(data);
+    fetcher.submit(data, { method: "post" });
   };
 
   return (
