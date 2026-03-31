@@ -144,11 +144,6 @@ export class ErrorAlertEvaluator {
       }
     }
 
-    const stateUpdates = alertableErrors.filter(
-      (a) => a.classification === "regression" || a.classification === "unignored"
-    );
-    await this.updateErrorGroupStates(stateUpdates, stateMap);
-
     for (const alertable of alertableErrors) {
       const envChannels = channelsByEnvId.get(alertable.error.environment_id) ?? [];
       for (const channel of envChannels) {
@@ -175,6 +170,11 @@ export class ErrorAlertEvaluator {
         });
       }
     }
+
+    const stateUpdates = alertableErrors.filter(
+      (a) => a.classification === "regression" || a.classification === "unignored"
+    );
+    await this.updateErrorGroupStates(stateUpdates, stateMap);
 
     logger.info("[ErrorAlertEvaluator] Evaluation complete", {
       projectId,
