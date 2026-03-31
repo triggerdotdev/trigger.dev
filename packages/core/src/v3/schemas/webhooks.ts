@@ -190,6 +190,62 @@ export type AlertWebhookDeploymentSuccessObject = z.infer<
 >;
 export type AlertWebhookDeploymentFailedObject = z.infer<typeof AlertWebhookDeploymentFailedObject>;
 
+/** Represents an error group alert webhook payload */
+export const AlertWebhookErrorGroupObject = z.object({
+  /** Classification of the error alert */
+  classification: z.enum(["new_issue", "regression", "unignored"]),
+  /** Error information */
+  error: z.object({
+    /** Error fingerprint identifier */
+    fingerprint: z.string(),
+    /** Error type */
+    type: z.string(),
+    /** Error message */
+    message: z.string(),
+    /** Sample stack trace */
+    stackTrace: z.string().optional(),
+    /** When the error was first seen */
+    firstSeen: z.coerce.date(),
+    /** When the error was last seen */
+    lastSeen: z.coerce.date(),
+    /** Number of occurrences */
+    occurrenceCount: z.number(),
+    /** Task identifier where the error occurred */
+    taskIdentifier: z.string(),
+  }),
+  /** Environment information */
+  environment: z.object({
+    /** Environment ID */
+    id: z.string(),
+    /** Environment name */
+    name: z.string(),
+  }),
+  /** Organization information */
+  organization: z.object({
+    /** Organization ID */
+    id: z.string(),
+    /** Organization slug */
+    slug: z.string(),
+    /** Organization name */
+    name: z.string(),
+  }),
+  /** Project information */
+  project: z.object({
+    /** Project ID */
+    id: z.string(),
+    /** Project reference */
+    ref: z.string(),
+    /** Project slug */
+    slug: z.string(),
+    /** Project name */
+    name: z.string(),
+  }),
+  /** URL to view the error in the dashboard */
+  dashboardUrl: z.string(),
+});
+
+export type AlertWebhookErrorGroupObject = z.infer<typeof AlertWebhookErrorGroupObject>;
+
 /** Common properties for all webhooks */
 const commonProperties = {
   /** Webhook ID */
@@ -220,9 +276,16 @@ export const Webhook = z.discriminatedUnion("type", [
     type: z.literal("alert.deployment.failed"),
     object: AlertWebhookDeploymentFailedObject,
   }),
+  /** Error group alert webhook */
+  z.object({
+    ...commonProperties,
+    type: z.literal("alert.error"),
+    object: AlertWebhookErrorGroupObject,
+  }),
 ]);
 
 export type Webhook = z.infer<typeof Webhook>;
 export type RunFailedWebhook = Extract<Webhook, { type: "alert.run.failed" }>;
 export type DeploymentSuccessWebhook = Extract<Webhook, { type: "alert.deployment.success" }>;
 export type DeploymentFailedWebhook = Extract<Webhook, { type: "alert.deployment.failed" }>;
+export type ErrorWebhook = Extract<Webhook, { type: "alert.error" }>;

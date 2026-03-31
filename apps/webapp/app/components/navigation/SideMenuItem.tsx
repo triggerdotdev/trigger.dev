@@ -10,6 +10,7 @@ export function SideMenuItem({
   icon,
   activeIconColor,
   inactiveIconColor,
+  iconClassName,
   trailingIcon,
   trailingIconClassName,
   name,
@@ -22,6 +23,7 @@ export function SideMenuItem({
   icon?: RenderIcon;
   activeIconColor?: string;
   inactiveIconColor?: string;
+  iconClassName?: string;
   trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   name: string;
@@ -47,7 +49,8 @@ export function SideMenuItem({
         icon={icon}
         className={cn(
           "size-5 shrink-0",
-          isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed"
+          isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed",
+          iconClassName
         )}
       />
       <motion.div

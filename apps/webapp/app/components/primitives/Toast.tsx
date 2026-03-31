@@ -1,7 +1,7 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "@remix-run/react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useTypedLoaderData } from "remix-typedjson";
 import { Toaster, toast } from "sonner";
 import { type ToastMessageAction } from "~/models/message.server";
@@ -41,6 +41,32 @@ export function Toast() {
   }, [toastMessage]);
 
   return <Toaster />;
+}
+
+export function useToast() {
+  return useMemo(
+    () => ({
+      success(message: string, options?: { title?: string; ephemeral?: boolean }) {
+        const ephemeral = options?.ephemeral ?? true;
+        toast.custom(
+          (t) => (
+            <ToastUI variant="success" message={message} t={t as string} title={options?.title} />
+          ),
+          { duration: ephemeral ? defaultToastDuration : permanentToastDuration }
+        );
+      },
+      error(message: string, options?: { title?: string; ephemeral?: boolean }) {
+        const ephemeral = options?.ephemeral ?? true;
+        toast.custom(
+          (t) => (
+            <ToastUI variant="error" message={message} t={t as string} title={options?.title} />
+          ),
+          { duration: ephemeral ? defaultToastDuration : permanentToastDuration }
+        );
+      },
+    }),
+    []
+  );
 }
 
 export function ToastUI({

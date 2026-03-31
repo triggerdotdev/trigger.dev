@@ -66,6 +66,9 @@ const PopoverMenuItem = React.forwardRef<
     onClick?: React.MouseEventHandler;
     disabled?: boolean;
     openInNewTab?: boolean;
+    name?: string;
+    value?: string;
+    type?: React.ComponentProps<"button">["type"];
   }
 >(
   (
@@ -80,6 +83,9 @@ const PopoverMenuItem = React.forwardRef<
       onClick,
       disabled,
       openInNewTab = false,
+      name,
+      value,
+      type,
     },
     ref
   ) => {
@@ -114,7 +120,6 @@ const PopoverMenuItem = React.forwardRef<
 
     return (
       <button
-        type="button"
         ref={ref as React.Ref<HTMLButtonElement>}
         onClick={onClick}
         disabled={disabled}
@@ -122,6 +127,9 @@ const PopoverMenuItem = React.forwardRef<
           "group/button outline-none focus-custom",
           contentProps.fullWidth ? "w-full" : ""
         )}
+        name={name}
+        value={value}
+        type={type ?? "button"}
       >
         <ButtonContent {...contentProps}>{title}</ButtonContent>
       </button>
@@ -197,6 +205,18 @@ const popoverArrowTriggerVariants = {
     text: "group-hover:text-text-bright",
     icon: "text-text-dimmed group-hover:text-text-bright",
   },
+  primary: {
+    trigger:
+      "bg-indigo-600 border border-indigo-500 text-text-bright hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
+    text: "text-text-bright hover:text-white",
+    icon: "text-text-bright",
+  },
+  secondary: {
+    trigger:
+      "bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 disabled:opacity-60 disabled:pointer-events-none",
+    text: "text-text-bright",
+    icon: "text-text-bright",
+  },
   tertiary: {
     trigger: "bg-tertiary text-text-bright hover:bg-charcoal-600",
     text: "text-text-bright",
@@ -245,8 +265,7 @@ function PopoverArrowTrigger({
 
 const popoverVerticalEllipseVariants = {
   minimal: {
-    trigger:
-      "size-6 rounded-[3px] text-text-dimmed hover:bg-tertiary hover:text-text-bright",
+    trigger: "size-6 rounded-[3px] text-text-dimmed hover:bg-tertiary hover:text-text-bright",
     icon: "size-5",
   },
   secondary: {

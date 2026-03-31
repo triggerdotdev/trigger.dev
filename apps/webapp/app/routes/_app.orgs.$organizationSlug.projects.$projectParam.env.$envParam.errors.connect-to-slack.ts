@@ -6,8 +6,8 @@ import { findProjectBySlug } from "~/models/project.server";
 import { requireUserId } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
-  v3NewProjectAlertPath,
-  v3NewProjectAlertPathConnectToSlackPath,
+  v3ErrorsPath,
+  v3ErrorsConnectToSlackPath,
 } from "~/utils/pathBuilder";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -23,7 +23,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Project not found", { status: 404 });
   }
 
-  // Find an integration for Slack for this org
   const integration = await prisma.organizationIntegration.findFirst({
     where: {
       service: "SLACK",
@@ -32,24 +31,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
   });
 
-  // If integration exists and we're not reinstalling, redirect back to alerts
   if (integration && !shouldReinstall) {
     return redirectWithSuccessMessage(
-      `${v3NewProjectAlertPath({ slug: organizationSlug }, project, {
-        slug: envParam,
-      })}?option=slack`,
+      `${v3ErrorsPath({ slug: organizationSlug }, project, { slug: envParam })}?alerts`,
       request,
       "Successfully connected your Slack workspace"
     );
   }
 
-  // Redirect to Slack for new installation or reinstallation
   return await OrgIntegrationRepository.redirectToAuthService(
     "SLACK",
     project.organizationId,
     request,
-    v3NewProjectAlertPathConnectToSlackPath({ slug: organizationSlug }, project, {
-      slug: envParam,
-    })
+    v3ErrorsConnectToSlackPath({ slug: organizationSlug }, project, { slug: envParam })
   );
 }
