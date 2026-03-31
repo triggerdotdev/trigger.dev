@@ -1216,7 +1216,7 @@ function AppliedMachinesFilter() {
   );
 }
 
-function VersionsDropdown({
+export function VersionsDropdown({
   trigger,
   clearSearchValue,
   searchValue,

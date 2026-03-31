@@ -181,6 +181,9 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   workerQueue?: string;
+  /** When true, the run queue may push directly to the worker queue if concurrency is available.
+   *  Gated per WorkerInstanceGroup (production) or always true (development). */
+  enableFastPath?: boolean;
   queue: string;
   lockedQueueId?: string;
   isTest: boolean;

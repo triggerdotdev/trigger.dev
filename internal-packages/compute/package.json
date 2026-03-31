@@ -2,13 +2,27 @@
   "name": "@internal/compute",
   "private": true,
   "version": "0.0.1",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "@triggerdotdev/source": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "dependencies": {
     "zod": "3.25.76"
   },
+  "devDependencies": {
+    "rimraf": "6.0.1"
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "dev": "tsc --watch -p tsconfig.build.json"
   }
 }

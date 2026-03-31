@@ -177,6 +177,7 @@ const docs = colors.blue[500];
 const bulkActions = colors.emerald[500];
 const aiPrompts = colors.blue[500];
 const aiMetrics = colors.green[500];
+const errors = colors.amber[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -262,6 +263,7 @@ module.exports = {
         customDashboards,
         aiPrompts,
         aiMetrics,
+        errors,
       },
       focusStyles: {
         outline: "1px solid",

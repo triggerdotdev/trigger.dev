@@ -464,10 +464,7 @@ export function SideMenu({
                 title="AI"
                 isSideMenuCollapsed={isCollapsed}
                 itemSpacingClassName="space-y-0"
-                initialCollapsed={getSectionCollapsed(
-                  user.dashboardPreferences.sideMenu,
-                  "ai"
-                )}
+                initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
                 onCollapseToggle={handleSectionToggle("ai")}
               >
                 <SideMenuItem
@@ -531,8 +528,8 @@ export function SideMenu({
                   <SideMenuItem
                     name="Errors"
                     icon={IconBugFilled}
-                    activeIconColor="text-amber-500"
-                    inactiveIconColor="text-amber-500"
+                    activeIconColor="text-errors"
+                    inactiveIconColor="text-errors"
                     to={v3ErrorsPath(organization, project, environment)}
                     data-action="errors"
                     isCollapsed={isCollapsed}

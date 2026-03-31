@@ -629,6 +629,9 @@ importers:
       jose:
         specifier: ^5.4.0
         version: 5.4.0
+      json-stable-stringify:
+        specifier: ^1.3.0
+        version: 1.3.0
       jsonpointer:
         specifier: ^5.0.1
         version: 5.0.1
@@ -1092,6 +1095,10 @@ importers:
       zod:
         specifier: 3.25.76
         version: 3.25.76
+    devDependencies:
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
 
   internal-packages/database:
     dependencies:
@@ -1131,7 +1138,7 @@ importers:
         version: 18.3.1
       react-email:
         specifier: ^2.1.1
-        version: 2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0)
+        version: 2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(bufferutil@4.0.9)(eslint@8.31.0)
       resend:
         specifier: ^3.2.0
         version: 3.2.0
@@ -1157,6 +1164,13 @@ importers:
       '@trigger.dev/database':
         specifier: workspace:*
         version: link:../database
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
+      vitest:
+        specifier: 3.1.4
+        version: 3.1.4(@types/debug@4.1.12)(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1)
 
   internal-packages/otlp-importer:
     dependencies:
@@ -15582,10 +15596,6 @@ packages:
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
 
-  lru-cache@11.0.0:
-    resolution: {integrity: sha512-Qv32eSV1RSCfhY3fpPE2GNZ8jgM9X7rdAfemLWqTUxwiyIC4jJ6Sy0fZ8H+oLWevO6i4/bizg7c8d8i6bxrzbA==}
-    engines: {node: 20 || >=22}
-
   lru-cache@11.2.4:
     resolution: {integrity: sha512-B5Y16Jr9LB9dHVkh6ZevG+vAbOsNOYCX+sXvFWFu7B3Iz5mijW3zdbMyhsh8ANd2mSWBYdJgnqi+mL7/LrOPYg==}
     engines: {node: 20 || >=22}
@@ -23259,7 +23269,7 @@ snapshots:
   '@epic-web/test-server@0.1.0(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
-      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)
+      '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)
       '@open-draft/deferred-promise': 2.2.0
       '@types/ws': 8.5.12
       hono: 4.5.11
@@ -24014,7 +24024,7 @@ snapshots:
     dependencies:
       hono: 4.11.8
 
-  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.11.8))(bufferutil@4.0.9)':
+  '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
     dependencies:
       '@hono/node-server': 1.12.2(hono@4.5.11)
       ws: 8.18.3(bufferutil@4.0.9)
@@ -36704,8 +36714,6 @@ snapshots:
 
   lru-cache@10.4.3: {}
 
-  lru-cache@11.0.0: {}
-
   lru-cache@11.2.4: {}
 
   lru-cache@4.1.5:
@@ -38536,7 +38544,7 @@ snapshots:
 
   path-scurry@2.0.0:
     dependencies:
-      lru-cache: 11.0.0
+      lru-cache: 11.2.4
       minipass: 7.1.2
 
   path-to-regexp@0.1.10: {}
@@ -39434,7 +39442,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0):
+  react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(bufferutil@4.0.9)(eslint@8.31.0):
     dependencies:
       '@babel/parser': 7.24.1
       '@radix-ui/colors': 1.0.1
@@ -39471,8 +39479,8 @@ snapshots:
       react: 18.3.1
       react-dom: 18.2.0(react@18.3.1)
       shelljs: 0.8.5
-      socket.io: 4.7.3
-      socket.io-client: 4.7.3
+      socket.io: 4.7.3(bufferutil@4.0.9)
+      socket.io-client: 4.7.3(bufferutil@4.0.9)
       sonner: 1.3.1(react-dom@18.2.0(react@18.3.1))(react@18.3.1)
       source-map-js: 1.0.2
       stacktrace-parser: 0.1.10
@@ -40699,7 +40707,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  socket.io-client@4.7.3:
+  socket.io-client@4.7.3(bufferutil@4.0.9):
     dependencies:
       '@socket.io/component-emitter': 3.1.0
       debug: 4.3.7(supports-color@10.0.0)
@@ -40728,7 +40736,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  socket.io@4.7.3:
+  socket.io@4.7.3(bufferutil@4.0.9):
     dependencies:
       accepts: 1.3.8
       base64id: 2.0.0
@@ -42290,7 +42298,7 @@ snapshots:
   vite-node@3.1.4(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1):
     dependencies:
       cac: 6.7.14
-      debug: 4.4.1
+      debug: 4.4.3(supports-color@10.0.0)
       es-module-lexer: 1.7.0
       pathe: 2.0.3
       vite: 5.4.21(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1)

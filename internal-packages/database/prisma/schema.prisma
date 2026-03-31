@@ -61,11 +61,10 @@ model User {
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
 
-  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
-  impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
-  customerQueries         CustomerQuery[]
-  metricsDashboards       MetricsDashboard[]
-
+  impersonationsPerformed          ImpersonationAuditLog[]           @relation("ImpersonationAdmin")
+  impersonationsReceived           ImpersonationAuditLog[]           @relation("ImpersonationTarget")
+  customerQueries                  CustomerQuery[]
+  metricsDashboards                MetricsDashboard[]
   platformNotifications            PlatformNotification[]
   platformNotificationInteractions PlatformNotificationInteraction[]
 }
@@ -233,7 +232,8 @@ model Organization {
   metricsDashboards        MetricsDashboard[]
   prompts                  Prompt[]
 
-  platformNotifications            PlatformNotification[]
+  platformNotifications PlatformNotification[]
+  errorGroupStates      ErrorGroupState[]
 }
 
 model OrgMember {
@@ -353,6 +353,7 @@ model RuntimeEnvironment {
   BulkActionGroup      BulkActionGroup[]
   customerQueries      CustomerQuery[]
   prompts              Prompt[]
+  errorGroupStates     ErrorGroupState[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -426,8 +427,8 @@ model Project {
   metricsDashboards     MetricsDashboard[]
   llmModels             LlmModel[]
   prompts               Prompt[]
-
   platformNotifications PlatformNotification[]
+  errorGroupStates      ErrorGroupState[]
 }
 
 enum ProjectVersion {
@@ -647,6 +648,8 @@ model BackgroundWorkerTask {
   queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   maxDurationInSeconds Int?
+
+  ttl String?
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
@@ -1330,6 +1333,10 @@ model WorkerInstanceGroup {
   staticIPs     String?
 
   workloadType WorkloadType @default(CONTAINER)
+
+  /// When true, runs enqueued to this worker queue may skip the intermediate queue
+  /// and be pushed directly to the worker queue when concurrency is available.
+  enableFastPath Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2110,6 +2117,8 @@ model ProjectAlertChannel {
   alertTypes       ProjectAlertType[]
   environmentTypes RuntimeEnvironmentType[] @default([STAGING, PRODUCTION])
 
+  errorAlertConfig Json?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2164,6 +2173,7 @@ enum ProjectAlertType {
   TASK_RUN_ATTEMPT
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS
+  ERROR_GROUP
 }
 
 enum ProjectAlertStatus {
@@ -2832,4 +2842,84 @@ model PlatformNotificationInteraction {
   updatedAt DateTime @updatedAt
 
   @@unique([notificationId, userId])
+}
+
+enum ErrorGroupStatus {
+  UNRESOLVED
+  RESOLVED
+  IGNORED
+}
+
+/**
+ * Error group state is used to track when a user has interacted with an error (ignored/resolved)
+ * The actual error data is in ClickHouse.
+ */
+model ErrorGroupState {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  /**
+   * You can ignore/resolve an error across all environments, or specific ones
+   */
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  taskIdentifier   String
+  errorFingerprint String
+
+  status ErrorGroupStatus @default(UNRESOLVED)
+
+  /**
+   * Error is ignored until this date
+   */
+  ignoredUntil                 DateTime?
+  /**
+   * Error is ignored until this occurrence rate
+   */
+  ignoredUntilOccurrenceRate   Int?
+  /**
+   * Error is ignored until this total occurrences
+   */
+  ignoredUntilTotalOccurrences Int?
+
+  /// Total occurrence count at the time the error was ignored (from ClickHouse).
+  /// Used with ignoredUntilTotalOccurrences to compute occurrences since ignoring.
+  ignoredAtOccurrenceCount BigInt?
+
+  /**
+   * Error was ignored at this date
+   */
+  ignoredAt       DateTime?
+  /**
+   * Reason for ignoring the error
+   */
+  ignoredReason   String?
+  /**
+   * User who ignored the error
+   */
+  ignoredByUserId String?
+
+  /**
+   * Error was resolved at this date
+   */
+  resolvedAt        DateTime?
+  /**
+   * Error was resolved in this version
+   */
+  resolvedInVersion String?
+  /**
+   * User who resolved the error
+   */
+  resolvedBy        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([environmentId, taskIdentifier, errorFingerprint])
+  @@index([environmentId, status])
 }

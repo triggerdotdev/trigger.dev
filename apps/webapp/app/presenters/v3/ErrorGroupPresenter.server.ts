@@ -2,7 +2,7 @@ import { z } from "zod";
 import { type ClickHouse, msToClickHouseInterval } from "@internal/clickhouse";
 import { TimeGranularity } from "~/utils/timeGranularity";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
-import { type PrismaClientOrTransaction } from "@trigger.dev/database";
+import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { type Direction, DirectionSchema } from "~/components/ListPagination";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -27,6 +27,7 @@ export type ErrorGroupOptions = {
   userId?: string;
   projectId: string;
   fingerprint: string;
+  versions?: string[];
   runsPageSize?: number;
   period?: string;
   from?: number;
@@ -39,6 +40,7 @@ export const ErrorGroupOptionsSchema = z.object({
   userId: z.string().optional(),
   projectId: z.string(),
   fingerprint: z.string(),
+  versions: z.array(z.string()).optional(),
   runsPageSize: z.number().int().positive().max(1000).optional(),
   period: z.string().optional(),
   from: z.number().int().nonnegative().optional(),
@@ -59,6 +61,21 @@ function parseClickHouseDateTime(value: string): Date {
   return new Date(value.replace(" ", "T") + "Z");
 }
 
+export type ErrorGroupState = {
+  status: ErrorGroupStatus;
+  resolvedAt: Date | null;
+  resolvedInVersion: string | null;
+  resolvedBy: string | null;
+  ignoredAt: Date | null;
+  ignoredUntil: Date | null;
+  ignoredReason: string | null;
+  ignoredByUserId: string | null;
+  ignoredByUserDisplayName: string | null;
+  ignoredUntilOccurrenceRate: number | null;
+  ignoredUntilTotalOccurrences: number | null;
+  ignoredAtOccurrenceCount: number | null;
+};
+
 export type ErrorGroupSummary = {
   fingerprint: string;
   errorType: string;
@@ -68,10 +85,12 @@ export type ErrorGroupSummary = {
   firstSeen: Date;
   lastSeen: Date;
   affectedVersions: string[];
+  state: ErrorGroupState;
 };
 
 export type ErrorGroupOccurrences = Awaited<ReturnType<ErrorGroupPresenter["getOccurrences"]>>;
 export type ErrorGroupActivity = ErrorGroupOccurrences["data"];
+export type ErrorGroupActivityVersions = ErrorGroupOccurrences["versions"];
 
 export class ErrorGroupPresenter extends BasePresenter {
   constructor(
@@ -89,6 +108,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId,
       projectId,
       fingerprint,
+      versions,
       runsPageSize = DEFAULT_RUNS_PAGE_SIZE,
       period,
       from,
@@ -110,23 +130,40 @@ export class ErrorGroupPresenter extends BasePresenter {
       defaultPeriod: "7d",
     });
 
-    const [summary, affectedVersions, runList] = await Promise.all([
-      this.getSummary(organizationId, projectId, environmentId, fingerprint),
+    const summary = await this.getSummary(organizationId, projectId, environmentId, fingerprint);
+
+    const [affectedVersions, runList, stateRow] = await Promise.all([
       this.getAffectedVersions(organizationId, projectId, environmentId, fingerprint),
       this.getRunList(organizationId, environmentId, {
         userId,
         projectId,
         fingerprint,
+        versions,
         pageSize: runsPageSize,
         from: time.from.getTime(),
         to: time.to.getTime(),
         cursor,
         direction,
       }),
+      this.getState(environmentId, summary?.taskIdentifier, fingerprint),
     ]);
 
     if (summary) {
       summary.affectedVersions = affectedVersions;
+      summary.state = stateRow ?? {
+        status: "UNRESOLVED",
+        resolvedAt: null,
+        resolvedInVersion: null,
+        resolvedBy: null,
+        ignoredAt: null,
+        ignoredUntil: null,
+        ignoredReason: null,
+        ignoredByUserId: null,
+        ignoredByUserDisplayName: null,
+        ignoredUntilOccurrenceRate: null,
+        ignoredUntilTotalOccurrences: null,
+        ignoredAtOccurrenceCount: null,
+      };
     }
 
     return {
@@ -140,8 +177,8 @@ export class ErrorGroupPresenter extends BasePresenter {
   }
 
   /**
-   * Returns bucketed occurrence counts for a single fingerprint over a time range.
-   * Granularity is determined automatically from the range span.
+   * Returns bucketed occurrence counts for a single fingerprint over a time range,
+   * grouped by task_version for stacked charts.
    */
   public async getOccurrences(
     organizationId: string,
@@ -149,14 +186,17 @@ export class ErrorGroupPresenter extends BasePresenter {
     environmentId: string,
     fingerprint: string,
     from: Date,
-    to: Date
+    to: Date,
+    versions?: string[]
   ): Promise<{
-    data: Array<{ date: Date; count: number }>;
+    data: Array<Record<string, number | Date>>;
+    versions: string[];
   }> {
     const granularityMs = errorGroupGranularity.getTimeGranularityMs(from, to);
     const intervalExpr = msToClickHouseInterval(granularityMs);
 
-    const queryBuilder = this.logsClickhouse.errors.createOccurrencesQueryBuilder(intervalExpr);
+    const queryBuilder =
+      this.logsClickhouse.errors.createOccurrencesByVersionQueryBuilder(intervalExpr);
 
     queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
     queryBuilder.where("project_id = {projectId: String}", { projectId });
@@ -169,7 +209,11 @@ export class ErrorGroupPresenter extends BasePresenter {
       toTimeMs: to.getTime(),
     });
 
-    queryBuilder.groupBy("error_fingerprint, bucket_epoch");
+    if (versions && versions.length > 0) {
+      queryBuilder.where("task_version IN {versions: Array(String)}", { versions });
+    }
+
+    queryBuilder.groupBy("error_fingerprint, task_version, bucket_epoch");
     queryBuilder.orderBy("bucket_epoch ASC");
 
     const [queryError, records] = await queryBuilder.execute();
@@ -186,17 +230,27 @@ export class ErrorGroupPresenter extends BasePresenter {
       buckets.push(epoch);
     }
 
-    const byBucket = new Map<number, number>();
+    // Collect distinct versions and index results by (epoch, version)
+    const versionSet = new Set<string>();
+    const byBucketVersion = new Map<string, number>();
     for (const row of records ?? []) {
-      byBucket.set(row.bucket_epoch, (byBucket.get(row.bucket_epoch) ?? 0) + row.count);
+      const version = row.task_version || "unknown";
+      versionSet.add(version);
+      const key = `${row.bucket_epoch}:${version}`;
+      byBucketVersion.set(key, (byBucketVersion.get(key) ?? 0) + row.count);
     }
 
-    return {
-      data: buckets.map((epoch) => ({
-        date: new Date(epoch * 1000),
-        count: byBucket.get(epoch) ?? 0,
-      })),
-    };
+    const sortedVersions = sortVersionsDescending([...versionSet]);
+
+    const data = buckets.map((epoch) => {
+      const point: Record<string, number | Date> = { date: new Date(epoch * 1000) };
+      for (const version of sortedVersions) {
+        point[version] = byBucketVersion.get(`${epoch}:${version}`) ?? 0;
+      }
+      return point;
+    });
+
+    return { data, versions: sortedVersions };
   }
 
   private async getSummary(
@@ -235,6 +289,20 @@ export class ErrorGroupPresenter extends BasePresenter {
       firstSeen: parseClickHouseDateTime(record.first_seen),
       lastSeen: parseClickHouseDateTime(record.last_seen),
       affectedVersions: [],
+      state: {
+        status: "UNRESOLVED" as const,
+        resolvedAt: null,
+        resolvedInVersion: null,
+        resolvedBy: null,
+        ignoredAt: null,
+        ignoredUntil: null,
+        ignoredReason: null,
+        ignoredByUserId: null,
+        ignoredByUserDisplayName: null,
+        ignoredUntilOccurrenceRate: null,
+        ignoredUntilTotalOccurrences: null,
+        ignoredAtOccurrenceCount: null,
+      },
     };
   }
 
@@ -268,6 +336,65 @@ export class ErrorGroupPresenter extends BasePresenter {
     return sortVersionsDescending(versions).slice(0, 5);
   }
 
+  private async getState(
+    environmentId: string,
+    taskIdentifier: string | undefined,
+    fingerprint: string
+  ): Promise<ErrorGroupState | null> {
+    const row = await this.replica.errorGroupState.findFirst({
+      where: {
+        environmentId,
+        ...(taskIdentifier ? { taskIdentifier } : {}),
+        errorFingerprint: fingerprint,
+      },
+      select: {
+        status: true,
+        resolvedAt: true,
+        resolvedInVersion: true,
+        resolvedBy: true,
+        ignoredAt: true,
+        ignoredUntil: true,
+        ignoredReason: true,
+        ignoredByUserId: true,
+        ignoredUntilOccurrenceRate: true,
+        ignoredUntilTotalOccurrences: true,
+        ignoredAtOccurrenceCount: true,
+      },
+    });
+
+    if (!row) {
+      return null;
+    }
+
+    let ignoredByUserDisplayName: string | null = null;
+    if (row.ignoredByUserId) {
+      const user = await this.replica.user.findFirst({
+        where: { id: row.ignoredByUserId },
+        select: { displayName: true, name: true, email: true },
+      });
+      if (user) {
+        ignoredByUserDisplayName = user.displayName ?? user.name ?? user.email;
+      }
+    }
+
+    return {
+      status: row.status,
+      resolvedAt: row.resolvedAt,
+      resolvedInVersion: row.resolvedInVersion,
+      resolvedBy: row.resolvedBy,
+      ignoredAt: row.ignoredAt,
+      ignoredUntil: row.ignoredUntil,
+      ignoredReason: row.ignoredReason,
+      ignoredByUserId: row.ignoredByUserId,
+      ignoredByUserDisplayName,
+      ignoredUntilOccurrenceRate: row.ignoredUntilOccurrenceRate,
+      ignoredUntilTotalOccurrences: row.ignoredUntilTotalOccurrences,
+      ignoredAtOccurrenceCount: row.ignoredAtOccurrenceCount
+        ? Number(row.ignoredAtOccurrenceCount)
+        : null,
+    };
+  }
+
   private async getRunList(
     organizationId: string,
     environmentId: string,
@@ -275,6 +402,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       userId?: string;
       projectId: string;
       fingerprint: string;
+      versions?: string[];
       pageSize: number;
       from?: number;
       to?: number;
@@ -289,6 +417,7 @@ export class ErrorGroupPresenter extends BasePresenter {
       projectId: options.projectId,
       rootOnly: false,
       errorId: ErrorId.toFriendlyId(options.fingerprint),
+      versions: options.versions,
       pageSize: options.pageSize,
       from: options.from,
       to: options.to,

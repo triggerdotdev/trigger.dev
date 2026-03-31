@@ -1,7 +1,8 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { makeSetMultipleFlags, validatePartialFeatureFlags } from "~/v3/featureFlags.server";
+import { makeSetMultipleFlags } from "~/v3/featureFlags.server";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 export async function action({ request }: ActionFunctionArgs) {
   // Next authenticate the request
@@ -11,7 +12,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
+  const user = await prisma.user.findFirst({
     where: {
       id: authenticationResult.userId,
     },

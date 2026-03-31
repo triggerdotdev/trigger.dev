@@ -1,31 +1,10 @@
-import { z } from "zod";
+import { type z } from "zod";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
-
-export const FEATURE_FLAG = {
-  defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
-  runsListRepository: "runsListRepository",
-  taskEventRepository: "taskEventRepository",
-  hasQueryAccess: "hasQueryAccess",
-  hasLogsPageAccess: "hasLogsPageAccess",
-  hasAiAccess: "hasAiAccess",
-  hasAiModelsAccess: "hasAiModelsAccess",
-  hasComputeAccess: "hasComputeAccess",
-  hasPrivateConnections: "hasPrivateConnections",
-} as const;
-
-const FeatureFlagCatalog = {
-  [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
-  [FEATURE_FLAG.runsListRepository]: z.enum(["clickhouse", "postgres"]),
-  [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
-  [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
-  [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
-  [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
-  [FEATURE_FLAG.hasAiModelsAccess]: z.coerce.boolean(),
-  [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
-  [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
-};
-
-type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
+import {
+  type FeatureFlagKey,
+  FeatureFlagCatalog,
+  FeatureFlagCatalogSchema,
+} from "~/v3/featureFlags";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
   key: T;
@@ -43,7 +22,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
   async function flag<T extends FeatureFlagKey>(
     opts: FlagsOptions<T>
   ): Promise<z.infer<(typeof FeatureFlagCatalog)[T]> | undefined> {
-    const value = await _prisma.featureFlag.findUnique({
+    const value = await _prisma.featureFlag.findFirst({
       where: {
         key: opts.key,
       },
@@ -145,28 +124,6 @@ export function makeFlags(_prisma: PrismaClientOrTransaction = prisma) {
 export const flag = makeFlag();
 export const flags = makeFlags();
 export const setFlag = makeSetFlag();
-
-// Create a Zod schema from the existing catalog
-export const FeatureFlagCatalogSchema = z.object(FeatureFlagCatalog);
-export type FeatureFlagCatalog = z.infer<typeof FeatureFlagCatalogSchema>;
-
-// Utility function to validate a feature flag value
-export function validateFeatureFlagValue<T extends FeatureFlagKey>(
-  key: T,
-  value: unknown
-): z.SafeParseReturnType<unknown, z.infer<(typeof FeatureFlagCatalog)[T]>> {
-  return FeatureFlagCatalog[key].safeParse(value);
-}
-
-// Utility function to validate all feature flags at once
-export function validateAllFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.safeParse(values);
-}
-
-// Utility function to validate partial feature flags (all keys optional)
-export function validatePartialFeatureFlags(values: Record<string, unknown>) {
-  return FeatureFlagCatalogSchema.partial().safeParse(values);
-}
 
 // Utility function to set multiple feature flags at once
 export function makeSetMultipleFlags(_prisma: PrismaClientOrTransaction = prisma) {

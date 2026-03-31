@@ -37,7 +37,7 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Button } from "~/components/primitives/Buttons";
-import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
