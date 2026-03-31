@@ -159,6 +159,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       if (submission.value.totalOccurrences) {
         const qb = clickhouseClient.errors.listQueryBuilder();
+        qb.where("organization_id = {organizationId: String}", {
+          organizationId: project.organizationId,
+        });
         qb.where("project_id = {projectId: String}", { projectId: project.id });
         qb.where("environment_id = {environmentId: String}", {
           environmentId: environment.id,
