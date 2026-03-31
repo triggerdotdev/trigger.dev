@@ -111,8 +111,11 @@ function ProviderFilter({ providers }: { providers: string[] }) {
   return (
     <>
       <SelectProvider value={selected} setValue={(v) => replace({ providers: v })}>
-        <SelectTrigger variant="secondary/small" tooltipTitle="Filter by provider">
-          <AdjustmentsHorizontalIcon className="size-4" />
+        <SelectTrigger
+          icon={<AdjustmentsHorizontalIcon className="size-4" />}
+          variant="secondary/small"
+          tooltipTitle="Filter by provider"
+        >
           <span className="ml-0.5">Provider</span>
         </SelectTrigger>
         <SelectPopover>
@@ -143,8 +146,11 @@ function CapabilityFilter({ capabilities }: { capabilities: string[] }) {
   return (
     <>
       <SelectProvider value={selected} setValue={(v) => replace({ capabilities: v })}>
-        <SelectTrigger variant="secondary/small" tooltipTitle="Filter by capability">
-          <AdjustmentsHorizontalIcon className="size-4" />
+        <SelectTrigger
+          icon={<AdjustmentsHorizontalIcon className="size-4" />}
+          variant="secondary/small"
+          tooltipTitle="Filter by capability"
+        >
           <span className="ml-0.5">Capability</span>
         </SelectTrigger>
         <SelectPopover>
@@ -175,8 +181,11 @@ function FeaturesFilter() {
   return (
     <>
       <SelectProvider value={selected} setValue={(v) => replace({ features: v })}>
-        <SelectTrigger variant="secondary/small" tooltipTitle="Filter by feature support">
-          <AdjustmentsHorizontalIcon className="size-4" />
+        <SelectTrigger
+          icon={<AdjustmentsHorizontalIcon className="size-4" />}
+          variant="secondary/small"
+          tooltipTitle="Filter by feature support"
+        >
           <span className="ml-0.5">Features</span>
         </SelectTrigger>
         <SelectPopover>
@@ -209,9 +218,15 @@ function FeaturesFilter() {
 function FiltersBar({
   allProviders,
   allCapabilities,
+  compareSet,
+  onClearCompare,
+  onCompare,
 }: {
   allProviders: string[];
   allCapabilities: string[];
+  compareSet: Set<string>;
+  onClearCompare: () => void;
+  onCompare: () => void;
 }) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -234,6 +249,17 @@ function FiltersBar({
           </Form>
         )}
       </div>
+      {compareSet.size >= 2 && (
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs text-text-dimmed">{compareSet.size} selected</span>
+          <Button variant="tertiary/small" onClick={onClearCompare}>
+            Clear
+          </Button>
+          <Button variant="primary/small" onClick={onCompare}>
+            Compare ({compareSet.size})
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -382,31 +408,19 @@ export default function ModelsPage() {
         <PageTitle title="Models" />
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
-          <FiltersBar allProviders={allProviders} allCapabilities={allCapabilities} />
-          {compareSet.size >= 2 && (
-            <div className="flex shrink-0 items-center justify-between border-b border-grid-bright bg-background-dimmed px-3 py-2">
-              <span className="text-sm text-text-dimmed">
-                {compareSet.size} models selected
-              </span>
-              <div className="flex items-center gap-2">
-                <Button variant="tertiary/small" onClick={() => setCompareSet(new Set())}>
-                  Clear
-                </Button>
-                <Button
-                  variant="primary/small"
-                  onClick={() => {
-                    const params = Array.from(compareSet).join(",");
-                    navigate(
-                      `${v3ModelComparePath(organization, project, environment)}?models=${params}`
-                    );
-                  }}
-                >
-                  Compare ({compareSet.size})
-                </Button>
-              </div>
-            </div>
-          )}
+        <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+          <FiltersBar
+            allProviders={allProviders}
+            allCapabilities={allCapabilities}
+            compareSet={compareSet}
+            onClearCompare={() => setCompareSet(new Set())}
+            onCompare={() => {
+              const params = Array.from(compareSet).join(",");
+              navigate(
+                `${v3ModelComparePath(organization, project, environment)}?models=${params}`
+              );
+            }}
+          />
           <ModelsList
             models={filteredModels}
             popularMap={popularMap}
