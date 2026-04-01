@@ -20,7 +20,6 @@ import {
 } from "~/v3/services/cancelDevSessionRuns.server";
 import { CancelTaskAttemptDependenciesService } from "~/v3/services/cancelTaskAttemptDependencies.server";
 import { EnqueueDelayedRunService } from "~/v3/services/enqueueDelayedRun.server";
-import { ExecuteTasksWaitingForDeployService } from "~/v3/services/executeTasksWaitingForDeploy";
 import { ExpireEnqueuedRunService } from "~/v3/services/expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
@@ -199,9 +198,6 @@ function getWorkerQueue() {
         priority: 0,
         maxAttempts: 5,
         handler: async (payload, job) => {
-          const service = new ExecuteTasksWaitingForDeployService();
-
-          return await service.call(payload.backgroundWorkerId);
         },
       },
       // @deprecated, moved to ScheduleEngine
@@ -267,7 +263,7 @@ function getWorkerQueue() {
       "v3.requeueTaskRun": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {}, // This is now handled by redisWorker
+        handler: async (payload, job) => { }, // This is now handled by redisWorker
       },
       // @deprecated, moved to commonWorker.server.ts
       "v3.retryAttempt": {
