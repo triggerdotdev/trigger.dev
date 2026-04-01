@@ -555,8 +555,8 @@ function CompareDialog({
           <DialogTitle>Compare models</DialogTitle>
         </DialogHeader>
         {rows.length > 0 ? (
-          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto [&_tbody_tr:last-child]:after:hidden">
-            <Table showTopBorder={false}>
+          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
+            <Table>
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell>Metric</TableHeaderCell>
