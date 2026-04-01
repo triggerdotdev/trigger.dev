@@ -1,4 +1,10 @@
-import { AdjustmentsHorizontalIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import {
+  AdjustmentsHorizontalIcon,
+  CheckIcon,
+  CubeIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid";
+import * as Ariakit from "@ariakit/react";
 import { Form, type MetaFunction, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { AnimatePresence, motion } from "framer-motion";
@@ -26,7 +32,6 @@ import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
 import {
   SelectProvider,
-  SelectTrigger,
   SelectPopover,
   SelectList,
   SelectItem,
@@ -117,70 +122,60 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 function ProviderFilter({ providers }: { providers: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("providers");
+  const hasFilter = selected.length > 0;
 
   return (
-    <>
-      <SelectProvider value={selected} setValue={(v) => replace({ providers: v })}>
-        <SelectTrigger
-          icon={<AdjustmentsHorizontalIcon className="size-4" />}
-          variant="secondary/small"
-          tooltipTitle="Filter by provider"
-        >
-          <span className="ml-0.5">Provider</span>
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {providers.map((p) => (
-              <SelectItem key={p} value={p}>
-                {formatProviderName(p)}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-      {selected.length > 0 && (
+    <SelectProvider value={selected} setValue={(v) => replace({ providers: v })}>
+      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
         <AppliedFilter
-          label="Provider"
-          value={appliedSummary(selected.map(formatProviderName))!}
+          icon={<CubeIcon className="size-4" />}
+          label={hasFilter ? "Provider" : undefined}
+          value={hasFilter ? appliedSummary(selected.map(formatProviderName))! : "Provider"}
+          valueClassName={hasFilter ? undefined : "text-text-bright"}
+          removable={hasFilter}
           onRemove={() => del("providers")}
         />
-      )}
-    </>
+      </Ariakit.Select>
+      <SelectPopover>
+        <SelectList>
+          {providers.map((p) => (
+            <SelectItem key={p} value={p}>
+              {formatProviderName(p)}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 
 function FeaturesFilter({ features }: { features: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("features");
+  const hasFilter = selected.length > 0;
 
   return (
-    <>
-      <SelectProvider value={selected} setValue={(v) => replace({ features: v })}>
-        <SelectTrigger
-          icon={<AdjustmentsHorizontalIcon className="size-4" />}
-          variant="secondary/small"
-          tooltipTitle="Filter by feature"
-        >
-          <span className="ml-0.5">Features</span>
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {features.map((f) => (
-              <SelectItem key={f} value={f}>
-                {formatFeature(f)}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-      {selected.length > 0 && (
+    <SelectProvider value={selected} setValue={(v) => replace({ features: v })}>
+      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
         <AppliedFilter
-          label="Features"
-          value={appliedSummary(selected.map(formatFeature))!}
+          icon={<AdjustmentsHorizontalIcon className="size-4" />}
+          label={hasFilter ? "Features" : undefined}
+          value={hasFilter ? appliedSummary(selected.map(formatFeature))! : "Features"}
+          valueClassName={hasFilter ? undefined : "text-text-bright"}
+          removable={hasFilter}
           onRemove={() => del("features")}
         />
-      )}
-    </>
+      </Ariakit.Select>
+      <SelectPopover>
+        <SelectList>
+          {features.map((f) => (
+            <SelectItem key={f} value={f}>
+              {formatFeature(f)}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 
