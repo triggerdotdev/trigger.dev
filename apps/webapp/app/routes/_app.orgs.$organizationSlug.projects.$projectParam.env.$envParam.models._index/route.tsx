@@ -229,9 +229,7 @@ function FiltersBar({
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
-    searchParams.has("providers") ||
-    searchParams.has("features") ||
-    searchParams.has("search");
+    searchParams.has("providers") || searchParams.has("features") || searchParams.has("search");
 
   const compareDisabled = compareSet.size < 2;
 
@@ -242,8 +240,8 @@ function FiltersBar({
         <FeaturesFilter features={allFeatures} />
         <SearchInput placeholder="Search models…" />
         {hasFilters && (
-          <Form className="h-6">
-            <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+          <Form className="-ml-1 h-6">
+            <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
           </Form>
         )}
       </div>
@@ -324,7 +322,7 @@ function ModelsList({
   }
 
   return (
-    <Table containerClassName="max-h-full pb-[2.5rem]" showTopBorder={false}>
+    <Table containerClassName="max-h-full" showTopBorder={false}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell className="w-8" />
@@ -1113,10 +1111,7 @@ export default function ModelsPage() {
       .filter((m) => {
         if (search && !m.displayId.toLowerCase().includes(search.toLowerCase())) return false;
         if (selectedProviders.length > 0 && !selectedProviders.includes(m.provider)) return false;
-        if (
-          selectedFeatures.length > 0 &&
-          !selectedFeatures.every((f) => m.features.includes(f))
-        )
+        if (selectedFeatures.length > 0 && !selectedFeatures.every((f) => m.features.includes(f)))
           return false;
         return true;
       });
