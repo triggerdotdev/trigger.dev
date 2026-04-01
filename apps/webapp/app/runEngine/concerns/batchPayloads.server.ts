@@ -1,9 +1,9 @@
-import { IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
+import { type IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
-import { startActiveSpan } from "~/v3/tracer.server";
-import { uploadPacketToObjectStore, r2 } from "~/v3/r2.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { hasObjectStoreClient, uploadPacketToObjectStore } from "~/v3/objectStore.server";
+import { startActiveSpan } from "~/v3/tracer.server";
 
 export type BatchPayloadProcessResult = {
   /** The processed payload - either the original or an R2 path */
@@ -31,7 +31,7 @@ export class BatchPayloadProcessor {
    * If not available, large payloads will be stored inline (which may fail for very large payloads).
    */
   isObjectStoreAvailable(): boolean {
-    return r2 !== undefined && env.OBJECT_STORE_BASE_URL !== undefined;
+    return hasObjectStoreClient();
   }
 
   /**
@@ -103,11 +103,17 @@ export class BatchPayloadProcessor {
         };
       }
 
-      // Upload to R2
+      // Upload to object store
       const filename = `batch_${batchId}/item_${itemIndex}/payload.json`;
 
-      const [uploadError] = await tryCatch(
-        uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment)
+      const [uploadError, uploadedFilename] = await tryCatch(
+        uploadPacketToObjectStore(
+          filename,
+          packet.data,
+          packet.dataType,
+          environment,
+          env.OBJECT_STORE_DEFAULT_PROTOCOL
+        )
       );
 
       if (uploadError) {
@@ -125,18 +131,18 @@ export class BatchPayloadProcessor {
         );
       }
 
-      logger.debug("Batch item payload offloaded to R2", {
+      logger.debug("Batch item payload offloaded to object store", {
         batchId,
         itemIndex,
-        filename,
+        filename: uploadedFilename,
         size,
       });
 
       span.setAttribute("wasOffloaded", true);
-      span.setAttribute("offloadPath", filename);
+      span.setAttribute("offloadPath", uploadedFilename);
 
       return {
-        payload: filename,
+        payload: uploadedFilename!,
         payloadType: "application/store",
         wasOffloaded: true,
         size,

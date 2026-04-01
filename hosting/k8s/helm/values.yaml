@@ -645,6 +645,18 @@ s3:
     existingSecret: "" # Name of existing secret containing S3 credentials
     existingSecretAccessKeyIdKey: "access-key-id" # Key in existing secret containing access key ID
     existingSecretSecretAccessKeyKey: "secret-access-key" # Key in existing secret containing secret access key
+    #
+    # Multi-provider support (optional)
+    # To use multiple S3-compatible providers (e.g., S3 + R2), set defaultProtocol and configure named providers
+    # via extraEnvVars. For example:
+    #   - OBJECT_STORE_DEFAULT_PROTOCOL=s3  # Protocol to use for new uploads
+    #   - OBJECT_STORE_S3_BASE_URL=https://s3.amazonaws.com
+    #   - OBJECT_STORE_S3_ACCESS_KEY_ID=...
+    #   - OBJECT_STORE_S3_SECRET_ACCESS_KEY=...
+    #   - OBJECT_STORE_R2_BASE_URL=https://...r2.cloudflarestorage.com
+    #   - OBJECT_STORE_R2_ACCESS_KEY_ID=...
+    #   - OBJECT_STORE_R2_SECRET_ACCESS_KEY=...
+    # See documentation for migration guide: https://trigger.dev/docs/self-hosting/env/webapp
 
 # Docker Registry configuration
 registry:

@@ -4,6 +4,7 @@ volumes:
   database-data:
   database-data-alt:
   redis-data:
+  minio-data:
   clickhouse-data:
   clickhouse-logs:
   prometheus-data:
@@ -48,6 +49,45 @@ services:
       - app_network
     ports:
       - 6379:6379
+
+  # S3-compatible API for local object store (large payloads / packet offload).
+  # Host :9005 = S3 API, :9006 = web console (ClickHouse uses host :9000).
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9005:9000"
+      - "9006:9001"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app_network
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        mc alias set local http://minio:9000 minioadmin minioadmin
+        mc mb -p local/packets || true
+    restart: "no"
 
   electric:
     container_name: electric
