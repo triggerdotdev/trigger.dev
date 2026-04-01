@@ -49,6 +49,10 @@ export default function Page() {
               to: "/admin/back-office",
               end: false,
             },
+            {
+              label: "Data Stores",
+              to: "/admin/data-stores",
+            },
           ]}
           layoutId={"admin"}
         />
