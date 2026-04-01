@@ -479,22 +479,22 @@ function buildComparisonRows(
     },
     {
       label: "Input $/1M",
-      values: inputPrices.map((v) => formatModelPrice(v)),
+      values: models.map((m) => formatModelPrice(getCatalog(m)?.inputPrice ?? null)),
       bestIndex: findBest(inputPrices, true),
     },
     {
       label: "Output $/1M",
-      values: outputPrices.map((v) => formatModelPrice(v)),
+      values: models.map((m) => formatModelPrice(getCatalog(m)?.outputPrice ?? null)),
       bestIndex: findBest(outputPrices, true),
     },
     {
       label: "Context window",
-      values: contextWindows.map((v) => formatTokenCount(v)),
+      values: models.map((m) => formatTokenCount(getCatalog(m)?.contextWindow ?? null)),
       bestIndex: findBest(contextWindows, false),
     },
     {
       label: "Max output",
-      values: maxOutputs.map((v) => formatTokenCount(v)),
+      values: models.map((m) => formatTokenCount(getCatalog(m)?.maxOutputTokens ?? null)),
       bestIndex: findBest(maxOutputs, false),
     },
     {
@@ -576,6 +576,7 @@ function CompareDialog({
     [comparison, models, catalogModels]
   );
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open; other deps are stable per dialog mount
   useEffect(() => {
     if (open && models.length >= 2) {
       const params = models.join(",");

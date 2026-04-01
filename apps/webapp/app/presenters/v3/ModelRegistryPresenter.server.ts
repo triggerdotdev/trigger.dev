@@ -100,11 +100,11 @@ function buildFeatures(
   capabilities: string[],
   catalogEntry: { supportsStructuredOutput: boolean; supportsParallelToolCalls: boolean; supportsStreamingToolCalls: boolean } | undefined
 ): string[] {
-  const features = [...capabilities];
-  if (catalogEntry?.supportsStructuredOutput) features.push("structured_output");
-  if (catalogEntry?.supportsParallelToolCalls) features.push("parallel_tool_calls");
-  if (catalogEntry?.supportsStreamingToolCalls) features.push("streaming_tool_calls");
-  return features;
+  const features = new Set(capabilities);
+  if (catalogEntry?.supportsStructuredOutput) features.add("structured_output");
+  if (catalogEntry?.supportsParallelToolCalls) features.add("parallel_tool_calls");
+  if (catalogEntry?.supportsStreamingToolCalls) features.add("streaming_tool_calls");
+  return Array.from(features);
 }
 
 export type ModelMetricsPoint = {
