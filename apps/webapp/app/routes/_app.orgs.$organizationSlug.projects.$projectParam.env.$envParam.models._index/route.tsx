@@ -1,10 +1,12 @@
 import { AdjustmentsHorizontalIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -53,7 +55,7 @@ import {
 } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { Spinner } from "~/components/primitives/Spinner";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+
 import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
 
 export const meta: MetaFunction = () => {
@@ -262,21 +264,31 @@ function FiltersBar({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {compareDisabled ? (
-          <SimpleTooltip
-            button={
-              <Button variant="secondary/small" disabled>
-                Compare
-              </Button>
-            }
-            content="Choose 2–4 models to compare"
-            asChild
-          />
-        ) : (
-          <Button variant="secondary/small" onClick={onCompare}>
-            Compare ({compareSet.size})
-          </Button>
-        )}
+        <Button
+          variant="secondary/small"
+          disabled={compareDisabled}
+          className="px-1.5"
+          tooltip={compareDisabled ? "Choose 2–4 models to compare" : "Compare selected models"}
+          onClick={compareDisabled ? undefined : onCompare}
+        >
+          <span className="flex items-center overflow-hidden">
+            <span className={!compareDisabled ? "text-text-bright" : undefined}>Compare</span>
+            <AnimatePresence initial={false}>
+              {compareSet.size >= 2 && (
+                <motion.span
+                  key="badge"
+                  initial={{ width: 0, marginLeft: 0, opacity: 0 }}
+                  animate={{ width: "auto", marginLeft: 4, opacity: 1 }}
+                  exit={{ width: 0, marginLeft: 0, opacity: 0 }}
+                  transition={{ duration: 0.15, ease: "easeInOut" }}
+                  className="inline-flex"
+                >
+                  <Badge variant="rounded">{compareSet.size}</Badge>
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </span>
+        </Button>
         <Switch
           variant="secondary/small"
           label="All details"
