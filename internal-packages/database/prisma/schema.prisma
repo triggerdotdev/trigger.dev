@@ -874,10 +874,6 @@ model TaskRun {
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
-  // Finding ancestor runs
-  @@index([rootTaskRunId])
-  //Schedules
-  @@index([scheduleId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
