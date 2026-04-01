@@ -352,7 +352,8 @@ model RuntimeEnvironment {
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
   customerQueries      CustomerQuery[]
-  prompts              Prompt[]
+  prompts                  Prompt[]
+  playgroundConversations  PlaygroundConversation[]
   errorGroupStates     ErrorGroupState[]
 
   @@unique([projectId, slug, orgMemberId])
@@ -420,6 +421,7 @@ model Project {
   connectedGithubRepository      ConnectedGithubRepository?
   organizationProjectIntegration OrganizationProjectIntegration[]
   customerQueries                CustomerQuery[]
+  playgroundConversations        PlaygroundConversation[]
 
   buildSettings         Json?
   onboardingData        Json?
@@ -653,6 +655,10 @@ model BackgroundWorkerTask {
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
+  /// Extra task configuration JSON. Shape depends on triggerSource.
+  /// AGENT: { type: "ai-sdk-chat" }
+  config Json?
+
   payloadSchema Json?
 
   @@unique([workerId, slug])
@@ -664,6 +670,49 @@ model BackgroundWorkerTask {
 enum TaskTriggerSource {
   STANDARD
   SCHEDULED
+  AGENT
+}
+
+model PlaygroundConversation {
+  id String @id @default(cuid())
+
+  /// The chat session ID used by the transport
+  chatId String
+
+  /// User-editable conversation title (auto-generated from first message)
+  title String @default("New conversation")
+
+  /// Which agent this conversation is with
+  agentSlug String
+
+  /// The current active run backing this conversation (null if no run yet)
+  runId String?
+  run   TaskRun? @relation(fields: [runId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  /// The client data JSON used for this conversation
+  clientData Json?
+
+  /// Accumulated UIMessages from completed turns (for resume without stream replay)
+  messages Json?
+
+  /// Last SSE event ID — resume from this position to avoid replaying old turns
+  lastEventId String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  /// The user who started this conversation
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([chatId, runtimeEnvironmentId])
+  @@index([runtimeEnvironmentId, agentSlug, updatedAt(sort: Desc)])
+  @@index([userId, runtimeEnvironmentId])
 }
 
 model TaskRun {
@@ -869,6 +918,8 @@ model TaskRun {
   realtimeStreamsVersion String   @default("v1")
   /// Store the stream keys that are being used by the run
   realtimeStreams        String[] @default([])
+
+  playgroundConversations PlaygroundConversation[]
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])

@@ -25,8 +25,10 @@ import {
   InputStreamOncePromise,
   type InputStreamOnceResult,
   type InputStreamWaitOptions,
+  type InputStreamWaitWithIdleTimeoutOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
+  type StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
@@ -139,7 +141,7 @@ function pipe<T>(
     opts = valueOrOptions as PipeStreamOptions | undefined;
   }
 
-  return pipeInternal(key, value, opts, "streams.pipe()");
+  return pipeInternal(key, value, opts, opts?.spanName ?? "streams.pipe()");
 }
 
 /**
@@ -167,6 +169,7 @@ function pipeInternal<T>(
       [SemanticInternalAttributes.ENTITY_TYPE]: "realtime-stream",
       [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${key}`,
       [SemanticInternalAttributes.STYLE_ICON]: "streams",
+      ...(opts?.collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
       ...accessoryAttributes({
         items: [
           {
@@ -194,7 +197,9 @@ function pipeInternal<T>(
 
     return {
       stream: instance.stream,
-      waitUntilComplete: () => instance.wait(),
+      waitUntilComplete: async () => {
+        return instance.wait();
+      },
     };
   } catch (error) {
     // if the error is a signal abort error, we need to end the span but not record an exception
@@ -640,7 +645,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
     }
   });
 
-  return pipeInternal(key, stream, options, "streams.writer()");
+  return pipeInternal(key, stream, options, options.spanName ?? "streams.writer()");
 }
 
 export type RealtimeDefineStreamOptions = {
@@ -656,8 +661,18 @@ function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream
     read(runId, options) {
       return read(runId, opts.id, options);
     },
-    append(value, options) {
-      return append(opts.id, value as BodyInit, options);
+    async append(value, options) {
+      // Use a single-write writer so objects are serialized the same way
+      // as stream.writer() — the raw append API sends BodyInit which
+      // doesn't serialize objects correctly for SSE consumers.
+      const { waitUntilComplete } = writer(opts.id, {
+        ...options,
+        spanName: "streams.append()",
+        execute: ({ write }) => {
+          write(value);
+        },
+      });
+      await waitUntilComplete();
     },
     writer(options) {
       return writer(opts.id, options);
@@ -713,7 +728,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       return new InputStreamOncePromise<TData>((resolve, reject) => {
         tracer
           .startActiveSpan(
-            `inputStream.once()`,
+            options?.spanName ?? `inputStream.once()`,
             async () => {
               const result = await innerPromise;
               resolve(result as InputStreamOnceResult<TData>);
@@ -750,23 +765,21 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
 
           const apiClient = apiClientManager.clientOrThrow();
 
+          // Create the waitpoint before the span so we have the entity ID upfront
+          const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
+            streamId: opts.id,
+            timeout: options?.timeout,
+            idempotencyKey: options?.idempotencyKey,
+            idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            tags: options?.tags,
+            lastSeqNum: inputStreams.lastSeqNum(opts.id),
+          });
+
           const result = await tracer.startActiveSpan(
-            `inputStream.wait()`,
+            options?.spanName ?? `inputStream.wait()`,
             async (span) => {
-              // 1. Create a waitpoint linked to this input stream
-              const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
-                streamId: opts.id,
-                timeout: options?.timeout,
-                idempotencyKey: options?.idempotencyKey,
-                idempotencyKeyTTL: options?.idempotencyKeyTTL,
-                tags: options?.tags,
-                lastSeqNum: inputStreams.lastSeqNum(opts.id),
-              });
 
-              // Set the entity ID now that we have the waitpoint ID
-              span.setAttribute(SemanticInternalAttributes.ENTITY_ID, response.waitpointId);
-
-              // 2. Block the run on the waitpoint
+              // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
                 runFriendlyId: ctx.run.id,
                 waitpointFriendlyId: response.waitpointId,
@@ -775,6 +788,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               if (!waitResponse.success) {
                 throw new Error("Failed to block on input stream waitpoint");
               }
+
+              // 2. Disconnect the SSE tail and clear the buffer before suspending.
+              // Without this, the tail stays alive during the suspension window and
+              // may buffer a copy of the same message that will be delivered via the
+              // waitpoint, causing a duplicate on resume.
+              inputStreams.disconnectStream(opts.id);
 
               // 3. Suspend the task
               const waitResult = await runtime.waitUntil(response.waitpointId);
@@ -792,6 +811,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                   : undefined;
 
               if (waitResult.ok) {
+                // Advance the seq counter so the SSE tail doesn't replay
+                // the record that was consumed via the waitpoint path when
+                // it lazily reconnects on the next on()/once() call.
+                const prevSeq = inputStreams.lastSeqNum(opts.id);
+                inputStreams.setLastSeqNum(opts.id, (prevSeq ?? -1) + 1);
+
                 return { ok: true as const, output: data as TData };
               } else {
                 const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
@@ -806,6 +831,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "wait",
                 [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+                [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
                 streamId: opts.id,
                 ...accessoryAttributes({
                   items: [
@@ -825,6 +851,61 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           reject(error);
         }
       });
+    },
+    async waitWithIdleTimeout(options) {
+      const self = this;
+      const spanName = options.spanName ?? `inputStream.waitWithIdleTimeout()`;
+
+      return tracer.startActiveSpan(
+        spanName,
+        async (span) => {
+          // Idle phase: keep compute alive
+          if (options.idleTimeoutInSeconds > 0) {
+            const warm = await inputStreams.once(opts.id, {
+              timeoutMs: options.idleTimeoutInSeconds * 1000,
+            });
+            if (warm.ok) {
+              span.setAttribute("wait.resolved", "idle");
+              return { ok: true as const, output: warm.output as TData };
+            }
+          }
+
+          // Skip suspend if requested — return as if timed out
+          if (options.skipSuspend) {
+            span.setAttribute("wait.resolved", "skipped");
+            return { ok: false as const, error: undefined };
+          }
+
+          // Fire onSuspend callback before entering cold phase
+          if (options.onSuspend) {
+            await options.onSuspend();
+          }
+
+          // Cold phase: suspend via .wait() — creates a child span
+          span.setAttribute("wait.resolved", "suspended");
+          const waitResult = await self.wait({
+            timeout: options.timeout,
+            spanName: "suspended",
+          });
+
+          // Fire onResume callback after successful resume
+          if (waitResult.ok && options.onResume) {
+            await options.onResume();
+          }
+
+          return waitResult;
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "streams",
+            streamId: opts.id,
+            ...accessoryAttributes({
+              items: [{ text: opts.id, variant: "normal" }],
+              style: "codepath",
+            }),
+          },
+        }
+      );
     },
     async send(runId, data, options) {
       return tracer.startActiveSpan(

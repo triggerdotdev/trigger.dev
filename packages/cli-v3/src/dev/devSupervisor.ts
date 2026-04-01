@@ -1,3 +1,5 @@
+import { trail } from "agentcrumbs"; // @crumbs
+const _cliCrumb = trail("cli"); // @crumbs
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -344,6 +346,23 @@ class DevSupervisor implements WorkerRuntime {
     }
 
     const sourceFiles = resolveSourceFiles(manifest.sources, backgroundWorker.manifest.tasks);
+
+    // #region @crumbs
+    const _agentTasksSupervisor = (backgroundWorker.manifest.tasks as any[]).filter(
+      (t: any) => t.triggerSource || t.agentConfig
+    );
+    _cliCrumb("devSupervisor sending worker metadata to API", {
+      totalTasks: backgroundWorker.manifest.tasks.length,
+      agentTasks: _agentTasksSupervisor.map((t: any) => ({
+        id: t.id,
+        triggerSource: t.triggerSource,
+        agentConfig: t.agentConfig,
+      })),
+      manifestTaskKeys: backgroundWorker.manifest.tasks[0]
+        ? Object.keys(backgroundWorker.manifest.tasks[0])
+        : [],
+    });
+    // #endregion @crumbs
 
     const backgroundWorkerBody: CreateBackgroundWorkerRequestBody = {
       localOnly: true,

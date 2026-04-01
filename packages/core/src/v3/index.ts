@@ -80,6 +80,7 @@ export {
   getSchemaParseFn,
   type AnySchemaParseFn,
   type SchemaParseFn,
+  type inferSchemaOut,
   isSchemaZodEsque,
   isSchemaValibotEsque,
   isSchemaArkTypeEsque,

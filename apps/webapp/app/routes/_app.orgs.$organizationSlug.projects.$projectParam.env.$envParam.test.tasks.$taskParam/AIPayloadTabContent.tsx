@@ -1,8 +1,9 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "~/components/primitives/Buttons";
+import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -10,16 +11,6 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-
-const StreamdownRenderer = lazy(() =>
-  import("streamdown").then((mod) => ({
-    default: ({ children, isAnimating }: { children: string; isAnimating: boolean }) => (
-      <mod.ShikiThemeContext.Provider value={["one-dark-pro", "one-dark-pro"]}>
-        <mod.Streamdown isAnimating={isAnimating}>{children}</mod.Streamdown>
-      </mod.ShikiThemeContext.Provider>
-    ),
-  }))
-);
 
 type StreamEventType =
   | { type: "thinking"; content: string }
@@ -31,11 +22,17 @@ export function AIPayloadTabContent({
   payloadSchema,
   taskIdentifier,
   getCurrentPayload,
+  generateButtonLabel = "Generate payload",
+  placeholder,
+  examplePromptsOverride,
 }: {
   onPayloadGenerated: (payload: string) => void;
   payloadSchema?: unknown;
   taskIdentifier: string;
   getCurrentPayload?: () => string;
+  generateButtonLabel?: string;
+  placeholder?: string;
+  examplePromptsOverride?: string[];
 }) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -191,7 +188,7 @@ export function AIPayloadTabContent({
     }
   }, [error]);
 
-  const examplePrompts = payloadSchema
+  const examplePrompts = examplePromptsOverride ?? (payloadSchema
     ? [
         "Generate a valid payload",
         "Generate a payload with edge cases",
@@ -201,7 +198,7 @@ export function AIPayloadTabContent({
         "Generate a simple JSON payload",
         "Generate a payload with nested objects",
         "Generate a payload with an array of items",
-      ];
+      ]);
 
   return (
     <div className="space-y-2">
@@ -215,9 +212,9 @@ export function AIPayloadTabContent({
               ref={textareaRef}
               name="prompt"
               placeholder={
-                payloadSchema
+                placeholder ?? (payloadSchema
                   ? "e.g. generate a payload for a new user signup"
-                  : "e.g. generate a JSON payload with name, email, and age fields"
+                  : "e.g. generate a JSON payload with name, email, and age fields")
               }
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -251,7 +248,7 @@ export function AIPayloadTabContent({
                   className={cn(!prompt.trim() && "opacity-50")}
                   onClick={() => handleSubmit()}
                 >
-                  Generate payload
+                  {generateButtonLabel}
                 </Button>
               )}
             </div>

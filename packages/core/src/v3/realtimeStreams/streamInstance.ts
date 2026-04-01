@@ -3,7 +3,7 @@ import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { AnyZodFetchOptions } from "../zodfetch.js";
 import { StreamsWriterV1 } from "./streamsWriterV1.js";
 import { StreamsWriterV2 } from "./streamsWriterV2.js";
-import { StreamsWriter } from "./types.js";
+import { StreamsWriter, StreamWriteResult } from "./types.js";
 
 export type StreamInstanceOptions<T> = {
   apiClient: ApiClient;
@@ -63,8 +63,9 @@ export class StreamInstance<T> implements StreamsWriter {
     return streamWriter;
   }
 
-  public async wait(): Promise<void> {
-    return this.streamPromise.then((writer) => writer.wait());
+  public async wait(): Promise<StreamWriteResult> {
+    const writer = await this.streamPromise;
+    return writer.wait();
   }
 
   public get stream(): AsyncIterableStream<T> {

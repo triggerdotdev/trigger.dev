@@ -336,6 +336,21 @@ export class PostgresRunsRepository implements IRunsRepository {
       conditions.push(Prisma.sql`tr."machinePreset" IN (${Prisma.join(filterOptions.machines)})`);
     }
 
+    // Task kind filter
+    if (filterOptions.taskKinds && filterOptions.taskKinds.length > 0) {
+      const includesStandard = filterOptions.taskKinds.includes("STANDARD");
+      if (includesStandard) {
+        // Also match runs with no taskKind annotation (pre-existing runs)
+        conditions.push(
+          Prisma.sql`(tr."annotations"->>'taskKind' IN (${Prisma.join(filterOptions.taskKinds)}) OR tr."annotations"->>'taskKind' IS NULL)`
+        );
+      } else {
+        conditions.push(
+          Prisma.sql`tr."annotations"->>'taskKind' IN (${Prisma.join(filterOptions.taskKinds)})`
+        );
+      }
+    }
+
     // Combine all conditions with AND
     return conditions.reduce((acc, condition) =>
       acc === null ? condition : Prisma.sql`${acc} AND ${condition}`
