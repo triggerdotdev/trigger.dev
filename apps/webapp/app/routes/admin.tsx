@@ -44,6 +44,10 @@ export default function Page() {
               label: "Notifications",
               to: "/admin/notifications",
             },
+            {
+              label: "Data Stores",
+              to: "/admin/data-stores",
+            },
           ]}
           layoutId={"admin"}
         />
