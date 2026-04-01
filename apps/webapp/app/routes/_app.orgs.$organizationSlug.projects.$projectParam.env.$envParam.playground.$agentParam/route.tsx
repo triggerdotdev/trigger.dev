@@ -157,12 +157,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function PlaygroundAgentPage() {
-  const { activeConversation } = useTypedLoaderData<typeof loader>();
-  // Key on conversation chatId so React remounts all stateful children when
-  // navigating between conversations (Link changes search params, loader re-runs,
-  // but without a key change the component instance is reused and useState
-  // initializers / useRef initializations don't re-run).
-  const conversationKey = activeConversation?.chatId ?? "new";
+  const { agent, activeConversation } = useTypedLoaderData<typeof loader>();
+  // Key on agent slug + conversation chatId so React remounts all stateful
+  // children when switching agents or navigating between conversations.
+  // Without the agent slug, switching agents keeps key="new" and React
+  // reuses the component — useState initializers don't re-run.
+  const conversationKey = `${agent.slug}:${activeConversation?.chatId ?? "new"}`;
   return <PlaygroundChat key={conversationKey} />;
 }
 
@@ -974,6 +974,7 @@ function PlaygroundSidebar({
               getCurrentPayload={getCurrentClientData}
               generateButtonLabel="Generate client data"
               placeholder="e.g. generate client data for a free-tier user"
+              isAgent={true}
               examplePromptsOverride={[
                 "Generate valid client data",
                 "Generate client data with all fields",

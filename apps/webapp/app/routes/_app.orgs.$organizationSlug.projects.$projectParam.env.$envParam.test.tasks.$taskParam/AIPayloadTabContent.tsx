@@ -25,6 +25,7 @@ export function AIPayloadTabContent({
   generateButtonLabel = "Generate payload",
   placeholder,
   examplePromptsOverride,
+  isAgent = false,
 }: {
   onPayloadGenerated: (payload: string) => void;
   payloadSchema?: unknown;
@@ -33,6 +34,7 @@ export function AIPayloadTabContent({
   generateButtonLabel?: string;
   placeholder?: string;
   examplePromptsOverride?: string[];
+  isAgent?: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -70,6 +72,7 @@ export function AIPayloadTabContent({
         const formData = new FormData();
         formData.append("prompt", queryPrompt);
         formData.append("taskIdentifier", taskIdentifier);
+        formData.append("isAgent", isAgent ? "true" : "false");
         if (payloadSchema) {
           formData.append("payloadSchema", JSON.stringify(payloadSchema));
         }
@@ -141,7 +144,7 @@ export function AIPayloadTabContent({
         setIsLoading(false);
       }
     },
-    [resourcePath, taskIdentifier, payloadSchema, getCurrentPayload]
+    [resourcePath, taskIdentifier, payloadSchema, getCurrentPayload, isAgent]
   );
 
   const processStreamEvent = useCallback(
