@@ -7,7 +7,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/node";
-import { Link, useFetcher, useNavigate } from "@remix-run/react";
+import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -46,7 +46,8 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 import { env as serverEnv } from "~/env.server";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
@@ -159,9 +160,16 @@ export default function PlaygroundAgentPage() {
   return <PlaygroundChat key={conversationKey} />;
 }
 
+const PARENT_ROUTE_ID =
+  "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.playground";
+
 function PlaygroundChat() {
   const { agent, apiOrigin, recentConversations, activeConversation } =
     useTypedLoaderData<typeof loader>();
+  const parentData = useRouteLoaderData(PARENT_ROUTE_ID) as
+    | { agents: Array<{ slug: string }> }
+    | undefined;
+  const agents = parentData?.agents ?? [];
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
@@ -391,8 +399,32 @@ function PlaygroundChat() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-grid-bright px-4 py-2">
             <div className="flex items-center gap-2">
-              <CpuChipIcon className="size-4 text-indigo-500" />
-              <span className="text-sm font-medium text-text-bright">{agent.slug}</span>
+              <Select
+                value={agent.slug}
+                setValue={(slug) => {
+                  if (slug && typeof slug === "string" && slug !== agent.slug) {
+                    navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
+                  }
+                }}
+                icon={<CpuChipIcon className="size-4 text-indigo-500" />}
+                text={(val) => val || undefined}
+                variant="tertiary/small"
+                items={agents}
+                filter={(item, search) =>
+                  item.slug.toLowerCase().includes(search.toLowerCase())
+                }
+              >
+                {(matches) =>
+                  matches.map((a) => (
+                    <SelectItem key={a.slug} value={a.slug}>
+                      <div className="flex items-center gap-2">
+                        <CpuChipIcon className="size-3.5 text-indigo-500" />
+                        <span>{a.slug}</span>
+                      </div>
+                    </SelectItem>
+                  ))
+                }
+              </Select>
               <Badge variant="extra-small">{formatAgentType(agent.type)}</Badge>
             </div>
             <div className="flex items-center gap-2">
