@@ -11,6 +11,7 @@ import {
 import { cn } from "~/utils/cn";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
+import { useRecentChangelogs } from "~/routes/resources.platform-changelogs";
 import { motion } from "framer-motion";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
@@ -38,6 +39,7 @@ export function HelpAndFeedback({
 }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
+  const { changelogs } = useRecentChangelogs();
 
   useShortcutKeys({
     shortcut: disableShortcut ? undefined : { key: "h", enabledOnInputElements: false },
@@ -140,96 +142,7 @@ export function HelpAndFeedback({
               data-action="suggest-a-feature"
               target="_blank"
             />
-            <SideMenuItem
-              name="Changelog"
-              icon={StarIcon}
-              trailingIcon={ArrowUpRightIcon}
-              trailingIconClassName="text-text-dimmed"
-              inactiveIconColor="text-sun-500"
-              activeIconColor="text-sun-500"
-              to="https://trigger.dev/changelog"
-              data-action="changelog"
-              target="_blank"
-            />
             <Shortcuts />
-          </div>
-          <div className="flex flex-col gap-1 p-1">
-            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">Need help?</Paragraph>
-            {currentPlan?.v3Subscription?.plan?.limits.support === "slack" && (
-              <div>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="small-menu-item"
-                      LeadingIcon={SlackIcon}
-                      data-action="join-our-slack"
-                      fullWidth
-                      textAlignLeft
-                    >
-                      <div className="flex w-full items-center justify-between">
-                        <span className="text-text-bright">Join our Slack…</span>
-                        <Badge variant="extra-small" className="uppercase">
-                          Pro
-                        </Badge>
-                      </div>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>Join our Slack</DialogHeader>
-                    <div className="mt-2 flex flex-col gap-4">
-                      <div className="flex items-center gap-4">
-                        <Icon icon={SlackIcon} className="h-10 w-10 min-w-[2.5rem]" />
-                        <Paragraph variant="base/bright">
-                          As a subscriber, you have access to a dedicated Slack channel for 1-to-1
-                          support with the Trigger.dev team.
-                        </Paragraph>
-                      </div>
-                      <hr className="border-charcoal-800" />
-                      <div>
-                        <StepNumber stepNumber="1" title="Email us" />
-                        <StepContentContainer>
-                          <Paragraph>
-                            Send us an email to this address from your Trigger.dev account email
-                            address:
-                            <ClipboardField
-                              variant="secondary/medium"
-                              value="priority-support@trigger.dev"
-                              className="my-2"
-                            />
-                          </Paragraph>
-                        </StepContentContainer>
-                        <StepNumber stepNumber="2" title="Look out for an invite from Slack" />
-                        <StepContentContainer>
-                          <Paragraph>
-                            As soon as we can, we'll setup a Slack Connect channel and say hello!
-                          </Paragraph>
-                        </StepContentContainer>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            )}
-            <SideMenuItem
-              name="Ask in our Discord"
-              icon={DiscordIcon}
-              trailingIcon={ArrowUpRightIcon}
-              trailingIconClassName="text-text-dimmed"
-              to="https://trigger.dev/discord"
-              data-action="join our discord"
-              target="_blank"
-            />
-            <SideMenuItem
-              name="Book a 15 min call"
-              icon={CalendarDaysIcon}
-              trailingIcon={ArrowUpRightIcon}
-              trailingIconClassName="text-text-dimmed"
-              inactiveIconColor="text-rose-500"
-              activeIconColor="text-rose-500"
-              to="https://cal.com/team/triggerdotdev/founders-call"
-              data-action="book-a-call"
-              target="_blank"
-            />
             <Feedback
               button={
                 <Button
@@ -246,9 +159,44 @@ export function HelpAndFeedback({
               }
             />
           </div>
+          <div className="flex flex-col gap-1 p-1">
+            <Paragraph className="pb-1 pl-1.5 pt-1.5 text-xs">What's new</Paragraph>
+            {changelogs.map((entry) => (
+              <SideMenuItem
+                key={entry.id}
+                name={entry.title}
+                icon={GrayDotIcon}
+                trailingIcon={ArrowUpRightIcon}
+                trailingIconClassName="text-text-dimmed"
+                inactiveIconColor="text-text-dimmed"
+                activeIconColor="text-text-dimmed"
+                to={entry.actionUrl ?? "https://trigger.dev/changelog"}
+                target="_blank"
+              />
+            ))}
+            <SideMenuItem
+              name="Full changelog"
+              icon={StarIcon}
+              trailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed"
+              inactiveIconColor="text-text-dimmed"
+              activeIconColor="text-text-dimmed"
+              to="https://trigger.dev/changelog"
+              data-action="full-changelog"
+              target="_blank"
+            />
+          </div>
         </Fragment>
       </PopoverContent>
       </Popover>
     </motion.div>
+  );
+}
+
+function GrayDotIcon({ className }: { className?: string }) {
+  return (
+    <span className={cn("flex items-center justify-center", className)}>
+      <span className="block h-1.5 w-1.5 rounded-full bg-text-dimmed" />
+    </span>
   );
 }

@@ -41,6 +41,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { requireUserId } from "~/services/session.server";
 import {
   githubAppInstallPath,
@@ -210,16 +211,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (resultOrFail.isOk()) {
-      // Trigger initial deployment for marketplace flows now that GitHub is connected
-      if (redirectUrl) {
-        try {
-          if (redirectUrl.includes("origin=marketplace")) {
-            await triggerInitialDeployment(projectId, { environment: "prod" });
-          }
-        } catch (error) {
-          logger.error("Invalid redirect URL, skipping initial deployment trigger", { redirectUrl, error });
-          // Invalid redirectUrl, skip initial deployment check
+      // Trigger initial deployment for marketplace flows now that GitHub is connected.
+      // We check the persisted onboardingOrigin on the Vercel integration rather than
+      // the redirectUrl, because the redirect URL loses the marketplace context when
+      // the user installs the GitHub App for the first time (full-page redirect cycle).
+      try {
+        const vercelService = new VercelIntegrationService();
+        const vercelIntegration = await vercelService.getVercelProjectIntegration(projectId);
+        if (
+          vercelIntegration?.parsedIntegrationData.onboardingCompleted &&
+          vercelIntegration.parsedIntegrationData.onboardingOrigin === "marketplace"
+        ) {
+          logger.info("Marketplace flow detected, triggering initial deployment", { projectId });
+          await triggerInitialDeployment(projectId, { environment: "prod" });
         }
+      } catch (error) {
+        logger.error("Failed to check Vercel integration or trigger initial deployment", { projectId, error });
       }
 
       return redirectWithMessage(

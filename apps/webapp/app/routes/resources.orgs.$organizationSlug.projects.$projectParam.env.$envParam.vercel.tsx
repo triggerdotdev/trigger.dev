@@ -293,6 +293,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         syncEnvVarsMapping,
         next,
         skipRedirect,
+        origin,
       } = submission.value;
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
@@ -306,6 +307,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         atomicBuilds,
         discoverEnvVars,
         syncEnvVarsMapping: parsedSyncEnvVarsMapping,
+        origin: origin === "marketplace" ? "marketplace" : "dashboard",
       });
 
       if (result) {

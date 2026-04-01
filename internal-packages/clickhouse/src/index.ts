@@ -29,13 +29,22 @@ import {
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
+  getGlobalModelMetrics,
+  getGlobalModelComparison,
+  getPopularModels,
+} from "./llmModelAggregates.js";
+import {
   getErrorGroups,
   getErrorInstances,
   getErrorGroupsListQueryBuilder,
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
+  createErrorOccurrencesByVersionQueryBuilder,
   getErrorAffectedVersionsQueryBuilder,
+  getOccurrenceCountSinceQueryBuilder,
+  getActiveErrorsSinceQueryBuilder,
+  getOccurrenceCountsSinceQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
@@ -46,6 +55,7 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
+export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./client/queryBuilder.js";
 
@@ -233,6 +243,14 @@ export class ClickHouse {
     };
   }
 
+  get llmModelAggregates() {
+    return {
+      globalMetrics: getGlobalModelMetrics(this.reader),
+      comparison: getGlobalModelComparison(this.reader),
+      popular: getPopularModels(this.reader),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
@@ -259,6 +277,11 @@ export class ClickHouse {
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
+      createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
+      occurrenceCountSinceQueryBuilder: getOccurrenceCountSinceQueryBuilder(this.reader),
+      activeErrorsSinceQueryBuilder: getActiveErrorsSinceQueryBuilder(this.reader),
+      occurrenceCountsSinceQueryBuilder: getOccurrenceCountsSinceQueryBuilder(this.reader),
     };
   }
 }

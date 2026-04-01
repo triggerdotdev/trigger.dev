@@ -25,7 +25,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
+import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -251,7 +251,9 @@ export class BatchTriggerV3Service extends BaseService {
 
           if (!queueSizeGuard.isWithinLimits) {
             throw new ServiceValidationError(
-              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+              undefined,
+              "warn"
             );
           }
 
@@ -928,10 +930,10 @@ export class BatchTriggerV3Service extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
-        data: filename,
+        data: uploadedFilename,
         dataType: "application/store",
       };
     });

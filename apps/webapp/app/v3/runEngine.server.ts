@@ -164,6 +164,7 @@ function createRunEngine() {
         return {
           isPaying: plan.v3Subscription.isPaying,
           type: plan.v3Subscription.plan.type,
+          hasPrivateLink: plan.v3Subscription.plan.limits.hasPrivateNetworking ?? false,
         };
       },
     },

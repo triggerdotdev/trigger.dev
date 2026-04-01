@@ -1,5 +1,6 @@
 import * as Ariakit from "@ariakit/react";
-import { ArrowPathIcon, SparklesIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import { type MetaFunction, useFetcher } from "@remix-run/react";
 import {
   type ActionFunctionArgs,
@@ -7,35 +8,47 @@ import {
   type LoaderFunctionArgs,
   redirect,
 } from "@remix-run/server-runtime";
-import { DialogClose } from "@radix-ui/react-dialog";
 
+import { AnimatePresence, motion } from "framer-motion";
+import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { TextEditor } from "~/components/code/TextEditor";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { ModelsFilter } from "~/components/metrics/ModelsFilter";
+import { OperationsFilter } from "~/components/metrics/OperationsFilter";
+import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Button } from "~/components/primitives/Buttons";
-import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
+import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableCellMenu,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   type ResizableSnapshot,
 } from "~/components/primitives/Resizable";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { CopyButton } from "~/components/primitives/CopyButton";
-import { CopyableText } from "~/components/primitives/CopyableText";
 import {
   SelectItem,
   SelectList,
@@ -43,35 +56,35 @@ import {
   SelectProvider,
   SelectTrigger,
 } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextArea } from "~/components/primitives/TextArea";
-import { ModelsFilter } from "~/components/metrics/ModelsFilter";
-import { OperationsFilter } from "~/components/metrics/OperationsFilter";
-import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
-import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
-import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { prisma } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { useInterval } from "~/hooks/useInterval";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { PromptPresenter, type GenerationRow } from "~/presenters/v3/PromptPresenter.server";
+import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
+import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
 
-import { MetricWidget } from "~/routes/resources.metric";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { z } from "zod";
+import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import { TextLink } from "~/components/primitives/TextLink";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { MetricWidget } from "~/routes/resources.metric";
+import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3PromptsPath, v3RunSpanPath } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
-import { z } from "zod";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   promptSlug: z.string(),
@@ -233,7 +246,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};
   try {
-    const urlVersions = url.searchParams.getAll("versions").filter(Boolean).map(Number).filter((n) => !isNaN(n));
+    const urlVersions = url.searchParams
+      .getAll("versions")
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => !isNaN(n));
     const urlModels = url.searchParams.getAll("models").filter(Boolean);
     const urlOperations = url.searchParams.getAll("operations").filter(Boolean);
     const urlProviders = url.searchParams.getAll("providers").filter(Boolean);
@@ -284,7 +301,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const possibleProviders = provsErr ? [] : provsRows.map((r) => r.val);
 
   return typedjson({
-    resizable: { outer: resizableOuter, vertical: resizableVertical, generations: resizableGenerations },
+    resizable: {
+      outer: resizableOuter,
+      vertical: resizableVertical,
+      generations: resizableGenerations,
+    },
     prompt: {
       id: prompt.id,
       friendlyId: prompt.friendlyId,
@@ -460,33 +481,44 @@ export default function PromptDetailPage() {
   };
 
   return (
-    <PageContainer>
+    <PageContainer className="grid-rows-[auto_auto_1fr]">
       <NavBar>
         <PageTitle
           title={
-            <div className="flex items-center gap-2">
-              <span>{prompt.slug}</span>
-              <span className="font-mono text-xs text-text-dimmed">
-                <CopyableText value={prompt.friendlyId} />
-              </span>
-            </div>
+            <PromptCopyPopover
+              slug={prompt.slug}
+              friendlyId={prompt.friendlyId}
+              description={prompt.description}
+            />
           }
           backButton={{ to: v3PromptsPath(organization, project, environment), text: "Prompts" }}
         />
         <PageAccessories>
           <div className="flex items-center gap-2">
             {selectedVersion && (
-              <span className="text-xs text-text-dimmed">
-                v{selectedVersion.version}
-                {isCurrent && <span className="ml-1 text-green-500">current</span>}
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    selectedVersion.labels.includes("override")
+                      ? "bg-amber-400"
+                      : isCurrent
+                      ? "bg-green-500"
+                      : "bg-charcoal-550"
+                  )}
+                />
+                <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
+                {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {selectedVersion.labels.includes("override") && (
-                  <span className="ml-1 text-amber-400">override</span>
+                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                    override
+                  </Badge>
                 )}
-              </span>
+              </div>
             )}
             {selectedVersion && !isCurrent && selectedVersion.source === "code" && (
               <Button
-                variant="tertiary/small"
+                variant="secondary/small"
                 onClick={() => handlePromote(selectedVersion.id)}
                 disabled={fetcher.state !== "idle"}
               >
@@ -497,7 +529,7 @@ export default function PromptDetailPage() {
               selectedVersion.source !== "code" &&
               !selectedVersion.labels.includes("override") && (
                 <Button
-                  variant="tertiary/small"
+                  variant="secondary/small"
                   onClick={() =>
                     fetcher.submit(
                       { intent: "reactivateOverride", versionId: selectedVersion.id },
@@ -510,37 +542,48 @@ export default function PromptDetailPage() {
                 </Button>
               )}
             {!overrideVersion && (
-              <Button variant="tertiary/small" onClick={() => setOverrideDialogOpen(true)}>
-                Create Override
+              <Button variant="secondary/small" onClick={() => setOverrideDialogOpen(true)}>
+                Create override
               </Button>
             )}
           </div>
         </PageAccessories>
       </NavBar>
-      {overrideVersion && (
-        <div className="flex items-center justify-between bg-amber-500/10 px-4 py-2">
-          <span className="text-xs text-amber-300">
-            Override v{overrideVersion.version} is active. API calls resolve this version instead of the deployed prompt.
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="tertiary/small"
-              onClick={() => setOverrideDialogOpen(true)}
+      <div>
+        <AnimatePresence initial={false}>
+          {overrideVersion && (
+            <motion.div
+              className="flex flex-wrap items-center justify-between gap-2 overflow-hidden border-b border-amber-500/10 bg-amber-500/10 pl-4 pr-2"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
             >
-              Edit
-            </Button>
-            <Button
-              variant="tertiary/small"
-              onClick={() =>
-                fetcher.submit({ intent: "removeOverride" }, { method: "POST" })
-              }
-              disabled={fetcher.state !== "idle"}
-            >
-              Remove
-            </Button>
-          </div>
-        </div>
-      )}
+              <span className="py-1.5 text-xs text-amber-300">
+                Override v{overrideVersion.version} is active. API calls resolve to this version
+                instead of the deployed prompt.
+              </span>
+              <div className="flex items-center gap-2 py-1.5">
+                <Button
+                  variant="tertiary/small"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  onClick={() => setOverrideDialogOpen(true)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  variant="tertiary/small"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
+                  disabled={fetcher.state !== "idle"}
+                >
+                  Remove
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
       <PageBody scrollable={false}>
         <ResizablePanelGroup
           autosaveId="prompt-detail"
@@ -557,34 +600,24 @@ export default function PromptDetailPage() {
             >
               {/* Template panel */}
               <ResizablePanel id="prompt-template" default="250px" min="80px">
-                <div className="flex h-full flex-col overflow-hidden p-3 pb-0">
-                  {/* Sticky header */}
-                  <div className="mb-2 flex-shrink-0">
-                    <div className="flex items-center justify-between">
-                      <Header3>Template</Header3>
-                      {content && <CopyButton value={content} variant="icon" size="extra-small" />}
-                    </div>
+                {content ? (
+                  <CodeBlock
+                    code={content}
+                    language="markdown"
+                    showLineNumbers={false}
+                    showCopyButton={true}
+                    showTextWrapping={false}
+                    showOpenInModal={true}
+                    className="h-full rounded-none border-none [&_pre]:px-3 [&_pre]:py-2 [&_pre]:text-sm"
+                    maxLines={undefined}
+                  />
+                ) : (
+                  <div className="p-3">
+                    <Paragraph variant="small" className="text-text-dimmed">
+                      No content
+                    </Paragraph>
                   </div>
-                  {/* Scrollable content */}
-                  {content ? (
-                    <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                      <CodeBlock
-                        code={content}
-                        language="markdown"
-                        showLineNumbers={false}
-                        showCopyButton={false}
-                        showTextWrapping={false}
-                        showOpenInModal={false}
-                      />
-                    </div>
-                  ) : (
-                    <div className="rounded border border-grid-dimmed p-3">
-                      <Paragraph variant="small" className="text-text-dimmed">
-                        No content
-                      </Paragraph>
-                    </div>
-                  )}
-                </div>
+                )}
               </ResizablePanel>
 
               <ResizableHandle id="prompt-vertical-handle" />
@@ -593,8 +626,8 @@ export default function PromptDetailPage() {
               <ResizablePanel id="prompt-tabs" min="100px">
                 <div className="grid h-full max-h-full grid-rows-[2.25rem_1fr] overflow-hidden">
                   {/* Tab bar */}
-                  <div className="flex items-center justify-between border-b border-grid-dimmed px-3">
-                    <TabContainer>
+                  <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1.5">
+                    <TabContainer className="-mb-1">
                       <TabButton
                         isActive={contentTab === "generations"}
                         layoutId="prompt-content"
@@ -628,7 +661,7 @@ export default function PromptDetailPage() {
                         Metrics
                       </TabButton>
                     </TabContainer>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <PromptVersionsFilter versions={versions} />
                       <ModelsFilter
                         possibleModels={possibleModels.map((m) => ({ model: m, system: "" }))}
@@ -640,12 +673,18 @@ export default function PromptDetailPage() {
                         labelName="Period"
                         hideLabel
                         valueClassName="text-text-bright"
+                        shortcut={{ key: "w" }}
                       />
                     </div>
                   </div>
 
                   {/* Tab content */}
-                  <div className="min-h-0 overflow-hidden">
+                  <div
+                    className={cn(
+                      "min-h-0 overflow-hidden",
+                      contentTab === "generations" && "bg-background-bright"
+                    )}
+                  >
                     {contentTab === "generations" && (
                       <GenerationsTab
                         promptSlug={prompt.slug}
@@ -679,7 +718,13 @@ export default function PromptDetailPage() {
           <ResizableHandle id="prompt-sidebar-handle" />
 
           {/* Sidebar */}
-          <ResizablePanel id="prompt-sidebar" default="380px" min="280px" max="500px" isStaticAtRest>
+          <ResizablePanel
+            id="prompt-sidebar"
+            default="380px"
+            min="280px"
+            max="500px"
+            isStaticAtRest
+          >
             <div className="grid h-full max-h-full grid-rows-[2rem_1fr] overflow-hidden bg-background-bright">
               {/* Tabs */}
               <div className="overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -696,7 +741,7 @@ export default function PromptDetailPage() {
                     isActive={tab === "preview"}
                     layoutId="prompt-sidebar"
                     onClick={() => replaceSearch({ tab: "preview", version: versionParam })}
-                    shortcut={{ key: "p" }}
+                    shortcut={{ key: "i" }}
                   >
                     Preview
                   </TabButton>
@@ -712,8 +757,15 @@ export default function PromptDetailPage() {
               </div>
 
               {/* Tab content */}
-              <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                {tab === "details" && <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />}
+              <div
+                className={cn(
+                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  tab === "versions" ? "py-0" : "px-3 py-3"
+                )}
+              >
+                {tab === "details" && (
+                  <DetailsTab prompt={prompt} selectedVersion={selectedVersion} />
+                )}
                 {tab === "preview" && <PreviewTab prompt={prompt} content={content} />}
                 {tab === "versions" && (
                   <VersionsTab
@@ -731,9 +783,17 @@ export default function PromptDetailPage() {
         open={overrideDialogOpen}
         onOpenChange={setOverrideDialogOpen}
         prompt={prompt}
-        content={overrideVersion ? getVersionContent(versions.find((v) => v.id === overrideVersion.id) ?? { textContent: null }) : content}
+        content={
+          overrideVersion
+            ? getVersionContent(
+                versions.find((v) => v.id === overrideVersion.id) ?? { textContent: null }
+              )
+            : content
+        }
         isEditingOverride={!!overrideVersion}
-        currentOverrideModel={overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null}
+        currentOverrideModel={
+          overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null
+        }
         onSave={(textContent, commitMessage, model) => {
           const intent = overrideVersion ? "updateOverride" : "saveVersion";
           fetcher.submit({ intent, textContent, commitMessage, model }, { method: "POST" });
@@ -804,7 +864,7 @@ function OverrideDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden px-0 pt-0 md:max-w-4xl lg:max-w-6xl">
+      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
         <DialogHeader className="px-4 py-2.5">
           {isEditingOverride ? "Edit override" : "Create override"}
         </DialogHeader>
@@ -814,7 +874,7 @@ function OverrideDialog({
           className="-mx-3 w-auto flex-1 border-b border-t border-grid-dimmed"
         >
           {/* Editor */}
-          <ResizablePanel id="override-editor" min="300px">
+          <ResizablePanel id="override-editor" min="300px" className="bg-[#121317]">
             <TextEditor
               className="h-full"
               autoFocus
@@ -910,9 +970,9 @@ function OverrideDialog({
         </ResizablePanelGroup>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 px-4 pt-3">
+        <div className="flex items-center justify-between gap-2 pl-4 pr-1 pt-3">
           <DialogClose asChild>
-            <Button variant="tertiary/medium">Cancel</Button>
+            <Button variant="secondary/medium">Cancel</Button>
           </DialogClose>
           <Button
             variant="primary/medium"
@@ -943,7 +1003,7 @@ function DetailsTab({
         <Property.Item>
           <Property.Label>Slug</Property.Label>
           <Property.Value>
-            <code className="text-xs">{prompt.slug}</code>
+            <code className="text-sm">{prompt.slug}</code>
           </Property.Value>
         </Property.Item>
         {prompt.description && (
@@ -960,7 +1020,7 @@ function DetailsTab({
         )}
         {prompt.defaultConfig && (
           <Property.Item>
-            <Property.Label>Config</Property.Label>
+            <Property.Label className="mb-1.5">Config</Property.Label>
             <Property.Value>
               <CodeBlock
                 code={JSON.stringify(prompt.defaultConfig, null, 2)}
@@ -974,7 +1034,7 @@ function DetailsTab({
           <Property.Item>
             <Property.Label>Source</Property.Label>
             <Property.Value>
-              <code className="text-xs">
+              <code className="text-sm">
                 {prompt.filePath}
                 {prompt.exportName ? ` (${prompt.exportName})` : ""}
               </code>
@@ -1022,7 +1082,6 @@ function PreviewTab({
   content: string;
 }) {
   const variableFields = prompt.variableSchema ? extractVariableFields(prompt.variableSchema) : [];
-
   const [testVariables, setTestVariables] = useState<Record<string, string>>(() =>
     Object.fromEntries(variableFields.map((f) => [f.name, ""]))
   );
@@ -1034,14 +1093,20 @@ function PreviewTab({
       {variableFields.length > 0 ? (
         <>
           <div className="space-y-3">
-            <Header3>Variables</Header3>
-            {variableFields.map((field) => (
-              <InputGroup key={field.name}>
+            <div>
+              <Header3 className="mb-1">Variables</Header3>
+              <Paragraph variant="small">
+                Fill in values to preview your resolved prompt template.
+              </Paragraph>
+            </div>
+            {variableFields.map((field, index) => (
+              <InputGroup className="max-w-full" key={field.name}>
                 <Label variant="small" required={field.required}>
                   {field.name}
                 </Label>
                 {field.enumValues ? (
                   <select
+                    autoFocus={index === 0}
                     className="h-6 w-full rounded border border-charcoal-650 bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-none"
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
@@ -1051,7 +1116,7 @@ function PreviewTab({
                       }))
                     }
                   >
-                    <option value="">Select...</option>
+                    <option value="">Select…</option>
                     {field.enumValues.map((v) => (
                       <option key={v} value={v}>
                         {v}
@@ -1060,8 +1125,9 @@ function PreviewTab({
                   </select>
                 ) : field.isLongText ? (
                   <TextArea
+                    autoFocus={index === 0}
                     rows={3}
-                    className="text-xs"
+                    className="w-full text-sm"
                     placeholder={field.placeholder}
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
@@ -1073,6 +1139,7 @@ function PreviewTab({
                   />
                 ) : (
                   <Input
+                    autoFocus={index === 0}
                     variant="small"
                     placeholder={field.placeholder}
                     value={testVariables[field.name] ?? ""}
@@ -1089,38 +1156,28 @@ function PreviewTab({
             ))}
           </div>
 
-          <div className="space-y-1">
-            <Header3>Resolved output</Header3>
-            {previewText ? (
-              <div className="overflow-auto rounded border border-indigo-500/30 bg-charcoal-900 p-3">
+          {previewText && (
+            <div className="space-y-1.5">
+              <Header3>Resolved output</Header3>
+              <div className="overflow-auto rounded border border-grid-bright bg-background-dimmed p-3">
                 <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-text-bright">
                   {previewText}
                 </pre>
               </div>
-            ) : (
-              <div className="rounded border border-grid-dimmed bg-charcoal-900/50 p-3">
-                <Paragraph variant="extra-small" className="text-charcoal-500">
-                  Fill in variables to see the resolved prompt
-                </Paragraph>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </>
       ) : (
-        <div className="space-y-1">
-          <Header3>Resolved output</Header3>
-          {content ? (
-            <div className="overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+        content && (
+          <>
+            <Header3>Resolved output</Header3>
+            <div className="overflow-auto rounded border border-grid-bright bg-background-dimmed p-3">
               <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-text-bright">
                 {content}
               </pre>
             </div>
-          ) : (
-            <Paragraph variant="small" className="text-charcoal-500">
-              No content to preview
-            </Paragraph>
-          )}
-        </div>
+          </>
+        )
       )}
     </div>
   );
@@ -1230,7 +1287,11 @@ function GenerationsTab({
   // Check poll results for new generations — only react to new poll data, not generation list changes
   const lastPollDataRef = useRef(pollFetcher.data);
   useEffect(() => {
-    if (pollFetcher.data && pollFetcher.state === "idle" && pollFetcher.data !== lastPollDataRef.current) {
+    if (
+      pollFetcher.data &&
+      pollFetcher.state === "idle" &&
+      pollFetcher.data !== lastPollDataRef.current
+    ) {
       lastPollDataRef.current = pollFetcher.data;
       const existingIds = new Set(generations.map((g) => g.span_id));
       const newCount = pollFetcher.data.generations.filter(
@@ -1245,9 +1306,7 @@ function GenerationsTab({
     if (pollFetcher.data) {
       setGenerations((prev) => {
         const existingIds = new Set(prev.map((g) => g.span_id));
-        const newRows = pollFetcher.data!.generations.filter(
-          (g) => !existingIds.has(g.span_id)
-        );
+        const newRows = pollFetcher.data!.generations.filter((g) => !existingIds.has(g.span_id));
         return newRows.length > 0 ? [...newRows, ...prev] : prev;
       });
     }
@@ -1359,8 +1418,8 @@ function GenerationsTab({
       <div className="flex h-full items-center justify-center">
         <InfoPanel
           title="No generations yet"
-          icon={SparklesIcon}
-          iconClassName="text-purple-500"
+          icon={AIPromptsIcon}
+          iconClassName="text-aiPrompts"
           panelClassName="max-w-md"
         >
           <Paragraph variant="small">
@@ -1376,7 +1435,11 @@ function GenerationsTab({
   }
 
   return (
-    <ResizablePanelGroup autosaveId="prompt-generations" snapshot={generationsSnapshot} className="h-full">
+    <ResizablePanelGroup
+      autosaveId="prompt-generations"
+      snapshot={generationsSnapshot}
+      className="h-full"
+    >
       {/* Span list */}
       <ResizablePanel id="prompt-gen-list" min="200px">
         <div
@@ -1384,7 +1447,7 @@ function GenerationsTab({
           className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           {newGenerationCount > 0 && (
-            <div className="sticky top-0 z-10 flex items-center justify-center gap-2 border-b border-grid-dimmed bg-background-bright px-3 py-1.5">
+            <div className="sticky top-0 z-20 flex items-center justify-center gap-2 border-b border-grid-dimmed bg-background-bright px-3 py-1.5">
               <span className="text-xs text-text-dimmed">
                 {newGenerationCount} new {newGenerationCount === 1 ? "generation" : "generations"}
               </span>
@@ -1397,45 +1460,90 @@ function GenerationsTab({
               </Button>
             </div>
           )}
-          {generations.map((gen, i) => {
-            const isSelected = selectedSpan?.spanId === gen.span_id;
-            const runPath = v3RunSpanPath(
-              organization,
-              project,
-              environment,
-              { friendlyId: gen.run_id },
-              { spanId: gen.span_id }
-            );
-            return (
-              <div
-                key={`${gen.run_id}-${gen.span_id}-${i}`}
-                data-generation-item
-                onClick={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
-                className={`cursor-pointer border-b border-grid-dimmed px-3 py-2 text-xs transition last:border-0 ${
-                  isSelected ? "bg-indigo-500/10" : "hover:bg-charcoal-850"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-text-bright">
-                    {gen.operation_id || gen.task_identifier}
-                  </span>
-                  <span className="text-text-dimmed">{gen.start_time}</span>
-                </div>
-                <div className="mt-0.5 flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-text-dimmed">
-                    <span className="text-charcoal-400">v{gen.prompt_version}</span>
-                    <span>{gen.response_model}</span>
-                    <span>{gen.input_tokens + gen.output_tokens} tokens</span>
-                    <span>{formatCost(gen.total_cost)}</span>
-                    <span>{Math.round(gen.duration_ms)}ms</span>
-                  </div>
-                  <TextLink to={runPath} className="text-xs" onClick={(e) => e.stopPropagation()}>
-                    View run
-                  </TextLink>
-                </div>
-              </div>
-            );
-          })}
+          <Table variant="bright" fullWidth showTopBorder={false}>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell className="w-8" />
+                <TableHeaderCell>Operation</TableHeaderCell>
+                <TableHeaderCell>Version</TableHeaderCell>
+                <TableHeaderCell>Model</TableHeaderCell>
+                <TableHeaderCell>Tokens</TableHeaderCell>
+                <TableHeaderCell>Cost</TableHeaderCell>
+                <TableHeaderCell>Duration</TableHeaderCell>
+                <TableHeaderCell alignment="right">Time</TableHeaderCell>
+                <TableHeaderCell className="w-12" hiddenLabel>
+                  Actions
+                </TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {generations.map((gen, i) => {
+                const isSelected = selectedSpan?.spanId === gen.span_id;
+                const runPath = v3RunSpanPath(
+                  organization,
+                  project,
+                  environment,
+                  { friendlyId: gen.run_id },
+                  { spanId: gen.span_id }
+                );
+                return (
+                  <TableRow
+                    key={`${gen.run_id}-${gen.span_id}-${i}`}
+                    data-generation-item
+                    isSelected={isSelected}
+                    className="cursor-pointer [&_td]:cursor-pointer"
+                    onClick={() => onSelectSpan({ runId: gen.run_id, spanId: gen.span_id })}
+                  >
+                    <TableCell>
+                      <RadioButtonCircle checked={isSelected} />
+                    </TableCell>
+                    <TableCell className={cn("font-medium", isSelected && "text-text-bright")}>
+                      {gen.operation_id || gen.task_identifier}
+                    </TableCell>
+                    <TableCell
+                      className={cn("tabular-nums", isSelected ? "text-text-bright" : "text-charcoal-400")}
+                    >
+                      v{gen.prompt_version}
+                    </TableCell>
+                    <TableCell className={cn(isSelected && "text-text-bright")}>
+                      {gen.response_model}
+                    </TableCell>
+                    <TableCell className={cn("tabular-nums", isSelected && "text-text-bright")}>
+                      {gen.input_tokens + gen.output_tokens}
+                    </TableCell>
+                    <TableCell className={cn("tabular-nums", isSelected && "text-text-bright")}>
+                      {formatCost(gen.total_cost)}
+                    </TableCell>
+                    <TableCell className={cn("tabular-nums", isSelected && "text-text-bright")}>
+                      {Math.round(gen.duration_ms)}ms
+                    </TableCell>
+                    <TableCell
+                      alignment="right"
+                      className={cn("tabular-nums", isSelected && "text-text-bright")}
+                    >
+                      {gen.start_time}
+                    </TableCell>
+                    <TableCellMenu
+                      isSticky
+                      isSelected={isSelected}
+                      hiddenButtons={
+                        <LinkButton
+                          to={runPath}
+                          onClick={(e) => e.stopPropagation()}
+                          variant="minimal/small"
+                          TrailingIcon={RunsIcon}
+                          trailingIconClassName="text-text-bright"
+                          className="h-[1.375rem] pl-1.5 pr-2"
+                        >
+                          <span className="text-[0.6875rem] text-text-bright">View run</span>
+                        </LinkButton>
+                      }
+                    />
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
 
           {/* Infinite scroll sentinel */}
           <div ref={loadMoreRef} className="h-px" />
@@ -1450,16 +1558,13 @@ function GenerationsTab({
       <ResizableHandle id="prompt-gen-handle" />
 
       {/* Span inspector */}
-      <ResizablePanel id="prompt-gen-inspector" default="40%" min="200px" isStaticAtRest>
+      <ResizablePanel id="prompt-gen-inspector" default="430px" min="320px" isStaticAtRest>
         {selectedSpan ? (
-          <SpanView
-            runParam={selectedSpan.runId}
-            spanId={selectedSpan.spanId}
-          />
+          <SpanView runParam={selectedSpan.runId} spanId={selectedSpan.spanId} />
         ) : (
           <div className="flex h-full items-center justify-center bg-background-bright">
             <Paragraph variant="small" className="text-text-dimmed">
-              Select a generation to inspect
+              Select a generation to view details
             </Paragraph>
           </div>
         )}
@@ -1518,10 +1623,10 @@ function MetricsTab({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Summary big numbers */}
-      <div className="grid grid-cols-4 gap-2">
-        <div className="h-32">
+      <div className="grid grid-cols-4 gap-3">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
             title="Total"
@@ -1535,7 +1640,7 @@ function MetricsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-32">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-tokens`}
             title="Avg input tokens"
@@ -1549,7 +1654,7 @@ function MetricsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-32">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
@@ -1563,7 +1668,7 @@ function MetricsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-32">
+        <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-latency`}
             title="Avg latency"
@@ -1785,13 +1890,10 @@ function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
     return (
       <SelectProvider value={[]} setValue={handleChange} virtualFocus={true}>
         <SelectTrigger
-          icon={
-            <svg className="size-4">
-              <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
-            </svg>
-          }
+          icon={<GitBranchPlusIcon className="size-4" />}
           variant="secondary/small"
           tooltipTitle="Filter by version"
+          shortcut={{ key: "e" }}
         >
           <span className="ml-0.5">Versions</span>
         </SelectTrigger>
@@ -1810,21 +1912,14 @@ function PromptVersionsFilter({ versions }: { versions: VersionData[] }) {
     );
   }
 
-  const summary =
-    selected.length === 1
-      ? `v${selected[0]}`
-      : `${selected.length} versions`;
+  const summary = selected.length === 1 ? `v${selected[0]}` : `${selected.length} versions`;
 
   return (
     <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
       <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
         <AppliedFilter
           label="Version"
-          icon={
-            <svg className="size-4">
-              <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
-            </svg>
-          }
+          icon={<GitBranchPlusIcon className="size-4" />}
           value={summary}
           onRemove={() => del(["versions"])}
           variant="secondary/small"
@@ -1857,75 +1952,167 @@ function VersionsTab({
   onSelectVersion: (version: number) => void;
 }) {
   return (
-    <div>
+    <div className="divide-y divide-grid-dimmed border-b border-grid-dimmed">
       {versions.map((v) => {
         const isSelected = selectedVersion?.id === v.id;
         const isCurrent = v.labels.includes("current");
         const isLatest = v.labels.includes("latest");
         const isOverride = v.labels.includes("override");
 
-        const dotColor = isOverride
-          ? "bg-amber-400"
-          : isCurrent
-          ? "bg-green-500"
-          : "bg-charcoal-600";
-
         return (
           <div
             key={v.id}
             onClick={() => onSelectVersion(v.version)}
-            className={`group flex cursor-pointer items-start gap-2.5 border-b border-grid-dimmed px-3 py-2 transition last:border-0 ${
-              isSelected ? "bg-indigo-500/10" : "hover:bg-charcoal-850"
-            }`}
+            className={cn(
+              "flex cursor-pointer items-center gap-3 px-3 py-3 text-sm transition",
+              isSelected ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]" : "hover:bg-charcoal-750"
+            )}
           >
-            {/* Timeline dot */}
-            <div className="flex flex-col items-center pt-1.5">
-              <div className={`size-2 rounded-full ${dotColor}`} />
-            </div>
-
-            {/* Content */}
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className={`text-xs font-medium ${
-                      isSelected ? "text-text-bright" : "text-text-bright"
-                    }`}
-                  >
-                    v{v.version}
-                  </span>
-                  {isOverride && (
-                    <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
-                      override
-                    </Badge>
+            <RadioButtonCircle checked={isSelected} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <div
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    isOverride ? "bg-amber-400" : isCurrent ? "bg-green-500" : "bg-charcoal-600"
                   )}
-                  {isCurrent && <Badge variant="extra-small">current</Badge>}
-                  {isLatest && !isCurrent && <Badge variant="extra-small">latest</Badge>}
-                </div>
-                <span className="text-xxs text-text-dimmed">
-                  <DateTime date={v.createdAt} />
+                />
+                <span className="font-medium text-text-bright">v{v.version}</span>
+                {isOverride && (
+                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                    override
+                  </Badge>
+                )}
+                {isCurrent && <Badge variant="extra-small">current</Badge>}
+                {isLatest && !isCurrent && <Badge variant="extra-small">latest</Badge>}
+                <span
+                  className={cn(
+                    "text-xs",
+                    v.source !== "code" ? "text-amber-400" : "text-text-dimmed"
+                  )}
+                >
+                  {v.source}
                 </span>
               </div>
-
-              <div className="flex items-center gap-1.5 text-xxs text-text-dimmed">
-                <span className={v.source !== "code" ? "text-amber-400" : ""}>{v.source}</span>
-                {v.model && (
-                  <>
-                    <span className="text-charcoal-600">/</span>
-                    <span>{v.model}</span>
-                  </>
-                )}
-                {v.commitMessage && (
-                  <>
-                    <span className="text-charcoal-600">/</span>
-                    <span className="truncate">{v.commitMessage}</span>
-                  </>
-                )}
-              </div>
+              {(v.model || v.commitMessage) && (
+                <div className="flex items-center gap-1.5 truncate text-xs text-text-dimmed">
+                  {v.model && <span>{v.model}</span>}
+                  {v.model && v.commitMessage && <span className="text-charcoal-600">/</span>}
+                  {v.commitMessage && <span className="truncate">{v.commitMessage}</span>}
+                </div>
+              )}
             </div>
+            <span className="shrink-0 text-xs text-text-dimmed">
+              <DateTime date={v.createdAt} />
+            </span>
           </div>
         );
       })}
     </div>
+  );
+}
+
+const MAX_DESCRIPTION_PREVIEW = 80;
+
+function PromptCopyPopover({
+  slug,
+  friendlyId,
+  description,
+}: {
+  slug: string;
+  friendlyId: string;
+  description: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="-ml-1.5 flex items-center gap-1 rounded py-1.5 pl-2 pr-1.5 font-mono text-xs text-text-dimmed transition focus-custom hover:bg-charcoal-750 hover:text-text-bright">
+        {slug}
+        <ChevronUpDownIcon className="size-4 text-charcoal-500" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="flex min-w-0 flex-col p-1"
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          const el = e.currentTarget as HTMLElement;
+          el.style.pointerEvents = "none";
+          requestAnimationFrame(() => {
+            el.style.pointerEvents = "";
+          });
+        }}
+      >
+        <CopyPopoverItem label="Copy slug" value={slug} onCopied={() => setOpen(false)} />
+        <CopyPopoverItem
+          label="Copy friendly ID"
+          value={friendlyId}
+          onCopied={() => setOpen(false)}
+        />
+        {description && (
+          <CopyPopoverItem
+            label="Copy description"
+            value={description}
+            preview={
+              description.length > MAX_DESCRIPTION_PREVIEW
+                ? description.slice(0, MAX_DESCRIPTION_PREVIEW) + "…"
+                : description
+            }
+            onCopied={() => setOpen(false)}
+          />
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function CopyPopoverItem({
+  label,
+  value,
+  preview,
+  onCopied,
+}: {
+  label: string;
+  value: string;
+  preview?: string;
+  onCopied?: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => {
+      setCopied(false);
+      onCopied?.();
+    }, 600);
+  };
+
+  return (
+    <SimpleTooltip
+      button={
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={cn(
+            "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition",
+            copied
+              ? "text-green-500"
+              : "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+          )}
+        >
+          {copied ? (
+            <ClipboardCheckIcon className="size-3.5 shrink-0" />
+          ) : (
+            <ClipboardIcon className="size-3.5 shrink-0" />
+          )}
+          {label}
+        </button>
+      }
+      content={<span className="max-w-64 break-all font-mono text-xs">{preview ?? value}</span>}
+      side="right"
+      disableHoverableContent
+      asChild
+    />
   );
 }

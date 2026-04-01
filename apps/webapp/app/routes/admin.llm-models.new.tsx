@@ -22,6 +22,12 @@ const CreateSchema = z.object({
   modelName: z.string().min(1),
   matchPattern: z.string().min(1),
   pricingTiersJson: z.string(),
+  provider: z.string().optional(),
+  description: z.string().optional(),
+  contextWindow: z.string().optional(),
+  maxOutputTokens: z.string().optional(),
+  capabilities: z.string().optional(),
+  isHidden: z.string().optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -62,12 +68,20 @@ export async function action({ request }: ActionFunctionArgs) {
     return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
   }
 
+  const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
+
   const model = await prisma.llmModel.create({
     data: {
       friendlyId: generateFriendlyId("llm_model"),
       modelName,
       matchPattern,
       source: "admin",
+      provider: provider || null,
+      description: description || null,
+      contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
+      maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
+      capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
+      isHidden: isHidden === "on",
     },
   });
 
@@ -100,6 +114,12 @@ export default function AdminLlmModelNewRoute() {
   const initialModelName = params.get("modelName") ?? "";
   const [modelName, setModelName] = useState(initialModelName);
   const [matchPattern, setMatchPattern] = useState("");
+  const [provider, setProvider] = useState("");
+  const [description, setDescription] = useState("");
+  const [contextWindow, setContextWindow] = useState("");
+  const [maxOutputTokens, setMaxOutputTokens] = useState("");
+  const [capabilities, setCapabilities] = useState("");
+  const [isHidden, setIsHidden] = useState(false);
   const [testInput, setTestInput] = useState("");
   const [tiers, setTiers] = useState<TierData[]>([
     { name: "Standard", isDefault: true, priority: 0, conditions: [], prices: { input: 0, output: 0 } },
@@ -193,6 +213,83 @@ export default function AdminLlmModelNewRoute() {
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* Catalog metadata */}
+            <div className="space-y-2 border-t border-grid-dimmed pt-4">
+              <label className="text-sm font-medium text-text-bright">Catalog Metadata</label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Provider</label>
+                  <Input
+                    name="provider"
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="openai, anthropic, google"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Context Window</label>
+                  <Input
+                    name="contextWindow"
+                    value={contextWindow}
+                    onChange={(e) => setContextWindow(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="128000"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-text-dimmed">Description</label>
+                <Input
+                  name="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  variant="medium"
+                  fullWidth
+                  placeholder="Brief model description"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Max Output Tokens</label>
+                  <Input
+                    name="maxOutputTokens"
+                    value={maxOutputTokens}
+                    onChange={(e) => setMaxOutputTokens(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="16384"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-text-dimmed">Capabilities (comma-separated)</label>
+                  <Input
+                    name="capabilities"
+                    value={capabilities}
+                    onChange={(e) => setCapabilities(e.target.value)}
+                    variant="medium"
+                    fullWidth
+                    placeholder="vision, tool_use, streaming, json_mode"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-text-dimmed">
+                <input
+                  type="checkbox"
+                  name="isHidden"
+                  checked={isHidden}
+                  onChange={(e) => setIsHidden(e.target.checked)}
+                />
+                Hidden (exclude from model registry)
+              </label>
             </div>
 
             {/* Pricing tiers */}

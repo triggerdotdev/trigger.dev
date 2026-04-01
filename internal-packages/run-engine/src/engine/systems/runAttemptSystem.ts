@@ -402,6 +402,7 @@ export class RunAttemptSystem {
                   status: "EXECUTING",
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
+                  isWarmStart: isWarmStart ?? false,
                 },
                 select: {
                   id: true,

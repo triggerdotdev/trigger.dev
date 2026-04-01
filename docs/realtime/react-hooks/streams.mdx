@@ -1,14 +1,13 @@
 ---
-title: Streams hooks
-sidebarTitle: Streams
-description: Subscribe to real-time streams from your tasks in React components
+title: "Stream data to React (AI, files, progress)"
+sidebarTitle: "Streaming"
+description: "Display AI/LLM output token by token, stream file chunks, or pipe any continuous data from a background task into your React components."
 ---
 
-These hooks allow you to consume real-time streams from your tasks. Streams are useful for displaying AI/LLM outputs as they're generated, or any other real-time data from your tasks.
+**Display AI responses as they generate, stream file processing results, or pipe any continuous data from a running task into your React components.** Unlike [progress and status hooks](/realtime/react-hooks/subscribe) (which track run state), streaming hooks give you the raw data your task produces while it runs.
 
 <Note>
-  To learn how to emit streams from your tasks, see our [Realtime Streams](/tasks/streams)
-  documentation.
+  To learn how to emit streams from your tasks, see [Streaming data from tasks](/tasks/streams).
 </Note>
 
 ## useRealtimeStream (Recommended)
@@ -151,7 +150,7 @@ const { parts, error } = useRealtimeStream<string>(runId, {
 });
 ```
 
-For more information on defining and using streams, see the [Realtime Streams](/tasks/streams) documentation.
+For more information on defining and using streams, see the [Streaming data from tasks](/tasks/streams) documentation.
 
 ## useInputStreamSend
 
@@ -430,3 +429,21 @@ export function MyComponent({
 All other options (accessToken, baseURL, enabled, id) work the same as the other realtime hooks.
 
 For the newer `useRealtimeStream` hook, use the `throttleInMs` option instead (see [options above](#options)).
+
+## Frequently asked questions
+
+### How do I stream AI/LLM responses from a background task to React?
+
+Define a typed stream in your task with `streams.define<string>()`, pipe your AI SDK response to it with `.pipe()`, then consume it in your component with `useRealtimeStream`. See [Streaming data from tasks](/tasks/streams) for the task-side setup.
+
+### What's the difference between streaming and run updates?
+
+[Run updates](/realtime/react-hooks/subscribe) track **run state** (status, metadata, tags). Streaming (this page) pipes **continuous data** your task produces. Use run updates for progress bars and status badges. Use streaming for AI chat output, live logs, or file processing results. You can use both at the same time.
+
+### Can I send data back into a running task from React?
+
+Yes. Use the `useInputStreamSend` hook to send data into a running task's input stream. This is useful for cancel buttons, user approvals, or any interactive flow. See [Input Streams](/tasks/streams#input-streams) for the full guide.
+
+### Do streams work with the Vercel AI SDK?
+
+Yes. You can pipe a Vercel AI SDK `streamText` response directly into a Trigger.dev stream using `.pipe()`. The [Streaming data from tasks](/tasks/streams) page has a complete AI streaming example.

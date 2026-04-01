@@ -540,24 +540,8 @@ export const DeploymentTriggeredVia = z
 
 export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
 
-export const TriggerSource = z
-  .enum(["sdk", "api", "dashboard", "cli", "mcp", "schedule"])
-  .or(anyString);
-
-export type TriggerSource = z.infer<typeof TriggerSource>;
-
-export const TriggerAction = z.enum(["trigger", "replay", "test"]).or(anyString);
-
-export type TriggerAction = z.infer<typeof TriggerAction>;
-
-export const RunAnnotations = z.object({
-  triggerSource: TriggerSource,
-  triggerAction: TriggerAction,
-  rootTriggerSource: TriggerSource,
-  rootScheduleId: z.string().optional(),
-});
-
-export type RunAnnotations = z.infer<typeof RunAnnotations>;
+// TriggerSource, TriggerAction, and RunAnnotations are defined in runEngine.ts
+// They are re-exported through the schemas barrel (index.ts)
 
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
@@ -804,6 +788,8 @@ export const DeploymentEventFromString = z
 
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
+  /** Present on `/api/v2/packets` PUT (upload handshake); omitted on v1 GET download presign. */
+  storagePath: z.string().optional(),
 });
 
 export const WorkersListResponseBody = z

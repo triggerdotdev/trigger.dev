@@ -319,6 +319,9 @@ export class DeliverAlertService extends BaseService {
 
         break;
       }
+      case "ERROR_GROUP": {
+        break;
+      }
       default: {
         assertNever(alert.type);
       }
@@ -657,6 +660,9 @@ export class DeliverAlertService extends BaseService {
 
         break;
       }
+      case "ERROR_GROUP": {
+        break;
+      }
       default: {
         assertNever(alert.type);
       }
@@ -912,6 +918,9 @@ export class DeliverAlertService extends BaseService {
 
           return;
         }
+      }
+      case "ERROR_GROUP": {
+        break;
       }
       default: {
         assertNever(alert.type);

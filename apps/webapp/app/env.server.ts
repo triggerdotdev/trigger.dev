@@ -333,6 +333,11 @@ const EnvironmentSchema = z
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
 
+    // Compute gateway (template creation during deploy finalize)
+    COMPUTE_GATEWAY_URL: z.string().optional(),
+    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
+    COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
+
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
@@ -344,10 +349,17 @@ const EnvironmentSchema = z
       .default(60 * 1000 * 15), // 15 minutes
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
+    OBJECT_STORE_BUCKET: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
     OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     OBJECT_STORE_REGION: z.string().optional(),
     OBJECT_STORE_SERVICE: z.string().default("s3"),
+
+    // Protocol to use for new uploads (e.g., "s3", "r2"). Data without protocol uses default provider above.
+    // If specified, you must configure the corresponding provider using OBJECT_STORE_{PROTOCOL}_* env vars.
+    // Example: OBJECT_STORE_DEFAULT_PROTOCOL=s3 requires OBJECT_STORE_S3_BASE_URL, OBJECT_STORE_S3_ACCESS_KEY_ID, etc.
+    // Enables zero-downtime migration between providers (old data keeps working, new data uses new provider).
+    OBJECT_STORE_DEFAULT_PROTOCOL: z.string().regex(/^[a-z0-9]+$/).optional(),
 
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
@@ -1222,6 +1234,12 @@ const EnvironmentSchema = z
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
 
+    // AI features (Prompts, Models, AI Metrics sidebar section)
+    AI_FEATURES_ENABLED: z.string().default("0"),
+
+    // AI Models feature (Models sidebar item within AI section)
+    AI_MODELS_ENABLED: z.string().default("0"),
+
     // Logs page ClickHouse URL (for logs queries)
     LOGS_CLICKHOUSE_URL: z
       .string()
@@ -1379,6 +1397,10 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
+
+    // Private connections
+    PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
+    PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

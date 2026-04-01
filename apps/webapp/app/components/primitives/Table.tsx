@@ -431,7 +431,7 @@ export const TableCellMenu = forwardRef<
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
     visibleButtons?: ReactNode;
     hiddenButtons?: ReactNode;
-    popoverContent?: ReactNode;
+    popoverContent?: ReactNode | ((close: () => void) => ReactNode);
     children?: ReactNode;
     isSelected?: boolean;
   }
@@ -451,6 +451,8 @@ export const TableCellMenu = forwardRef<
   ) => {
     const [isOpen, setIsOpen] = useState(false);
     const { variant } = useContext(TableContext);
+    const resolvedContent =
+      typeof popoverContent === "function" ? popoverContent(() => setIsOpen(false)) : popoverContent;
 
     return (
       <TableCell
@@ -486,8 +488,8 @@ export const TableCellMenu = forwardRef<
             {/* Always visible buttons  */}
             {visibleButtons}
             {/* Always visible popover with ellipsis trigger */}
-            {popoverContent && (
-              <Popover onOpenChange={(open) => setIsOpen(open)}>
+            {resolvedContent && (
+              <Popover open={isOpen} onOpenChange={(open) => setIsOpen(open)}>
                 <PopoverVerticalEllipseTrigger
                   isOpen={isOpen}
                   className="duration-0 group-hover/table-row:text-text-bright"
@@ -496,7 +498,11 @@ export const TableCellMenu = forwardRef<
                   className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
                   align="end"
                 >
-                  <div className="flex flex-col gap-1 p-1">{popoverContent}</div>
+                  {typeof popoverContent === "function" ? (
+                    resolvedContent
+                  ) : (
+                    <div className="flex flex-col gap-1 p-1">{resolvedContent}</div>
+                  )}
                 </PopoverContent>
               </Popover>
             )}

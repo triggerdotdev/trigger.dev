@@ -55,6 +55,7 @@ import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
@@ -275,7 +276,7 @@ function SpanBody({
               className="size-5 min-h-5 min-w-5"
             />
             <Header2 className={cn("overflow-x-hidden")}>
-              <SpanTitle {...span} size="large" hideAccessory />
+              <SpanTitle {...span} size="large" hideAccessory overrideDimmed />
             </Header2>
           </div>
           {runParam && closePanel && (
@@ -289,17 +290,6 @@ function SpanBody({
             />
           )}
         </div>
-        {isAiInspector && (
-          <div className="flex items-center gap-3 pb-1.5 pl-6 text-xs text-text-dimmed">
-            <DateTime date={span.startTime} includeSeconds />
-            {span.duration != null && (
-              <>
-                <span className="text-charcoal-600">/</span>
-                <span className="text-text-bright">{formatSpanDuration(span.duration)}</span>
-              </>
-            )}
-          </div>
-        )}
       </div>
       {isAiInspector ? (
         <SpanEntity span={span} />
@@ -320,6 +310,7 @@ function formatSpanDuration(nanoseconds: number): string {
   const secs = ((ms % 60_000) / 1000).toFixed(0);
   return `${mins}m ${secs}s`;
 }
+
 
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
   if (!spanOverrides) {
@@ -1426,17 +1417,39 @@ function SpanEntity({ span }: { span: Span }) {
           aiData={span.entity.object}
           promptVersionData={span.entity.promptVersionData}
           rawProperties={typeof span.properties === "string" ? span.properties : span.properties != null ? JSON.stringify(span.properties, null, 2) : undefined}
+          startTime={span.startTime}
+          duration={span.duration}
         />
       );
     }
     case "ai-tool-call": {
-      return <AIToolCallSpanDetails data={span.entity.object} />;
+      return (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3">
+            <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
+          </div>
+          <AIToolCallSpanDetails data={span.entity.object} />
+        </div>
+      );
     }
     case "ai-embed": {
-      return <AIEmbedSpanDetails data={span.entity.object} />;
+      return (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3">
+            <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
+          </div>
+          <AIEmbedSpanDetails data={span.entity.object} />
+        </div>
+      );
     }
     case "prompt": {
-      return <PromptSpanDetails promptData={span.entity.object} />;
+      return (
+        <PromptSpanDetails
+          promptData={span.entity.object}
+          startTime={span.startTime}
+          duration={span.duration}
+        />
+      );
     }
     default: {
       assertNever(span.entity);

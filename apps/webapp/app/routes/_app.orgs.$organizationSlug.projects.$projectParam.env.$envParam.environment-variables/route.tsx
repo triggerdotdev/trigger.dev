@@ -256,7 +256,7 @@ export default function Page() {
   const { filterText, setFilterText, filteredItems } =
     useFuzzyFilter<EnvironmentVariableWithSetValues>({
       items: environmentVariables,
-      keys: ["key", "value"],
+      keys: ["key", "value", "environment.type", "environment.branchName"],
     });
 
   // Add isFirst and isLast to each environment variable

@@ -191,11 +191,6 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const ttl =
-        typeof body.options?.ttl === "number"
-          ? stringifyDuration(body.options?.ttl)
-          : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
-
       // Get parent run if specified
       const parentRun = body.options?.parentRunId
         ? await this.prisma.taskRun.findFirst({
@@ -251,10 +246,23 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
-        triggerRequest,
-        lockedToBackgroundWorker ?? undefined
-      );
+      const { queueName, lockedQueueId, taskTtl } =
+        await this.queueConcern.resolveQueueProperties(
+          triggerRequest,
+          lockedToBackgroundWorker ?? undefined
+        );
+
+      // Resolve TTL with precedence: per-trigger > task-level > dev default
+      let ttl: string | undefined;
+
+      if (body.options?.ttl !== undefined) {
+        ttl =
+          typeof body.options.ttl === "number"
+            ? stringifyDuration(body.options.ttl)
+            : body.options.ttl;
+      } else {
+        ttl = taskTtl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      }
 
       if (!options.skipChecks) {
         const queueSizeGuard = await this.queueConcern.validateQueueLimits(
@@ -264,7 +272,9 @@ export class RunEngineTriggerTaskService {
 
         if (!queueSizeGuard.ok) {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            undefined,
+            "warn"
           );
         }
       }
@@ -288,7 +298,12 @@ export class RunEngineTriggerTaskService {
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
+      const workerQueueResult = await this.queueConcern.getWorkerQueue(
+        environment,
+        body.options?.region
+      );
+      const workerQueue = workerQueueResult?.masterQueue;
+      const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
       // Build annotations for this run
       const triggerSource = options.triggerSource ?? "api";
@@ -342,6 +357,7 @@ export class RunEngineTriggerTaskService {
                 queue: queueName,
                 lockedQueueId,
                 workerQueue,
+                enableFastPath,
                 isTest: body.options?.test ?? false,
                 delayUntil,
                 queuedAt: delayUntil ? undefined : new Date(),

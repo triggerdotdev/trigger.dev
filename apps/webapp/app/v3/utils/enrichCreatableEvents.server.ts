@@ -1,6 +1,7 @@
+import { modelCatalog } from "@internal/llm-model-catalog";
 import type { CreateEventInput, LlmMetricsData } from "../eventRepository/eventRepository.types";
 
-// Registry interface — matches ModelPricingRegistry from @internal/llm-pricing
+// Registry interface — matches ModelPricingRegistry from @internal/llm-model-catalog
 type CostRegistry = {
   isLoaded: boolean;
   calculateCost(
@@ -183,6 +184,7 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     genAiSystem: typeof props["gen_ai.system"] === "string" ? props["gen_ai.system"] : "unknown",
     requestModel: typeof props["gen_ai.request.model"] === "string" ? props["gen_ai.request.model"] : responseModel,
     responseModel,
+    baseResponseModel: modelCatalog[responseModel]?.baseModelName ?? responseModel,
     matchedModelId: cost?.matchedModelId ?? "",
     operationId,
     finishReason,

@@ -26,7 +26,7 @@ import { getV3EventRepository } from "../eventRepository/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
-import { uploadPacketToObjectStore } from "../r2.server";
+import { uploadPacketToObjectStore } from "../objectStore.server";
 import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
@@ -134,7 +134,9 @@ export class TriggerTaskServiceV1 extends BaseService {
 
         if (!queueSizeGuard.isWithinLimits) {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            undefined,
+            "warn"
           );
         }
       }
@@ -754,10 +756,10 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
-        data: filename,
+        data: uploadedFilename,
         dataType: "application/store",
       };
     });

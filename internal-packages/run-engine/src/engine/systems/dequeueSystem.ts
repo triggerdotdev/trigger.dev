@@ -1,7 +1,7 @@
 import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
-import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { DequeuedMessage, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -495,6 +495,7 @@ export class DequeueSystem {
               const billingResult = await this.options.billingCache.getCurrentPlan(orgId);
 
               let isPaying: boolean;
+              let hasPrivateLink: boolean | undefined;
               if (billingResult.err || !billingResult.val) {
                 // Fallback to stored planType on TaskRun if billing cache fails or returns no value
                 this.$.logger.warn(
@@ -513,6 +514,7 @@ export class DequeueSystem {
                 isPaying = (lockedTaskRun.planType ?? "free") !== "free";
               } else {
                 isPaying = billingResult.val.isPaying;
+                hasPrivateLink = billingResult.val.hasPrivateLink;
               }
 
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
@@ -575,6 +577,7 @@ export class DequeueSystem {
                   // Keeping this for backwards compatibility, but really this should be called workerQueue
                   masterQueue: lockedTaskRun.workerQueue,
                   traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+                  annotations: RunAnnotations.safeParse(lockedTaskRun.annotations).data,
                 },
                 environment: {
                   id: lockedTaskRun.runtimeEnvironment.id,
@@ -582,6 +585,7 @@ export class DequeueSystem {
                 },
                 organization: {
                   id: orgId,
+                  hasPrivateLink,
                 },
                 project: {
                   id: lockedTaskRun.projectId,
