@@ -23,14 +23,17 @@ export function formatModelCost(dollars: number): string {
   return `$${dollars.toFixed(2)}`;
 }
 
-/** Format a capability slug from SCREAMING_CASE to Title Case. */
-export function formatCapability(cap: string): string {
-  return cap
+/** Format a feature slug (snake_case) to Title Case. */
+export function formatFeature(slug: string): string {
+  return slug
     .toLowerCase()
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+/** @deprecated Use formatFeature instead. */
+export const formatCapability = formatFeature;
 
 /** Capitalize a provider name. */
 export function formatProviderName(provider: string): string {

@@ -1,24 +1,49 @@
 import {
   AdjustmentsHorizontalIcon,
-  ListBulletIcon,
-  MagnifyingGlassIcon,
-  Squares2X2Icon,
+  CheckIcon,
+  CubeIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { Link, type MetaFunction, useNavigate } from "@remix-run/react";
+import * as Ariakit from "@ariakit/react";
+import { Form, type MetaFunction, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  AnthropicIcon,
+  AzureIcon,
+  CerebrasIcon,
+  DeepseekIcon,
+  GeminiIcon,
+  LlamaIcon,
+  MistralIcon,
+  OpenAIIcon,
+  PerplexityIcon,
+  XAIIcon,
+} from "~/assets/icons/AiProviderIcons";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Checkbox } from "~/components/primitives/Checkbox";
+import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import * as Property from "~/components/primitives/PropertyTable";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { SearchInput } from "~/components/primitives/SearchInput";
+import { Switch } from "~/components/primitives/Switch";
 import {
   SelectProvider,
-  SelectTrigger,
   SelectPopover,
   SelectList,
   SelectItem,
@@ -31,12 +56,15 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { appliedSummary } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type ModelCatalogItem,
+  type ModelComparisonItem,
   type PopularModel,
   ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
@@ -45,18 +73,20 @@ import { requireUserId } from "~/services/session.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import {
-  EnvironmentParamSchema,
-  v3ModelComparePath,
-  v3ModelDetailPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ModelComparePath } from "~/utils/pathBuilder";
 import {
   formatModelPrice,
   formatTokenCount,
-  formatCapability,
+  formatFeature,
   formatProviderName,
+  formatModelCost,
 } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
+import { Spinner } from "~/components/primitives/Spinner";
+import { MetricWidget } from "~/routes/resources.metric";
+import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+
+import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Models | Trigger.dev" }];
@@ -84,32 +114,37 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const popularModels = await presenter.getPopularModels(sevenDaysAgo, now, 50);
 
   const allProviders = catalog.map((g) => g.provider);
-  const allCapabilities = Array.from(
-    new Set(catalog.flatMap((g) => g.models.flatMap((m) => m.capabilities)))
+  const allFeatures = Array.from(
+    new Set(catalog.flatMap((g) => g.models.flatMap((m) => m.features)))
   ).sort();
 
-  return typedjson({ catalog, popularModels, allProviders, allCapabilities });
+  return typedjson({
+    catalog,
+    popularModels,
+    allProviders,
+    allFeatures,
+    organizationId: project.organizationId,
+    projectId: project.id,
+    environmentId: environment.id,
+  });
 };
 
-// --- Helpers ---
+const providerIcons: Record<string, (props: { className?: string }) => JSX.Element> = {
+  openai: OpenAIIcon,
+  anthropic: AnthropicIcon,
+  google: GeminiIcon,
+  meta: LlamaIcon,
+  mistral: MistralIcon,
+  deepseek: DeepseekIcon,
+  xai: XAIIcon,
+  perplexity: PerplexityIcon,
+  cerebras: CerebrasIcon,
+  azure: AzureIcon,
+};
 
-const FEATURE_OPTIONS = [
-  { value: "structuredOutput", label: "Structured Output" },
-  { value: "parallelToolCalls", label: "Parallel Tool Calls" },
-  { value: "streamingToolCalls", label: "Streaming Tool Calls" },
-] as const;
-
-type FeatureKey = (typeof FEATURE_OPTIONS)[number]["value"];
-
-function modelMatchesFeature(model: ModelCatalogItem, feature: FeatureKey): boolean {
-  switch (feature) {
-    case "structuredOutput":
-      return model.supportsStructuredOutput;
-    case "parallelToolCalls":
-      return model.supportsParallelToolCalls;
-    case "streamingToolCalls":
-      return model.supportsStreamingToolCalls;
-  }
+function providerIcon(slug: string) {
+  const Icon = providerIcons[slug] ?? CubeIcon;
+  return <Icon className="size-4" />;
 }
 
 // --- Filter Components ---
@@ -117,245 +152,177 @@ function modelMatchesFeature(model: ModelCatalogItem, feature: FeatureKey): bool
 function ProviderFilter({ providers }: { providers: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("providers");
+  const hasFilter = selected.length > 0;
 
   return (
-    <>
-      <SelectProvider value={selected} setValue={(v) => replace({ providers: v })}>
-        <SelectTrigger variant="minimal/small" tooltipTitle="Filter by provider">
-          {selected.length === 0 ? (
-            <span className="flex items-center gap-1 text-xs text-text-dimmed">
-              <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-              Provider
-            </span>
-          ) : null}
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {providers.map((p) => (
-              <SelectItem key={p} value={p}>
-                {formatProviderName(p)}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-      {selected.length > 0 && (
+    <SelectProvider value={selected} setValue={(v) => replace({ providers: v })}>
+      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
         <AppliedFilter
-          label="Provider"
-          value={appliedSummary(selected.map(formatProviderName))!}
+          icon={<CubeIcon className="size-4" />}
+          label={hasFilter ? "Provider" : undefined}
+          value={hasFilter ? appliedSummary(selected.map(formatProviderName))! : "Provider"}
+          valueClassName={hasFilter ? undefined : "text-text-bright"}
+          removable={hasFilter}
           onRemove={() => del("providers")}
         />
-      )}
-    </>
+      </Ariakit.Select>
+      <SelectPopover>
+        <SelectList>
+          {providers.map((p) => (
+            <SelectItem key={p} value={p} icon={providerIcon(p)}>
+              {formatProviderName(p)}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 
-function CapabilityFilter({ capabilities }: { capabilities: string[] }) {
-  const { values, replace, del } = useSearchParams();
-  const selected = values("capabilities");
-
-  return (
-    <>
-      <SelectProvider value={selected} setValue={(v) => replace({ capabilities: v })}>
-        <SelectTrigger variant="minimal/small" tooltipTitle="Filter by capability">
-          {selected.length === 0 ? (
-            <span className="flex items-center gap-1 text-xs text-text-dimmed">
-              <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-              Capability
-            </span>
-          ) : null}
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {capabilities.map((c) => (
-              <SelectItem key={c} value={c}>
-                {formatCapability(c)}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-      {selected.length > 0 && (
-        <AppliedFilter
-          label="Capability"
-          value={appliedSummary(selected.map(formatCapability))!}
-          onRemove={() => del("capabilities")}
-        />
-      )}
-    </>
-  );
-}
-
-function FeaturesFilter() {
+function FeaturesFilter({ features }: { features: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("features");
+  const hasFilter = selected.length > 0;
 
   return (
-    <>
-      <SelectProvider value={selected} setValue={(v) => replace({ features: v })}>
-        <SelectTrigger variant="minimal/small" tooltipTitle="Filter by feature support">
-          {selected.length === 0 ? (
-            <span className="flex items-center gap-1 text-xs text-text-dimmed">
-              <AdjustmentsHorizontalIcon className="h-3.5 w-3.5" />
-              Features
-            </span>
-          ) : null}
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {FEATURE_OPTIONS.map((f) => (
-              <SelectItem key={f.value} value={f.value}>
-                {f.label}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-      {selected.length > 0 && (
+    <SelectProvider value={selected} setValue={(v) => replace({ features: v })}>
+      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
         <AppliedFilter
-          label="Features"
-          value={
-            appliedSummary(
-              selected.map((s) => FEATURE_OPTIONS.find((f) => f.value === s)?.label ?? s)
-            )!
-          }
+          icon={<AdjustmentsHorizontalIcon className="size-4" />}
+          label={hasFilter ? "Features" : undefined}
+          value={hasFilter ? appliedSummary(selected.map(formatFeature))! : "Features"}
+          valueClassName={hasFilter ? undefined : "text-text-bright"}
+          removable={hasFilter}
           onRemove={() => del("features")}
         />
-      )}
-    </>
+      </Ariakit.Select>
+      <SelectPopover>
+        <SelectList>
+          {features.map((f) => (
+            <SelectItem key={f} value={f}>
+              {formatFeature(f)}
+            </SelectItem>
+          ))}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
   );
 }
 
-// --- Model Card ---
+// --- Filters Bar ---
 
-function ModelCard({
-  model,
-  popular,
-  onToggleCompare,
-  isSelected,
+function FiltersBar({
+  allProviders,
+  allFeatures,
+  compareSet,
+  onCompare,
+  showAllDetails,
+  onToggleAllDetails,
 }: {
-  model: ModelCatalogItem;
-  popular?: PopularModel;
-  onToggleCompare: (modelName: string) => void;
-  isSelected: boolean;
+  allProviders: string[];
+  allFeatures: string[];
+  compareSet: Set<string>;
+  onCompare: () => void;
+  showAllDetails: boolean;
+  onToggleAllDetails: (checked: boolean) => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const detailPath = v3ModelDetailPath(organization, project, environment, model.friendlyId);
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const hasFilters =
+    searchParams.has("providers") || searchParams.has("features") || searchParams.has("search");
+
+  const compareDisabled = compareSet.size < 2;
 
   return (
-    <div className="group relative flex flex-col gap-2.5 rounded-md border border-grid-dimmed bg-background-bright p-4 transition-colors hover:border-grid-bright">
-      <div className="absolute right-3 top-3" onClick={(e) => e.stopPropagation()}>
-        <Checkbox
-          checked={isSelected}
-          onChange={() => onToggleCompare(model.modelName)}
-          title="Select for comparison"
+    <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
+      <div className="flex flex-row flex-wrap items-center gap-2">
+        <ProviderFilter providers={allProviders} />
+        <FeaturesFilter features={allFeatures} />
+        <SearchInput placeholder="Search models…" />
+        {hasFilters && (
+          <Form className="-ml-1 h-6">
+            <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+          </Form>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <Button
+          variant="secondary/small"
+          disabled={compareDisabled}
+          className="px-1.5"
+          tooltip={compareDisabled ? "Choose 2–4 models to compare" : "Compare selected models"}
+          onClick={compareDisabled ? undefined : onCompare}
+        >
+          <span className="flex items-center overflow-hidden">
+            <span className={!compareDisabled ? "text-text-bright" : undefined}>Compare</span>
+            <AnimatePresence initial={false}>
+              {compareSet.size >= 2 && (
+                <motion.span
+                  key="badge"
+                  initial={{ width: 0, marginLeft: 0, opacity: 0 }}
+                  animate={{ width: "auto", marginLeft: 4, opacity: 1 }}
+                  exit={{ width: 0, marginLeft: 0, opacity: 0 }}
+                  transition={{ duration: 0.15, ease: "easeInOut" }}
+                  className="inline-flex"
+                >
+                  <Badge variant="rounded">{compareSet.size}</Badge>
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </span>
+        </Button>
+        <Switch
+          variant="secondary/small"
+          label="All details"
+          checked={showAllDetails}
+          onCheckedChange={onToggleAllDetails}
         />
       </div>
-
-      <Link to={detailPath} className="text-sm font-medium text-text-bright hover:underline">
-        {model.displayId}
-      </Link>
-
-      {model.description && (
-        <p className="line-clamp-2 text-xs text-text-dimmed">{model.description}</p>
-      )}
-
-      <div className="flex items-center gap-4 text-xs tabular-nums text-text-dimmed">
-        <span title="Input price per 1M tokens">
-          {formatModelPrice(model.inputPrice)}/1M in
-        </span>
-        <span title="Output price per 1M tokens">
-          {formatModelPrice(model.outputPrice)}/1M out
-        </span>
-        {model.contextWindow && (
-          <span title="Context window">{formatTokenCount(model.contextWindow)} ctx</span>
-        )}
-      </div>
-
-      {model.capabilities.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {model.capabilities.map((cap) => (
-            <Badge key={cap} variant="outline-rounded">
-              {formatCapability(cap)}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center gap-3 text-xs tabular-nums text-text-dimmed">
-        {popular && popular.callCount > 0 && (
-          <span>{formatNumberCompact(popular.callCount)} calls (7d)</span>
-        )}
-        {popular && popular.ttfcP50 > 0 && (
-          <span title="p50 time to first chunk">{popular.ttfcP50.toFixed(0)}ms TTFC</span>
-        )}
-      </div>
-
-      {model.variants.length > 0 && <VariantsDropdown variants={model.variants} />}
-    </div>
-  );
-}
-
-function VariantsDropdown({ variants }: { variants: ModelCatalogItem["variants"] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  return (
-    <div>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1 text-xs text-text-dimmed hover:text-text-bright"
-      >
-        <span
-          className={`inline-block text-[10px] transition-transform ${isOpen ? "rotate-90" : ""}`}
-        >
-          &#9654;
-        </span>
-        {variants.length} version{variants.length !== 1 ? "s" : ""}
-      </button>
-      {isOpen && (
-        <div className="mt-1.5 space-y-0.5 border-l border-charcoal-700 pl-3">
-          {variants.map((v) => (
-            <Link
-              key={v.friendlyId}
-              to={v3ModelDetailPath(organization, project, environment, v.friendlyId)}
-              className="block text-xs text-text-dimmed hover:text-text-bright"
-            >
-              {v.modelName}
-              {v.releaseDate && (
-                <span className="ml-1.5 text-charcoal-500">{v.releaseDate}</span>
-              )}
-            </Link>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
 // --- Models Table ---
 
-function ModelsTable({
+function BooleanCell({ value, onClick }: { value: boolean; onClick: () => void }) {
+  return (
+    <TableCell onClick={onClick} alignment="center">
+      {value ? (
+        <CheckIcon className="size-4 text-text-dimmed group-hover/table-row:text-text-bright" />
+      ) : null}
+    </TableCell>
+  );
+}
+
+function ModelsList({
   models,
   popularMap,
   compareSet,
   onToggleCompare,
+  showAllDetails,
+  allFeatures,
+  selectedModelId,
+  onSelectModel,
 }: {
   models: ModelCatalogItem[];
   popularMap: Map<string, PopularModel>;
   compareSet: Set<string>;
   onToggleCompare: (modelName: string) => void;
+  showAllDetails: boolean;
+  allFeatures: string[];
+  selectedModelId: string | null;
+  onSelectModel: (model: ModelCatalogItem) => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
+  if (models.length === 0) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <p className="text-center text-sm text-text-dimmed">No models match your filters.</p>
+      </div>
+    );
+  }
 
   return (
-    <Table containerClassName="border-t-0">
+    <Table containerClassName="max-h-full" showTopBorder={false}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell className="w-8" />
@@ -364,42 +331,74 @@ function ModelsTable({
           <TableHeaderCell alignment="right">Input $/1M</TableHeaderCell>
           <TableHeaderCell alignment="right">Output $/1M</TableHeaderCell>
           <TableHeaderCell alignment="right">Context</TableHeaderCell>
+          {showAllDetails && (
+            <>
+              <TableHeaderCell alignment="right">Max output</TableHeaderCell>
+              <TableHeaderCell>Release date</TableHeaderCell>
+              {allFeatures.map((f) => (
+                <TableHeaderCell key={f} alignment="center">
+                  {formatFeature(f)}
+                </TableHeaderCell>
+              ))}
+            </>
+          )}
           <TableHeaderCell alignment="right">p50 TTFC</TableHeaderCell>
           <TableHeaderCell alignment="right">Calls (7d)</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
         {models.map((model) => {
-          const path = v3ModelDetailPath(organization, project, environment, model.friendlyId);
           const popular = popularMap.get(model.modelName);
+          const select = () => onSelectModel(model);
           return (
-            <TableRow key={model.friendlyId}>
+            <TableRow key={model.friendlyId} isSelected={selectedModelId === model.friendlyId}>
               <TableCell>
                 <Checkbox
                   checked={compareSet.has(model.modelName)}
                   onChange={() => onToggleCompare(model.modelName)}
+                  disabled={compareSet.size >= 4 && !compareSet.has(model.modelName)}
                 />
               </TableCell>
-              <TableCell to={path} isTabbableCell>
-                <span className="font-medium text-text-bright">{model.displayId}</span>
+              <TableCell onClick={select} isTabbableCell>
+                {model.displayId}
               </TableCell>
-              <TableCell to={path}>{formatProviderName(model.provider)}</TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell onClick={select}>
+                <span className="flex items-center gap-1.5">
+                  {providerIcon(model.provider)}
+                  {formatProviderName(model.provider)}
+                </span>
+              </TableCell>
+              <TableCell onClick={select} alignment="right" className="tabular-nums">
                 {formatModelPrice(model.inputPrice)}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell onClick={select} alignment="right" className="tabular-nums">
                 {formatModelPrice(model.outputPrice)}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              <TableCell onClick={select} alignment="right" className="tabular-nums">
                 {formatTokenCount(model.contextWindow)}
               </TableCell>
-              <TableCell to={path} alignment="right">
+              {showAllDetails && (
+                <>
+                  <TableCell onClick={select} alignment="right" className="tabular-nums">
+                    {formatTokenCount(model.maxOutputTokens)}
+                  </TableCell>
+                  <TableCell onClick={select}>
+                    {model.releaseDate ? (
+                      <DateTime date={model.releaseDate} includeTime={false} />
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  {allFeatures.map((f) => (
+                    <BooleanCell key={f} value={model.features.includes(f)} onClick={select} />
+                  ))}
+                </>
+              )}
+              <TableCell onClick={select} alignment="right" className="tabular-nums">
                 {popular && popular.ttfcP50 > 0 ? `${popular.ttfcP50.toFixed(0)}ms` : "—"}
               </TableCell>
-              <TableCell to={path} alignment="right">
-                {popular && popular.callCount > 0
-                  ? formatNumberCompact(popular.callCount)
-                  : "—"}
+              <TableCell onClick={select} alignment="right" className="tabular-nums">
+                {popular && popular.callCount > 0 ? formatNumberCompact(popular.callCount) : "—"}
               </TableCell>
             </TableRow>
           );
@@ -409,30 +408,697 @@ function ModelsTable({
   );
 }
 
-// --- Main Page ---
+// --- Compare Dialog ---
 
-export default function ModelsPage() {
-  const { catalog, popularModels, allProviders, allCapabilities } =
-    useTypedLoaderData<typeof loader>();
+type ComparisonRow = {
+  label: string;
+  values: React.ReactNode[];
+  bestIndex?: number;
+};
+
+function buildComparisonRows(
+  models: string[],
+  catalogModels: ModelCatalogItem[],
+  comparison: ModelComparisonItem[]
+): ComparisonRow[] {
+  const catalogMap = new Map<string, ModelCatalogItem>();
+  for (const item of catalogModels) {
+    catalogMap.set(item.modelName, item);
+  }
+
+  const dataMap = new Map<string, ModelComparisonItem>();
+  for (const item of comparison) {
+    dataMap.set(item.responseModel, item);
+  }
+
+  const allFeatures = Array.from(
+    new Set(models.flatMap((m) => catalogMap.get(m)?.features ?? []))
+  ).sort();
+
+  const getCatalog = (model: string) => catalogMap.get(model);
+  const getMetric = (model: string, key: keyof ModelComparisonItem) => {
+    const d = dataMap.get(model);
+    return d ? d[key] : 0;
+  };
+
+  const findBest = (values: number[], lowerIsBetter: boolean) => {
+    if (values.every((v) => v === 0)) return undefined;
+    const filtered = values.map((v, i) => ({ v, i })).filter(({ v }) => v > 0);
+    if (filtered.length === 0) return undefined;
+    const best = lowerIsBetter
+      ? filtered.reduce((a, b) => (a.v < b.v ? a : b))
+      : filtered.reduce((a, b) => (a.v > b.v ? a : b));
+    return best.i;
+  };
+
+  const inputPrices = models.map((m) => getCatalog(m)?.inputPrice ?? 0);
+  const outputPrices = models.map((m) => getCatalog(m)?.outputPrice ?? 0);
+  const contextWindows = models.map((m) => getCatalog(m)?.contextWindow ?? 0);
+  const maxOutputs = models.map((m) => getCatalog(m)?.maxOutputTokens ?? 0);
+  const callValues = models.map((m) => Number(getMetric(m, "callCount")));
+  const ttfcP50Values = models.map((m) => Number(getMetric(m, "ttfcP50")));
+  const ttfcP90Values = models.map((m) => Number(getMetric(m, "ttfcP90")));
+  const tpsP50Values = models.map((m) => Number(getMetric(m, "tpsP50")));
+  const tpsP90Values = models.map((m) => Number(getMetric(m, "tpsP90")));
+  const costValues = models.map((m) => Number(getMetric(m, "totalCost")));
+
+  return [
+    {
+      label: "Provider",
+      values: models.map((m) => {
+        const c = getCatalog(m);
+        const slug = c?.provider ?? dataMap.get(m)?.genAiSystem;
+        if (!slug) return "—";
+        return (
+          <span className="flex items-center gap-1.5">
+            {providerIcon(slug)}
+            {formatProviderName(slug)}
+          </span>
+        );
+      }),
+    },
+    {
+      label: "Input $/1M",
+      values: models.map((m) => formatModelPrice(getCatalog(m)?.inputPrice ?? null)),
+      bestIndex: findBest(inputPrices, true),
+    },
+    {
+      label: "Output $/1M",
+      values: models.map((m) => formatModelPrice(getCatalog(m)?.outputPrice ?? null)),
+      bestIndex: findBest(outputPrices, true),
+    },
+    {
+      label: "Context window",
+      values: models.map((m) => formatTokenCount(getCatalog(m)?.contextWindow ?? null)),
+      bestIndex: findBest(contextWindows, false),
+    },
+    {
+      label: "Max output",
+      values: models.map((m) => formatTokenCount(getCatalog(m)?.maxOutputTokens ?? null)),
+      bestIndex: findBest(maxOutputs, false),
+    },
+    {
+      label: "Release date",
+      values: models.map((m) => {
+        const c = getCatalog(m);
+        return c?.releaseDate
+          ? new Date(c.releaseDate).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "—";
+      }),
+    },
+    ...allFeatures.map((feature) => ({
+      label: formatFeature(feature),
+      values: models.map((m) =>
+        getCatalog(m)?.features.includes(feature) ? (
+          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
+        ) : (
+          "—"
+        )
+      ),
+    })),
+    {
+      label: "Total calls (7d)",
+      values: callValues.map((v) => formatNumberCompact(v)),
+      bestIndex: findBest(callValues, false),
+    },
+    {
+      label: "p50 TTFC",
+      values: ttfcP50Values.map((v) => (v > 0 ? `${v.toFixed(0)}ms` : "—")),
+      bestIndex: findBest(ttfcP50Values, true),
+    },
+    {
+      label: "p90 TTFC",
+      values: ttfcP90Values.map((v) => (v > 0 ? `${v.toFixed(0)}ms` : "—")),
+      bestIndex: findBest(ttfcP90Values, true),
+    },
+    {
+      label: "Tokens/sec (p50)",
+      values: tpsP50Values.map((v) => (v > 0 ? v.toFixed(0) : "—")),
+      bestIndex: findBest(tpsP50Values, false),
+    },
+    {
+      label: "Tokens/sec (p90)",
+      values: tpsP90Values.map((v) => (v > 0 ? v.toFixed(0) : "—")),
+      bestIndex: findBest(tpsP90Values, false),
+    },
+    {
+      label: "Total cost (7d)",
+      values: costValues.map((v) => (v > 0 ? formatModelCost(v) : "—")),
+      bestIndex: findBest(costValues, true),
+    },
+  ];
+}
+
+function CompareDialog({
+  open,
+  onOpenChange,
+  models,
+  catalogModels,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  models: string[];
+  catalogModels: ModelCatalogItem[];
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const navigate = useNavigate();
-  const searchParams = useSearchParams();
+  const fetcher = useFetcher<typeof compareLoader>();
 
-  const view = searchParams.value("view") ?? "cards";
-  const search = searchParams.value("search") ?? "";
-  const selectedProviders = searchParams.values("providers");
-  const selectedCapabilities = searchParams.values("capabilities");
-  const selectedFeatures = searchParams.values("features") as FeatureKey[];
+  const comparison = (fetcher.data as { comparison?: ModelComparisonItem[] } | undefined)
+    ?.comparison;
+  const rows = useMemo(
+    () => buildComparisonRows(models, catalogModels, comparison ?? []),
+    [comparison, models, catalogModels]
+  );
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only fires on open; other deps are stable per dialog mount
+  useEffect(() => {
+    if (open && models.length >= 2) {
+      const params = models.join(",");
+      fetcher.load(`${v3ModelComparePath(organization, project, environment)}?models=${params}`);
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!w-fit !px-0 !pb-0 sm:!max-w-[90vw]">
+        <DialogHeader className="px-4">
+          <DialogTitle>Compare models</DialogTitle>
+        </DialogHeader>
+        {rows.length > 0 ? (
+          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>Metric</TableHeaderCell>
+                  {models.map((model) => (
+                    <TableHeaderCell key={model} alignment="right">
+                      {model}
+                    </TableHeaderCell>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.label}>
+                    <TableCell>
+                      <span className="text-xs font-medium text-text-dimmed group-hover/table-row:text-text-bright">
+                        {row.label}
+                      </span>
+                    </TableCell>
+                    {row.values.map((value, i) => (
+                      <TableCell key={i} alignment="right">
+                        <div
+                          className={`flex items-center justify-end tabular-nums ${
+                            row.bestIndex === i
+                              ? "font-medium text-success/70 group-hover/table-row:text-success"
+                              : "text-text-dimmed group-hover/table-row:text-text-bright"
+                          }`}
+                        >
+                          {value}
+                        </div>
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-12 text-sm text-text-dimmed">
+            No comparison data available for these models.
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --- Model Detail Panel ---
+
+function escapeTSQL(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+function bignumberConfig(
+  column: string,
+  opts?: { aggregation?: "sum" | "avg" | "first"; suffix?: string; abbreviate?: boolean }
+): QueryWidgetConfig {
+  return {
+    type: "bignumber",
+    column,
+    aggregation: opts?.aggregation ?? "sum",
+    abbreviate: opts?.abbreviate ?? false,
+    suffix: opts?.suffix,
+  };
+}
+
+function chartConfig(opts: {
+  chartType: "bar" | "line";
+  xAxisColumn: string;
+  yAxisColumns: string[];
+  aggregation?: "sum" | "avg";
+}): QueryWidgetConfig {
+  return {
+    type: "chart",
+    chartType: opts.chartType,
+    xAxisColumn: opts.xAxisColumn,
+    yAxisColumns: opts.yAxisColumns,
+    groupByColumn: null,
+    stacked: false,
+    sortByColumn: null,
+    sortDirection: "asc",
+    aggregation: opts.aggregation ?? "sum",
+  };
+}
+
+type DetailTab = "overview" | "global" | "usage";
+
+function ModelDetailPanel({
+  model,
+  organizationId,
+  projectId,
+  environmentId,
+  onClose,
+}: {
+  model: ModelCatalogItem;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  onClose: () => void;
+}) {
+  const [tab, setTab] = useState<DetailTab>("overview");
+
+  return (
+    <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
+        <Header2 className="truncate text-text-bright">{model.displayId}</Header2>
+        <Button
+          onClick={onClose}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
+          shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-1"
+        />
+      </div>
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <TabContainer>
+          <TabButton
+            isActive={tab === "overview"}
+            layoutId="model-detail"
+            onClick={() => setTab("overview")}
+            shortcut={{ key: "o" }}
+          >
+            Overview
+          </TabButton>
+          <TabButton
+            isActive={tab === "global"}
+            layoutId="model-detail"
+            onClick={() => setTab("global")}
+            shortcut={{ key: "g" }}
+          >
+            Global metrics
+          </TabButton>
+          <TabButton
+            isActive={tab === "usage"}
+            layoutId="model-detail"
+            onClick={() => setTab("usage")}
+            shortcut={{ key: "u" }}
+          >
+            Your usage
+          </TabButton>
+        </TabContainer>
+      </div>
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        {tab === "overview" && <DetailOverviewTab model={model} />}
+        {tab === "global" && (
+          <DetailGlobalMetricsTab
+            modelName={model.modelName}
+            organizationId={organizationId}
+            projectId={projectId}
+            environmentId={environmentId}
+          />
+        )}
+        {tab === "usage" && (
+          <DetailYourUsageTab
+            modelName={model.modelName}
+            organizationId={organizationId}
+            projectId={projectId}
+            environmentId={environmentId}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailOverviewTab({ model }: { model: ModelCatalogItem }) {
+  return (
+    <div className="flex flex-col gap-4 py-3">
+      <Property.Table>
+        <Property.Item>
+          <Property.Label>Provider</Property.Label>
+          <Property.Value>{formatProviderName(model.provider)}</Property.Value>
+        </Property.Item>
+        <Property.Item>
+          <Property.Label>Model name</Property.Label>
+          <Property.Value>
+            <InlineCode variant="small">{model.modelName}</InlineCode>
+          </Property.Value>
+        </Property.Item>
+        {model.description && (
+          <Property.Item>
+            <Property.Label>Description</Property.Label>
+            <Property.Value>{model.description}</Property.Value>
+          </Property.Item>
+        )}
+        <Property.Item>
+          <Property.Label>Input price</Property.Label>
+          <Property.Value className="tabular-nums">
+            {formatModelPrice(model.inputPrice)} / 1M tokens
+          </Property.Value>
+        </Property.Item>
+        <Property.Item>
+          <Property.Label>Output price</Property.Label>
+          <Property.Value className="tabular-nums">
+            {formatModelPrice(model.outputPrice)} / 1M tokens
+          </Property.Value>
+        </Property.Item>
+        {model.contextWindow && (
+          <Property.Item>
+            <Property.Label>Context window</Property.Label>
+            <Property.Value className="tabular-nums">
+              {formatTokenCount(model.contextWindow)} tokens
+            </Property.Value>
+          </Property.Item>
+        )}
+        {model.maxOutputTokens && (
+          <Property.Item>
+            <Property.Label>Max output tokens</Property.Label>
+            <Property.Value className="tabular-nums">
+              {formatTokenCount(model.maxOutputTokens)} tokens
+            </Property.Value>
+          </Property.Item>
+        )}
+        {model.releaseDate && (
+          <Property.Item>
+            <Property.Label>Release date</Property.Label>
+            <Property.Value>
+              <DateTime date={model.releaseDate} includeTime={false} />
+            </Property.Value>
+          </Property.Item>
+        )}
+      </Property.Table>
+
+      {model.features.length > 0 && (
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Features</Property.Label>
+            <Property.Value>
+              <div className="flex flex-col gap-0.5">
+                {model.features.map((f) => (
+                  <div key={f} className="mt-1 flex items-center gap-1">
+                    <CheckIcon className="size-4 text-text-dimmed" />
+                    <span className="text-text-dimmed">{formatFeature(f)}</span>
+                  </div>
+                ))}
+              </div>
+            </Property.Value>
+          </Property.Item>
+        </Property.Table>
+      )}
+
+      {model.variants.length > 0 && (
+        <>
+          <Header2>Variants</Header2>
+          <Property.Table>
+            {model.variants.map((v) => (
+              <Property.Item key={v.friendlyId}>
+                <Property.Label>{v.displayId}</Property.Label>
+                <Property.Value>
+                  {v.releaseDate ? <DateTime date={v.releaseDate} includeTime={false} /> : "—"}
+                </Property.Value>
+              </Property.Item>
+            ))}
+          </Property.Table>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DetailGlobalMetricsTab({
+  modelName,
+  organizationId,
+  projectId,
+  environmentId,
+}: {
+  modelName: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+}) {
+  const widgetProps = {
+    organizationId,
+    projectId,
+    environmentId,
+    scope: "environment" as const,
+    period: "7d",
+    from: null,
+    to: null,
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-3">
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-calls`}
+          title="Total calls"
+          query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("total_calls", { abbreviate: true })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-ttfc-p50`}
+          title="p50 TTFC"
+          query={`SELECT round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("ttfc_p50", { aggregation: "avg", suffix: "ms" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-ttfc-p90`}
+          title="p90 TTFC"
+          query={`SELECT round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("ttfc_p90", { aggregation: "avg", suffix: "ms" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-tps`}
+          title="Tokens/sec (p50)"
+          query={`SELECT round(quantilesMerge(0.5)(tps_quantiles)[1], 0) AS tps_p50 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("tps_p50", { aggregation: "avg" })}
+          {...widgetProps}
+        />
+      </div>
+
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-calls-time`}
+          title="Calls over time"
+          query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "bar",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["calls"],
+          })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-ttfc-time`}
+          title="TTFC over time"
+          query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "line",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["ttfc_p50", "ttfc_p90"],
+            aggregation: "avg",
+          })}
+          {...widgetProps}
+        />
+      </div>
+
+      <Callout variant="info">
+        Aggregated across all Trigger.dev users. No tenant-specific data is exposed.
+      </Callout>
+    </div>
+  );
+}
+
+function DetailYourUsageTab({
+  modelName,
+  organizationId,
+  projectId,
+  environmentId,
+}: {
+  modelName: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+}) {
+  const widgetProps = {
+    organizationId,
+    projectId,
+    environmentId,
+    scope: "environment" as const,
+    period: "7d",
+    from: null,
+    to: null,
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-3">
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-calls`}
+          title="Your calls"
+          query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("total_calls", { abbreviate: true })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-cost`}
+          title="Your cost"
+          query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("total_cost", { aggregation: "sum" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-ttfc`}
+          title="Avg TTFC"
+          query={`SELECT round(avg(ms_to_first_chunk), 0) AS avg_ttfc FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' AND ms_to_first_chunk > 0`}
+          config={bignumberConfig("avg_ttfc", { aggregation: "avg", suffix: "ms" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-tps`}
+          title="Avg tokens/sec"
+          query={`SELECT round(avg(tokens_per_second), 0) AS avg_tps FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' AND tokens_per_second > 0`}
+          config={bignumberConfig("avg_tps", { aggregation: "avg" })}
+          {...widgetProps}
+        />
+      </div>
+
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-cost-time`}
+          title="Cost over time"
+          query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "bar",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["cost"],
+          })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-tokens-time`}
+          title="Tokens over time"
+          query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "bar",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["input_tokens", "output_tokens"],
+          })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-tasks`}
+          title="Cost by task"
+          query={`SELECT task_identifier, count() AS calls, sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY task_identifier ORDER BY cost DESC LIMIT 20`}
+          config={{ type: "table", prettyFormatting: true, sorting: [] }}
+          {...widgetProps}
+        />
+      </div>
+    </div>
+  );
+}
+
+// --- Main Page ---
+
+export default function ModelsPage() {
+  const {
+    catalog,
+    popularModels,
+    allProviders,
+    allFeatures,
+    organizationId,
+    projectId,
+    environmentId,
+  } = useTypedLoaderData<typeof loader>();
+  const { values: searchValues, value: searchValue } = useSearchParams();
+
+  const search = searchValue("search") ?? "";
+  const selectedProviders = searchValues("providers");
+  const selectedFeatures = searchValues("features");
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
+  const [showAllDetails, setShowAllDetails] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelCatalogItem | null>(null);
 
   const popularMap = useMemo(() => {
     const map = new Map<string, PopularModel>();
     for (const m of popularModels) {
-      // Index by raw response_model
       map.set(m.responseModel, m);
-      // Also index by model name without provider prefix (e.g. "openai/gpt-4o" → "gpt-4o")
       if (m.responseModel.includes("/")) {
         map.set(m.responseModel.split("/").slice(1).join("/"), m);
       }
@@ -440,33 +1106,17 @@ export default function ModelsPage() {
     return map;
   }, [popularModels]);
 
-  const filteredCatalog = useMemo(() => {
+  const filteredModels = useMemo(() => {
     return catalog
-      .map((group) => ({
-        ...group,
-        models: group.models.filter((m) => {
-          if (search && !m.displayId.toLowerCase().includes(search.toLowerCase())) return false;
-          if (selectedProviders.length > 0 && !selectedProviders.includes(m.provider)) return false;
-          if (
-            selectedCapabilities.length > 0 &&
-            !selectedCapabilities.every((c) => m.capabilities.includes(c))
-          )
-            return false;
-          if (
-            selectedFeatures.length > 0 &&
-            !selectedFeatures.every((f) => modelMatchesFeature(m, f))
-          )
-            return false;
-          return true;
-        }),
-      }))
-      .filter((group) => group.models.length > 0);
-  }, [catalog, search, selectedProviders, selectedCapabilities, selectedFeatures]);
-
-  const allFilteredModels = useMemo(
-    () => filteredCatalog.flatMap((g) => g.models),
-    [filteredCatalog]
-  );
+      .flatMap((group) => group.models)
+      .filter((m) => {
+        if (search && !m.displayId.toLowerCase().includes(search.toLowerCase())) return false;
+        if (selectedProviders.length > 0 && !selectedProviders.includes(m.provider)) return false;
+        if (selectedFeatures.length > 0 && !selectedFeatures.every((f) => m.features.includes(f)))
+          return false;
+        return true;
+      });
+  }, [catalog, search, selectedProviders, selectedFeatures]);
 
   const toggleCompare = (modelName: string) => {
     setCompareSet((prev) => {
@@ -480,118 +1130,61 @@ export default function ModelsPage() {
     });
   };
 
-  const hasActiveFilters =
-    selectedProviders.length > 0 ||
-    selectedCapabilities.length > 0 ||
-    selectedFeatures.length > 0;
+  const compareModels = useMemo(() => Array.from(compareSet), [compareSet]);
+  const allModels = useMemo(() => catalog.flatMap((g) => g.models), [catalog]);
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="Models" />
-        <PageAccessories>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-dimmed" />
-              <Input
-                placeholder="Search models..."
-                value={search}
-                onChange={(e) => searchParams.replace({ search: e.target.value || undefined })}
-                variant="small"
-                className="pl-8"
-                fullWidth={false}
+      </NavBar>
+      <PageBody scrollable={false}>
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="models-main" min="100px">
+            <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+              <FiltersBar
+                allProviders={allProviders}
+                allFeatures={allFeatures}
+                compareSet={compareSet}
+                onCompare={() => setCompareOpen(true)}
+                showAllDetails={showAllDetails}
+                onToggleAllDetails={(checked) => setShowAllDetails(checked)}
+              />
+              <ModelsList
+                models={filteredModels}
+                popularMap={popularMap}
+                compareSet={compareSet}
+                onToggleCompare={toggleCompare}
+                showAllDetails={showAllDetails}
+                allFeatures={allFeatures}
+                selectedModelId={selectedModel?.friendlyId ?? null}
+                onSelectModel={setSelectedModel}
               />
             </div>
-
-            <div className="flex items-center overflow-hidden rounded-sm border border-charcoal-700">
-              <button
-                onClick={() => searchParams.replace({ view: "cards" })}
-                className={`p-1.5 transition-colors ${view === "cards" ? "bg-charcoal-700 text-text-bright" : "text-text-dimmed hover:text-text-bright"}`}
-              >
-                <Squares2X2Icon className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => searchParams.replace({ view: "table" })}
-                className={`p-1.5 transition-colors ${view === "table" ? "bg-charcoal-700 text-text-bright" : "text-text-dimmed hover:text-text-bright"}`}
-              >
-                <ListBulletIcon className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        </PageAccessories>
-      </NavBar>
-      <PageBody scrollable>
-        {/* Filter bar */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-grid-dimmed px-4 py-2">
-          <ProviderFilter providers={allProviders} />
-          <CapabilityFilter capabilities={allCapabilities} />
-          <FeaturesFilter />
-          {hasActiveFilters && (
-            <Button
-              variant="minimal/small"
-              onClick={() => searchParams.del(["providers", "capabilities", "features"])}
-            >
-              Clear all
-            </Button>
+          </ResizablePanel>
+          {selectedModel && (
+            <>
+              <ResizableHandle id="models-handle" />
+              <ResizablePanel id="model-detail" min="300px" default="420px" max="600px">
+                <ModelDetailPanel
+                  key={selectedModel.friendlyId}
+                  model={selectedModel}
+                  organizationId={organizationId}
+                  projectId={projectId}
+                  environmentId={environmentId}
+                  onClose={() => setSelectedModel(null)}
+                />
+              </ResizablePanel>
+            </>
           )}
-        </div>
-
-        {/* Compare bar */}
-        {compareSet.size >= 2 && (
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-grid-dimmed bg-background-dimmed px-4 py-2">
-            <span className="text-sm text-text-dimmed">{compareSet.size} models selected</span>
-            <div className="flex items-center gap-2">
-              <Button variant="tertiary/small" onClick={() => setCompareSet(new Set())}>
-                Clear
-              </Button>
-              <Button
-                variant="primary/small"
-                onClick={() => {
-                  const params = Array.from(compareSet).join(",");
-                  navigate(
-                    `${v3ModelComparePath(organization, project, environment)}?models=${params}`
-                  );
-                }}
-              >
-                Compare ({compareSet.size})
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {view === "cards" ? (
-          <div className="space-y-6 p-4">
-            {filteredCatalog.map((group) => (
-              <div key={group.provider}>
-                <Header2 className="mb-3">{formatProviderName(group.provider)}</Header2>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {group.models.map((model) => (
-                    <ModelCard
-                      key={model.friendlyId}
-                      model={model}
-                      popular={popularMap.get(model.modelName)}
-                      onToggleCompare={toggleCompare}
-                      isSelected={compareSet.has(model.modelName)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-            {filteredCatalog.length === 0 && (
-              <p className="py-8 text-center text-sm text-text-dimmed">
-                No models match your filters.
-              </p>
-            )}
-          </div>
-        ) : (
-          <ModelsTable
-            models={allFilteredModels}
-            popularMap={popularMap}
-            compareSet={compareSet}
-            onToggleCompare={toggleCompare}
-          />
-        )}
+        </ResizablePanelGroup>
       </PageBody>
+      <CompareDialog
+        open={compareOpen}
+        onOpenChange={setCompareOpen}
+        models={compareModels}
+        catalogModels={allModels}
+      />
     </PageContainer>
   );
 }

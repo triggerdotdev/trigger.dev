@@ -42,7 +42,7 @@ import {
   formatModelPrice,
   formatTokenCount,
   formatModelCost,
-  formatCapability,
+  formatFeature,
   formatProviderName,
 } from "~/utils/modelFormatters";
 
@@ -312,14 +312,14 @@ function OverviewTab({
                 </Property.Value>
               </Property.Item>
             )}
-            {model.capabilities.length > 0 && (
+            {model.features.length > 0 && (
               <Property.Item>
-                <Property.Label>Capabilities</Property.Label>
+                <Property.Label>Features</Property.Label>
                 <Property.Value>
                   <div className="flex flex-wrap gap-1">
-                    {model.capabilities.map((cap) => (
-                      <Badge key={cap} variant="outline-rounded">
-                        {formatCapability(cap)}
+                    {model.features.map((f) => (
+                      <Badge key={f} variant="outline-rounded">
+                        {formatFeature(f)}
                       </Badge>
                     ))}
                   </div>
