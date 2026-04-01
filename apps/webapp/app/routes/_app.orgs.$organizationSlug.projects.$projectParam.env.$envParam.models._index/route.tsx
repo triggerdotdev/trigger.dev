@@ -60,7 +60,7 @@ import { EnvironmentParamSchema, v3ModelComparePath } from "~/utils/pathBuilder"
 import {
   formatModelPrice,
   formatTokenCount,
-  formatCapability,
+  formatFeature,
   formatProviderName,
   formatModelCost,
 } from "~/utils/modelFormatters";
@@ -97,41 +97,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const popularModels = await presenter.getPopularModels(sevenDaysAgo, now, 50);
 
   const allProviders = catalog.map((g) => g.provider);
-  const allCapabilities = Array.from(
-    new Set(catalog.flatMap((g) => g.models.flatMap((m) => m.capabilities)))
+  const allFeatures = Array.from(
+    new Set(catalog.flatMap((g) => g.models.flatMap((m) => m.features)))
   ).sort();
 
   return typedjson({
     catalog,
     popularModels,
     allProviders,
-    allCapabilities,
+    allFeatures,
     organizationId: project.organizationId,
     projectId: project.id,
     environmentId: environment.id,
   });
 };
-
-// --- Helpers ---
-
-const FEATURE_OPTIONS = [
-  { value: "structuredOutput", label: "Structured output" },
-  { value: "parallelToolCalls", label: "Parallel tool calls" },
-  { value: "streamingToolCalls", label: "Streaming tool calls" },
-] as const;
-
-type FeatureKey = (typeof FEATURE_OPTIONS)[number]["value"];
-
-function modelMatchesFeature(model: ModelCatalogItem, feature: FeatureKey): boolean {
-  switch (feature) {
-    case "structuredOutput":
-      return model.supportsStructuredOutput;
-    case "parallelToolCalls":
-      return model.supportsParallelToolCalls;
-    case "streamingToolCalls":
-      return model.supportsStreamingToolCalls;
-  }
-}
 
 // --- Filter Components ---
 
@@ -170,42 +149,7 @@ function ProviderFilter({ providers }: { providers: string[] }) {
   );
 }
 
-function CapabilityFilter({ capabilities }: { capabilities: string[] }) {
-  const { values, replace, del } = useSearchParams();
-  const selected = values("capabilities");
-
-  return (
-    <>
-      <SelectProvider value={selected} setValue={(v) => replace({ capabilities: v })}>
-        <SelectTrigger
-          icon={<AdjustmentsHorizontalIcon className="size-4" />}
-          variant="secondary/small"
-          tooltipTitle="Filter by capability"
-        >
-          <span className="ml-0.5">Capability</span>
-        </SelectTrigger>
-        <SelectPopover>
-          <SelectList>
-            {capabilities.map((c) => (
-              <SelectItem key={c} value={c}>
-                {formatCapability(c)}
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-      {selected.length > 0 && (
-        <AppliedFilter
-          label="Capability"
-          value={appliedSummary(selected.map(formatCapability))!}
-          onRemove={() => del("capabilities")}
-        />
-      )}
-    </>
-  );
-}
-
-function FeaturesFilter() {
+function FeaturesFilter({ features }: { features: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("features");
 
@@ -215,15 +159,15 @@ function FeaturesFilter() {
         <SelectTrigger
           icon={<AdjustmentsHorizontalIcon className="size-4" />}
           variant="secondary/small"
-          tooltipTitle="Filter by feature support"
+          tooltipTitle="Filter by feature"
         >
           <span className="ml-0.5">Features</span>
         </SelectTrigger>
         <SelectPopover>
           <SelectList>
-            {FEATURE_OPTIONS.map((f) => (
-              <SelectItem key={f.value} value={f.value}>
-                {f.label}
+            {features.map((f) => (
+              <SelectItem key={f} value={f}>
+                {formatFeature(f)}
               </SelectItem>
             ))}
           </SelectList>
@@ -232,11 +176,7 @@ function FeaturesFilter() {
       {selected.length > 0 && (
         <AppliedFilter
           label="Features"
-          value={
-            appliedSummary(
-              selected.map((s) => FEATURE_OPTIONS.find((f) => f.value === s)?.label ?? s)
-            )!
-          }
+          value={appliedSummary(selected.map(formatFeature))!}
           onRemove={() => del("features")}
         />
       )}
@@ -248,14 +188,14 @@ function FeaturesFilter() {
 
 function FiltersBar({
   allProviders,
-  allCapabilities,
+  allFeatures,
   compareSet,
   onCompare,
   showAllDetails,
   onToggleAllDetails,
 }: {
   allProviders: string[];
-  allCapabilities: string[];
+  allFeatures: string[];
   compareSet: Set<string>;
   onCompare: () => void;
   showAllDetails: boolean;
@@ -265,7 +205,6 @@ function FiltersBar({
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
     searchParams.has("providers") ||
-    searchParams.has("capabilities") ||
     searchParams.has("features") ||
     searchParams.has("search");
 
@@ -275,8 +214,7 @@ function FiltersBar({
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
       <div className="flex flex-row flex-wrap items-center gap-2">
         <ProviderFilter providers={allProviders} />
-        <CapabilityFilter capabilities={allCapabilities} />
-        <FeaturesFilter />
+        <FeaturesFilter features={allFeatures} />
         <SearchInput placeholder="Search models…" />
         {hasFilters && (
           <Form className="h-6">
@@ -339,6 +277,7 @@ function ModelsList({
   compareSet,
   onToggleCompare,
   showAllDetails,
+  allFeatures,
   selectedModelId,
   onSelectModel,
 }: {
@@ -347,6 +286,7 @@ function ModelsList({
   compareSet: Set<string>;
   onToggleCompare: (modelName: string) => void;
   showAllDetails: boolean;
+  allFeatures: string[];
   selectedModelId: string | null;
   onSelectModel: (model: ModelCatalogItem) => void;
 }) {
@@ -371,11 +311,12 @@ function ModelsList({
           {showAllDetails && (
             <>
               <TableHeaderCell alignment="right">Max output</TableHeaderCell>
-              <TableHeaderCell>Capabilities</TableHeaderCell>
               <TableHeaderCell>Release date</TableHeaderCell>
-              <TableHeaderCell alignment="center">Structured output</TableHeaderCell>
-              <TableHeaderCell alignment="center">Parallel tools</TableHeaderCell>
-              <TableHeaderCell alignment="center">Streaming tools</TableHeaderCell>
+              {allFeatures.map((f) => (
+                <TableHeaderCell key={f} alignment="center">
+                  {formatFeature(f)}
+                </TableHeaderCell>
+              ))}
             </>
           )}
           <TableHeaderCell alignment="right">p50 TTFC</TableHeaderCell>
@@ -414,20 +355,15 @@ function ModelsList({
                     {formatTokenCount(model.maxOutputTokens)}
                   </TableCell>
                   <TableCell onClick={select}>
-                    {model.capabilities.length > 0
-                      ? model.capabilities.map(formatCapability).join(", ")
-                      : "—"}
-                  </TableCell>
-                  <TableCell onClick={select}>
                     {model.releaseDate ? (
                       <DateTime date={model.releaseDate} includeTime={false} />
                     ) : (
                       "—"
                     )}
                   </TableCell>
-                  <BooleanCell value={model.supportsStructuredOutput} onClick={select} />
-                  <BooleanCell value={model.supportsParallelToolCalls} onClick={select} />
-                  <BooleanCell value={model.supportsStreamingToolCalls} onClick={select} />
+                  {allFeatures.map((f) => (
+                    <BooleanCell key={f} value={model.features.includes(f)} onClick={select} />
+                  ))}
                 </>
               )}
               <TableCell onClick={select} alignment="right" className="tabular-nums">
@@ -466,6 +402,10 @@ function buildComparisonRows(
   for (const item of comparison) {
     dataMap.set(item.responseModel, item);
   }
+
+  const allFeatures = Array.from(
+    new Set(models.flatMap((m) => catalogMap.get(m)?.features ?? []))
+  ).sort();
 
   const getCatalog = (model: string) => catalogMap.get(model);
   const getMetric = (model: string, key: keyof ModelComparisonItem) => {
@@ -523,15 +463,6 @@ function buildComparisonRows(
       bestIndex: findBest(maxOutputs, false),
     },
     {
-      label: "Capabilities",
-      values: models.map((m) => {
-        const c = getCatalog(m);
-        return c && c.capabilities.length > 0
-          ? c.capabilities.map(formatCapability).join(", ")
-          : "—";
-      }),
-    },
-    {
       label: "Release date",
       values: models.map((m) => {
         const c = getCatalog(m);
@@ -544,36 +475,16 @@ function buildComparisonRows(
           : "—";
       }),
     },
-    {
-      label: "Structured output",
+    ...allFeatures.map((feature) => ({
+      label: formatFeature(feature),
       values: models.map((m) =>
-        getCatalog(m)?.supportsStructuredOutput ? (
+        getCatalog(m)?.features.includes(feature) ? (
           <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
         ) : (
           "—"
         )
       ),
-    },
-    {
-      label: "Parallel tools",
-      values: models.map((m) =>
-        getCatalog(m)?.supportsParallelToolCalls ? (
-          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
-        ) : (
-          "—"
-        )
-      ),
-    },
-    {
-      label: "Streaming tools",
-      values: models.map((m) =>
-        getCatalog(m)?.supportsStreamingToolCalls ? (
-          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
-        ) : (
-          "—"
-        )
-      ),
-    },
+    })),
     {
       label: "Total calls (7d)",
       values: callValues.map((v) => formatNumberCompact(v)),
@@ -859,20 +770,6 @@ function DetailOverviewTab({ model }: { model: ModelCatalogItem }) {
             </Property.Value>
           </Property.Item>
         )}
-        {model.capabilities.length > 0 && (
-          <Property.Item>
-            <Property.Label>Capabilities</Property.Label>
-            <Property.Value>
-              <div className="flex flex-wrap gap-1">
-                {model.capabilities.map((cap) => (
-                  <Badge key={cap} variant="outline-rounded">
-                    {formatCapability(cap)}
-                  </Badge>
-                ))}
-              </div>
-            </Property.Value>
-          </Property.Item>
-        )}
         {model.releaseDate && (
           <Property.Item>
             <Property.Label>Release date</Property.Label>
@@ -883,31 +780,23 @@ function DetailOverviewTab({ model }: { model: ModelCatalogItem }) {
         )}
       </Property.Table>
 
-      <Property.Table>
-        <Property.Item>
-          <Property.Label>Features</Property.Label>
-          <Property.Value>
-            <div className="flex flex-col gap-0.5">
-              {(
-                [
-                  ["Structured output", model.supportsStructuredOutput],
-                  ["Parallel tool calls", model.supportsParallelToolCalls],
-                  ["Streaming tool calls", model.supportsStreamingToolCalls],
-                ] as const
-              ).map(([label, supported]) => (
-                <div key={label} className="mt-1 flex items-center gap-1">
-                  {supported ? (
+      {model.features.length > 0 && (
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Features</Property.Label>
+            <Property.Value>
+              <div className="flex flex-col gap-0.5">
+                {model.features.map((f) => (
+                  <div key={f} className="mt-1 flex items-center gap-1">
                     <CheckIcon className="size-4 text-text-dimmed" />
-                  ) : (
-                    <XMarkIcon className="-mx-0.5 size-4 text-text-dimmed" />
-                  )}
-                  <span className="text-text-dimmed">{label}</span>
-                </div>
-              ))}
-            </div>
-          </Property.Value>
-        </Property.Item>
-      </Property.Table>
+                    <span className="text-text-dimmed">{formatFeature(f)}</span>
+                  </div>
+                ))}
+              </div>
+            </Property.Value>
+          </Property.Item>
+        </Property.Table>
+      )}
 
       {model.variants.length > 0 && (
         <>
@@ -1155,7 +1044,7 @@ export default function ModelsPage() {
     catalog,
     popularModels,
     allProviders,
-    allCapabilities,
+    allFeatures,
     organizationId,
     projectId,
     environmentId,
@@ -1164,8 +1053,7 @@ export default function ModelsPage() {
 
   const search = searchValue("search") ?? "";
   const selectedProviders = searchValues("providers");
-  const selectedCapabilities = searchValues("capabilities");
-  const selectedFeatures = searchValues("features") as FeatureKey[];
+  const selectedFeatures = searchValues("features");
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
   const [showAllDetails, setShowAllDetails] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -1189,18 +1077,13 @@ export default function ModelsPage() {
         if (search && !m.displayId.toLowerCase().includes(search.toLowerCase())) return false;
         if (selectedProviders.length > 0 && !selectedProviders.includes(m.provider)) return false;
         if (
-          selectedCapabilities.length > 0 &&
-          !selectedCapabilities.every((c) => m.capabilities.includes(c))
-        )
-          return false;
-        if (
           selectedFeatures.length > 0 &&
-          !selectedFeatures.every((f) => modelMatchesFeature(m, f))
+          !selectedFeatures.every((f) => m.features.includes(f))
         )
           return false;
         return true;
       });
-  }, [catalog, search, selectedProviders, selectedCapabilities, selectedFeatures]);
+  }, [catalog, search, selectedProviders, selectedFeatures]);
 
   const toggleCompare = (modelName: string) => {
     setCompareSet((prev) => {
@@ -1228,7 +1111,7 @@ export default function ModelsPage() {
             <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
               <FiltersBar
                 allProviders={allProviders}
-                allCapabilities={allCapabilities}
+                allFeatures={allFeatures}
                 compareSet={compareSet}
                 onCompare={() => setCompareOpen(true)}
                 showAllDetails={showAllDetails}
@@ -1240,6 +1123,7 @@ export default function ModelsPage() {
                 compareSet={compareSet}
                 onToggleCompare={toggleCompare}
                 showAllDetails={showAllDetails}
+                allFeatures={allFeatures}
                 selectedModelId={selectedModel?.friendlyId ?? null}
                 onSelectModel={setSelectedModel}
               />
