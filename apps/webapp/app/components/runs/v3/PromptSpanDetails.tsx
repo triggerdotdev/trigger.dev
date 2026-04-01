@@ -1,5 +1,6 @@
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Header3 } from "~/components/primitives/Headers";
 import { TextLink } from "~/components/primitives/TextLink";
 import { tryPrettyJson } from "./ai/aiHelpers";
@@ -11,16 +12,6 @@ import { v3PromptPath } from "~/utils/pathBuilder";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import type { PromptSpanData } from "~/presenters/v3/SpanPresenter.server";
 import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
-
-const StreamdownRenderer = lazy(() =>
-  import("streamdown").then((mod) => ({
-    default: ({ children }: { children: string }) => (
-      <mod.ShikiThemeContext.Provider value={["one-dark-pro", "one-dark-pro"]}>
-        <mod.Streamdown isAnimating={false}>{children}</mod.Streamdown>
-      </mod.ShikiThemeContext.Provider>
-    ),
-  }))
-);
 
 type PromptTab = "overview" | "input" | "template";
 
