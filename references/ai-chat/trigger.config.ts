@@ -10,6 +10,10 @@ export default defineConfig({
   dirs: ["./src/trigger"],
   maxDuration: 3600,
   runtime: "node-22",
+  processKeepAlive: {
+    enabled: true,
+    maxExecutionsPerProcess: 50,
+  },
   build: {
     extensions: [
       prismaExtension({

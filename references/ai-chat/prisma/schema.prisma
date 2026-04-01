@@ -12,6 +12,7 @@ model User {
   name           String
   plan           String     @default("free") // "free" | "pro"
   preferredModel String?
+  githubToken    String?
   messageCount   Int        @default(0)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt

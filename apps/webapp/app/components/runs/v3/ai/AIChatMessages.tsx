@@ -5,23 +5,13 @@ import {
   ClipboardDocumentIcon,
   CodeBracketSquareIcon,
 } from "@heroicons/react/20/solid";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import type { DisplayItem, ToolUse } from "./types";
-
-// Lazy load streamdown to avoid SSR issues
-const StreamdownRenderer = lazy(() =>
-  import("streamdown").then((mod) => ({
-    default: ({ children }: { children: string }) => (
-      <mod.ShikiThemeContext.Provider value={["one-dark-pro", "one-dark-pro"]}>
-        <mod.Streamdown isAnimating={false}>{children}</mod.Streamdown>
-      </mod.ShikiThemeContext.Provider>
-    ),
-  }))
-);
 
 export type PromptLink = {
   slug: string;

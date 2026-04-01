@@ -184,7 +184,7 @@ const radius = "0.5rem";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./app/**/*.{ts,jsx,tsx}"],
+  content: ["./app/**/*.{ts,jsx,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   theme: {
     container: {
       center: true,

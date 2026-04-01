@@ -373,6 +373,10 @@ export class TestTaskPresenter {
           ),
         };
       }
+      case "AGENT": {
+        // AGENT tasks are filtered out by TestPresenter and shouldn't reach here
+        return { foundTask: false };
+      }
       default: {
         return task.triggerSource satisfies never;
       }

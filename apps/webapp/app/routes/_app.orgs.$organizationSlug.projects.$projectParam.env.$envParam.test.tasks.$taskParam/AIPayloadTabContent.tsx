@@ -1,8 +1,9 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion } from "framer-motion";
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { Button } from "~/components/primitives/Buttons";
+import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -10,16 +11,6 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-
-const StreamdownRenderer = lazy(() =>
-  import("streamdown").then((mod) => ({
-    default: ({ children, isAnimating }: { children: string; isAnimating: boolean }) => (
-      <mod.ShikiThemeContext.Provider value={["one-dark-pro", "one-dark-pro"]}>
-        <mod.Streamdown isAnimating={isAnimating}>{children}</mod.Streamdown>
-      </mod.ShikiThemeContext.Provider>
-    ),
-  }))
-);
 
 type StreamEventType =
   | { type: "thinking"; content: string }
