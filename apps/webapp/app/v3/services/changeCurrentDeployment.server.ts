@@ -10,7 +10,6 @@ import {
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
-import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
@@ -175,17 +174,6 @@ export class ChangeCurrentDeploymentService extends BaseService {
       });
     }
 
-    // Only V1 engine workers need the WAITING_FOR_DEPLOY drain — V2 runs sit
-    // in PENDING_VERSION and are handled out of band, so enqueuing here for V2
-    // just produces empty scans of the TaskRun status index.
-    const worker = await this._prisma.backgroundWorker.findFirst({
-      where: { id: deployment.workerId },
-      select: { engine: true },
-    });
-
-    if (worker?.engine === "V1") {
-      await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
-    }
   }
 
   async #syncSchedulesForDeployment(deployment: WorkerDeployment) {
