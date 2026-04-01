@@ -14,13 +14,15 @@ import {
   Select,
   SelectItem,
 } from "~/components/primitives/Select";
+import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
+import { requireUser } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -28,25 +30,43 @@ export const meta: MetaFunction = () => {
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
     throw new Response(undefined, { status: 404, statusText: "Project not found" });
   }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
   if (!environment) {
     throw new Response(undefined, { status: 404, statusText: "Environment not found" });
   }
 
-  const agents = await playgroundPresenter.listAgents({
-    environmentId: environment.id,
-    environmentType: environment.type,
-  });
+  const [agents, backgroundWorkers, regionsResult] = await Promise.all([
+    playgroundPresenter.listAgents({
+      environmentId: environment.id,
+      environmentType: environment.type,
+    }),
+    $replica.backgroundWorker.findMany({
+      where: { runtimeEnvironmentId: environment.id },
+      select: { version: true },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
+    new RegionsPresenter().call({
+      userId: user.id,
+      projectSlug: projectParam,
+      isAdmin: user.admin || user.isImpersonating,
+    }),
+  ]);
 
-  return json({ agents });
+  return json({
+    agents,
+    versions: backgroundWorkers.map((w) => w.version),
+    regions: regionsResult.regions,
+    isDev: environment.type === "DEVELOPMENT",
+  });
 };
 
 export default function PlaygroundPage() {

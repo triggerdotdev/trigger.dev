@@ -264,6 +264,18 @@ module.exports = {
         aiPrompts,
         aiMetrics,
         errors,
+        // shadcn/ui color tokens used by streamdown's internal components
+        // (link safety modal, code block actions, etc.)
+        // Values are defined via CSS variables in .streamdown-container
+        background: "hsl(var(--background, 230 16% 9%) / <alpha-value>)",
+        foreground: "hsl(var(--foreground, 215 19% 87%) / <alpha-value>)",
+        muted: {
+          DEFAULT: "hsl(var(--muted, 220 8% 17%) / <alpha-value>)",
+          foreground: "hsl(var(--muted-foreground, 220 8% 57%) / <alpha-value>)",
+        },
+        border: "hsl(var(--border, 216 7% 27%) / <alpha-value>)",
+        sidebar: "hsl(var(--sidebar, 228 10% 11%) / <alpha-value>)",
+        "primary-foreground": "hsl(var(--primary-foreground, 230 16% 9%) / <alpha-value>)",
       },
       focusStyles: {
         outline: "1px solid",
