@@ -323,13 +323,7 @@ function FiltersBar({
 
 // --- Models Table ---
 
-function BooleanCell({
-  value,
-  onClick,
-}: {
-  value: boolean;
-  onClick: () => void;
-}) {
+function BooleanCell({ value, onClick }: { value: boolean; onClick: () => void }) {
   return (
     <TableCell onClick={onClick} alignment="center">
       {value ? (
@@ -393,10 +387,7 @@ function ModelsList({
           const popular = popularMap.get(model.modelName);
           const select = () => onSelectModel(model);
           return (
-            <TableRow
-              key={model.friendlyId}
-              isSelected={selectedModelId === model.friendlyId}
-            >
+            <TableRow key={model.friendlyId} isSelected={selectedModelId === model.friendlyId}>
               <TableCell>
                 <Checkbox
                   checked={compareSet.has(model.modelName)}
@@ -759,7 +750,7 @@ function ModelDetailPanel({
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
-        <Header2 className="truncate text-blue-500">{model.displayId}</Header2>
+        <Header2 className="truncate text-text-bright">{model.displayId}</Header2>
         <Button
           onClick={onClose}
           variant="minimal/small"
@@ -894,33 +885,26 @@ function DetailOverviewTab({ model }: { model: ModelCatalogItem }) {
 
       <Property.Table>
         <Property.Item>
-          <Property.Label>Structured output</Property.Label>
+          <Property.Label>Features</Property.Label>
           <Property.Value>
-            {model.supportsStructuredOutput ? (
-              <CheckIcon className="size-4 text-success" />
-            ) : (
-              "Not supported"
-            )}
-          </Property.Value>
-        </Property.Item>
-        <Property.Item>
-          <Property.Label>Parallel tool calls</Property.Label>
-          <Property.Value>
-            {model.supportsParallelToolCalls ? (
-              <CheckIcon className="size-4 text-success" />
-            ) : (
-              "Not supported"
-            )}
-          </Property.Value>
-        </Property.Item>
-        <Property.Item>
-          <Property.Label>Streaming tool calls</Property.Label>
-          <Property.Value>
-            {model.supportsStreamingToolCalls ? (
-              <CheckIcon className="size-4 text-success" />
-            ) : (
-              "Not supported"
-            )}
+            <div className="flex flex-col gap-0.5">
+              {(
+                [
+                  ["Structured output", model.supportsStructuredOutput],
+                  ["Parallel tool calls", model.supportsParallelToolCalls],
+                  ["Streaming tool calls", model.supportsStreamingToolCalls],
+                ] as const
+              ).map(([label, supported]) => (
+                <div key={label} className="mt-1 flex items-center gap-1">
+                  {supported ? (
+                    <CheckIcon className="size-4 text-text-dimmed" />
+                  ) : (
+                    <XMarkIcon className="-mx-0.5 size-4 text-text-dimmed" />
+                  )}
+                  <span className="text-text-dimmed">{label}</span>
+                </div>
+              ))}
+            </div>
           </Property.Value>
         </Property.Item>
       </Property.Table>
@@ -933,11 +917,7 @@ function DetailOverviewTab({ model }: { model: ModelCatalogItem }) {
               <Property.Item key={v.friendlyId}>
                 <Property.Label>{v.displayId}</Property.Label>
                 <Property.Value>
-                  {v.releaseDate ? (
-                    <DateTime date={v.releaseDate} includeTime={false} />
-                  ) : (
-                    "—"
-                  )}
+                  {v.releaseDate ? <DateTime date={v.releaseDate} includeTime={false} /> : "—"}
                 </Property.Value>
               </Property.Item>
             ))}
@@ -971,51 +951,63 @@ function DetailGlobalMetricsTab({
 
   return (
     <div className="flex flex-col gap-3 py-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-calls`}
-            title="Total calls"
-            query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("total_calls", { abbreviate: true })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-ttfc-p50`}
-            title="p50 TTFC"
-            query={`SELECT round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("ttfc_p50", { aggregation: "avg", suffix: "ms" })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-ttfc-p90`}
-            title="p90 TTFC"
-            query={`SELECT round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("ttfc_p90", { aggregation: "avg", suffix: "ms" })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-tps`}
-            title="Tokens/sec (p50)"
-            query={`SELECT round(quantilesMerge(0.5)(tps_quantiles)[1], 0) AS tps_p50 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("tps_p50", { aggregation: "avg" })}
-            {...widgetProps}
-          />
-        </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-calls`}
+          title="Total calls"
+          query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("total_calls", { abbreviate: true })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-ttfc-p50`}
+          title="p50 TTFC"
+          query={`SELECT round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("ttfc_p50", { aggregation: "avg", suffix: "ms" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-ttfc-p90`}
+          title="p90 TTFC"
+          query={`SELECT round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("ttfc_p90", { aggregation: "avg", suffix: "ms" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-tps`}
+          title="Tokens/sec (p50)"
+          query={`SELECT round(quantilesMerge(0.5)(tps_quantiles)[1], 0) AS tps_p50 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("tps_p50", { aggregation: "avg" })}
+          {...widgetProps}
+        />
       </div>
 
       <div className="h-[250px]">
         <MetricWidget
           widgetKey={`${modelName}-calls-time`}
           title="Calls over time"
-          query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["calls"] })}
+          query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "bar",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["calls"],
+          })}
           {...widgetProps}
         />
       </div>
@@ -1023,8 +1015,15 @@ function DetailGlobalMetricsTab({
         <MetricWidget
           widgetKey={`${modelName}-ttfc-time`}
           title="TTFC over time"
-          query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({ chartType: "line", xAxisColumn: "timebucket", yAxisColumns: ["ttfc_p50", "ttfc_p90"], aggregation: "avg" })}
+          query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "line",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["ttfc_p50", "ttfc_p90"],
+            aggregation: "avg",
+          })}
           {...widgetProps}
         />
       </div>
@@ -1059,51 +1058,63 @@ function DetailYourUsageTab({
 
   return (
     <div className="flex flex-col gap-3 py-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-user-calls`}
-            title="Your calls"
-            query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("total_calls", { abbreviate: true })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-user-cost`}
-            title="Your cost"
-            query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("total_cost", { aggregation: "sum" })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-user-ttfc`}
-            title="Avg TTFC"
-            query={`SELECT round(avg(ms_to_first_chunk), 0) AS avg_ttfc FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' AND ms_to_first_chunk > 0`}
-            config={bignumberConfig("avg_ttfc", { aggregation: "avg", suffix: "ms" })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-user-tps`}
-            title="Avg tokens/sec"
-            query={`SELECT round(avg(tokens_per_second), 0) AS avg_tps FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' AND tokens_per_second > 0`}
-            config={bignumberConfig("avg_tps", { aggregation: "avg" })}
-            {...widgetProps}
-          />
-        </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-calls`}
+          title="Your calls"
+          query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("total_calls", { abbreviate: true })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-cost`}
+          title="Your cost"
+          query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("total_cost", { aggregation: "sum" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-ttfc`}
+          title="Avg TTFC"
+          query={`SELECT round(avg(ms_to_first_chunk), 0) AS avg_ttfc FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' AND ms_to_first_chunk > 0`}
+          config={bignumberConfig("avg_ttfc", { aggregation: "avg", suffix: "ms" })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[250px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-tps`}
+          title="Avg tokens/sec"
+          query={`SELECT round(avg(tokens_per_second), 0) AS avg_tps FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' AND tokens_per_second > 0`}
+          config={bignumberConfig("avg_tps", { aggregation: "avg" })}
+          {...widgetProps}
+        />
       </div>
 
       <div className="h-[250px]">
         <MetricWidget
           widgetKey={`${modelName}-user-cost-time`}
           title="Cost over time"
-          query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["cost"] })}
+          query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "bar",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["cost"],
+          })}
           {...widgetProps}
         />
       </div>
@@ -1111,8 +1122,14 @@ function DetailYourUsageTab({
         <MetricWidget
           widgetKey={`${modelName}-user-tokens-time`}
           title="Tokens over time"
-          query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["input_tokens", "output_tokens"] })}
+          query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "bar",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["input_tokens", "output_tokens"],
+          })}
           {...widgetProps}
         />
       </div>
@@ -1120,7 +1137,9 @@ function DetailYourUsageTab({
         <MetricWidget
           widgetKey={`${modelName}-user-tasks`}
           title="Cost by task"
-          query={`SELECT task_identifier, count() AS calls, sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY task_identifier ORDER BY cost DESC LIMIT 20`}
+          query={`SELECT task_identifier, count() AS calls, sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY task_identifier ORDER BY cost DESC LIMIT 20`}
           config={{ type: "table", prettyFormatting: true, sorting: [] }}
           {...widgetProps}
         />
@@ -1132,8 +1151,15 @@ function DetailYourUsageTab({
 // --- Main Page ---
 
 export default function ModelsPage() {
-  const { catalog, popularModels, allProviders, allCapabilities, organizationId, projectId, environmentId } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    catalog,
+    popularModels,
+    allProviders,
+    allCapabilities,
+    organizationId,
+    projectId,
+    environmentId,
+  } = useTypedLoaderData<typeof loader>();
   const { values: searchValues, value: searchValue } = useSearchParams();
 
   const search = searchValue("search") ?? "";
