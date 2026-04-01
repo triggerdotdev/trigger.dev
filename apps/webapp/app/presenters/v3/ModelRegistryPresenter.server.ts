@@ -310,7 +310,7 @@ export class ModelRegistryPresenter extends BasePresenter {
 
   /** Get a single model with full pricing details. */
   async getModelDetail(friendlyId: string): Promise<ModelDetail | null> {
-    const model = await this._replica.llmModel.findUnique({
+    const model = await this._replica.llmModel.findFirst({
       where: { friendlyId },
       include: {
         pricingTiers: {

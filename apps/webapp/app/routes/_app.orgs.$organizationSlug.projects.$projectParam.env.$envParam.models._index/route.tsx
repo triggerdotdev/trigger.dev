@@ -569,8 +569,8 @@ function CompareDialog({
   const environment = useEnvironment();
   const fetcher = useFetcher<typeof compareLoader>();
 
-  const isLoading = fetcher.state === "loading";
-  const comparison = (fetcher.data as any)?.comparison as ModelComparisonItem[] | undefined;
+  const comparison = (fetcher.data as { comparison?: ModelComparisonItem[] } | undefined)
+    ?.comparison;
   const rows = useMemo(
     () => buildComparisonRows(models, catalogModels, comparison ?? []),
     [comparison, models, catalogModels]
