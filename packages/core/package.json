@@ -41,6 +41,7 @@
       "./v3/utils/omit": "./src/v3/utils/omit.ts",
       "./v3/utils/retries": "./src/v3/utils/retries.ts",
       "./v3/utils/structuredLogger": "./src/v3/utils/structuredLogger.ts",
+      "./v3/chat-client": "./src/v3/chat-client.ts",
       "./v3/zodfetch": "./src/v3/zodfetch.ts",
       "./v3/zodMessageHandler": "./src/v3/zodMessageHandler.ts",
       "./v3/zodNamespace": "./src/v3/zodNamespace.ts",
@@ -444,6 +445,17 @@
       "require": {
         "types": "./dist/commonjs/v3/utils/structuredLogger.d.ts",
         "default": "./dist/commonjs/v3/utils/structuredLogger.js"
+      }
+    },
+    "./v3/chat-client": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/chat-client.ts",
+        "types": "./dist/esm/v3/chat-client.d.ts",
+        "default": "./dist/esm/v3/chat-client.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/chat-client.d.ts",
+        "default": "./dist/commonjs/v3/chat-client.js"
       }
     },
     "./v3/zodfetch": {

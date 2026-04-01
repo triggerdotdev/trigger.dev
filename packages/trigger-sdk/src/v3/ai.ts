@@ -550,7 +550,7 @@ async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Pr
 export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
   messages: TMessage[];
   chatId: string;
-  trigger: "submit-message" | "regenerate-message" | "preload";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "close";
   messageId?: string;
   metadata?: TMetadata;
   /** Whether this run is continuing an existing chat whose previous run ended. */
@@ -584,7 +584,7 @@ export type ChatTaskPayload<TClientData = unknown> = {
    * - `"regenerate-message"`: Regenerate the last assistant response
    * - `"preload"`: Run was preloaded before the first message (only on turn 0)
    */
-  trigger: "submit-message" | "regenerate-message" | "preload";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "close";
 
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
@@ -2485,6 +2485,59 @@ export type ChatAgentOptions<
  * });
  * ```
  */
+// ─── chat.customAgent ──────────────────────────────────────────────
+// A thin wrapper around createTask that marks the task as an agent
+// (triggerSource: "agent") so it appears in the playground, but does
+// NOT implement the managed lifecycle (no turn loop, no preload, etc.).
+// The user's run function receives the raw ChatTaskWirePayload and
+// uses composable primitives (chat.messages, chat.MessageAccumulator, etc.).
+// ────────────────────────────────────────────────────────────────────
+
+type ChatCustomAgentOptions<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
+> = Omit<
+  TaskOptions<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >,
+  "triggerSource" | "agentConfig"
+> & {
+  clientDataSchema?: TClientDataSchema;
+};
+
+function chatCustomAgent<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
+>(
+  options: ChatCustomAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
+): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
+  const { clientDataSchema, ...restOptions } = options;
+
+  const task = createTask<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >({
+    ...restOptions,
+    triggerSource: "agent",
+    agentConfig: { type: "ai-sdk-chat" },
+  });
+
+  // Register clientDataSchema so the CLI converts it to JSONSchema
+  // and stores it as payloadSchema — used by the Playground UI
+  if (clientDataSchema) {
+    resourceCatalog.updateTaskMetadata(options.id, {
+      schema: clientDataSchema as any,
+    });
+  }
+
+  return task;
+}
+
 function chatAgent<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
@@ -2721,6 +2774,11 @@ function chatAgent<
             TUIMessage,
             inferSchemaIn<TClientDataSchema>
           >;
+
+          // Close signal during preload — exit before first turn
+          if (currentWirePayload.trigger === "close") {
+            return;
+          }
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
@@ -3526,6 +3584,12 @@ function chatAgent<
                     TUIMessage,
                     inferSchemaIn<TClientDataSchema>
                   >;
+
+                  // Close signal — exit the loop gracefully
+                  if (currentWirePayload.trigger === "close") {
+                    return "exit";
+                  }
+
                   return "continue";
                 },
                 {
@@ -3704,6 +3768,24 @@ export interface ChatBuilder<
   : <TId extends string>(
     options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage>, "clientDataSchema">
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+
+  /**
+   * Create a custom agent with manual lifecycle control.
+   *
+   * The agent appears in the playground but you manage the turn loop,
+   * message waiting, and streaming yourself using composable primitives
+   * (`chat.messages`, `chat.MessageAccumulator`, `chat.pipeAndCapture`, etc.).
+   *
+   * Builder hooks (`onPreload`, `onChatStart`, etc.) are not applied —
+   * those are managed-lifecycle concepts handled by `.agent()`.
+   */
+  customAgent: [TClientDataSchema] extends [undefined]
+    ? <TId extends string>(
+        options: ChatCustomAgentOptions<TId, undefined, TUIMessage>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, undefined>, unknown>
+    : <TId extends string>(
+        options: ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 }
 
 /** @internal */
@@ -3850,6 +3932,13 @@ function createChatBuilder<
         onCompacted: composeHooks(config.hooks.onCompacted, options.onCompacted),
         onChatSuspend: composeHooks(config.hooks.onChatSuspend, options.onChatSuspend),
         onChatResume: composeHooks(config.hooks.onChatResume, options.onChatResume),
+      });
+    },
+
+    customAgent(options: any) {
+      return chatCustomAgent({
+        ...options,
+        ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
       });
     },
   } as unknown as ChatBuilder<TUIMessage, TClientDataSchema>;
@@ -5246,6 +5335,8 @@ function createChatTriggerAction(
 export const chat = {
   /** Create a chat agent. See {@link chatAgent}. */
   agent: chatAgent,
+  /** Create a custom agent with manual lifecycle control. See {@link chatCustomAgent}. */
+  customAgent: chatCustomAgent,
   /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
   withUIMessage,
   /** Create a chat task with a fixed client data schema. See {@link withClientData}. */

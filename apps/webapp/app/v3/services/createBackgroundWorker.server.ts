@@ -288,18 +288,12 @@ async function createWorkerTask(
       );
     }
 
-    // @crumbs
-    console.log(`[crumbs:webapp] createWorkerTask task=${task.id} triggerSource=${task.triggerSource} agentConfig=${JSON.stringify(task.agentConfig)} taskKeys=${Object.keys(task).join(",")}`); // @crumbs
-
     const resolvedTriggerSource =
       task.triggerSource === "schedule"
         ? ("SCHEDULED" as const)
         : task.triggerSource === "agent"
           ? ("AGENT" as const)
           : ("STANDARD" as const);
-
-    // @crumbs
-    console.log(`[crumbs:webapp] createWorkerTask resolved triggerSource=${resolvedTriggerSource} for task=${task.id}`); // @crumbs
 
     await prisma.backgroundWorkerTask.create({
       data: {

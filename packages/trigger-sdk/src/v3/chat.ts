@@ -1030,3 +1030,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 export function createChatTransport(options: TriggerChatTransportOptions): TriggerChatTransport {
   return new TriggerChatTransport(options);
 }
+
+// Server-side chat client for agent interaction
+export {
+  ChatClient,
+  ChatStream,
+  ChatConversation,
+  type ChatClientOptions,
+  type ChatSession,
+  type ChatStreamResult,
+  type ChatToolCall,
+  type ChatToolResult,
+  type InferChatClientData,
+  type InferChatUIMessage,
+} from "./chat-client.js";
