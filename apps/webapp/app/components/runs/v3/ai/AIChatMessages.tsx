@@ -5,7 +5,7 @@ import {
   ClipboardDocumentIcon,
   CodeBracketSquareIcon,
 } from "@heroicons/react/20/solid";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -260,8 +260,14 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
     ...(hasDetails ? (["details"] as const) : []),
   ];
 
-  const defaultTab: ToolTab | null = hasInput ? "input" : null;
-  const [activeTab, setActiveTab] = useState<ToolTab | null>(defaultTab);
+  const [activeTab, setActiveTab] = useState<ToolTab | null>(hasInput ? "input" : null);
+
+  // Auto-select input tab when input arrives after initial render (e.g. streaming tool calls)
+  useEffect(() => {
+    if (hasInput && activeTab === null) {
+      setActiveTab("input");
+    }
+  }, [hasInput]);
 
   function handleTabClick(tab: ToolTab) {
     setActiveTab(activeTab === tab ? null : tab);

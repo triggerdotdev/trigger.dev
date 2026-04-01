@@ -23,6 +23,10 @@ const PlaygroundAction = z.object({
   clientData: z.string().optional(),
   tags: z.string().optional(),
   machine: z.string().optional(),
+  maxAttempts: z.string().optional(),
+  maxDuration: z.string().optional(),
+  version: z.string().optional(),
+  region: z.string().optional(),
   // For renew
   runId: z.string().optional(),
   // For save
@@ -76,7 +80,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     case "trigger": {
-      const { agentSlug, chatId, payload: payloadStr, clientData, tags: tagsStr, machine } = parsed.data;
+      const {
+        agentSlug,
+        chatId,
+        payload: payloadStr,
+        clientData,
+        tags: tagsStr,
+        machine,
+        maxAttempts,
+        maxDuration,
+        version,
+        region,
+      } = parsed.data;
 
       if (!payloadStr || !chatId) {
         return json({ error: "payload and chatId are required" }, { status: 400 });
@@ -99,6 +114,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               ...(tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : []),
             ].slice(0, 5),
             machine: machine as any,
+            maxAttempts: maxAttempts ? parseInt(maxAttempts, 10) : undefined,
+            maxDuration: maxDuration ? parseInt(maxDuration, 10) : undefined,
+            lockToVersion: version && version !== "latest" ? version : undefined,
+            region: region || undefined,
           },
         },
         { triggerSource: "dashboard", triggerAction: "test", realtimeStreamsVersion: "v2" }
@@ -173,6 +192,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const messagesData = messagesStr ? JSON.parse(messagesStr) : undefined;
 
+      // Extract title from the first user message if the conversation still has the default title.
+      // This handles the case where a preloaded conversation gets its first real message
+      // via the input stream (bypassing the trigger action that normally sets the title).
+      let titleUpdate: { title: string } | undefined;
+      if (messagesData && Array.isArray(messagesData)) {
+        const existing = await prisma.playgroundConversation.findFirst({
+          where: { chatId, runtimeEnvironmentId: environment.id },
+          select: { title: true },
+        });
+
+        if (existing?.title === "New conversation") {
+          const firstUserMsg = messagesData.find(
+            (m: any) => m.role === "user"
+          ) as Record<string, any> | undefined;
+          const firstText =
+            firstUserMsg?.parts?.find((p: any) => p.type === "text")?.text ??
+            firstUserMsg?.content;
+          if (firstText && typeof firstText === "string") {
+            titleUpdate = {
+              title: firstText.length > 60 ? firstText.slice(0, 60) + "..." : firstText,
+            };
+          }
+        }
+      }
+
       await prisma.playgroundConversation.updateMany({
         where: {
           chatId,
@@ -181,6 +225,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         data: {
           ...(messagesData ? { messages: messagesData as any } : {}),
           ...(lastEventId ? { lastEventId } : {}),
+          ...titleUpdate,
         },
       });
 

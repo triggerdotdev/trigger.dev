@@ -18,7 +18,12 @@ import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyButton } from "~/components/primitives/CopyButton";
+import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Header3 } from "~/components/primitives/Headers";
+import { Hint } from "~/components/primitives/Hint";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
@@ -46,10 +51,11 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 import { env as serverEnv } from "~/env.server";
-import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
+import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
 import { AIPayloadTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/AIPayloadTabContent";
@@ -167,9 +173,23 @@ function PlaygroundChat() {
   const { agent, apiOrigin, recentConversations, activeConversation } =
     useTypedLoaderData<typeof loader>();
   const parentData = useRouteLoaderData(PARENT_ROUTE_ID) as
-    | { agents: Array<{ slug: string }> }
+    | {
+        agents: Array<{ slug: string }>;
+        versions: string[];
+        regions: Array<{
+          id: string;
+          name: string;
+          description?: string;
+          isDefault: boolean;
+        }>;
+        isDev: boolean;
+      }
     | undefined;
   const agents = parentData?.agents ?? [];
+  const versions = parentData?.versions ?? [];
+  const regions = parentData?.regions ?? [];
+  const isDev = parentData?.isDev ?? false;
+  const defaultRegion = regions.find((r) => r.isDefault);
   const navigate = useNavigate();
   const organization = useOrganization();
   const project = useProject();
@@ -187,7 +207,13 @@ function PlaygroundChat() {
   const clientDataJsonRef = useRef(clientDataJson);
   clientDataJsonRef.current = clientDataJson;
   const [machine, setMachine] = useState<string | undefined>(undefined);
-  const [tags, setTags] = useState<string>("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [maxAttempts, setMaxAttempts] = useState<number | undefined>(undefined);
+  const [maxDuration, setMaxDuration] = useState<number | undefined>(undefined);
+  const [version, setVersion] = useState<string | undefined>(undefined);
+  const [region, setRegion] = useState<string | undefined>(() =>
+    isDev ? undefined : defaultRegion?.name
+  );
 
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground/action`;
 
@@ -200,8 +226,12 @@ function PlaygroundChat() {
       formData.set("chatId", chatId);
       formData.set("payload", JSON.stringify(params.payload));
       formData.set("clientData", clientDataJsonRef.current);
-      if (tags.trim()) formData.set("tags", tags.trim());
+      if (tags.length > 0) formData.set("tags", tags.join(","));
       if (machine) formData.set("machine", machine);
+      if (maxAttempts) formData.set("maxAttempts", String(maxAttempts));
+      if (maxDuration) formData.set("maxDuration", String(maxDuration));
+      if (version) formData.set("version", version);
+      if (region) formData.set("region", region);
 
       const response = await fetch(actionPath, { method: "POST", body: formData });
       const data = (await response.json()) as {
@@ -221,7 +251,7 @@ function PlaygroundChat() {
 
       return { runId: data.runId, publicAccessToken: data.publicAccessToken };
     },
-    [actionPath, agent.slug, chatId, tags, machine]
+    [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]
   );
 
   // Token renewal via Remix action
@@ -465,7 +495,7 @@ function PlaygroundChat() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             {messages.length === 0 ? (
               <MainCenteredContainer>
                 <div className="flex flex-col items-center gap-3 py-16">
@@ -500,7 +530,7 @@ function PlaygroundChat() {
                 </div>
               </MainCenteredContainer>
             ) : (
-              <div className="mx-auto max-w-3xl space-y-4">
+              <div className="mx-auto w-full max-w-4xl space-y-4">
                 {messages.map((msg) => (
                   <MessageBubble key={msg.id} message={msg} />
                 ))}
@@ -584,7 +614,7 @@ function PlaygroundChat() {
         </div>
       </ResizablePanel>
       <ResizableHandle id="playground-sidebar-handle" />
-      <ResizablePanel id="playground-sidebar" default="320px" min="250px" max="500px">
+      <ResizablePanel id="playground-sidebar" default="420px" min="360px" max="720px">
         <PlaygroundSidebar
           clientDataJson={clientDataJson}
           onClientDataChange={setClientDataJson}
@@ -595,6 +625,17 @@ function PlaygroundChat() {
           onMachineChange={setMachine}
           tags={tags}
           onTagsChange={setTags}
+          maxAttempts={maxAttempts}
+          onMaxAttemptsChange={setMaxAttempts}
+          maxDuration={maxDuration}
+          onMaxDurationChange={setMaxDuration}
+          version={version}
+          onVersionChange={setVersion}
+          versions={versions}
+          region={region}
+          onRegionChange={setRegion}
+          regions={regions}
+          isDev={isDev}
           session={session}
           messageCount={messages.length}
           isStreaming={isStreaming}
@@ -811,15 +852,7 @@ function DataPartPopover({ name, data }: { name: string; data: unknown }) {
 // Sidebar
 // ---------------------------------------------------------------------------
 
-const machinePresets = [
-  "micro",
-  "small-1x",
-  "small-2x",
-  "medium-1x",
-  "medium-2x",
-  "large-1x",
-  "large-2x",
-];
+const machinePresets = Object.values(MachinePresetName.enum);
 
 function PlaygroundSidebar({
   clientDataJson,
@@ -831,6 +864,17 @@ function PlaygroundSidebar({
   onMachineChange,
   tags,
   onTagsChange,
+  maxAttempts,
+  onMaxAttemptsChange,
+  maxDuration,
+  onMaxDurationChange,
+  version,
+  onVersionChange,
+  versions,
+  region,
+  onRegionChange,
+  regions,
+  isDev,
   session,
   messageCount,
   isStreaming,
@@ -843,13 +887,28 @@ function PlaygroundSidebar({
   agentSlug: string;
   machine: string | undefined;
   onMachineChange: (val: string | undefined) => void;
-  tags: string;
-  onTagsChange: (val: string) => void;
+  tags: string[];
+  onTagsChange: (val: string[]) => void;
+  maxAttempts: number | undefined;
+  onMaxAttemptsChange: (val: number | undefined) => void;
+  maxDuration: number | undefined;
+  onMaxDurationChange: (val: number | undefined) => void;
+  version: string | undefined;
+  onVersionChange: (val: string | undefined) => void;
+  versions: string[];
+  region: string | undefined;
+  onRegionChange: (val: string | undefined) => void;
+  regions: Array<{ id: string; name: string; description?: string; isDefault: boolean }>;
+  isDev: boolean;
   session: { runId: string; publicAccessToken: string; lastEventId?: string } | undefined;
   messageCount: number;
   isStreaming: boolean;
   status: string;
 }) {
+  const regionItems = regions.map((r) => ({
+    value: r.name,
+    label: r.description ? `${r.name} — ${r.description}` : r.name,
+  }));
   return (
     <div className="flex h-full flex-col border-l border-grid-bright">
       <ClientTabs
@@ -938,36 +997,142 @@ function PlaygroundSidebar({
           value="options"
           className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          <div className="min-w-64 space-y-4 p-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-text-dimmed">Machine</label>
-              <select
+          <div className="space-y-4 p-3">
+            <InputGroup fullWidth>
+              <Label variant="small" required={false}>
+                Machine
+              </Label>
+              <Select
                 value={machine ?? ""}
-                onChange={(e) => onMachineChange(e.target.value || undefined)}
-                className="w-full rounded border border-charcoal-650 bg-charcoal-850 px-2.5 py-1.5 text-xs text-text-bright focus:border-indigo-500 focus:outline-none"
+                setValue={(val) =>
+                  onMachineChange(val && typeof val === "string" ? val : undefined)
+                }
+                placeholder="Default"
+                variant="tertiary/small"
+                items={machinePresets}
+                filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
               >
-                <option value="">Default</option>
-                {machinePresets.map((preset) => (
-                  <option key={preset} value={preset}>
-                    {preset}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-[10px] text-text-dimmed">Machine preset for the agent run.</p>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-text-dimmed">Tags</label>
-              <input
-                type="text"
-                value={tags}
-                onChange={(e) => onTagsChange(e.target.value)}
-                placeholder="tag1, tag2"
-                className="w-full rounded border border-charcoal-650 bg-charcoal-850 px-2.5 py-1.5 text-xs text-text-bright placeholder-text-dimmed focus:border-indigo-500 focus:outline-none"
+                {(matches) =>
+                  matches.map((preset) => (
+                    <SelectItem key={preset} value={preset}>
+                      {preset}
+                    </SelectItem>
+                  ))
+                }
+              </Select>
+              <Hint>Overrides the machine preset.</Hint>
+            </InputGroup>
+
+            <InputGroup fullWidth>
+              <Label variant="small" required={false}>
+                Tags
+              </Label>
+              <RunTagInput
+                tags={tags}
+                onTagsChange={onTagsChange}
+                variant="small"
+                maxTags={3}
+                placeholder="Add tag..."
               />
-              <p className="mt-1 text-[10px] text-text-dimmed">
-                Comma-separated tags (max 5 total).
-              </p>
-            </div>
+              <Hint>Add tags to easily filter runs. 3 max (2 added automatically).</Hint>
+            </InputGroup>
+
+            <InputGroup fullWidth>
+              <Label variant="small" required={false}>
+                Max attempts
+              </Label>
+              <Input
+                type="number"
+                variant="small"
+                min={1}
+                placeholder="Default"
+                value={maxAttempts ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onMaxAttemptsChange(val ? parseInt(val, 10) : undefined);
+                }}
+              />
+              <Hint>Retries failed runs up to the specified number of attempts.</Hint>
+            </InputGroup>
+
+            <InputGroup fullWidth>
+              <Label variant="small" required={false}>
+                Max duration
+              </Label>
+              <DurationPicker
+                value={maxDuration}
+                onChange={onMaxDurationChange}
+                variant="small"
+              />
+              <Hint>Overrides the maximum compute time limit for the run.</Hint>
+            </InputGroup>
+
+            {versions.length > 0 && (
+              <InputGroup fullWidth>
+                <Label variant="small" required={false}>
+                  Version
+                </Label>
+                <Select
+                  value={version ?? ""}
+                  setValue={(val) =>
+                    onVersionChange(val && typeof val === "string" ? val : undefined)
+                  }
+                  placeholder="Latest"
+                  variant="tertiary/small"
+                  disabled={isDev}
+                  items={versions}
+                  filter={(item, search) => item.toLowerCase().includes(search.toLowerCase())}
+                >
+                  {(matches) =>
+                    matches.map((v, i) => (
+                      <SelectItem key={v} value={v}>
+                        {i === 0 ? `${v} (latest)` : v}
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+                <Hint>
+                  {isDev
+                    ? "Version is determined by the running dev server."
+                    : "Lock the run to a specific deployed version."}
+                </Hint>
+              </InputGroup>
+            )}
+
+            {regionItems.length > 1 && (
+              <InputGroup fullWidth>
+                <Label variant="small" required={false}>
+                  Region
+                </Label>
+                <Select
+                  value={region ?? ""}
+                  setValue={(val) =>
+                    onRegionChange(val && typeof val === "string" ? val : undefined)
+                  }
+                  text={(val) => val || undefined}
+                  placeholder={isDev ? "–" : "Default"}
+                  variant="tertiary/small"
+                  disabled={isDev}
+                  items={regionItems}
+                  filter={(item, search) =>
+                    item.label.toLowerCase().includes(search.toLowerCase())
+                  }
+                >
+                  {(matches) =>
+                    matches.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+                <Hint>
+                  {isDev
+                    ? "Region is not applicable in development."
+                    : "Run the agent in a specific region."}
+                </Hint>
+              </InputGroup>
+            )}
           </div>
         </ClientTabsContent>
 
