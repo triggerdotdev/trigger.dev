@@ -372,11 +372,6 @@ function ModelsList({
                   checked={compareSet.has(model.modelName)}
                   onChange={() => onToggleCompare(model.modelName)}
                   disabled={compareSet.size >= 4 && !compareSet.has(model.modelName)}
-                  className={
-                    compareSet.size >= 4 && !compareSet.has(model.modelName)
-                      ? "opacity-35"
-                      : undefined
-                  }
                 />
               </TableCell>
               <TableCell to={path} isTabbableCell>
