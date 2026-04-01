@@ -810,12 +810,6 @@ export const myTask = task({
 
 For more information, see our [Idempotency](/idempotency) documentation.
 
-<Warning>
-  In version 3.3.0 and later, the `idempotencyKey` option is not available when using
-  `triggerAndWait` or `batchTriggerAndWait`, due to a bug that would sometimes cause the parent task
-  to become stuck. We are working on a fix for this issue.
-</Warning>
-
 ### `idempotencyKeyTTL`
 
 Idempotency keys automatically expire after 30 days, but you can set a custom TTL for an idempotency key when triggering a task:
