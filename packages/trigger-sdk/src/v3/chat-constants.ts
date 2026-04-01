@@ -1,13 +1,11 @@
 /**
  * Stream IDs used for bidirectional chat communication.
  * Shared between backend (ai.ts) and frontend (chat.ts).
+ *
+ * Re-exported from @trigger.dev/core/v3/chat-client for backwards compatibility.
  */
-
-/** The output stream key where UIMessageChunks are written. */
-export const CHAT_STREAM_KEY = "chat";
-
-/** Input stream ID for sending chat messages to the running task. */
-export const CHAT_MESSAGES_STREAM_ID = "chat-messages";
-
-/** Input stream ID for sending stop signals to abort the current generation. */
-export const CHAT_STOP_STREAM_ID = "chat-stop";
+export {
+  CHAT_STREAM_KEY,
+  CHAT_MESSAGES_STREAM_ID,
+  CHAT_STOP_STREAM_ID,
+} from "@trigger.dev/core/v3/chat-client";

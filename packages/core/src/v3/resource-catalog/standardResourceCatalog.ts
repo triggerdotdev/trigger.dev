@@ -1,5 +1,3 @@
-import { trail } from "agentcrumbs"; // @crumbs
-const _coreCrumb = trail("core"); // @crumbs
 import {
   PromptManifest,
   PromptMetadata,
@@ -75,15 +73,6 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
-    // #region @crumbs
-    _coreCrumb("registerTaskMetadata", {
-      taskId: task.id,
-      triggerSource: metadata.triggerSource,
-      agentConfig: metadata.agentConfig,
-      metadataKeys: Object.keys(metadata),
-    });
-    // #endregion @crumbs
-
     this._taskFileMetadata.set(task.id, {
       ...this._currentFileContext,
     });
@@ -139,18 +128,6 @@ export class StandardResourceCatalog implements ResourceCatalog {
         ...metadata,
         ...fileMetadata,
       };
-
-      // #region @crumbs
-      if (metadata.triggerSource || metadata.agentConfig) {
-        _coreCrumb("listTaskManifests building manifest", {
-          taskId: id,
-          triggerSource: metadata.triggerSource,
-          agentConfig: metadata.agentConfig,
-          manifestTriggerSource: taskManifest.triggerSource,
-          manifestAgentConfig: (taskManifest as any).agentConfig,
-        });
-      }
-      // #endregion @crumbs
 
       result.push(taskManifest);
     }
