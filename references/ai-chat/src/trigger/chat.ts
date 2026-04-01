@@ -1,5 +1,5 @@
 import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { logger, task, prompts } from "@trigger.dev/sdk";
+import { logger, prompts } from "@trigger.dev/sdk";
 import {
   streamText,
   generateText,
@@ -502,7 +502,7 @@ async function initUserContext(userId: string, chatId: string, model?: string) {
   });
 }
 
-export const aiChatRaw = task({
+export const aiChatRaw = chat.customAgent({
   id: "ai-chat-raw",
   run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
     let currentPayload = payload;
@@ -684,10 +684,14 @@ export const aiChatRaw = task({
   },
 });
 
-export const aiChatSession = task({
-  id: "ai-chat-session",
-  run: async (payload: ChatTaskWirePayload, { signal }) => {
-    const clientData = payload.metadata as { userId: string; model?: string } | undefined;
+export const aiChatSession = chat
+  .withClientData({
+    schema: z.object({ userId: z.string(), model: z.string().optional() }),
+  })
+  .customAgent({
+    id: "ai-chat-session",
+    run: async (payload: ChatTaskWirePayload, { signal }) => {
+      const clientData = payload.metadata as { userId: string; model?: string } | undefined;
 
     if (clientData) {
       await initUserContext(clientData.userId, payload.chatId, clientData.model);

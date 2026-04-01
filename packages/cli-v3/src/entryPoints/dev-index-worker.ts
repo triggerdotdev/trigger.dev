@@ -1,5 +1,3 @@
-import { trail } from "agentcrumbs"; // @crumbs
-const _cliCrumb = trail("cli"); // @crumbs
 import {
   BuildManifest,
   type HandleErrorFunction,
@@ -105,18 +103,6 @@ async function bootstrap() {
 const { buildManifest, importErrors, config, timings } = await bootstrap();
 
 let tasks = await convertSchemasToJsonSchemas(resourceCatalog.listTaskManifests());
-
-// #region @crumbs
-const _agentTasks = tasks.filter((t: any) => t.triggerSource || t.agentConfig);
-_cliCrumb("dev-index-worker tasks after listTaskManifests", {
-  totalTasks: tasks.length,
-  agentTasks: _agentTasks.map((t: any) => ({
-    id: t.id,
-    triggerSource: t.triggerSource,
-    agentConfig: t.agentConfig,
-  })),
-});
-// #endregion @crumbs
 
 // If the config has retry defaults, we need to apply them to all tasks that don't have any retry settings
 if (config.retries?.default) {
