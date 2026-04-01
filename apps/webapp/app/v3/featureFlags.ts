@@ -2,7 +2,6 @@ import { z } from "zod";
 
 export const FEATURE_FLAG = {
   defaultWorkerInstanceGroupId: "defaultWorkerInstanceGroupId",
-  runsListRepository: "runsListRepository",
   taskEventRepository: "taskEventRepository",
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
@@ -14,7 +13,6 @@ export const FEATURE_FLAG = {
 
 export const FeatureFlagCatalog = {
   [FEATURE_FLAG.defaultWorkerInstanceGroupId]: z.string(),
-  [FEATURE_FLAG.runsListRepository]: z.enum(["clickhouse", "postgres"]),
   [FEATURE_FLAG.taskEventRepository]: z.enum(["clickhouse", "clickhouse_v2", "postgres"]),
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
@@ -30,7 +28,6 @@ export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 // Shown with current/resolved value but no controls.
 export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
-  FEATURE_FLAG.runsListRepository,
   FEATURE_FLAG.taskEventRepository,
 ];
 
@@ -38,7 +35,6 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
 // Shown with global value but no controls (org can't override these).
 export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
-  FEATURE_FLAG.runsListRepository,
   FEATURE_FLAG.taskEventRepository,
 ];
 

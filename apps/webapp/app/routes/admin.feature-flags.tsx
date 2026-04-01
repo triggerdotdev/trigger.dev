@@ -55,7 +55,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   // Resolve env-based defaults for locked flags
   const resolvedDefaults: Record<string, string> = {
-    [FEATURE_FLAG.runsListRepository]: "clickhouse",
     [FEATURE_FLAG.taskEventRepository]: env.EVENT_REPOSITORY_DEFAULT_STORE,
   };
 

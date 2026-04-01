@@ -8,12 +8,8 @@ import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import { startActiveSpan } from "~/v3/tracer.server";
-import { logger } from "../logger.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
-import { PostgresRunsRepository } from "./postgresRunsRepository.server";
 
 export type RunsRepositoryOptions = {
   clickhouse: ClickHouse;
@@ -144,81 +140,22 @@ export interface IRunsRepository {
 
 export class RunsRepository implements IRunsRepository {
   private readonly clickHouseRunsRepository: ClickHouseRunsRepository;
-  private readonly postgresRunsRepository: PostgresRunsRepository;
-  private readonly defaultRepository: "clickhouse" | "postgres";
-  private readonly logger: Logger;
 
-  constructor(
-    private readonly options: RunsRepositoryOptions & {
-      defaultRepository?: "clickhouse" | "postgres";
-    }
-  ) {
+  constructor(private readonly options: RunsRepositoryOptions) {
     this.clickHouseRunsRepository = new ClickHouseRunsRepository(options);
-    this.postgresRunsRepository = new PostgresRunsRepository(options);
-    this.defaultRepository = options.defaultRepository ?? "clickhouse";
-    this.logger = options.logger ?? logger;
   }
 
   get name() {
     return "runsRepository";
   }
 
-  async #getRepository(): Promise<IRunsRepository> {
-    return startActiveSpan("runsRepository.getRepository", async (span) => {
-      const getFlag = makeFlag(this.options.prisma);
-      const runsListRepository = await getFlag({
-        key: FEATURE_FLAG.runsListRepository,
-        defaultValue: this.defaultRepository,
-      });
-
-      span.setAttribute("repository.name", runsListRepository);
-
-      logger.log("runsListRepository", { runsListRepository });
-
-      switch (runsListRepository) {
-        case "postgres":
-          return this.postgresRunsRepository;
-        case "clickhouse":
-        default:
-          return this.clickHouseRunsRepository;
-      }
-    });
-  }
-
   async listRunIds(options: ListRunsOptions): Promise<string[]> {
-    const repository = await this.#getRepository();
     return startActiveSpan(
       "runsRepository.listRunIds",
-      async () => {
-        try {
-          return await repository.listRunIds(options);
-        } catch (error) {
-          // If ClickHouse fails, retry with Postgres
-          if (repository.name === "clickhouse") {
-            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
-            return startActiveSpan(
-              "runsRepository.listRunIds.fallback",
-              async () => {
-                return await this.postgresRunsRepository.listRunIds(options);
-              },
-              {
-                attributes: {
-                  "repository.name": "postgres",
-                  "fallback.reason": "clickhouse_error",
-                  "fallback.error": error instanceof Error ? error.message : String(error),
-                  organizationId: options.organizationId,
-                  projectId: options.projectId,
-                  environmentId: options.environmentId,
-                },
-              }
-            );
-          }
-          throw error;
-        }
-      },
+      async () => this.clickHouseRunsRepository.listRunIds(options),
       {
         attributes: {
-          "repository.name": repository.name,
+          "repository.name": "clickhouse",
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -228,39 +165,12 @@ export class RunsRepository implements IRunsRepository {
   }
 
   async listFriendlyRunIds(options: ListRunsOptions): Promise<string[]> {
-    const repository = await this.#getRepository();
     return startActiveSpan(
       "runsRepository.listFriendlyRunIds",
-      async () => {
-        try {
-          return await repository.listFriendlyRunIds(options);
-        } catch (error) {
-          // If ClickHouse fails, retry with Postgres
-          if (repository.name === "clickhouse") {
-            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
-            return startActiveSpan(
-              "runsRepository.listFriendlyRunIds.fallback",
-              async () => {
-                return await this.postgresRunsRepository.listFriendlyRunIds(options);
-              },
-              {
-                attributes: {
-                  "repository.name": "postgres",
-                  "fallback.reason": "clickhouse_error",
-                  "fallback.error": error instanceof Error ? error.message : String(error),
-                  organizationId: options.organizationId,
-                  projectId: options.projectId,
-                  environmentId: options.environmentId,
-                },
-              }
-            );
-          }
-          throw error;
-        }
-      },
+      async () => this.clickHouseRunsRepository.listFriendlyRunIds(options),
       {
         attributes: {
-          "repository.name": repository.name,
+          "repository.name": "clickhouse",
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -276,39 +186,12 @@ export class RunsRepository implements IRunsRepository {
       previousCursor: string | null;
     };
   }> {
-    const repository = await this.#getRepository();
     return startActiveSpan(
       "runsRepository.listRuns",
-      async () => {
-        try {
-          return await repository.listRuns(options);
-        } catch (error) {
-          // If ClickHouse fails, retry with Postgres
-          if (repository.name === "clickhouse") {
-            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
-            return startActiveSpan(
-              "runsRepository.listRuns.fallback",
-              async () => {
-                return await this.postgresRunsRepository.listRuns(options);
-              },
-              {
-                attributes: {
-                  "repository.name": "postgres",
-                  "fallback.reason": "clickhouse_error",
-                  "fallback.error": error instanceof Error ? error.message : String(error),
-                  organizationId: options.organizationId,
-                  projectId: options.projectId,
-                  environmentId: options.environmentId,
-                },
-              }
-            );
-          }
-          throw error;
-        }
-      },
+      async () => this.clickHouseRunsRepository.listRuns(options),
       {
         attributes: {
-          "repository.name": repository.name,
+          "repository.name": "clickhouse",
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -318,39 +201,12 @@ export class RunsRepository implements IRunsRepository {
   }
 
   async countRuns(options: RunListInputOptions): Promise<number> {
-    const repository = await this.#getRepository();
     return startActiveSpan(
       "runsRepository.countRuns",
-      async () => {
-        try {
-          return await repository.countRuns(options);
-        } catch (error) {
-          // If ClickHouse fails, retry with Postgres
-          if (repository.name === "clickhouse") {
-            this.logger?.warn("ClickHouse failed, retrying with Postgres", { error });
-            return startActiveSpan(
-              "runsRepository.countRuns.fallback",
-              async () => {
-                return await this.postgresRunsRepository.countRuns(options);
-              },
-              {
-                attributes: {
-                  "repository.name": "postgres",
-                  "fallback.reason": "clickhouse_error",
-                  "fallback.error": error instanceof Error ? error.message : String(error),
-                  organizationId: options.organizationId,
-                  projectId: options.projectId,
-                  environmentId: options.environmentId,
-                },
-              }
-            );
-          }
-          throw error;
-        }
-      },
+      async () => this.clickHouseRunsRepository.countRuns(options),
       {
         attributes: {
-          "repository.name": repository.name,
+          "repository.name": "clickhouse",
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -360,15 +216,12 @@ export class RunsRepository implements IRunsRepository {
   }
 
   async listTags(options: TagListOptions): Promise<TagList> {
-    const repository = await this.#getRepository();
     return startActiveSpan(
       "runsRepository.listTags",
-      async () => {
-        return await repository.listTags(options);
-      },
+      async () => this.clickHouseRunsRepository.listTags(options),
       {
         attributes: {
-          "repository.name": repository.name,
+          "repository.name": "clickhouse",
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
