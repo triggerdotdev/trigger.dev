@@ -343,7 +343,6 @@ function ModelsList({
             </>
           )}
           <TableHeaderCell alignment="right">p50 TTFC</TableHeaderCell>
-          <TableHeaderCell alignment="right">Calls (7d)</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -396,9 +395,6 @@ function ModelsList({
               )}
               <TableCell onClick={select} alignment="right" className="tabular-nums">
                 {popular && popular.ttfcP50 > 0 ? `${popular.ttfcP50.toFixed(0)}ms` : "—"}
-              </TableCell>
-              <TableCell onClick={select} alignment="right" className="tabular-nums">
-                {popular && popular.callCount > 0 ? formatNumberCompact(popular.callCount) : "—"}
               </TableCell>
             </TableRow>
           );
@@ -718,20 +714,20 @@ function ModelDetailPanel({
             Overview
           </TabButton>
           <TabButton
+            isActive={tab === "usage"}
+            layoutId="model-detail"
+            onClick={() => setTab("usage")}
+            shortcut={{ key: "u" }}
+          >
+            Metrics
+          </TabButton>
+          <TabButton
             isActive={tab === "global"}
             layoutId="model-detail"
             onClick={() => setTab("global")}
             shortcut={{ key: "g" }}
           >
             Global metrics
-          </TabButton>
-          <TabButton
-            isActive={tab === "usage"}
-            layoutId="model-detail"
-            onClick={() => setTab("usage")}
-            shortcut={{ key: "u" }}
-          >
-            Your usage
           </TabButton>
         </TabContainer>
       </div>
@@ -876,18 +872,7 @@ function DetailGlobalMetricsTab({
 
   return (
     <div className="flex flex-col gap-3 py-3">
-      <div className="h-[250px]">
-        <MetricWidget
-          widgetKey={`${modelName}-calls`}
-          title="Total calls"
-          query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${escapeTSQL(
-            modelName
-          )}'`}
-          config={bignumberConfig("total_calls", { abbreviate: true })}
-          {...widgetProps}
-        />
-      </div>
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-ttfc-p50`}
           title="p50 TTFC"
@@ -898,7 +883,7 @@ function DetailGlobalMetricsTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-ttfc-p90`}
           title="p90 TTFC"
@@ -909,7 +894,7 @@ function DetailGlobalMetricsTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-tps`}
           title="Tokens/sec (p50)"
@@ -921,22 +906,7 @@ function DetailGlobalMetricsTab({
         />
       </div>
 
-      <div className="h-[250px]">
-        <MetricWidget
-          widgetKey={`${modelName}-calls-time`}
-          title="Calls over time"
-          query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${escapeTSQL(
-            modelName
-          )}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({
-            chartType: "bar",
-            xAxisColumn: "timebucket",
-            yAxisColumns: ["calls"],
-          })}
-          {...widgetProps}
-        />
-      </div>
-      <div className="h-[250px]">
+      <div className="h-[400px]">
         <MetricWidget
           widgetKey={`${modelName}-ttfc-time`}
           title="TTFC over time"
@@ -983,10 +953,10 @@ function DetailYourUsageTab({
 
   return (
     <div className="flex flex-col gap-3 py-3">
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-user-calls`}
-          title="Your calls"
+          title="Total calls (7d)"
           query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(
             modelName
           )}'`}
@@ -994,10 +964,10 @@ function DetailYourUsageTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-user-cost`}
-          title="Your cost"
+          title="Total cost (7d)"
           query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
             modelName
           )}'`}
@@ -1005,7 +975,7 @@ function DetailYourUsageTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-user-ttfc`}
           title="Avg TTFC"
@@ -1016,7 +986,7 @@ function DetailYourUsageTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-user-tps`}
           title="Avg tokens/sec"
@@ -1028,7 +998,7 @@ function DetailYourUsageTab({
         />
       </div>
 
-      <div className="h-[250px]">
+      <div className="h-[400px]">
         <MetricWidget
           widgetKey={`${modelName}-user-cost-time`}
           title="Cost over time"
@@ -1043,7 +1013,7 @@ function DetailYourUsageTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[400px]">
         <MetricWidget
           widgetKey={`${modelName}-user-tokens-time`}
           title="Tokens over time"
@@ -1058,7 +1028,7 @@ function DetailYourUsageTab({
           {...widgetProps}
         />
       </div>
-      <div className="h-[250px]">
+      <div className="h-[400px]">
         <MetricWidget
           widgetKey={`${modelName}-user-tasks`}
           title="Cost by task"
