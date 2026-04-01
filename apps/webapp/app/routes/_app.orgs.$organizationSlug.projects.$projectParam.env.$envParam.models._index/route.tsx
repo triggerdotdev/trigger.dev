@@ -10,6 +10,18 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  AnthropicIcon,
+  AzureIcon,
+  CerebrasIcon,
+  DeepseekIcon,
+  GeminiIcon,
+  LlamaIcon,
+  MistralIcon,
+  OpenAIIcon,
+  PerplexityIcon,
+  XAIIcon,
+} from "~/assets/icons/AiProviderIcons";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -117,6 +129,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
+const providerIcons: Record<string, (props: { className?: string }) => JSX.Element> = {
+  openai: OpenAIIcon,
+  anthropic: AnthropicIcon,
+  google: GeminiIcon,
+  meta: LlamaIcon,
+  mistral: MistralIcon,
+  deepseek: DeepseekIcon,
+  xai: XAIIcon,
+  perplexity: PerplexityIcon,
+  cerebras: CerebrasIcon,
+  azure: AzureIcon,
+};
+
+function providerIcon(slug: string) {
+  const Icon = providerIcons[slug] ?? CubeIcon;
+  return <Icon className="size-4" />;
+}
+
 // --- Filter Components ---
 
 function ProviderFilter({ providers }: { providers: string[] }) {
@@ -139,7 +169,7 @@ function ProviderFilter({ providers }: { providers: string[] }) {
       <SelectPopover>
         <SelectList>
           {providers.map((p) => (
-            <SelectItem key={p} value={p}>
+            <SelectItem key={p} value={p} icon={providerIcon(p)}>
               {formatProviderName(p)}
             </SelectItem>
           ))}
@@ -334,7 +364,12 @@ function ModelsList({
               <TableCell onClick={select} isTabbableCell>
                 {model.displayId}
               </TableCell>
-              <TableCell onClick={select}>{formatProviderName(model.provider)}</TableCell>
+              <TableCell onClick={select}>
+                <span className="flex items-center gap-1.5">
+                  {providerIcon(model.provider)}
+                  {formatProviderName(model.provider)}
+                </span>
+              </TableCell>
               <TableCell onClick={select} alignment="right" className="tabular-nums">
                 {formatModelPrice(model.inputPrice)}
               </TableCell>
@@ -434,7 +469,14 @@ function buildComparisonRows(
       label: "Provider",
       values: models.map((m) => {
         const c = getCatalog(m);
-        return c ? formatProviderName(c.provider) : dataMap.get(m)?.genAiSystem ?? "—";
+        const slug = c?.provider ?? dataMap.get(m)?.genAiSystem;
+        if (!slug) return "—";
+        return (
+          <span className="flex items-center gap-1.5">
+            {providerIcon(slug)}
+            {formatProviderName(slug)}
+          </span>
+        );
       }),
     },
     {
