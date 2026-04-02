@@ -5,9 +5,11 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
   useFrozenValue,
 } from "~/components/primitives/Resizable";
 import {
@@ -18,7 +20,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { cn } from "~/utils/cn";
 
 type DemoItem = {
   id: string;
@@ -145,7 +146,7 @@ export default function Story() {
         </ResizablePanel>
         <ResizableHandle
           id="animated-panel-handle"
-          className={cn("transition-opacity duration-200", !show && "pointer-events-none opacity-0")}
+          className={collapsibleHandleClassName(show)}
         />
         <ResizablePanel
           id="animated-panel-detail"
@@ -157,7 +158,7 @@ export default function Story() {
           collapsed={!show}
           onCollapseChange={() => {}}
           collapsedSize="0px"
-          collapseAnimation={{ easing: "ease-in-out", duration: 200 }}
+          collapseAnimation={RESIZABLE_PANEL_ANIMATION}
         >
           <div className="h-full" style={{ minWidth: 280 }}>
             {displayItem && (

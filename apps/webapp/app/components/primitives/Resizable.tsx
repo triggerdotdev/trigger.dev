@@ -69,12 +69,30 @@ const ResizableHandle = ({
   </PanelResizer>
 );
 
+const RESIZABLE_PANEL_ANIMATION = {
+  easing: "ease-in-out" as const,
+  duration: 200,
+};
+
+const COLLAPSIBLE_HANDLE_CLASSNAME = "transition-opacity duration-200";
+
+function collapsibleHandleClassName(show: boolean) {
+  return cn(COLLAPSIBLE_HANDLE_CLASSNAME, !show && "pointer-events-none opacity-0");
+}
+
 function useFrozenValue<T>(value: T | null | undefined): T | null | undefined {
   const ref = useRef(value);
   if (value != null) ref.current = value;
   return ref.current;
 }
 
-export { ResizableHandle, ResizablePanel, ResizablePanelGroup, useFrozenValue };
+export {
+  RESIZABLE_PANEL_ANIMATION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  collapsibleHandleClassName,
+  useFrozenValue,
+};
 
 export type ResizableSnapshot = React.ComponentProps<typeof PanelGroup>["snapshot"];
