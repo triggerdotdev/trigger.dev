@@ -113,7 +113,7 @@ type Tab = "overview" | "global" | "usage";
 const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "usage", label: "Metrics" },
-  { id: "global", label: "Global Metrics" },
+  { id: "global", label: "Global metrics" },
 ];
 
 export default function ModelDetailPage() {
