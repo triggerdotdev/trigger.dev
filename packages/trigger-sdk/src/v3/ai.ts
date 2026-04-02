@@ -1920,6 +1920,20 @@ export type ChatStartEvent<TClientData = unknown> = {
 };
 
 /**
+ * Event passed to the `onValidateMessages` callback.
+ */
+export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
+  /** The incoming UI messages for this turn (after cleanup of aborted tool parts). */
+  messages: TUIM[];
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The trigger type for this turn. */
+  trigger: "submit-message" | "regenerate-message" | "preload" | "close";
+};
+
+/**
  * Event passed to the `onTurnStart` callback.
  */
 export type TurnStartEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
@@ -2168,6 +2182,35 @@ export type ChatAgentOptions<
    * ```
    */
   onChatStart?: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+
+  /**
+   * Validate or transform incoming UI messages before they are converted to model
+   * messages and accumulated. Fires once per turn with the raw `UIMessage[]` from
+   * the wire payload (after cleanup of aborted tool parts).
+   *
+   * Return the validated messages array. Throw to abort the turn with an error.
+   *
+   * This is the right place to call the AI SDK's `validateUIMessages` to catch
+   * malformed messages from storage or untrusted input before they reach the model.
+   *
+   * @example
+   * ```ts
+   * import { validateUIMessages } from "ai";
+   *
+   * chat.agent({
+   *   id: "my-chat",
+   *   onValidateMessages: async ({ messages }) => {
+   *     return validateUIMessages({ messages, tools: chatTools });
+   *   },
+   *   run: async ({ messages }) => {
+   *     return streamText({ model, messages, tools: chatTools });
+   *   },
+   * });
+   * ```
+   */
+  onValidateMessages?: (
+    event: ValidateMessagesEvent<TUIMessage>
+  ) => TUIMessage[] | Promise<TUIMessage[]>;
 
   /**
    * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
@@ -2550,6 +2593,7 @@ function chatAgent<
     clientDataSchema,
     onPreload,
     onChatStart,
+    onValidateMessages,
     onTurnStart,
     onBeforeTurnComplete,
     onCompacted,
@@ -2908,9 +2952,34 @@ function chatAgent<
                   // useChat state may still contain assistant messages with tool parts
                   // in partial/input-available state. These cause API errors (e.g.
                   // Anthropic requires every tool_use to have a matching tool_result).
-                  const cleanedUIMessages = uiMessages.map((msg) =>
+                  let cleanedUIMessages = uiMessages.map((msg) =>
                     msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
                   );
+
+                  // Validate/transform UIMessages before conversion — catches malformed
+                  // messages from storage or untrusted input before they reach the model.
+                  if (onValidateMessages) {
+                    cleanedUIMessages = await tracer.startActiveSpan(
+                      "onValidateMessages()",
+                      async () => {
+                        return onValidateMessages({
+                          messages: cleanedUIMessages as TUIMessage[],
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          trigger: currentWirePayload.trigger,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.messages.count": cleanedUIMessages.length,
+                        },
+                      }
+                    );
+                  }
 
                   // Convert the incoming UIMessages to model messages and update the accumulator.
                   // Turn 1: full history from the frontend → replaces the accumulator.
