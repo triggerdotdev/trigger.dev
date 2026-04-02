@@ -504,7 +504,7 @@ function TraceView({
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
   const frozenSpanOverrides = useFrozenValue(spanOverrides);
-  const displaySpanOverrides = spanOverrides ?? frozenSpanOverrides;
+  const displaySpanOverrides = selectedSpanId ? spanOverrides : frozenSpanOverrides;
 
   // Get the linked run ID for cached spans (map built during RunPresenter walk)
   const { linkedRunIdBySpanId } = trace;
@@ -512,7 +512,7 @@ function TraceView({
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
   const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
-  const displayLinkedRunId = selectedSpanLinkedRunId ?? frozenLinkedRunId;
+  const displayLinkedRunId = selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
