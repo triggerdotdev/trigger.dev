@@ -123,8 +123,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
-  const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "logs");
-  const presenter = new ErrorsListPresenter($replica, logsClickhouse);
+  const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "query"
+  );
+  const presenter = new ErrorsListPresenter($replica, queryClickhouse);
 
   const listPromise = presenter
     .call(project.organizationId, environment.id, {

@@ -27,12 +27,10 @@ import {
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import {
+  clickhouseFactory,
   getDefaultClickhouseClient,
   getDefaultLogsClickhouseClient,
 } from "~/services/clickhouse/clickhouseFactory.server";
-
-const clickhouseClient = getDefaultClickhouseClient();
-const logsClickhouseClient = getDefaultLogsClickhouseClient();
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody } from "~/components/layout/AppLayout";
 import {
@@ -169,6 +167,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       let occurrenceCountAtIgnoreTime: number | undefined;
 
       if (submission.value.totalOccurrences) {
+        const clickhouseClient = await clickhouseFactory.getClickhouseForOrganization(
+          environment.organizationId,
+          "query"
+        );
+
         const qb = clickhouseClient.errors.listQueryBuilder();
         qb.where("organization_id = {organizationId: String}", {
           organizationId: project.organizationId,
@@ -242,7 +245,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
+  const clickhouseClient = await clickhouseFactory.getClickhouseForOrganization(
+    environment.organizationId,
+    "query"
+  );
+
+  const presenter = new ErrorGroupPresenter($replica, clickhouseClient, clickhouseClient);
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {
