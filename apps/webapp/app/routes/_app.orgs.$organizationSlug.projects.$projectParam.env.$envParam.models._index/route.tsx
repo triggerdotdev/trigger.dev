@@ -41,6 +41,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
@@ -1096,6 +1097,8 @@ export default function ModelsPage() {
   const [showAllDetails, setShowAllDetails] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelCatalogItem | null>(null);
+  const frozenModel = useFrozenValue(selectedModel);
+  const displayModel = selectedModel ?? frozenModel;
 
   const popularMap = useMemo(() => {
     const map = new Map<string, PopularModel>();
@@ -1181,10 +1184,10 @@ export default function ModelsPage() {
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
           >
             <div className="h-full" style={{ minWidth: 420 }}>
-              {selectedModel && (
+              {displayModel && (
                 <ModelDetailPanel
-                  key={selectedModel.friendlyId}
-                  model={selectedModel}
+                  key={displayModel.friendlyId}
+                  model={displayModel}
                   organizationId={organizationId}
                   projectId={projectId}
                   environmentId={environmentId}

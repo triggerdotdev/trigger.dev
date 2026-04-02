@@ -37,6 +37,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
   collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
@@ -404,6 +405,11 @@ function LogsList({
     return accumulatedLogs.find((log) => log.id === selectedLogId);
   }, [selectedLogId, accumulatedLogs]);
 
+  const frozenLogId = useFrozenValue(selectedLogId);
+  const frozenLog = useFrozenValue(selectedLog);
+  const displayLogId = selectedLogId ?? frozenLogId;
+  const displayLog = selectedLog ?? frozenLog;
+
   const updateUrlWithLog = useCallback((logId: string | undefined) => {
     const url = new URL(window.location.href);
     if (logId) {
@@ -473,7 +479,7 @@ function LogsList({
         collapseAnimation={RESIZABLE_PANEL_ANIMATION}
       >
         <div className="h-full" style={{ minWidth: 430 }}>
-          {selectedLogId && (
+          {displayLogId && (
             <Suspense
               fallback={
                 <div className="flex h-full items-center justify-center">
@@ -482,8 +488,8 @@ function LogsList({
               }
             >
               <LogDetailView
-                logId={selectedLogId}
-                initialLog={selectedLog}
+                logId={displayLogId}
+                initialLog={displayLog}
                 onClose={handleClosePanel}
                 searchTerm={list.searchTerm}
               />

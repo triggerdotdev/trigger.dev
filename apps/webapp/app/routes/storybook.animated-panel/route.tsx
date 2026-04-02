@@ -156,7 +156,9 @@ export default function Story() {
           className="overflow-hidden"
           collapsible
           collapsed={!show}
-          onCollapseChange={() => {}}
+          onCollapseChange={(isCollapsed) => {
+            if (isCollapsed) setSelectedItem(null);
+          }}
           collapsedSize="0px"
           collapseAnimation={RESIZABLE_PANEL_ANIMATION}
         >
