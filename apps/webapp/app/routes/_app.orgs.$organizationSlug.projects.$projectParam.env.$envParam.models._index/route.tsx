@@ -36,9 +36,11 @@ import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Switch } from "~/components/primitives/Switch";
@@ -707,7 +709,7 @@ function ModelDetailPanel({
           className="pl-1"
         />
       </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto whitespace-nowrap px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <TabContainer>
           <TabButton
             isActive={tab === "overview"}
@@ -1162,10 +1164,24 @@ export default function ModelsPage() {
               />
             </div>
           </ResizablePanel>
-          {selectedModel && (
-            <>
-              <ResizableHandle id="models-handle" />
-              <ResizablePanel id="model-detail" min="300px" default="420px" max="600px">
+          <ResizableHandle
+            id="models-handle"
+            className={collapsibleHandleClassName(!!selectedModel)}
+          />
+          <ResizablePanel
+            id="model-detail"
+            default="420px"
+            min="420px"
+            max="700px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!selectedModel}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 420 }}>
+              {selectedModel && (
                 <ModelDetailPanel
                   key={selectedModel.friendlyId}
                   model={selectedModel}
@@ -1174,9 +1190,9 @@ export default function ModelsPage() {
                   environmentId={environmentId}
                   onClose={() => setSelectedModel(null)}
                 />
-              </ResizablePanel>
-            </>
-          )}
+              )}
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
       <CompareDialog
