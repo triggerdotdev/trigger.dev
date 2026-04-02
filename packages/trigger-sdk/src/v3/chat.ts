@@ -1031,12 +1031,11 @@ export function createChatTransport(options: TriggerChatTransportOptions): Trigg
   return new TriggerChatTransport(options);
 }
 
-// Server-side chat client for agent interaction
+// Server-side agent chat
 export {
-  ChatClient,
+  AgentChat,
   ChatStream,
-  ChatConversation,
-  type ChatClientOptions,
+  type AgentChatOptions,
   type ChatSession,
   type ChatStreamResult,
   type ChatToolCall,
@@ -1044,3 +1043,4 @@ export {
   type InferChatClientData,
   type InferChatUIMessage,
 } from "./chat-client.js";
+
