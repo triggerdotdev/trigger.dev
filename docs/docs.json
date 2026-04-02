@@ -92,15 +92,16 @@
                   "ai-chat/backend",
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
-                  "ai-chat/sub-agents",
                   "ai-chat/types",
                   "ai-chat/features",
                   "ai-chat/compaction",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
+                  "ai-chat/mcp",
                   {
                     "group": "Patterns",
                     "pages": [
+                      "ai-chat/patterns/sub-agents",
                       "ai-chat/patterns/database-persistence",
                       "ai-chat/patterns/code-sandbox"
                     ]
