@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef } from "react";
 import { PanelGroup, Panel, PanelResizer } from "react-window-splitter";
 import { cn } from "~/utils/cn";
 
@@ -69,6 +69,12 @@ const ResizableHandle = ({
   </PanelResizer>
 );
 
-export { ResizableHandle, ResizablePanel, ResizablePanelGroup };
+function useFrozenValue<T>(value: T | null | undefined): T | null | undefined {
+  const ref = useRef(value);
+  if (value != null) ref.current = value;
+  return ref.current;
+}
+
+export { ResizableHandle, ResizablePanel, ResizablePanelGroup, useFrozenValue };
 
 export type ResizableSnapshot = React.ComponentProps<typeof PanelGroup>["snapshot"];
