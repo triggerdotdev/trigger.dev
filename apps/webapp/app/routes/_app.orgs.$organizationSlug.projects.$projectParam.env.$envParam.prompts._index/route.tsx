@@ -22,7 +22,7 @@ import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -46,7 +46,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
   const presenter = new PromptPresenter(clickhouse);
   const prompts = await presenter.listPrompts(project.id, environment.id);
 

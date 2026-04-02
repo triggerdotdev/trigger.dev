@@ -1,41 +1,3 @@
-/**
- * ClickHouse Factory - Organization-Scoped ClickHouse Routing
- *
- * This module provides organization-scoped ClickHouse instance routing to support:
- * - HIPAA compliance (dedicated ClickHouse clusters)
- * - High-volume customer isolation
- * - Geographic data residency requirements
- * - Performance tier differentiation
- *
- * ## Architecture
- *
- * ### Credential Storage
- * - ClickHouse URLs stored encrypted in SecretStore (AES-256-GCM)
- * - Organization data store overrides live in the `OrganizationDataStore` table
- * - The config JSON stores a `secretKey` that references the SecretStore entry
- * - No plaintext credentials in database
- *
- * ### Caching Strategy
- * - **Org → data store mapping**: `OrganizationDataStoresRegistry` (in-memory Map, reloaded
- *   periodically via setInterval)
- * - **ClickHouse clients**: cached by hostname hash (multiple orgs share same instance)
- * - **Event repositories**: cached by hostname hash (stateful, must be reused)
- *
- * ## Usage in Presenters
- *
- * ```typescript
- * import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
- *
- * export class MyPresenter extends BasePresenter {
- *   async call({ organizationId, ... }) {
- *     const clickhouse = await getClickhouseForOrganization(organizationId, "standard");
- *   }
- * }
- * ```
- *
- * @module clickhouseFactory
- */
-
 import { ClickHouse } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
@@ -43,6 +5,7 @@ import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
+import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 
 // ---------------------------------------------------------------------------
 // Default clients (singleton per process)
@@ -199,6 +162,13 @@ export class ClickhouseFactory {
 
   constructor(private readonly _registry: OrganizationDataStoresRegistry) {}
 
+  async isReady(): Promise<boolean> {
+    if (!this._registry.isLoaded) {
+      await this._registry.isReady;
+    }
+    return true;
+  }
+
   async getClickhouseForOrganization(
     organizationId: string,
     clientType: ClientType
@@ -207,6 +177,10 @@ export class ClickhouseFactory {
       await this._registry.isReady;
     }
 
+    return this.getClickhouseForOrganizationSync(organizationId, clientType);
+  }
+
+  getClickhouseForOrganizationSync(organizationId: string, clientType: ClientType): ClickHouse {
     const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
 
     if (!dataStore) {
@@ -237,36 +211,44 @@ export class ClickhouseFactory {
   }
 
   async getEventRepositoryForOrganization(
+    store: string,
     organizationId: string
-  ): Promise<ClickhouseEventRepository> {
+  ): Promise<{ key: string; repository: IEventRepository }> {
     if (!this._registry.isLoaded) {
       await this._registry.isReady;
     }
 
+    return this.getEventRepositoryForOrganizationSync(store, organizationId);
+  }
+
+  getEventRepositoryForOrganizationSync(
+    store: string,
+    organizationId: string
+  ): { key: string; repository: IEventRepository } {
     const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
 
     if (!dataStore) {
-      const defaultKey = "default:events";
+      const defaultKey = `default:events:${store}`;
       let defaultRepo = this._eventRepositoryCache.get(defaultKey);
       if (!defaultRepo) {
-        const eventsClickhouse = await getEventsClickhouseClient();
-        defaultRepo = buildEventRepository(eventsClickhouse);
+        const eventsClickhouse = getEventsClickhouseClient();
+        defaultRepo = buildEventRepository(store, eventsClickhouse);
         this._eventRepositoryCache.set(defaultKey, defaultRepo);
       }
-      return defaultRepo;
+      return { key: defaultKey, repository: defaultRepo };
     }
 
     const hostnameHash = hashHostname(dataStore.url);
-    const cacheKey = `${hostnameHash}:events`;
+    const cacheKey = `${hostnameHash}:events:${store}`;
     let repository = this._eventRepositoryCache.get(cacheKey);
 
     if (!repository) {
-      const client = await this.getClickhouseForOrganization(organizationId, "events");
-      repository = buildEventRepository(client);
+      const client = this.getClickhouseForOrganizationSync(organizationId, "events");
+      repository = buildEventRepository(store, client);
       this._eventRepositoryCache.set(cacheKey, repository);
     }
 
-    return repository;
+    return { key: cacheKey, repository: repository };
   }
 }
 
@@ -274,27 +256,10 @@ export class ClickhouseFactory {
 // Singleton factory instance
 // ---------------------------------------------------------------------------
 
-const clickhouseFactory = singleton(
+export const clickhouseFactory = singleton(
   "clickhouseFactory",
   () => new ClickhouseFactory(organizationDataStoresRegistry)
 );
-
-// ---------------------------------------------------------------------------
-// Public API (thin wrappers around the singleton)
-// ---------------------------------------------------------------------------
-
-export async function getClickhouseForOrganization(
-  organizationId: string,
-  clientType: ClientType
-): Promise<ClickHouse> {
-  return clickhouseFactory.getClickhouseForOrganization(organizationId, clientType);
-}
-
-export async function getEventRepositoryForOrganization(
-  organizationId: string
-): Promise<ClickhouseEventRepository> {
-  return clickhouseFactory.getEventRepositoryForOrganization(organizationId);
-}
 
 /**
  * Get admin ClickHouse client for cross-organization queries.
@@ -304,11 +269,19 @@ export function getAdminClickhouse(): ClickHouse {
   return defaultAdminClickhouseClient;
 }
 
+export function getDefaultClickhouseClient(): ClickHouse {
+  return defaultClickhouseClient;
+}
+
+export function getDefaultLogsClickhouseClient(): ClickHouse {
+  return defaultLogsClickhouseClient;
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
 
-async function getEventsClickhouseClient(): Promise<ClickHouse> {
+function getEventsClickhouseClient(): ClickHouse {
   if (!env.EVENTS_CLICKHOUSE_URL) {
     throw new Error("EVENTS_CLICKHOUSE_URL is not set");
   }
@@ -324,29 +297,58 @@ async function getEventsClickhouseClient(): Promise<ClickHouse> {
       idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
     },
     logLevel: env.EVENTS_CLICKHOUSE_LOG_LEVEL,
-    compression: { request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1" },
+    compression: {
+      request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
     maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
   });
 }
 
-function buildEventRepository(clickhouse: ClickHouse): ClickhouseEventRepository {
-  return new ClickhouseEventRepository({
-    clickhouse,
-    batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
-    flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-    maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
-    maximumTraceDetailedSummaryViewCount:
-      env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
-    maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
-    insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
-    waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
-    asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
-    asyncInsertBusyTimeoutMs: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS,
-    startTimeMaxAgeMs: env.EVENTS_CLICKHOUSE_START_TIME_MAX_AGE_MS,
-    llmMetricsBatchSize: env.LLM_METRICS_BATCH_SIZE,
-    llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
-    llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
-    llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
-    version: "v2",
-  });
+function buildEventRepository(store: string, clickhouse: ClickHouse): ClickhouseEventRepository {
+  switch (store) {
+    case "clickhouse": {
+      return new ClickhouseEventRepository({
+        clickhouse,
+        batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
+        flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+        maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
+        maximumTraceDetailedSummaryViewCount:
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
+        maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
+        insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
+        waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
+        asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
+        asyncInsertBusyTimeoutMs: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS,
+        startTimeMaxAgeMs: env.EVENTS_CLICKHOUSE_START_TIME_MAX_AGE_MS,
+        llmMetricsBatchSize: env.LLM_METRICS_BATCH_SIZE,
+        llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
+        llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
+        llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
+        version: "v1",
+      });
+    }
+    case "clickhouse_v2": {
+      return new ClickhouseEventRepository({
+        clickhouse: clickhouse,
+        batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
+        flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+        maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
+        maximumTraceDetailedSummaryViewCount:
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
+        maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
+        insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
+        waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
+        asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
+        asyncInsertBusyTimeoutMs: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS,
+        llmMetricsBatchSize: env.LLM_METRICS_BATCH_SIZE,
+        llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
+        llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
+        llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
+        version: "v2",
+      });
+    }
+    default: {
+      throw new Error(`Unknown ClickHouse event repository store: ${store}`);
+    }
+  }
 }

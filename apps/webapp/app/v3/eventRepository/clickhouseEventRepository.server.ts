@@ -376,18 +376,15 @@ export class ClickhouseEventRepository implements IEventRepository {
           typeof retryError === "object" && retryError !== null && "message" in retryError
             ? String((retryError as { message?: unknown }).message ?? "")
             : String(retryError);
-        logger.error(
-          "Dropped batch after sanitize-retry still hit ClickHouse JSON parse error",
-          {
-            flushId,
-            contextLabel,
-            batchSize: rows.length,
-            permanentlyDroppedBatches: this._permanentlyDroppedBatches,
-            sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-            firstError: firstMessage.split("\n")[0],
-            retryError: retryMessage.split("\n")[0],
-          }
-        );
+        logger.error("Dropped batch after sanitize-retry still hit ClickHouse JSON parse error", {
+          flushId,
+          contextLabel,
+          batchSize: rows.length,
+          permanentlyDroppedBatches: this._permanentlyDroppedBatches,
+          sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
+          firstError: firstMessage.split("\n")[0],
+          retryError: retryMessage.split("\n")[0],
+        });
 
         return { kind: "dropped" };
       }
@@ -452,7 +449,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     await tracePubSub.publish(events.map((e) => e.trace_id));
   }
 
-  async insertMany(events: CreateEventInput[]): Promise<void> {
+  insertMany(events: CreateEventInput[]): void {
     this.addToBatch(events.flatMap((event) => this.createEventToTaskEventV1Input(event)));
 
     // Dual-write LLM metrics records for spans with cost enrichment

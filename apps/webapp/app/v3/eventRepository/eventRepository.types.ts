@@ -345,7 +345,7 @@ export type TraceDetailedSummary = {
 export interface IEventRepository {
   maximumLiveReloadingSetting: number;
   // Event insertion methods
-  insertMany(events: CreateEventInput[]): Promise<void>;
+  insertMany(events: CreateEventInput[]): void;
   insertManyImmediate(events: CreateEventInput[]): Promise<void>;
 
   // Run event completion methods

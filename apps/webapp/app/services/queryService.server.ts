@@ -11,7 +11,7 @@ import type { TableSchema, WhereClauseCondition } from "@internal/tsql";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { getClickhouseForOrganization } from "./clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "./clickhouse/clickhouseFactory.server";
 import {
   queryConcurrencyLimiter,
   DEFAULT_ORG_CONCURRENCY_LIMIT,
@@ -275,7 +275,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
     };
 
-    const queryClickhouse = await getClickhouseForOrganization(organizationId, "query");
+    const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "query");
     const result = await executeTSQL(queryClickhouse.reader, {
       ...baseOptions,
       schema: z.record(z.any()),

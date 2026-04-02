@@ -20,7 +20,7 @@ import {
   type ModelComparisonItem,
   ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { requireUserId } from "~/services/session.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -55,7 +55,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typedjson({ comparison: [] as ModelComparisonItem[], models: responseModels });
   }
 
-  const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
   const presenter = new ModelRegistryPresenter(clickhouse);
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);

@@ -70,7 +70,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
@@ -242,7 +242,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
 
-  const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
   const presenter = new PromptPresenter(clickhouse);
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};

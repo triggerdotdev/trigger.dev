@@ -7,7 +7,9 @@ import {
 } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { ErrorAlertConfig } from "~/models/projectAlert.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { getDefaultClickhouseClient } from "~/services/clickhouse/clickhouseFactory.server";
+
+const clickhouseClient = getDefaultClickhouseClient();
 import { logger } from "~/services/logger.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 
