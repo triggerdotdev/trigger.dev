@@ -26,7 +26,13 @@ import {
 } from "~/presenters/v3/ErrorGroupPresenter.server";
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
-import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
+import {
+  getDefaultClickhouseClient,
+  getDefaultLogsClickhouseClient,
+} from "~/services/clickhouse/clickhouseFactory.server";
+
+const clickhouseClient = getDefaultClickhouseClient();
+const logsClickhouseClient = getDefaultLogsClickhouseClient();
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody } from "~/components/layout/AppLayout";
 import {

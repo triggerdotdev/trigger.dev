@@ -236,7 +236,6 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {
-
     const [insertError] = await this._clickhouse.llmMetrics.insert(rows, {
       params: {
         clickhouse_settings: this.#getClickhouseInsertSettings(),
@@ -310,7 +309,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     await tracePubSub.publish(events.map((e) => e.trace_id));
   }
 
-  async insertMany(events: CreateEventInput[]): Promise<void> {
+  insertMany(events: CreateEventInput[]): void {
     this.addToBatch(events.flatMap((event) => this.createEventToTaskEventV1Input(event)));
 
     // Dual-write LLM metrics records for spans with cost enrichment

@@ -31,7 +31,7 @@ import {
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -74,7 +74,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = dashboard.filters ?? ["tasks", "queues"];
 
-  const clickhouse = await getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
 
   // Load distinct models from ClickHouse if the dashboard has a models filter
   let possibleModels: { model: string; system: string }[] = [];
