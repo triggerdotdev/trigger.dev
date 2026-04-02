@@ -159,6 +159,7 @@ export class OrganizationsPresenter {
     // Get global feature flags with env-var-based defaults
     const globalFlags = await flags({
       defaultValues: {
+        hasAiAccess: env.AI_FEATURES_ENABLED === "1",
         hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
       },
     });
