@@ -1,9 +1,10 @@
-import { ArrowRightIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, Outlet, useNavigation, useParams, useLocation } from "@remix-run/react";
+import { type MetaFunction, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { BatchesNone } from "~/components/BlankStatePanels";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -13,11 +14,11 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  collapsibleHandleClassName,
   RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -151,8 +152,8 @@ export default function Page() {
             />
             <ResizablePanel
               id="batches-inspector"
-              min="100px"
-              default="500px"
+              min="370px"
+              default="370px"
               className="overflow-hidden"
               collapsible
               collapsed={!isShowingInspector}
@@ -160,7 +161,7 @@ export default function Page() {
               collapsedSize="0px"
               collapseAnimation={RESIZABLE_PANEL_ANIMATION}
             >
-              <div className="h-full" style={{ minWidth: 500 }}>
+              <div className="h-full" style={{ minWidth: 370 }}>
                 <Outlet />
               </div>
             </ResizablePanel>
@@ -300,8 +301,14 @@ function BatchActionsCell({ runsPath }: { runsPath: string }) {
     <TableCellMenu
       isSticky
       hiddenButtons={
-        <LinkButton to={runsPath} variant="minimal/small" LeadingIcon={ArrowRightIcon}>
-          View runs
+        <LinkButton
+          to={runsPath}
+          variant="minimal/small"
+          TrailingIcon={RunsIcon}
+          trailingIconClassName="text-runs"
+          className="text-text-bright"
+        >
+          <span>View runs</span>
         </LinkButton>
       }
     />
