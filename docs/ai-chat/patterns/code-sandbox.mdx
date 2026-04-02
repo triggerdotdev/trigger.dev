@@ -12,9 +12,6 @@ This page describes a **durable chat** pattern that fits `chat.agent()`:
 - **Reuse** it for every `executeCode` tool call during that turn (and across turns in the same run if you keep the handle).
 - **Dispose** it **right before the run suspends** waiting for the next user message — using the **`onChatSuspend`** hook, not `onTurnComplete`.
 
-<Info>
-  The reference implementation lives in the monorepo at [`references/ai-chat`](https://github.com/triggerdotdev/trigger.dev/tree/main/references/ai-chat) (`code-sandbox.ts`, `chat-tools.ts`, `trigger/chat.ts`).
-</Info>
 
 ## Why not tear down in `onTurnComplete`?
 
