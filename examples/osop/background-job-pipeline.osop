@@ -1,0 +1,61 @@
+osop_version: "1.0"
+id: triggerdev-background-jobs
+name: Trigger.dev Background Job Pipeline
+description: Long-running background job with progress tracking, retry logic, and webhook callbacks.
+tags: [trigger-dev, background-jobs, queue, serverless]
+
+nodes:
+  - id: receive-job
+    type: api
+    name: Receive Job Request
+    description: Accept job submission via API or event trigger.
+
+  - id: validate-input
+    type: system
+    name: Validate Input
+    description: Check job parameters and required permissions.
+
+  - id: process-ai
+    type: agent
+    name: AI Processing
+    description: Run the main AI processing task (e.g., document analysis, code generation).
+    runtime:
+      provider: openai
+      model: gpt-4o
+    timeout_sec: 300
+
+  - id: store-result
+    type: db
+    name: Store Result
+    description: Save the processing output to the database.
+
+  - id: webhook-callback
+    type: api
+    name: Webhook Callback
+    description: Notify the caller that the job is complete via webhook.
+
+  - id: cleanup
+    type: system
+    name: Cleanup
+    description: Remove temporary files and release resources.
+
+edges:
+  - from: receive-job
+    to: validate-input
+    mode: sequential
+  - from: validate-input
+    to: process-ai
+    mode: sequential
+  - from: process-ai
+    to: store-result
+    mode: sequential
+  - from: store-result
+    to: webhook-callback
+    mode: sequential
+  - from: webhook-callback
+    to: cleanup
+    mode: sequential
+  - from: process-ai
+    to: receive-job
+    mode: fallback
+    label: Retry on failure
