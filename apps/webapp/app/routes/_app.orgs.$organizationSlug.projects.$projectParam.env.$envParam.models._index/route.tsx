@@ -1179,7 +1179,9 @@ export default function ModelsPage() {
             className="overflow-hidden"
             collapsible
             collapsed={!selectedModel}
-            onCollapseChange={() => {}}
+            onCollapseChange={(isCollapsed) => {
+              if (isCollapsed) setSelectedModel(null);
+            }}
             collapsedSize="0px"
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
           >

@@ -54,6 +54,7 @@ import {
   ResizablePanelGroup,
   type ResizableSnapshot,
   collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
@@ -470,6 +471,8 @@ function TraceView({
   const environment = useEnvironment();
   const { searchParams, replaceSearchParam } = useReplaceSearchParams();
   const selectedSpanId = searchParams.get("span") ?? undefined;
+  const frozenSpanId = useFrozenValue(selectedSpanId);
+  const displaySpanId = selectedSpanId ?? frozenSpanId;
 
   if (!trace) {
     return <></>;
@@ -500,12 +503,16 @@ function TraceView({
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
+  const frozenSpanOverrides = useFrozenValue(spanOverrides);
+  const displaySpanOverrides = spanOverrides ?? frozenSpanOverrides;
 
   // Get the linked run ID for cached spans (map built during RunPresenter walk)
   const { linkedRunIdBySpanId } = trace;
   const selectedSpanLinkedRunId = selectedSpanId
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
+  const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
+  const displayLinkedRunId = selectedSpanLinkedRunId ?? frozenLinkedRunId;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -563,13 +570,13 @@ function TraceView({
             className="h-full"
             style={{ minWidth: parseInt(resizableSettings.parent.inspector.min) }}
           >
-            {selectedSpanId && (
+            {displaySpanId && (
               <SpanView
                 runParam={run.friendlyId}
-                spanId={selectedSpanId}
-                spanOverrides={spanOverrides as SpanOverride | undefined}
+                spanId={displaySpanId}
+                spanOverrides={displaySpanOverrides as SpanOverride | undefined}
                 closePanel={() => replaceSearchParam("span")}
-                linkedRunId={selectedSpanLinkedRunId}
+                linkedRunId={displayLinkedRunId}
               />
             )}
           </div>
