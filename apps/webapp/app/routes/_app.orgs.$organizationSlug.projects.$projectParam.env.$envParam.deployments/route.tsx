@@ -257,7 +257,7 @@ export default function Page() {
                           <TableRow key={deployment.id} className="group" isSelected={isSelected}>
                             <TableCell to={path} isTabbableCell isSelected={isSelected}>
                               <div className="flex items-center gap-2">
-                                <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
+                                <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (
                                   <Badge variant="extra-small">{titleCase(deployment.label)}</Badge>
                                 )}
@@ -419,8 +419,8 @@ export default function Page() {
 export function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   return (
     <div className="flex items-center gap-1">
-      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4" />
-      <Paragraph variant="extra-small">{name}</Paragraph>
+      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4 group-hover/table-row:text-text-bright" />
+      <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{name}</Paragraph>
     </div>
   );
 }
