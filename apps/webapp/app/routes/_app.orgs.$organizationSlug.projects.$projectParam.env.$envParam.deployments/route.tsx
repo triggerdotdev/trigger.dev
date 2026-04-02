@@ -42,9 +42,11 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -388,14 +390,26 @@ export default function Page() {
             )}
           </ResizablePanel>
 
-          {deploymentParam && (
-            <>
-              <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="500px" max="800px">
-                <Outlet />
-              </ResizablePanel>
-            </>
-          )}
+          <ResizableHandle
+            id="deployments-handle"
+            className={collapsibleHandleClassName(!!deploymentParam)}
+          />
+          <ResizablePanel
+            id="deployments-inspector"
+            default="500px"
+            min="300px"
+            max="800px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!deploymentParam}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 300 }}>
+              <Outlet />
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
