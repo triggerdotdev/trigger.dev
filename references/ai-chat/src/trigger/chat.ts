@@ -7,6 +7,7 @@ import {
   stepCountIs,
   generateId,
   createProviderRegistry,
+  validateUIMessages,
 } from "ai";
 import type { LanguageModel, LanguageModelUsage, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
@@ -216,6 +217,16 @@ export const aiChat = chat
                   .join("\n")}`,
             },
           ],
+    },
+    // #endregion
+
+    // #region onValidateMessages — validate UIMessages before model conversion
+    onValidateMessages: async ({ messages, turn }) => {
+      logger.info("Validating UI messages", {
+        turn,
+        count: messages.length,
+      });
+      return validateUIMessages({ messages, tools: chatTools });
     },
     // #endregion
 
