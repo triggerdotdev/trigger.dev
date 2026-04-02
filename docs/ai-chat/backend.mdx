@@ -148,6 +148,39 @@ export const myChat = chat.agent({
   (per-message). See [Client data and metadata](/ai-chat/frontend#client-data-and-metadata).
 </Tip>
 
+#### onValidateMessages
+
+Validate or transform incoming `UIMessage[]` before they are converted to model messages. Fires once per turn with the raw messages from the wire payload (after cleanup of aborted tool parts), **before** accumulation and `toModelMessages()`.
+
+Return the validated messages array. Throw to abort the turn with an error.
+
+This is the right place to call the AI SDK's [`validateUIMessages`](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-message-persistence#validating-messages-on-the-server) to catch malformed messages from storage or untrusted input before they reach the model — especially useful when persisting conversations to a database, where tool schemas may drift between deploys.
+
+| Field     | Type                                                            | Description                              |
+| --------- | --------------------------------------------------------------- | ---------------------------------------- |
+| `messages` | `UIMessage[]`                                                  | Incoming UI messages for this turn       |
+| `chatId`  | `string`                                                        | Chat session ID                          |
+| `turn`    | `number`                                                        | Turn number (0-indexed)                  |
+| `trigger` | `"submit-message" \| "regenerate-message" \| "preload" \| "close"` | The trigger type for this turn        |
+
+```ts
+import { validateUIMessages } from "ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onValidateMessages: async ({ messages }) => {
+    return validateUIMessages({ messages, tools: chatTools });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, tools: chatTools, abortSignal: signal });
+  },
+});
+```
+
+<Note>
+  `onValidateMessages` fires **before** `onTurnStart` and message accumulation. If you need to validate messages loaded from a database, do the loading in `onChatStart` or `onPreload` and let `onValidateMessages` validate the full incoming set each turn.
+</Note>
+
 #### onTurnStart
 
 Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins — so a mid-stream page refresh still shows the user's message.
