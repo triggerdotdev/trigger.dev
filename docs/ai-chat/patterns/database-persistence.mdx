@@ -9,7 +9,7 @@ Durable chat runs can span **hours** and **many turns**. You usually want:
 1. **Conversation state** — full **`UIMessage[]`** (or equivalent) keyed by **`chatId`**, so reloads and history views work.
 2. **Live session state** — the **current Trigger `runId`**, a **scoped access token** for realtime + input streams, and optionally **`lastEventId`** for stream resume.
 
-This page describes a **hook mapping** that works with any database. The [ai-chat reference app](https://github.com/triggerdotdev/trigger.dev/tree/main/references/ai-chat) implements the same idea with a SQL database and an ORM; adapt table and column names to your stack.
+This page describes a **hook mapping** that works with any database. Adapt table and column names to your stack.
 
 ## Conceptual data model
 
