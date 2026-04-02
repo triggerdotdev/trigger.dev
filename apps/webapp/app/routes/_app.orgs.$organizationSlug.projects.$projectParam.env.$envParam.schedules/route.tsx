@@ -25,9 +25,11 @@ import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -304,14 +306,25 @@ export default function Page() {
               )}
             </div>
           </ResizablePanel>
-          {(isShowingNewPane || isShowingSchedule) && (
-            <>
-              <ResizableHandle id="schedules-handle" />
-              <ResizablePanel id="schedules-inspector" min="100px" default="500px">
-                <Outlet />
-              </ResizablePanel>
-            </>
-          )}
+          <ResizableHandle
+            id="schedules-handle"
+            className={collapsibleHandleClassName(isShowingNewPane || isShowingSchedule)}
+          />
+          <ResizablePanel
+            id="schedules-inspector"
+            min="100px"
+            default="500px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!isShowingNewPane && !isShowingSchedule}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 500 }}>
+              <Outlet />
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
