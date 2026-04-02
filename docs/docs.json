@@ -91,6 +91,8 @@
                   "ai-chat/quick-start",
                   "ai-chat/backend",
                   "ai-chat/frontend",
+                  "ai-chat/server-chat",
+                  "ai-chat/sub-agents",
                   "ai-chat/types",
                   "ai-chat/features",
                   "ai-chat/compaction",
