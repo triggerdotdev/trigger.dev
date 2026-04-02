@@ -477,7 +477,7 @@ export function SideMenu({
                   data-action="prompts"
                   isCollapsed={isCollapsed}
                 />
-                {(user.admin || user.isImpersonating || featureFlags.hasAiModelsAccess) && (
+                {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
                   <SideMenuItem
                     name="Models"
                     icon={CubeIcon}

@@ -112,8 +112,8 @@ type Tab = "overview" | "global" | "usage";
 
 const TAB_CONFIG: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
-  { id: "global", label: "Global Metrics" },
-  { id: "usage", label: "Your Usage" },
+  { id: "usage", label: "Metrics" },
+  { id: "global", label: "Global metrics" },
 ];
 
 export default function ModelDetailPage() {
@@ -425,16 +425,7 @@ function GlobalMetricsTab({
   return (
     <div className="space-y-4">
       {/* Big numbers */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="h-24">
-          <MetricWidget
-            widgetKey={`${modelName}-calls`}
-            title="Total Calls"
-            query={`SELECT sum(call_count) AS total_calls FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}'`}
-            config={bignumberConfig("total_calls", { abbreviate: true })}
-            {...widgetProps}
-          />
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="h-24">
           <MetricWidget
             widgetKey={`${modelName}-ttfc-p50`}
@@ -465,25 +456,14 @@ function GlobalMetricsTab({
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="h-[300px]">
-          <MetricWidget
-            widgetKey={`${modelName}-calls-time`}
-            title="Calls over time"
-            query={`SELECT timeBucket(), sum(call_count) AS calls FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["calls"] })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-[300px]">
-          <MetricWidget
-            widgetKey={`${modelName}-ttfc-time`}
-            title="TTFC over time"
-            query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "line", xAxisColumn: "timebucket", yAxisColumns: ["ttfc_p50", "ttfc_p90"], aggregation: "avg" })}
-            {...widgetProps}
-          />
-        </div>
+      <div className="h-[300px]">
+        <MetricWidget
+          widgetKey={`${modelName}-ttfc-time`}
+          title="TTFC over time"
+          query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({ chartType: "line", xAxisColumn: "timebucket", yAxisColumns: ["ttfc_p50", "ttfc_p90"], aggregation: "avg" })}
+          {...widgetProps}
+        />
       </div>
 
       <Callout variant="info">
@@ -523,7 +503,7 @@ function YourUsageTab({
         <div className="h-24">
           <MetricWidget
             widgetKey={`${modelName}-user-calls`}
-            title="Your Calls"
+            title="Total calls (7d)"
             query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("total_calls", { abbreviate: true })}
             {...widgetProps}
@@ -532,7 +512,7 @@ function YourUsageTab({
         <div className="h-24">
           <MetricWidget
             widgetKey={`${modelName}-user-cost`}
-            title="Your Cost"
+            title="Total cost (7d)"
             query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}'`}
             config={bignumberConfig("total_cost", { aggregation: "sum" })}
             {...widgetProps}
