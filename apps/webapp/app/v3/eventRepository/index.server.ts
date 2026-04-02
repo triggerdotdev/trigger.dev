@@ -1,29 +1,12 @@
 import { env } from "~/env.server";
 import { eventRepository } from "./eventRepository.server";
-import {
-  clickhouseEventRepository,
-  clickhouseEventRepositoryV2,
-} from "./clickhouseEventRepositoryInstance.server";
-import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
+import { type IEventRepository, type TraceEventOptions } from "./eventRepository.types";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
-
-export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
-  const taskEventStore = store ?? env.EVENT_REPOSITORY_DEFAULT_STORE;
-
-  if (taskEventStore === "clickhouse_v2") {
-    return clickhouseEventRepositoryV2;
-  }
-
-  if (taskEventStore === "clickhouse") {
-    return clickhouseEventRepository;
-  }
-
-  return eventRepository;
-}
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 
 export const EVENT_STORE_TYPES = {
   POSTGRES: "postgres",
@@ -58,63 +41,68 @@ export async function getConfiguredEventRepository(
     (organization.featureFlags as Record<string, unknown> | null) ?? undefined
   );
 
+  const { repository: resolvedRepository } = await clickhouseFactory.getEventRepositoryForOrganization(
+    taskEventStore,
+    organizationId
+  );
+
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
-    return { repository: clickhouseEventRepositoryV2, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
+    return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
   }
 
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE) {
-    return { repository: clickhouseEventRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
+    return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
   }
 
   return { repository: eventRepository, store: EVENT_STORE_TYPES.POSTGRES };
 }
 
 export async function getEventRepository(
+  organizationId: string,
   featureFlags: Record<string, unknown> | undefined,
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
-  if (typeof parentStore === "string") {
-    if (parentStore === "clickhouse_v2") {
-      return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
-    }
-    if (parentStore === "clickhouse") {
-      return { repository: clickhouseEventRepository, store: "clickhouse" };
-    } else {
-      return { repository: eventRepository, store: getTaskEventStore() };
-    }
+  const taskEventStore = parentStore ?? (await resolveTaskEventRepositoryFlag(featureFlags));
+  const { repository: resolvedRepository } = await clickhouseFactory.getEventRepositoryForOrganization(
+    taskEventStore,
+    organizationId
+  );
+
+  if (taskEventStore === "clickhouse_v2") {
+    return { repository: resolvedRepository, store: "clickhouse_v2" };
   }
 
-  const taskEventRepository = await resolveTaskEventRepositoryFlag(featureFlags);
-
-  if (taskEventRepository === "clickhouse_v2") {
-    return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
-  }
-
-  if (taskEventRepository === "clickhouse") {
-    return { repository: clickhouseEventRepository, store: "clickhouse" };
+  if (taskEventStore === "clickhouse") {
+    return { repository: resolvedRepository, store: "clickhouse" };
   }
 
   return { repository: eventRepository, store: getTaskEventStore() };
 }
 
 export async function getV3EventRepository(
+  organizationId: string,
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
   if (typeof parentStore === "string") {
-    if (parentStore === "clickhouse_v2") {
-      return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
-    }
-    if (parentStore === "clickhouse") {
-      return { repository: clickhouseEventRepository, store: "clickhouse" };
-    } else {
-      return { repository: eventRepository, store: getTaskEventStore() };
-    }
+    const { repository: resolvedRepository } = await clickhouseFactory.getEventRepositoryForOrganization(
+      parentStore,
+      organizationId
+    );
+    return { repository: resolvedRepository, store: parentStore };
   }
 
   if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse_v2") {
-    return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
+    const { repository: resolvedRepository } = await clickhouseFactory.getEventRepositoryForOrganization(
+      "clickhouse_v2",
+      organizationId
+    );
+    return { repository: resolvedRepository, store: "clickhouse_v2" };
   } else if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse") {
-    return { repository: clickhouseEventRepository, store: "clickhouse" };
+    const { repository: resolvedRepository } = await clickhouseFactory.getEventRepositoryForOrganization(
+      "clickhouse",
+      organizationId
+    );
+    return { repository: resolvedRepository, store: "clickhouse" };
   } else {
     return { repository: eventRepository, store: getTaskEventStore() };
   }
@@ -203,7 +191,10 @@ async function recordRunEvent(
       };
     }
 
-    const $eventRepository = resolveEventRepositoryForStore(foundRun.taskEventStore);
+    const { repository: $eventRepository } = await clickhouseFactory.getEventRepositoryForOrganization(
+      foundRun.taskEventStore,
+      foundRun.runtimeEnvironment.organizationId
+    );
 
     const { attributes, startTime, ...optionsRest } = options;
 

@@ -29,7 +29,7 @@ import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -854,7 +854,7 @@ export class RunsReplicationService {
   ) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       // Get the appropriate ClickHouse client for this organization
-      const clickhouse = await getClickhouseForOrganization(organizationId, "replication");
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "replication");
 
       const [insertError, insertResult] = await clickhouse.taskRuns.insertCompactArrays(
         taskRunInserts,
@@ -887,7 +887,7 @@ export class RunsReplicationService {
   ) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
       // Get the appropriate ClickHouse client for this organization
-      const clickhouse = await getClickhouseForOrganization(organizationId, "replication");
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "replication");
 
       const [insertError, insertResult] = await clickhouse.taskRuns.insertPayloadsCompactArrays(
         payloadInserts,

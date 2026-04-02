@@ -151,7 +151,7 @@ export class EventRepository implements IEventRepository {
     await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
-  async insertMany(events: CreateEventInput[]) {
+  insertMany(events: CreateEventInput[]) {
     this._flushScheduler.addToBatch(events.map(this.#createableEventToPrismaEvent));
   }
 

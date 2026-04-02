@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { getClickhouseForOrganization } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
@@ -43,7 +43,7 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const clickhouse = await getClickhouseForOrganization(prompt.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(prompt.project.organizationId, "standard");
     const presenter = new PromptPresenter(clickhouse);
     const versions = await presenter.listVersions(prompt.id);
 
