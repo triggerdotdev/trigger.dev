@@ -29,6 +29,12 @@ import {
   removePromptOverrideTool,
   reactivatePromptOverrideTool,
 } from "./tools/prompts.js";
+import { listAgentsTool } from "./tools/agents.js";
+import {
+  startAgentChatTool,
+  sendAgentMessageTool,
+  closeAgentChatTool,
+} from "./tools/agentChat.js";
 import { respondWithError } from "./utils.js";
 
 /** Tool names that perform write/mutating operations. */
@@ -43,6 +49,9 @@ const WRITE_TOOLS = new Set([
   updatePromptOverrideTool.name,
   removePromptOverrideTool.name,
   reactivatePromptOverrideTool.name,
+  startAgentChatTool.name,
+  sendAgentMessageTool.name,
+  closeAgentChatTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
@@ -80,6 +89,10 @@ export function registerTools(context: McpContext) {
     updatePromptOverrideTool,
     removePromptOverrideTool,
     reactivatePromptOverrideTool,
+    listAgentsTool,
+    startAgentChatTool,
+    sendAgentMessageTool,
+    closeAgentChatTool,
   ];
 
   for (const tool of tools) {
