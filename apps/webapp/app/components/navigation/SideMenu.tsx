@@ -1003,6 +1003,7 @@ function ProjectSelector({
             title="Logout"
             icon={ArrowRightOnRectangleIcon}
             leadingIconClassName="text-text-dimmed"
+            danger
           />
         </div>
       </PopoverContent>
