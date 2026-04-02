@@ -396,8 +396,8 @@ export default function Page() {
           />
           <ResizablePanel
             id="deployments-inspector"
-            default="500px"
-            min="300px"
+            default="400px"
+            min="400px"
             max="800px"
             className="overflow-hidden"
             collapsible
@@ -406,7 +406,7 @@ export default function Page() {
             collapsedSize="0px"
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
           >
-            <div className="h-full" style={{ minWidth: 300 }}>
+            <div className="h-full" style={{ minWidth: 400 }}>
               <Outlet />
             </div>
           </ResizablePanel>
