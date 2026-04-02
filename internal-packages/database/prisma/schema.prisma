@@ -874,10 +874,6 @@ model TaskRun {
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
-  // Finding ancestor runs
-  @@index([rootTaskRunId])
-  //Schedules
-  @@index([scheduleId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
@@ -886,8 +882,6 @@ model TaskRun {
   // Finding runs in a batch
   @@index([runTags(ops: ArrayOps)], type: Gin)
   @@index([runtimeEnvironmentId, batchId])
-  // This will include the createdAt index to help speed up the run list page
-  @@index([runtimeEnvironmentId, id(sort: Desc)])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
   @@index([createdAt], type: Brin)
   @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
