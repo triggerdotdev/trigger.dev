@@ -265,13 +265,13 @@ export default function Page() {
                           <span className="w-24 shrink-0">Region:</span>
                           <span>{connection.targetRegion}</span>
                         </div>
-                        {connection.endpointDnsName && (
+                        {connection.endpointIps && connection.endpointIps.length > 0 && (
                           <div className="flex items-center text-xs text-text-dimmed">
-                            <span className="w-24 shrink-0">DNS:</span>
+                            <span className="w-24 shrink-0">IPs:</span>
                             <code className="truncate font-mono text-emerald-400">
-                              {connection.endpointDnsName}
+                              {connection.endpointIps.join(", ")}
                             </code>
-                            <CopyButton value={connection.endpointDnsName} />
+                            <CopyButton value={connection.endpointIps.join(", ")} />
                           </div>
                         )}
                         {connection.statusMessage && (
