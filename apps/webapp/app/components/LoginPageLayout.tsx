@@ -63,7 +63,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex h-full max-w-sm items-center justify-center">{children}</div>
           <Paragraph variant="small" className="hidden text-center lg:block">
-            Having login issues? <TextLink href="https://@trigger.dev/contact">Email us</TextLink>{" "}
+            Having login issues? <TextLink href="https://trigger.dev/contact">Email us</TextLink>{" "}
             or <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
           </Paragraph>
         </div>
