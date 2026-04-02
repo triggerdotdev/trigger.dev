@@ -69,6 +69,7 @@ const PopoverMenuItem = React.forwardRef<
     name?: string;
     value?: string;
     type?: React.ComponentProps<"button">["type"];
+    danger?: boolean;
   }
 >(
   (
@@ -86,18 +87,23 @@ const PopoverMenuItem = React.forwardRef<
       name,
       value,
       type,
+      danger = false,
     },
     ref
   ) => {
     const contentProps = {
       variant: variant.variant,
       LeadingIcon: icon,
-      leadingIconClassName,
+      leadingIconClassName: danger
+        ? cn(leadingIconClassName, "transition-colors group-hover/button:text-error")
+        : leadingIconClassName,
       fullWidth: true,
       textAlignLeft: true,
       TrailingIcon: isSelected ? CheckIcon : undefined,
       className: cn(
-        "group-hover:bg-charcoal-700",
+        danger
+          ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors [&_span]:group-hover/button:text-error"
+          : "group-hover:bg-charcoal-700",
         isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
         className
       ),
