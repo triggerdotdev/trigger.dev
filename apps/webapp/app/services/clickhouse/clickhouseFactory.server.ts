@@ -18,7 +18,6 @@
  * ### Caching Strategy
  * - **Org → data store mapping**: `OrganizationDataStoresRegistry` (in-memory Map, reloaded
  *   periodically via setInterval)
- * - **SecretKey → resolved URL**: module-level Map (persists for process lifetime)
  * - **ClickHouse clients**: cached by hostname hash (multiple orgs share same instance)
  * - **Event repositories**: cached by hostname hash (stateful, must be reused)
  *
@@ -39,12 +38,11 @@
 
 import { ClickHouse } from "@internal/clickhouse";
 import { createHash } from "crypto";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
-import { ClickhouseConnectionSchema } from "./clickhouseSecretSchemas.server";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
+import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 
 // ---------------------------------------------------------------------------
 // Default clients (singleton per process)
@@ -162,19 +160,6 @@ function initializeQueryClickhouseClient() {
 }
 
 // ---------------------------------------------------------------------------
-// Org-scoped client caches
-// ---------------------------------------------------------------------------
-
-/** ClickHouse clients keyed by hostname hash (shared across orgs pointing at the same host). */
-const clickhouseClientCache = new Map<string, ClickHouse>();
-
-/** Event repositories keyed by hostname hash (stateful, must be reused). */
-const eventRepositoryCache = new Map<string, ClickhouseEventRepository>();
-
-/** Resolved connection URLs keyed by secret-store key (avoids repeated secret fetches). */
-const resolvedConnectionCache = new Map<string, { url: string; hostnameHash: string }>();
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -183,26 +168,7 @@ function hashHostname(url: string): string {
   return createHash("sha256").update(parsed.hostname).digest("hex");
 }
 
-type ClientType = "standard" | "events" | "replication" | "logs" | "query" | "admin";
-
-/**
- * Resolve a secret-store key to a connection URL + hostname hash.
- * Results are cached for the process lifetime (the registry reloads keep org→key mapping fresh).
- */
-async function resolveSecretKey(
-  secretKey: string
-): Promise<{ url: string; hostnameHash: string } | null> {
-  const cached = resolvedConnectionCache.get(secretKey);
-  if (cached) return cached;
-
-  const secretStore = getSecretStore("DATABASE");
-  const connection = await secretStore.getSecret(ClickhouseConnectionSchema, secretKey);
-  if (!connection) return null;
-
-  const resolved = { url: connection.url, hostnameHash: hashHostname(connection.url) };
-  resolvedConnectionCache.set(secretKey, resolved);
-  return resolved;
-}
+export type ClientType = "standard" | "events" | "replication" | "logs" | "query" | "admin";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -222,114 +188,112 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Factory class (injectable for testing)
+// ---------------------------------------------------------------------------
+
+export class ClickhouseFactory {
+  /** ClickHouse clients keyed by hostname hash + clientType. */
+  private readonly _clientCache = new Map<string, ClickHouse>();
+  /** Event repositories keyed by hostname hash (stateful, must be reused). */
+  private readonly _eventRepositoryCache = new Map<string, ClickhouseEventRepository>();
+
+  constructor(private readonly _registry: OrganizationDataStoresRegistry) {}
+
+  async getClickhouseForOrganization(
+    organizationId: string,
+    clientType: ClientType
+  ): Promise<ClickHouse> {
+    if (!this._registry.isLoaded) {
+      await this._registry.isReady;
+    }
+
+    const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
+
+    if (!dataStore) {
+      switch (clientType) {
+        case "standard":
+        case "events":
+        case "replication":
+          return defaultClickhouseClient;
+        case "logs":
+          return defaultLogsClickhouseClient;
+        case "query":
+          return defaultQueryClickhouseClient;
+        case "admin":
+          return defaultAdminClickhouseClient;
+      }
+    }
+
+    const hostnameHash = hashHostname(dataStore.url);
+    const cacheKey = `${hostnameHash}:${clientType}`;
+    let client = this._clientCache.get(cacheKey);
+
+    if (!client) {
+      client = buildOrgClickhouseClient(dataStore.url, clientType);
+      this._clientCache.set(cacheKey, client);
+    }
+
+    return client;
+  }
+
+  async getEventRepositoryForOrganization(
+    organizationId: string
+  ): Promise<ClickhouseEventRepository> {
+    if (!this._registry.isLoaded) {
+      await this._registry.isReady;
+    }
+
+    const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
+
+    if (!dataStore) {
+      const defaultKey = "default:events";
+      let defaultRepo = this._eventRepositoryCache.get(defaultKey);
+      if (!defaultRepo) {
+        const eventsClickhouse = await getEventsClickhouseClient();
+        defaultRepo = buildEventRepository(eventsClickhouse);
+        this._eventRepositoryCache.set(defaultKey, defaultRepo);
+      }
+      return defaultRepo;
+    }
+
+    const hostnameHash = hashHostname(dataStore.url);
+    const cacheKey = `${hostnameHash}:events`;
+    let repository = this._eventRepositoryCache.get(cacheKey);
+
+    if (!repository) {
+      const client = await this.getClickhouseForOrganization(organizationId, "events");
+      repository = buildEventRepository(client);
+      this._eventRepositoryCache.set(cacheKey, repository);
+    }
+
+    return repository;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Singleton factory instance
+// ---------------------------------------------------------------------------
+
+const clickhouseFactory = singleton(
+  "clickhouseFactory",
+  () => new ClickhouseFactory(organizationDataStoresRegistry)
+);
+
+// ---------------------------------------------------------------------------
+// Public API (thin wrappers around the singleton)
 // ---------------------------------------------------------------------------
 
 export async function getClickhouseForOrganization(
   organizationId: string,
   clientType: ClientType
 ): Promise<ClickHouse> {
-  if (!organizationDataStoresRegistry.isLoaded) {
-    await organizationDataStoresRegistry.isReady;
-  }
-
-  const dataStore = organizationDataStoresRegistry.get(organizationId, "CLICKHOUSE");
-
-  if (!dataStore) {
-    // No override — use the appropriate default client.
-    switch (clientType) {
-      case "standard":
-      case "events":
-      case "replication":
-        return defaultClickhouseClient;
-      case "logs":
-        return defaultLogsClickhouseClient;
-      case "query":
-        return defaultQueryClickhouseClient;
-      case "admin":
-        return defaultAdminClickhouseClient;
-    }
-  }
-
-  const { secretKey } = dataStore.config.data;
-  const connection = await resolveSecretKey(secretKey);
-
-  if (!connection) {
-    console.warn(
-      `[clickhouseFactory] Secret key "${secretKey}" not found for org ${organizationId}; falling back to default`
-    );
-    switch (clientType) {
-      case "standard":
-      case "events":
-      case "replication":
-        return defaultClickhouseClient;
-      case "logs":
-        return defaultLogsClickhouseClient;
-      case "query":
-        return defaultQueryClickhouseClient;
-      case "admin":
-        return defaultAdminClickhouseClient;
-    }
-  }
-
-  const cacheKey = `${connection.hostnameHash}:${clientType}`;
-  let client = clickhouseClientCache.get(cacheKey);
-
-  if (!client) {
-    client = buildOrgClickhouseClient(connection.url, clientType);
-    clickhouseClientCache.set(cacheKey, client);
-  }
-
-  return client;
+  return clickhouseFactory.getClickhouseForOrganization(organizationId, clientType);
 }
 
 export async function getEventRepositoryForOrganization(
   organizationId: string
 ): Promise<ClickhouseEventRepository> {
-  if (!organizationDataStoresRegistry.isLoaded) {
-    await organizationDataStoresRegistry.isReady;
-  }
-
-  const dataStore = organizationDataStoresRegistry.get(organizationId, "CLICKHOUSE");
-
-  if (!dataStore) {
-    const defaultKey = "default:events";
-    let defaultRepo = eventRepositoryCache.get(defaultKey);
-    if (!defaultRepo) {
-      const eventsClickhouse = await getEventsClickhouseClient();
-      defaultRepo = buildEventRepository(eventsClickhouse);
-      eventRepositoryCache.set(defaultKey, defaultRepo);
-    }
-    return defaultRepo;
-  }
-
-  const { secretKey } = dataStore.config.data;
-  const connection = await resolveSecretKey(secretKey);
-
-  if (!connection) {
-    console.warn(
-      `[clickhouseFactory] Secret key "${secretKey}" not found for org ${organizationId}; falling back to default event repository`
-    );
-    const defaultKey = "default:events";
-    let defaultRepo = eventRepositoryCache.get(defaultKey);
-    if (!defaultRepo) {
-      const eventsClickhouse = await getEventsClickhouseClient();
-      defaultRepo = buildEventRepository(eventsClickhouse);
-      eventRepositoryCache.set(defaultKey, defaultRepo);
-    }
-    return defaultRepo;
-  }
-
-  const cacheKey = `${connection.hostnameHash}:events`;
-  let repository = eventRepositoryCache.get(cacheKey);
-
-  if (!repository) {
-    const client = await getClickhouseForOrganization(organizationId, "events");
-    repository = buildEventRepository(client);
-    eventRepositoryCache.set(cacheKey, repository);
-  }
-
-  return repository;
+  return clickhouseFactory.getEventRepositoryForOrganization(organizationId);
 }
 
 /**

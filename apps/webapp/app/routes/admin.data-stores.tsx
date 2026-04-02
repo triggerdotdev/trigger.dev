@@ -26,8 +26,9 @@ import {
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
-import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { ClickhouseConnectionSchema } from "~/services/clickhouse/clickhouseSecretSchemas.server";
+import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
+import { tryCatch } from "@trigger.dev/core";
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -55,79 +56,106 @@ const AddSchema = z.object({
   connectionUrl: z.string().url(),
 });
 
+const UpdateSchema = z.object({
+  _action: z.literal("update"),
+  key: z.string().min(1),
+  organizationIds: z.string().min(1),
+  connectionUrl: z.string().url().optional(),
+});
+
 const DeleteSchema = z.object({
   _action: z.literal("delete"),
-  id: z.string().min(1),
+  key: z.string().min(1),
 });
+
+const FormSchema = z.discriminatedUnion("_action", [AddSchema, UpdateSchema, DeleteSchema]);
 
 export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
   if (!user.admin) throw redirect("/");
 
   const formData = await request.formData();
-  const _action = formData.get("_action");
 
-  if (_action === "add") {
-    const result = AddSchema.safeParse(Object.fromEntries(formData));
-    if (!result.success) {
-      return typedjson(
-        { error: result.error.issues.map((i) => i.message).join(", ") },
-        { status: 400 }
+  const result = FormSchema.safeParse(Object.fromEntries(formData));
+
+  if (!result.success) {
+    return typedjson(
+      { error: result.error.issues.map((i) => i.message).join(", ") },
+      { status: 400 }
+    );
+  }
+
+  switch (result.data._action) {
+    case "add": {
+      const { key, organizationIds: rawOrgIds, connectionUrl } = result.data;
+      const organizationIds = rawOrgIds
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const config = ClickhouseConnectionSchema.parse({ url: connectionUrl });
+
+      const [error, _] = await tryCatch(
+        organizationDataStoresRegistry.addDataStore({
+          key,
+          kind: "CLICKHOUSE",
+          organizationIds,
+          config,
+        })
       );
+
+      if (error) {
+        return typedjson({ error: error.message }, { status: 400 });
+      }
+
+      return typedjson({ success: true });
     }
+    case "update": {
+      const { key, organizationIds: rawOrgIds, connectionUrl } = result.data;
+      const organizationIds = rawOrgIds
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
 
-    const { key, organizationIds: rawOrgIds, connectionUrl } = result.data;
-    const organizationIds = rawOrgIds
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+      const config = connectionUrl
+        ? ClickhouseConnectionSchema.parse({ url: connectionUrl })
+        : undefined;
 
-    const secretKey = `data-store:${key}:clickhouse`;
+      const [error, _] = await tryCatch(
+        organizationDataStoresRegistry.updateDataStore({
+          key,
+          kind: "CLICKHOUSE",
+          organizationIds,
+          config,
+        })
+      );
 
-    const secretStore = getSecretStore("DATABASE");
-    await secretStore.setSecret(secretKey, ClickhouseConnectionSchema.parse({ url: connectionUrl }));
+      if (error) {
+        return typedjson({ error: error.message }, { status: 400 });
+      }
 
-    await prisma.organizationDataStore.create({
-      data: {
-        key,
-        organizationIds,
-        kind: "CLICKHOUSE",
-        config: { version: 1, data: { secretKey } },
-      },
-    });
+      return typedjson({ success: true });
+    }
+    case "delete": {
+      const { key } = result.data;
 
+      const [error, _] = await tryCatch(
+        organizationDataStoresRegistry.deleteDataStore({
+          key,
+          kind: "CLICKHOUSE",
+        })
+      );
 
-    return typedjson({ success: true });
+      if (error) {
+        return typedjson({ error: error.message }, { status: 400 });
+      }
+
+      return typedjson({ success: true });
+    }
+    default: {
+      return typedjson({ error: "Unknown action" }, { status: 400 });
+    }
   }
-
-  if (_action === "delete") {
-    const result = DeleteSchema.safeParse(Object.fromEntries(formData));
-    if (!result.success) {
-      return typedjson({ error: "Invalid request" }, { status: 400 });
-    }
-
-    const { id } = result.data;
-
-    const dataStore = await prisma.organizationDataStore.findFirst({ where: { id } });
-    if (!dataStore) {
-      return typedjson({ error: "Data store not found" }, { status: 404 });
-    }
-
-    // Delete secret if config references one
-    const config = dataStore.config as any;
-    if (config?.data?.secretKey) {
-      const secretStore = getSecretStore("DATABASE");
-      await secretStore.deleteSecret(config.data.secretKey).catch(() => {
-        // Secret may not exist — proceed with deletion
-      });
-    }
-
-    await prisma.organizationDataStore.delete({ where: { id } });
-
-    return typedjson({ success: true });
-  }
-
-  return typedjson({ error: "Unknown action" }, { status: 400 });
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +235,7 @@ export default function AdminDataStoresRoute() {
                     </span>
                   </TableCell>
                   <TableCell isSticky>
-                    <DeleteButton id={ds.id} name={ds.key} />
+                    <DeleteButton name={ds.key} />
                   </TableCell>
                 </TableRow>
               ))
@@ -225,7 +253,7 @@ export default function AdminDataStoresRoute() {
 // Delete button with popover confirmation
 // ---------------------------------------------------------------------------
 
-function DeleteButton({ id, name }: { id: string; name: string }) {
+function DeleteButton({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
   const fetcher = useFetcher<{ success?: boolean; error?: string }>();
   const isDeleting = fetcher.state !== "idle";
@@ -251,7 +279,7 @@ function DeleteButton({ id, name }: { id: string; name: string }) {
           </Button>
           <fetcher.Form method="post" onSubmit={() => setOpen(false)}>
             <input type="hidden" name="_action" value="delete" />
-            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="key" value={name} />
             <Button type="submit" variant="danger/small">
               Confirm delete
             </Button>
@@ -311,7 +339,13 @@ function AddDataStoreDialog({
             <label className="text-xs font-medium text-text-dimmed">
               Kind <span className="text-rose-400">*</span>
             </label>
-            <Input name="kind" value="CLICKHOUSE" readOnly variant="medium" className="opacity-60" />
+            <Input
+              name="kind"
+              value="CLICKHOUSE"
+              readOnly
+              variant="medium"
+              className="opacity-60"
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -344,9 +378,7 @@ function AddDataStoreDialog({
             </p>
           </div>
 
-          {fetcher.data?.error && (
-            <p className="text-xs text-rose-400">{fetcher.data.error}</p>
-          )}
+          {fetcher.data?.error && <p className="text-xs text-rose-400">{fetcher.data.error}</p>}
 
           <DialogFooter>
             <Button

@@ -4,43 +4,21 @@ import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
 import { OrganizationDataStoresRegistry } from "./organizationDataStoresRegistry.server";
 
-export const organizationDataStoresRegistry = singleton(
-  "organizationDataStoresRegistry",
-  () => {
-    const registry = new OrganizationDataStoresRegistry($replica);
+export const organizationDataStoresRegistry = singleton("organizationDataStoresRegistry", () => {
+  const registry = new OrganizationDataStoresRegistry($replica);
 
-    registry.loadFromDatabase().catch((err) => {
-      console.error("[OrganizationDataStoresRegistry] Failed to initialize", err);
+  registry.loadFromDatabase().catch((err) => {
+    console.error("[OrganizationDataStoresRegistry] Failed to initialize", err);
+  });
+
+  const interval = setInterval(() => {
+    registry.reload().catch((err) => {
+      console.error("[OrganizationDataStoresRegistry] Failed to reload", err);
     });
+  }, env.ORGANIZATION_DATA_STORES_RELOAD_INTERVAL_MS);
 
-    const interval = setInterval(
-      () => {
-        registry.reload().catch((err) => {
-          console.error("[OrganizationDataStoresRegistry] Failed to reload", err);
-        });
-      },
-      env.ORGANIZATION_DATA_STORES_RELOAD_INTERVAL_MS
-    );
+  signalsEmitter.on("SIGTERM", () => clearInterval(interval));
+  signalsEmitter.on("SIGINT", () => clearInterval(interval));
 
-    signalsEmitter.on("SIGTERM", () => clearInterval(interval));
-    signalsEmitter.on("SIGINT", () => clearInterval(interval));
-
-    return registry;
-  }
-);
-
-/**
- * Wait for the registry to finish its initial load, with a timeout.
- * After the first call resolves (or times out), subsequent calls are no-ops.
- */
-export async function waitForOrganizationDataStoresReady(
-  timeoutMs = 5000
-): Promise<void> {
-  if (organizationDataStoresRegistry.isLoaded) return;
-  if (timeoutMs <= 0) return;
-
-  await Promise.race([
-    organizationDataStoresRegistry.isReady,
-    new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-  ]);
-}
+  return registry;
+});
