@@ -13,9 +13,11 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -143,14 +145,25 @@ export default function Page() {
                 />
               </div>
             </ResizablePanel>
-            {isShowingInspector && (
-              <>
-                <ResizableHandle id="batches-handle" />
-                <ResizablePanel id="batches-inspector" min="100px" default="500px">
-                  <Outlet />
-                </ResizablePanel>
-              </>
-            )}
+            <ResizableHandle
+              id="batches-handle"
+              className={collapsibleHandleClassName(isShowingInspector)}
+            />
+            <ResizablePanel
+              id="batches-inspector"
+              min="100px"
+              default="500px"
+              className="overflow-hidden"
+              collapsible
+              collapsed={!isShowingInspector}
+              onCollapseChange={() => {}}
+              collapsedSize="0px"
+              collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+            >
+              <div className="h-full" style={{ minWidth: 500 }}>
+                <Outlet />
+              </div>
+            </ResizablePanel>
           </ResizablePanelGroup>
         )}
       </PageBody>
