@@ -725,6 +725,27 @@ function renderPart(part: UIMessage["parts"][number], i: number) {
   // Tool call — type: "tool-{name}" with toolCallId, input, output, state
   if (type.startsWith("tool-")) {
     const toolName = type.slice(5);
+
+    // Sub-agent tool: output is a UIMessage with parts
+    const isSubAgent =
+      p.output != null &&
+      typeof p.output === "object" &&
+      Array.isArray(p.output.parts);
+
+    // For sub-agent tools, show the last text part as the "output" tab
+    // (mirrors what toModelOutput typically sends to the parent LLM)
+    // instead of dumping the full UIMessage JSON.
+    let resultOutput: string | undefined;
+    if (isSubAgent) {
+      const lastText = (p.output.parts as any[])
+        .filter((part: any) => part.type === "text" && part.text)
+        .pop();
+      resultOutput = lastText?.text ?? undefined;
+    } else if (p.output != null) {
+      resultOutput =
+        typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+    }
+
     return (
       <ToolUseRow
         key={i}
@@ -732,18 +753,19 @@ function renderPart(part: UIMessage["parts"][number], i: number) {
           toolCallId: p.toolCallId ?? `tool-${i}`,
           toolName,
           inputJson: JSON.stringify(p.input ?? {}, null, 2),
-          resultOutput:
-            p.output != null
-              ? typeof p.output === "string"
-                ? p.output
-                : JSON.stringify(p.output, null, 2)
-              : undefined,
+          resultOutput,
           resultSummary:
             p.state === "input-streaming" || p.state === "input-available"
               ? "calling..."
               : p.state === "output-error"
               ? `error: ${p.errorText ?? "unknown"}`
               : undefined,
+          subAgent: isSubAgent
+            ? {
+                parts: p.output.parts,
+                isStreaming: p.state === "output-available" && p.preliminary === true,
+              }
+            : undefined,
         }}
       />
     );
