@@ -65,8 +65,8 @@ export function MainCenteredContainer({
   className?: string;
 }) {
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 lg:items-start lg:p-0">
-      <div className={cn("mx-auto max-w-xs overflow-y-auto p-1 lg:mt-[22vh]", className)}>
+    <div className="flex h-full w-full flex-col overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 lg:p-0">
+      <div className={cn("m-auto max-w-xs p-1 lg:mx-auto lg:mb-0 lg:mt-[22vh]", className)}>
         {children}
       </div>
     </div>
