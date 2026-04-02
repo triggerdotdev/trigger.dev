@@ -312,7 +312,7 @@ export default function Page() {
           />
           <ResizablePanel
             id="schedules-inspector"
-            min="100px"
+            min="400px"
             default="500px"
             className="overflow-hidden"
             collapsible
@@ -321,7 +321,7 @@ export default function Page() {
             collapsedSize="0px"
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
           >
-            <div className="h-full" style={{ minWidth: 500 }}>
+            <div className="h-full" style={{ minWidth: 400 }}>
               <Outlet />
             </div>
           </ResizablePanel>

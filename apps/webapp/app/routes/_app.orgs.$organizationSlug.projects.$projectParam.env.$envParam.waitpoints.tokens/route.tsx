@@ -248,7 +248,7 @@ export default function Page() {
             />
             <ResizablePanel
               id="waitpoint-tokens-inspector"
-              min="100px"
+              min="450px"
               default="500px"
               className="overflow-hidden"
               collapsible
@@ -257,7 +257,7 @@ export default function Page() {
               collapsedSize="0px"
               collapseAnimation={RESIZABLE_PANEL_ANIMATION}
             >
-              <div className="h-full" style={{ minWidth: 500 }}>
+              <div className="h-full" style={{ minWidth: 450 }}>
                 <Outlet />
               </div>
             </ResizablePanel>
