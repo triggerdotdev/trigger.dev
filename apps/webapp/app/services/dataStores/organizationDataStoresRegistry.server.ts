@@ -1,8 +1,10 @@
-import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
+import type { DataStoreKind, PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import {
   ClickhouseDataStoreConfig,
   type ParsedDataStore,
 } from "./organizationDataStoreConfigSchemas.server";
+import { getSecretStore } from "../secrets/secretStore.server";
+import { ClickhouseConnectionSchema } from "../clickhouse/clickhouseSecretSchemas.server";
 
 export class OrganizationDataStoresRegistry {
   private _prisma: PrismaClient | PrismaReplicaClient;
@@ -27,6 +29,7 @@ export class OrganizationDataStoresRegistry {
 
   async loadFromDatabase(): Promise<void> {
     const rows = await this._prisma.organizationDataStore.findMany();
+    const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
 
     const lookup = new Map<string, ParsedDataStore>();
 
@@ -42,7 +45,20 @@ export class OrganizationDataStoresRegistry {
             );
             continue;
           }
-          parsed = { kind: "CLICKHOUSE", config: result.data };
+
+          const connection = await secretStore.getSecret(
+            ClickhouseConnectionSchema,
+            result.data.data.secretKey
+          );
+
+          if (!connection) {
+            console.warn(
+              `[OrganizationDataStoresRegistry] Secret "${result.data.data.secretKey}" not found for OrganizationDataStore "${row.key}" — skipping`
+            );
+            continue;
+          }
+
+          parsed = { kind: "CLICKHOUSE", url: connection.url };
           break;
         }
         default: {
@@ -71,11 +87,80 @@ export class OrganizationDataStoresRegistry {
     await this.loadFromDatabase();
   }
 
+  #secretKey(key: string, kind: DataStoreKind) {
+    return `data-store:${key}:${kind.toLocaleLowerCase()}`;
+  }
+
+  async addDataStore({
+    key,
+    kind,
+    organizationIds,
+    config,
+  }: {
+    key: string;
+    kind: DataStoreKind;
+    organizationIds: string[];
+    config: any;
+  }) {
+    const secretKey = this.#secretKey(key, kind);
+
+    const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+    await secretStore.setSecret(secretKey, config);
+
+    return this._prisma.organizationDataStore.create({
+      data: {
+        key,
+        organizationIds,
+        kind: "CLICKHOUSE",
+        config: { version: 1, data: { secretKey } },
+      },
+    });
+  }
+
+  async updateDataStore({
+    key,
+    kind,
+    organizationIds,
+    config,
+  }: {
+    key: string;
+    kind: DataStoreKind;
+    organizationIds: string[];
+    config?: any;
+  }) {
+    const secretKey = this.#secretKey(key, kind);
+
+    if (config) {
+      const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+      await secretStore.setSecret(secretKey, config);
+    }
+
+    return this._prisma.organizationDataStore.update({
+      where: {
+        key,
+      },
+      data: {
+        organizationIds,
+        kind: "CLICKHOUSE",
+      },
+    });
+  }
+
+  async deleteDataStore({ key, kind }: { key: string; kind: DataStoreKind }) {
+    const secretKey = this.#secretKey(key, kind);
+    const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+    await secretStore.deleteSecret(secretKey).catch(() => {
+      // Secret may not exist — proceed with deletion
+    });
+
+    await this._prisma.organizationDataStore.delete({ where: { key } });
+  }
+
   /**
    * Returns the parsed data store config for the given organization and kind,
    * or `null` if no override is configured (caller should use the default).
    */
-  get(organizationId: string, kind: "CLICKHOUSE"): ParsedDataStore | null {
+  get(organizationId: string, kind: DataStoreKind): ParsedDataStore | null {
     if (!this._loaded) return null;
     return this._lookup.get(`${organizationId}:${kind}`) ?? null;
   }
