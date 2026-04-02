@@ -26,9 +26,13 @@ export type ClickhouseDataStoreConfig = z.infer<typeof ClickhouseDataStoreConfig
 // Top-level per-kind union
 // ---------------------------------------------------------------------------
 
+/**
+ * Secrets are resolved to URLs at registry load time so the factory never
+ * needs to touch the secret store on the hot path.
+ */
 export type ParsedClickhouseDataStore = {
   kind: "CLICKHOUSE";
-  config: ClickhouseDataStoreConfig;
+  url: string;
 };
 
 /** Union of all parsed data store types. Extend as new DataStoreKind values are added. */
