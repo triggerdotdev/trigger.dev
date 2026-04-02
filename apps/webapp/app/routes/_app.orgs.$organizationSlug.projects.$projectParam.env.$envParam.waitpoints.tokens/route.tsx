@@ -13,9 +13,11 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -240,14 +242,25 @@ export default function Page() {
                 </div>
               </div>
             </ResizablePanel>
-            {isShowingWaitpoint && (
-              <>
-                <ResizableHandle id="waitpoint-tokens-handle" />
-                <ResizablePanel id="waitpoint-tokens-inspector" min="100px" default="500px">
-                  <Outlet />
-                </ResizablePanel>
-              </>
-            )}
+            <ResizableHandle
+              id="waitpoint-tokens-handle"
+              className={collapsibleHandleClassName(isShowingWaitpoint)}
+            />
+            <ResizablePanel
+              id="waitpoint-tokens-inspector"
+              min="100px"
+              default="500px"
+              className="overflow-hidden"
+              collapsible
+              collapsed={!isShowingWaitpoint}
+              onCollapseChange={() => {}}
+              collapsedSize="0px"
+              collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+            >
+              <div className="h-full" style={{ minWidth: 500 }}>
+                <Outlet />
+              </div>
+            </ResizablePanel>
           </ResizablePanelGroup>
         )}
       </PageBody>
