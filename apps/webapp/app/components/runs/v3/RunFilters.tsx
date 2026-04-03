@@ -3,6 +3,7 @@ import {
   CalendarIcon,
   ClockIcon,
   FingerPrintIcon,
+  PlusIcon,
   RectangleStackIcon,
   Squares2X2Icon,
   TagIcon,
@@ -12,7 +13,6 @@ import { Form, useFetcher } from "@remix-run/react";
 import { IconBugFilled, IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
-import { ListFilterIcon } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -57,13 +57,13 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
-import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { Button } from "../../primitives/Buttons";
+import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
 import { appliedSummary, FilterMenuProvider, TimeFilter, timeFilters } from "./SharedFilters";
-import { AIFilterInput } from "./AIFilterInput";
 import {
   allTaskRunStatuses,
   descriptionForTaskRunStatus,
@@ -354,18 +354,20 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("errorId");
 
   return (
-    <div className="flex flex-row flex-wrap items-center gap-1">
-      <FilterMenu {...props} />
+    <div className="flex flex-row flex-wrap items-center gap-1.5">
       {!props.hideSearch && <AIFilterInput />}
-      <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
+      <PermanentStatusFilter />
+      <PermanentTasksFilter possibleTasks={props.possibleTasks} />
       <TimeFilter defaultPeriod={props.defaultPeriod} />
+      <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <AppliedFilters {...props} />
+      <FilterMenu {...props} />
       {hasFilters && (
         <Form className="h-6">
           {searchParams.has("rootOnly") && (
             <input type="hidden" name="rootOnly" value={searchParams.get("rootOnly") as string} />
           )}
-          <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+          <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
@@ -373,12 +375,6 @@ export function RunsFilters(props: RunFiltersProps) {
 }
 
 const filterTypes = [
-  {
-    name: "statuses",
-    title: "Status",
-    icon: <StatusIcon className="size-4 border-text-bright" />,
-  },
-  { name: "tasks", title: "Tasks", icon: <TaskIcon className="size-4" /> },
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "versions", title: "Versions", icon: <IconRotateClockwise2 className="size-4" /> },
   { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
@@ -401,15 +397,15 @@ function FilterMenu(props: RunFiltersProps) {
     <SelectTrigger
       icon={
         <div className="flex size-4 items-center justify-center">
-          <ListFilterIcon className="size-3.5" />
+          <PlusIcon className="size-3.5" />
         </div>
       }
       variant={"secondary/small"}
       shortcut={shortcut}
-      tooltipTitle={"Filter runs"}
-      className="pr-0.5"
+      tooltipTitle={"More filters"}
+      className="pl-1 pr-2"
     >
-      <></>
+      More filters
     </SelectTrigger>
   );
 
@@ -429,11 +425,9 @@ function FilterMenu(props: RunFiltersProps) {
   );
 }
 
-function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
+function AppliedFilters({ bulkActions }: RunFiltersProps) {
   return (
     <>
-      <AppliedStatusFilter />
-      <AppliedTaskFilter possibleTasks={possibleTasks} />
       <AppliedTagsFilter />
       <AppliedVersionsFilter />
       <AppliedQueuesFilter />
@@ -459,10 +453,6 @@ function Menu(props: MenuProps) {
   switch (props.filterType) {
     case undefined:
       return <MainMenu {...props} />;
-    case "statuses":
-      return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "tasks":
-      return <TasksDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "bulk":
       return <BulkActionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
@@ -585,13 +575,10 @@ function StatusDropdown({
   );
 }
 
-function AppliedStatusFilter() {
+function PermanentStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
-
-  if (statuses.length === 0 || statuses.every((v) => v === "")) {
-    return null;
-  }
+  const hasStatuses = statuses.length > 0 && !statuses.every((v) => v === "");
 
   return (
     <FilterMenuProvider>
@@ -599,13 +586,20 @@ function AppliedStatusFilter() {
         <StatusDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Status"
-                icon={filterIcon("statuses")}
-                value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
-                onRemove={() => del(["statuses", "cursor", "direction"])}
-                variant="secondary/small"
-              />
+              {hasStatuses ? (
+                <AppliedFilter
+                  label="Status"
+                  icon={filterIcon("statuses")}
+                  value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
+                  onRemove={() => del(["statuses", "cursor", "direction"])}
+                  variant="secondary/small"
+                />
+              ) : (
+                <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  {filterIcon("statuses")}
+                  <span>Status</span>
+                </div>
+              )}
             </Ariakit.Select>
           }
           searchValue={search}
@@ -675,12 +669,10 @@ function TasksDropdown({
   );
 }
 
-function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
+function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
   const { values, del } = useSearchParams();
-
-  if (values("tasks").length === 0 || values("tasks").every((v) => v === "")) {
-    return null;
-  }
+  const tasks = values("tasks");
+  const hasTasks = tasks.length > 0 && !tasks.every((v) => v === "");
 
   return (
     <FilterMenuProvider>
@@ -688,18 +680,25 @@ function AppliedTaskFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTas
         <TasksDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Task"
-                icon={filterIcon("tasks")}
-                value={appliedSummary(
-                  values("tasks").map((v) => {
-                    const task = possibleTasks.find((task) => task.slug === v);
-                    return task ? task.slug : v;
-                  })
-                )}
-                onRemove={() => del(["tasks", "cursor", "direction"])}
-                variant="secondary/small"
-              />
+              {hasTasks ? (
+                <AppliedFilter
+                  label="Task"
+                  icon={filterIcon("tasks")}
+                  value={appliedSummary(
+                    tasks.map((v) => {
+                      const task = possibleTasks.find((task) => task.slug === v);
+                      return task ? task.slug : v;
+                    })
+                  )}
+                  onRemove={() => del(["tasks", "cursor", "direction"])}
+                  variant="secondary/small"
+                />
+              ) : (
+                <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  {filterIcon("tasks")}
+                  <span>Tasks</span>
+                </div>
+              )}
             </Ariakit.Select>
           }
           searchValue={search}
