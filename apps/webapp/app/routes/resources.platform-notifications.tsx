@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { requireUserId } from "~/services/session.server";
 import {
   getActivePlatformNotifications,
+  verifyOrgMembership,
   type PlatformNotificationWithPayload,
 } from "~/services/platformNotifications.server";
 
@@ -18,8 +19,14 @@ export type PlatformNotificationsLoaderData = {
 export async function loader({ request }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const url = new URL(request.url);
-  const organizationId = url.searchParams.get("organizationId");
-  const projectId = url.searchParams.get("projectId") ?? undefined;
+  const rawOrganizationId = url.searchParams.get("organizationId") ?? undefined;
+  const rawProjectId = url.searchParams.get("projectId") ?? undefined;
+
+  const { organizationId, projectId } = await verifyOrgMembership({
+    userId,
+    organizationId: rawOrganizationId,
+    projectId: rawProjectId,
+  });
 
   if (!organizationId) {
     return json<PlatformNotificationsLoaderData>({ notifications: [], unreadCount: 0 });
