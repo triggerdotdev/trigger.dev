@@ -791,6 +791,10 @@ The `reason` field tells you why messages are being prepared:
 | `"compaction-rebuild"` | Rebuilding from a previous compaction summary     |
 | `"compaction-result"`  | Fresh compaction just produced these messages     |
 
+### Version upgrades
+
+Chat agent runs are pinned to the worker version they started on. When you deploy a new version, suspended runs resume on the old code. Call `chat.requestUpgrade()` in `onTurnStart` to skip `run()` and exit immediately — the transport re-triggers the same message on the latest version. See the [Version Upgrades pattern](/ai-chat/patterns/version-upgrades) for the full guide.
+
 ### Runtime configuration
 
 #### chat.setTurnTimeout()
