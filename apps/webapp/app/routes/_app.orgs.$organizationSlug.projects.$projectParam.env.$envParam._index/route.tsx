@@ -5,7 +5,6 @@ import {
   ChevronUpIcon,
   ExclamationTriangleIcon,
   LightBulbIcon,
-  MagnifyingGlassIcon,
   UserPlusIcon,
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
@@ -15,7 +14,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/ser
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PanelHandle } from "react-window-splitter";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
@@ -37,7 +36,7 @@ import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
@@ -71,7 +70,8 @@ import {
 } from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEventSource } from "~/hooks/useEventSource";
-import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { matchSorter } from "match-sorter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
@@ -174,10 +174,19 @@ export default function Page() {
   const environment = useEnvironment();
   const { tasks, activity, runningStats, durations, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
-    items: tasks,
-    keys: ["slug", "filePath", "triggerSource"],
-  });
+  const { value: searchValue } = useSearchParams();
+  const search = searchValue("search") ?? "";
+  const filteredItems = useMemo(() => {
+    const terms = search
+      .trim()
+      .split(" ")
+      .filter((t) => t !== "");
+    if (terms.length === 0) return tasks;
+    return terms.reduceRight(
+      (results, term) => matchSorter(results, term, { keys: ["slug", "filePath", "triggerSource"] }),
+      tasks
+    );
+  }, [tasks, search]);
 
   const hasTasks = tasks.length > 0;
 
@@ -241,16 +250,8 @@ export default function Page() {
                 <div className="flex min-w-0 max-w-full flex-col">
                   {tasks.length === 0 ? <UserHasNoTasks /> : null}
                   <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center gap-1 p-2">
-                      <Input
-                        placeholder="Search tasks"
-                        variant="tertiary"
-                        icon={MagnifyingGlassIcon}
-                        fullWidth={true}
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        autoFocus
-                      />
+                    <div className="flex items-center justify-between gap-1 p-2">
+                      <SearchInput placeholder="Search tasks…" autoFocus />
                       {!showUsefulLinks && (
                         <Button
                           variant="secondary/small"
