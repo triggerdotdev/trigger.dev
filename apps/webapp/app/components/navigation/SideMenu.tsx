@@ -713,7 +713,7 @@ export function SideMenu({
               isCollapsed && "items-center"
             )}
           >
-            <HelpAndAI isCollapsed={isCollapsed} />
+            <HelpAndAI isCollapsed={isCollapsed} organizationId={organization.id} projectId={project.id} />
             {isFreeUser && (
               <CollapsibleHeight isCollapsed={isCollapsed}>
                 <FreePlanUsage
@@ -1003,6 +1003,7 @@ function ProjectSelector({
             title="Logout"
             icon={ArrowRightOnRectangleIcon}
             leadingIconClassName="text-text-dimmed"
+            danger
           />
         </div>
       </PopoverContent>
@@ -1162,7 +1163,7 @@ function CollapsibleHeight({
   );
 }
 
-function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
+function HelpAndAI({ isCollapsed, organizationId, projectId }: { isCollapsed: boolean; organizationId: string; projectId: string }) {
   return (
     <LayoutGroup>
       <div
@@ -1172,7 +1173,7 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
         )}
       >
         <ShortcutsAutoOpen />
-        <HelpAndFeedback isCollapsed={isCollapsed} />
+        <HelpAndFeedback isCollapsed={isCollapsed} organizationId={organizationId} projectId={projectId} />
         <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>
