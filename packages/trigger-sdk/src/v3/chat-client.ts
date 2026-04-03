@@ -127,20 +127,44 @@ export type ChatStreamResult = {
  * - `yield* stream.messages()` — sub-agent pattern (yields UIMessage snapshots)
  */
 export class ChatStream {
-  private readonly _stream: ReadableStream<UIMessageChunk>;
+  private readonly _consumerStream: ReadableStream<UIMessageChunk>;
+  private readonly _messageCollector?: Promise<void>;
   private resultPromise: Promise<ChatStreamResult> | undefined;
+  /** @internal Last UIMessage snapshot from the assistant's response. */
+  private lastAssistantMessage: UIMessage | undefined;
+  /** @internal Callback to capture the assistant's response message for accumulation. */
+  private readonly onAssistantMessage?: (message: UIMessage) => void;
 
-  constructor(stream: ReadableStream<UIMessageChunk>) {
-    this._stream = stream;
+  constructor(
+    stream: ReadableStream<UIMessageChunk>,
+    onAssistantMessage?: (message: UIMessage) => void
+  ) {
+    this.onAssistantMessage = onAssistantMessage;
+
+    if (onAssistantMessage) {
+      // Tee the stream: one branch for the consumer, one for message collection
+      const [consumer, collector] = stream.tee();
+      this._consumerStream = consumer;
+      this._messageCollector = (async () => {
+        for await (const msg of readUIMessageStream({ stream: collector })) {
+          this.lastAssistantMessage = msg;
+        }
+        if (this.lastAssistantMessage) {
+          onAssistantMessage(this.lastAssistantMessage);
+        }
+      })();
+    } else {
+      this._consumerStream = stream;
+    }
   }
 
   /** The raw ReadableStream for direct use with AI SDK utilities. */
   get stream(): ReadableStream<UIMessageChunk> {
-    return this._stream;
+    return this._consumerStream;
   }
 
   async *[Symbol.asyncIterator](): AsyncIterableIterator<UIMessageChunk> {
-    const reader = this._stream.getReader();
+    const reader = this._consumerStream.getReader();
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -162,8 +186,12 @@ export class ChatStream {
    * ```
    */
   async *messages(): AsyncGenerator<UIMessage, void, unknown> {
-    for await (const message of readUIMessageStream({ stream: this._stream })) {
+    for await (const message of readUIMessageStream({ stream: this._consumerStream })) {
+      this.lastAssistantMessage = message;
       yield message;
+    }
+    if (this.lastAssistantMessage && this.onAssistantMessage) {
+      this.onAssistantMessage(this.lastAssistantMessage);
     }
   }
 
@@ -247,6 +275,8 @@ export class AgentChat<TAgent = unknown> {
   private readonly onTurnComplete: AgentChatOptions["onTurnComplete"];
 
   private session: SessionState | undefined;
+  /** Accumulated UIMessages across all turns — used for continuation payloads. */
+  private accumulatedMessages: UIMessage[] = [];
 
   constructor(options: AgentChatOptions<TAgent>) {
     this.taskId = options.agent;
@@ -321,18 +351,27 @@ export class AgentChat<TAgent = unknown> {
     options?: { abortSignal?: AbortSignal }
   ): Promise<ChatStream> {
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const message = { id: msgId, role: "user", parts: [{ type: "text", text }] };
+    const message: UIMessage = {
+      id: msgId,
+      role: "user",
+      parts: [{ type: "text", text }],
+    };
+
+    // Track the outgoing user message
+    this.accumulatedMessages.push(message);
 
     const rawStream = await this.sendRaw([message], {
       abortSignal: options?.abortSignal,
     });
 
-    return new ChatStream(rawStream);
+    return new ChatStream(rawStream, (assistantMessage) => {
+      this.accumulatedMessages.push(assistantMessage);
+    });
   }
 
   /** Send raw UIMessage-like objects. Use `sendMessage()` for simple text. */
   async sendRaw(
-    messages: Array<{
+    messages: UIMessage[] | Array<{
       id: string;
       role: string;
       parts?: unknown[];
@@ -378,9 +417,10 @@ export class AgentChat<TAgent = unknown> {
       }
     }
 
-    // First message or run ended — trigger new run
+    // First message or run ended — trigger new run with full history
     const triggerPayload = {
       ...payload,
+      ...(isContinuation ? { messages: this.accumulatedMessages } : {}),
       continuation: isContinuation,
       ...(previousRunId ? { previousRunId } : {}),
     };
@@ -488,6 +528,7 @@ export class AgentChat<TAgent = unknown> {
     abortSignal: AbortSignal | undefined,
     options?: { sendStopOnAbort?: boolean }
   ): ReadableStream<UIMessageChunk> {
+    const self = this;
     const session = this.session;
     const baseURL = apiClientManager.baseURL ?? "https://api.trigger.dev";
     const accessToken = apiClientManager.accessToken ?? "";
@@ -558,13 +599,59 @@ export class AgentChat<TAgent = unknown> {
                 const chunk = value.chunk as Record<string, unknown>;
 
                 if (session?.skipToTurnComplete) {
-                  if (chunk.type === "__trigger_turn_complete") {
+                  if (chunk.type === "trigger:turn-complete") {
                     session.skipToTurnComplete = false;
                   }
                   continue;
                 }
 
-                if (chunk.type === "__trigger_turn_complete") {
+                if (chunk.type === "trigger:upgrade-required") {
+                  // Agent requested a version upgrade — re-trigger with full
+                  // history and pipe the new stream through transparently.
+                  internalAbort.abort();
+                  const previousRunId = self.session?.runId;
+                  self.session = undefined;
+
+                  try {
+                    const triggerPayload: Record<string, unknown> = {
+                      messages: self.accumulatedMessages,
+                      chatId: self.chatId,
+                      trigger: "submit-message",
+                      metadata: self.clientData,
+                      continuation: true,
+                      ...(previousRunId ? { previousRunId } : {}),
+                    };
+
+                    self.session = await self.triggerNewRun(triggerPayload, "trigger");
+                    await self.onTriggered?.({ runId: self.session.runId, chatId: self.chatId });
+
+                    const newStream = self.subscribeToStream(
+                      self.session.runId,
+                      abortSignal
+                    );
+                    const newReader = newStream.getReader();
+                    try {
+                      while (true) {
+                        const nr = await newReader.read();
+                        if (nr.done) break;
+                        controller.enqueue(nr.value);
+                      }
+                    } finally {
+                      newReader.releaseLock();
+                    }
+                  } catch (retryError) {
+                    controller.error(retryError);
+                    return;
+                  }
+                  try {
+                    controller.close();
+                  } catch {
+                    // Controller may already be closed
+                  }
+                  return;
+                }
+
+                if (chunk.type === "trigger:turn-complete") {
                   // Notify callback
                   onTurnComplete?.({
                     runId,
