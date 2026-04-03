@@ -215,7 +215,7 @@ async function recordRunEvent(
         runId: foundRun.friendlyId,
         ...attributes,
       },
-      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      startTime: BigInt(startTime?.getTime() ?? Date.now()) * BigInt(1_000_000),
       ...optionsRest,
     });
 
