@@ -617,7 +617,7 @@ describe("TriggerChatTransport", () => {
           streamFetchCountByRun.set(runKey, n);
 
           if (n === 1) {
-            const turnDone = { type: "__trigger_turn_complete", publicAccessToken: "pub_initial" };
+            const turnDone = { type: "trigger:turn-complete", publicAccessToken: "pub_initial" };
             return new Response(createSSEStream(sseEncode([turnDone])), {
               status: 200,
               headers: {
@@ -689,7 +689,7 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          const completeChunk = { type: "__trigger_turn_complete", publicAccessToken: "pat_hold" };
+          const completeChunk = { type: "trigger:turn-complete", publicAccessToken: "pat_hold" };
           return new Response(createSSEStream(sseEncode([completeChunk])), {
             status: 200,
             headers: {
@@ -955,7 +955,7 @@ describe("TriggerChatTransport", () => {
     it("should track multiple chat sessions independently", async () => {
       let callCount = 0;
 
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -1217,7 +1217,7 @@ describe("TriggerChatTransport", () => {
 
   describe("lastEventId tracking", () => {
     it("should pass lastEventId to SSE subscription on subsequent turns", async () => {
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
 
       let triggerCallCount = 0;
       const streamFetchCalls: { url: string; headers: Record<string, string> }[] = [];
@@ -1317,7 +1317,7 @@ describe("TriggerChatTransport", () => {
 
   describe("minimal wire payloads", () => {
     it("should send only new messages via input stream on turn 2+", async () => {
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
       const inputStreamPayloads: any[] = [];
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
@@ -1454,7 +1454,7 @@ describe("TriggerChatTransport", () => {
 
   describe("AbortController cleanup", () => {
     it("should terminate SSE connection after intercepting control chunk", async () => {
-      const controlChunk = { type: "__trigger_turn_complete" };
+      const controlChunk = { type: "trigger:turn-complete" };
 
       let streamAborted = false;
 
@@ -1580,7 +1580,7 @@ describe("TriggerChatTransport", () => {
     });
 
     it("should not resolve async token for input stream send flow", async () => {
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
 
       let tokenCallCount = 0;
       let inputStreamSendCalled = false;
@@ -1679,7 +1679,7 @@ describe("TriggerChatTransport", () => {
 
   describe("single-run mode (input stream loop)", () => {
     it("should not forward turn-complete control chunk to consumer", async () => {
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -1738,11 +1738,11 @@ describe("TriggerChatTransport", () => {
       // All AI SDK chunks should be forwarded
       expect(receivedChunks.length).toBe(sampleChunks.length + 1); // +1 for the finish chunk
       // Control chunk should not be in the output
-      expect(receivedChunks.every((c) => c.type !== ("__trigger_turn_complete" as any))).toBe(true);
+      expect(receivedChunks.every((c) => c.type !== ("trigger:turn-complete" as any))).toBe(true);
     });
 
     it("should send via input stream on second message instead of triggering a new run", async () => {
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
 
       let triggerCallCount = 0;
       let inputStreamSendCalled = false;
@@ -1915,7 +1915,7 @@ describe("TriggerChatTransport", () => {
     });
 
     it("should fall back to new run when sendInputStream fails", async () => {
-      const turnCompleteChunk = { type: "__trigger_turn_complete" };
+      const turnCompleteChunk = { type: "trigger:turn-complete" };
 
       let triggerCallCount = 0;
 
@@ -2027,7 +2027,7 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          const chunks = [...sampleChunks, { type: "__trigger_turn_complete" }];
+          const chunks = [...sampleChunks, { type: "trigger:turn-complete" }];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
             headers: {
@@ -2151,7 +2151,7 @@ describe("TriggerChatTransport", () => {
         }
 
         if (urlStr.includes("/realtime/v1/streams/")) {
-          const chunks = [...sampleChunks, { type: "__trigger_turn_complete" }];
+          const chunks = [...sampleChunks, { type: "trigger:turn-complete" }];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
             headers: {
