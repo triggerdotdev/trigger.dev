@@ -438,9 +438,7 @@ export default function Page() {
             className="overflow-hidden"
             collapsible
             collapsed={!hasTasks || !showUsefulLinks}
-            onCollapseChange={(isCollapsed) => {
-              if (isCollapsed) toggleUsefulLinks(false);
-            }}
+            onCollapseChange={() => {}}
             collapsedSize="0px"
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
           >
