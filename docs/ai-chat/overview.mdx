@@ -43,7 +43,7 @@ sequenceDiagram
     Task->>API: streams.pipe("chat", uiStream)
     API-->>useChat: SSE: UIMessageChunks
     useChat-->>User: Render streaming text
-    Task->>API: Write __trigger_turn_complete
+    Task->>API: Write trigger:turn-complete
     API-->>useChat: SSE: turn complete + refreshed token
     useChat->>useChat: Close stream, update session
     Task->>Task: onTurnComplete({ messages, stopped: false })
@@ -76,7 +76,7 @@ sequenceDiagram
     Task->>API: streams.pipe("chat", uiStream)
     API-->>useChat: SSE: UIMessageChunks
     useChat-->>User: Render streaming text
-    Task->>API: Write __trigger_turn_complete
+    Task->>API: Write trigger:turn-complete
     Task->>Task: onTurnComplete({ turn: 1 })
     Task->>Task: Wait for next message (idle → suspend)
 ```
@@ -100,7 +100,7 @@ sequenceDiagram
     LLM-->>Task: Stream ends (AbortError)
     Task->>Task: cleanupAbortedParts(responseMessage)
     Note right of Task: Remove partial tool calls,<br/>mark streaming parts as done
-    Task->>API: Write __trigger_turn_complete
+    Task->>API: Write trigger:turn-complete
     API-->>useChat: SSE: turn complete
     Task->>Task: onTurnComplete({ stopped: true })
     Task->>Task: Wait for next message

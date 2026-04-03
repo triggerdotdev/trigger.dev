@@ -102,10 +102,12 @@
                     "group": "Patterns",
                     "pages": [
                       "ai-chat/patterns/sub-agents",
+                      "ai-chat/patterns/version-upgrades",
                       "ai-chat/patterns/database-persistence",
                       "ai-chat/patterns/code-sandbox"
                     ]
                   },
+                  "ai-chat/client-protocol",
                   "ai-chat/reference"
                 ]
               }
