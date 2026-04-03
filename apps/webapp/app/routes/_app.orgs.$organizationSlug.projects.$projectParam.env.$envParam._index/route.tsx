@@ -441,7 +441,7 @@ export default function Page() {
             collapsible
             collapsed={!hasTasks || !showUsefulLinks}
             onCollapseChange={(isCollapsed) => {
-              if (isCollapsed) setShowUsefulLinks(false);
+              if (isCollapsed) toggleUsefulLinks(false);
             }}
             collapsedSize="0px"
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
