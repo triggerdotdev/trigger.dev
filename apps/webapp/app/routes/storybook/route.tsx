@@ -9,6 +9,10 @@ import { cn } from "~/utils/cn";
 
 const stories: Story[] = [
   {
+    name: "Animated panel",
+    slug: "animated-panel",
+  },
+  {
     name: "Avatar",
     slug: "avatar",
   },

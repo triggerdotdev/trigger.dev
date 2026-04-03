@@ -48,10 +48,13 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
   type ResizableSnapshot,
+  collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
@@ -112,7 +115,7 @@ import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectP
 
 const resizableSettings = {
   parent: {
-    autosaveId: "panel-run-parent",
+    autosaveId: "panel-run-parent-v2",
     handleId: "parent-handle",
     main: {
       id: "run",
@@ -468,6 +471,8 @@ function TraceView({
   const environment = useEnvironment();
   const { searchParams, replaceSearchParam } = useReplaceSearchParams();
   const selectedSpanId = searchParams.get("span") ?? undefined;
+  const frozenSpanId = useFrozenValue(selectedSpanId);
+  const displaySpanId = selectedSpanId ?? frozenSpanId;
 
   if (!trace) {
     return <></>;
@@ -498,12 +503,16 @@ function TraceView({
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
+  const frozenSpanOverrides = useFrozenValue(spanOverrides);
+  const displaySpanOverrides = selectedSpanId ? spanOverrides : frozenSpanOverrides;
 
   // Get the linked run ID for cached spans (map built during RunPresenter walk)
   const { linkedRunIdBySpanId } = trace;
   const selectedSpanLinkedRunId = selectedSpanId
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
+  const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
+  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -542,24 +551,36 @@ function TraceView({
             treeSnapshot={resizable.tree as ResizableSnapshot}
           />
         </ResizablePanel>
-        <ResizableHandle id={resizableSettings.parent.handleId} />
-        {selectedSpanId && (
-          <ResizablePanel
-            id={resizableSettings.parent.inspector.id}
-            default={resizableSettings.parent.inspector.default}
-            min={resizableSettings.parent.inspector.min}
-            isStaticAtRest
+        <ResizableHandle
+          id={resizableSettings.parent.handleId}
+          className={collapsibleHandleClassName(!!selectedSpanId)}
+        />
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
+          className="overflow-hidden"
+          collapsible
+          collapsed={!selectedSpanId}
+          onCollapseChange={() => {}}
+          collapsedSize="0px"
+          collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+        >
+          <div
+            className="h-full"
+            style={{ minWidth: parseInt(resizableSettings.parent.inspector.min) }}
           >
-            {" "}
-            <SpanView
-              runParam={run.friendlyId}
-              spanId={selectedSpanId}
-              spanOverrides={spanOverrides as SpanOverride | undefined}
-              closePanel={() => replaceSearchParam("span")}
-              linkedRunId={selectedSpanLinkedRunId}
-            />
-          </ResizablePanel>
-        )}
+            {displaySpanId && (
+              <SpanView
+                runParam={run.friendlyId}
+                spanId={displaySpanId}
+                spanOverrides={displaySpanOverrides as SpanOverride | undefined}
+                closePanel={() => replaceSearchParam("span")}
+                linkedRunId={displayLinkedRunId}
+              />
+            )}
+          </div>
+        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );

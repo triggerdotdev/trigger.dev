@@ -32,9 +32,12 @@ import { LogsTaskFilter } from "~/components/logs/LogsTaskFilter";
 import { LogsRunIdFilter } from "~/components/logs/LogsRunIdFilter";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { Button } from "~/components/primitives/Buttons";
 import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
@@ -148,7 +151,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from,
       to,
       defaultPeriod: "1h",
-      retentionLimitDays
+      retentionLimitDays,
     })
     .catch((error) => {
       if (error instanceof ServiceValidationError) {
@@ -165,8 +168,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { data, defaultPeriod, retentionLimitDays } =
-    useTypedLoaderData<typeof loader>();
+  const { data, defaultPeriod, retentionLimitDays } = useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -192,10 +194,7 @@ export default function Page() {
             resolve={data}
             errorElement={
               <div className="grid h-full max-h-full grid-rows-[2.5rem_auto_1fr] overflow-hidden">
-                <FiltersBar
-                  defaultPeriod={defaultPeriod}
-                  retentionLimitDays={retentionLimitDays}
-                />
+                <FiltersBar defaultPeriod={defaultPeriod} retentionLimitDays={retentionLimitDays} />
                 <div className="flex items-center justify-center px-3 py-12">
                   <Callout variant="error" className="max-w-fit">
                     Unable to load your logs. Please refresh the page or try again in a moment.
@@ -228,10 +227,7 @@ export default function Page() {
                     defaultPeriod={defaultPeriod}
                     retentionLimitDays={retentionLimitDays}
                   />
-                  <LogsList
-                    list={result}
-                    defaultPeriod={defaultPeriod}
-                  />
+                  <LogsList list={result} defaultPeriod={defaultPeriod} />
                 </div>
               );
             }}
@@ -409,6 +405,11 @@ function LogsList({
     return accumulatedLogs.find((log) => log.id === selectedLogId);
   }, [selectedLogId, accumulatedLogs]);
 
+  const frozenLogId = useFrozenValue(selectedLogId);
+  const frozenLog = useFrozenValue(selectedLog);
+  const displayLogId = selectedLogId ?? frozenLogId;
+  const displayLog = selectedLog ?? frozenLog ?? undefined;
+
   const updateUrlWithLog = useCallback((logId: string | undefined) => {
     const url = new URL(window.location.href);
     if (logId) {
@@ -464,11 +465,21 @@ function LogsList({
           onLogSelect={handleLogSelect}
         />
       </ResizablePanel>
-      {/* Side panel for log details */}
-      {selectedLogId && (
-        <>
-          <ResizableHandle id="logs-handle" />
-          <ResizablePanel id="log-detail" min="300px" default="430px" max="600px" isStaticAtRest>
+      <ResizableHandle id="logs-handle" className={collapsibleHandleClassName(!!selectedLogId)} />
+      <ResizablePanel
+        id="log-detail"
+        default="430px"
+        min="430px"
+        max="600px"
+        className="overflow-hidden"
+        collapsible
+        collapsed={!selectedLogId}
+        onCollapseChange={() => {}}
+        collapsedSize="0px"
+        collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+      >
+        <div className="h-full" style={{ minWidth: 430 }}>
+          {displayLogId && (
             <Suspense
               fallback={
                 <div className="flex h-full items-center justify-center">
@@ -477,15 +488,15 @@ function LogsList({
               }
             >
               <LogDetailView
-                logId={selectedLogId}
-                initialLog={selectedLog}
+                logId={displayLogId}
+                initialLog={displayLog}
                 onClose={handleClosePanel}
                 searchTerm={list.searchTerm}
               />
             </Suspense>
-          </ResizablePanel>
-        </>
-      )}
+          )}
+        </div>
+      </ResizablePanel>
     </ResizablePanelGroup>
   );
 }
