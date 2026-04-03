@@ -787,3 +787,29 @@ export const aiChatSession = chat
   },
 });
 // #endregion
+
+// ============================================================================
+// Upgrade test agent — calls chat.requestUpgrade() after 3 turns
+// ============================================================================
+
+export const upgradeTestAgent = chat.agent({
+  id: "upgrade-test",
+  idleTimeoutInSeconds: 60,
+  onTurnStart: async ({ turn, ctx }) => {
+    logger.info("Upgrade test turn", { turn, version: ctx.run.version });
+    if (turn >= 3) {
+      logger.info("Requesting upgrade after 3 turns");
+      chat.requestUpgrade();
+    }
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o-mini"),
+      system:
+        "You are a helpful test assistant. Keep responses short (1-2 sentences). " +
+        "Always mention what turn number you think you're on based on the conversation history.",
+      messages,
+      abortSignal: signal,
+    });
+  },
+});

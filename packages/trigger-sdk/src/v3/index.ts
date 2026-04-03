@@ -54,6 +54,11 @@ export {
   type AnyRetrieveRunResult,
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
+export {
+  deployments,
+  type RetrieveCurrentDeploymentResponseBody,
+  type ApiDeploymentListResponseItem,
+} from "./deployments.js";
 export * as envvars from "./envvars.js";
 export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";

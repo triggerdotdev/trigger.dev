@@ -760,6 +760,9 @@ const chatPrepareMessagesKey =
     "chat.prepareMessages"
   );
 
+/** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
+const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
+
 /**
  * Event passed to `summarize` callbacks.
  */
@@ -3115,6 +3118,14 @@ function chatAgent<
                     );
                   }
 
+                  // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
+                  // skip run() and signal the transport to re-trigger the same message
+                  // on the new version.
+                  if (locals.get(chatUpgradeRequestedKey)) {
+                    await writeUpgradeRequiredChunk();
+                    return "exit";
+                  }
+
                   // Captured by the onFinish callback below — works even on abort/stop.
                   let capturedResponseMessage: TUIMessage | undefined;
 
@@ -3576,6 +3587,12 @@ function chatAgent<
                     return "continue";
                   }
 
+                  // chat.requestUpgrade() was called — exit the loop so the
+                  // transport triggers a new run on the latest version.
+                  if (locals.get(chatUpgradeRequestedKey)) {
+                    return "exit";
+                  }
+
                   // Wait for the next message — stay idle briefly, then suspend
                   const effectiveIdleTimeout =
                     (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
@@ -3687,6 +3704,11 @@ function chatAgent<
                 await writeTurnCompleteChunk(currentWirePayload.chatId);
               } catch {
                 // Best-effort — if stream write fails, let the run continue anyway
+              }
+
+              // chat.requestUpgrade() — exit after error turn too
+              if (locals.get(chatUpgradeRequestedKey)) {
+                return;
               }
 
               // Wait for the next message — same as after a successful turn
@@ -4232,6 +4254,43 @@ function isStopped(): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Version upgrade
+// ---------------------------------------------------------------------------
+
+/**
+ * Request that the current run exits so the next message starts on the latest
+ * deployed version (via the standard continuation mechanism).
+ *
+ * When called from `onTurnStart` or `onValidateMessages`, `run()` is skipped
+ * entirely — the run exits immediately and the transport re-triggers the
+ * same message on the new version.
+ *
+ * When called from `run()` or `chat.defer()`, the current turn completes
+ * normally and the run exits afterward instead of waiting for the next message.
+ *
+ * Call from `onTurnStart`, `onValidateMessages`, `onChatResume`, `run()`,
+ * or inside `chat.defer()`.
+ *
+ * @example
+ * ```ts
+ * const SUPPORTED_VERSIONS = new Set(["v2", "v3"]);
+ *
+ * chat.agent({
+ *   id: "my-chat",
+ *   onTurnStart: async ({ clientData }) => {
+ *     if (clientData?.protocolVersion && !SUPPORTED_VERSIONS.has(clientData.protocolVersion)) {
+ *       chat.requestUpgrade();
+ *     }
+ *   },
+ *   run: async ({ messages }) => { ... },
+ * });
+ * ```
+ */
+function requestUpgrade(): void {
+  locals.set(chatUpgradeRequestedKey, true);
+}
+
+// ---------------------------------------------------------------------------
 // Per-turn deferred work
 // ---------------------------------------------------------------------------
 
@@ -4245,15 +4304,21 @@ function isStopped(): boolean {
  * @example
  * ```ts
  * onTurnStart: async ({ chatId, uiMessages }) => {
- *   // Persist messages without blocking the LLM call
+ *   // Pass a promise directly
  *   chat.defer(db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }));
+ *
+ *   // Or pass an async function — cleaner for multi-step work
+ *   chat.defer(async () => {
+ *     const flags = await getFeatureFlags();
+ *     if (flags.forceUpgrade) chat.requestUpgrade();
+ *   });
  * },
  * ```
  */
-function chatDefer(promise: Promise<unknown>): void {
+function chatDefer(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
   const promises = locals.get(chatDeferKey);
   if (promises) {
-    promises.add(promise);
+    promises.add(typeof promiseOrFn === "function" ? promiseOrFn() : promiseOrFn);
   }
 }
 
@@ -4835,6 +4900,12 @@ function createChatSession(
 
           // Subsequent turns: wait for the next message
           if (turn > 0) {
+            // chat.requestUpgrade() — exit before waiting
+            if (locals.get(chatUpgradeRequestedKey)) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+
             const next = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds,
               timeout,
@@ -4905,6 +4976,14 @@ function createChatSession(
             currentPayload.trigger,
             turn
           );
+
+          // chat.requestUpgrade() called before this turn — signal transport and exit
+          if (locals.get(chatUpgradeRequestedKey)) {
+            await writeUpgradeRequiredChunk();
+            sessionMsgSub.off();
+            stop.cleanup();
+            return { done: true, value: undefined };
+          }
 
           const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
@@ -5428,6 +5507,8 @@ export const chat = {
   setUIMessageStreamOptions,
   /** Check if the current turn was stopped by the user. See {@link isStopped}. */
   isStopped,
+  /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
+  requestUpgrade,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
   cleanupAbortedParts,
   /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
@@ -5491,8 +5572,26 @@ async function writeTurnCompleteChunk(
     collapsed: true,
     execute: ({ write }) => {
       write({
-        type: "__trigger_turn_complete",
+        type: "trigger:turn-complete",
         ...(publicAccessToken ? { publicAccessToken } : {}),
+      });
+    },
+  });
+  return await waitUntilComplete();
+}
+
+/**
+ * Writes an upgrade-required control chunk to the chat output stream.
+ * The transport intercepts this to re-trigger the same message on the latest version.
+ * @internal
+ */
+async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
+  const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+    spanName: "upgrade required",
+    collapsed: true,
+    execute: ({ write }) => {
+      write({
+        type: "trigger:upgrade-required",
       });
     },
   });

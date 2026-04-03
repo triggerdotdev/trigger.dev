@@ -313,7 +313,7 @@ type ChatSessionState = {
   publicAccessToken: string;
   /** Last SSE event ID — used to resume the stream without replaying old events. */
   lastEventId?: string;
-  /** Set when the stream was aborted mid-turn (stop). On reconnect, skip chunks until __trigger_turn_complete. */
+  /** Set when the stream was aborted mid-turn (stop). On reconnect, skip chunks until trigger:turn-complete. */
   skipToTurnComplete?: boolean;
 };
 
@@ -494,7 +494,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           currentSession.runId,
           currentSession.publicAccessToken,
           abortSignal,
-          chatId
+          chatId,
+          { upgradeRetry: { payload, messages } }
         );
       }
     }
@@ -511,7 +512,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const newSession: ChatSessionState = { runId, publicAccessToken };
     this.sessions.set(chatId, newSession);
     this.notifySessionChange(chatId, newSession);
-    return this.subscribeToStream(runId, publicAccessToken, abortSignal, chatId);
+    return this.subscribeToStream(runId, publicAccessToken, abortSignal, chatId, {
+      upgradeRetry: { payload, messages },
+    });
   };
 
   /**
@@ -823,7 +826,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     accessToken: string,
     abortSignal: AbortSignal | undefined,
     chatId?: string,
-    options?: { sendStopOnAbort?: boolean }
+    options?: {
+      sendStopOnAbort?: boolean;
+      /** Payload + messages for re-triggering on trigger:upgrade-required. */
+      upgradeRetry?: {
+        payload: Record<string, unknown>;
+        messages: UIMessage[];
+      };
+    }
   ): ReadableStream<UIMessageChunk> {
     // When resuming a run, skip past previously-seen events
     // so we only receive the new turn's response.
@@ -957,16 +967,71 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 const chunk = value.chunk as Record<string, unknown>;
 
                 // After a stop, skip leftover chunks from the stopped turn
-                // until we see the __trigger_turn_complete marker.
+                // until we see the trigger:turn-complete marker.
                 if (session?.skipToTurnComplete) {
-                  if (chunk.type === "__trigger_turn_complete") {
+                  if (chunk.type === "trigger:turn-complete") {
                     session.skipToTurnComplete = false;
                     chunkCount = 0;
                   }
                   continue;
                 }
 
-                if (chunk.type === "__trigger_turn_complete" && chatId) {
+                if (chunk.type === "trigger:upgrade-required" && chatId && options?.upgradeRetry) {
+                  // Agent requested a version upgrade — re-trigger with the same
+                  // message on the latest version and pipe the new stream through.
+                  internalAbort.abort();
+                  const retryInfo = options.upgradeRetry;
+                  const previousRunId = session?.runId;
+
+                  // Clear session so triggerNewRun creates a fresh one
+                  this.sessions.delete(chatId);
+                  this.notifySessionChange(chatId, null);
+
+                  try {
+                    const triggerPayload = {
+                      ...retryInfo.payload,
+                      messages: retryInfo.messages,
+                      continuation: true,
+                      ...(previousRunId ? { previousRunId } : {}),
+                    };
+
+                    const { runId: newRunId, publicAccessToken: newToken } =
+                      await this.triggerNewRun(chatId, triggerPayload, "trigger");
+
+                    const newSession: ChatSessionState = { runId: newRunId, publicAccessToken: newToken };
+                    this.sessions.set(chatId, newSession);
+                    this.notifySessionChange(chatId, newSession);
+
+                    // Subscribe to the new run's stream and pipe through
+                    const newStream = this.subscribeToStream(
+                      newRunId,
+                      newToken,
+                      abortSignal,
+                      chatId
+                    );
+                    const newReader = newStream.getReader();
+                    try {
+                      while (true) {
+                        const next = await newReader.read();
+                        if (next.done) break;
+                        controller.enqueue(next.value);
+                      }
+                    } finally {
+                      newReader.releaseLock();
+                    }
+                  } catch (retryError) {
+                    controller.error(retryError);
+                    return;
+                  }
+                  try {
+                    controller.close();
+                  } catch {
+                    // Controller may already be closed
+                  }
+                  return;
+                }
+
+                if (chunk.type === "trigger:turn-complete" && chatId) {
                   // Update token if a refreshed one was provided in the chunk
                   if (session && typeof chunk.publicAccessToken === "string") {
                     session.publicAccessToken = chunk.publicAccessToken;

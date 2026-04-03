@@ -6,6 +6,7 @@ import {
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
   ApiDeploymentListSearchParams,
+  RetrieveCurrentDeploymentResponseBody,
   AppendToStreamResponseBody,
   BatchItemNDJSON,
   BatchTaskRunExecutionResult,
@@ -1332,6 +1333,18 @@ export class ApiClient {
         after: options?.cursor,
         limit: options?.limit,
       },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveCurrentDeployment(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveCurrentDeploymentResponseBody,
+      `${this.baseUrl}/api/v1/deployments/current`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
