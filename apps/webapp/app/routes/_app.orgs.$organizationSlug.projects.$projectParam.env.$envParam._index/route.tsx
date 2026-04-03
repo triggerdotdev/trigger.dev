@@ -10,12 +10,13 @@ import {
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
-import { Link, useRevalidator, useSubmit } from "@remix-run/react";
+import { Link, useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useEffect, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { PanelHandle } from "react-window-splitter";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -42,9 +43,11 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -192,14 +195,20 @@ export default function Page() {
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
+  const usefulLinksPanelRef = useRef<PanelHandle>(null);
+  const fetcher = useFetcher();
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
 
-  // Create a submit handler to save the preference
-  const submit = useSubmit();
-
-  const handleUsefulLinksToggle = (show: boolean) => {
+  const toggleUsefulLinks = useCallback((show: boolean) => {
     setShowUsefulLinks(show);
-    submit({ showUsefulLinks: show.toString() }, { method: "post" });
-  };
+    if (show) {
+      usefulLinksPanelRef.current?.expand();
+    } else {
+      usefulLinksPanelRef.current?.collapse();
+    }
+    fetcherRef.current.submit({ showUsefulLinks: show.toString() }, { method: "post" });
+  }, []);
 
   return (
     <PageContainer>
@@ -226,7 +235,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="tasks-main" className="max-h-full">
+          <ResizablePanel id="tasks-main" min="100px" className="max-h-full">
             <div className={cn("grid h-full grid-rows-1")}>
               {hasTasks ? (
                 <div className="flex min-w-0 max-w-full flex-col">
@@ -244,9 +253,9 @@ export default function Page() {
                       />
                       {!showUsefulLinks && (
                         <Button
-                          variant="minimal/small"
+                          variant="secondary/small"
                           TrailingIcon={LightBulbIcon}
-                          onClick={() => handleUsefulLinksToggle(true)}
+                          onClick={() => toggleUsefulLinks(true)}
                           className="px-2.5"
                         />
                       )}
@@ -417,20 +426,31 @@ export default function Page() {
               )}
             </div>
           </ResizablePanel>
-          {hasTasks && showUsefulLinks ? (
-            <>
-              <ResizableHandle id="tasks-handle" />
-              <ResizablePanel
-                id="tasks-inspector"
-                min="200px"
-                default="400px"
-                max="500px"
-                className="w-full"
-              >
-                <HelpfulInfoHasTasks onClose={() => handleUsefulLinksToggle(false)} />
-              </ResizablePanel>
-            </>
-          ) : null}
+          <ResizableHandle
+            id="tasks-handle"
+            className={collapsibleHandleClassName(hasTasks && showUsefulLinks)}
+          />
+          <ResizablePanel
+            id="tasks-inspector"
+            handle={usefulLinksPanelRef}
+            default="400px"
+            min="400px"
+            max="500px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!hasTasks || !showUsefulLinks}
+            onCollapseChange={(isCollapsed) => {
+              if (isCollapsed) setShowUsefulLinks(false);
+            }}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 400 }}>
+              {hasTasks && (
+                <HelpfulInfoHasTasks onClose={() => toggleUsefulLinks(false)} />
+              )}
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>

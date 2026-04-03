@@ -408,7 +408,7 @@ function LogsList({
   const frozenLogId = useFrozenValue(selectedLogId);
   const frozenLog = useFrozenValue(selectedLog);
   const displayLogId = selectedLogId ?? frozenLogId;
-  const displayLog = selectedLog ?? frozenLog;
+  const displayLog = selectedLog ?? frozenLog ?? undefined;
 
   const updateUrlWithLog = useCallback((logId: string | undefined) => {
     const url = new URL(window.location.href);
