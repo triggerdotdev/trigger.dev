@@ -1574,6 +1574,9 @@ export const ApiDeploymentListResponseItem = z.object({
 
 export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;
 
+export const RetrieveCurrentDeploymentResponseBody = ApiDeploymentListResponseItem;
+export type RetrieveCurrentDeploymentResponseBody = ApiDeploymentListResponseItem;
+
 export const ApiBranchListResponseBody = z.object({
   branches: z.array(
     z.object({

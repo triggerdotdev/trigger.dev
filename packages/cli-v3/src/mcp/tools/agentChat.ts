@@ -12,6 +12,12 @@ import type { McpContext } from "../context.js";
 
 // ─── In-memory chat sessions ──────────────────────────────────────
 
+type ChatMessage = {
+  id: string;
+  role: string;
+  parts: Array<{ type: string; [key: string]: unknown }>;
+};
+
 type ChatSession = {
   runId: string;
   chatId: string;
@@ -19,6 +25,8 @@ type ChatSession = {
   lastEventId?: string;
   apiClient: ApiClient;
   clientData?: Record<string, unknown>;
+  /** Accumulated conversation messages for continuation payloads. */
+  messages: ChatMessage[];
 };
 
 const activeSessions = new Map<string, ChatSession>();
@@ -108,6 +116,7 @@ export const startAgentChatTool = {
         agentId: input.agentId,
         apiClient,
         clientData: input.clientData,
+        messages: [],
       });
 
       return {
@@ -134,6 +143,7 @@ export const startAgentChatTool = {
       agentId: input.agentId,
       apiClient,
       clientData: input.clientData,
+      messages: [],
     });
 
     return {
@@ -176,10 +186,15 @@ export const sendAgentMessageTool = {
     }
 
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const userMessage: ChatMessage = {
+      id: msgId, role: "user", parts: [{ type: "text", text: input.message }],
+    };
+
+    // Track the outgoing user message
+    session.messages.push(userMessage);
+
     const messagePayload = {
-      messages: [
-        { id: msgId, role: "user", parts: [{ type: "text", text: input.message }] },
-      ],
+      messages: [userMessage],
       chatId: session.chatId,
       trigger: "submit-message",
       metadata: session.clientData,
@@ -194,9 +209,16 @@ export const sendAgentMessageTool = {
           messagePayload
         );
       } catch (sendErr: any) {
-        // Run may have ended — trigger a new one
+        // Run may have ended — trigger a new one with full history
         const result = await session.apiClient.triggerTask(session.agentId, {
-          payload: { ...messagePayload, continuation: true, previousRunId: session.runId },
+          payload: {
+            messages: session.messages,
+            chatId: session.chatId,
+            trigger: "submit-message",
+            metadata: session.clientData,
+            continuation: true,
+            previousRunId: session.runId,
+          },
           options: {
             payloadType: "application/json",
             tags: [`chat:${session.chatId}`],
@@ -218,17 +240,16 @@ export const sendAgentMessageTool = {
     }
 
     // Subscribe to the response stream and collect the full text
-    const { text, toolCalls } = await collectAgentResponse(session);
+    const { text, toolCalls, assistantMessage } = await collectAgentResponse(session);
 
-    const contents = [text];
+    // Track the assistant response for continuation payloads
+    session.messages.push(assistantMessage);
 
-    if (toolCalls.length > 0) {
-      contents.push("");
-      contents.push(`Tools used: ${toolCalls.join(", ")}`);
-    }
+    const formatted = formatAssistantParts(assistantMessage.parts);
+    const footer = `\n\n---\nRun: ${session.runId}`;
 
     return {
-      content: [{ type: "text", text: contents.join("\n") }],
+      content: [{ type: "text", text: formatted + footer }],
     };
   }),
 };
@@ -287,7 +308,7 @@ export const closeAgentChatTool = {
 
 async function collectAgentResponse(
   session: ChatSession
-): Promise<{ text: string; toolCalls: string[] }> {
+): Promise<{ text: string; toolCalls: string[]; assistantMessage: ChatMessage }> {
   const baseURL = session.apiClient.baseUrl;
   const streamUrl = `${baseURL}/realtime/v1/streams/${session.runId}/${CHAT_STREAM_KEY}`;
 
@@ -299,15 +320,14 @@ async function collectAgentResponse(
     lastEventId: session.lastEventId,
   });
 
-  try {
-    sseStream = await subscription.subscribe();
-  } catch (err: any) {
-    throw err;
-  }
+  const sseStream = await subscription.subscribe();
   const reader = sseStream.getReader();
 
   let text = "";
   const toolCalls: string[] = [];
+  const parts: Array<{ type: string; [key: string]: unknown }> = [];
+  // Track current text part to accumulate deltas
+  let currentTextId: string | undefined;
 
   try {
     while (true) {
@@ -323,19 +343,69 @@ async function collectAgentResponse(
       if (value.chunk != null && typeof value.chunk === "object") {
         const chunk = value.chunk as Record<string, unknown>;
 
-        if (chunk.type === "__trigger_turn_complete") {
+        if (chunk.type === "trigger:turn-complete") {
           break;
+        }
+
+        if (chunk.type === "trigger:upgrade-required") {
+          // Agent requested upgrade — trigger continuation with full history
+          const previousRunId = session.runId;
+          const result = await session.apiClient.triggerTask(session.agentId, {
+            payload: {
+              messages: session.messages,
+              chatId: session.chatId,
+              trigger: "submit-message",
+              metadata: session.clientData,
+              continuation: true,
+              previousRunId,
+            },
+            options: {
+              payloadType: "application/json",
+              tags: [`chat:${session.chatId}`],
+            },
+          });
+          session.runId = result.id;
+          session.lastEventId = undefined;
+          reader.releaseLock();
+          // Recurse — subscribe to the new run's stream
+          return collectAgentResponse(session);
         }
 
         if (chunk.type === "text-delta" && typeof chunk.delta === "string") {
           text += chunk.delta;
+          // Accumulate into a text part
+          const textId = (chunk.id as string) ?? "text";
+          if (currentTextId !== textId) {
+            currentTextId = textId;
+            parts.push({ type: "text", text: chunk.delta });
+          } else {
+            const last = parts[parts.length - 1];
+            if (last && last.type === "text") {
+              last.text = (last.text as string) + chunk.delta;
+            }
+          }
         }
 
-        if (
-          chunk.type === "tool-input-available" &&
-          typeof chunk.toolName === "string"
-        ) {
+        if (chunk.type === "tool-input-available" && typeof chunk.toolName === "string") {
           toolCalls.push(chunk.toolName);
+          parts.push({
+            type: `tool-${chunk.toolName}`,
+            toolCallId: chunk.toolCallId as string,
+            toolName: chunk.toolName,
+            state: "input-available",
+            input: chunk.input,
+          });
+        }
+
+        if (chunk.type === "tool-output-available" && typeof chunk.toolCallId === "string") {
+          // Update existing tool part with output
+          const toolPart = parts.find(
+            (p) => p.toolCallId === chunk.toolCallId
+          );
+          if (toolPart) {
+            toolPart.state = "output-available";
+            toolPart.output = chunk.output;
+          }
         }
       }
     }
@@ -343,5 +413,47 @@ async function collectAgentResponse(
     reader.releaseLock();
   }
 
-  return { text, toolCalls };
+  const assistantMessage: ChatMessage = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role: "assistant",
+    parts: parts.length > 0 ? parts : [{ type: "text", text }],
+  };
+
+  return { text, toolCalls, assistantMessage };
+}
+
+// ─── Response formatter ──────────────────────────────────────────
+
+function formatAssistantParts(
+  parts: Array<{ type: string; [key: string]: unknown }>
+): string {
+  const sections: string[] = [];
+
+  for (const part of parts) {
+    if (part.type === "text" && typeof part.text === "string" && part.text) {
+      sections.push(part.text);
+    } else if (part.type.startsWith("tool-") && part.toolName) {
+      const name = part.toolName as string;
+      const input = part.input;
+      const output = part.output;
+
+      let toolSection = `[Tool: ${name}]`;
+      if (input != null) {
+        toolSection += `\nInput: ${compactJson(input)}`;
+      }
+      if (output != null) {
+        toolSection += `\nOutput: ${compactJson(output)}`;
+      }
+      sections.push(toolSection);
+    }
+  }
+
+  return sections.join("\n\n");
+}
+
+function compactJson(value: unknown): string {
+  const str = JSON.stringify(value);
+  // Keep short values inline, truncate long ones
+  if (str.length <= 200) return str;
+  return str.slice(0, 200) + "…";
 }

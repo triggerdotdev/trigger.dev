@@ -5,7 +5,7 @@
 import { task, logger } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { AgentChat, ChatStream } from "@trigger.dev/sdk/chat";
-import type { aiChat } from "./chat";
+import type { aiChat, upgradeTestAgent } from "./chat";
 import type { prReviewChat } from "./pr-review";
 
 // ─── Example 1: Simple multi-turn conversation ─────────────────────
@@ -333,3 +333,68 @@ export const orchestratorAgent = chat
       stop.cleanup();
     },
   });
+
+// ─── Example 8: chat.requestUpgrade() test ────────────────────────
+
+export const upgradeTest = task({
+  id: "chat-client-upgrade-test",
+  run: async () => {
+    const agentChat = new AgentChat<typeof upgradeTestAgent>({
+      agent: "upgrade-test",
+    });
+
+    const results: { turn: number; text: string; runId?: string }[] = [];
+
+    // Send 6 messages — the agent requests an upgrade after turn 3 (0-indexed),
+    // so the run exits after the 4th response. The 5th message triggers a
+    // continuation on a new run, and the 6th message continues on that run.
+    for (let i = 0; i < 6; i++) {
+      const stream = await agentChat.sendMessage(`This is message ${i + 1}. What turn are you on?`);
+      const text = await stream.text();
+
+      // If we get an empty response, the run just exited — wait a moment
+      // for it to fully complete, then retry (triggers continuation)
+      if (text === "" && i > 0) {
+        logger.info(`Turn ${i}: empty response, retrying after run completes`);
+        await new Promise((r) => setTimeout(r, 2000));
+        const retryStream = await agentChat.sendMessage(
+          `This is message ${i + 1} (retry). What turn are you on?`
+        );
+        const retryText = await retryStream.text();
+        results.push({
+          turn: i,
+          text: retryText.slice(0, 200),
+          runId: agentChat.run?.runId,
+        });
+        logger.info(`Turn ${i} (retry)`, {
+          text: retryText.slice(0, 200),
+          runId: agentChat.run?.runId,
+        });
+        continue;
+      }
+
+      results.push({
+        turn: i,
+        text: text.slice(0, 200),
+        runId: agentChat.run?.runId,
+      });
+      logger.info(`Turn ${i}`, { text: text.slice(0, 200), runId: agentChat.run?.runId });
+    }
+
+    await agentChat.close();
+
+    // Check that a continuation happened — runId should change
+    const runIds = [...new Set(results.map((r) => r.runId))];
+    logger.info("Upgrade test complete", {
+      totalTurns: results.length,
+      uniqueRuns: runIds.length,
+      runIds,
+    });
+
+    return {
+      turns: results,
+      uniqueRuns: runIds.length,
+      upgraded: runIds.length > 1,
+    };
+  },
+});
