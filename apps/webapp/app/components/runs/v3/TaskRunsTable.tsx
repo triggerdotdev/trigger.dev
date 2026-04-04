@@ -436,7 +436,11 @@ export function TaskRunsTable({
                   </span>
                 </TableCell>
                 <TableCell to={path}>
-                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
+                  {run.isTest ? (
+                    <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
