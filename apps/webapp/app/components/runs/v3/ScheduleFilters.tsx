@@ -1,5 +1,5 @@
 import * as Ariakit from "@ariakit/react";
-import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ClockIcon, MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useRef, useState } from "react";
@@ -22,6 +22,7 @@ import { cn } from "~/utils/cn";
 import { Button } from "../../primitives/Buttons";
 import { ScheduleTypeCombo, ScheduleTypeIcon, scheduleTypeName } from "./ScheduleType";
 import { FilterMenuProvider } from "./SharedFilters";
+import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
 
 export const ScheduleListFilters = z.object({
   page: z.coerce.number().default(1),
@@ -187,12 +188,20 @@ function PermanentTypeFilter() {
           </Ariakit.TooltipProvider>
           <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
             <SelectList>
-              <SelectItem value="ALL">All types</SelectItem>
+              <SelectItem value="ALL" className="text-text-bright">
+                All types
+              </SelectItem>
               <SelectItem value="declarative">
-                <ScheduleTypeCombo type="DECLARATIVE" className="text-xs" />
+                <div className="flex items-center gap-1">
+                  <ScheduleTypeIcon type="DECLARATIVE" className="text-text-dimmed" />
+                  <span className="text-text-bright">{scheduleTypeName("DECLARATIVE")}</span>
+                </div>
               </SelectItem>
               <SelectItem value="imperative">
-                <ScheduleTypeCombo type="IMPERATIVE" className="text-xs" />
+                <div className="flex items-center gap-1">
+                  <ScheduleTypeIcon type="IMPERATIVE" className="text-text-dimmed" />
+                  <span className="text-text-bright">{scheduleTypeName("IMPERATIVE")}</span>
+                </div>
               </SelectItem>
             </SelectList>
           </SelectPopover>
@@ -253,7 +262,7 @@ function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
             >
               <AppliedFilter
                 label="Task"
-                icon={<TaskIcon className="size-4" />}
+                icon={<ClockIcon className="size-4" />}
                 value={taskLabel}
                 removable={!!currentTask}
                 onRemove={() => handleChange("ALL")}
@@ -269,9 +278,16 @@ function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
           </Ariakit.TooltipProvider>
           <SelectPopover className="min-w-0 max-w-[min(360px,var(--popover-available-width))]">
             <SelectList>
-              <SelectItem value="ALL">All tasks</SelectItem>
+              <SelectItem value="ALL" className="text-text-bright">
+                All tasks
+              </SelectItem>
               {possibleTasks.map((task) => (
-                <SelectItem key={task} value={task}>
+                <SelectItem
+                  key={task}
+                  value={task}
+                  icon={<ClockIcon className="size-4 text-schedules" />}
+                  className="text-text-bright"
+                >
                   {task}
                 </SelectItem>
               ))}
@@ -297,11 +313,13 @@ function ClearFiltersButton() {
   }, [location, navigate]);
 
   return (
-    <Button
-      variant="minimal/small"
-      onClick={clearFilters}
-      LeadingIcon={XMarkIcon}
-      tooltip="Clear all filters"
-    />
+    <div className="h-6">
+      <Button
+        variant="minimal/small"
+        onClick={clearFilters}
+        LeadingIcon={XMarkIcon}
+        tooltip="Clear all filters"
+      />
+    </div>
   );
 }
