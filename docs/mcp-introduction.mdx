@@ -14,6 +14,7 @@ The Trigger.dev MCP (Model Context Protocol) Server enables AI assistants to int
 - Get task information and trigger task runs
 - Deploy projects to different environments
 - Monitor run details and list runs with filtering options
+- Query your data with TRQL and run built-in dashboard metrics
 
 ## Installation
 
@@ -306,6 +307,7 @@ The `install-mcp` command supports these options:
 - `-p, --project-ref <project ref>` — Scope the MCP server to a specific project
 - `-t, --tag <package tag>` — CLI package version to use (default: latest)
 - `--dev-only` — Restrict to the dev environment only
+- `--readonly` — Read-only mode. Hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes to your account
 - `--yolo` — Install into all supported clients automatically
 - `--scope <scope>` — `user`, `project`, or `local`
 - `--client <clients...>` — Install into specific client(s)
@@ -336,6 +338,12 @@ Restrict to dev environment for a specific project:
 npx trigger.dev@latest install-mcp --dev-only --project-ref proj_abc123
 ```
 
+Read-only mode (prevents AI from deploying or triggering tasks):
+
+```bash
+npx trigger.dev@latest install-mcp --readonly
+```
+
 To add these options to a manual config, append them to the `args` array:
 
 ```json
@@ -358,6 +366,9 @@ Once installed, you can start using the MCP server by asking your AI assistant q
 - `"List all runs for my foobar task"`
 - `"Deploy my project to staging"`
 - `"Deploy my project to production"`
+- `"How many runs failed in the last 7 days?"`
+- `"Show me the overview dashboard metrics"`
+- `"What tables can I query?"`
 
 ## Next Steps
 

@@ -323,7 +323,7 @@
           },
           {
             "group": "Query API",
-            "pages": ["management/query/execute"]
+            "pages": ["management/query/execute", "management/query/schema", "management/query/dashboards"]
           }
         ]
       },
