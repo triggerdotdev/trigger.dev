@@ -14,7 +14,7 @@ import { IconBugFilled, IconRotateClockwise2, IconToggleLeft } from "@tabler/ico
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { MachineDefaultIcon } from "~/assets/icons/MachineIcon";
@@ -57,6 +57,8 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
@@ -358,7 +360,7 @@ export function RunsFilters(props: RunFiltersProps) {
       {!props.hideSearch && <AIFilterInput />}
       <PermanentStatusFilter />
       <PermanentTasksFilter possibleTasks={props.possibleTasks} />
-      <TimeFilter defaultPeriod={props.defaultPeriod} />
+      <TimeFilter defaultPeriod={props.defaultPeriod} shortcut={{ key: "d" }} />
       <RootOnlyToggle defaultValue={props.rootOnlyDefault} />
       <AppliedFilters {...props} />
       <FilterMenu {...props} />
@@ -575,32 +577,63 @@ function StatusDropdown({
   );
 }
 
+const statusShortcut = { key: "s" };
+
 function PermanentStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
   const hasStatuses = statuses.length > 0 && !statuses.every((v) => v === "");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: statusShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <StatusDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              {hasStatuses ? (
-                <AppliedFilter
-                  label="Status"
-                  icon={filterIcon("statuses")}
-                  value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
-                  onRemove={() => del(["statuses", "cursor", "direction"])}
-                  variant="secondary/small"
-                />
-              ) : (
-                <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
-                  {filterIcon("statuses")}
-                  <span>Status</span>
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                }
+              >
+                {hasStatuses ? (
+                  <AppliedFilter
+                    label="Status"
+                    icon={filterIcon("statuses")}
+                    value={appliedSummary(
+                      statuses.map((v) => runStatusTitle(v as TaskRunStatus))
+                    )}
+                    onRemove={() => del(["statuses", "cursor", "direction"])}
+                    variant="secondary/small"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    {filterIcon("statuses")}
+                    <span>Status</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by status</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={statusShortcut}
+                    variant="small"
+                  />
                 </div>
-              )}
-            </Ariakit.Select>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -669,37 +702,66 @@ function TasksDropdown({
   );
 }
 
+const tasksShortcut = { key: "t" };
+
 function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possibleTasks">) {
   const { values, del } = useSearchParams();
   const tasks = values("tasks");
   const hasTasks = tasks.length > 0 && !tasks.every((v) => v === "");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: tasksShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <TasksDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              {hasTasks ? (
-                <AppliedFilter
-                  label="Task"
-                  icon={filterIcon("tasks")}
-                  value={appliedSummary(
-                    tasks.map((v) => {
-                      const task = possibleTasks.find((task) => task.slug === v);
-                      return task ? task.slug : v;
-                    })
-                  )}
-                  onRemove={() => del(["tasks", "cursor", "direction"])}
-                  variant="secondary/small"
-                />
-              ) : (
-                <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
-                  {filterIcon("tasks")}
-                  <span>Tasks</span>
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                }
+              >
+                {hasTasks ? (
+                  <AppliedFilter
+                    label="Task"
+                    icon={filterIcon("tasks")}
+                    value={appliedSummary(
+                      tasks.map((v) => {
+                        const task = possibleTasks.find((task) => task.slug === v);
+                        return task ? task.slug : v;
+                      })
+                    )}
+                    onRemove={() => del(["tasks", "cursor", "direction"])}
+                    variant="secondary/small"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    {filterIcon("tasks")}
+                    <span>Tasks</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by task</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={tasksShortcut}
+                    variant="small"
+                  />
                 </div>
-              )}
-            </Ariakit.Select>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -1364,6 +1426,8 @@ function AppliedVersionsFilter() {
   );
 }
 
+const rootOnlyShortcut = { key: "o" };
+
 function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   const { value, values, replace } = useSearchParams();
   const searchValue = value("rootOnly");
@@ -1377,17 +1441,32 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   const disabled = !!batchId || !!runId || !!scheduleId || tasks.length > 0;
 
   return (
-    <Switch
-      disabled={disabled}
-      variant="secondary/small"
-      label="Root only"
-      checked={disabled ? false : rootOnly}
-      onCheckedChange={(checked) => {
-        replace({
-          rootOnly: checked ? "true" : "false",
-        });
-      }}
-    />
+    <Ariakit.TooltipProvider timeout={200}>
+      <Ariakit.TooltipAnchor render={<div />}>
+        <Switch
+          disabled={disabled}
+          variant="secondary/small"
+          label="Root only"
+          checked={disabled ? false : rootOnly}
+          shortcut={rootOnlyShortcut}
+          onCheckedChange={(checked) => {
+            replace({
+              rootOnly: checked ? "true" : "false",
+            });
+          }}
+        />
+      </Ariakit.TooltipAnchor>
+      <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+        <div className="flex items-center gap-2">
+          <span>Toggle root only</span>
+          <ShortcutKey
+            className="size-4 flex-none"
+            shortcut={rootOnlyShortcut}
+            variant="small"
+          />
+        </div>
+      </Ariakit.Tooltip>
+    </Ariakit.TooltipProvider>
   );
 }
 
