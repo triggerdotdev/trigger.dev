@@ -173,6 +173,7 @@ Waits include:
 - `wait.until()`
 - `task.triggerAndWait()`
 - `task.batchTriggerAndWait()`
+- `retry.onThrow()`
 - And any of our functions with `wait` in the name.
 
 This restriction exists because we suspend the task server after a wait, and resume it when the wait is done. At the moment, if you do more than one wait, the run will never continue when deployed, so we throw this error instead.
