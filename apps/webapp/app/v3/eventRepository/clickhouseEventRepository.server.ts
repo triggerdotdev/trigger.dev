@@ -1,6 +1,7 @@
 import type {
   ClickHouse,
   LlmMetricsV1Input,
+  MetricsV1Input,
   TaskEventDetailedSummaryV1Result,
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
@@ -91,6 +92,10 @@ export type ClickhouseEventRepositoryConfig = {
   llmMetricsFlushInterval?: number;
   llmMetricsMaxBatchSize?: number;
   llmMetricsMaxConcurrency?: number;
+  /** OTLP / task metrics_v1 flush scheduler config */
+  otlpMetricsBatchSize?: number;
+  otlpMetricsFlushInterval?: number;
+  otlpMetricsMaxConcurrency?: number;
 };
 
 /**
@@ -102,6 +107,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _config: ClickhouseEventRepositoryConfig;
   private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
   private readonly _llmMetricsFlushScheduler: DynamicFlushScheduler<LlmMetricsV1Input>;
+  private readonly _otlpMetricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>;
   private _tracer: Tracer;
   private _version: "v1" | "v2";
 
@@ -135,6 +141,15 @@ export class ClickhouseEventRepository implements IEventRepository {
       maxConcurrency: config.llmMetricsMaxConcurrency ?? 2,
       maxBatchSize: config.llmMetricsMaxBatchSize ?? 10000,
       memoryPressureThreshold: config.llmMetricsMaxBatchSize ?? 10000,
+      loadSheddingEnabled: false,
+    });
+
+    this._otlpMetricsFlushScheduler = new DynamicFlushScheduler({
+      batchSize: config.otlpMetricsBatchSize ?? 10000,
+      flushInterval: config.otlpMetricsFlushInterval ?? 1000,
+      callback: this.#flushOtelMetricsBatch.bind(this),
+      minConcurrency: 1,
+      maxConcurrency: config.otlpMetricsMaxConcurrency ?? 3,
       loadSheddingEnabled: false,
     });
   }
@@ -251,6 +266,27 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
   }
 
+  async #flushOtelMetricsBatch(flushId: string, rows: MetricsV1Input[]) {
+    await startSpan(this._tracer, "flushOtelMetricsBatch", async (span) => {
+      span.setAttribute("flush_id", flushId);
+      span.setAttribute("row_count", rows.length);
+
+      const [insertError] = await this._clickhouse.metrics.insert(rows, {
+        params: {
+          clickhouse_settings: this.#getClickhouseInsertSettings(),
+        },
+      });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      logger.info("ClickhouseEventRepository.flushOtelMetricsBatch Inserted OTLP metrics batch", {
+        rows: rows.length,
+      });
+    });
+  }
+
   #createLlmMetricsInput(event: CreateEventInput): LlmMetricsV1Input {
     const llmMetrics = event._llmMetrics!;
 
@@ -324,6 +360,11 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   async insertManyImmediate(events: CreateEventInput[]): Promise<void> {
     this.insertMany(events);
+  }
+
+  insertManyMetrics(rows: MetricsV1Input[]): void {
+    if (rows.length === 0) return;
+    this._otlpMetricsFlushScheduler.addToBatch(rows);
   }
 
   private createEventToTaskEventV1Input(event: CreateEventInput): TaskEventV1Input[] {
