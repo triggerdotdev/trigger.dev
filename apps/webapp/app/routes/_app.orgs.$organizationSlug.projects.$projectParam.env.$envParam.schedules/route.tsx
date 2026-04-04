@@ -420,58 +420,59 @@ function SchedulesTable({
             }`;
             const isSelected = scheduleParam === schedule.friendlyId;
             const cellClass = schedule.active ? "" : "opacity-50";
+            const selectedActionClass = isSelected ? "text-text-bright" : undefined;
             return (
               <TableRow key={schedule.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={path} isTabbableCell className={cellClass}>
+                <TableCell to={path} isTabbableCell className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.friendlyId}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.taskIdentifier}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   <ScheduleTypeCombo type={schedule.type} />
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.type === "IMPERATIVE"
                     ? schedule.externalId
                       ? schedule.externalId
                       : "–"
                     : "N/A"}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.cron}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.cronDescription}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.timezone}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   <DateTime date={schedule.nextRun} timeZone={schedule.timezone} />
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.lastRun ? (
                     <DateTime date={schedule.lastRun} timeZone={schedule.timezone} />
                   ) : (
                     "–"
                   )}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.type === "IMPERATIVE"
                     ? schedule.userProvidedDeduplicationKey
                       ? schedule.deduplicationKey
                       : "–"
                     : "N/A"}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   <div className="flex items-center gap-3">
                     {schedule.environments.map((env) => (
                       <EnvironmentCombo key={env.id} environment={env} className="text-xs" />
                     ))}
                   </div>
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} actionClassName={selectedActionClass}>
                   {schedule.type === "IMPERATIVE" ? (
                     <EnabledStatus enabled={schedule.active} />
                   ) : (
