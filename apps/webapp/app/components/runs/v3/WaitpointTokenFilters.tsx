@@ -1,28 +1,24 @@
 import * as Ariakit from "@ariakit/react";
-import { CalendarIcon, FingerPrintIcon, TagIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { FingerPrintIcon, TagIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
 import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
-import { ListChecks, ListFilterIcon } from "lucide-react";
+import { ListChecks } from "lucide-react";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
-import { FormError } from "~/components/primitives/FormError";
-import { Input } from "~/components/primitives/Input";
-import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
-  SelectButtonItem,
   SelectItem,
   SelectList,
   SelectPopover,
   SelectProvider,
-  SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Tooltip,
@@ -35,8 +31,15 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
-import { TimeFilter, appliedSummary, FilterMenuProvider } from "./SharedFilters";
+import {
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
+  appliedSummary,
+  FilterMenuProvider,
+  TimeFilter,
+} from "./SharedFilters";
 import { WaitpointStatusCombo, waitpointStatusTitle } from "./WaitpointStatus";
 
 export const WaitpointSearchParamsSchema = z.object({
@@ -69,130 +72,18 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
     searchParams.has("idempotencyKey");
 
   return (
-    <div className="flex flex-row flex-wrap items-center gap-1">
-      <FilterMenu />
-      <TimeFilter />
-      <AppliedFilters />
+    <div className="flex flex-row flex-wrap items-center gap-1.5">
+      <PermanentStatusFilter />
+      <PermanentTagsFilter />
+      <PermanentWaitpointIdFilter />
+      <PermanentIdempotencyKeyFilter />
+      <TimeFilter shortcut={{ key: "d" }} />
       {hasFilters && (
         <Form className="h-6">
           <Button variant="minimal/small" LeadingIcon={TrashIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
-  );
-}
-
-const filterTypes = [
-  {
-    name: "statuses",
-    title: "Status",
-    icon: <StatusIcon className="size-4" />,
-  },
-  { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
-  { name: "id", title: "Waitpoint ID", icon: <FingerPrintIcon className="size-4" /> },
-  { name: "idempotencyKey", title: "Idempotency key", icon: <ListChecks className="size-4" /> },
-] as const;
-
-type FilterType = (typeof filterTypes)[number]["name"];
-
-const shortcut = { key: "f" };
-
-function FilterMenu() {
-  const [filterType, setFilterType] = useState<FilterType | undefined>();
-
-  const filterTrigger = (
-    <SelectTrigger
-      icon={
-        <div className="flex size-4 items-center justify-center">
-          <ListFilterIcon className="size-3.5" />
-        </div>
-      }
-      variant={"secondary/small"}
-      shortcut={shortcut}
-      tooltipTitle={"Filter runs"}
-    >
-      Filter
-    </SelectTrigger>
-  );
-
-  return (
-    <FilterMenuProvider onClose={() => setFilterType(undefined)}>
-      {(search, setSearch) => (
-        <Menu
-          searchValue={search}
-          clearSearchValue={() => setSearch("")}
-          trigger={filterTrigger}
-          filterType={filterType}
-          setFilterType={setFilterType}
-        />
-      )}
-    </FilterMenuProvider>
-  );
-}
-
-function AppliedFilters() {
-  return (
-    <>
-      <AppliedStatusFilter />
-      <AppliedTagsFilter />
-      <AppliedWaitpointIdFilter />
-      <AppliedIdempotencyKeyFilter />
-    </>
-  );
-}
-
-type MenuProps = {
-  searchValue: string;
-  clearSearchValue: () => void;
-  trigger: React.ReactNode;
-  filterType: FilterType | undefined;
-  setFilterType: (filterType: FilterType | undefined) => void;
-};
-
-function Menu(props: MenuProps) {
-  switch (props.filterType) {
-    case undefined:
-      return <MainMenu {...props} />;
-    case "statuses":
-      return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "tags":
-      return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "id":
-      return <WaitpointIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "idempotencyKey":
-      return <IdempotencyKeyDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-  }
-}
-
-function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
-  const filtered = useMemo(() => {
-    return filterTypes.filter((item) => {
-      return item.title.toLowerCase().includes(searchValue.toLowerCase());
-    });
-  }, [searchValue]);
-
-  return (
-    <SelectProvider virtualFocus={true}>
-      {trigger}
-      <SelectPopover>
-        <ComboBox placeholder={"Filter by..."} shortcut={shortcut} value={searchValue} />
-        <SelectList>
-          {filtered.map((type, index) => (
-            <SelectButtonItem
-              key={type.name}
-              onClick={() => {
-                clearSearchValue();
-                setFilterType(type.name);
-              }}
-              icon={type.icon}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
-            >
-              {type.title}
-            </SelectButtonItem>
-          ))}
-        </SelectList>
-      </SelectPopover>
-    </SelectProvider>
   );
 }
 
@@ -237,7 +128,6 @@ function StatusDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by status..."} value={searchValue} />
         <SelectList>
           {filtered.map((item, index) => {
             return (
@@ -249,7 +139,7 @@ function StatusDropdown({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger className="group flex w-full flex-col py-0">
-                      <WaitpointStatusCombo status={item.value} />
+                      <WaitpointStatusCombo status={item.value} iconClassName="animate-none" />
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={50}>
                       <Paragraph variant="extra-small">
@@ -267,30 +157,70 @@ function StatusDropdown({
   );
 }
 
-function AppliedStatusFilter() {
-  const { values, del } = useSearchParams();
-  const statuses = values("statuses");
+const statusShortcut = { key: "s" };
 
-  if (statuses.length === 0) {
-    return null;
-  }
+function PermanentStatusFilter() {
+  const { values, del } = useSearchParams();
+  const selectedStatuses = values("statuses");
+  const hasStatuses = selectedStatuses.length > 0 && !selectedStatuses.every((v) => v === "");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: statusShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <StatusDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Status"
-                icon={<StatusIcon className="size-3.5" />}
-                value={appliedSummary(
-                  statuses.map((v) => waitpointStatusTitle(v as WaitpointTokenStatus))
+            <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasStatuses ? (
+                  <AppliedFilter
+                    label="Status"
+                    icon={<StatusIcon className="size-3.5" />}
+                    value={appliedSummary(
+                      selectedStatuses.map((v) =>
+                        waitpointStatusTitle(v as WaitpointTokenStatus)
+                      )
+                    )}
+                    onRemove={() => del(["statuses", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <div className="grid size-4 place-items-center">
+                      <div className="size-[75%] rounded-full border-2 border-text-bright" />
+                    </div>
+                    <span>Status</span>
+                  </div>
                 )}
-                onRemove={() => del(["statuses", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by status</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={statusShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -366,19 +296,21 @@ function TagsDropdown({
           return true;
         }}
       >
-        <ComboBox
-          value={searchValue}
-          render={(props) => (
-            <div className="flex items-center justify-stretch">
-              <input {...props} placeholder={"Filter by tags..."} />
-              {fetcher.state === "loading" && <Spinner color="muted" />}
-            </div>
-          )}
-        />
+        {!(filtered.length === 0 && fetcher.state !== "loading") && (
+          <ComboBox
+            value={searchValue}
+            render={(props) => (
+              <div className="flex items-center justify-stretch">
+                <input {...props} placeholder={"Filter by tags..."} />
+                {fetcher.state === "loading" && <Spinner color="muted" />}
+              </div>
+            )}
+          />
+        )}
         <SelectList>
           {filtered.length > 0
-            ? filtered.map((tag, index) => (
-                <SelectItem key={tag} value={tag}>
+            ? filtered.map((tag) => (
+                <SelectItem key={tag} value={tag} className="text-text-bright">
                   {tag}
                 </SelectItem>
               ))
@@ -392,29 +324,64 @@ function TagsDropdown({
   );
 }
 
-function AppliedTagsFilter() {
+const tagsShortcut = { key: "g" };
+
+function PermanentTagsFilter() {
   const { values, del } = useSearchParams();
-
   const tags = values("tags");
+  const hasTags = tags.length > 0 && !tags.every((v) => v === "");
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  if (tags.length === 0) {
-    return null;
-  }
+  useShortcutKeys({
+    shortcut: tagsShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <TagsDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Tags"
-                icon={<TagIcon className="size-3.5" />}
-                value={appliedSummary(values("tags"))}
-                onRemove={() => del(["tags", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasTags ? (
+                  <AppliedFilter
+                    label="Tags"
+                    icon={<TagIcon className="size-3.5" />}
+                    value={appliedSummary(tags)}
+                    onRemove={() => del(["tags", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <TagIcon className="size-4" />
+                    <span>Tags</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by tags</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={tagsShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -424,117 +391,80 @@ function AppliedTagsFilter() {
   );
 }
 
-function WaitpointIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const idValue = value("id");
-
-  const [id, setId] = useState(idValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      id: id === "" ? undefined : id?.toString(),
-    });
-
-    setOpen(false);
-  }, [id, replace]);
-
-  let error: string | undefined = undefined;
-  if (id) {
-    if (!id.startsWith("waitpoint_")) {
-      error = "Waitpoint IDs start with 'waitpoint_'";
-    } else if (id.length !== 35) {
-      error = "Waitpoint IDs are 35 characters long";
-    }
-  }
-
+function WaitpointIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Waitpoint ID</Label>
-            <Input
-              placeholder="run_"
-              value={id ?? ""}
-              onChange={(e) => setId(e.target.value)}
-              variant="small"
-              className="w-[27ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !id}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Waitpoint ID"
+      placeholder="waitpoint_"
+      paramKey="id"
+      validate={(v) => {
+        if (!v.startsWith("waitpoint_")) return "Waitpoint IDs start with 'waitpoint_'";
+        if (v.length !== 35) return "Waitpoint IDs are 35 characters long";
+        return undefined;
+      }}
+    />
   );
 }
 
-function AppliedWaitpointIdFilter() {
+const waitpointIdShortcut = { key: "w" };
+
+function PermanentWaitpointIdFilter() {
   const { value, del } = useSearchParams();
-
-  if (value("id") === undefined) {
-    return null;
-  }
-
   const id = value("id");
+  const hasId = id !== undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: waitpointIdShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <WaitpointIdDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="ID"
-                icon={<FingerPrintIcon className="size-3.5" />}
-                value={id}
-                onRemove={() => del(["id", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasId ? (
+                  <AppliedFilter
+                    label="ID"
+                    icon={<FingerPrintIcon className="size-3.5" />}
+                    value={id}
+                    onRemove={() => del(["id", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <FingerPrintIcon className="size-4" />
+                    <span>Waitpoint ID</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by waitpoint ID</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={waitpointIdShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -544,115 +474,79 @@ function AppliedWaitpointIdFilter() {
   );
 }
 
-function IdempotencyKeyDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const idValue = value("idempotencyKey");
-
-  const [idempotencyKey, setIdempotencyKey] = useState(idValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      idempotencyKey: idempotencyKey === "" ? undefined : idempotencyKey?.toString(),
-    });
-
-    setOpen(false);
-  }, [idempotencyKey, replace]);
-
-  let error: string | undefined = undefined;
-  if (idempotencyKey) {
-    if (idempotencyKey.length === 0) {
-      error = "Idempotency keys need to be at least 1 character in length";
-    }
-  }
-
+function IdempotencyKeyDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Idempotency key</Label>
-            <Input
-              placeholder=""
-              value={idempotencyKey ?? ""}
-              onChange={(e) => setIdempotencyKey(e.target.value)}
-              variant="small"
-              className="w-[27ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !idempotencyKey}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Idempotency key"
+      placeholder=""
+      paramKey="idempotencyKey"
+      validate={(v) => {
+        if (v.length === 0) return "Idempotency keys need to be at least 1 character in length";
+        return undefined;
+      }}
+    />
   );
 }
 
-function AppliedIdempotencyKeyFilter() {
+const idempotencyKeyShortcut = { key: "i" };
+
+function PermanentIdempotencyKeyFilter() {
   const { value, del } = useSearchParams();
-
-  if (value("idempotencyKey") === undefined) {
-    return null;
-  }
-
   const idempotencyKey = value("idempotencyKey");
+  const hasKey = idempotencyKey !== undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: idempotencyKeyShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <IdempotencyKeyDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Idempotency key"
-                icon={<ListChecks className="size-3.5" />}
-                value={idempotencyKey}
-                onRemove={() => del(["idempotencyKey", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasKey ? (
+                  <AppliedFilter
+                    label="Idempotency key"
+                    icon={<ListChecks className="size-3.5" />}
+                    value={idempotencyKey}
+                    onRemove={() => del(["idempotencyKey", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <ListChecks className="size-4" />
+                    <span>Idempotency key</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by idempotency key</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={idempotencyKeyShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
