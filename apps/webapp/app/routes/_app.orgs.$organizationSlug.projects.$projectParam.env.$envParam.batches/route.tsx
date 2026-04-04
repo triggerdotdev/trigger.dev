@@ -30,6 +30,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  CopyableTableCell,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { BatchFilters, BatchListFilters } from "~/components/runs/v3/BatchFilters";
@@ -234,9 +235,9 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
 
             return (
               <TableRow key={batch.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={inspectorPath} isTabbableCell>
+                <CopyableTableCell value={batch.friendlyId} to={inspectorPath} isTabbableCell>
                   {batch.friendlyId}
-                </TableCell>
+                </CopyableTableCell>
 
                 <TableCell to={inspectorPath}>
                   {batch.batchVersion === "v1" ? (
