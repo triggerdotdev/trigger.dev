@@ -74,19 +74,15 @@ class OTLPExporter {
 
   async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
-      const metricsWithStores = this.#filterResourceMetrics(request.resourceMetrics).map(
+      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
         (resourceMetrics) =>
-          convertResourceMetricsToRowsWithStore(
-            resourceMetrics,
-            this._spanAttributeValueLengthLimit
-          )
+          convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
       );
 
-      const rowCount = metricsWithStores.reduce((acc, m) => acc + m.rows.length, 0);
-      span.setAttribute("metric_row_count", rowCount);
+      span.setAttribute("metric_row_count", rows.length);
 
-      if (rowCount > 0) {
-        await this.#exportMetricRows(metricsWithStores);
+      if (rows.length > 0) {
+        await this.#exportMetricRows(rows);
       }
 
       return ExportMetricsServiceResponse.create();
@@ -155,34 +151,31 @@ class OTLPExporter {
     return eventCount;
   }
 
-  async #exportMetricRows(
-    metricsWithStores: { rows: MetricsV1Input[]; taskEventStore: string }[]
-  ): Promise<void> {
+  async #exportMetricRows(rows: MetricsV1Input[]): Promise<void> {
     const routeCache = new Map<string, { key: string; repository: IEventRepository }>();
     const groups = new Map<string, { repository: IEventRepository; rows: MetricsV1Input[] }>();
-    for (const { rows, taskEventStore } of metricsWithStores) {
-      for (const row of rows) {
-        const routeKey = `${row.organization_id}\0${taskEventStore}`;
-        let resolved = routeCache.get(routeKey);
-        if (!resolved) {
-          resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
-            taskEventStore,
-            row.organization_id
-          );
-          routeCache.set(routeKey, resolved);
-        }
 
-        let group = groups.get(resolved.key);
-        if (!group) {
-          group = { repository: resolved.repository, rows: [] };
-          groups.set(resolved.key, group);
-        }
-        group.rows.push(row);
+    for (const row of rows) {
+      const routeKey = row.organization_id;
+      let resolved = routeCache.get(routeKey);
+      if (!resolved) {
+        resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
+          "clickhouse_v2",
+          row.organization_id
+        );
+        routeCache.set(routeKey, resolved);
       }
+
+      let group = groups.get(resolved.key);
+      if (!group) {
+        group = { repository: resolved.repository, rows: [] };
+        groups.set(resolved.key, group);
+      }
+      group.rows.push(row);
     }
 
-    for (const [, { repository, rows }] of groups) {
-      repository.insertManyMetrics(rows);
+    for (const [, { repository, rows: groupedRows }] of groups) {
+      repository.insertManyMetrics(groupedRows);
     }
   }
 
@@ -599,21 +592,6 @@ function convertMetricsToClickhouseRows(
   }
 
   return rows;
-}
-
-function convertResourceMetricsToRowsWithStore(
-  resourceMetrics: ResourceMetrics,
-  spanAttributeValueLengthLimit: number
-): { rows: MetricsV1Input[]; taskEventStore: string } {
-  const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
-  const taskEventStore =
-    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
-    env.EVENT_REPOSITORY_DEFAULT_STORE;
-
-  return {
-    rows: convertMetricsToClickhouseRows(resourceMetrics, spanAttributeValueLengthLimit),
-    taskEventStore,
-  };
 }
 
 // Prefixes injected by TaskContextMetricExporter — these are extracted into
