@@ -151,50 +151,6 @@ export default function Page() {
           >
             Schedules docs
           </LinkButton>
-
-          {limits.used >= limits.limit ? (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  LeadingIcon={PlusIcon}
-                  leadingIconClassName="text-background-dimmed"
-                  variant="primary/small"
-                  shortcut={{ key: "n" }}
-                  disabled={possibleTasks.length === 0 || isShowingNewPane}
-                >
-                  New schedule
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>You've exceeded your limit</DialogHeader>
-                <DialogDescription>
-                  You've used {limits.used}/{limits.limit} of your schedules.
-                </DialogDescription>
-                <DialogFooter>
-                  {canUpgrade ? (
-                    <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                      Upgrade
-                    </LinkButton>
-                  ) : (
-                    <Feedback
-                      button={<Button variant="primary/small">Request more</Button>}
-                      defaultValue="help"
-                    />
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          ) : (
-            <LinkButton
-              LeadingIcon={PlusIcon}
-              to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-              variant="primary/small"
-              shortcut={{ key: "n" }}
-              disabled={possibleTasks.length === 0 || isShowingNewPane}
-            >
-              New schedule
-            </LinkButton>
-          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -219,6 +175,54 @@ export default function Page() {
                         totalPages={totalPages}
                         showPageNumbers={false}
                       />
+                      {limits.used >= limits.limit ? (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              LeadingIcon={PlusIcon}
+                              leadingIconClassName="text-background-dimmed"
+                              variant="primary/small"
+                              shortcut={{ key: "n" }}
+                              disabled={possibleTasks.length === 0 || isShowingNewPane}
+                            >
+                              New schedule
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>You've exceeded your limit</DialogHeader>
+                            <DialogDescription>
+                              You've used {limits.used}/{limits.limit} of your schedules.
+                            </DialogDescription>
+                            <DialogFooter>
+                              {canUpgrade ? (
+                                <LinkButton
+                                  variant="primary/small"
+                                  to={v3BillingPath(organization)}
+                                >
+                                  Upgrade
+                                </LinkButton>
+                              ) : (
+                                <Feedback
+                                  button={
+                                    <Button variant="primary/small">Request more</Button>
+                                  }
+                                  defaultValue="help"
+                                />
+                              )}
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      ) : (
+                        <LinkButton
+                          LeadingIcon={PlusIcon}
+                          to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
+                          variant="primary/small"
+                          shortcut={{ key: "n" }}
+                          disabled={possibleTasks.length === 0 || isShowingNewPane}
+                        >
+                          New schedule
+                        </LinkButton>
+                      )}
                     </div>
                   </div>
 
