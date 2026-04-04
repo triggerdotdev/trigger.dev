@@ -62,6 +62,39 @@ export default defineConfig({
   deploying). You can use pre-built extensions or create your own.
 </Note>
 
+### Bun runtime
+
+If you are using the Bun runtime, esbuild's bundling of `@sentry/node`'s CJS entry can cause a runtime error in the local dev environment. Add the following extension to mark `@sentry/node` as external in dev only:
+
+```ts trigger.config.ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+
+export default defineConfig({
+  project: "<project ref>",
+  runtime: "bun",
+  build: {
+    extensions: [
+      {
+        name: "sentry-external-dev",
+        externalsForTarget: (target) => (target === "dev" ? ["@sentry/node"] : []),
+      },
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: "<your-sentry-org>",
+          project: "<your-sentry-project>",
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" }
+      ),
+    ],
+  },
+});
+```
+
+This lets Bun resolve `@sentry/node` directly from `node_modules` during dev, while still bundling it normally for deployment.
+
 ### Runtime initialization
 
 Create a `trigger/init.ts` file to initialize Sentry and register the global `onFailure` hook. This file is automatically loaded when your tasks execute.
