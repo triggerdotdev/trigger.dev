@@ -1,5 +1,5 @@
 import * as Ariakit from "@ariakit/react";
-import { FingerPrintIcon, TagIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { FingerPrintIcon, TagIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
 import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
 import { ListChecks } from "lucide-react";
@@ -80,7 +80,7 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
       <TimeFilter shortcut={{ key: "d" }} />
       {hasFilters && (
         <Form className="h-6">
-          <Button variant="minimal/small" LeadingIcon={TrashIcon} tooltip="Clear all filters" />
+          <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
         </Form>
       )}
     </div>
