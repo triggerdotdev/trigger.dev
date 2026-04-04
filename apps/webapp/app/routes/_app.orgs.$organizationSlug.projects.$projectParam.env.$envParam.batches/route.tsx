@@ -286,7 +286,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
         {isLoading && (
           <TableBlankRow
             colSpan={8}
-            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
           </TableBlankRow>
