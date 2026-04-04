@@ -49,8 +49,8 @@ export function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1.5">
       <ScheduleSearchInput />
-      <PermanentTypeFilter />
       <PermanentTaskFilter possibleTasks={possibleTasks} />
+      <PermanentTypeFilter />
       {hasFilters && <ClearFiltersButton />}
     </div>
   );
@@ -120,7 +120,7 @@ function ScheduleSearchInput() {
   );
 }
 
-const typeShortcut = { key: "t" };
+const typeShortcut = { key: "y" };
 
 function PermanentTypeFilter() {
   const navigate = useNavigate();
@@ -211,7 +211,7 @@ function PermanentTypeFilter() {
   );
 }
 
-const taskShortcut = { key: "k" };
+const taskShortcut = { key: "t" };
 
 function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
   const navigate = useNavigate();
