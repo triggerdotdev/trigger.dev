@@ -19,14 +19,8 @@ import {
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
-import { ClickHouse } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
-import {
-  clickhouseFactory,
-  ClickhouseFactory,
-  getDefaultClickhouseClient,
-} from "~/services/clickhouse/clickhouseFactory.server";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
+import { clickhouseFactory, type ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 
 import { generateSpanId } from "./eventRepository/common.server";
 import type {
@@ -43,11 +37,6 @@ import { singleton } from "~/utils/singleton";
 
 type OTLPExporterConfig = {
   clickhouseFactory: ClickhouseFactory;
-  metrics: {
-    batchSize: number;
-    flushInterval: number;
-    maxConcurrency: number;
-  };
   verbose: boolean;
   spanAttributeValueLengthLimit: number;
 };
@@ -55,7 +44,6 @@ type OTLPExporterConfig = {
 class OTLPExporter {
   private _tracer: Tracer;
   private readonly _clickhouseFactory: ClickhouseFactory;
-  private readonly _defaultMetricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>;
   private readonly _verbose: boolean;
   private readonly _spanAttributeValueLengthLimit: number;
 
@@ -64,16 +52,6 @@ class OTLPExporter {
     this._clickhouseFactory = config.clickhouseFactory;
     this._verbose = config.verbose;
     this._spanAttributeValueLengthLimit = config.spanAttributeValueLengthLimit;
-    this._defaultMetricsFlushScheduler = new DynamicFlushScheduler<MetricsV1Input>({
-      batchSize: config.metrics.batchSize,
-      flushInterval: config.metrics.flushInterval,
-      callback: async (_flushId, batch) => {
-        await config.metrics.clickhouse.metrics.insert(batch);
-      },
-      minConcurrency: 1,
-      maxConcurrency: config.metrics.maxConcurrency,
-      loadSheddingEnabled: false,
-    });
   }
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
@@ -96,19 +74,19 @@ class OTLPExporter {
 
   async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
-      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
-        (resourceMetrics) => {
-          return convertMetricsToClickhouseRows(
+      const metricsWithStores = this.#filterResourceMetrics(request.resourceMetrics).map(
+        (resourceMetrics) =>
+          convertResourceMetricsToRowsWithStore(
             resourceMetrics,
             this._spanAttributeValueLengthLimit
-          );
-        }
+          )
       );
 
-      span.setAttribute("metric_row_count", rows.length);
+      const rowCount = metricsWithStores.reduce((acc, m) => acc + m.rows.length, 0);
+      span.setAttribute("metric_row_count", rowCount);
 
-      if (rows.length > 0) {
-        this._defaultMetricsFlushScheduler.addToBatch(rows);
+      if (rowCount > 0) {
+        await this.#exportMetricRows(metricsWithStores);
       }
 
       return ExportMetricsServiceResponse.create();
@@ -175,6 +153,37 @@ class OTLPExporter {
     }
 
     return eventCount;
+  }
+
+  async #exportMetricRows(
+    metricsWithStores: { rows: MetricsV1Input[]; taskEventStore: string }[]
+  ): Promise<void> {
+    const routeCache = new Map<string, { key: string; repository: IEventRepository }>();
+    const groups = new Map<string, { repository: IEventRepository; rows: MetricsV1Input[] }>();
+    for (const { rows, taskEventStore } of metricsWithStores) {
+      for (const row of rows) {
+        const routeKey = `${row.organization_id}\0${taskEventStore}`;
+        let resolved = routeCache.get(routeKey);
+        if (!resolved) {
+          resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
+            taskEventStore,
+            row.organization_id
+          );
+          routeCache.set(routeKey, resolved);
+        }
+
+        let group = groups.get(resolved.key);
+        if (!group) {
+          group = { repository: resolved.repository, rows: [] };
+          groups.set(resolved.key, group);
+        }
+        group.rows.push(row);
+      }
+    }
+
+    for (const [, { repository, rows }] of groups) {
+      repository.insertManyMetrics(rows);
+    }
   }
 
   #logEventsVerbose(events: CreateEventInput[], prefix: string) {
@@ -590,6 +599,21 @@ function convertMetricsToClickhouseRows(
   }
 
   return rows;
+}
+
+function convertResourceMetricsToRowsWithStore(
+  resourceMetrics: ResourceMetrics,
+  spanAttributeValueLengthLimit: number
+): { rows: MetricsV1Input[]; taskEventStore: string } {
+  const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
+  const taskEventStore =
+    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
+    env.EVENT_REPOSITORY_DEFAULT_STORE;
+
+  return {
+    rows: convertMetricsToClickhouseRows(resourceMetrics, spanAttributeValueLengthLimit),
+    taskEventStore,
+  };
 }
 
 // Prefixes injected by TaskContextMetricExporter — these are extracted into
@@ -1203,11 +1227,6 @@ export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 function initializeOTLPExporter() {
   return new OTLPExporter({
     clickhouseFactory,
-    metrics: {
-      batchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
-      flushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-      maxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
-    },
     verbose: process.env.OTLP_EXPORTER_VERBOSE === "1",
     spanAttributeValueLengthLimit: process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
       ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)

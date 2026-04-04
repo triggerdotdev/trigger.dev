@@ -324,6 +324,9 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
         llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
         llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
+        otlpMetricsBatchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
+        otlpMetricsFlushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+        otlpMetricsMaxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
         version: "v1",
       });
     }
@@ -344,6 +347,9 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
         llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,
         llmMetricsMaxConcurrency: env.LLM_METRICS_MAX_CONCURRENCY,
+        otlpMetricsBatchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
+        otlpMetricsFlushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+        otlpMetricsMaxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
         version: "v2",
       });
     }

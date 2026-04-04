@@ -14,6 +14,7 @@ import type {
   TaskEventStatus,
   TaskRun,
 } from "@trigger.dev/database";
+import type { MetricsV1Input } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
 export type { ExceptionEventProperties };
 
@@ -347,6 +348,7 @@ export interface IEventRepository {
   // Event insertion methods
   insertMany(events: CreateEventInput[]): void;
   insertManyImmediate(events: CreateEventInput[]): Promise<void>;
+  insertManyMetrics(rows: MetricsV1Input[]): void;
 
   // Run event completion methods
   completeSuccessfulRunEvent(params: { run: CompleteableTaskRun; endTime?: Date }): Promise<void>;
