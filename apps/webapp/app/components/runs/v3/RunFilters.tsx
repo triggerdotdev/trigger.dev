@@ -1492,7 +1492,12 @@ function validateRunId(value: string): string | undefined {
   if (value.length !== 25 && value.length !== 29) return "Run IDs are 25/30 characters long";
 }
 
-function RunIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate" | "inputWidth">) {
+function RunIdDropdown(
+  props: Omit<
+    IdFilterDropdownProps,
+    "label" | "placeholder" | "paramKey" | "validate" | "inputWidth"
+  >
+) {
   return (
     <IdFilterDropdown
       {...props}
@@ -1542,7 +1547,9 @@ function validateBatchId(value: string): string | undefined {
   if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
 }
 
-function BatchIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
+function BatchIdDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
     <IdFilterDropdown
       {...props}
@@ -1591,7 +1598,9 @@ function validateScheduleId(value: string): string | undefined {
   if (value.length !== 27) return "Schedule IDs are 27 characters long";
 }
 
-function ScheduleIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
+function ScheduleIdDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
     <IdFilterDropdown
       {...props}
@@ -1639,7 +1648,9 @@ function validateErrorId(value: string): string | undefined {
   if (!value.startsWith("error_")) return "Error IDs start with 'error_'";
 }
 
-function ErrorIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
+function ErrorIdDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
     <IdFilterDropdown
       {...props}

@@ -50,9 +50,7 @@ export function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
       <ScheduleSearchInput />
       <PermanentTypeFilter />
       <PermanentTaskFilter possibleTasks={possibleTasks} />
-      {hasFilters && (
-        <ClearFiltersButton />
-      )}
+      {hasFilters && <ClearFiltersButton />}
     </div>
   );
 }
@@ -161,16 +159,15 @@ function PermanentTypeFilter() {
   return (
     <FilterMenuProvider>
       {() => (
-        <SelectProvider
-          value={currentType ?? "ALL"}
-          setValue={handleChange}
-          virtualFocus={true}
-        >
+        <SelectProvider value={currentType ?? "ALL"} setValue={handleChange} virtualFocus={true}>
           <Ariakit.TooltipProvider timeout={200}>
             <Ariakit.TooltipAnchor
               render={
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                <Ariakit.Select
+                  ref={triggerRef as any}
+                  render={<div className="group cursor-pointer focus-custom" />}
+                />
               }
             >
               <AppliedFilter
@@ -184,11 +181,7 @@ function PermanentTypeFilter() {
             <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span>Filter by type</span>
-                <ShortcutKey
-                  className="size-4 flex-none"
-                  shortcut={typeShortcut}
-                  variant="small"
-                />
+                <ShortcutKey className="size-4 flex-none" shortcut={typeShortcut} variant="small" />
               </div>
             </Ariakit.Tooltip>
           </Ariakit.TooltipProvider>
@@ -247,16 +240,15 @@ function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
   return (
     <FilterMenuProvider>
       {() => (
-        <SelectProvider
-          value={currentTask ?? "ALL"}
-          setValue={handleChange}
-          virtualFocus={true}
-        >
+        <SelectProvider value={currentTask ?? "ALL"} setValue={handleChange} virtualFocus={true}>
           <Ariakit.TooltipProvider timeout={200}>
             <Ariakit.TooltipAnchor
               render={
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                <Ariakit.Select
+                  ref={triggerRef as any}
+                  render={<div className="group cursor-pointer focus-custom" />}
+                />
               }
             >
               <AppliedFilter
@@ -271,11 +263,7 @@ function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
             <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span>Filter by task</span>
-                <ShortcutKey
-                  className="size-4 flex-none"
-                  shortcut={taskShortcut}
-                  variant="small"
-                />
+                <ShortcutKey className="size-4 flex-none" shortcut={taskShortcut} variant="small" />
               </div>
             </Ariakit.Tooltip>
           </Ariakit.TooltipProvider>

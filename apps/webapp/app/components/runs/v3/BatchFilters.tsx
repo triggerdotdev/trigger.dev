@@ -8,12 +8,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { z } from "zod";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  ComboBox,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -109,10 +108,6 @@ function StatusDropdown({
     replace({ statuses: values, cursor: undefined, direction: undefined });
   };
 
-  const filtered = useMemo(() => {
-    return statuses.filter((item) => item.title.toLowerCase().includes(searchValue.toLowerCase()));
-  }, [searchValue]);
-
   return (
     <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
       {trigger}
@@ -127,9 +122,8 @@ function StatusDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by status..."} value={searchValue} />
         <SelectList>
-          {filtered.map((item, index) => (
+          {statuses.map((item, index) => (
             <SelectItem
               key={item.value}
               value={item.value}
@@ -181,7 +175,10 @@ function PermanentStatusFilter() {
               <Ariakit.TooltipAnchor
                 render={
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
                 }
               >
                 {hasStatuses ? (
@@ -193,10 +190,13 @@ function PermanentStatusFilter() {
                     )}
                     onRemove={() => del(["statuses", "cursor", "direction"])}
                     variant="secondary/small"
+                    className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
-                    <StatusIcon className="size-3.5" />
+                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <div className="grid size-4 place-items-center">
+                      <div className="size-[75%] rounded-full border-2 border-text-bright" />
+                    </div>
                     <span>Status</span>
                   </div>
                 )}
@@ -266,7 +266,10 @@ function PermanentBatchIdFilter() {
               <Ariakit.TooltipAnchor
                 render={
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
                 }
               >
                 {hasBatchId ? (
@@ -276,9 +279,10 @@ function PermanentBatchIdFilter() {
                     value={batchId}
                     onRemove={() => del(["id", "cursor", "direction"])}
                     variant="secondary/small"
+                    className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
                     <Squares2X2Icon className="size-3.5" />
                     <span>Batch ID</span>
                   </div>
