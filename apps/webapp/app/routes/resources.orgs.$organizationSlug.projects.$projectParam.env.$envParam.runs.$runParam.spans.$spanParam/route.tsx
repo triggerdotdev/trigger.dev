@@ -32,6 +32,7 @@ import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { CopyTextLink } from "~/components/primitives/CopyTextLink";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -263,19 +264,21 @@ function SpanBody({
     span.entity?.type === "prompt";
 
   return (
-    <div className={cn(
-      "grid h-full max-h-full overflow-hidden bg-background-bright",
-      isAiInspector ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
-    )}>
+    <div
+      className={cn(
+        "grid h-full max-h-full overflow-hidden bg-background-bright",
+        isAiInspector ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
+      )}
+    >
       <div className="border-b border-grid-bright px-3 pr-2">
-        <div className="flex h-10 items-center justify-between gap-2 overflow-x-hidden">
-          <div className="flex items-center gap-1 overflow-x-hidden">
+        <div className="grid h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1">
             <RunIcon
               name={span.style?.icon}
               spanName={span.message}
               className="size-5 min-h-5 min-w-5"
             />
-            <Header2 className={cn("overflow-x-hidden")}>
+            <Header2 className="min-w-0">
               <SpanTitle {...span} size="large" hideAccessory overrideDimmed />
             </Header2>
           </div>
@@ -310,7 +313,6 @@ function formatSpanDuration(nanoseconds: number): string {
   const secs = ((ms % 60_000) / 1000).toFixed(0);
   return `${mins}m ${secs}s`;
 }
-
 
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
   if (!spanOverrides) {
@@ -1259,8 +1261,13 @@ function SpanEntity({ span }: { span: Span }) {
         )}
         <Property.Table>
           <Property.Item>
-            <Property.Label>Message</Property.Label>
-            <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+            <Property.Label className="flex items-center justify-between">
+              <span>Message</span>
+              <CopyTextLink value={span.message} />
+            </Property.Label>
+            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+              {span.message}
+            </Property.Value>
           </Property.Item>
         </Property.Table>
         {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
@@ -1416,7 +1423,13 @@ function SpanEntity({ span }: { span: Span }) {
         <AISpanDetails
           aiData={span.entity.object}
           promptVersionData={span.entity.promptVersionData}
-          rawProperties={typeof span.properties === "string" ? span.properties : span.properties != null ? JSON.stringify(span.properties, null, 2) : undefined}
+          rawProperties={
+            typeof span.properties === "string"
+              ? span.properties
+              : span.properties != null
+              ? JSON.stringify(span.properties, null, 2)
+              : undefined
+          }
           startTime={span.startTime}
           duration={span.duration}
         />
@@ -1456,4 +1469,3 @@ function SpanEntity({ span }: { span: Span }) {
     }
   }
 }
-
