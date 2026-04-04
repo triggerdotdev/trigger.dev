@@ -1,0 +1,118 @@
+---
+title: "Quick Start"
+sidebarTitle: "Quick Start"
+description: "Get a working AI agent in 3 steps — define an agent, generate a token, and wire up the frontend."
+---
+
+<Steps>
+  <Step title="Define a chat agent">
+    Use `chat.agent` from `@trigger.dev/sdk/ai` to define an agent that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
+
+    If you return a `StreamTextResult`, it's **automatically piped** to the frontend.
+
+    ```ts trigger/chat.ts
+    import { chat } from "@trigger.dev/sdk/ai";
+    import { streamText } from "ai";
+    import { openai } from "@ai-sdk/openai";
+
+    export const myChat = chat.agent({
+      id: "my-chat",
+      run: async ({ messages, signal }) => {
+        // messages is ModelMessage[] — pass directly to streamText
+        // signal fires on stop or run cancel
+        return streamText({
+          model: openai("gpt-4o"),
+          messages,
+          abortSignal: signal,
+        });
+      },
+    });
+    ```
+
+    <Tip>
+      For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the agent with [`chat.withUIMessage<...>().agent({...})`](/ai-chat/types) instead of `chat.agent`.
+    </Tip>
+
+  </Step>
+
+  <Step title="Generate an access token">
+    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat agent. The transport calls your function with `chatId` and `purpose` (`"trigger"` or `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` so the signature matches — see [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
+
+    ```ts app/actions.ts
+    "use server";
+
+    import { chat } from "@trigger.dev/sdk/ai";
+    import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
+    import type { myChat } from "@/trigger/chat";
+
+    export async function getChatToken(_input: ResolveChatAccessTokenParams) {
+      return chat.createAccessToken<typeof myChat>("my-chat");
+    }
+    ```
+
+  </Step>
+
+  <Step title="Use in the frontend">
+    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
+
+    ```tsx app/components/chat.tsx
+    "use client";
+
+    import { useChat } from "@ai-sdk/react";
+    import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+    import type { myChat } from "@/trigger/chat";
+    import { getChatToken } from "@/app/actions";
+
+    export function Chat() {
+      const transport = useTriggerChatTransport<typeof myChat>({
+        task: "my-chat",
+        accessToken: getChatToken,
+      });
+
+      const { messages, sendMessage, stop, status } = useChat({ transport });
+
+      return (
+        <div>
+          {messages.map((m) => (
+            <div key={m.id}>
+              <strong>{m.role}:</strong>
+              {m.parts.map((part, i) =>
+                part.type === "text" ? <span key={i}>{part.text}</span> : null
+              )}
+            </div>
+          ))}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = e.currentTarget.querySelector("input");
+              if (input?.value) {
+                sendMessage({ text: input.value });
+                input.value = "";
+              }
+            }}
+          >
+            <input placeholder="Type a message..." />
+            <button type="submit" disabled={status === "streaming"}>
+              Send
+            </button>
+            {status === "streaming" && (
+              <button type="button" onClick={stop}>
+                Stop
+              </button>
+            )}
+          </form>
+        </div>
+      );
+    }
+    ```
+
+  </Step>
+</Steps>
+
+## Next steps
+
+- [Backend](/ai-chat/backend) — Lifecycle hooks, persistence, session iterator, raw task primitives
+- [Frontend](/ai-chat/frontend) — Session management, client data, reconnection
+- [Types](/ai-chat/types) — `chat.withUIMessage`, `InferChatUIMessage`, and related typing
+- [Features](/ai-chat/features) — Per-run data, deferred work, streaming, subtasks

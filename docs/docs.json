@@ -81,6 +81,39 @@
             ]
           },
           {
+            "group": "AI",
+            "pages": [
+              "ai/prompts",
+              {
+                "group": "Agents",
+                "pages": [
+                  "ai-chat/overview",
+                  "ai-chat/quick-start",
+                  "ai-chat/backend",
+                  "ai-chat/frontend",
+                  "ai-chat/server-chat",
+                  "ai-chat/types",
+                  "ai-chat/features",
+                  "ai-chat/compaction",
+                  "ai-chat/pending-messages",
+                  "ai-chat/background-injection",
+                  "ai-chat/mcp",
+                  {
+                    "group": "Patterns",
+                    "pages": [
+                      "ai-chat/patterns/sub-agents",
+                      "ai-chat/patterns/version-upgrades",
+                      "ai-chat/patterns/database-persistence",
+                      "ai-chat/patterns/code-sandbox"
+                    ]
+                  },
+                  "ai-chat/client-protocol",
+                  "ai-chat/reference"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Configuration",
             "pages": [
               "config/config-file",
@@ -733,6 +766,10 @@
     {
       "source": "/insights/metrics",
       "destination": "/observability/dashboards"
+    },
+    {
+      "source": "/guides/ai-chat",
+      "destination": "/ai-chat/overview"
     }
   ]
 }

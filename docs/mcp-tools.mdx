@@ -131,3 +131,56 @@ List all preview branches in the project.
 <Callout type="warning">
   The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag.
 </Callout>
+
+## Agent Chat Tools
+
+These tools let you have conversations with [chat agents](/ai-chat/overview) directly from your AI coding tool. See the [Agent MCP guide](/ai-chat/mcp) for a walkthrough.
+
+### list_agents
+
+List all chat agents registered in the current worker. Agents are tasks created with `chat.agent()` or `chat.customAgent()`.
+
+**Example usage:**
+- `"What agents are available?"`
+- `"List my chat agents"`
+
+### start_agent_chat
+
+Start a conversation with a chat agent. Returns a chat ID for use with `send_agent_message`. Optionally preloads the agent so it initializes before the first message.
+
+**Parameters:**
+- `agentId` (required) — The agent task slug (e.g., `"support-agent"`)
+- `chatId` (optional) — A custom conversation ID. Auto-generated if omitted
+- `clientData` (optional) — Client data to include with every message (e.g., `{ userId: "user_123" }`). Must match the agent's `clientDataSchema` if one is defined
+- `preload` (optional, default: `true`) — Whether to preload the agent before the first message
+
+**Example usage:**
+- `"Start a chat with the support agent"`
+- `"Talk to the pr-review agent with userId abc"`
+
+### send_agent_message
+
+Send a message to an active agent chat and get the full response back. The agent remembers full context from previous messages in the same chat.
+
+**Parameters:**
+- `chatId` (required) — The chat ID from `start_agent_chat`
+- `message` (required) — The message text to send
+
+**Example usage:**
+- `"Tell the agent to review the latest PR"`
+- `"Ask it what tools it has available"`
+
+### close_agent_chat
+
+Close an agent chat conversation. The agent exits its loop gracefully. Without this, the agent will close on its own when its idle timeout expires.
+
+**Parameters:**
+- `chatId` (required) — The chat ID to close
+
+**Example usage:**
+- `"Close the chat"`
+- `"End the conversation"`
+
+<Callout type="warning">
+  The `start_agent_chat`, `send_agent_message`, and `close_agent_chat` tools are write operations and are not available in readonly mode.
+</Callout>

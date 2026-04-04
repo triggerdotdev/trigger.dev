@@ -1,0 +1,556 @@
+---
+title: "API Reference"
+sidebarTitle: "API Reference"
+description: "Complete API reference for the AI Agents SDK — backend options, events, frontend transport, and hooks."
+---
+
+## ChatAgentOptions
+
+Options for `chat.agent()`.
+
+| Option                        | Type                                                        | Default                        | Description                                                                                         |
+| ----------------------------- | ----------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `id`                          | `string`                                                    | required                       | Task identifier                                                                                     |
+| `run`                         | `(payload: ChatTaskRunPayload) => Promise<unknown>`         | required                       | Handler for each turn                                                                               |
+| `clientDataSchema`            | `TaskSchema`                                                | —                              | Schema for validating and typing `clientData`                                                       |
+| `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
+| `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires on turn 0 before `run()`                                                                      |
+| `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/backend#onvalidatemessages) |
+| `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
+| `onBeforeTurnComplete`        | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | —                              | Fires after response but before stream closes. Includes `writer`.                                   |
+| `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
+| `onCompacted`                 | `(event: CompactedEvent) => Promise<void> \| void`          | —                              | Fires when compaction occurs. Includes `writer`. See [Compaction](/ai-chat/compaction)              |
+| `compaction`                  | `ChatAgentCompactionOptions`                                | —                              | Automatic context compaction. See [Compaction](/ai-chat/compaction)                                 |
+| `pendingMessages`             | `PendingMessagesOptions`                                    | —                              | Mid-execution message injection. See [Pending Messages](/ai-chat/pending-messages)                  |
+| `prepareMessages`             | `(event: PrepareMessagesEvent) => ModelMessage[]`           | —                              | Transform model messages before use (cache breaks, context injection, etc.)                         |
+| `maxTurns`                    | `number`                                                    | `100`                          | Max conversational turns per run                                                                    |
+| `turnTimeout`                 | `string`                                                    | `"1h"`                         | How long to wait for next message                                                                   |
+| `idleTimeoutInSeconds`        | `number`                                                    | `30`                           | Seconds to stay idle before suspending                                                              |
+| `chatAccessTokenTTL`          | `string`                                                    | `"1h"`                         | How long the scoped access token remains valid                                                      |
+| `preloadIdleTimeoutInSeconds` | `number`                                                    | Same as `idleTimeoutInSeconds` | Idle timeout after `onPreload` fires                                                                |
+| `preloadTimeout`              | `string`                                                    | Same as `turnTimeout`          | Suspend timeout for preloaded runs                                                                  |
+| `uiMessageStreamOptions`      | `ChatUIMessageStreamOptions`                                | —                              | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
+| `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/backend#onchatsuspend--onchatresume) |
+| `onChatResume`                | `(event: ChatResumeEvent) => Promise<void> \| void`         | —                              | Fires right after the run resumes from suspension                                                   |
+| `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/backend#exitafterpreloadidle) |
+
+Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Those hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
+
+## Task context (`ctx`)
+
+All **`chat.agent`** lifecycle events (**`onPreload`**, **`onChatStart`**, **`onTurnStart`**, **`onBeforeTurnComplete`**, **`onTurnComplete`**, **`onCompacted`**) and the object passed to **`run`** include **`ctx`**: the same **`TaskRunContext`** shape as the `ctx` in `task({ run: (payload, { ctx }) => ... })`.
+
+<Note>
+  **`onValidateMessages`** does not include `ctx` — it fires before message accumulation and is designed for pure validation/transformation of incoming messages.
+</Note>
+
+Use **`ctx`** for run metadata, tags, parent links, or any API that needs the full run record. The chat-specific string **`runId`** on events is always **`ctx.run.id`**; both are provided for convenience.
+
+```ts
+import type { TaskRunContext } from "@trigger.dev/sdk";
+// Equivalent alias (same type):
+import type { Context } from "@trigger.dev/sdk";
+```
+
+<Note>
+  Prefer `import type { TaskRunContext } from "@trigger.dev/sdk"` in application code. Do not depend on `@trigger.dev/core` directly.
+</Note>
+
+## ChatTaskRunPayload
+
+The payload passed to the `run` function.
+
+| Field          | Type                                       | Description                                                          |
+| -------------- | ------------------------------------------ | -------------------------------------------------------------------- |
+| `ctx`          | `TaskRunContext`                           | Full task run context — same as `task` `run`’s `{ ctx }`             |
+| `messages`     | `ModelMessage[]`                           | Model-ready messages — pass directly to `streamText`                 |
+| `chatId`       | `string`                                   | Unique chat session ID                                               |
+| `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
+| `messageId`    | `string \| undefined`                      | Message ID (for regenerate)                                          |
+| `clientData`   | Typed by `clientDataSchema`                | Custom data from the frontend (typed when schema is provided)        |
+| `continuation` | `boolean`                                  | Whether this run is continuing an existing chat (previous run ended) |
+| `signal`       | `AbortSignal`                              | Combined stop + cancel signal                                        |
+| `cancelSignal` | `AbortSignal`                              | Cancel-only signal                                                   |
+| `stopSignal`   | `AbortSignal`                              | Stop-only signal (per-turn)                                          |
+| `previousTurnUsage` | `LanguageModelUsage \| undefined`       | Token usage from the previous turn (undefined on turn 0)        |
+| `totalUsage`   | `LanguageModelUsage`                       | Cumulative token usage across completed turns so far              |
+
+## PreloadEvent
+
+Passed to the `onPreload` callback.
+
+| Field             | Type                        | Description                                                    |
+| ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)   |
+| `chatId`          | `string`                    | Chat session ID                                                |
+| `runId`           | `string`                    | The Trigger.dev run ID                                         |
+| `chatAccessToken` | `string`                    | Scoped access token for this run                               |
+| `clientData`      | Typed by `clientDataSchema` | Custom data from the frontend                                  |
+| `writer`          | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks. Lazy — no overhead if unused. |
+
+## ChatStartEvent
+
+Passed to the `onChatStart` callback.
+
+| Field             | Type                        | Description                                                    |
+| ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)   |
+| `chatId`          | `string`                    | Chat session ID                                                |
+| `messages`        | `ModelMessage[]`            | Initial model-ready messages                                   |
+| `clientData`      | Typed by `clientDataSchema` | Custom data from the frontend                                  |
+| `runId`           | `string`                    | The Trigger.dev run ID                                         |
+| `chatAccessToken` | `string`                    | Scoped access token for this run                               |
+| `continuation`    | `boolean`                   | Whether this run is continuing an existing chat                |
+| `previousRunId`   | `string \| undefined`       | Previous run ID (only when `continuation` is true)             |
+| `preloaded`       | `boolean`                   | Whether this run was preloaded before the first message        |
+| `writer`          | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks. Lazy — no overhead if unused. |
+
+## ValidateMessagesEvent
+
+Passed to the `onValidateMessages` callback.
+
+| Field     | Type                                                            | Description                              |
+| --------- | --------------------------------------------------------------- | ---------------------------------------- |
+| `messages` | `UIMessage[]`                                                  | Incoming UI messages for this turn       |
+| `chatId`  | `string`                                                        | Chat session ID                          |
+| `turn`    | `number`                                                        | Turn number (0-indexed)                  |
+| `trigger` | `"submit-message" \| "regenerate-message" \| "preload" \| "close"` | The trigger type for this turn        |
+
+## TurnStartEvent
+
+Passed to the `onTurnStart` callback.
+
+| Field             | Type                        | Description                                                    |
+| ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)   |
+| `chatId`          | `string`                    | Chat session ID                                                |
+| `messages`        | `ModelMessage[]`            | Full accumulated conversation (model format)                   |
+| `uiMessages`      | `UIMessage[]`               | Full accumulated conversation (UI format)                      |
+| `turn`            | `number`                    | Turn number (0-indexed)                                        |
+| `runId`           | `string`                    | The Trigger.dev run ID                                         |
+| `chatAccessToken` | `string`                    | Scoped access token for this run                               |
+| `clientData`      | Typed by `clientDataSchema` | Custom data from the frontend                                  |
+| `continuation`    | `boolean`                   | Whether this run is continuing an existing chat                |
+| `previousRunId`   | `string \| undefined`       | Previous run ID (only when `continuation` is true)             |
+| `preloaded`       | `boolean`                   | Whether this run was preloaded                                 |
+| `writer`          | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks. Lazy — no overhead if unused. |
+
+## TurnCompleteEvent
+
+Passed to the `onTurnComplete` callback.
+
+| Field                | Type                              | Description                                          |
+| -------------------- | --------------------------------- | ---------------------------------------------------- |
+| `ctx`                | `TaskRunContext`                  | Full task run context — see [Task context](#task-context-ctx) |
+| `chatId`             | `string`                          | Chat session ID                                      |
+| `messages`           | `ModelMessage[]`                  | Full accumulated conversation (model format)         |
+| `uiMessages`         | `UIMessage[]`                     | Full accumulated conversation (UI format)            |
+| `newMessages`        | `ModelMessage[]`                  | Only this turn's messages (model format)             |
+| `newUIMessages`      | `UIMessage[]`                     | Only this turn's messages (UI format)                |
+| `responseMessage`    | `UIMessage \| undefined`          | The assistant's response for this turn               |
+| `rawResponseMessage` | `UIMessage \| undefined`          | Raw response before abort cleanup                    |
+| `turn`               | `number`                          | Turn number (0-indexed)                              |
+| `runId`              | `string`                          | The Trigger.dev run ID                               |
+| `chatAccessToken`    | `string`                          | Scoped access token for this run                     |
+| `lastEventId`        | `string \| undefined`             | Stream position for resumption                       |
+| `stopped`            | `boolean`                         | Whether the user stopped generation during this turn |
+| `continuation`       | `boolean`                         | Whether this run is continuing an existing chat      |
+| `usage`              | `LanguageModelUsage \| undefined` | Token usage for this turn                            |
+| `totalUsage`         | `LanguageModelUsage`              | Cumulative token usage across all turns              |
+
+## BeforeTurnCompleteEvent
+
+Passed to the `onBeforeTurnComplete` callback. Same fields as `TurnCompleteEvent` (including **`ctx`**) plus a `writer`.
+
+| Field                            | Type                        | Description                                                                   |
+| -------------------------------- | --------------------------- | ----------------------------------------------------------------------------- |
+| _(all TurnCompleteEvent fields)_ |                             | See [TurnCompleteEvent](#turncompleteevent) (includes `ctx`)                  |
+| `writer`                         | [`ChatWriter`](#chatwriter) | Stream writer — the stream is still open so chunks appear in the current turn |
+
+## ChatSuspendEvent
+
+Passed to the `onChatSuspend` callback. A discriminated union on `phase`.
+
+| Field        | Type                        | Description                                              |
+| ------------ | --------------------------- | -------------------------------------------------------- |
+| `phase`      | `"preload" \| "turn"`       | Whether this is a preload or post-turn suspension        |
+| `ctx`        | `TaskRunContext`            | Full task run context                                    |
+| `chatId`     | `string`                    | Chat session ID                                          |
+| `runId`      | `string`                    | The Trigger.dev run ID                                   |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
+| `turn`       | `number`                    | Turn number (**`"turn"` phase only**)                    |
+| `messages`   | `ModelMessage[]`            | Accumulated model messages (**`"turn"` phase only**)     |
+| `uiMessages` | `UIMessage[]`               | Accumulated UI messages (**`"turn"` phase only**)        |
+
+## ChatResumeEvent
+
+Passed to the `onChatResume` callback. Same discriminated union shape as `ChatSuspendEvent`.
+
+| Field        | Type                        | Description                                              |
+| ------------ | --------------------------- | -------------------------------------------------------- |
+| `phase`      | `"preload" \| "turn"`       | Whether this is a preload or post-turn resumption        |
+| `ctx`        | `TaskRunContext`            | Full task run context                                    |
+| `chatId`     | `string`                    | Chat session ID                                          |
+| `runId`      | `string`                    | The Trigger.dev run ID                                   |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
+| `turn`       | `number`                    | Turn number (**`"turn"` phase only**)                    |
+| `messages`   | `ModelMessage[]`            | Accumulated model messages (**`"turn"` phase only**)     |
+| `uiMessages` | `UIMessage[]`               | Accumulated UI messages (**`"turn"` phase only**)        |
+
+## ChatWriter
+
+A stream writer passed to lifecycle callbacks. Write custom `UIMessageChunk` parts (e.g. `data-*` parts) to the chat stream.
+
+The writer is lazy — no stream is opened unless you call `write()` or `merge()`, so there's zero overhead for callbacks that don't use it.
+
+| Method          | Type                                               | Description                                        |
+| --------------- | -------------------------------------------------- | -------------------------------------------------- |
+| `write(part)`   | `(part: UIMessageChunk) => void`                   | Write a single chunk to the chat stream            |
+| `merge(stream)` | `(stream: ReadableStream<UIMessageChunk>) => void` | Merge another stream's chunks into the chat stream |
+
+```ts
+onTurnStart: async ({ writer }) => {
+  // Write a custom data part — render it on the frontend
+  writer.write({ type: "data-status", data: { loading: true } });
+},
+onBeforeTurnComplete: async ({ writer, usage }) => {
+  // Stream is still open — these chunks arrive before the turn ends
+  writer.write({ type: "data-usage", data: { tokens: usage?.totalTokens } });
+},
+```
+
+## ChatAgentCompactionOptions
+
+Options for the `compaction` field on `chat.agent()`. See [Compaction](/ai-chat/compaction) for usage guide.
+
+| Option                 | Type                                                                         | Required | Description                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `shouldCompact`        | `(event: ShouldCompactEvent) => boolean \| Promise<boolean>`                 | Yes      | Decide whether to compact. Return `true` to trigger                          |
+| `summarize`            | `(event: SummarizeEvent) => Promise<string>`                                 | Yes      | Generate a summary from the current messages                                 |
+| `compactUIMessages`    | `(event: CompactMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>`       | No       | Transform UI messages after compaction. Default: preserve all                |
+| `compactModelMessages` | `(event: CompactMessagesEvent) => ModelMessage[] \| Promise<ModelMessage[]>` | No       | Transform model messages after compaction. Default: replace all with summary |
+
+## CompactMessagesEvent
+
+Passed to `compactUIMessages` and `compactModelMessages` callbacks.
+
+| Field           | Type                 | Description                                          |
+| --------------- | -------------------- | ---------------------------------------------------- |
+| `summary`       | `string`             | The generated summary text                           |
+| `uiMessages`    | `UIMessage[]`        | Current UI messages (full conversation)              |
+| `modelMessages` | `ModelMessage[]`     | Current model messages (full conversation)           |
+| `chatId`        | `string`             | Chat session ID                                      |
+| `turn`          | `number`             | Current turn (0-indexed)                             |
+| `clientData`    | `unknown`            | Custom data from the frontend                        |
+| `source`        | `"inner" \| "outer"` | Whether compaction is between steps or between turns |
+
+## CompactedEvent
+
+Passed to the `onCompacted` callback.
+
+| Field          | Type                        | Description                                       |
+| -------------- | --------------------------- | ------------------------------------------------- |
+| `ctx`          | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx) |
+| `summary`      | `string`                    | The generated summary text                        |
+| `messages`     | `ModelMessage[]`            | Messages that were compacted (pre-compaction)     |
+| `messageCount` | `number`                    | Number of messages before compaction              |
+| `usage`        | `LanguageModelUsage`        | Token usage from the triggering step/turn         |
+| `totalTokens`  | `number \| undefined`       | Total token count that triggered compaction       |
+| `inputTokens`  | `number \| undefined`       | Input token count                                 |
+| `outputTokens` | `number \| undefined`       | Output token count                                |
+| `stepNumber`   | `number`                    | Step number (-1 for outer loop)                   |
+| `chatId`       | `string \| undefined`       | Chat session ID                                   |
+| `turn`         | `number \| undefined`       | Current turn                                      |
+| `writer`       | [`ChatWriter`](#chatwriter) | Stream writer for custom chunks during compaction |
+
+## PendingMessagesOptions
+
+Options for the `pendingMessages` field. See [Pending Messages](/ai-chat/pending-messages) for usage guide.
+
+| Option         | Type                                                                              | Required | Description                                                                               |
+| -------------- | --------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `shouldInject` | `(event: PendingMessagesBatchEvent) => boolean \| Promise<boolean>`               | No       | Decide whether to inject the batch between tool-call steps. If absent, no injection.      |
+| `prepare`      | `(event: PendingMessagesBatchEvent) => ModelMessage[] \| Promise<ModelMessage[]>` | No       | Transform the batch before injection. Default: convert each via `convertToModelMessages`. |
+| `onReceived`   | `(event: PendingMessageReceivedEvent) => void \| Promise<void>`                   | No       | Called when a message arrives during streaming (per-message).                             |
+| `onInjected`   | `(event: PendingMessagesInjectedEvent) => void \| Promise<void>`                  | No       | Called after a batch is injected via prepareStep.                                         |
+
+## PendingMessagesBatchEvent
+
+Passed to `shouldInject` and `prepare` callbacks.
+
+| Field           | Type               | Description                   |
+| --------------- | ------------------ | ----------------------------- |
+| `messages`      | `UIMessage[]`      | All pending messages (batch)  |
+| `modelMessages` | `ModelMessage[]`   | Current conversation          |
+| `steps`         | `CompactionStep[]` | Completed steps so far        |
+| `stepNumber`    | `number`           | Current step (0-indexed)      |
+| `chatId`        | `string`           | Chat session ID               |
+| `turn`          | `number`           | Current turn (0-indexed)      |
+| `clientData`    | `unknown`          | Custom data from the frontend |
+
+## PendingMessagesInjectedEvent
+
+Passed to `onInjected` callback.
+
+| Field                   | Type             | Description                           |
+| ----------------------- | ---------------- | ------------------------------------- |
+| `messages`              | `UIMessage[]`    | All injected UI messages              |
+| `injectedModelMessages` | `ModelMessage[]` | The model messages that were injected |
+| `chatId`                | `string`         | Chat session ID                       |
+| `turn`                  | `number`         | Current turn                          |
+| `stepNumber`            | `number`         | Step where injection occurred         |
+
+## UsePendingMessagesReturn
+
+Return value of `usePendingMessages` hook. See [Pending Messages — Frontend](/ai-chat/pending-messages#frontend-usependingmessages-hook).
+
+| Property/Method         | Type                                   | Description                                                     |
+| ----------------------- | -------------------------------------- | --------------------------------------------------------------- |
+| `pending`               | `PendingMessage[]`                     | Current pending messages with mode and injection status         |
+| `steer`                 | `(text: string) => void`               | Send a steering message (or normal message when not streaming)  |
+| `queue`                 | `(text: string) => void`               | Queue for next turn (or send normally when not streaming)       |
+| `promoteToSteering`     | `(id: string) => void`                 | Convert a queued message to steering                            |
+| `isInjectionPoint`      | `(part: unknown) => boolean`           | Check if an assistant message part is an injection confirmation |
+| `getInjectedMessageIds` | `(part: unknown) => string[]`          | Get message IDs from an injection point                         |
+| `getInjectedMessages`   | `(part: unknown) => InjectedMessage[]` | Get messages (id + text) from an injection point                |
+
+## ChatSessionOptions
+
+Options for `chat.createSession()`.
+
+| Option                 | Type          | Default  | Description                         |
+| ---------------------- | ------------- | -------- | ----------------------------------- |
+| `signal`               | `AbortSignal` | required | Run-level cancel signal             |
+| `idleTimeoutInSeconds` | `number`      | `30`     | Seconds to stay idle between turns  |
+| `timeout`              | `string`      | `"1h"`   | Duration string for suspend timeout |
+| `maxTurns`             | `number`      | `100`    | Max turns before ending             |
+
+## ChatTurn
+
+Each turn yielded by `chat.createSession()`.
+
+| Field          | Type             | Description                                   |
+| -------------- | ---------------- | --------------------------------------------- |
+| `number`       | `number`         | Turn number (0-indexed)                       |
+| `chatId`       | `string`         | Chat session ID                               |
+| `trigger`      | `string`         | What triggered this turn                      |
+| `clientData`   | `unknown`        | Client data from the transport                |
+| `messages`     | `ModelMessage[]` | Full accumulated model messages               |
+| `uiMessages`   | `UIMessage[]`    | Full accumulated UI messages                  |
+| `signal`       | `AbortSignal`    | Combined stop+cancel signal (fresh each turn) |
+| `stopped`      | `boolean`        | Whether the user stopped generation this turn |
+| `continuation` | `boolean`        | Whether this is a continuation run            |
+
+| Method                  | Returns                           | Description                                                  |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------ |
+| `complete(source)`      | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete |
+| `done()`                | `Promise<void>`                   | Signal turn-complete (when you've piped manually)            |
+| `addResponse(response)` | `Promise<void>`                   | Add response to accumulator manually                         |
+
+## chat namespace
+
+All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
+
+| Method                                      | Description                                                                                                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `chat.agent(options)`                       | Create a chat agent                                                                                                          |
+| `chat.createSession(payload, options)`      | Create an async iterator for chat turns                                                                                      |
+| `chat.pipe(source, options?)`               | Pipe a stream to the frontend (from anywhere inside a task)                                                                  |
+| `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response `UIMessage`                                                                                    |
+| `chat.writeTurnComplete(options?)`          | Signal the frontend that the current turn is complete                                                                        |
+| `chat.createStopSignal()`                   | Create a managed stop signal wired to the stop input stream                                                                  |
+| `chat.messages`                             | Input stream for incoming messages — use `.waitWithIdleTimeout()`                                                            |
+| `chat.local<T>({ id })`                     | Create a per-run typed local (see [Per-run data](/ai-chat/features#per-run-data-with-chatlocal))                             |
+| `chat.createAccessToken(taskId)`            | Create a public access token for a chat agent                                                                                |
+| `chat.setTurnTimeout(duration)`             | Override turn timeout at runtime (e.g. `"2h"`)                                                                               |
+| `chat.setTurnTimeoutInSeconds(seconds)`     | Override turn timeout at runtime (in seconds)                                                                                |
+| `chat.setIdleTimeoutInSeconds(seconds)`     | Override idle timeout at runtime                                                                                             |
+| `chat.setUIMessageStreamOptions(options)`   | Override `toUIMessageStream()` options for the current turn                                                                  |
+| `chat.defer(promise)`                       | Run background work in parallel with streaming, awaited before `onTurnComplete`                                              |
+| `chat.isStopped()`                          | Check if the current turn was stopped by the user                                                                            |
+| `chat.cleanupAbortedParts(message)`         | Remove incomplete parts from a stopped response message                                                                      |
+| `chat.stream`                               | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()`                                                |
+| `chat.MessageAccumulator`                   | Class that accumulates conversation messages across turns                                                                    |
+| `chat.withUIMessage(config?)`               | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. See [Types](/ai-chat/types)            |
+| `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chatwithclientdata) |
+
+## `chat.withUIMessage`
+
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. Chain `.withClientData()`, hook methods, and `.agent()`.
+
+```ts
+chat.withUIMessage<TUIM>(config?: ChatWithUIMessageConfig<TUIM>): ChatBuilder<TUIM>;
+```
+
+| Parameter              | Type                               | Description                                                                                                                                           |
+| ---------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config.streamOptions` | `ChatUIMessageStreamOptions<TUIM>` | Optional defaults for `toUIMessageStream()`. Shallow-merged with `uiMessageStreamOptions` on the inner `.agent({ ... })` (agent wins on key conflicts). |
+
+Use this when you need [`InferChatUIMessage`](#inferchatuimessage) / typed `data-*` parts / `InferUITools` to line up across backend hooks and `useChat`. Full guide: [Types](/ai-chat/types).
+
+## `chat.withClientData`
+
+Returns a [`ChatBuilder`](/ai-chat/types#chatbuilder) with a fixed client data schema. All hooks and `run` get typed `clientData` without passing `clientDataSchema` in `.agent()` options.
+
+```ts
+chat.withClientData<TSchema>({ schema: TSchema }): ChatBuilder<UIMessage, TSchema>;
+```
+
+| Parameter | Type         | Description                                        |
+| --------- | ------------ | -------------------------------------------------- |
+| `schema`  | `TaskSchema` | Zod, ArkType, Valibot, or any supported schema lib |
+
+Full guide: [Typed client data](/ai-chat/types#typed-client-data-with-chatwithclientdata).
+
+## `ChatWithUIMessageConfig`
+
+| Field           | Type                               | Description                                                           |
+| --------------- | ---------------------------------- | --------------------------------------------------------------------- |
+| `streamOptions` | `ChatUIMessageStreamOptions<TUIM>` | Default `toUIMessageStream()` options for agents created via `.agent()` |
+
+## `InferChatUIMessage`
+
+Type helper: extracts the `UIMessage` subtype from a chat agent’s wire payload.
+
+```ts
+import type { InferChatUIMessage } from "@trigger.dev/sdk/ai";
+// or from "@trigger.dev/sdk/chat/react"
+
+type Msg = InferChatUIMessage<typeof myChat>;
+```
+
+Use with `useChat<Msg>({ transport })` when using [`chat.withUIMessage`](/ai-chat/types). For agents defined with plain `chat.agent()` (no custom generic), this resolves to the base `UIMessage`.
+
+## AI helpers (`ai` from `@trigger.dev/sdk/ai`)
+
+| Export                                                                              | Status         | Description                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ai.toolExecute(task)`                                                              | **Preferred**  | Returns the `execute` function for AI SDK `tool()`. Runs the task via `triggerAndSubscribe` and attaches tool/chat metadata (same behavior the deprecated wrapper used internally).        |
+| `ai.tool(task, options?)`                                                           | **Deprecated** | Wraps `tool()` / `dynamicTool()` and the same execute path. Migrate to `tool({ ..., execute: ai.toolExecute(task) })`. See [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools). |
+| `ai.toolCallId`, `ai.chatContext`, `ai.chatContextOrThrow`, `ai.currentToolOptions` | Supported      | Work for any task-backed tool execute path, including `ai.toolExecute`.                                                                                                                    |
+
+## ChatUIMessageStreamOptions
+
+Options for customizing `toUIMessageStream()`. Set as static defaults via `uiMessageStreamOptions` on `chat.agent()`, or override per-turn via `chat.setUIMessageStreamOptions()`. See [Stream options](/ai-chat/backend#stream-options) for usage examples.
+
+Derived from the AI SDK's `UIMessageStreamOptions` with `onFinish`, `originalMessages`, and `generateMessageId` omitted (managed internally).
+
+| Option            | Type                              | Default           | Description                                                                                                                         |
+| ----------------- | --------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `onError`         | `(error: unknown) => string`      | Raw error message | Called on LLM errors and tool execution errors. Return a sanitized string — sent as `{ type: "error", errorText }` to the frontend. |
+| `sendReasoning`   | `boolean`                         | `true`            | Send reasoning parts to the client                                                                                                  |
+| `sendSources`     | `boolean`                         | `false`           | Send source parts to the client                                                                                                     |
+| `sendFinish`      | `boolean`                         | `true`            | Send the finish event. Set to `false` when chaining multiple `streamText` calls.                                                    |
+| `sendStart`       | `boolean`                         | `true`            | Send the message start event. Set to `false` when chaining.                                                                         |
+| `messageMetadata` | `(options: { part }) => metadata` | —                 | Extract message metadata to send to the client. Called on `start` and `finish` events.                                              |
+
+## TriggerChatTransport options
+
+Options for the frontend transport constructor and `useTriggerChatTransport` hook.
+
+| Option                 | Type                                                                 | Default                     | Description                                                                 |
+| ---------------------- | -------------------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------- |
+| `task`                 | `string`                                                             | required                    | Task ID to trigger                                                          |
+| `accessToken`          | `string \| (params: ResolveChatAccessTokenParams) => string \| Promise<string>` | required                    | Trigger / API auth token, or a function that returns one (see below)        |
+| `baseURL`              | `string`                                                             | `"https://api.trigger.dev"` | API base URL (for self-hosted)                                              |
+| `streamKey`            | `string`                                                             | `"chat"`                    | Stream key (only change if using custom key)                                |
+| `headers`              | `Record<string, string>`                                             | —                           | Extra headers for API requests                                              |
+| `streamTimeoutSeconds` | `number`                                                             | `120`                       | How long to wait for stream data                                            |
+| `clientData`           | Typed by `clientDataSchema`                                          | —                           | Default client data for every request                                       |
+| `sessions`             | `Record<string, {...}>`                                              | —                           | Restore sessions from storage                                               |
+| `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes                                            |
+| `renewRunAccessToken`  | `(params: RenewRunAccessTokenParams) => string \| ... \| Promise<...>` | —                           | Mint a new run-scoped PAT when the run PAT returns 401 (realtime / input stream). Retries once. |
+| `triggerOptions`       | `{...}`                                                              | —                           | Options for the initial task trigger (see below)                            |
+
+### `accessToken` callback
+
+When `accessToken` is a function, the transport calls it with **`ResolveChatAccessTokenParams`** (exported from `@trigger.dev/sdk/chat`):
+
+- `chatId` — the conversation id (`useChat` id / `sendMessages` chat id).
+- `purpose` — `"trigger"` when calling `triggerTask` from `sendMessages` (new run or after the session ended), or `"preload"` when calling `preload()`.
+
+Use this to mint or log per-chat trigger tokens. A plain **`string`** is still supported and skips the callback.
+
+### `renewRunAccessToken` callback
+
+Optional. When the **run** public access token used for realtime SSE or input streams expires, the transport calls this once with **`RenewRunAccessTokenParams`** (`chatId`, `runId`), then retries the failing request. Implement it with your server `auth.createPublicToken` (scopes `read:runs:<runId>` and `write:inputStreams:<runId>`). See [Authentication](/realtime/auth).
+
+```ts
+import { auth } from "@trigger.dev/sdk";
+import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
+
+async function getChatToken(input: ResolveChatAccessTokenParams) {
+  return auth.createTriggerPublicToken("my-chat", { expirationTime: "1h" });
+}
+
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: getChatToken,
+  renewRunAccessToken: async ({ chatId, runId }) => {
+    return auth.createPublicToken({
+      scopes: { read: { runs: runId }, write: { inputStreams: runId } },
+      expirationTime: "1h",
+    });
+  },
+});
+```
+
+### triggerOptions
+
+Options forwarded to the Trigger.dev API when starting a new run. Only applies to the first message — subsequent messages reuse the same run.
+
+A `chat:{chatId}` tag is automatically added to every run.
+
+| Option        | Type                           | Description                                                      |
+| ------------- | ------------------------------ | ---------------------------------------------------------------- |
+| `tags`        | `string[]`                     | Additional tags for the run (merged with auto-tags, max 5 total) |
+| `queue`       | `string`                       | Queue name for the run                                           |
+| `maxAttempts` | `number`                       | Maximum retry attempts                                           |
+| `machine`     | `"micro" \| "small-1x" \| ...` | Machine preset for the run                                       |
+| `priority`    | `number`                       | Priority (lower = higher priority)                               |
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: getChatToken,
+  triggerOptions: {
+    tags: ["user:123"],
+    queue: "chat-queue",
+  },
+});
+```
+
+### transport.preload()
+
+Eagerly trigger a run before the first message.
+
+```ts
+transport.preload(chatId, { idleTimeoutInSeconds?: number }): Promise<void>
+```
+
+No-op if a session already exists for this chatId. See [Preload](/ai-chat/features#preload) for full details.
+
+## useTriggerChatTransport
+
+React hook that creates and memoizes a `TriggerChatTransport` instance. Import from `@trigger.dev/sdk/chat/react`.
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "@/trigger/chat";
+
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken, // (params) => … — same shape as ResolveChatAccessTokenParams
+  sessions: savedSessions,
+  onSessionChange: handleSessionChange,
+});
+```
+
+The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
+
+## Related
+
+- [Realtime Streams](/tasks/streams) — How streams work under the hood
+- [Using the Vercel AI SDK](/guides/examples/vercel-ai-sdk) — Basic AI SDK usage with Trigger.dev
+- [Realtime React Hooks](/realtime/react-hooks/overview) — Lower-level realtime hooks
+- [Authentication](/realtime/auth) — Public access tokens and trigger tokens

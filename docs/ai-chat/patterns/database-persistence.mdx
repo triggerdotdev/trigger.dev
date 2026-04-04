@@ -1,0 +1,127 @@
+---
+title: "Database persistence for chat"
+sidebarTitle: "Database persistence"
+description: "Split conversation state and live session metadata across hooks — preload, turn start, turn complete — without tying the pattern to a specific ORM or schema."
+---
+
+Durable chat runs can span **hours** and **many turns**. You usually want:
+
+1. **Conversation state** — full **`UIMessage[]`** (or equivalent) keyed by **`chatId`**, so reloads and history views work.
+2. **Live session state** — the **current Trigger `runId`**, a **scoped access token** for realtime + input streams, and optionally **`lastEventId`** for stream resume.
+
+This page describes a **hook mapping** that works with any database. Adapt table and column names to your stack.
+
+## Conceptual data model
+
+You can use one table or two; the important split is **semantic**:
+
+| Concept | Purpose | Typical fields |
+| ------- | ------- | -------------- |
+| **Conversation** | Durable transcript + display metadata | Stable id (same as **`chatId`**), serialized **`uiMessages`**, title, model choice, owner/user id, timestamps |
+| **Active session** | Reconnect + resume the **same** run | Same **`chatId`** as key (or FK), **current `runId`**, **`publicAccessToken`** (or your stored PAT), optional **`lastEventId`** |
+
+The **conversation** row is what your UI lists as “chats.” The **session** row is what the **transport** needs after a refresh or token expiry: *which run is live* and *how to authenticate* to it.
+
+<Note>
+  Store **`UIMessage[]`** in a JSON-compatible column, or normalize to a messages table — the pattern is *when* you read/write, not *how* you encode rows.
+</Note>
+
+## Where each hook writes
+
+### `onPreload` (optional)
+
+When the user triggers [preload](/ai-chat/features#preload), the run starts **before** the first user message.
+
+- Ensure the **conversation** row exists (create or no-op).
+- **Upsert session**: **`runId`**, **`chatAccessToken`** from the event (this is the turn-scoped token for that run).
+- Load any **user / tenant context** you need for prompts (`clientData`).
+
+If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`** is false.
+
+### `onChatStart` (turn 0, non-preloaded path)
+
+- If **`preloaded`** is true, return early — **`onPreload`** already ran.
+- Otherwise mirror preload: user/context, conversation create, session upsert.
+- If **`continuation`** is true, the conversation row usually **already exists** (previous run ended or timed out); only update **session** fields so the **new** run id and token are stored.
+
+### `onTurnStart`
+
+- Persist **`uiMessages`** (full accumulated history including the new user turn) **before** streaming starts — so a mid-stream refresh still shows the user’s message.
+- Optionally use [`chat.defer()`](/ai-chat/features#chat-defer) so the write does not block the model if your driver is slow.
+
+### `onTurnComplete`
+
+- Persist **`uiMessages`** again with the **assistant** reply finalized.
+- **Upsert session** with **`runId`**, fresh **`chatAccessToken`**, and **`lastEventId`** from the event.
+
+**`lastEventId`** lets the frontend [resume](/ai-chat/frontend) without replaying SSE events it already applied. Treat it as part of session state, not optional polish, if you care about duplicate chunks after refresh.
+
+## Token renewal (app server)
+
+Turn tokens expire (see **`chatAccessTokenTTL`** on **`chat.agent`**). When the transport gets **401** on realtime or input streams, mint a **new** public access token with the **same** scopes the task uses — typically **read** for that **`runId`** and **write** for **input streams** on that run — then **persist** it on your **session** row.
+
+Your **Next.js server action**, **Remix action**, or **API route** should:
+
+1. Load **session** by **`chatId`** → **`runId`**.
+2. Call **`auth.createPublicToken`** (or your platform’s equivalent) with those scopes.
+3. Save the new token (and confirm **`runId`** is unchanged unless you started a new run).
+
+No Trigger task code needs to run for renewal.
+
+## Minimal pseudocode
+
+```typescript
+// Pseudocode — replace saveConversation / saveSession with your DB layer.
+
+chat.agent({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+
+  onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
+    if (!clientData) return;
+    await ensureUser(clientData.userId);
+    await upsertConversation({ id: chatId, userId: clientData.userId /* ... */ });
+    await upsertSession({ chatId, runId, publicAccessToken: chatAccessToken });
+  },
+
+  onChatStart: async ({ chatId, runId, chatAccessToken, clientData, continuation, preloaded }) => {
+    if (preloaded) return;
+    await ensureUser(clientData.userId);
+    if (!continuation) {
+      await upsertConversation({ id: chatId, userId: clientData.userId /* ... */ });
+    }
+    await upsertSession({ chatId, runId, publicAccessToken: chatAccessToken });
+  },
+
+  onTurnStart: async ({ chatId, uiMessages }) => {
+    chat.defer(saveConversationMessages(chatId, uiMessages));
+  },
+
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    await saveConversationMessages(chatId, uiMessages);
+    await upsertSession({
+      chatId,
+      runId,
+      publicAccessToken: chatAccessToken,
+      lastEventId,
+    });
+  },
+
+  run: async ({ messages, signal }) => {
+    /* streamText, etc. */
+  },
+});
+```
+
+## Design notes
+
+- **`chatId`** is stable for the life of a thread; **`runId`** changes when the user starts a **new** run (timeout, cancel, explicit new chat). Session rows must always reflect the **current** run.
+- **`continuation: true`** means “same logical chat, new run” — update session, don’t assume an empty conversation.
+- Keep **task modules** that perform writes **out of** browser bundles; the pattern assumes persistence runs **in the worker** (or your BFF that the task calls).
+
+## See also
+
+- [Backend — Lifecycle hooks](/ai-chat/backend#lifecycle-hooks)
+- [Session management](/ai-chat/frontend#session-management) — `resume`, `lastEventId`, transport
+- [`chat.defer()`](/ai-chat/features#chat-defer) — non-blocking writes during a turn
+- [Code execution sandbox](/ai-chat/patterns/code-sandbox) — combines **`onWait`** / **`onComplete`** with this persistence model

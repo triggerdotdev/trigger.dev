@@ -1,0 +1,264 @@
+---
+title: "Frontend"
+sidebarTitle: "Frontend"
+description: "Transport setup, session management, client data, and frontend patterns for AI Chat."
+---
+
+## Transport setup
+
+Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+import type { myChat } from "@/trigger/chat";
+import { getChatToken } from "@/app/actions";
+
+export function Chat() {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: getChatToken,
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({ transport });
+  // ... render UI
+}
+```
+
+The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
+
+<Tip>
+  The hook keeps `onSessionChange` up to date via a ref internally, so you don't need to memoize the
+  callback or worry about stale closures.
+</Tip>
+
+## Typed messages (`chat.withUIMessage`)
+
+If your chat agent is defined with [`chat.withUIMessage<YourUIMessage>()`](/ai-chat/types) (custom `data-*` parts, typed tools, etc.), pass the same message type through `useChat` so `messages` and `message.parts` are narrowed on the client:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport, type InferChatUIMessage } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "./myChat";
+
+type Msg = InferChatUIMessage<typeof myChat>;
+
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken,
+});
+const { messages } = useChat<Msg>({ transport });
+```
+
+See the [Types](/ai-chat/types) guide for defining `YourUIMessage`, default stream options, and backend examples.
+
+### Dynamic access tokens
+
+For token refresh, pass a function instead of a string. The transport calls it when it needs a **trigger** token: starting a run from `sendMessages`, or when you call `preload()`. The callback receives `chatId` and `purpose` (`"trigger"` | `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` to type your server action or fetch handler (see [reference](/ai-chat/reference#triggerchattransport-options)).
+
+```ts
+import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
+
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: async (input: ResolveChatAccessTokenParams) => {
+    const res = await fetch("/api/chat-token", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return res.text();
+  },
+});
+```
+
+## Session management
+
+### Session cleanup (frontend)
+
+Since session creation and updates are handled server-side, the frontend only needs to handle session deletion when a run ends:
+
+```tsx
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken,
+  sessions: loadedSessions, // Restored from DB on page load
+  onSessionChange: (chatId, session) => {
+    if (!session) {
+      deleteSession(chatId); // Server action — run ended
+    }
+  },
+});
+```
+
+### Restoring on page load
+
+On page load, fetch both the messages and the session from your database, then pass them to `useChat` and the transport. Pass `resume: true` to `useChat` when there's an existing conversation — this tells the AI SDK to reconnect to the stream via the transport.
+
+```tsx app/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+import { getChatToken, getChatMessages, getSession, deleteSession } from "@/app/actions";
+
+export default function ChatPage({ chatId }: { chatId: string }) {
+  const [initialMessages, setInitialMessages] = useState([]);
+  const [initialSession, setInitialSession] = useState(undefined);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const [messages, session] = await Promise.all([getChatMessages(chatId), getSession(chatId)]);
+      setInitialMessages(messages);
+      setInitialSession(session ? { [chatId]: session } : undefined);
+      setLoaded(true);
+    }
+    load();
+  }, [chatId]);
+
+  if (!loaded) return null;
+
+  return (
+    <ChatClient
+      chatId={chatId}
+      initialMessages={initialMessages}
+      initialSessions={initialSession}
+    />
+  );
+}
+
+function ChatClient({ chatId, initialMessages, initialSessions }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: getChatToken,
+    sessions: initialSessions,
+    onSessionChange: (id, session) => {
+      if (!session) deleteSession(id);
+    },
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    resume: initialMessages.length > 0, // Resume if there's an existing conversation
+  });
+
+  // ... render UI
+}
+```
+
+<Info>
+  `resume: true` causes `useChat` to call `reconnectToStream` on the transport when the component
+  mounts. The transport uses the session's `lastEventId` to skip past already-seen stream events, so
+  the frontend only receives new data. Only enable `resume` when there are existing messages — for
+  brand new chats, there's nothing to reconnect to.
+</Info>
+
+<Warning>
+  In React strict mode (enabled by default in Next.js dev), you may see a `TypeError: Cannot read
+  properties of undefined (reading 'state')` in the console when using `resume`. This is a [known
+  bug in the AI SDK](https://github.com/vercel/ai/issues/8477) caused by React strict mode
+  double-firing the resume effect. The error is caught internally and **does not affect
+  functionality** — streaming and message display work correctly. It only appears in development and
+  will not occur in production builds.
+</Warning>
+
+## Client data and metadata
+
+### Transport-level client data
+
+Set default client data on the transport that's included in every request. When the task uses `clientDataSchema`, this is type-checked to match:
+
+```ts
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken,
+  clientData: { userId: currentUser.id },
+});
+```
+
+### Per-message metadata
+
+Pass metadata with individual messages via `sendMessage`. Per-message values are merged with transport-level client data (per-message wins on conflicts):
+
+```ts
+sendMessage({ text: "Hello" }, { metadata: { model: "gpt-4o", priority: "high" } });
+```
+
+### Typed client data with clientDataSchema
+
+Instead of manually parsing `clientData` with Zod in every hook, pass a `clientDataSchema` to `chat.agent`. The schema validates the data once per turn, and `clientData` is typed in all hooks and `run`:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  clientDataSchema: z.object({
+    model: z.string().optional(),
+    userId: z.string(),
+  }),
+  onChatStart: async ({ chatId, clientData }) => {
+    // clientData is typed as { model?: string; userId: string }
+    await db.chat.create({
+      data: { id: chatId, userId: clientData.userId },
+    });
+  },
+  run: async ({ messages, clientData, signal }) => {
+    // Same typed clientData — no manual parsing needed
+    return streamText({
+      model: openai(clientData?.model ?? "gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+The schema also types the `clientData` option on the frontend transport:
+
+```ts
+// TypeScript enforces that clientData matches the schema
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: getChatToken,
+  clientData: { userId: currentUser.id },
+});
+```
+
+Supports Zod, ArkType, Valibot, and other schema libraries supported by the SDK.
+
+## Stop generation
+
+Calling `stop()` from `useChat` sends a stop signal to the running task via input streams. The task aborts the current `streamText` call, but the run stays alive for the next message:
+
+```tsx
+const { messages, sendMessage, stop, status } = useChat({ transport });
+
+{
+  status === "streaming" && (
+    <button type="button" onClick={stop}>
+      Stop
+    </button>
+  );
+}
+```
+
+See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for how to handle stop signals in your task.
+
+## Self-hosting
+
+If you're self-hosting Trigger.dev, pass the `baseURL` option:
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken,
+  baseURL: "https://your-trigger-instance.com",
+});
+```
