@@ -11,9 +11,6 @@ import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/databa
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { FormError } from "~/components/primitives/FormError";
-import { Input } from "~/components/primitives/Input";
-import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
@@ -40,7 +37,13 @@ import {
   batchStatusTitle,
   descriptionForBatchStatus,
 } from "./BatchStatus";
-import { TimeFilter, appliedSummary, FilterMenuProvider } from "./SharedFilters";
+import {
+  TimeFilter,
+  appliedSummary,
+  FilterMenuProvider,
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
+} from "./SharedFilters";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const BatchStatus = z.enum(allBatchStatuses);
@@ -218,91 +221,22 @@ function PermanentStatusFilter() {
   );
 }
 
-function BatchIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const batchIdValue = value("id");
+function validateBatchId(value: string): string | undefined {
+  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
+  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27/32 characters long";
+}
 
-  const [batchId, setBatchId] = useState(batchIdValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      id: batchId === "" ? undefined : batchId?.toString(),
-    });
-
-    setOpen(false);
-  }, [batchId, replace]);
-
-  let error: string | undefined = undefined;
-  if (batchId) {
-    if (!batchId.startsWith("batch_")) {
-      error = "Batch IDs start with 'batch_'";
-    } else if (batchId.length !== 27 && batchId.length !== 31) {
-      error = "Batch IDs are 27/32 characters long";
-    }
-  }
-
+function BatchIdDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Batch ID</Label>
-            <Input
-              placeholder="batch_"
-              value={batchId ?? ""}
-              onChange={(e) => setBatchId(e.target.value)}
-              variant="small"
-              className="w-[29ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !batchId}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Batch ID"
+      placeholder="batch_"
+      paramKey="id"
+      validate={validateBatchId}
+    />
   );
 }
 

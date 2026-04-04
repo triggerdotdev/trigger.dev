@@ -1,5 +1,4 @@
 import * as Ariakit from "@ariakit/react";
-import type { RuntimeEnvironment } from "@trigger.dev/database";
 import {
   endOfDay,
   endOfMonth,
@@ -11,20 +10,23 @@ import {
   subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
-import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, startTransition, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DateTimePicker } from "~/components/primitives/DateTimePicker";
+import { FormError } from "~/components/primitives/FormError";
+import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { cn } from "~/utils/cn";
 import { organizationBillingPath } from "~/utils/pathBuilder";
 import { Button, LinkButton } from "../../primitives/Buttons";
@@ -422,11 +424,7 @@ export function TimeFilter({
                 <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
                   <div className="flex items-center gap-2">
                     <span>Filter by time period</span>
-                    <ShortcutKey
-                      className="size-4 flex-none"
-                      shortcut={shortcut}
-                      variant="small"
-                    />
+                    <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant="small" />
                   </div>
                 </Ariakit.Tooltip>
               )}
@@ -1003,5 +1001,99 @@ function QuickDateButton({
     >
       {label}
     </Button>
+  );
+}
+
+export type IdFilterDropdownProps = {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+  label: string;
+  placeholder: string;
+  paramKey: string;
+  validate?: (value: string) => string | undefined;
+  inputWidth?: string;
+};
+
+export function IdFilterDropdown({
+  trigger,
+  clearSearchValue,
+  onClose,
+  label,
+  placeholder,
+  paramKey,
+  validate,
+  inputWidth = "w-[29ch]",
+}: IdFilterDropdownProps) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const currentValue = value(paramKey);
+
+  const [inputValue, setInputValue] = useState(currentValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      [paramKey]: inputValue === "" ? undefined : inputValue?.toString(),
+    });
+
+    setOpen(false);
+  }, [inputValue, replace, paramKey]);
+
+  const error = inputValue ? validate?.(inputValue) : undefined;
+
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-3 p-3 pt-2">
+          <div className="flex flex-col gap-1">
+            <Paragraph variant="extra-small/bright" className="mb-0.5">
+              {label}
+            </Paragraph>
+            <Input
+              placeholder={placeholder}
+              value={inputValue ?? ""}
+              onChange={(e) => setInputValue(e.target.value)}
+              variant="small"
+              className={cn(inputWidth, "font-mono")}
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1">
+            <Button variant="secondary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !inputValue}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["mod"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
   );
 }

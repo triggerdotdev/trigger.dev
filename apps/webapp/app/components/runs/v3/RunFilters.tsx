@@ -28,9 +28,6 @@ import {
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { DateTime } from "~/components/primitives/DateTime";
-import { FormError } from "~/components/primitives/FormError";
-import { Input } from "~/components/primitives/Input";
-import { Label } from "~/components/primitives/Label";
 import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -65,7 +62,14 @@ import { type loader as versionsLoader } from "~/routes/resources.orgs.$organiza
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
-import { appliedSummary, FilterMenuProvider, TimeFilter, timeFilters } from "./SharedFilters";
+import {
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
+  appliedSummary,
+  FilterMenuProvider,
+  TimeFilter,
+  timeFilters,
+} from "./SharedFilters";
 import {
   allTaskRunStatuses,
   descriptionForTaskRunStatus,
@@ -499,7 +503,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
               icon={type.icon}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
             >
-              {type.title}
+              <span className="text-text-bright">{type.title}</span>
             </SelectButtonItem>
           ))}
         </SelectList>
@@ -603,22 +607,26 @@ function PermanentStatusFilter() {
               <Ariakit.TooltipAnchor
                 render={
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
                 }
               >
                 {hasStatuses ? (
                   <AppliedFilter
                     label="Status"
                     icon={filterIcon("statuses")}
-                    value={appliedSummary(
-                      statuses.map((v) => runStatusTitle(v as TaskRunStatus))
-                    )}
+                    value={appliedSummary(statuses.map((v) => runStatusTitle(v as TaskRunStatus)))}
                     onRemove={() => del(["statuses", "cursor", "direction"])}
                     variant="secondary/small"
+                    className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
-                    {filterIcon("statuses")}
+                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <div className="grid size-4 place-items-center">
+                      <div className="size-[75%] rounded-full border-2 border-text-bright" />
+                    </div>
                     <span>Status</span>
                   </div>
                 )}
@@ -692,6 +700,7 @@ function TasksDropdown({
               icon={
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
+              className="text-text-bright"
             >
               <MiddleTruncate text={item.slug} />
             </SelectItem>
@@ -728,7 +737,10 @@ function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possible
               <Ariakit.TooltipAnchor
                 render={
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  <Ariakit.Select ref={triggerRef as any} render={<div className="group cursor-pointer focus-custom" />} />
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
                 }
               >
                 {hasTasks ? (
@@ -743,9 +755,10 @@ function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possible
                     )}
                     onRemove={() => del(["tasks", "cursor", "direction"])}
                     variant="secondary/small"
+                    className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary px-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
                     {filterIcon("tasks")}
                     <span>Tasks</span>
                   </div>
@@ -956,15 +969,17 @@ function TagsDropdown({
           return true;
         }}
       >
-        <ComboBox
-          value={searchValue}
-          render={(props) => (
-            <div className="flex items-center justify-stretch">
-              <input {...props} placeholder={"Filter by tags..."} />
-              {fetcher.state === "loading" && <Spinner color="muted" />}
-            </div>
-          )}
-        />
+        {(filtered.length > 0 || fetcher.state === "loading" || searchValue.length > 0) && (
+          <ComboBox
+            value={searchValue}
+            render={(props) => (
+              <div className="flex items-center justify-stretch">
+                <input {...props} placeholder={"Filter by tags..."} />
+                {fetcher.state === "loading" && <Spinner color="muted" />}
+              </div>
+            )}
+          />
+        )}
         <SelectList>
           {filtered.length > 0
             ? filtered.map((tag, index) => (
@@ -1136,6 +1151,7 @@ function QueuesDropdown({
                       <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
                     )
                   }
+                  className="text-text-bright"
                 >
                   {queue.name}
                 </SelectItem>
@@ -1221,15 +1237,15 @@ function MachinesDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by machine..."} value={searchValue} />
         <SelectList>
           {filtered.map((item, index) => (
             <SelectItem
               key={item}
               value={item}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
+              className="text-text-bright"
             >
-              <MachineLabelCombo preset={item} />
+              <MachineLabelCombo preset={item} labelClassName="text-text-bright" />
             </SelectItem>
           ))}
         </SelectList>
@@ -1377,7 +1393,12 @@ export function VersionsDropdown({
         <SelectList>
           {filtered.length > 0
             ? filtered.map((version) => (
-                <SelectItem key={version.version} value={version.version}>
+                <SelectItem
+                  key={version.version}
+                  value={version.version}
+                  icon={<IconRotateClockwise2 className="size-4 flex-none text-text-dimmed" />}
+                  className="text-text-bright"
+                >
                   <span className="flex items-center gap-2">
                     <span className="grow truncate">{version.version}</span>
                     {version.isCurrent ? <Badge variant="extra-small">Current</Badge> : null}
@@ -1459,102 +1480,28 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
       <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
         <div className="flex items-center gap-2">
           <span>Toggle root only</span>
-          <ShortcutKey
-            className="size-4 flex-none"
-            shortcut={rootOnlyShortcut}
-            variant="small"
-          />
+          <ShortcutKey className="size-4 flex-none" shortcut={rootOnlyShortcut} variant="small" />
         </div>
       </Ariakit.Tooltip>
     </Ariakit.TooltipProvider>
   );
 }
 
-function RunIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const runIdValue = value("runId");
+function validateRunId(value: string): string | undefined {
+  if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
+  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25/30 characters long";
+}
 
-  const [runId, setRunId] = useState(runIdValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      runId: runId === "" ? undefined : runId?.toString(),
-    });
-
-    setOpen(false);
-  }, [runId, replace]);
-
-  let error: string | undefined = undefined;
-  if (runId) {
-    if (!runId.startsWith("run_")) {
-      error = "Run IDs start with 'run_'";
-    } else if (runId.length !== 25 && runId.length !== 29) {
-      error = "Run IDs are 25/30 characters long";
-    }
-  }
-
+function RunIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate" | "inputWidth">) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Run ID</Label>
-            <Input
-              placeholder="run_"
-              value={runId ?? ""}
-              onChange={(e) => setRunId(e.target.value)}
-              variant="small"
-              className="w-[27ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !runId}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Run ID"
+      placeholder="run_"
+      paramKey="runId"
+      validate={validateRunId}
+      inputWidth="w-[27ch]"
+    />
   );
 }
 
@@ -1590,91 +1537,20 @@ function AppliedRunIdFilter() {
   );
 }
 
-function BatchIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const batchIdValue = value("batchId");
+function validateBatchId(value: string): string | undefined {
+  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
+  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
+}
 
-  const [batchId, setBatchId] = useState(batchIdValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      batchId: batchId === "" ? undefined : batchId?.toString(),
-    });
-
-    setOpen(false);
-  }, [batchId, replace]);
-
-  let error: string | undefined = undefined;
-  if (batchId) {
-    if (!batchId.startsWith("batch_")) {
-      error = "Batch IDs start with 'batch_'";
-    } else if (batchId.length !== 27 && batchId.length !== 31) {
-      error = "Batch IDs are 27 or 31 characters long";
-    }
-  }
-
+function BatchIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Batch ID</Label>
-            <Input
-              placeholder="batch_"
-              value={batchId ?? ""}
-              onChange={(e) => setBatchId(e.target.value)}
-              variant="small"
-              className="w-[29ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !batchId}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Batch ID"
+      placeholder="batch_"
+      paramKey="batchId"
+      validate={validateBatchId}
+    />
   );
 }
 
@@ -1710,91 +1586,20 @@ function AppliedBatchIdFilter() {
   );
 }
 
-function ScheduleIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const scheduleIdValue = value("scheduleId");
+function validateScheduleId(value: string): string | undefined {
+  if (!value.startsWith("sched")) return "Schedule IDs start with 'sched_'";
+  if (value.length !== 27) return "Schedule IDs are 27 characters long";
+}
 
-  const [scheduleId, setScheduleId] = useState(scheduleIdValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      scheduleId: scheduleId === "" ? undefined : scheduleId?.toString(),
-    });
-
-    setOpen(false);
-  }, [scheduleId, replace]);
-
-  let error: string | undefined = undefined;
-  if (scheduleId) {
-    if (!scheduleId.startsWith("sched")) {
-      error = "Schedule IDs start with 'sched_'";
-    } else if (scheduleId.length !== 27) {
-      error = "Schedule IDs are 27 characters long";
-    }
-  }
-
+function ScheduleIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Schedule ID</Label>
-            <Input
-              placeholder="sched_"
-              value={scheduleId ?? ""}
-              onChange={(e) => setScheduleId(e.target.value)}
-              variant="small"
-              className="w-[29ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !scheduleId}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Schedule ID"
+      placeholder="sched_"
+      paramKey="scheduleId"
+      validate={validateScheduleId}
+    />
   );
 }
 
@@ -1830,89 +1635,19 @@ function AppliedScheduleIdFilter() {
   );
 }
 
-function ErrorIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const errorIdValue = value("errorId");
+function validateErrorId(value: string): string | undefined {
+  if (!value.startsWith("error_")) return "Error IDs start with 'error_'";
+}
 
-  const [errorId, setErrorId] = useState(errorIdValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      errorId: errorId === "" ? undefined : errorId?.toString(),
-    });
-
-    setOpen(false);
-  }, [errorId, replace]);
-
-  let error: string | undefined = undefined;
-  if (errorId) {
-    if (!errorId.startsWith("error_")) {
-      error = "Error IDs start with 'error_'";
-    }
-  }
-
+function ErrorIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Error ID</Label>
-            <Input
-              placeholder="error_"
-              value={errorId ?? ""}
-              onChange={(e) => setErrorId(e.target.value)}
-              variant="small"
-              className="w-[29ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !errorId}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Error ID"
+      placeholder="error_"
+      paramKey="errorId"
+      validate={validateErrorId}
+    />
   );
 }
 
