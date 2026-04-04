@@ -220,7 +220,10 @@ Each client has a slightly different config format. Copy the snippet for your cl
     [mcp_servers.trigger]
     command = "npx"
     args = ["trigger.dev@latest", "mcp"]
+    startup_timeout_sec = 30
     ```
+
+    <Note>The `startup_timeout_sec = 30` is recommended. Codex defaults to 10 seconds, which may not be enough for `npx` to download the package on first run.</Note>
   </Tab>
   <Tab title="Crush">
     Install using the command line:
