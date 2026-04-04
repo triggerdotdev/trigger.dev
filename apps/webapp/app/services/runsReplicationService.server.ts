@@ -21,7 +21,10 @@ import {
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { unsafeExtractIdempotencyKeyScope, unsafeExtractIdempotencyKeyUser } from "@trigger.dev/core/v3/serverOnly";
+import {
+  unsafeExtractIdempotencyKeyScope,
+  unsafeExtractIdempotencyKeyUser,
+} from "@trigger.dev/core/v3/serverOnly";
 import { RunAnnotations } from "@trigger.dev/core/v3";
 import { type TaskRun } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
@@ -29,7 +32,6 @@ import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -618,73 +620,18 @@ export class RunsReplicationService {
         payloadInserts: payloadInserts.length,
       });
 
-      // Task runs are already sorted by org (lines 571-576), so we can stream through
-      // and flush when org changes - no grouping overhead, no O(n²) lookups
-
-      // Build run_id -> org_id index for O(1) payload->org lookups
-      const runIdToOrgId = new Map(
-        taskRunInserts.map(tr => [getTaskRunField(tr, "run_id"), getTaskRunField(tr, "organization_id")])
+      // Insert task runs and payloads with retry logic for connection errors
+      const [taskRunError, taskRunResult] = await this.#insertWithRetry(
+        (attempt) => this.#insertTaskRunInserts(taskRunInserts, attempt),
+        "task run inserts",
+        flushId
       );
 
-      // Group payloads by org using the index (O(n) instead of O(n²))
-      const payloadsByOrg = new Map<string, PayloadInsertArray[]>();
-      for (const payload of payloadInserts) {
-        const runId = getPayloadField(payload, "run_id");
-        const orgId = runIdToOrgId.get(runId);
-        if (orgId) {
-          const orgPayloads = payloadsByOrg.get(orgId);
-          if (orgPayloads) {
-            orgPayloads.push(payload);
-          } else {
-            payloadsByOrg.set(orgId, [payload]);
-          }
-        }
-      }
-
-      // Stream through task runs, flushing when org changes
-      const insertPromises: Promise<{ taskRunError: Error | null; payloadError: Error | null; orgId: string }>[] = [];
-      let currentOrgId: string | null = null;
-      let currentOrgTaskRuns: TaskRunInsertArray[] = [];
-
-      for (const taskRun of taskRunInserts) {
-        const orgId = getTaskRunField(taskRun, "organization_id");
-
-        // Org changed? Flush previous org's batch
-        if (currentOrgId !== null && currentOrgId !== orgId) {
-          const orgPayloads = payloadsByOrg.get(currentOrgId) || [];
-          insertPromises.push(
-            this.#insertOrgBatch(currentOrgId, currentOrgTaskRuns, orgPayloads, flushId)
-          );
-          currentOrgTaskRuns = [];
-        }
-
-        currentOrgId = orgId;
-        currentOrgTaskRuns.push(taskRun);
-      }
-
-      // Flush final org's batch
-      if (currentOrgId !== null && currentOrgTaskRuns.length > 0) {
-        const orgPayloads = payloadsByOrg.get(currentOrgId) || [];
-        insertPromises.push(
-          this.#insertOrgBatch(currentOrgId, currentOrgTaskRuns, orgPayloads, flushId)
-        );
-      }
-
-      // Wait for all org batches to complete (parallel execution)
-      const results = await Promise.all(insertPromises);
-
-      // Aggregate errors from all organizations
-      let taskRunError: Error | null = null;
-      let payloadError: Error | null = null;
-
-      for (const result of results) {
-        if (result.taskRunError) {
-          taskRunError = result.taskRunError;
-        }
-        if (result.payloadError) {
-          payloadError = result.payloadError;
-        }
-      }
+      const [payloadError, payloadResult] = await this.#insertWithRetry(
+        (attempt) => this.#insertPayloadInserts(payloadInserts, attempt),
+        "payload inserts",
+        flushId
+      );
 
       // Log any errors that occurred
       if (taskRunError) {
@@ -826,50 +773,19 @@ export class RunsReplicationService {
     };
   }
 
-  async #insertOrgBatch(
-    organizationId: string,
-    taskRunInserts: TaskRunInsertArray[],
-    payloadInserts: PayloadInsertArray[],
-    flushId: string
-  ): Promise<{ taskRunError: Error | null; payloadError: Error | null; orgId: string }> {
-    const [taskRunError] = await this.#insertWithRetry(
-      (attempt) => this.#insertTaskRunInserts(organizationId, taskRunInserts, attempt),
-      "task run inserts",
-      flushId
-    );
-
-    const [payloadError] = await this.#insertWithRetry(
-      (attempt) => this.#insertPayloadInserts(organizationId, payloadInserts, attempt),
-      "payload inserts",
-      flushId
-    );
-
-    return { taskRunError, payloadError, orgId: organizationId };
-  }
-
-  async #insertTaskRunInserts(
-    organizationId: string,
-    taskRunInserts: TaskRunInsertArray[],
-    attempt: number
-  ) {
+  async #insertTaskRunInserts(taskRunInserts: TaskRunInsertArray[], attempt: number) {
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
-      // Get the appropriate ClickHouse client for this organization
-      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "replication");
-
-      const [insertError, insertResult] = await clickhouse.taskRuns.insertCompactArrays(
-        taskRunInserts,
-        {
+      const [insertError, insertResult] =
+        await this.options.clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        }
-      );
+        });
 
       if (insertError) {
         this.logger.error("Error inserting task run inserts attempt", {
           error: insertError,
           attempt,
-          organizationId,
         });
 
         recordSpanError(span, insertError);
@@ -880,29 +796,19 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertPayloadInserts(
-    organizationId: string,
-    payloadInserts: PayloadInsertArray[],
-    attempt: number
-  ) {
+  async #insertPayloadInserts(payloadInserts: PayloadInsertArray[], attempt: number) {
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
-      // Get the appropriate ClickHouse client for this organization
-      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "replication");
-
-      const [insertError, insertResult] = await clickhouse.taskRuns.insertPayloadsCompactArrays(
-        payloadInserts,
-        {
+      const [insertError, insertResult] =
+        await this.options.clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        }
-      );
+        });
 
       if (insertError) {
         this.logger.error("Error inserting payload inserts attempt", {
           error: insertError,
           attempt,
-          organizationId,
         });
 
         recordSpanError(span, insertError);
@@ -957,12 +863,13 @@ export class RunsReplicationService {
     const errorData = { data: run.error };
 
     // Calculate error fingerprint for failed runs
-    const errorFingerprint = (
+    const errorFingerprint =
       !this._disableErrorFingerprinting &&
-      ['SYSTEM_FAILURE', 'CRASHED', 'INTERRUPTED', 'COMPLETED_WITH_ERRORS', 'TIMED_OUT'].includes(run.status)
-    )
-      ? calculateErrorFingerprint(run.error)
-      : '';
+      ["SYSTEM_FAILURE", "CRASHED", "INTERRUPTED", "COMPLETED_WITH_ERRORS", "TIMED_OUT"].includes(
+        run.status
+      )
+        ? calculateErrorFingerprint(run.error)
+        : "";
 
     const annotations = this.#parseAnnotations(run.annotations);
 
@@ -1075,7 +982,6 @@ export class RunsReplicationService {
 
     return { data: parsedData };
   }
-
 }
 
 export type ConcurrentFlushSchedulerConfig<T> = {
