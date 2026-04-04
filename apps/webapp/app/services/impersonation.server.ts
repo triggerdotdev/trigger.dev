@@ -1,5 +1,10 @@
 import { createCookieSessionStorage, type Session } from "@remix-run/node";
+import { SignJWT, jwtVerify, errors } from "jose";
+import { randomUUID } from "node:crypto";
+import { singleton } from "~/utils/singleton";
+import { createRedisClient, type RedisClient } from "~/redis.server";
 import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
 
 export const impersonationSessionStorage = createCookieSessionStorage({
   cookie: {
@@ -41,4 +46,108 @@ export async function clearImpersonationId(request: Request) {
   session.unset("impersonatedUserId");
 
   return session;
+}
+
+// Impersonation token utilities for CSRF protection
+const IMPERSONATION_TOKEN_EXPIRY_SECONDS = 5 * 60; // 5 minutes
+
+function getImpersonationTokenSecret(): Uint8Array {
+  return new TextEncoder().encode(env.SESSION_SECRET);
+}
+
+function getImpersonationTokenRedisClient(): RedisClient {
+  return singleton(
+    "impersonationTokenRedis",
+    () =>
+      createRedisClient("impersonation:token", {
+        host: env.CACHE_REDIS_HOST,
+        port: env.CACHE_REDIS_PORT,
+        username: env.CACHE_REDIS_USERNAME,
+        password: env.CACHE_REDIS_PASSWORD,
+        tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+        clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
+        keyPrefix: "impersonation:token:",
+      })
+  );
+}
+
+/**
+ * Generate a signed one-time impersonation token for a user
+ */
+export async function generateImpersonationToken(userId: string): Promise<string> {
+  const secret = getImpersonationTokenSecret();
+  const now = Math.floor(Date.now() / 1000);
+
+  const token = await new SignJWT({ userId })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt(now)
+    .setExpirationTime(now + IMPERSONATION_TOKEN_EXPIRY_SECONDS)
+    .setIssuer("https://trigger.dev")
+    .setAudience("https://trigger.dev/admin")
+    .setJti(randomUUID())
+    .sign(secret);
+
+  return token;
+}
+
+/**
+ * Validate and consume an impersonation token (prevents replay attacks)
+ */
+export async function validateAndConsumeImpersonationToken(
+  token: string
+): Promise<string | undefined> {
+  try {
+    const secret = getImpersonationTokenSecret();
+
+    // Verify the token signature and expiration
+    const { payload } = await jwtVerify(token, secret, {
+      issuer: "https://trigger.dev",
+      audience: "https://trigger.dev/admin",
+    });
+
+    const userId = payload.userId as string | undefined;
+    if (!userId || typeof userId !== "string") {
+      return undefined;
+    }
+
+    // Atomically mark the token as used to prevent replay attacks.
+    // Use the jti (a short UUID) as the Redis key rather than the full JWT string.
+    // If Redis is unavailable, fall back to JWT expiry as the only protection.
+    if (env.CACHE_REDIS_HOST) {
+      // Defensively reject tokens without a jti (e.g. issued before this change)
+      if (!payload.jti) {
+        logger.warn("Impersonation token missing jti claim, rejecting for safety");
+        return undefined;
+      }
+
+      try {
+        const redis = getImpersonationTokenRedisClient();
+        const result = await redis.set(
+          payload.jti,
+          "1",
+          "EX",
+          IMPERSONATION_TOKEN_EXPIRY_SECONDS,
+          "NX"
+        );
+        if (result !== "OK") {
+          // Token was already used
+          return undefined;
+        }
+      } catch (redisError) {
+        logger.warn("Redis unavailable for impersonation token tracking, relying on JWT expiry only", {
+          error: redisError instanceof Error ? redisError.message : String(redisError),
+        });
+      }
+    }
+
+    return userId;
+  } catch (error) {
+    if (error instanceof errors.JWTExpired || error instanceof errors.JWTInvalid) {
+      return undefined;
+    }
+    logger.error("Error validating impersonation token", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
 }
