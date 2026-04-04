@@ -1,5 +1,15 @@
 # @trigger.dev/sdk
 
+## 4.4.4
+
+### Patch Changes
+
+- Define and manage AI prompts with `prompts.define()`. Create typesafe prompt templates with variables, resolve them at runtime, and manage versions and overrides from the dashboard without redeploying. ([#3244](https://github.com/triggerdotdev/trigger.dev/pull/3244))
+- Add support for setting TTL (time-to-live) defaults at the task level and globally in trigger.config.ts, with per-trigger overrides still taking precedence ([#3196](https://github.com/triggerdotdev/trigger.dev/pull/3196))
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+
 ## 4.4.3
 
 ### Patch Changes
