@@ -948,6 +948,7 @@ function TasksTreeView({
             treeScrollRef={treeScrollRef}
             virtualizer={virtualizer}
             toggleNodeSelection={toggleNodeSelection}
+            selectedId={selectedId}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -1001,7 +1002,7 @@ function TasksTreeView({
 
 type TimelineViewProps = Pick<
   TasksTreeViewProps,
-  "totalDuration" | "rootSpanStatus" | "events" | "rootStartedAt" | "queuedDuration"
+  "totalDuration" | "rootSpanStatus" | "events" | "rootStartedAt" | "queuedDuration" | "selectedId"
 > & {
   scale: number;
   parentRef: React.RefObject<HTMLDivElement>;
@@ -1032,6 +1033,7 @@ function TimelineView({
   showDurations,
   treeScrollRef,
   queuedDuration,
+  selectedId,
 }: TimelineViewProps) {
   const timelineContainerRef = useRef<HTMLDivElement>(null);
   const initialTimelineDimensions = useInitialDimensions(timelineContainerRef);
@@ -1070,6 +1072,7 @@ function TimelineView({
         className="h-full overflow-hidden"
         minWidth={minTimelineWidth}
         maxWidth={maxTimelineWidth}
+        recalculateTrigger={selectedId}
       >
         {/* Follows the cursor */}
         <CurrentTimeIndicator
