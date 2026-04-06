@@ -1,5 +1,6 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 
@@ -8,6 +9,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     const globalService = getRunsReplicationGlobal();
+
+    await clickhouseFactory.isReady();
 
     if (globalService) {
       await globalService.start();
