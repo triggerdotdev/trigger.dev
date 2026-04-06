@@ -1,5 +1,11 @@
-import type { ClickHouse, TaskRunInsertArray, PayloadInsertArray } from "@internal/clickhouse";
-import { getTaskRunField, getPayloadField } from "@internal/clickhouse";
+import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import {
+  type ClickHouse,
+  type PayloadInsertArray,
+  type TaskRunInsertArray,
+  getPayloadField,
+  getTaskRunField,
+} from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
   LogicalReplicationClient,
@@ -49,7 +55,7 @@ interface Transaction<T = any> {
 }
 
 export type RunsReplicationServiceOptions = {
-  clickhouse: ClickHouse;
+  clickhouseFactory: ClickhouseFactory;
   pgConnectionUrl: string;
   serviceName: string;
   slotName: string;
@@ -563,16 +569,50 @@ export class RunsReplicationService {
     const flushStartTime = performance.now();
 
     await startSpan(this._tracer, "flushBatch", async (span) => {
-      const preparedInserts = await startSpan(this._tracer, "prepare_inserts", async (span) => {
+      const preparedInserts = await startSpan(this._tracer, "prepare_inserts", async () => {
         return await Promise.all(batch.map(this.#prepareRunInserts.bind(this)));
       });
 
-      const taskRunInserts = preparedInserts
-        .map(({ taskRunInsert }) => taskRunInsert)
-        .filter((x): x is TaskRunInsertArray => Boolean(x))
-        // batch inserts in clickhouse are more performant if the items
-        // are pre-sorted by the primary key
-        .sort((a, b) => {
+      const routeCache = new Map<string, ClickHouse>();
+      const groups = new Map<
+        ClickHouse,
+        { taskRunInserts: TaskRunInsertArray[]; payloadInserts: PayloadInsertArray[] }
+      >();
+
+      for (let i = 0; i < batch.length; i++) {
+        const batchedRun = batch[i]!;
+        const prep = preparedInserts[i]!;
+        const { run } = batchedRun;
+
+        if (!run.organizationId || !run.environmentType) {
+          continue;
+        }
+
+        let client = routeCache.get(run.organizationId);
+        if (!client) {
+          client = this.options.clickhouseFactory.getClickhouseForOrganizationSync(
+            run.organizationId,
+            "replication"
+          );
+          routeCache.set(run.organizationId, client);
+        }
+
+        let group = groups.get(client);
+        if (!group) {
+          group = { taskRunInserts: [], payloadInserts: [] };
+          groups.set(client, group);
+        }
+
+        if (prep.taskRunInsert) {
+          group.taskRunInserts.push(prep.taskRunInsert);
+        }
+        if (prep.payloadInsert) {
+          group.payloadInserts.push(prep.payloadInsert);
+        }
+      }
+
+      const sortTaskRunInserts = (rows: TaskRunInsertArray[]) =>
+        rows.sort((a, b) => {
           const aOrgId = getTaskRunField(a, "organization_id");
           const bOrgId = getTaskRunField(b, "organization_id");
           if (aOrgId !== bOrgId) {
@@ -599,41 +639,61 @@ export class RunsReplicationService {
           return aRunId < bRunId ? -1 : 1;
         });
 
-      const payloadInserts = preparedInserts
-        .map(({ payloadInsert }) => payloadInsert)
-        .filter((x): x is PayloadInsertArray => Boolean(x))
-        // batch inserts in clickhouse are more performant if the items
-        // are pre-sorted by the primary key
-        .sort((a, b) => {
+      const sortPayloadInserts = (rows: PayloadInsertArray[]) =>
+        rows.sort((a, b) => {
           const aRunId = getPayloadField(a, "run_id");
           const bRunId = getPayloadField(b, "run_id");
           if (aRunId === bRunId) return 0;
           return aRunId < bRunId ? -1 : 1;
         });
 
-      span.setAttribute("task_run_inserts", taskRunInserts.length);
-      span.setAttribute("payload_inserts", payloadInserts.length);
+      const combinedTaskRunInserts: TaskRunInsertArray[] = [];
+      const combinedPayloadInserts: PayloadInsertArray[] = [];
+      let taskRunError: Error | null = null;
+      let payloadError: Error | null = null;
+
+      for (const [clickhouse, group] of groups) {
+        sortTaskRunInserts(group.taskRunInserts);
+        sortPayloadInserts(group.payloadInserts);
+        combinedTaskRunInserts.push(...group.taskRunInserts);
+        combinedPayloadInserts.push(...group.payloadInserts);
+
+        const [trErr] = await this.#insertWithRetry(
+          (attempt) => this.#insertTaskRunInserts(clickhouse, group.taskRunInserts, attempt),
+          "task run inserts",
+          flushId
+        );
+        if (trErr && !taskRunError) {
+          taskRunError = trErr;
+        }
+
+        const [plErr] = await this.#insertWithRetry(
+          (attempt) => this.#insertPayloadInserts(clickhouse, group.payloadInserts, attempt),
+          "payload inserts",
+          flushId
+        );
+        if (plErr && !payloadError) {
+          payloadError = plErr;
+        }
+
+        if (!trErr) {
+          this._taskRunsInsertedCounter.add(group.taskRunInserts.length);
+        }
+        if (!plErr) {
+          this._payloadsInsertedCounter.add(group.payloadInserts.length);
+        }
+      }
+
+      span.setAttribute("task_run_inserts", combinedTaskRunInserts.length);
+      span.setAttribute("payload_inserts", combinedPayloadInserts.length);
 
       this.logger.debug("Flushing inserts", {
         flushId,
-        taskRunInserts: taskRunInserts.length,
-        payloadInserts: payloadInserts.length,
+        taskRunInserts: combinedTaskRunInserts.length,
+        payloadInserts: combinedPayloadInserts.length,
+        clickhouseGroups: groups.size,
       });
 
-      // Insert task runs and payloads with retry logic for connection errors
-      const [taskRunError, taskRunResult] = await this.#insertWithRetry(
-        (attempt) => this.#insertTaskRunInserts(taskRunInserts, attempt),
-        "task run inserts",
-        flushId
-      );
-
-      const [payloadError, payloadResult] = await this.#insertWithRetry(
-        (attempt) => this.#insertPayloadInserts(payloadInserts, attempt),
-        "payload inserts",
-        flushId
-      );
-
-      // Log any errors that occurred
       if (taskRunError) {
         this.logger.error("Error inserting task run inserts", {
           error: taskRunError,
@@ -652,27 +712,22 @@ export class RunsReplicationService {
 
       this.logger.debug("Flushed inserts", {
         flushId,
-        taskRunInserts: taskRunInserts.length,
-        payloadInserts: payloadInserts.length,
+        taskRunInserts: combinedTaskRunInserts.length,
+        payloadInserts: combinedPayloadInserts.length,
       });
 
-      this.events.emit("batchFlushed", { flushId, taskRunInserts, payloadInserts });
+      this.events.emit("batchFlushed", {
+        flushId,
+        taskRunInserts: combinedTaskRunInserts,
+        payloadInserts: combinedPayloadInserts,
+      });
 
-      // Record metrics
       const flushDurationMs = performance.now() - flushStartTime;
       const hasErrors = taskRunError !== null || payloadError !== null;
 
       this._batchSizeHistogram.record(batch.length);
       this._flushDurationHistogram.record(flushDurationMs);
       this._batchesFlushedCounter.add(1, { success: !hasErrors });
-
-      if (!taskRunError) {
-        this._taskRunsInsertedCounter.add(taskRunInserts.length);
-      }
-
-      if (!payloadError) {
-        this._payloadsInsertedCounter.add(payloadInserts.length);
-      }
     });
   }
 
@@ -773,10 +828,17 @@ export class RunsReplicationService {
     };
   }
 
-  async #insertTaskRunInserts(taskRunInserts: TaskRunInsertArray[], attempt: number) {
+  async #insertTaskRunInserts(
+    clickhouse: ClickHouse,
+    taskRunInserts: TaskRunInsertArray[],
+    attempt: number
+  ) {
+    if (taskRunInserts.length === 0) {
+      return;
+    }
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
       const [insertError, insertResult] =
-        await this.options.clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
+        await clickhouse.taskRuns.insertCompactArrays(taskRunInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
@@ -796,10 +858,17 @@ export class RunsReplicationService {
     });
   }
 
-  async #insertPayloadInserts(payloadInserts: PayloadInsertArray[], attempt: number) {
+  async #insertPayloadInserts(
+    clickhouse: ClickHouse,
+    payloadInserts: PayloadInsertArray[],
+    attempt: number
+  ) {
+    if (payloadInserts.length === 0) {
+      return;
+    }
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
       const [insertError, insertResult] =
-        await this.options.clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
+        await clickhouse.taskRuns.insertPayloadsCompactArrays(payloadInserts, {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },

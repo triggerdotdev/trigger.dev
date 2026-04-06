@@ -122,6 +122,34 @@ function initializeQueryClickhouseClient() {
   });
 }
 
+/** TaskRun replication to ClickHouse (`RUN_REPLICATION_CLICKHOUSE_URL`); not exported. */
+const defaultRunsReplicationClickhouseClient = singleton(
+  "runsReplicationClickhouseClient",
+  initializeRunsReplicationClickhouseClient
+);
+
+function initializeRunsReplicationClickhouseClient(): ClickHouse {
+  if (!env.RUN_REPLICATION_CLICKHOUSE_URL) {
+    // Runs replication worker gates on this URL; factory may still resolve "replication" for tests.
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.RUN_REPLICATION_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "runs-replication",
+    keepAlive: {
+      enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -187,8 +215,9 @@ export class ClickhouseFactory {
       switch (clientType) {
         case "standard":
         case "events":
-        case "replication":
           return defaultClickhouseClient;
+        case "replication":
+          return defaultRunsReplicationClickhouseClient;
         case "logs":
           return defaultLogsClickhouseClient;
         case "query":
