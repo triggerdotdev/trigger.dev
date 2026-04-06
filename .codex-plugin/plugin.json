@@ -1,0 +1,16 @@
+{
+  "name": "trigger.dev",
+  "version": "0.1.0",
+  "description": "Trigger.dev \u2013 build and deploy fully\u2011managed AI agents and workflows",
+  "author": {
+    "name": "triggerdotdev",
+    "url": "https://github.com/triggerdotdev"
+  },
+  "homepage": "https://github.com/triggerdotdev/trigger.dev",
+  "repository": "https://github.com/triggerdotdev/trigger.dev",
+  "keywords": [
+    "mcp",
+    "codex"
+  ],
+  "mcpServers": "./.mcp.json"
+}
