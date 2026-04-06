@@ -7,6 +7,7 @@ import path from "node:path";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 // Extend test timeout for benchmarks
 vi.setConfig({ testTimeout: 300_000 }); // 5 minutes
@@ -320,7 +321,7 @@ async function runBenchmark(
 
   // Create and start replication service
   const runsReplicationService = new RunsReplicationService({
-    clickhouse,
+    clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
     pgConnectionUrl: postgresContainer.getConnectionUri(),
     serviceName: `benchmark-${name}`,
     slotName: `benchmark_${name.replace(/-/g, "_")}`,

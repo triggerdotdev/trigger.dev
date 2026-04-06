@@ -20,7 +20,10 @@ import {
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
-import { clickhouseFactory, type ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import {
+  clickhouseFactory,
+  type ClickhouseFactory,
+} from "~/services/clickhouse/clickhouseFactory.server";
 
 import { generateSpanId } from "./eventRepository/common.server";
 import type {
@@ -74,9 +77,8 @@ class OTLPExporter {
 
   async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
-      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
-        (resourceMetrics) =>
-          convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
+      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap((resourceMetrics) =>
+        convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
       );
 
       span.setAttribute("metric_row_count", rows.length);
@@ -1202,7 +1204,8 @@ function hasUnpairedSurrogateAtEnd(str: string): boolean {
 
 export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 
-function initializeOTLPExporter() {
+async function initializeOTLPExporter() {
+  await clickhouseFactory.isReady();
   return new OTLPExporter({
     clickhouseFactory,
     verbose: process.env.OTLP_EXPORTER_VERBOSE === "1",
