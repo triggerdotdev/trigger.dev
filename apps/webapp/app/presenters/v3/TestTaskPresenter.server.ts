@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
 import {
   type RuntimeEnvironmentType,
   type TaskRunStatus,
@@ -13,6 +13,7 @@ import { RunsRepository } from "~/services/runsRepository/runsRepository.server"
 import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "./QueueRetrievePresenter.server";
+import { getScheduleTaskRunPayload } from "./getScheduleTaskRunPayload.server";
 
 export type RunTemplate = TaskRunTemplate & {
   scheduledTaskPayload?: ScheduledRun["payload"];
@@ -380,11 +381,3 @@ export class TestTaskPresenter {
   }
 }
 
-async function getScheduleTaskRunPayload(payload: string, payloadType: string) {
-  const packet = await parsePacket({ data: payload, dataType: payloadType });
-  if (!packet.timezone) {
-    packet.timezone = "UTC";
-  }
-  const parsed = ScheduledTaskPayload.safeParse(packet);
-  return parsed;
-}
