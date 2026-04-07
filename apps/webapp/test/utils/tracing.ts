@@ -1,6 +1,5 @@
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { trace } from "@opentelemetry/api";
 import {
   MeterProvider,
   InMemoryMetricExporter,
@@ -16,8 +15,9 @@ export function createInMemoryTracing() {
   });
   provider.register();
 
-  // Retrieve the tracer
-  const tracer = trace.getTracer("test-tracer");
+  // Use the provider's tracer so spans hit this exporter even when a global
+  // NodeTracerProvider was already registered (e.g. via tracer.server import chain).
+  const tracer = provider.getTracer("test-tracer");
 
   return {
     exporter,
