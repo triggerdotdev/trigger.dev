@@ -1,5 +1,69 @@
 # trigger.dev
 
+## 4.4.4
+
+### Patch Changes
+
+- Add platform notifications support to the CLI. The `trigger dev` and `trigger login` commands now fetch and display platform notifications (info, warn, error, success) from the server. Includes discovery-based filtering to conditionally show notifications based on project file patterns, color markup rendering for styled terminal output, and a non-blocking display flow with a spinner fallback for slow fetches. Use `--skip-platform-notifications` flag with `trigger dev` to disable the notification check. ([#3254](https://github.com/triggerdotdev/trigger.dev/pull/3254))
+- Fix dev CLI leaking build directories on rebuild, causing disk space accumulation. Deprecated workers are now pruned (capped at 2 retained) when no active runs reference them. The watchdog process also cleans up `.trigger/tmp/` when the dev CLI is killed ungracefully (e.g. SIGKILL from pnpm). ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
+- Fix `--load` flag being silently ignored on local/self-hosted builds. ([#3114](https://github.com/triggerdotdev/trigger.dev/pull/3114))
+- Add `get_span_details` MCP tool for inspecting individual spans within a run trace. ([#3255](https://github.com/triggerdotdev/trigger.dev/pull/3255))
+
+  - New `get_span_details` tool returns full span attributes, timing, events, and AI enrichment (model, tokens, cost, speed)
+  - Span IDs now shown in `get_run_details` trace output for easy discovery
+  - New API endpoint `GET /api/v1/runs/:runId/spans/:spanId`
+  - New `retrieveSpan()` method on the API client
+
+- MCP server improvements: new tools, bug fixes, and new flags. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
+
+  **New tools:**
+
+  - `get_query_schema` — discover available TRQL tables and columns
+  - `query` — execute TRQL queries against your data
+  - `list_dashboards` — list built-in dashboards and their widgets
+  - `run_dashboard_query` — execute a single dashboard widget query
+  - `whoami` — show current profile, user, and API URL
+  - `list_profiles` — list all configured CLI profiles
+  - `switch_profile` — switch active profile for the MCP session
+  - `start_dev_server` — start `trigger dev` in the background and stream output
+  - `stop_dev_server` — stop the running dev server
+  - `dev_server_status` — check dev server status and view recent logs
+
+  **New API endpoints:**
+
+  - `GET /api/v1/query/schema` — query table schema discovery
+  - `GET /api/v1/query/dashboards` — list built-in dashboards
+
+  **New features:**
+
+  - `--readonly` flag hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes
+  - `read:query` JWT scope for query endpoint authorization
+  - `get_run_details` trace output is now paginated with cursor support
+  - MCP tool annotations (`readOnlyHint`, `destructiveHint`) for all tools
+
+  **Bug fixes:**
+
+  - Fixed `search_docs` tool failing due to renamed upstream Mintlify tool (`SearchTriggerDev` → `search_trigger_dev`)
+  - Fixed `list_deploys` failing when deployments have null `runtime`/`runtimeVersion` fields (#3139)
+  - Fixed `list_preview_branches` crashing due to incorrect response shape access
+  - Fixed `metrics` table column documented as `value` instead of `metric_value` in query docs
+  - Fixed dev CLI leaking build directories on rebuild — deprecated workers now clean up their build dirs when their last run completes
+
+  **Context optimizations:**
+
+  - `get_query_schema` now requires a table name and returns only one table's schema (was returning all tables)
+  - `get_current_worker` no longer inlines payload schemas; use new `get_task_schema` tool instead
+  - Query results formatted as text tables instead of JSON (~50% fewer tokens)
+  - `cancel_run`, `list_deploys`, `list_preview_branches` formatted as text instead of raw JSON
+  - Schema and dashboard API responses cached to avoid redundant fetches
+
+- Add support for setting TTL (time-to-live) defaults at the task level and globally in trigger.config.ts, with per-trigger overrides still taking precedence ([#3196](https://github.com/triggerdotdev/trigger.dev/pull/3196))
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+  - `@trigger.dev/build@4.4.4`
+  - `@trigger.dev/schema-to-json@4.4.4`
+
 ## 4.4.3
 
 ### Patch Changes

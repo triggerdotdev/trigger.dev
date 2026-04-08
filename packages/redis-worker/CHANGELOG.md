@@ -1,5 +1,13 @@
 # @trigger.dev/redis-worker
 
+## 4.4.4
+
+### Patch Changes
+
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+
 ## 4.4.3
 
 ### Patch Changes
