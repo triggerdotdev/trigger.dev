@@ -810,7 +810,6 @@ paths:
             enum:
               [
                 "PENDING",
-                "INSTALLING",
                 "BUILDING",
                 "DEPLOYING",
                 "DEPLOYED",
@@ -873,7 +872,6 @@ paths:
                           enum:
                             [
                               "PENDING",
-                              "INSTALLING",
                               "BUILDING",
                               "DEPLOYING",
                               "DEPLOYED",
