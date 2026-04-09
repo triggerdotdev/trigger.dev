@@ -41,7 +41,7 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
-import { ServiceValidationError } from "~/v3/services/common.server";
+import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -271,8 +271,9 @@ export class RunEngineTriggerTaskService {
         );
 
         if (!queueSizeGuard.ok) {
-          throw new ServiceValidationError(
+          throw new QueueSizeLimitExceededError(
             `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            queueSizeGuard.maximumSize ?? 0,
             undefined,
             "warn"
           );
