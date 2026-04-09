@@ -120,7 +120,10 @@ export class CrashTaskRunService extends BaseService {
       },
     });
 
-    const eventRepository = resolveEventRepositoryForStore(crashedTaskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      crashedTaskRun.taskEventStore,
+      crashedTaskRun.runtimeEnvironment.organizationId
+    );
 
     const [createAttemptFailedEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({

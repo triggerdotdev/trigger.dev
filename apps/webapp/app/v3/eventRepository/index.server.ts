@@ -16,6 +16,21 @@ export const EVENT_STORE_TYPES = {
 
 export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE_TYPES];
 
+/**
+ * Resolve the event repository for a run's persisted `taskEventStore` value and org.
+ * Postgres-backed runs use the Prisma `eventRepository`; ClickHouse-backed runs use
+ * `clickhouseFactory.getEventRepositoryForOrganizationSync`.
+ */
+export function resolveEventRepositoryForStore(
+  store: string,
+  organizationId: string
+): IEventRepository {
+  if (store === EVENT_STORE_TYPES.CLICKHOUSE || store === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    return clickhouseFactory.getEventRepositoryForOrganizationSync(store, organizationId).repository;
+  }
+  return eventRepository;
+}
+
 export async function getConfiguredEventRepository(
   organizationId: string
 ): Promise<{ repository: IEventRepository; store: EventStoreType }> {

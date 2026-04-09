@@ -78,7 +78,10 @@ export class ExpireEnqueuedRunService extends BaseService {
       },
     });
 
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      run.taskEventStore,
+      run.runtimeEnvironment.organization.id
+    );
 
     if (run.ttl) {
       const [completeExpiredRunEventError] = await tryCatch(
