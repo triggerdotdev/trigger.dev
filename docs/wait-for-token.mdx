@@ -82,12 +82,13 @@ The `publicAccessToken` returned by `wait.createToken()` is scoped to that speci
   </Step>
 </Steps>
 
-<Warning>
-  The `token.url` (webhook callback URL) is designed for server-to-server use and does **not** have
-  CORS headers. Don't call it from the browser — use the pattern above instead.
-</Warning>
-
 ## Completing via webhook callback
+
+<Warning>
+  The `token.url` webhook callback URL is designed for server-to-server use and does **not** have
+  CORS headers. Don't call it from the browser, use the [Completing from the
+  browser](#completing-from-the-browser) pattern instead.
+</Warning>
 
 Or you can make an HTTP POST request to the `url` it returns. This is an HTTP callback:
 
