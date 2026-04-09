@@ -27,7 +27,7 @@ import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAle
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export function registerRunEngineEventBusHandlers() {
-  engine.eventBus.on("runSucceeded", async ({ time, run }) => {
+  engine.eventBus.on("runSucceeded", async ({ time, run, organization }) => {
     const [taskRunError, taskRun] = await tryCatch(
       $replica.taskRun.findFirstOrThrow({
         where: {
@@ -60,7 +60,10 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      run.taskEventStore,
+      taskRun.organizationId ?? organization.id
+    );
 
     const [completeSuccessfulRunEventError] = await tryCatch(
       eventRepository.completeSuccessfulRunEvent({
@@ -91,7 +94,7 @@ export function registerRunEngineEventBusHandlers() {
   });
 
   // Handle events
-  engine.eventBus.on("runFailed", async ({ time, run }) => {
+  engine.eventBus.on("runFailed", async ({ time, run, organization }) => {
     const sanitizedError = sanitizeError(run.error);
     const exception = createExceptionPropertiesFromError(sanitizedError);
 
@@ -127,7 +130,10 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      run.taskEventStore,
+      taskRun.organizationId ?? organization.id
+    );
 
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
@@ -181,7 +187,10 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      run.taskEventStore,
+      taskRun.organizationId ?? ""
+    );
 
     const [createAttemptFailedRunEventError] = await tryCatch(
       eventRepository.createAttemptFailedRunEvent({
@@ -282,7 +291,10 @@ export function registerRunEngineEventBusHandlers() {
         return;
       }
 
-      const eventRepository = resolveEventRepositoryForStore(blockedRun.taskEventStore);
+      const eventRepository = resolveEventRepositoryForStore(
+        blockedRun.taskEventStore,
+        blockedRun.organizationId ?? ""
+      );
 
       const [completeCachedRunEventError] = await tryCatch(
         eventRepository.completeCachedRunEvent({
@@ -305,7 +317,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   );
 
-  engine.eventBus.on("runExpired", async ({ time, run }) => {
+  engine.eventBus.on("runExpired", async ({ time, run, organization }) => {
     if (!run.ttl) {
       return;
     }
@@ -342,7 +354,10 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      taskRun.taskEventStore,
+      taskRun.organizationId ?? organization.id
+    );
 
     const [completeExpiredRunEventError] = await tryCatch(
       eventRepository.completeExpiredRunEvent({
@@ -360,7 +375,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("runCancelled", async ({ time, run }) => {
+  engine.eventBus.on("runCancelled", async ({ time, run, organization }) => {
     const [taskRunError, taskRun] = await tryCatch(
       $replica.taskRun.findFirstOrThrow({
         where: {
@@ -393,7 +408,10 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      taskRun.taskEventStore,
+      taskRun.organizationId ?? organization.id
+    );
 
     const error = createJsonErrorObject(run.error);
 
@@ -413,7 +431,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("runRetryScheduled", async ({ time, run, environment, retryAt }) => {
+  engine.eventBus.on("runRetryScheduled", async ({ time, run, environment, retryAt, organization }) => {
     try {
       if (retryAt && time && time >= retryAt) {
         return;
@@ -426,7 +444,10 @@ export function registerRunEngineEventBusHandlers() {
         retryMessage += ` after OOM`;
       }
 
-      const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+      const eventRepository = resolveEventRepositoryForStore(
+        run.taskEventStore ?? "taskEvent",
+        organization.id
+      );
 
       await eventRepository.recordEvent(retryMessage, {
         startTime: BigInt(time.getTime() * 1000000),

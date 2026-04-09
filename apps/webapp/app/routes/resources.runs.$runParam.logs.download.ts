@@ -33,7 +33,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+  const eventRepository = resolveEventRepositoryForStore(
+    run.taskEventStore,
+    run.organizationId ?? ""
+  );
 
   const runEvents = await eventRepository.getRunEvents(
     getTaskEventStoreTableForRun(run),
