@@ -799,10 +799,10 @@ paths:
           name: "page[size]"
           schema:
             type: integer
-            minimum: 1
+            minimum: 5
             maximum: 100
             default: 20
-          description: The number of deployments to return (default 20, max 100).
+          description: The number of deployments to return (default 20, min 5, max 100).
         - in: query
           name: status
           schema:
@@ -832,7 +832,7 @@ paths:
           name: to
           schema:
             type: string
-          description: Filter deployments created on or before this date (ISO 8601).
+          description: Filter deployments created on or before this date (ISO 8601). Only applied when `from` is also provided.
       responses:
         "200":
           description: Successful request
@@ -898,8 +898,7 @@ paths:
                     properties:
                       next:
                         type: string
-                        nullable: true
-                        description: Cursor for the next page. Pass as `page[after]` to get the next page. Null if there are no more results.
+                        description: Cursor for the next page. Pass as `page[after]` to get the next page. Omitted if there are no more results.
         "401":
           description: Unauthorized - Access token is missing or invalid
       tags:

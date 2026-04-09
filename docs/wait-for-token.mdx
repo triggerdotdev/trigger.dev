@@ -70,14 +70,21 @@ The `publicAccessToken` returned by `wait.createToken()` is scoped to that speci
   </Step>
   <Step title="Complete the token from the browser">
     ```ts
-    await fetch(`https://api.trigger.dev/api/v1/waitpoints/tokens/${tokenId}/complete`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${publicAccessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ data: { status: "approved" } }),
-    });
+    const response = await fetch(
+      `https://api.trigger.dev/api/v1/waitpoints/tokens/${token.id}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token.publicAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: { status: "approved" } }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to complete token: ${response.statusText}`);
+    }
     ```
   </Step>
 </Steps>
