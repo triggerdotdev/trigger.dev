@@ -1,12 +1,29 @@
 import {
   type MachinePreset,
+  parsePacket,
   prettyPrintPacket,
+  RunAnnotations,
   SemanticInternalAttributes,
   type TaskRunContext,
   TaskRunError,
   TriggerTraceContext,
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
+
+/**
+ * Minimal structural type for the user messages we extract from an agent
+ * run's task payload. We deliberately avoid importing AI SDK's `UIMessage`
+ * here because the webapp's pinned `ai@4` declares a wider role union
+ * (`'data' | ...`) than `@ai-sdk/react@3`'s `UIMessage` accepts. The data
+ * crosses a JSON boundary anyway (typedjson) — keeping this loose lets the
+ * client-side type be the source of truth.
+ */
+type AgentInitialMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  parts?: unknown[];
+  [key: string]: unknown;
+};
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
   extractIdempotencyKeyScope,
@@ -240,6 +257,30 @@ export class SpanPresenter extends BasePresenter {
 
     const externalTraceId = this.#getExternalTraceId(run.traceContext);
 
+    const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
+    const isAgentRun = taskKind === "AGENT";
+
+    // For agent runs, extract the initial user messages that were supplied
+    // via the task payload (from the original `triggerTask({ payload: { messages: [...] } })`
+    // call). When the run was started with `trigger: "preload"`, this array
+    // will be empty — in that case the first user message arrives later via
+    // the chat-messages input stream and is picked up by the AgentView.
+    let agentInitialMessages: AgentInitialMessage[] = [];
+    if (isAgentRun && run.payload && run.payloadType !== "application/store") {
+      try {
+        const parsed = await parsePacket({
+          data: typeof run.payload === "string" ? run.payload : JSON.stringify(run.payload),
+          dataType: run.payloadType ?? "application/json",
+        });
+        if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).messages)) {
+          agentInitialMessages = (parsed as any).messages as AgentInitialMessage[];
+        }
+      } catch {
+        // Fall back to an empty initial message list — the AgentView will
+        // render whatever arrives over the input/output streams.
+      }
+    }
+
     let region: { name: string; location: string | null } | null = null;
 
     if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
@@ -297,6 +338,8 @@ export class SpanPresenter extends BasePresenter {
       isFinished,
       isRunning: RUNNING_STATUSES.includes(run.status),
       isError: isFailedRunStatus(run.status),
+      isAgentRun,
+      agentInitialMessages,
       payload,
       payloadType: run.payloadType,
       output,
@@ -455,6 +498,7 @@ export class SpanPresenter extends BasePresenter {
         payloadType: true,
         metadata: true,
         metadataType: true,
+        annotations: true,
         maxAttempts: true,
         project: {
           include: {
