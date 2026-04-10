@@ -257,6 +257,27 @@ type TriggerChatTransportOptionsBase<TClientData = unknown> = {
   renewRunAccessToken?: (
     params: RenewRunAccessTokenParams
   ) => string | undefined | null | Promise<string | undefined | null>;
+
+  /**
+   * Read-only "watch" mode for observing an existing chat run from the
+   * outside (e.g. a dashboard viewer that wants to show an agent run's
+   * conversation as it unfolds).
+   *
+   * When `true`, the transport no longer terminates its internal
+   * `ReadableStream` on the `trigger:turn-complete` control chunk. Instead,
+   * it forwards the session update, filters the control chunk, and keeps
+   * reading — so `useChat` receives chunks from turn 2, 3, etc. through a
+   * single long-lived subscription instead of needing a new `sendMessages`
+   * call to open the next turn's stream.
+   *
+   * You should also seed an existing `sessions` entry for the chat and drive
+   * the stream via `reconnectToStream` (or `useChat`'s `resumeStream`/`resume`
+   * option), and provide a placeholder `task` — a watch-mode transport never
+   * triggers new runs.
+   *
+   * @default false
+   */
+  watch?: boolean;
 };
 
 /** Access token used for frontend-triggered runs. */
@@ -360,6 +381,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly streamTimeoutSeconds: number;
   private readonly defaultMetadata: Record<string, unknown> | undefined;
   private readonly triggerOptions: TriggerChatTransportOptions["triggerOptions"];
+  private readonly watchMode: boolean;
   private _onSessionChange:
     | ((
         chatId: string,
@@ -396,6 +418,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.triggerOptions = options.triggerOptions;
     this._onSessionChange = options.onSessionChange;
     this.renewRunAccessToken = options.renewRunAccessToken;
+    this.watchMode = options.watch ?? false;
 
     // Restore sessions from external storage
     if (options.sessions) {
@@ -1040,6 +1063,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                   if (session) {
                     this.notifySessionChange(chatId, session);
                   }
+
+                  // Watch mode: keep the subscription open across turn
+                  // boundaries so the consumer sees turn 2, 3, etc. through
+                  // a single long-lived ReadableStream. Filter the control
+                  // chunk and continue the read loop instead of closing.
+                  if (this.watchMode) {
+                    continue;
+                  }
+
                   internalAbort.abort();
                   try {
                     controller.close();

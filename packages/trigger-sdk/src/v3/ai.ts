@@ -2375,6 +2375,8 @@ export type ChatAgentOptions<
    * waiting for the first message before suspending.
    *
    * Only applies to preloaded runs (triggered via `transport.preload()`).
+   * Takes precedence over `transport.preload(..., { idleTimeoutInSeconds })`
+   * and over {@link ChatAgentOptions.idleTimeoutInSeconds}.
    *
    * @default Same as `idleTimeoutInSeconds`
    */
@@ -2747,9 +2749,13 @@ function chatAgent<
             );
           }
 
-          // Wait for the first real message — use preload-specific timeouts if configured
+          // Wait for the first real message — task-level idle settings win over
+          // `transport.preload(..., { idleTimeoutInSeconds })` / wire payload so
+          // `chat.agent({ idleTimeoutInSeconds, preloadIdleTimeoutInSeconds })` is authoritative.
           const effectivePreloadIdleTimeout =
-            payload.idleTimeoutInSeconds ?? preloadIdleTimeoutInSeconds ?? idleTimeoutInSeconds;
+            preloadIdleTimeoutInSeconds ??
+            idleTimeoutInSeconds ??
+            payload.idleTimeoutInSeconds;
 
           const effectivePreloadTimeout =
             (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ??
@@ -4864,12 +4870,14 @@ function createChatSession(
 ): AsyncIterable<ChatTurn> {
   const {
     signal: runSignal,
-    idleTimeoutInSeconds = 30,
+    idleTimeoutInSeconds: sessionIdleTimeoutOpt,
     timeout = "1h",
     maxTurns = 100,
     compaction: sessionCompaction,
     pendingMessages: sessionPendingMessages,
   } = options;
+
+  const idleTimeoutInSeconds = sessionIdleTimeoutOpt ?? 30;
 
   return {
     [Symbol.asyncIterator]() {
@@ -4887,7 +4895,8 @@ function createChatSession(
           // First turn: handle preload — wait for the first real message
           if (turn === 0 && currentPayload.trigger === "preload") {
             const result = await messagesInput.waitWithIdleTimeout({
-              idleTimeoutInSeconds: currentPayload.idleTimeoutInSeconds ?? idleTimeoutInSeconds,
+              idleTimeoutInSeconds:
+                sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? 30,
               timeout,
               spanName: "waiting for first message",
             });

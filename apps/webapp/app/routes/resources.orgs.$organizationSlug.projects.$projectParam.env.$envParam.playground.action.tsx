@@ -1,8 +1,5 @@
 import { json } from "@remix-run/server-runtime";
 import { type ActionFunctionArgs } from "@remix-run/server-runtime";
-import {
-  generateJWT as internal_generateJWT,
-} from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -10,7 +7,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { mintRunToken } from "~/services/realtime/mintRunToken.server";
 
 const PlaygroundAction = z.object({
   intent: z.enum(["create", "trigger", "renew", "save", "delete"]),
@@ -165,7 +162,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       });
 
-      const jwt = await mintRunToken(environment, result.run.friendlyId);
+      const jwt = await mintRunToken(environment, result.run.friendlyId, {
+        includeInputStreamWrite: true,
+      });
 
       return json({
         runId: result.run.friendlyId,
@@ -180,7 +179,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "runId is required" }, { status: 400 });
       }
 
-      const jwt = await mintRunToken(environment, runId);
+      const jwt = await mintRunToken(environment, runId, { includeInputStreamWrite: true });
       return json({ publicAccessToken: jwt });
     }
 
@@ -250,21 +249,3 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
   }
 };
-
-async function mintRunToken(
-  environment: Parameters<typeof extractJwtSigningSecretKey>[0],
-  runFriendlyId: string
-): Promise<string> {
-  return internal_generateJWT({
-    secretKey: extractJwtSigningSecretKey(environment),
-    payload: {
-      sub: environment.id,
-      pub: true,
-      scopes: [
-        `read:runs:${runFriendlyId}`,
-        `write:inputStreams:${runFriendlyId}`,
-      ],
-    },
-    expirationTime: "1h",
-  });
-}

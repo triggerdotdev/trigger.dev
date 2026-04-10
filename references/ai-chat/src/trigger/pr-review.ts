@@ -157,8 +157,9 @@ export const prReviewChat = chat
   })
   .agent({
     id: "pr-review",
-    idleTimeoutInSeconds: 120,
-    chatAccessTokenTTL: "1m",
+    idleTimeoutInSeconds: 10,
+    preloadIdleTimeoutInSeconds: 10,
+    chatAccessTokenTTL: "60m",
 
     // #region onPreload — clone repo + fetch PRs before first message
     onPreload: async ({ chatId, clientData }) => {
