@@ -79,9 +79,14 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { useCanViewLogsPage } from "~/hooks/useCanViewLogsPage";
+import { findProjectBySlug } from "~/models/project.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { AgentView, type AgentViewAuth } from "~/components/runs/v3/agent/AgentView";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { mintRunToken } from "~/services/realtime/mintRunToken.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
@@ -124,7 +129,47 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       linkedRunId,
     });
 
-    return typedjson(result);
+    if (!result) {
+      return redirectWithErrorMessage(
+        v3RunPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam },
+          { friendlyId: runParam }
+        ),
+        request,
+        `Event not found.`
+      );
+    }
+
+    // For agent runs, mint a read-only run-scoped token so the Agent tab
+    // can subscribe to the run's chat output stream from the browser. We
+    // also forward the initial user messages extracted from the task
+    // payload so the AgentView can seed its merged message list (empty for
+    // runs started via `trigger: "preload"`).
+    let agentView: AgentViewAuth | null = null;
+    if (result.type === "run" && result.run.isAgentRun) {
+      const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+      const environment = project
+        ? await findEnvironmentBySlug(project.id, envParam, userId)
+        : null;
+      if (environment) {
+        const publicAccessToken = await mintRunToken(environment, result.run.friendlyId);
+        agentView = {
+          publicAccessToken,
+          apiOrigin: env.API_ORIGIN || env.LOGIN_ORIGIN,
+          initialMessages: (result.run.agentInitialMessages ?? []) as AgentViewAuth["initialMessages"],
+        };
+      }
+    }
+
+    // Reconstruct the discriminated union explicitly. Spreading
+    // `{ ...result, agentView }` collapses the union and loses the
+    // `type === "run" | "span"` discriminant downstream in `SpanView`.
+    if (result.type === "run") {
+      return typedjson({ type: "run" as const, run: result.run, agentView });
+    }
+    return typedjson({ type: "span" as const, span: result.span, agentView });
   } catch (error) {
     logger.error("Error loading span", {
       projectParam,
@@ -214,6 +259,7 @@ export function SpanView({
       return (
         <RunBody
           run={fetcher.data.run}
+          agentView={fetcher.data.agentView}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -348,11 +394,13 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 
 function RunBody({
   run,
+  agentView,
   runParam,
   spanId,
   closePanel,
 }: {
   run: SpanRun;
+  agentView: AgentViewAuth | null;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -405,6 +453,18 @@ function RunBody({
           >
             Overview
           </TabButton>
+          {run.isAgentRun && (
+            <TabButton
+              isActive={tab === "agent"}
+              layoutId="span-run"
+              onClick={() => {
+                replace({ tab: "agent" });
+              }}
+              shortcut={{ key: "a" }}
+            >
+              Agent
+            </TabButton>
+          )}
           <TabButton
             isActive={tab === "detail"}
             layoutId="span-run"
@@ -440,7 +500,12 @@ function RunBody({
       </div>
       <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div>
-          {tab === "detail" ? (
+          {tab === "agent" && run.isAgentRun && agentView ? (
+            <AgentView
+              run={{ friendlyId: run.friendlyId, taskIdentifier: run.taskIdentifier }}
+              agentView={agentView}
+            />
+          ) : tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
               <Property.Table>
                 <Property.Item>

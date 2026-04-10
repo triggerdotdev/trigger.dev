@@ -52,14 +52,18 @@ export async function cloneRepo({
   clonePath: string;
   token?: string | null;
 }): Promise<void> {
-  const cloneUrl = token
-    ? `https://x-access-token:${token}@github.com/${owner}/${repo}.git`
-    : `https://github.com/${owner}/${repo}.git`;
+  async function runClone(): Promise<void> {
+    const cloneUrl = token
+      ? `https://x-access-token:${token}@github.com/${owner}/${repo}.git`
+      : `https://github.com/${owner}/${repo}.git`;
 
-  logger.info("Cloning repo", { owner, repo, clonePath });
+    await execFileAsync("git", ["clone", "--depth=1", cloneUrl, clonePath], {
+      timeout: 60_000,
+    });
+  }
 
-  await execFileAsync("git", ["clone", "--depth=1", cloneUrl, clonePath], {
-    timeout: 60_000,
+  await logger.trace("cloneRepo", runClone, {
+    icon: "tabler-brand-github",
   });
 }
 // #endregion

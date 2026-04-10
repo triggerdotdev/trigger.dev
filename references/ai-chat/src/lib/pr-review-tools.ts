@@ -218,7 +218,15 @@ export const executeCode = tool({
       return {
         description,
         success: true as const,
-        result: execResult.exports,
+        // Sanitize the sandbox's `module.exports` so the value matches the
+        // strict JSON shape that AI SDK's `jsonValueSchema` accepts. Raw JS
+        // can produce `Infinity`, `NaN`, `undefined`, `BigInt`, etc., none
+        // of which survive Zod v4's `z.number()` (which rejects non-finite
+        // numbers). The full message history is re-validated at the start
+        // of every subsequent `streamText` call, so an unsanitized value
+        // here would crash the agent on the *next* turn even though the
+        // current turn appears to succeed.
+        result: toJsonValue(execResult.exports),
       };
     });
 
@@ -230,6 +238,34 @@ export const executeCode = tool({
     return result;
   },
 });
+
+/**
+ * Coerce arbitrary JS to a value compatible with AI SDK's `jsonValueSchema`
+ * (`null | string | number | boolean | object | array`, where `number` must
+ * be finite).
+ *
+ * Uses `JSON.parse(JSON.stringify(...))` with a replacer so non-finite
+ * numbers become `null` (matching `JSON.stringify`'s default loss for
+ * `NaN`/`Infinity` when encountered as object values), `BigInt` is
+ * stringified, and `undefined` / functions are dropped — same coercions
+ * `JSON.stringify` already applies, but called explicitly so the result
+ * is a plain JSON value tree the SDK can re-validate on later turns.
+ */
+function toJsonValue(value: unknown): unknown {
+  try {
+    return JSON.parse(
+      JSON.stringify(value, (_key, v) => {
+        if (typeof v === "number" && !Number.isFinite(v)) return null;
+        if (typeof v === "bigint") return v.toString();
+        return v;
+      })
+    );
+  } catch {
+    // Circular references or other JSON.stringify failures — fall back to a
+    // descriptive placeholder so the tool result is still valid JSON.
+    return { error: "Result was not JSON-serializable" };
+  }
+}
 // #endregion
 
 // #region Exports
