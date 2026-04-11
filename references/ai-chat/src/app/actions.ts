@@ -110,6 +110,16 @@ export async function deleteSessionAction(chatId: string) {
   await prisma.chatSession.delete({ where: { id: chatId } }).catch(() => { });
 }
 
+export async function getSessionForChat(chatId: string) {
+  const session = await prisma.chatSession.findUnique({ where: { id: chatId } });
+  if (!session) return null;
+  return {
+    runId: session.runId,
+    publicAccessToken: session.publicAccessToken,
+    lastEventId: session.lastEventId ?? undefined,
+  };
+}
+
 export async function getAllSessions() {
   const sessions = await prisma.chatSession.findMany();
   const result: Record<string, { runId: string; publicAccessToken: string; lastEventId?: string }> =

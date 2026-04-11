@@ -607,6 +607,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   reconnectToStream = async (
     options: {
       chatId: string;
+      abortSignal?: AbortSignal | undefined;
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk> | null> => {
     const session = this.sessions.get(options.chatId);
@@ -623,13 +624,86 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const abortController = new AbortController();
     this.activeStreams.set(options.chatId, abortController);
 
+    // When the AI SDK (or caller) provides an abortSignal (e.g. from
+    // useChat's stop()), use it as the stream signal so stop sends
+    // the stop input stream signal to the backend. Fall back to the
+    // internal controller for stream lifecycle management.
+    const abortSignal = options.abortSignal
+      ? AbortSignal.any([options.abortSignal, abortController.signal])
+      : abortController.signal;
+
     return this.subscribeToStream(
       session.runId,
       session.publicAccessToken,
-      abortController.signal,
+      abortSignal,
       options.chatId,
-      { sendStopOnAbort: false }
+      // Send stop when the caller's signal fires (user-initiated stop).
+      // The internal abortController is only for stream management.
+      { sendStopOnAbort: !!options.abortSignal }
     );
+  };
+
+  /**
+   * Stop the current generation for a chat session.
+   *
+   * Sends a stop signal to the backend task via input streams and closes
+   * the active SSE connection. Use this as your stop button handler —
+   * it works for both initial connections and reconnected streams
+   * (after page refresh).
+   *
+   * When the upstream AI SDK fix lands (passing `abortSignal` through
+   * `reconnectToStream`), `useChat`'s built-in `stop()` will also work.
+   * Until then, use this method for reliable stop behavior.
+   *
+   * @returns `true` if the stop signal was sent, `false` if there's no active session.
+   *
+   * @example
+   * ```tsx
+   * const transport = useTriggerChatTransport({ task: "my-chat", ... });
+   * const { messages, sendMessage } = useChat({ transport });
+   *
+   * <button onClick={() => transport.stopGeneration(chatId)}>Stop</button>
+   * ```
+   */
+  stopGeneration = async (chatId: string): Promise<boolean> => {
+    const session = this.sessions.get(chatId);
+    if (!session?.runId) return false;
+
+    const sendStop = async (token: string) => {
+      const api = new ApiClient(this.baseURL, token);
+      await api.sendInputStream(session.runId, CHAT_STOP_STREAM_ID, { stop: true });
+    };
+
+    try {
+      await sendStop(session.publicAccessToken);
+    } catch (err) {
+      if (isRunPatAuthError(err) && this.renewRunAccessToken) {
+        const newToken = await this.renewRunPatForSession(chatId, session.runId);
+        if (newToken) {
+          try {
+            await sendStop(newToken);
+          } catch {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+
+    session.skipToTurnComplete = true;
+
+    // Abort the active stream (if any) to close the SSE connection
+    // and end the ReadableStream, causing useChat to finalize.
+    const activeStream = this.activeStreams.get(chatId);
+    if (activeStream) {
+      activeStream.abort();
+      this.activeStreams.delete(chatId);
+    }
+
+    return true;
   };
 
   /**
@@ -1140,4 +1214,3 @@ export {
   type InferChatClientData,
   type InferChatUIMessage,
 } from "./chat-client.js";
-
