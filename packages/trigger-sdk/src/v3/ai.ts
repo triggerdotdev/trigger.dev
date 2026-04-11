@@ -3199,8 +3199,13 @@ function chatAgent<
 
                   // Wait for onFinish to fire — on abort this may resolve slightly
                   // after pipeChat, since the stream's cancel() handler is async.
+                  // Race with a timeout so a stop-abort that prevents onFinish from
+                  // firing doesn't hang the turn loop indefinitely.
                   if (onFinishAttached) {
-                    await onFinishPromise;
+                    await Promise.race([
+                      onFinishPromise,
+                      new Promise<void>((r) => setTimeout(r, 2_000)),
+                    ]);
                   }
 
                   // Capture token usage from the streamText result (if available).
@@ -3539,7 +3544,7 @@ function chatAgent<
                       async () => {
                         await onTurnComplete({
                           ...turnCompleteEvent,
-                          lastEventId: turnCompleteResult.lastEventId,
+                          lastEventId: turnCompleteResult?.lastEventId,
                         });
 
                         // Check if onTurnComplete replaced messages (compaction)

@@ -5,7 +5,7 @@ import type { ChatUiMessage } from "@/lib/chat-tools";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
 import { usePendingMessages } from "@trigger.dev/sdk/chat/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { MODEL_OPTIONS } from "@/lib/models";
 
@@ -267,12 +267,20 @@ export function Chat({
   const turnCounter = useRef(0);
   const [ttfbHistory, setTtfbHistory] = useState<TtfbEntry[]>([]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } = useChat({
+  const { messages, setMessages, sendMessage, stop: aiStop, status, error } = useChat({
     id: chatId,
     messages: initialMessages,
     transport,
     resume: resumeProp,
   });
+
+  // Use transport.stopGeneration for reliable stop after reconnect.
+  // Once the AI SDK passes abortSignal through reconnectToStream,
+  // aiStop() alone will suffice. Until then, this covers both cases.
+  const stop = useCallback(() => {
+    transport.stopGeneration(chatId);
+    aiStop();
+  }, [transport, chatId, aiStop]);
 
   // Notify parent of first user message (for chat metadata creation)
   useEffect(() => {
