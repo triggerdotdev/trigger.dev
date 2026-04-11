@@ -520,6 +520,29 @@ const transport = useTriggerChatTransport({
 });
 ```
 
+### transport.stopGeneration()
+
+Stop the current generation for a chat session. Sends a stop signal to the backend task and closes the active SSE connection.
+
+```ts
+transport.stopGeneration(chatId: string): Promise<boolean>
+```
+
+Returns `true` if the stop signal was sent, `false` if there's no active session. Works for both initial connections and reconnected streams (after page refresh with `resume: true`).
+
+Use alongside `useChat`'s `stop()` for a complete stop experience:
+
+```tsx
+const { stop: aiStop } = useChat({ transport });
+
+const stop = useCallback(() => {
+  transport.stopGeneration(chatId);
+  aiStop();
+}, [transport, chatId, aiStop]);
+```
+
+See [Stop generation](/ai-chat/frontend#stop-generation) for full details.
+
 ### transport.preload()
 
 Eagerly trigger a run before the first message.
