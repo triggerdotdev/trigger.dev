@@ -156,6 +156,13 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
   brand new chats, there's nothing to reconnect to.
 </Info>
 
+<Note>
+  After resuming, `useChat`'s built-in `stop()` won't send the stop signal to the backend because
+  the AI SDK doesn't pass its abort signal through `reconnectToStream`. Use
+  `transport.stopGeneration(chatId)` for reliable stop behavior after resume — see
+  [Stop generation](#stop-generation) for the recommended pattern.
+</Note>
+
 <Warning>
   In React strict mode (enabled by default in Next.js dev), you may see a `TypeError: Cannot read
   properties of undefined (reading 'state')` in the console when using `resume`. This is a [known
@@ -235,10 +242,18 @@ Supports Zod, ArkType, Valibot, and other schema libraries supported by the SDK.
 
 ## Stop generation
 
-Calling `stop()` from `useChat` sends a stop signal to the running task via input streams. The task aborts the current `streamText` call, but the run stays alive for the next message:
+Use `transport.stopGeneration(chatId)` to stop the current generation. This sends a stop signal to the running task via input streams, aborting the current `streamText` call while keeping the run alive for the next message.
+
+`stopGeneration` works in all scenarios — including after a page refresh when the stream was reconnected via `resume`. Call it alongside `useChat`'s `stop()` to also update the frontend state:
 
 ```tsx
-const { messages, sendMessage, stop, status } = useChat({ transport });
+const { messages, sendMessage, stop: aiStop, status } = useChat({ transport });
+
+// Wrap both calls in a single stop handler
+const stop = useCallback(() => {
+  transport.stopGeneration(chatId);
+  aiStop();
+}, [transport, chatId, aiStop]);
 
 {
   status === "streaming" && (
@@ -248,6 +263,20 @@ const { messages, sendMessage, stop, status } = useChat({ transport });
   );
 }
 ```
+
+<Info>
+  `transport.stopGeneration(chatId)` handles the backend stop signal and closes
+  the SSE connection, while `aiStop()` (from `useChat`) updates the frontend
+  status to `"ready"` and fires the `onFinish` callback.
+</Info>
+
+<Tip>
+  A [PR to the AI SDK](https://github.com/vercel/ai/pull/14350) has been
+  submitted to pass `abortSignal` through `reconnectToStream`, which would make
+  `useChat`'s built-in `stop()` work after resume without needing
+  `stopGeneration`. Until that lands, use the pattern above for reliable stop
+  behavior after page refresh.
+</Tip>
 
 See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for how to handle stop signals in your task.
 
