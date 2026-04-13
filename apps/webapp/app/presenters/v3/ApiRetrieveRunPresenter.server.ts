@@ -34,7 +34,6 @@ const commonRunSelect = {
   metadata: true,
   metadataType: true,
   ttl: true,
-  runTags: true,
   costInCents: true,
   baseCostInCents: true,
   usageDurationMs: true,
