@@ -7,7 +7,7 @@ import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo, timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
@@ -176,7 +176,7 @@ export class LogsListPresenter extends BasePresenter {
       (search !== undefined && search !== "") ||
       !time.isDefault;
 
-    const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
+    const possibleTasksAsync = getTaskIdentifiers(environmentId);
 
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
@@ -386,12 +386,7 @@ export class LogsListPresenter extends BasePresenter {
         next: nextCursor,
         previous: undefined, // For now, only support forward pagination
       },
-      possibleTasks: possibleTasks
-        .map((task) => ({
-          slug: task.slug,
-          triggerSource: task.triggerSource,
-        }))
-        .sort((a, b) => a.slug.localeCompare(b.slug)),
+      possibleTasks,
       bulkActions: bulkActions.map((bulkAction) => ({
         id: bulkAction.friendlyId,
         type: bulkAction.type,

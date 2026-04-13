@@ -677,6 +677,7 @@ export function setupBatchQueueCallbacks() {
         const triggerFailedTaskService = new TriggerFailedTaskService({
           prisma,
           engine,
+          replicaPrisma: $replica,
         });
 
         // Check for pre-marked error items (e.g. oversized payloads)
