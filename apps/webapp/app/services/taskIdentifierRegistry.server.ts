@@ -10,7 +10,6 @@ import {
 
 function toTriggerSource(source: string | undefined): TaskTriggerSource {
   if (source === "SCHEDULED" || source === "schedule") return "SCHEDULED";
-  if (source === "AGENT" || source === "agent") return "AGENT";
   return "STANDARD";
 }
 

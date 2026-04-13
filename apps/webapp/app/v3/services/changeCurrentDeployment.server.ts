@@ -117,5 +117,7 @@ export class ChangeCurrentDeploymentService extends BaseService {
     if (syncError) {
       logger.error("Error syncing task identifiers on deployment change", { error: syncError });
     }
+
+    await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
   }
 }
