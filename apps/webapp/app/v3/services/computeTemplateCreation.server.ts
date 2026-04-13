@@ -3,11 +3,10 @@ import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
+import { resolveComputeAccess } from "../regionAccess.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -101,9 +100,7 @@ export class ComputeTemplateCreationService {
         },
       });
 
-      throw new ServiceValidationError(
-        `Compute template creation failed: ${result.error}`
-      );
+      throw new ServiceValidationError(`Compute template creation failed: ${result.error}`);
     }
 
     logger.info("Compute template created", {
@@ -132,16 +129,15 @@ export class ComputeTemplateCreationService {
       },
     });
 
-    if (project?.defaultWorkerGroup?.workloadType === "MICROVM") {
+    if (!project) {
+      return "skip";
+    }
+
+    if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
       return "required";
     }
 
-    const flag = makeFlag(prisma);
-    const hasComputeAccess = await flag({
-      key: FEATURE_FLAG.hasComputeAccess,
-      defaultValue: false,
-      overrides: (project?.organization?.featureFlags as Record<string, unknown>) ?? {},
-    });
+    const hasComputeAccess = await resolveComputeAccess(prisma, project.organization.featureFlags);
 
     if (hasComputeAccess) {
       return "shadow";

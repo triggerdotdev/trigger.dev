@@ -4,6 +4,7 @@ import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag, makeSetFlag } from "~/v3/featureFlags.server";
+import { isComputeRegionAccessible, resolveComputeAccess } from "~/v3/regionAccess.server";
 
 export class WorkerGroupService extends WithRunEngine {
   private readonly defaultNamePrefix = "worker_group";
@@ -207,6 +208,7 @@ export class WorkerGroupService extends WithRunEngine {
       },
       include: {
         defaultWorkerGroup: true,
+        organization: { select: { featureFlags: true } },
       },
     });
 
@@ -241,6 +243,17 @@ export class WorkerGroupService extends WithRunEngine {
 
       if (workerGroup.hidden) {
         throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
+      }
+
+      if (workerGroup.workloadType === "MICROVM") {
+        const hasComputeAccess = await resolveComputeAccess(
+          this._prisma,
+          project.organization.featureFlags
+        );
+
+        if (!isComputeRegionAccessible(workerGroup, hasComputeAccess)) {
+          throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
+        }
       }
 
       return workerGroup;
