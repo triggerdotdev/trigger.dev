@@ -637,13 +637,7 @@ export class RunEngine {
               priorityMs,
               queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
               ttl: resolvedTtl,
-              tags:
-                tags.length === 0
-                  ? undefined
-                  : {
-                    connect: tags,
-                  },
-              runTags: tags.length === 0 ? undefined : tags.map((tag) => tag.name),
+              runTags: tags.length === 0 ? undefined : tags,
               oneTimeUseToken,
               parentTaskRunId,
               rootTaskRunId,

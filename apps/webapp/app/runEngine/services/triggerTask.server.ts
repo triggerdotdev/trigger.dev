@@ -20,7 +20,6 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { createTags } from "~/models/taskRunTag.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
@@ -287,14 +286,11 @@ export class RunEngineTriggerTaskService {
           )
         : undefined;
 
-      //upsert tags
-      const tags = await createTags(
-        {
-          tags: body.options?.tags,
-          projectId: environment.projectId,
-        },
-        this.prisma
-      );
+      const tags = body.options?.tags
+        ? typeof body.options.tags === "string"
+          ? [body.options.tags]
+          : body.options.tags
+        : [];
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
