@@ -286,11 +286,13 @@ export class RunEngineTriggerTaskService {
           )
         : undefined;
 
-      const tags = body.options?.tags
-        ? typeof body.options.tags === "string"
-          ? [body.options.tags]
-          : body.options.tags
-        : [];
+      const tags = (
+        body.options?.tags
+          ? typeof body.options.tags === "string"
+            ? [body.options.tags]
+            : body.options.tags
+          : []
+      ).filter((tag) => tag.trim().length > 0);
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
