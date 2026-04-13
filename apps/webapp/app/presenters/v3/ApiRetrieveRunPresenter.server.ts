@@ -34,7 +34,7 @@ const commonRunSelect = {
   metadata: true,
   metadataType: true,
   ttl: true,
-  tags: true,
+  runTags: true,
   costInCents: true,
   baseCostInCents: true,
   usageDurationMs: true,
@@ -459,9 +459,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     durationMs: run.usageDurationMs,
     isTest: run.isTest,
     depth: run.depth,
-    tags: run.tags
-      .map((t: { name: string }) => t.name)
-      .sort((a: string, b: string) => a.localeCompare(b)),
+    tags: [...(run.runTags ?? [])].sort((a: string, b: string) => a.localeCompare(b)),
     ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(run.status, apiVersion),
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
