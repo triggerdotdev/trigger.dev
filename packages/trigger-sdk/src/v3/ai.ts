@@ -1641,27 +1641,29 @@ export type ToStreamTextOptionsOptions = {
  */
 function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
   const prompt = locals.get(chatPromptKey);
-  if (!prompt) return {};
+  const result: Record<string, unknown> = {};
 
-  const result: Record<string, unknown> = {
-    system: prompt.text,
-  };
+  // Prompt-related options (only if chat.prompt.set() was called)
+  if (prompt) {
+    result.system = prompt.text;
 
-  // Resolve model via registry if both are present
-  if (options?.registry && prompt.model) {
-    result.model = options.registry.languageModel(prompt.model);
+    // Resolve model via registry if both are present
+    if (options?.registry && prompt.model) {
+      result.model = options.registry.languageModel(prompt.model);
+    }
+
+    // Spread config (temperature, maxTokens, etc.)
+    if (prompt.config) {
+      Object.assign(result, prompt.config);
+    }
+
+    // Add telemetry (forward additional metadata from caller)
+    const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
+    Object.assign(result, telemetry);
   }
-
-  // Spread config (temperature, maxTokens, etc.)
-  if (prompt.config) {
-    Object.assign(result, prompt.config);
-  }
-
-  // Add telemetry (forward additional metadata from caller)
-  const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
-  Object.assign(result, telemetry);
 
   // Auto-inject prepareStep for compaction, pending messages, and background context injection.
+  // This runs regardless of whether a prompt is set — these features are independent.
   const taskCompaction = locals.get(chatAgentCompactionKey);
   const taskPendingMessages = locals.get(chatPendingMessagesKey);
 
