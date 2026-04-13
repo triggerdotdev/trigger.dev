@@ -205,7 +205,7 @@ export function OrganizationSettingsSideMenu({
         )}
       </div>
       <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
-        <HelpAndFeedback />
+        <HelpAndFeedback organizationId={organization.id} />
         <AskAI />
       </div>
     </div>
