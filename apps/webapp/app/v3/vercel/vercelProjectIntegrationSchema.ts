@@ -48,6 +48,7 @@ export const VercelIntegrationConfigSchema = z.object({
     displayName: z.string(),
   }).nullable().optional(),
   discoverEnvVars: z.array(EnvSlugSchema).nullable().optional(),
+  autoPromote: z.boolean().optional().default(true),
 });
 
 export type VercelIntegrationConfig = z.infer<typeof VercelIntegrationConfigSchema>;
@@ -89,6 +90,7 @@ export function createDefaultVercelIntegrationData(
       pullEnvVarsBeforeBuild: ["prod", "preview"],
       discoverEnvVars: ["prod", "preview"],
       vercelStagingEnvironment: null,
+      autoPromote: true,
     },
     syncEnvVarsMapping: {},
     vercelProjectId,
