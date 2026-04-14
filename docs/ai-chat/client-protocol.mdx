@@ -251,6 +251,45 @@ After sending, subscribe to the output stream again (same URL, same auth) to rec
   On turn 2+, only send the **new** message(s) in the `messages` array — not the full history. The agent accumulates the conversation internally. On turn 1 (or after a continuation), send the **full** message history.
 </Warning>
 
+### Tool approval responses
+
+When a tool requires approval (`needsApproval: true`), the agent streams the tool call with an `approval-requested` state and completes the turn. After the user approves or denies, send the **updated assistant message** (with `approval-responded` tool parts) back via the same input stream:
+
+```bash
+POST /realtime/v1/streams/{runId}/input/chat-messages
+Authorization: Bearer <publicAccessToken>
+Content-Type: application/json
+
+{
+  "data": {
+    "messages": [
+      {
+        "id": "asst-msg-1",
+        "role": "assistant",
+        "parts": [
+          { "type": "text", "text": "I'll send that email for you." },
+          {
+            "type": "tool-sendEmail",
+            "toolCallId": "call-1",
+            "state": "approval-responded",
+            "input": { "to": "user@example.com", "subject": "Hello" },
+            "approval": { "id": "approval-1", "approved": true }
+          }
+        ]
+      }
+    ],
+    "chatId": "conversation-123",
+    "trigger": "submit-message"
+  }
+}
+```
+
+The agent matches the incoming message by its `id` against the accumulated conversation. If a match is found, it **replaces** the existing message (instead of appending). This updates the tool approval state, and `streamText` executes the approved tool on the next step.
+
+<Note>
+  The message `id` must match the one the agent assigned during streaming. If you're using `TriggerChatTransport`, IDs are kept in sync automatically. Custom transports should use the `messageId` from the stream's `start` chunk.
+</Note>
+
 ## Pending and steering messages
 
 You can send messages to the agent **while it's still streaming a response**. These are called pending messages — the agent receives them mid-turn and can inject them between tool-call steps.
