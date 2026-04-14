@@ -433,16 +433,17 @@ Use with `useChat<Msg>({ transport })` when using [`chat.withUIMessage`](/ai-cha
 
 Options for customizing `toUIMessageStream()`. Set as static defaults via `uiMessageStreamOptions` on `chat.agent()`, or override per-turn via `chat.setUIMessageStreamOptions()`. See [Stream options](/ai-chat/backend#stream-options) for usage examples.
 
-Derived from the AI SDK's `UIMessageStreamOptions` with `onFinish`, `originalMessages`, and `generateMessageId` omitted (managed internally).
+Derived from the AI SDK's `UIMessageStreamOptions` with `onFinish` and `originalMessages` omitted (managed internally — `onFinish` for response capture, `originalMessages` for cross-turn message ID reuse).
 
-| Option            | Type                              | Default           | Description                                                                                                                         |
-| ----------------- | --------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `onError`         | `(error: unknown) => string`      | Raw error message | Called on LLM errors and tool execution errors. Return a sanitized string — sent as `{ type: "error", errorText }` to the frontend. |
-| `sendReasoning`   | `boolean`                         | `true`            | Send reasoning parts to the client                                                                                                  |
-| `sendSources`     | `boolean`                         | `false`           | Send source parts to the client                                                                                                     |
-| `sendFinish`      | `boolean`                         | `true`            | Send the finish event. Set to `false` when chaining multiple `streamText` calls.                                                    |
-| `sendStart`       | `boolean`                         | `true`            | Send the message start event. Set to `false` when chaining.                                                                         |
-| `messageMetadata` | `(options: { part }) => metadata` | —                 | Extract message metadata to send to the client. Called on `start` and `finish` events.                                              |
+| Option              | Type                              | Default              | Description                                                                                                                         |
+| ------------------- | --------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `onError`           | `(error: unknown) => string`      | Raw error message    | Called on LLM errors and tool execution errors. Return a sanitized string — sent as `{ type: "error", errorText }` to the frontend. |
+| `sendReasoning`     | `boolean`                         | `true`               | Send reasoning parts to the client                                                                                                  |
+| `sendSources`       | `boolean`                         | `false`              | Send source parts to the client                                                                                                     |
+| `sendFinish`        | `boolean`                         | `true`               | Send the finish event. Set to `false` when chaining multiple `streamText` calls.                                                    |
+| `sendStart`         | `boolean`                         | `true`               | Send the message start event. Set to `false` when chaining.                                                                         |
+| `messageMetadata`   | `(options: { part }) => metadata` | —                    | Extract message metadata to send to the client. Called on `start` and `finish` events.                                              |
+| `generateMessageId` | `() => string`                    | AI SDK's `generateId` | Custom message ID generator for response messages (e.g. UUID-v7). IDs are shared between frontend and backend via the stream's `start` chunk. |
 
 ## TriggerChatTransport options
 
