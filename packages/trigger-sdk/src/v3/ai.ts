@@ -1756,14 +1756,20 @@ export type PipeChatOptions = {
  * Set static defaults via `uiMessageStreamOptions` on `chat.agent()`, or
  * override per-turn via `chat.setUIMessageStreamOptions()`.
  *
- * `onFinish`, `originalMessages`, and `generateMessageId` are omitted because
- * they are managed internally for response capture and message accumulation.
+ * `onFinish` is omitted because it is managed internally for response capture.
  * Use `streamText`'s `onFinish` for custom finish handling, or drop down to
  * raw task mode with `chat.pipe()` for full control.
+ *
+ * `originalMessages` is omitted because it is automatically set from the
+ * accumulated conversation history, ensuring message IDs are reused across
+ * turns (e.g. for tool approval continuations).
+ *
+ * `generateMessageId` can be set to control ID generation for response
+ * messages (e.g. UUID-v7). If not set, the AI SDK's default `generateId` is used.
  */
 export type ChatUIMessageStreamOptions<TUIM extends UIMessage = UIMessage> = Omit<
   UIMessageStreamOptions<TUIM>,
-  "onFinish" | "originalMessages" | "generateMessageId"
+  "onFinish" | "originalMessages"
 >;
 
 /**
@@ -2429,9 +2435,10 @@ export type ChatAgentOptions<
    * inside `run()` or lifecycle hooks. Per-turn values are merged on top
    * of these defaults (per-turn wins on conflicts).
    *
-   * `onFinish`, `originalMessages`, and `generateMessageId` are managed
-   * internally and cannot be overridden here. Use `streamText`'s `onFinish`
-   * for custom finish handling, or drop to raw task mode for full control.
+   * `onFinish` and `originalMessages` are managed internally and cannot be
+   * overridden here. Use `streamText`'s `onFinish` for custom finish
+   * handling. `generateMessageId` can be set to control response message
+   * ID generation (e.g. UUID-v7).
    *
    * @example
    * ```ts
@@ -3174,10 +3181,13 @@ function chatAgent<
                     // Auto-pipe if the run function returned a StreamTextResult or similar,
                     // but only if pipeChat() wasn't already called manually during this turn.
                     // We call toUIMessageStream ourselves to attach onFinish for response capture.
+                    // Pass originalMessages so the AI SDK reuses message IDs across turns
+                    // (e.g. for tool approval continuations / HITL flows).
                     if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
                       onFinishAttached = true;
                       const uiStream = runResult.toUIMessageStream({
                         ...resolveUIMessageStreamOptions(),
+                        originalMessages: accumulatedUIMessages,
                         onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
                           capturedResponseMessage = responseMessage as TUIMessage;
                           resolveOnFinish!();
