@@ -463,9 +463,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // If we have an existing run, send the message via input stream
     // to resume the conversation in the same run.
     if (session?.runId) {
+      const slicedMessages = trigger === "submit-message" ? messages.slice(-1) : messages;
       const minimalPayload = {
         ...payload,
-        messages: trigger === "submit-message" ? messages.slice(-1) : messages,
+        messages: slicedMessages,
       };
 
       const sendChatMessages = async (token: string) => {

@@ -3025,11 +3025,32 @@ function chatAgent<
                     accumulatedUIMessages = [...cleanedUIMessages];
                     // No new user messages for regenerate — just the response (added below)
                   } else {
-                    // Submit: frontend sent only the new user message(s). Append to accumulator.
-                    accumulatedMessages.push(...incomingModelMessages);
-                    accumulatedUIMessages.push(...cleanedUIMessages);
-                    turnNewModelMessages.push(...incomingModelMessages);
-                    turnNewUIMessages.push(...cleanedUIMessages);
+                    // Submit: check if any incoming message updates an existing one (by ID).
+                    // This handles tool approval responses, where the frontend resends the
+                    // assistant message with updated tool parts (approval-responded).
+                    // IDs match because we always pass generateMessageId + originalMessages
+                    // to toUIMessageStream, so the backend's start chunk carries the same
+                    // messageId that the frontend uses.
+                    let replaced = false;
+                    for (const incoming of cleanedUIMessages) {
+                      const idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
+                      if (idx !== -1) {
+                        accumulatedUIMessages[idx] = incoming as TUIMessage;
+                        replaced = true;
+                      } else {
+                        accumulatedUIMessages.push(incoming as TUIMessage);
+                        turnNewUIMessages.push(incoming as TUIMessage);
+                      }
+                    }
+                    if (replaced) {
+                      // Reconvert all model messages since a replacement changes the structure
+                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                    } else {
+                      accumulatedMessages.push(...incomingModelMessages);
+                    }
+                    if (turnNewUIMessages.length > 0) {
+                      turnNewModelMessages.push(...(await toModelMessages(turnNewUIMessages)));
+                    }
                   }
 
                   // Mint a scoped public access token once per turn, reused for
@@ -3157,15 +3178,20 @@ function chatAgent<
                   let runResult: unknown;
 
                   try {
-                    // Drain any messages injected by background work (e.g. self-review from previous turn)
+                    // Drain any messages injected by background work (e.g. self-review from previous turn).
+                    // Skip if the last message is a tool message — appending after it would
+                    // prevent streamText from finding pending tool approvals (it checks
+                    // the last message). The queued messages will be picked up by prepareStep
+                    // at the next step boundary instead.
+                    const lastAccumulated = accumulatedMessages[accumulatedMessages.length - 1];
                     const bgQueue = locals.get(chatBackgroundQueueKey);
-                    if (bgQueue && bgQueue.length > 0) {
+                    if (bgQueue && bgQueue.length > 0 && lastAccumulated?.role !== "tool") {
                       accumulatedMessages.push(...bgQueue.splice(0));
                     }
 
                     runResult = await userRun({
                       ...restWire,
-                      messages: await applyPrepareMessages(accumulatedMessages, "run"),
+                      messages: messagesForRun,
                       clientData,
                       continuation,
                       previousRunId,
@@ -3185,9 +3211,16 @@ function chatAgent<
                     // (e.g. for tool approval continuations / HITL flows).
                     if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
                       onFinishAttached = true;
+                      const resolvedOptions = resolveUIMessageStreamOptions();
                       const uiStream = runResult.toUIMessageStream({
-                        ...resolveUIMessageStreamOptions(),
+                        ...resolvedOptions,
+                        // Pass originalMessages so the AI SDK reuses message IDs across
+                        // turns (e.g. for tool approval continuations / HITL flows).
                         originalMessages: accumulatedUIMessages,
+                        // Always provide generateMessageId so the start chunk carries a
+                        // messageId. Without this, the frontend and backend generate IDs
+                        // independently and they won't match for ID-based dedup.
+                        generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
                         onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
                           capturedResponseMessage = responseMessage as TUIMessage;
                           resolveOnFinish!();
