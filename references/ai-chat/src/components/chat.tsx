@@ -1,6 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
 import type { ChatUiMessage } from "@/lib/chat-tools";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
@@ -9,7 +10,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { MODEL_OPTIONS } from "@/lib/models";
 
-function ToolInvocation({ part }: { part: any }) {
+function ToolInvocation({
+  part,
+  onApprove,
+  onDeny,
+}: {
+  part: any;
+  onApprove?: (approvalId: string) => void;
+  onDeny?: (approvalId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : "tool";
   const state = part.state ?? "input-available";
@@ -18,6 +27,9 @@ function ToolInvocation({ part }: { part: any }) {
 
   const isLoading = state === "input-streaming" || state === "input-available";
   const isError = state === "output-error";
+  const needsApproval = state === "approval-requested";
+  const wasApproved = state === "approval-responded" && part.approval?.approved === true;
+  const wasDenied = state === "approval-responded" && part.approval?.approved === false;
 
   return (
     <div className="my-1 rounded border border-gray-200 bg-gray-50 text-xs">
@@ -29,11 +41,36 @@ function ToolInvocation({ part }: { part: any }) {
         {isLoading && (
           <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
         )}
-        {!isLoading && !isError && <span className="text-green-600">&#10003;</span>}
+        {needsApproval && <span className="text-amber-500">&#9888;</span>}
+        {wasApproved && <span className="text-green-600">&#10003;</span>}
+        {wasDenied && <span className="text-red-600">&#10007;</span>}
+        {!isLoading && !needsApproval && !wasApproved && !wasDenied && !isError && (
+          <span className="text-green-600">&#10003;</span>
+        )}
         {isError && <span className="text-red-600">&#10007;</span>}
         <span>{toolName}</span>
+        {needsApproval && <span className="text-amber-500 text-[10px]">needs approval</span>}
         <span className="ml-auto text-gray-400">{expanded ? "▲" : "▼"}</span>
       </button>
+
+      {needsApproval && (
+        <div className="flex gap-2 border-t border-gray-200 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => onApprove?.(part.approval.id)}
+            className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+          >
+            Approve
+          </button>
+          <button
+            type="button"
+            onClick={() => onDeny?.(part.approval.id)}
+            className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+          >
+            Deny
+          </button>
+        </div>
+      )}
 
       {expanded && (
         <div className="border-t border-gray-200 px-3 py-2 space-y-2">
@@ -267,11 +304,20 @@ export function Chat({
   const turnCounter = useRef(0);
   const [ttfbHistory, setTtfbHistory] = useState<TtfbEntry[]>([]);
 
-  const { messages, setMessages, sendMessage, stop: aiStop, status, error } = useChat({
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop: aiStop,
+    addToolApprovalResponse,
+    status,
+    error,
+  } = useChat({
     id: chatId,
     messages: initialMessages,
     transport,
     resume: resumeProp,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
   });
 
   // Use transport.stopGeneration for reliable stop after reconnect.
@@ -281,6 +327,21 @@ export function Chat({
     transport.stopGeneration(chatId);
     aiStop();
   }, [transport, chatId, aiStop]);
+
+  // Tool approval callbacks
+  const handleApprove = useCallback(
+    (approvalId: string) => {
+      addToolApprovalResponse({ id: approvalId, approved: true });
+    },
+    [addToolApprovalResponse, chatId, messages, status]
+  );
+
+  const handleDeny = useCallback(
+    (approvalId: string) => {
+      addToolApprovalResponse({ id: approvalId, approved: false, reason: "User denied" });
+    },
+    [addToolApprovalResponse, chatId]
+  );
 
   // Notify parent of first user message (for chat metadata creation)
   useEffect(() => {
@@ -549,7 +610,14 @@ export function Chat({
                   }
 
                   if (part.type.startsWith("tool-")) {
-                    return <ToolInvocation key={i} part={part} />;
+                    return (
+                      <ToolInvocation
+                        key={i}
+                        part={part}
+                        onApprove={handleApprove}
+                        onDeny={handleDeny}
+                      />
+                    );
                   }
 
                   if (pending.isInjectionPoint(part)) {
