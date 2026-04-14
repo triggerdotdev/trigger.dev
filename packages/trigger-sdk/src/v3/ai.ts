@@ -3191,7 +3191,7 @@ function chatAgent<
 
                     runResult = await userRun({
                       ...restWire,
-                      messages: messagesForRun,
+                      messages: await applyPrepareMessages(accumulatedMessages, "run"),
                       clientData,
                       continuation,
                       previousRunId,
