@@ -194,7 +194,7 @@ export type TriggerParams = {
   priorityMs?: number;
   queueTimestamp?: Date;
   ttl?: string;
-  tags: { id: string; name: string }[];
+  tags: string[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
   replayedFromTaskRunFriendlyId?: string;

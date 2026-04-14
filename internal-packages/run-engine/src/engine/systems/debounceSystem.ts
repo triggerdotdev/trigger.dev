@@ -32,7 +32,7 @@ export type DebounceOptions = {
     payloadType: string;
     metadata?: string;
     metadataType?: string;
-    tags?: { id: string; name: string }[];
+    tags?: string[];
     maxAttempts?: number;
     maxDurationInSeconds?: number;
     machine?: string;
@@ -876,10 +876,7 @@ return 0
 
     // Handle tags update - replace existing tags
     if (updateData.tags !== undefined) {
-      updatePayload.runTags = updateData.tags.map((t) => t.name);
-      updatePayload.tags = {
-        set: updateData.tags.map((t) => ({ id: t.id })),
-      };
+      updatePayload.runTags = updateData.tags;
     }
 
     const updatedRun = await prisma.taskRun.update({

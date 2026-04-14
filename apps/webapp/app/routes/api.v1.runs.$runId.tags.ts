@@ -2,7 +2,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { AddTagsRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { createTag, getTagsForRunId, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 
 const ParamsSchema = z.object({
@@ -37,17 +37,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
     }
 
-    const existingTags =
-      (await getTagsForRunId({
+    const run = await prisma.taskRun.findFirst({
+      where: {
         friendlyId: parsedParams.data.runId,
-        environmentId: authenticationResult.environment.id,
-      })) ?? [];
+        runtimeEnvironmentId: authenticationResult.environment.id,
+      },
+      select: {
+        runTags: true,
+      },
+    });
+
+    const existingTags = run?.runTags ?? [];
 
     //remove duplicate tags from the new tags
     const bodyTags = typeof body.data.tags === "string" ? [body.data.tags] : body.data.tags;
     const newTags = bodyTags.filter((tag) => {
       if (tag.trim().length === 0) return false;
-      return !existingTags.map((t) => t.name).includes(tag);
+      return !existingTags.includes(tag);
     });
 
     if (existingTags.length + newTags.length > MAX_TAGS_PER_RUN) {
@@ -65,29 +71,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ message: "No new tags to add" }, { status: 200 });
     }
 
-    //create tags
-    let tagIds: string[] = existingTags.map((t) => t.id);
-    if (newTags.length > 0) {
-      for (const tag of newTags) {
-        const tagRecord = await createTag({
-          tag,
-          projectId: authenticationResult.environment.projectId,
-        });
-        if (tagRecord) {
-          tagIds.push(tagRecord.id);
-        }
-      }
-    }
-
     await prisma.taskRun.update({
       where: {
         friendlyId: parsedParams.data.runId,
         runtimeEnvironmentId: authenticationResult.environment.id,
       },
       data: {
-        tags: {
-          connect: tagIds.map((id) => ({ id })),
-        },
         runTags: {
           push: newTags,
         },

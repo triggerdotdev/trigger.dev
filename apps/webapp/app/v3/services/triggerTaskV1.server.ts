@@ -13,7 +13,7 @@ import {
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { logger } from "~/services/logger.server";
@@ -345,21 +345,8 @@ export class TriggerTaskServiceV1 extends BaseService {
 
                 span.setAttribute("queueName", queueName);
 
-                //upsert tags
-                let tagIds: string[] = [];
                 const bodyTags =
                   typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
-                if (bodyTags && bodyTags.length > 0) {
-                  for (const tag of bodyTags) {
-                    const tagRecord = await createTag({
-                      tag,
-                      projectId: environment.projectId,
-                    });
-                    if (tagRecord) {
-                      tagIds.push(tagRecord.id);
-                    }
-                  }
-                }
 
                 const depth = dependentAttempt
                   ? dependentAttempt.taskRun.depth + 1
@@ -409,12 +396,6 @@ export class TriggerTaskServiceV1 extends BaseService {
                     maxAttempts: body.options?.maxAttempts,
                     taskEventStore: store,
                     ttl,
-                    tags:
-                      tagIds.length === 0
-                        ? undefined
-                        : {
-                            connect: tagIds.map((id) => ({ id })),
-                          },
                     parentTaskRunId:
                       dependentAttempt?.taskRun.id ??
                       parentAttempt?.taskRun.id ??
