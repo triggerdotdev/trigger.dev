@@ -308,6 +308,22 @@ export const executeJs = tool({
   },
 });
 
+export const sendEmail = tool({
+  description:
+    "Send an email to a recipient. Requires human approval before sending. " +
+    "Use when the user asks you to send, draft, or compose an email.",
+  inputSchema: z.object({
+    to: z.string().describe("Recipient email address"),
+    subject: z.string().describe("Email subject line"),
+    body: z.string().describe("Email body text"),
+  }),
+  needsApproval: true,
+  execute: async ({ to, subject, body }) => {
+    // Simulated — in a real app this would call an email API
+    return { sent: true, to, subject, preview: body.slice(0, 100) };
+  },
+});
+
 /** Tool set passed to `streamText` for the main `chat.agent` run (includes PostHog). */
 export const chatTools = {
   inspectEnvironment,
@@ -316,6 +332,7 @@ export const chatTools = {
   posthogQuery,
   executeCode,
   executeJs,
+  sendEmail,
 };
 
 type ChatToolSet = typeof chatTools;
