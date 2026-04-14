@@ -393,6 +393,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   private sessions: Map<string, ChatSessionState> = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
+  private pendingPreloads: Map<string, Promise<void>> = new Map();
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
@@ -800,26 +801,38 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // Don't preload if session already exists
     if (this.sessions.get(chatId)?.runId) return;
 
-    const mergedMetadata =
-      this.defaultMetadata || options?.metadata
-        ? { ...(this.defaultMetadata ?? {}), ...(options?.metadata ?? {}) }
-        : undefined;
+    // Deduplicate concurrent preload calls (e.g. React strict mode double-firing effects)
+    const pending = this.pendingPreloads.get(chatId);
+    if (pending) return pending;
 
-    const payload = {
-      messages: [] as never[],
-      chatId,
-      trigger: "preload" as const,
-      metadata: mergedMetadata,
-      ...(options?.idleTimeoutInSeconds !== undefined
-        ? { idleTimeoutInSeconds: options.idleTimeoutInSeconds }
-        : {}),
+    const doPreload = async () => {
+      const mergedMetadata =
+        this.defaultMetadata || options?.metadata
+          ? { ...(this.defaultMetadata ?? {}), ...(options?.metadata ?? {}) }
+          : undefined;
+
+      const payload = {
+        messages: [] as never[],
+        chatId,
+        trigger: "preload" as const,
+        metadata: mergedMetadata,
+        ...(options?.idleTimeoutInSeconds !== undefined
+          ? { idleTimeoutInSeconds: options.idleTimeoutInSeconds }
+          : {}),
+      };
+
+      const { runId, publicAccessToken } = await this.triggerNewRun(chatId, payload, "preload");
+
+      const newSession: ChatSessionState = { runId, publicAccessToken };
+      this.sessions.set(chatId, newSession);
+      this.notifySessionChange(chatId, newSession);
     };
 
-    const { runId, publicAccessToken } = await this.triggerNewRun(chatId, payload, "preload");
-
-    const newSession: ChatSessionState = { runId, publicAccessToken };
-    this.sessions.set(chatId, newSession);
-    this.notifySessionChange(chatId, newSession);
+    const promise = doPreload().finally(() => {
+      this.pendingPreloads.delete(chatId);
+    });
+    this.pendingPreloads.set(chatId, promise);
+    return promise;
   }
 
   private async resolveAccessToken(params: ResolveChatAccessTokenParams): Promise<string> {

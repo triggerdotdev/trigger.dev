@@ -24,6 +24,7 @@ type ChatSidebarProps = {
   onSelectChat: (id: string) => void;
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
+  onWipeAll: () => void;
   preloadEnabled: boolean;
   onPreloadChange: (enabled: boolean) => void;
   idleTimeoutInSeconds: number;
@@ -38,6 +39,7 @@ export function ChatSidebar({
   onSelectChat,
   onNewChat,
   onDeleteChat,
+  onWipeAll,
   preloadEnabled,
   onPreloadChange,
   idleTimeoutInSeconds,
@@ -124,6 +126,13 @@ export function ChatSidebar({
             <option value="ai-chat-session">ai-chat-session (session)</option>
           </select>
         </div>
+        <button
+          type="button"
+          onClick={onWipeAll}
+          className="w-full rounded border border-red-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+        >
+          Wipe all chats
+        </button>
       </div>
     </div>
   );
