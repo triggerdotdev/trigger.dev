@@ -1,0 +1,64 @@
+---
+title: "Changelog"
+sidebarTitle: "Changelog"
+description: "Pre-release updates for AI chat agents."
+---
+
+<Update label="April 14, 2026" description="0.0.0-chat-prerelease-20260414181032" tags={["SDK"]}>
+
+## `chat.response` — persistent data parts
+
+Added `chat.response.write()` for writing data parts that both stream to the frontend AND persist in `onTurnComplete`'s `responseMessage` and `uiMessages`.
+
+```ts
+// Persists to responseMessage.parts — available in onTurnComplete
+chat.response.write({ type: "data-handover", data: { context: summary } });
+
+// Transient — streams to frontend only, not in responseMessage
+writer.write({ type: "data-progress", data: { percent: 50 }, transient: true });
+```
+
+Non-transient `data-*` chunks written via lifecycle hook `writer.write()` now automatically persist to the response message, matching the AI SDK's default semantics. Add `transient: true` for ephemeral chunks (progress indicators, status updates).
+
+See [Custom data parts](/ai-chat/features#custom-data-parts).
+
+## Tool approvals
+
+Added support for AI SDK tool approvals (`needsApproval: true`). When the model calls a tool that needs approval, the turn completes and the frontend shows approve/deny buttons. After approval, the updated assistant message is sent back and matched by ID in the accumulator.
+
+```ts
+const sendEmail = tool({
+  description: "Send an email. Requires human approval.",
+  inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+  needsApproval: true,
+  execute: async ({ to, subject, body }) => { /* ... */ },
+});
+```
+
+Frontend setup requires `sendAutomaticallyWhen` and `addToolApprovalResponse` from `useChat`. See [Tool approvals](/ai-chat/frontend#tool-approvals).
+
+## `transport.stopGeneration(chatId)`
+
+Added `stopGeneration` method to `TriggerChatTransport` for reliable stop after page refresh / stream reconnect. Works regardless of whether the AI SDK passes `abortSignal` through `reconnectToStream`.
+
+```tsx
+const stop = useCallback(() => {
+  transport.stopGeneration(chatId);
+  aiStop(); // also update useChat state
+}, [transport, chatId, aiStop]);
+```
+
+See [Stop generation](/ai-chat/frontend#stop-generation).
+
+## `generateMessageId` support
+
+`generateMessageId` can now be passed via `uiMessageStreamOptions` to control response message ID generation (e.g. UUID-v7). The backend automatically passes `originalMessages` to `toUIMessageStream` so message IDs are consistent between frontend and backend.
+
+## Bug fixes
+
+- **`onTurnComplete` not called**: Fixed `turnCompleteResult?.lastEventId` TypeError that silently skipped `onTurnComplete` when `writeTurnCompleteChunk` returned undefined in dev.
+- **Stop during streaming**: Added 2s timeout on `onFinishPromise` so `onBeforeTurnComplete` and `onTurnComplete` fire even when the AI SDK's `onFinish` doesn't fire after abort.
+- **`toStreamTextOptions` without `chat.prompt.set()`**: `prepareStep` injection (compaction, steering, background context) now works even when the user passes `system` directly to `streamText` instead of using `chat.prompt.set()`.
+- **Background queue vs tool approvals**: Background context injection is now skipped when the last accumulated message is a `tool` message, preventing it from breaking `streamText`'s `collectToolApprovals`.
+
+</Update>
