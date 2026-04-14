@@ -1,7 +1,8 @@
 import { GlobeAltIcon, GlobeAmericasIcon } from "@heroicons/react/20/solid";
 import { useRouteLoaderData } from "@remix-run/react";
+import { formatDistanceToNow } from "date-fns";
 import { Laptop } from "lucide-react";
-import { memo, type ReactNode, useMemo, useSyncExternalStore } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { CopyButton } from "./CopyButton";
 import { useLocales } from "./LocaleProvider";
 import { Paragraph } from "./Paragraph";
@@ -356,6 +357,56 @@ function formatDateTimeAccurate(
 
   return `${datePart} ${timePart}`;
 }
+
+type RelativeDateTimeProps = {
+  date: Date | string;
+  timeZone?: string;
+  capitalize?: boolean;
+};
+
+function getRelativeText(date: Date, capitalize = true): string {
+  const text = formatDistanceToNow(date, { addSuffix: true });
+  if (!capitalize) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export const RelativeDateTime = ({ date, timeZone, capitalize = true }: RelativeDateTimeProps) => {
+  const locales = useLocales();
+  const userTimeZone = useUserTimeZone();
+
+  const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
+
+  const [relativeText, setRelativeText] = useState(() => getRelativeText(realDate, capitalize));
+
+  // Every 60s refresh
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRelativeText(getRelativeText(realDate, capitalize));
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [realDate, capitalize]);
+
+  // On first render
+  useEffect(() => {
+    setRelativeText(getRelativeText(realDate, capitalize));
+  }, [realDate, capitalize]);
+
+  return (
+    <SimpleTooltip
+      button={<span suppressHydrationWarning>{relativeText}</span>}
+      content={
+        <TooltipContent
+          realDate={realDate}
+          timeZone={timeZone}
+          localTimeZone={userTimeZone}
+          locales={locales}
+        />
+      }
+      side="right"
+      asChild={true}
+    />
+  );
+};
 
 export const DateTimeShort = ({ date, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();

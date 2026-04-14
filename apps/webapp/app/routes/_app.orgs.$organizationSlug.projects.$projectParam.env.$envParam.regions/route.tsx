@@ -262,7 +262,7 @@ export default function Page() {
                               <TableCellMenu
                                 className="pl-32"
                                 isSticky
-                                visibleButtons={
+                                hiddenButtons={
                                   <SetDefaultDialog regions={regions} newDefaultRegion={region} />
                                 }
                               />
@@ -309,12 +309,9 @@ export default function Page() {
                       <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
                       <Feedback
                         button={
-                          <Paragraph
-                            variant="extra-small"
-                            className="cursor-pointer text-indigo-500 transition hover:text-indigo-400"
-                          >
+                          <span className="cursor-pointer text-xs text-indigo-500 transition hover:text-indigo-400">
                             get in touch
-                          </Paragraph>
+                          </span>
                         }
                         defaultValue="help"
                       />
@@ -345,20 +342,21 @@ function SetDefaultDialog({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button
-          variant="secondary/small"
+          variant="minimal/small"
           LeadingIcon={MapPinIcon}
           leadingIconClassName="text-blue-500"
           iconSpacing="gap-2"
           className="pl-2"
         >
-          Set as default…
+          <span className="text-text-bright">Set as default…</span>
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Set as default region</DialogTitle>
         </DialogHeader>
-        <DialogDescription>
+        <DialogDescription asChild>
+          <div>
           <Paragraph>
             Are you sure you want to set {newDefaultRegion.name} as your new default region?
           </Paragraph>
@@ -441,6 +439,7 @@ function SetDefaultDialog({
             Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
             <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
           </Paragraph>
+          </div>
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary/medium" onClick={() => setIsOpen(false)}>

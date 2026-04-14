@@ -1,5 +1,5 @@
-import { QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
-import { TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
+import { PromptManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import { type PromptMetadataWithFunctions, type TaskMetadataWithFunctions, type TaskSchema } from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {
@@ -53,5 +53,21 @@ export class NoopResourceCatalog implements ResourceCatalog {
 
   listQueueManifests(): Array<QueueManifest> {
     return [];
+  }
+
+  registerPromptMetadata(prompt: PromptMetadataWithFunctions): void {
+    // noop
+  }
+
+  listPromptManifests(): Array<PromptManifest> {
+    return [];
+  }
+
+  getPrompt(id: string): PromptMetadataWithFunctions | undefined {
+    return undefined;
+  }
+
+  getPromptSchema(id: string): TaskSchema | undefined {
+    return undefined;
   }
 }

@@ -1,6 +1,8 @@
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { makeFlag } from "~/v3/featureFlags.server";
+import { defaultVisibilityFilter, resolveComputeAccess } from "~/v3/regionAccess.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
@@ -31,6 +33,9 @@ export class RegionsPresenter extends BasePresenter {
         organizationId: true,
         defaultWorkerGroupId: true,
         allowedWorkerQueues: true,
+        organization: {
+          select: { featureFlags: true },
+        },
       },
       where: {
         slug: projectSlug,
@@ -57,6 +62,11 @@ export class RegionsPresenter extends BasePresenter {
       throw new Error("Default worker instance group not found");
     }
 
+    const hasComputeAccess = await resolveComputeAccess(
+      this._replica,
+      project.organization.featureFlags
+    );
+
     const visibleRegions = await this._replica.workerInstanceGroup.findMany({
       select: {
         id: true,
@@ -74,9 +84,7 @@ export class RegionsPresenter extends BasePresenter {
         ? {
             masterQueue: { in: project.allowedWorkerQueues },
           }
-        : {
-            hidden: false,
-          },
+        : defaultVisibilityFilter(hasComputeAccess),
       orderBy: {
         name: "asc",
       },

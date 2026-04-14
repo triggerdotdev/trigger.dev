@@ -98,6 +98,7 @@ const UpdateVercelConfigFormSchema = z.object({
   pullEnvVarsBeforeBuild: envSlugArrayField,
   discoverEnvVars: envSlugArrayField,
   vercelStagingEnvironment: z.string().nullable().optional(),
+  autoPromote: z.string().optional().transform((val) => val !== "false"),
 });
 
 const DisconnectVercelFormSchema = z.object({
@@ -113,6 +114,7 @@ const CompleteOnboardingFormSchema = z.object({
   syncEnvVarsMapping: z.string().optional(),
   next: z.string().optional(),
   skipRedirect: z.string().optional().transform((val) => val === "true"),
+  origin: z.string().optional(),
 });
 
 const SkipOnboardingFormSchema = z.object({
@@ -240,18 +242,35 @@ export async function action({ request, params }: ActionFunctionArgs) {
         pullEnvVarsBeforeBuild,
         discoverEnvVars,
         vercelStagingEnvironment,
+        autoPromote,
       } = submission.value;
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
+
+      // Get the previous staging environment before updating
+      const previousIntegration = await vercelService.getVercelProjectIntegration(project.id);
+      const previousStagingEnvId =
+        previousIntegration?.parsedIntegrationData.config?.vercelStagingEnvironment?.environmentId ?? null;
+      const newStagingEnvId = parsedStagingEnv?.environmentId ?? null;
 
       const result = await vercelService.updateVercelIntegrationConfig(project.id, {
         atomicBuilds,
         pullEnvVarsBeforeBuild,
         discoverEnvVars,
         vercelStagingEnvironment: parsedStagingEnv,
+        autoPromote,
       });
 
       if (result) {
+        // Sync staging TRIGGER_SECRET_KEY if the custom environment changed
+        if (previousStagingEnvId !== newStagingEnvId) {
+          await vercelService.syncStagingKeyForCustomEnvironment(
+            project.id,
+            previousStagingEnvId,
+            newStagingEnvId
+          );
+        }
+
         return redirectWithSuccessMessage(settingsPath, request, "Vercel settings updated successfully");
       }
 
@@ -277,6 +296,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         syncEnvVarsMapping,
         next,
         skipRedirect,
+        origin,
       } = submission.value;
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
@@ -290,6 +310,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         atomicBuilds,
         discoverEnvVars,
         syncEnvVarsMapping: parsedSyncEnvVarsMapping,
+        origin: origin === "marketplace" ? "marketplace" : "dashboard",
       });
 
       if (result) {
@@ -321,6 +342,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
 
       if (result) {
+        // During onboarding there's no previous custom environment — just upsert
+        await vercelService.syncStagingKeyForCustomEnvironment(
+          project.id,
+          null,
+          parsedStagingEnv?.environmentId ?? null
+        );
         return json({ success: true });
       }
 
@@ -569,12 +596,14 @@ function ConnectedVercelProjectForm({
     discoverEnvVars: connectedProject.integrationData.config.discoverEnvVars ?? [],
     vercelStagingEnvironment:
       connectedProject.integrationData.config.vercelStagingEnvironment ?? null,
+    autoPromote: connectedProject.integrationData.config.autoPromote ?? true,
   });
 
   const originalAtomicBuilds = connectedProject.integrationData.config.atomicBuilds ?? [];
   const originalPullEnvVars = connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [];
   const originalDiscoverEnvVars = connectedProject.integrationData.config.discoverEnvVars ?? [];
   const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment ?? null;
+  const originalAutoPromote = connectedProject.integrationData.config.autoPromote ?? true;
 
   useEffect(() => {
     const atomicBuildsChanged =
@@ -587,9 +616,23 @@ function ConnectedVercelProjectForm({
       JSON.stringify([...configValues.discoverEnvVars].sort()) !==
       JSON.stringify([...originalDiscoverEnvVars].sort());
     const stagingEnvChanged = configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
+    const autoPromoteChanged = configValues.autoPromote !== originalAutoPromote;
 
-    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || discoverEnvVarsChanged || stagingEnvChanged);
-  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalDiscoverEnvVars, originalStagingEnv]);
+    setHasConfigChanges(
+      atomicBuildsChanged ||
+        pullEnvVarsChanged ||
+        discoverEnvVarsChanged ||
+        stagingEnvChanged ||
+        autoPromoteChanged
+    );
+  }, [
+    configValues,
+    originalAtomicBuilds,
+    originalPullEnvVars,
+    originalDiscoverEnvVars,
+    originalStagingEnv,
+    originalAutoPromote,
+  ]);
 
   const [configForm, fields] = useForm({
     id: "update-vercel-config",
@@ -610,6 +653,11 @@ function ConnectedVercelProjectForm({
 
   const availableEnvSlugs = getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment);
   const availableEnvSlugsForBuildSettings = getAvailableEnvSlugsForBuildSettings(hasStagingEnvironment, hasPreviewEnvironment);
+
+  const disabledEnvSlugsForBuildSettings: Partial<Record<EnvSlug, string>> | undefined =
+    hasStagingEnvironment && !configValues.vercelStagingEnvironment
+      ? { stg: "Map a custom Vercel environment to Staging to enable this" }
+      : undefined;
 
   const formatSelectedEnvs = (selected: EnvSlug[], availableSlugs: EnvSlug[] = availableEnvSlugs): string => {
     if (selected.length === 0) return "None selected";
@@ -689,6 +737,11 @@ function ConnectedVercelProjectForm({
           name="vercelStagingEnvironment"
           value={configValues.vercelStagingEnvironment ? JSON.stringify(configValues.vercelStagingEnvironment) : ""}
         />
+        <input
+          type="hidden"
+          name="autoPromote"
+          value={String(configValues.autoPromote)}
+        />
 
         <Fieldset>
           <InputGroup fullWidth>
@@ -706,12 +759,24 @@ function ConnectedVercelProjectForm({
                     setValue={(value) => {
                       if (!Array.isArray(value)) {
                         const env = customEnvironments?.find((e) => e.id === value);
-                        setConfigValues((prev) => ({
-                          ...prev,
-                          vercelStagingEnvironment: env
-                            ? { environmentId: env.id, displayName: env.slug }
-                            : null,
-                        }));
+                        setConfigValues((prev) => {
+                          const next = {
+                            ...prev,
+                            vercelStagingEnvironment: env
+                              ? { environmentId: env.id, displayName: env.slug }
+                              : null,
+                          };
+                          // When clearing the staging mapping, strip "stg" from build settings
+                          if (!env) {
+                            next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
+                              (s) => s !== "stg"
+                            );
+                            next.discoverEnvVars = prev.discoverEnvVars.filter(
+                              (s) => s !== "stg"
+                            );
+                          }
+                          return next;
+                        });
                       }
                     }}
                     items={[{ id: "", slug: "None" }, ...customEnvironments]}
@@ -749,6 +814,11 @@ function ConnectedVercelProjectForm({
                   setConfigValues((prev) => ({ ...prev, atomicBuilds: slugs }))
                 }
                 envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/environment-variables`}
+                disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
+                autoPromote={configValues.autoPromote}
+                onAutoPromoteChange={(value) =>
+                  setConfigValues((prev) => ({ ...prev, autoPromote: value }))
+                }
               />
 
               {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}

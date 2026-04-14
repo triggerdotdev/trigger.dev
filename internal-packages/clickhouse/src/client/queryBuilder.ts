@@ -13,6 +13,7 @@ export class ClickhouseQueryBuilder<TOutput> {
   private name: string;
   private baseQuery: string;
   private whereClauses: string[] = [];
+  private havingClauses: string[] = [];
   private params: QueryParams = {};
   private orderByClause: string | null = null;
   private limitClause: string | null = null;
@@ -33,6 +34,12 @@ export class ClickhouseQueryBuilder<TOutput> {
     this.reader = reader;
     this.schema = schema;
     this.settings = settings;
+  }
+
+  /** Set query parameters without adding a WHERE clause. Use for base queries with inline params. */
+  setParams(params: QueryParams): this {
+    Object.assign(this.params, params);
+    return this;
   }
 
   where(clause: string, params?: QueryParams): this {
@@ -69,6 +76,21 @@ export class ClickhouseQueryBuilder<TOutput> {
     return this;
   }
 
+  having(clause: string, params?: QueryParams): this {
+    this.havingClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  havingIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.having(clause, params);
+    }
+    return this;
+  }
+
   orderBy(clause: string): this {
     this.orderByClause = clause;
     return this;
@@ -101,6 +123,9 @@ export class ClickhouseQueryBuilder<TOutput> {
     if (this.groupByClause) {
       query += ` GROUP BY ${this.groupByClause}`;
     }
+    if (this.havingClauses.length > 0) {
+      query += " HAVING " + this.havingClauses.join(" AND ");
+    }
     if (this.orderByClause) {
       query += ` ORDER BY ${this.orderByClause}`;
     }
@@ -119,6 +144,7 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
   private settings: ClickHouseSettings | undefined;
   private prewhereClauses: string[] = [];
   private whereClauses: string[] = [];
+  private havingClauses: string[] = [];
   private params: QueryParams = {};
   private orderByClause: string | null = null;
   private limitClause: string | null = null;
@@ -191,6 +217,21 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     return this;
   }
 
+  having(clause: string, params?: QueryParams): this {
+    this.havingClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  havingIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.having(clause, params);
+    }
+    return this;
+  }
+
   orderBy(clause: string): this {
     this.orderByClause = clause;
     return this;
@@ -224,6 +265,9 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     }
     if (this.groupByClause) {
       query += ` GROUP BY ${this.groupByClause}`;
+    }
+    if (this.havingClauses.length > 0) {
+      query += " HAVING " + this.havingClauses.join(" AND ");
     }
     if (this.orderByClause) {
       query += ` ORDER BY ${this.orderByClause}`;

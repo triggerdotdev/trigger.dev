@@ -48,6 +48,7 @@ export const VercelIntegrationConfigSchema = z.object({
     displayName: z.string(),
   }).nullable().optional(),
   discoverEnvVars: z.array(EnvSlugSchema).nullable().optional(),
+  autoPromote: z.boolean().optional().default(true),
 });
 
 export type VercelIntegrationConfig = z.infer<typeof VercelIntegrationConfigSchema>;
@@ -72,6 +73,7 @@ export const VercelProjectIntegrationDataSchema = z.object({
   vercelTeamSlug: z.string().optional(),
   vercelProjectId: z.string(),
   onboardingCompleted: z.boolean().optional(),
+  onboardingOrigin: z.enum(["marketplace", "dashboard"]).optional(),
 });
 
 export type VercelProjectIntegrationData = z.infer<typeof VercelProjectIntegrationDataSchema>;
@@ -85,9 +87,10 @@ export function createDefaultVercelIntegrationData(
   return {
     config: {
       atomicBuilds: ["prod"],
-      pullEnvVarsBeforeBuild: ["prod", "stg", "preview"],
-      discoverEnvVars: ["prod", "stg", "preview"],
+      pullEnvVarsBeforeBuild: ["prod", "preview"],
+      discoverEnvVars: ["prod", "preview"],
       vercelStagingEnvironment: null,
+      autoPromote: true,
     },
     syncEnvVarsMapping: {},
     vercelProjectId,

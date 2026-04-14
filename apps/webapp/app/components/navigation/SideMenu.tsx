@@ -10,8 +10,8 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  CubeIcon,
   ExclamationTriangleIcon,
-  PuzzlePieceIcon,
   FolderIcon,
   FolderOpenIcon,
   GlobeAmericasIcon,
@@ -19,6 +19,7 @@ import {
   KeyIcon,
   PencilSquareIcon,
   PlusIcon,
+  PuzzlePieceIcon,
   RectangleStackIcon,
   ServerStackIcon,
   Squares2X2Icon,
@@ -26,9 +27,12 @@ import {
   UsersIcon,
 } from "@heroicons/react/20/solid";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
+import { IconBugFilled } from "@tabler/icons-react";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
+import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
+import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -49,6 +53,7 @@ import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
+import { NotificationPanel } from "./NotificationPanel";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -72,7 +77,10 @@ import {
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
+  v3ErrorsPath,
   v3LogsPath,
+  v3PromptsPath,
+  v3ModelsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
@@ -451,6 +459,48 @@ export function SideMenu({
               />
             </div>
 
+            {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
+              <SideMenuSection
+                title="AI"
+                isSideMenuCollapsed={isCollapsed}
+                itemSpacingClassName="space-y-0"
+                initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
+                onCollapseToggle={handleSectionToggle("ai")}
+              >
+                <SideMenuItem
+                  name="Prompts"
+                  icon={AIPromptsIcon}
+                  trailingIconClassName="size-6"
+                  activeIconColor="text-aiPrompts"
+                  inactiveIconColor="text-aiPrompts"
+                  to={v3PromptsPath(organization, project, environment)}
+                  data-action="prompts"
+                  isCollapsed={isCollapsed}
+                />
+                {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
+                  <SideMenuItem
+                    name="Models"
+                    icon={CubeIcon}
+                    activeIconColor="text-purple-500"
+                    inactiveIconColor="text-purple-500"
+                    to={v3ModelsPath(organization, project, environment)}
+                    data-action="models"
+                    isCollapsed={isCollapsed}
+                  />
+                )}
+                <SideMenuItem
+                  name="AI Metrics"
+                  icon={AIMetricsIcon}
+                  trailingIconClassName="size-5"
+                  activeIconColor="text-aiMetrics"
+                  inactiveIconColor="text-aiMetrics"
+                  to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
+                  data-action="ai-metrics"
+                  isCollapsed={isCollapsed}
+                />
+              </SideMenuSection>
+            )}
+
             {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
               <SideMenuSection
                 title="Observability"
@@ -471,6 +521,17 @@ export function SideMenu({
                     to={v3LogsPath(organization, project, environment)}
                     data-action="logs"
                     badge={<AlphaBadge />}
+                    isCollapsed={isCollapsed}
+                  />
+                )}
+                {(user.admin || user.isImpersonating) && (
+                  <SideMenuItem
+                    name="Errors"
+                    icon={IconBugFilled}
+                    activeIconColor="text-errors"
+                    inactiveIconColor="text-errors"
+                    to={v3ErrorsPath(organization, project, environment)}
+                    data-action="errors"
                     isCollapsed={isCollapsed}
                   />
                 )}
@@ -638,6 +699,12 @@ export function SideMenu({
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
           />
+          <NotificationPanel
+            isCollapsed={isCollapsed}
+            hasIncident={incidentStatus.hasIncident}
+            organizationId={organization.id}
+            projectId={project.id}
+          />
           <motion.div
             layout
             transition={{ duration: 0.2, ease: "easeInOut" }}
@@ -646,7 +713,7 @@ export function SideMenu({
               isCollapsed && "items-center"
             )}
           >
-            <HelpAndAI isCollapsed={isCollapsed} />
+            <HelpAndAI isCollapsed={isCollapsed} organizationId={organization.id} projectId={project.id} />
             {isFreeUser && (
               <CollapsibleHeight isCollapsed={isCollapsed}>
                 <FreePlanUsage
@@ -936,6 +1003,7 @@ function ProjectSelector({
             title="Logout"
             icon={ArrowRightOnRectangleIcon}
             leadingIconClassName="text-text-dimmed"
+            danger
           />
         </div>
       </PopoverContent>
@@ -1095,7 +1163,7 @@ function CollapsibleHeight({
   );
 }
 
-function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
+function HelpAndAI({ isCollapsed, organizationId, projectId }: { isCollapsed: boolean; organizationId: string; projectId: string }) {
   return (
     <LayoutGroup>
       <div
@@ -1105,7 +1173,7 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
         )}
       >
         <ShortcutsAutoOpen />
-        <HelpAndFeedback isCollapsed={isCollapsed} />
+        <HelpAndFeedback isCollapsed={isCollapsed} organizationId={organizationId} projectId={projectId} />
         <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>

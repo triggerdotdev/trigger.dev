@@ -1,10 +1,12 @@
 ---
 title: "Run metadata"
 sidebarTitle: "Metadata"
-description: "Attach a small amount of data to a run and update it as the run progresses."
+description: "Attach structured data to a run and update it as the task progresses. Use metadata for progress tracking, user context, intermediate results, and more."
 ---
 
-You can attach up to 256KB of metadata to a run, which you can then access from inside the run function, via the API, Realtime, and in the dashboard. You can use metadata to store additional, structured information on a run. For example, you could store your user’s full name and corresponding unique identifier from your system on every task that is associated with that user. Or you could store the progress of a long-running task, or intermediate results that you want to access later.
+**Metadata lets you attach up to 256KB of structured data to a run and update it while the task runs.** Subscribers (via [React hooks](/realtime/react-hooks/subscribe) or [backend](/realtime/backend/subscribe)) get those updates in real time, making metadata the simplest way to build progress bars, status indicators, and live dashboards.
+
+You can access metadata from inside the run function, via the API, Realtime, and in the dashboard. Common uses: progress percentage, current step, user context, intermediate results.
 
 ## Usage
 

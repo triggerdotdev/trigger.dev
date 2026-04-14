@@ -53,7 +53,6 @@ const lookupTableSchema: TableSchema = {
 /**
  * Test table schema WITHOUT tenant columns (e.g., global reference data)
  */
-// @ts-expect-error - tenant columns are required but not set
 const nonTenantTableSchema: TableSchema = {
   name: "reference_data",
   clickhouseName: "trigger_dev.reference_data",

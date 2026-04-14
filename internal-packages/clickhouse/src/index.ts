@@ -27,6 +27,26 @@ import {
   getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
 import { insertMetrics } from "./metrics.js";
+import { insertLlmMetrics } from "./llmMetrics.js";
+import {
+  getGlobalModelMetrics,
+  getGlobalModelComparison,
+  getPopularModels,
+} from "./llmModelAggregates.js";
+import {
+  getErrorGroups,
+  getErrorInstances,
+  getErrorGroupsListQueryBuilder,
+  getErrorHourlyOccurrences,
+  getErrorOccurrencesListQueryBuilder,
+  createErrorOccurrencesQueryBuilder,
+  createErrorOccurrencesByVersionQueryBuilder,
+  getErrorAffectedVersionsQueryBuilder,
+  getOccurrenceCountSinceQueryBuilder,
+  getActiveErrorsSinceQueryBuilder,
+  getOccurrenceCountsSinceQueryBuilder,
+} from "./errors.js";
+export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
@@ -34,6 +54,9 @@ import type { Agent as HttpsAgent } from "https";
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
+export type * from "./llmMetrics.js";
+export type * from "./llmModelAggregates.js";
+export type * from "./errors.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -214,6 +237,20 @@ export class ClickHouse {
     };
   }
 
+  get llmMetrics() {
+    return {
+      insert: insertLlmMetrics(this.writer),
+    };
+  }
+
+  get llmModelAggregates() {
+    return {
+      globalMetrics: getGlobalModelMetrics(this.reader),
+      comparison: getGlobalModelComparison(this.reader),
+      popular: getPopularModels(this.reader),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
@@ -227,6 +264,24 @@ export class ClickHouse {
   get taskEventsSearch() {
     return {
       logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+    };
+  }
+
+  get errors() {
+    return {
+      getGroups: getErrorGroups(this.reader),
+      getInstances: getErrorInstances(this.reader),
+      getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
+      affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
+      listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
+      occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
+      createOccurrencesQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
+      createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
+      occurrenceCountSinceQueryBuilder: getOccurrenceCountSinceQueryBuilder(this.reader),
+      activeErrorsSinceQueryBuilder: getActiveErrorsSinceQueryBuilder(this.reader),
+      occurrenceCountsSinceQueryBuilder: getOccurrenceCountsSinceQueryBuilder(this.reader),
     };
   }
 }

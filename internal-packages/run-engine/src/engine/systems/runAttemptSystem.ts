@@ -402,6 +402,7 @@ export class RunAttemptSystem {
                   status: "EXECUTING",
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
+                  isWarmStart: isWarmStart ?? false,
                 },
                 select: {
                   id: true,
@@ -1436,35 +1437,39 @@ export class RunAttemptSystem {
         });
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
+        //unless finalizeRun is true (worker is known to be dead), in which case skip straight to FINISHED
         if (
           isExecuting(latestSnapshot.executionStatus) ||
           isPendingExecuting(latestSnapshot.executionStatus)
         ) {
-          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-            run,
-            snapshot: {
-              executionStatus: "PENDING_CANCEL",
-              description: "Run was cancelled",
-            },
-            previousSnapshotId: latestSnapshot.id,
-            environmentId: latestSnapshot.environmentId,
-            environmentType: latestSnapshot.environmentType,
-            projectId: latestSnapshot.projectId,
-            organizationId: latestSnapshot.organizationId,
-            workerId,
-            runnerId,
-          });
+          if (!finalizeRun) {
+            const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+              run,
+              snapshot: {
+                executionStatus: "PENDING_CANCEL",
+                description: "Run was cancelled",
+              },
+              previousSnapshotId: latestSnapshot.id,
+              environmentId: latestSnapshot.environmentId,
+              environmentType: latestSnapshot.environmentType,
+              projectId: latestSnapshot.projectId,
+              organizationId: latestSnapshot.organizationId,
+              workerId,
+              runnerId,
+            });
 
-          //the worker needs to be notified so it can kill the run and complete the attempt
-          await sendNotificationToWorker({
-            runId,
-            snapshot: newSnapshot,
-            eventBus: this.$.eventBus,
-          });
-          return {
-            alreadyFinished: false,
-            ...executionResultFromSnapshot(newSnapshot),
-          };
+            //the worker needs to be notified so it can kill the run and complete the attempt
+            await sendNotificationToWorker({
+              runId,
+              snapshot: newSnapshot,
+              eventBus: this.$.eventBus,
+            });
+            return {
+              alreadyFinished: false,
+              ...executionResultFromSnapshot(newSnapshot),
+            };
+          }
+          // finalizeRun is true — fall through to finish the run immediately
         }
 
         //not executing, so we will actually finish the run

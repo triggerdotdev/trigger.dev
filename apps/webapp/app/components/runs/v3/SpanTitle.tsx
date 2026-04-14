@@ -3,6 +3,8 @@ import { TaskEventStyle } from "@trigger.dev/core/v3";
 import type { TaskEventLevel } from "@trigger.dev/database";
 import { Fragment } from "react";
 import { cn } from "~/utils/cn";
+import { tablerIcons } from "~/utils/tablerIcons";
+import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 
 type SpanTitleProps = {
   message: string;
@@ -12,11 +14,16 @@ type SpanTitleProps = {
   isPartial: boolean;
   size: "small" | "large";
   hideAccessory?: boolean;
+  overrideDimmed?: boolean;
 };
 
 export function SpanTitle(event: SpanTitleProps) {
+  const textClass = eventTextClassName(event);
+  const finalTextClass =
+    event.overrideDimmed && textClass === "text-text-dimmed" ? "text-text-bright" : textClass;
+
   return (
-    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", eventTextClassName(event))}>
+    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", finalTextClass)}>
       <span className="truncate">{event.message}</span>{" "}
       {!event.hideAccessory && (
         <SpanAccessory accessory={event.style.accessory} size={event.size} />
@@ -45,18 +52,42 @@ function SpanAccessory({
         />
       );
     }
+    case "pills": {
+      return (
+        <span className="flex items-center gap-1">
+          {accessory.items.map((item, index) => (
+            <SpanPill key={index} text={item.text} icon={item.icon} />
+          ))}
+        </span>
+      );
+    }
     default: {
       return (
-        <div className={cn("flex gap-1")}>
+        <span className={cn("flex gap-1")}>
           {accessory.items.map((item, index) => (
             <span key={index} className={cn("inline-flex items-center gap-1")}>
               {item.text}
             </span>
           ))}
-        </div>
+        </span>
       );
     }
   }
+}
+
+function SpanPill({ text, icon }: { text: string; icon?: string }) {
+  const hasIcon = icon && tablerIcons.has(icon);
+
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-charcoal-700 bg-charcoal-850 px-1.5 py-px text-xxs text-text-dimmed">
+      {hasIcon && (
+        <svg className="size-3 stroke-[1.5] text-text-dimmed/70">
+          <use xlinkHref={`${tablerSpritePath}#${icon}`} />
+        </svg>
+      )}
+      <span className="truncate">{text}</span>
+    </span>
+  );
 }
 
 export function SpanCodePathAccessory({

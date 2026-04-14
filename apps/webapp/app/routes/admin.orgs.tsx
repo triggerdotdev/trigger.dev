@@ -2,7 +2,9 @@ import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useState } from "react";
 import { z } from "zod";
+import { FeatureFlagsDialog } from "~/components/admin/FeatureFlagsDialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Input } from "~/components/primitives/Input";
@@ -45,6 +47,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function AdminDashboardRoute() {
   const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+
+  const [flagsOrgId, setFlagsOrgId] = useState<string | null>(null);
+  const [flagsOpen, setFlagsOpen] = useState(false);
+  const flagsOrgTitle = organizations.find((o) => o.id === flagsOrgId)?.title ?? "";
+
+  const openFlagsDialog = (orgId: string) => {
+    setFlagsOrgId(orgId);
+    setFlagsOpen(true);
+  };
 
   return (
     <main
@@ -113,18 +124,25 @@ export default function AdminDashboardRoute() {
                     <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
                     <TableCell isSticky={true}>
-                      <LinkButton
-                        to={`/@/orgs/${org.slug}`}
-                        className="mr-2"
-                        variant="tertiary/small"
-                        shortcut={
-                          organizations.length === 1
-                            ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                            : undefined
-                        }
-                      >
-                        Impersonate
-                      </LinkButton>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="tertiary/small"
+                          onClick={() => openFlagsDialog(org.id)}
+                        >
+                          Flags
+                        </Button>
+                        <LinkButton
+                          to={`/@/orgs/${org.slug}`}
+                          variant="tertiary/small"
+                          shortcut={
+                            organizations.length === 1
+                              ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                              : undefined
+                          }
+                        >
+                          Impersonate
+                        </LinkButton>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -135,6 +153,12 @@ export default function AdminDashboardRoute() {
 
         <PaginationControls currentPage={page} totalPages={pageCount} />
       </div>
+      <FeatureFlagsDialog
+        orgId={flagsOrgId}
+        orgTitle={flagsOrgTitle}
+        open={flagsOpen}
+        onOpenChange={setFlagsOpen}
+      />
     </main>
   );
 }

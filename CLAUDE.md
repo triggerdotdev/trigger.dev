@@ -1,73 +1,72 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository. Subdirectory CLAUDE.md files provide deeper context when you navigate into specific areas.
 
 ## Build and Development Commands
 
 This is a pnpm 10.23.0 monorepo using Turborepo. Run commands from root with `pnpm run`.
 
-### Essential Commands
-
 ```bash
-# Start Docker services (PostgreSQL, Redis, Electric)
-pnpm run docker
-
-# Run database migrations
-pnpm run db:migrate
-
-# Seed the database (required for reference projects)
-pnpm run db:seed
+pnpm run docker              # Start Docker services (PostgreSQL, Redis, Electric)
+pnpm run db:migrate           # Run database migrations
+pnpm run db:seed              # Seed the database (required for reference projects)
 
 # Build packages (required before running)
 pnpm run build --filter webapp && pnpm run build --filter trigger.dev && pnpm run build --filter @trigger.dev/sdk
 
-# Run webapp in development mode (http://localhost:3030)
-pnpm run dev --filter webapp
-
-# Build and watch for changes (CLI and packages)
-pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"
+pnpm run dev --filter webapp  # Run webapp (http://localhost:3030)
+pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"  # Watch CLI and packages
 ```
 
-### Testing
+### Verifying Changes
+
+The verification command depends on where the change lives:
+
+- **Apps and internal packages** (`apps/*`, `internal-packages/*`): Use `typecheck`. **Never use `build`** for these — building proves almost nothing about correctness.
+- **Public packages** (`packages/*`): Use `build`.
+
+```bash
+# Apps and internal packages — use typecheck
+pnpm run typecheck --filter webapp                  # ~1-2 minutes
+pnpm run typecheck --filter @internal/run-engine
+
+# Public packages — use build
+pnpm run build --filter @trigger.dev/sdk
+pnpm run build --filter @trigger.dev/core
+```
+
+Only run typecheck/build after major changes (new files, significant refactors, schema changes). For small edits, trust the types and let CI catch issues.
+
+## Testing
 
 We use vitest exclusively. **Never mock anything** - use testcontainers instead.
 
 ```bash
-# Run all tests for a package
-pnpm run test --filter webapp
-
-# Run a single test file (preferred - cd into directory first)
+pnpm run test --filter webapp                          # All tests for a package
 cd internal-packages/run-engine
-pnpm run test ./src/engine/tests/ttl.test.ts --run
-
-# May need to build dependencies first
-pnpm run build --filter @internal/run-engine
+pnpm run test ./src/engine/tests/ttl.test.ts --run     # Single test file
+pnpm run build --filter @internal/run-engine           # May need to build deps first
 ```
 
-Test files go next to source files (e.g., `MyService.ts` → `MyService.test.ts`).
+Test files go next to source files (e.g., `MyService.ts` -> `MyService.test.ts`).
 
-#### Testcontainers for Redis/PostgreSQL
+### Testcontainers for Redis/PostgreSQL
 
 ```typescript
 import { redisTest, postgresTest, containerTest } from "@internal/testcontainers";
 
-// Redis only
 redisTest("should use redis", async ({ redisOptions }) => {
   /* ... */
 });
-
-// PostgreSQL only
 postgresTest("should use postgres", async ({ prisma }) => {
   /* ... */
 });
-
-// Both Redis and PostgreSQL
 containerTest("should use both", async ({ prisma, redisOptions }) => {
   /* ... */
 });
 ```
 
-### Changesets and Server Changes
+## Changesets and Server Changes
 
 When modifying any public package (`packages/*` or `integrations/*`), add a changeset:
 
@@ -77,246 +76,172 @@ pnpm run changeset:add
 
 - Default to **patch** for bug fixes and minor changes
 - Confirm with maintainers before selecting **minor** (new features)
-- **Never** select major (breaking changes) without explicit approval
+- **Never** select major without explicit approval
 
-When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file instead:
+When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file instead. See `.server-changes/README.md` for format and documentation.
 
-```bash
-# Create a file with a descriptive name
-cat > .server-changes/fix-batch-queue-stalls.md << 'EOF'
----
-area: webapp
-type: fix
----
+## Dependency Pinning
 
-Speed up batch queue processing by removing stalls and fixing retry race
-EOF
-```
-
-- **area**: `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
-- **type**: `feature` | `fix` | `improvement` | `breaking`
-- **Mixed PRs** (both packages and server): just the changeset is enough, no `.server-changes/` file needed
-- See `.server-changes/README.md` for full documentation
+Zod is pinned to a single version across the entire monorepo (currently `3.25.76`). When adding zod to a new or existing package, use the **exact same version** as the rest of the repo - never a different version or a range. Mismatched zod versions cause runtime type incompatibilities (e.g., schemas from one package can't be used as body validators in another).
 
 ## Architecture Overview
 
+### Request Flow
+
+User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Supervisor -> Container execution -> Results back through RunEngine -> ClickHouse (analytics) + PostgreSQL (state)
+
 ### Apps
 
-- **apps/webapp**: Remix 2.1.0 app - main API, dashboard, and Docker image. Uses Express server.
-- **apps/supervisor**: Node.js app handling task execution, interfacing with Docker/Kubernetes.
+- **apps/webapp**: Remix 2.1.0 app - main API, dashboard, orchestration. Uses Express server.
+- **apps/supervisor**: Manages task execution containers (Docker/Kubernetes).
 
 ### Public Packages
 
-- **packages/trigger-sdk** (`@trigger.dev/sdk`): Main SDK
-- **packages/cli-v3** (`trigger.dev`): CLI package
-- **packages/core** (`@trigger.dev/core`): Shared code between SDK and webapp. Import subpaths only (never root).
-- **packages/build**: Build extensions and types
+- **packages/trigger-sdk** (`@trigger.dev/sdk`): Main SDK for writing tasks
+- **packages/cli-v3** (`trigger.dev`): CLI - also bundles code that goes into customer task images
+- **packages/core** (`@trigger.dev/core`): Shared types. **Import subpaths only** (never root).
+- **packages/build** (`@trigger.dev/build`): Build extensions and types
 - **packages/react-hooks**: React hooks for realtime and triggering
-- **packages/redis-worker** (`@trigger.dev/redis-worker`): Custom Redis-based background job system
+- **packages/redis-worker** (`@trigger.dev/redis-worker`): Redis-based background job system
 
 ### Internal Packages
 
-- **internal-packages/database** (`@trigger.dev/database`): Prisma 6.14.0 client and schema
-- **internal-packages/clickhouse** (`@internal/clickhouse`): ClickHouse client and schema migrations
-- **internal-packages/run-engine** (`@internal/run-engine`): "Run Engine 2.0" - run lifecycle management
-- **internal-packages/redis** (`@internal/redis`): Redis client creation utilities
-- **internal-packages/testcontainers** (`@internal/testcontainers`): Test helpers for Redis/PostgreSQL containers
-- **internal-packages/zodworker** (`@internal/zodworker`): Graphile-worker wrapper (being replaced by redis-worker)
+- **internal-packages/database**: Prisma 6.14.0 client and schema (PostgreSQL)
+- **internal-packages/clickhouse**: ClickHouse client, schema migrations, analytics queries
+- **internal-packages/run-engine**: "Run Engine 2.0" - core run lifecycle management
+- **internal-packages/redis**: Redis client creation utilities (ioredis)
+- **internal-packages/testcontainers**: Test helpers for Redis/PostgreSQL containers
+- **internal-packages/schedule-engine**: Durable cron scheduling
+- **internal-packages/zodworker**: Graphile-worker wrapper (DEPRECATED - use redis-worker)
+
+### Legacy V1 Engine Code
+
+The `apps/webapp/app/v3/` directory name is misleading - most code there is actively used by V2. Only specific files are V1-only legacy (MarQS queue, triggerTaskV1, cancelTaskRunV1, etc.). See `apps/webapp/CLAUDE.md` for the exact list. When you encounter V1/V2 branching in services, only modify V2 code paths. All new work uses Run Engine 2.0 (`@internal/run-engine`) and redis-worker.
+
+### Documentation
+
+Docs live in `docs/` as a Mintlify site (MDX format). See `docs/CLAUDE.md` for conventions.
 
 ### Reference Projects
 
-The `references/` directory contains test workspaces for developing and testing new SDK and platform features. Use these projects (e.g., `references/hello-world`) to manually test changes to the CLI, SDK, core packages, and webapp before submitting PRs.
-
-## Webapp Development
-
-### Key Locations
-
-- Trigger API: `apps/webapp/app/routes/api.v1.tasks.$taskId.trigger.ts`
-- Batch trigger: `apps/webapp/app/routes/api.v1.tasks.batch.ts`
-- Prisma setup: `apps/webapp/app/db.server.ts`
-- Run engine config: `apps/webapp/app/v3/runEngine.server.ts`
-- Services: `apps/webapp/app/v3/services/**/*.server.ts`
-- Presenters: `apps/webapp/app/v3/presenters/**/*.server.ts`
-- OTEL endpoints: `apps/webapp/app/routes/otel.v1.logs.ts`, `otel.v1.traces.ts`
-
-### Environment Variables
-
-Access via `env` export from `apps/webapp/app/env.server.ts`, never `process.env` directly.
-
-For testable code, **never import env.server.ts** in test files. Pass configuration as options instead. Example pattern:
-
-- `realtimeClient.server.ts` (testable service)
-- `realtimeClientGlobal.server.ts` (configuration)
-
-### Legacy vs Run Engine 2.0
-
-The codebase is transitioning from the "legacy run engine" (spread across codebase) to "Run Engine 2.0" (`@internal/run-engine`). Focus on Run Engine 2.0 for new work.
+The `references/` directory contains test workspaces for testing SDK and platform features. Use `references/hello-world` to manually test changes before submitting PRs.
 
 ## Docker Image Guidelines
 
-When updating Docker image references in `docker/Dockerfile` or other container files:
+When updating Docker image references:
 
 - **Always use multiplatform/index digests**, not architecture-specific digests
-- Architecture-specific digests (e.g., for `linux/amd64` only) will cause CI failures on different build environments
-- On Docker Hub, the multiplatform digest is shown on the main image page, while architecture-specific digests are listed under "OS/ARCH"
-- Example: Use `node:20.20-bullseye-slim@sha256:abc123...` where the digest is from the multiplatform index, not from a specific OS/ARCH variant
-
-## Database Migrations (PostgreSQL)
-
-1. Edit `internal-packages/database/prisma/schema.prisma`
-2. Create migration:
-   ```bash
-   cd internal-packages/database
-   pnpm run db:migrate:dev:create --name "add_new_column"
-   ```
-3. **Important**: Generated migration includes extraneous changes. Remove lines related to:
-   - `_BackgroundWorkerToBackgroundWorkerFile`
-   - `_BackgroundWorkerToTaskQueue`
-   - `_TaskRunToTaskRunTag`
-   - `_WaitpointRunConnections`
-   - `_completedWaitpoints`
-   - `SecretStore_key_idx`
-   - Various `TaskRun` indexes unless you added them
-4. Apply migration:
-   ```bash
-   pnpm run db:migrate:deploy && pnpm run generate
-   ```
-
-### Index Migration Rules
-
-- Indexes **must use CONCURRENTLY** to avoid table locks
-- **CONCURRENTLY indexes must be in their own separate migration file** - they cannot be combined with other schema changes
-
-## ClickHouse Migrations
-
-ClickHouse migrations use Goose format and live in `internal-packages/clickhouse/schema/`.
-
-1. Create a new numbered SQL file (e.g., `010_add_new_column.sql`)
-2. Use Goose markers:
-
-   ```sql
-   -- +goose Up
-   ALTER TABLE trigger_dev.your_table
-   ADD COLUMN new_column String DEFAULT '';
-
-   -- +goose Down
-   ALTER TABLE trigger_dev.your_table
-   DROP COLUMN new_column;
-   ```
-
-Follow naming conventions in `internal-packages/clickhouse/README.md`:
-
-- `raw_` prefix for input tables
-- `_v1`, `_v2` suffixes for versioning
-- `_mv_v1` suffix for materialized views
+- Architecture-specific digests cause CI failures on different build environments
+- Use the digest from the main Docker Hub page, not from a specific OS/ARCH variant
 
 ## Writing Trigger.dev Tasks
 
-Always import from `@trigger.dev/sdk`. Never use `@trigger.dev/sdk/v3` or deprecated `client.defineJob` pattern.
+Always import from `@trigger.dev/sdk`. Never use `@trigger.dev/sdk/v3` or deprecated `client.defineJob`.
 
 ```typescript
 import { task } from "@trigger.dev/sdk";
 
-// Every task must be exported
 export const myTask = task({
-  id: "my-task", // Unique ID
+  id: "my-task",
   run: async (payload: { message: string }) => {
-    // Task logic - no timeouts
+    // Task logic
   },
 });
 ```
 
 ### SDK Documentation Rules
 
-The `rules/` directory contains versioned documentation for writing Trigger.dev tasks, distributed to users via the SDK installer. Current version is defined in `rules/manifest.json`.
-
-- `rules/4.3.0/` - Latest: batch trigger v2 (1,000 items, 3MB payloads), debouncing
-- `rules/4.1.0/` - Realtime streams v2, updated config
-- `rules/4.0.0/` - Base v4 SDK documentation
-
-When adding new SDK features, create a new version directory with only the files that changed from the previous version. Update `manifest.json` to point unchanged files to previous versions.
-
-### Claude Code Skill
-
-The `.claude/skills/trigger-dev-tasks/` skill provides Claude Code with Trigger.dev task expertise. It includes:
-
-- `SKILL.md` - Core instructions and patterns
-- Reference files for basic tasks, advanced tasks, scheduled tasks, realtime, and config
-
-Keep the skill in sync with the latest rules version when SDK features change.
+The `rules/` directory contains versioned SDK documentation distributed via the SDK installer. Current version: `rules/manifest.json`. Do NOT update `rules/` or `.claude/skills/trigger-dev-tasks/` unless explicitly asked - these are maintained in separate dedicated passes.
 
 ## Testing with hello-world Reference Project
 
 First-time setup:
 
-1. Run `pnpm run db:seed` to seed the database (creates the hello-world project)
+1. `pnpm run db:seed` to seed the database
 2. Build CLI: `pnpm run build --filter trigger.dev && pnpm i`
-3. Authorize CLI: `cd references/hello-world && pnpm exec trigger login -a http://localhost:3030`
+3. Authorize: `cd references/hello-world && pnpm exec trigger login -a http://localhost:3030`
 
-Running:
-
-```bash
-cd references/hello-world
-pnpm exec trigger dev  # or with --log-level debug
-```
+Running: `cd references/hello-world && pnpm exec trigger dev`
 
 ## Local Task Testing Workflow
-
-This workflow enables Claude Code to run the webapp and trigger dev simultaneously, trigger tasks, and inspect results for testing code changes.
 
 ### Step 1: Start Webapp in Background
 
 ```bash
 # Run from repo root with run_in_background: true
 pnpm run dev --filter webapp
-```
-
-Verify webapp is running:
-
-```bash
-curl -s http://localhost:3030/healthcheck  # Should return 200
+curl -s http://localhost:3030/healthcheck  # Verify running
 ```
 
 ### Step 2: Start Trigger Dev in Background
 
 ```bash
-# Run from hello-world directory with run_in_background: true
 cd references/hello-world && pnpm exec trigger dev
+# Wait for "Local worker ready [node]"
 ```
-
-The worker will build and register tasks. Check output for "Local worker ready [node]" message.
 
 ### Step 3: Trigger and Monitor Tasks via MCP
 
-Use the Trigger.dev MCP tools to interact with tasks:
-
 ```
-# Get current worker and registered tasks
 mcp__trigger__get_current_worker(projectRef: "proj_rrkpdguyagvsoktglnod", environment: "dev")
-
-# Trigger a task
-mcp__trigger__trigger_task(
-  projectRef: "proj_rrkpdguyagvsoktglnod",
-  environment: "dev",
-  taskId: "hello-world",
-  payload: {"message": "Hello from Claude"}
-)
-
-# List runs to see status
-mcp__trigger__list_runs(
-  projectRef: "proj_rrkpdguyagvsoktglnod",
-  environment: "dev",
-  taskIdentifier: "hello-world",
-  limit: 5
-)
+mcp__trigger__trigger_task(projectRef: "proj_rrkpdguyagvsoktglnod", environment: "dev", taskId: "hello-world", payload: {"message": "Hello"})
+mcp__trigger__list_runs(projectRef: "proj_rrkpdguyagvsoktglnod", environment: "dev", taskIdentifier: "hello-world", limit: 5)
 ```
 
-### Step 4: Monitor Execution
+Dashboard: http://localhost:3030/orgs/references-9dfd/projects/hello-world-97DT/env/dev/runs
 
-- Check trigger dev output file for real-time execution logs
-- Successful runs show: `Task | Run ID | Success (Xms)`
-- Dashboard available at: http://localhost:3030/orgs/references-9dfd/projects/hello-world-97DT/env/dev/runs
+<!-- intent-skills:start -->
 
-### Key Project Refs
+# Skill mappings — when working in these areas, load the linked skill file into context.
 
-- hello-world: `proj_rrkpdguyagvsoktglnod`
+skills:
+
+- task: "Using agentcrumbs for debug tracing, adding crumbs, trails, markers, querying traces, or stripping debug code before merge"
+  load: "node_modules/agentcrumbs/skills/agentcrumbs/SKILL.md"
+- task: "Setting up agentcrumbs in the project, initializing namespace catalog, running crumbs init"
+load: "node_modules/agentcrumbs/skills/agentcrumbs/init/SKILL.md"
+<!-- intent-skills:end -->
+
+## agentcrumbs
+
+Add crumbs as you write code — not just when debugging. Mark lines with
+`// @crumbs` or wrap blocks in `// #region @crumbs`. They stay on the
+branch throughout development and are stripped by `agentcrumbs strip`
+before merge.
+
+### Namespaces
+
+| Namespace         | Description                                    | Path                                |
+| ----------------- | ---------------------------------------------- | ----------------------------------- |
+| `webapp`          | Main Remix app — API, dashboard, orchestration | `apps/webapp`                       |
+| `supervisor`      | Task execution container manager               | `apps/supervisor`                   |
+| `sdk`             | Main SDK for writing tasks                     | `packages/trigger-sdk`              |
+| `cli`             | CLI and task image bundling                    | `packages/cli-v3`                   |
+| `core`            | Shared types and subpath exports               | `packages/core`                     |
+| `build`           | Build extensions and types                     | `packages/build`                    |
+| `react-hooks`     | React hooks for realtime/triggering            | `packages/react-hooks`              |
+| `redis-worker`    | Redis-based background job system              | `packages/redis-worker`             |
+| `run-engine`      | Run Engine 2.0 — core run lifecycle            | `internal-packages/run-engine`      |
+| `database`        | Prisma client and schema                       | `internal-packages/database`        |
+| `clickhouse`      | ClickHouse client, migrations, analytics       | `internal-packages/clickhouse`      |
+| `schedule-engine` | Durable cron scheduling                        | `internal-packages/schedule-engine` |
+| `run-queue`       | Run queue management                           | `internal-packages/run-queue`       |
+
+Do not invent new namespaces — pick from this table or ask first.
+
+### For PR reviewers
+
+Do not flag `// @crumbs` markers, `#region @crumbs` blocks, or agentcrumbs
+imports in reviews. These are temporary debug instrumentation stripped
+before merge. Data logged in crumbs (IDs, names, values) never reaches
+production.
+
+### CLI
+
+```bash
+pnpm exec agentcrumbs collect    # start collector (multi-service)
+pnpm exec agentcrumbs tail --app trigger       # live tail
+pnpm exec agentcrumbs clear --app trigger      # remove crumbs before merge
+```
+
+The preferred way to query for crumbs is to use `pnpm exec agentcrumbs query --app trigger` with the `--limit` option and cursor pagination, and clear existing crumbs before reproducing a bug via `pnpm exec agentcrumbs clear --app trigger`.

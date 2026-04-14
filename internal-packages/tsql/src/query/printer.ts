@@ -2370,6 +2370,21 @@ export class ClickHousePrinter {
     // Try to resolve column names through table context
     const resolvedChain = this.resolveFieldChain(chainWithPrefix);
 
+    // For Map columns, convert dot-notation to bracket syntax:
+    // metadata.user -> metadata['user']
+    if (resolvedChain.length > 1) {
+      const rootColumnSchema = this.resolveFieldToColumnSchema([node.chain[0]]);
+      if (rootColumnSchema?.type.startsWith("Map(")) {
+        const rootCol = this.printIdentifierOrIndex(resolvedChain[0]);
+        const mapKeys = resolvedChain.slice(1);
+        let result = rootCol;
+        for (const key of mapKeys) {
+          result = `${result}[${this.context.addValue(String(key))}]`;
+        }
+        return result;
+      }
+    }
+
     // Print each chain element
     let result = resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
 

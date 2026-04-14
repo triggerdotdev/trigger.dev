@@ -19,7 +19,7 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
@@ -32,6 +32,7 @@ import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { CopyTextLink } from "~/components/primitives/CopyTextLink";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -55,11 +56,14 @@ import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
+import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -252,35 +256,62 @@ function SpanBody({
 
   span = applySpanOverrides(span, spanOverrides);
 
+  const isAiInspector =
+    span.entity?.type === "ai-generation" ||
+    span.entity?.type === "ai-summary" ||
+    span.entity?.type === "ai-tool-call" ||
+    span.entity?.type === "ai-embed" ||
+    span.entity?.type === "prompt";
+
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
-        <div className="flex items-center gap-1 overflow-x-hidden">
-          <RunIcon
-            name={span.style?.icon}
-            spanName={span.message}
-            className="size-5 min-h-5 min-w-5"
-          />
-          <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" hideAccessory />
-          </Header2>
+    <div
+      className={cn(
+        "grid h-full max-h-full overflow-hidden bg-background-bright",
+        isAiInspector ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
+      )}
+    >
+      <div className="border-b border-grid-bright px-3 pr-2">
+        <div className="grid h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <RunIcon
+              name={span.style?.icon}
+              spanName={span.message}
+              className="size-5 min-h-5 min-w-5"
+            />
+            <Header2 className="min-w-0">
+              <SpanTitle {...span} size="large" hideAccessory overrideDimmed />
+            </Header2>
+          </div>
+          {runParam && closePanel && (
+            <Button
+              onClick={closePanel}
+              variant="minimal/small"
+              TrailingIcon={ExitIcon}
+              shortcut={{ key: "esc" }}
+              shortcutPosition="before-trailing-icon"
+              className="pl-1"
+            />
+          )}
         </div>
-        {runParam && closePanel && (
-          <Button
-            onClick={closePanel}
-            variant="minimal/small"
-            TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
-            shortcutPosition="before-trailing-icon"
-            className="pl-1"
-          />
-        )}
       </div>
-      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      {isAiInspector ? (
         <SpanEntity span={span} />
-      </div>
+      ) : (
+        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <SpanEntity span={span} />
+        </div>
+      )}
     </div>
   );
+}
+
+function formatSpanDuration(nanoseconds: number): string {
+  const ms = nanoseconds / 1_000_000;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const mins = Math.floor(ms / 60_000);
+  const secs = ((ms % 60_000) / 1000).toFixed(0);
+  return `${mins}m ${secs}s`;
 }
 
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
@@ -1155,6 +1186,35 @@ function RunError({ error }: { error: TaskRunError }) {
   }
 }
 
+function CollapsibleProperties({ code }: { code: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-grid-bright pt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
+      >
+        <ChevronUpIcon
+          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
+        />
+        Raw properties
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          <CodeBlock
+            code={code}
+            maxLines={20}
+            showLineNumbers={false}
+            showCopyButton
+            showTextWrapping
+            showOpenInModal
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -1201,8 +1261,13 @@ function SpanEntity({ span }: { span: Span }) {
         )}
         <Property.Table>
           <Property.Item>
-            <Property.Label>Message</Property.Label>
-            <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+            <Property.Label className="flex items-center justify-between">
+              <span>Message</span>
+              <CopyTextLink value={span.message} />
+            </Property.Label>
+            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+              {span.message}
+            </Property.Value>
           </Property.Item>
         </Property.Table>
         {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
@@ -1348,6 +1413,54 @@ function SpanEntity({ span }: { span: Span }) {
           runId={span.entity.object.runId}
           streamKey={span.entity.object.streamKey}
           metadata={span.entity.object.metadata}
+          displayName={span.entity.object.displayName}
+        />
+      );
+    }
+    case "ai-generation":
+    case "ai-summary": {
+      return (
+        <AISpanDetails
+          aiData={span.entity.object}
+          promptVersionData={span.entity.promptVersionData}
+          rawProperties={
+            typeof span.properties === "string"
+              ? span.properties
+              : span.properties != null
+              ? JSON.stringify(span.properties, null, 2)
+              : undefined
+          }
+          startTime={span.startTime}
+          duration={span.duration}
+        />
+      );
+    }
+    case "ai-tool-call": {
+      return (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3">
+            <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
+          </div>
+          <AIToolCallSpanDetails data={span.entity.object} />
+        </div>
+      );
+    }
+    case "ai-embed": {
+      return (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3">
+            <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
+          </div>
+          <AIEmbedSpanDetails data={span.entity.object} />
+        </div>
+      );
+    }
+    case "prompt": {
+      return (
+        <PromptSpanDetails
+          promptData={span.entity.object}
+          startTime={span.startTime}
+          duration={span.duration}
         />
       );
     }

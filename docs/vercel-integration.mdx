@@ -104,14 +104,47 @@ The following variables are excluded from the Vercel → Trigger.dev sync:
 
 You can control sync behavior per-variable from your project's Vercel settings. Deselecting a variable prevents its value from being updated during future syncs.
 
-<Tip>
-  For dynamic environment variables (e.g., from NeonDB branching), use the `syncEnvVars` build
-  extension instead. Learn more about [environment variables](/deploy-environment-variables).
-</Tip>
+<Warning>
+  If you are experiencing incorrectly populated environment variables, check that you are not using
+  the `syncVercelEnvVars` build extension in your `trigger.config.ts`. This extension is deprecated
+  and conflicts with the Vercel integration's built-in env var syncing. Remove it if present.
+</Warning>
+
+### Supabase and Neon database branching
+
+If you use [Supabase Branching](https://supabase.com/docs/guides/deployment/branching) or [Neon Database Branching](https://neon.tech/docs/guides/branching-intro) for preview environments, disable syncing for database env vars on the Environment Variables page and use the [syncSupabaseEnvVars](/config/extensions/syncEnvVars#syncsupabaseenvvars) or [syncNeonEnvVars](/config/extensions/syncEnvVars#syncneonenvvars) build extensions instead. These extensions automatically resolve the correct branch-specific credentials at build time.
 
 ## Atomic deployments
 
 Atomic deployments ensure your Vercel app and Trigger.dev tasks are deployed in sync. When enabled, Trigger.dev gates your Vercel deployment until the task build completes, then triggers a Vercel redeployment with the correct `TRIGGER_VERSION` set. This guarantees your app always uses the matching version of your tasks.
+
+```mermaid
+sequenceDiagram
+  participant Dev as Developer
+  participant GH as GitHub
+  participant V as Vercel
+  participant TD as Trigger.dev
+
+  Dev->>GH: Push code
+  GH->>V: Webhook: new commit
+  V->>V: Start deployment
+  V->>TD: Deployment created
+  Dev->>GH: Create pull request
+  GH->>TD: Pull request created
+  TD->>TD: Start task build
+
+  V->>TD: Deployment check
+  TD-->>V: Check pending (gate deployment)
+  TD->>TD: Build completes
+  TD->>V: Set TRIGGER_VERSION env var
+  TD->>V: Trigger redeployment
+  V->>V: Redeploy with correct TRIGGER_VERSION
+  V->>TD: Deployment check (redeployment)
+  TD-->>V: Check passed
+  V->>V: Promote deployment
+  V->>TD: Deployment promoted
+  TD->>TD: Promote build
+```
 
 Atomic deployments are enabled for the production environment by default.
 

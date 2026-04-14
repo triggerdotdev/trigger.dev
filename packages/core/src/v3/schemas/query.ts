@@ -44,6 +44,81 @@ export const QueryExecuteResponseBody = z.discriminatedUnion("format", [
 export type QueryExecuteResponseBody = z.infer<typeof QueryExecuteResponseBody>;
 
 // ---------------------------------------------------------------------------
+// Query schema discovery types
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema for a single column in the query schema response
+ */
+export const QuerySchemaColumn = z.object({
+  name: z.string(),
+  type: z.string(),
+  description: z.string().optional(),
+  example: z.string().optional(),
+  allowedValues: z.array(z.string()).optional(),
+  coreColumn: z.boolean().optional(),
+});
+
+export type QuerySchemaColumn = z.infer<typeof QuerySchemaColumn>;
+
+/**
+ * Schema for a single table in the query schema response
+ */
+export const QuerySchemaTable = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  timeColumn: z.string().optional(),
+  columns: z.array(QuerySchemaColumn),
+});
+
+export type QuerySchemaTable = z.infer<typeof QuerySchemaTable>;
+
+/**
+ * Response body for the query schema endpoint
+ */
+export const QuerySchemaResponseBody = z.object({
+  tables: z.array(QuerySchemaTable),
+});
+
+export type QuerySchemaResponseBody = z.infer<typeof QuerySchemaResponseBody>;
+
+// ---------------------------------------------------------------------------
+// Dashboard types
+// ---------------------------------------------------------------------------
+
+/**
+ * Summary of a widget in a dashboard (for listing)
+ */
+export const DashboardWidgetSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  query: z.string(),
+  type: z.enum(["bignumber", "chart", "table", "title"]),
+});
+
+export type DashboardWidgetSummary = z.infer<typeof DashboardWidgetSummary>;
+
+/**
+ * Summary of a dashboard (for listing)
+ */
+export const DashboardSummary = z.object({
+  key: z.string(),
+  title: z.string(),
+  widgets: z.array(DashboardWidgetSummary),
+});
+
+export type DashboardSummary = z.infer<typeof DashboardSummary>;
+
+/**
+ * Response body for listing dashboards
+ */
+export const ListDashboardsResponseBody = z.object({
+  dashboards: z.array(DashboardSummary),
+});
+
+export type ListDashboardsResponseBody = z.infer<typeof ListDashboardsResponseBody>;
+
+// ---------------------------------------------------------------------------
 // Query table row types
 // ---------------------------------------------------------------------------
 

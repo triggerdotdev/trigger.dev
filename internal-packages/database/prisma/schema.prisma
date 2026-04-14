@@ -43,6 +43,7 @@ model User {
   confirmedBasicDetails Boolean @default(false)
 
   referralSource String?
+  onboardingData Json?
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
@@ -60,10 +61,12 @@ model User {
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
 
-  impersonationsPerformed ImpersonationAuditLog[] @relation("ImpersonationAdmin")
-  impersonationsReceived  ImpersonationAuditLog[] @relation("ImpersonationTarget")
-  customerQueries         CustomerQuery[]
-  metricsDashboards       MetricsDashboard[]
+  impersonationsPerformed          ImpersonationAuditLog[]           @relation("ImpersonationAdmin")
+  impersonationsReceived           ImpersonationAuditLog[]           @relation("ImpersonationTarget")
+  customerQueries                  CustomerQuery[]
+  metricsDashboards                MetricsDashboard[]
+  platformNotifications            PlatformNotification[]
+  platformNotificationInteractions PlatformNotificationInteraction[]
 }
 
 model MfaBackupCode {
@@ -190,6 +193,8 @@ model Organization {
 
   companySize String?
 
+  onboardingData Json?
+
   avatar Json?
 
   runsEnabled Boolean @default(true)
@@ -225,6 +230,10 @@ model Organization {
   githubAppInstallations   GithubAppInstallation[]
   customerQueries          CustomerQuery[]
   metricsDashboards        MetricsDashboard[]
+  prompts                  Prompt[]
+
+  platformNotifications PlatformNotification[]
+  errorGroupStates      ErrorGroupState[]
 }
 
 model OrgMember {
@@ -343,6 +352,8 @@ model RuntimeEnvironment {
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
   customerQueries      CustomerQuery[]
+  prompts              Prompt[]
+  errorGroupStates     ErrorGroupState[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -411,8 +422,13 @@ model Project {
   customerQueries                CustomerQuery[]
 
   buildSettings         Json?
+  onboardingData        Json?
   taskScheduleInstances TaskScheduleInstance[]
   metricsDashboards     MetricsDashboard[]
+  llmModels             LlmModel[]
+  prompts               Prompt[]
+  platformNotifications PlatformNotification[]
+  errorGroupStates      ErrorGroupState[]
 }
 
 enum ProjectVersion {
@@ -487,11 +503,12 @@ model BackgroundWorker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks      BackgroundWorkerTask[]
-  attempts   TaskRunAttempt[]
-  lockedRuns TaskRun[]
-  files      BackgroundWorkerFile[]
-  queues     TaskQueue[]
+  tasks          BackgroundWorkerTask[]
+  attempts       TaskRunAttempt[]
+  lockedRuns     TaskRun[]
+  files          BackgroundWorkerFile[]
+  queues         TaskQueue[]
+  promptVersions PromptVersion[]
 
   deployment WorkerDeployment?
 
@@ -525,6 +542,73 @@ model BackgroundWorkerFile {
   createdAt DateTime @default(now())
 
   @@unique([projectId, contentHash])
+}
+
+model Prompt {
+  id          String  @id @default(cuid())
+  friendlyId  String  @unique @map("friendly_id")
+  slug        String
+  description String?
+  type        String  @default("text") // "text" | "chat"
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  filePath       String?
+  exportName     String?
+  variableSchema Json?
+  defaultModel   String?
+  defaultConfig  Json?
+
+  tags       String[]  @default([])
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions PromptVersion[]
+
+  @@unique([projectId, runtimeEnvironmentId, slug])
+  @@index([projectId])
+  @@index([runtimeEnvironmentId])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id      String @id @default(cuid())
+  version Int
+
+  prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  promptId String
+
+  textContent String?
+  chatContent Json?
+
+  model  String?
+  config Json?
+
+  source        String // "deploy" | "dashboard" | "api"
+  commitMessage String?
+  contentHash   String
+
+  labels String[] @default([])
+
+  worker   BackgroundWorker? @relation(fields: [workerId], references: [id])
+  workerId String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([promptId, version])
+  @@index([promptId])
+  @@index([contentHash])
+  @@map("prompt_versions")
 }
 
 model BackgroundWorkerTask {
@@ -564,6 +648,8 @@ model BackgroundWorkerTask {
   queue   TaskQueue? @relation(fields: [queueId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   maxDurationInSeconds Int?
+
+  ttl String?
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
@@ -761,6 +847,12 @@ model TaskRun {
   metadataType    String  @default("application/json")
   metadataVersion Int     @default(1)
 
+  /// Structured annotations: triggerSource, triggerAction, rootTriggerSource, rootScheduleId
+  annotations Json?
+
+  /// Whether the latest attempt was a warm start. Null until first attempt starts.
+  isWarmStart Boolean?
+
   /// Run output
   output     String?
   outputType String  @default("application/json")
@@ -782,10 +874,6 @@ model TaskRun {
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
-  // Finding ancestor runs
-  @@index([rootTaskRunId])
-  //Schedules
-  @@index([scheduleId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
@@ -794,8 +882,6 @@ model TaskRun {
   // Finding runs in a batch
   @@index([runTags(ops: ArrayOps)], type: Gin)
   @@index([runtimeEnvironmentId, batchId])
-  // This will include the createdAt index to help speed up the run list page
-  @@index([runtimeEnvironmentId, id(sort: Desc)])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
   @@index([createdAt], type: Brin)
   @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
@@ -1011,6 +1097,7 @@ model TaskRunCheckpoint {
 enum TaskRunCheckpointType {
   DOCKER
   KUBERNETES
+  COMPUTE
 }
 
 /// A Waitpoint blocks a run from continuing until it's completed
@@ -1200,6 +1287,11 @@ enum WorkerInstanceGroupType {
   UNMANAGED
 }
 
+enum WorkloadType {
+  CONTAINER
+  MICROVM
+}
+
 model WorkerInstanceGroup {
   id   String                  @id @default(cuid())
   type WorkerInstanceGroupType
@@ -1233,6 +1325,12 @@ model WorkerInstanceGroup {
   /// "usa", "europe", etc. Used like a pseudo enum for things like flags
   location      String?
   staticIPs     String?
+
+  workloadType WorkloadType @default(CONTAINER)
+
+  /// When true, runs enqueued to this worker queue may skip the intermediate queue
+  /// and be pushed directly to the worker queue when concurrency is available.
+  enableFastPath Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2013,6 +2111,8 @@ model ProjectAlertChannel {
   alertTypes       ProjectAlertType[]
   environmentTypes RuntimeEnvironmentType[] @default([STAGING, PRODUCTION])
 
+  errorAlertConfig Json?
+
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -2067,6 +2167,7 @@ enum ProjectAlertType {
   TASK_RUN_ATTEMPT
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS
+  ERROR_GROUP
 }
 
 enum ProjectAlertStatus {
@@ -2091,6 +2192,8 @@ model ProjectAlertStorage {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([alertChannelId, alertType, storageId])
 }
 
 model OrganizationIntegration {
@@ -2571,4 +2674,248 @@ model MetricsDashboard {
 
   /// Fast lookup for the list
   @@index([projectId, createdAt(sort: Desc)])
+}
+
+// ====================================================
+// LLM Pricing Models
+// ====================================================
+
+/// A known LLM model or model pattern for cost tracking
+model LlmModel {
+  id           String    @id @default(cuid())
+  friendlyId   String    @unique @map("friendly_id")
+  projectId    String?   @map("project_id")
+  project      Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  modelName    String    @map("model_name")
+  matchPattern String    @map("match_pattern")
+  startDate    DateTime? @map("start_date")
+  source       String    @default("default") // "default", "admin", "project"
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Catalog metadata for model registry
+  provider        String?  @map("provider")
+  description     String?  @map("description")
+  contextWindow   Int?     @map("context_window")
+  maxOutputTokens Int?     @map("max_output_tokens")
+  capabilities    String[] @default([]) @map("capabilities")
+  isHidden        Boolean  @default(false) @map("is_hidden")
+  baseModelName   String?  @map("base_model_name")
+
+  pricingTiers LlmPricingTier[]
+  prices       LlmPrice[]
+
+  @@unique([projectId, modelName, startDate])
+  @@index([projectId])
+  @@map("llm_models")
+}
+
+/// A pricing tier for a model (supports volume-based or conditional pricing)
+model LlmPricingTier {
+  id         String   @id @default(cuid())
+  modelId    String   @map("model_id")
+  model      LlmModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  name       String
+  isDefault  Boolean  @default(true) @map("is_default")
+  priority   Int      @default(0)
+  conditions Json     @default("[]") @db.JsonB
+
+  prices LlmPrice[]
+
+  @@unique([modelId, priority])
+  @@unique([modelId, name])
+  @@map("llm_pricing_tiers")
+}
+
+/// A price point for a usage type within a pricing tier
+model LlmPrice {
+  id            String         @id @default(cuid())
+  modelId       String         @map("model_id")
+  model         LlmModel       @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  pricingTierId String         @map("pricing_tier_id")
+  pricingTier   LlmPricingTier @relation(fields: [pricingTierId], references: [id], onDelete: Cascade)
+  usageType     String         @map("usage_type")
+  price         Decimal        @db.Decimal(20, 12)
+
+  @@unique([modelId, usageType, pricingTierId])
+  @@map("llm_prices")
+}
+
+enum PlatformNotificationSurface {
+  WEBAPP
+  CLI
+}
+
+enum PlatformNotificationScope {
+  USER
+  PROJECT
+  ORGANIZATION
+  GLOBAL
+}
+
+/// Admin-created notification definitions
+model PlatformNotification {
+  id String @id @default(cuid())
+
+  friendlyId String @unique @default(cuid())
+
+  /// Admin-facing title for identification in admin tools
+  title String
+
+  /// Versioned JSON rendering content (see payload schema in spec)
+  payload Json
+
+  surface PlatformNotificationSurface
+  scope   PlatformNotificationScope
+
+  /// Set when scope = USER
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String?
+
+  /// Set when scope = ORGANIZATION
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String?
+
+  /// Set when scope = PROJECT
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  /// When notification becomes active
+  startsAt DateTime
+
+  /// When notification expires
+  endsAt DateTime
+
+  /// CLI: auto-expire N days after user first saw it
+  cliMaxDaysAfterFirstSeen Int?
+
+  /// CLI: auto-expire after shown N times to user
+  cliMaxShowCount Int?
+
+  /// CLI: only show every N-th request (e.g. cliShowEvery=3 means show on 3rd, 6th, 9th…)
+  cliShowEvery Int?
+
+  /// Ordering within same scope level (higher = more important)
+  priority Int @default(0)
+
+  /// Soft delete
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interactions PlatformNotificationInteraction[]
+
+  @@index([surface, scope, startsAt])
+}
+
+/// Per-user tracking of notification views and dismissals
+model PlatformNotificationInteraction {
+  id String @id @default(cuid())
+
+  notification   PlatformNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  notificationId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  /// Set by beacon/CLI GET on first impression
+  firstSeenAt DateTime @default(now())
+
+  /// Times shown (incremented per beacon/CLI view)
+  showCount Int @default(1)
+
+  /// User dismissed in webapp
+  webappDismissedAt DateTime?
+
+  /// User clicked a link in webapp
+  webappClickedAt DateTime?
+
+  /// Auto-dismissed or expired in CLI
+  cliDismissedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([notificationId, userId])
+}
+
+enum ErrorGroupStatus {
+  UNRESOLVED
+  RESOLVED
+  IGNORED
+}
+
+/**
+ * Error group state is used to track when a user has interacted with an error (ignored/resolved)
+ * The actual error data is in ClickHouse.
+ */
+model ErrorGroupState {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  /**
+   * You can ignore/resolve an error across all environments, or specific ones
+   */
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  taskIdentifier   String
+  errorFingerprint String
+
+  status ErrorGroupStatus @default(UNRESOLVED)
+
+  /**
+   * Error is ignored until this date
+   */
+  ignoredUntil                 DateTime?
+  /**
+   * Error is ignored until this occurrence rate
+   */
+  ignoredUntilOccurrenceRate   Int?
+  /**
+   * Error is ignored until this total occurrences
+   */
+  ignoredUntilTotalOccurrences Int?
+
+  /// Total occurrence count at the time the error was ignored (from ClickHouse).
+  /// Used with ignoredUntilTotalOccurrences to compute occurrences since ignoring.
+  ignoredAtOccurrenceCount BigInt?
+
+  /**
+   * Error was ignored at this date
+   */
+  ignoredAt       DateTime?
+  /**
+   * Reason for ignoring the error
+   */
+  ignoredReason   String?
+  /**
+   * User who ignored the error
+   */
+  ignoredByUserId String?
+
+  /**
+   * Error was resolved at this date
+   */
+  resolvedAt        DateTime?
+  /**
+   * Error was resolved in this version
+   */
+  resolvedInVersion String?
+  /**
+   * User who resolved the error
+   */
+  resolvedBy        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([environmentId, taskIdentifier, errorFingerprint])
+  @@index([environmentId, status])
 }

@@ -48,6 +48,7 @@ import { vercelAppInstallPath, v3ProjectSettingsIntegrationsPath, githubAppInsta
 import type { loader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { usePostHogTracking } from "~/hooks/usePostHog";
+import { TextLink } from "../primitives/TextLink";
 
 function safeRedirectUrl(url: string): string | null {
   try {
@@ -145,6 +146,11 @@ export function VercelOnboardingModal({
       }
       return "project-selection";
     }
+    // If onboarding was already completed but GitHub is not connected,
+    // go directly to the github-connection step (e.g., returning from GitHub App installation)
+    if (onboardingData?.isOnboardingComplete && !onboardingData?.isGitHubConnected) {
+      return "github-connection";
+    }
     // For marketplace origin, skip env-mapping step and go directly to env-var-sync
     if (!fromMarketplaceContext) {
       const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
@@ -224,9 +230,10 @@ export function VercelOnboardingModal({
     () => availableEnvSlugsForOnboardingBuildSettings
   );
 
-  // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasStagingEnvironment becomes true (once)
+  // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasStagingEnvironment becomes true
+  // AND a custom Vercel environment is mapped (once)
   useEffect(() => {
-    if (hasStagingEnvironment && !hasSyncedStagingRef.current) {
+    if (hasStagingEnvironment && vercelStagingEnvironment && !hasSyncedStagingRef.current) {
       hasSyncedStagingRef.current = true;
       setPullEnvVarsBeforeBuild((prev) => {
         if (!prev.includes("stg")) {
@@ -241,7 +248,15 @@ export function VercelOnboardingModal({
         return prev;
       });
     }
-  }, [hasStagingEnvironment]);
+  }, [hasStagingEnvironment, vercelStagingEnvironment]);
+
+  // Strip "stg" from build settings when the staging environment mapping is cleared
+  useEffect(() => {
+    if (!vercelStagingEnvironment) {
+      setPullEnvVarsBeforeBuild((prev) => prev.filter((s) => s !== "stg"));
+      setDiscoverEnvVars((prev) => prev.filter((s) => s !== "stg"));
+    }
+  }, [vercelStagingEnvironment]);
 
   // Sync pullEnvVarsBeforeBuild and discoverEnvVars when hasPreviewEnvironment becomes true (once)
   useEffect(() => {
@@ -531,6 +546,9 @@ export function VercelOnboardingModal({
     formData.append("atomicBuilds", JSON.stringify(atomicBuilds));
     formData.append("discoverEnvVars", JSON.stringify(discoverEnvVars));
     formData.append("syncEnvVarsMapping", JSON.stringify(syncEnvVarsMapping));
+    if (fromMarketplaceContext) {
+      formData.append("origin", "marketplace");
+    }
     if (nextUrl && fromMarketplaceContext && isGitHubConnectedForOnboarding) {
       formData.append("next", nextUrl);
     }
@@ -670,6 +688,11 @@ export function VercelOnboardingModal({
   const showBuildSettings = state === "build-settings";
   const showGitHubConnection = state === "github-connection";
 
+  const disabledEnvSlugsForBuildSettings =
+    hasStagingEnvironment && !vercelStagingEnvironment
+      ? ({ stg: "Map a custom Vercel environment to Staging to enable this" } as Partial<Record<EnvSlug, string>>)
+      : undefined;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
       if (!open && !fromMarketplaceContext) {
@@ -679,7 +702,7 @@ export function VercelOnboardingModal({
         onClose();
       }
     }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-2">
             <VercelLogo className="size-5" />
@@ -731,7 +754,7 @@ export function VercelOnboardingModal({
               )}
 
               <Hint>
-                Once connected, your <code className="text-xs">TRIGGER_SECRET_KEY</code> will be
+                Once connected, your <code className="text-xs rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code> will be
                 automatically synced to Vercel for each environment.
               </Hint>
 
@@ -775,6 +798,10 @@ export function VercelOnboardingModal({
               <Paragraph className="text-sm">
                 Select which custom Vercel environment should map to Trigger.dev's Staging
                 environment. Production and Preview environments are mapped automatically.
+                If you skip this step, the{" "}
+                <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">TRIGGER_SECRET_KEY</code>{" "}
+                will not be installed for the staging environment in Vercel. You can configure this later in
+                project settings.
               </Paragraph>
 
               <Select
@@ -799,6 +826,11 @@ export function VercelOnboardingModal({
                   </SelectItem>
                 ))}
               </Select>
+
+              <Paragraph className="text-xs text-text-dimmed">
+                Make sure the staging branch in your Vercel project's Git settings matches the staging branch
+                configured in your GitHub integration.
+              </Paragraph>
 
               <div className="flex items-center justify-between gap-2">
                 <Button
@@ -831,25 +863,13 @@ export function VercelOnboardingModal({
 
           {showEnvVarSync && (
             <div className="flex flex-col gap-4">
-              <Header3>Pull Environment Variables</Header3>
-              <Paragraph className="text-sm">
-                Select which environment variables to pull from Vercel now. This is a one-time pull.
-                Later on environment variables can be pulled before each build.
-              </Paragraph>
-
-              <div className="flex gap-4 text-sm">
-                <div className="rounded border bg-charcoal-750 px-3 py-2">
-                  <span className="font-medium text-text-bright">{syncableEnvVars.length}</span>
-                  <span className="text-text-dimmed"> can be pulled</span>
-                </div>
-                {secretEnvVars.length > 0 && (
-                  <div className="rounded border bg-charcoal-750 px-3 py-2">
-                    <span className="font-medium text-amber-400">{secretEnvVars.length}</span>
-                    <span className="text-text-dimmed"> secret (cannot pull)</span>
-                  </div>
-                )}
+              <div className="flex flex-col gap-1">
+                <Header3>Pull Environment Variables</Header3>
+                <Paragraph className="text-sm">
+                Choose which environment variables to import from Vercel. This runs as a one time pull to prefill your project with the variables it needs. You’ll be able to pull again later, or enable automatic syncing before each build if you prefer.
+                If you are using Supabase or Neon branching, <TextLink href="https://trigger.dev/docs/vercel-integration#supabase-and-neon-database-branching" target="_blank" rel="noopener noreferrer">read the docs</TextLink> for the recommended setup.
+                </Paragraph>
               </div>
-
               <div className="flex items-center justify-between rounded border bg-charcoal-800 p-3">
                 <div>
                   <Label>Pull all environment variables now</Label>
@@ -1038,6 +1058,7 @@ export function VercelOnboardingModal({
                 onDiscoverEnvVarsChange={setDiscoverEnvVars}
                 atomicBuilds={atomicBuilds}
                 onAtomicBuildsChange={setAtomicBuilds}
+                disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
               />
 
               <FormButtons
@@ -1143,26 +1164,7 @@ export function VercelOnboardingModal({
                     >
                       Complete
                     </Button>
-                  ) : (
-                    <Button
-                      variant="tertiary/medium"
-                      onClick={() => {
-                        trackOnboarding("vercel onboarding github skipped");
-                        setState("completed");
-                        if (fromMarketplaceContext && nextUrl) {
-                          const validUrl = safeRedirectUrl(nextUrl);
-                          if (validUrl) {
-                            window.location.href = validUrl;
-                          }
-                        }
-                      }}
-                    >
-                      Skip for now
-                    </Button>
-                  )
-                }
-                cancelButton={
-                  isGitHubConnectedForOnboarding && fromMarketplaceContext && nextUrl ? (
+                  ) : !fromMarketplaceContext ? (
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {

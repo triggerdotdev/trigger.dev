@@ -9,7 +9,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
+import { IconBugFilled, IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { ListFilterIcon } from "lucide-react";
@@ -181,6 +181,7 @@ export const TaskRunListSearchFilters = z.object({
   machines: MachinePresetOrMachinePresetArray.describe(
     `Machine presets to filter by (${machines.join(", ")})`
   ),
+  errorId: z.string().optional().describe("Error ID to filter runs by (e.g. error_abc123)"),
 });
 
 export type TaskRunListSearchFilters = z.infer<typeof TaskRunListSearchFilters>;
@@ -220,6 +221,8 @@ export function filterTitle(filterKey: string) {
       return "Machine";
     case "versions":
       return "Version";
+    case "errorId":
+      return "Error ID";
     default:
       return filterKey;
   }
@@ -258,6 +261,8 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <MachineDefaultIcon className="size-4" />;
     case "versions":
       return <IconRotateClockwise2 className="size-4" />;
+    case "errorId":
+      return <IconBugFilled className="size-4" />;
     default:
       return undefined;
   }
@@ -304,6 +309,7 @@ export function getRunFiltersFromSearchParams(
       searchParams.getAll("versions").filter((v) => v.length > 0).length > 0
         ? searchParams.getAll("versions")
         : undefined,
+    errorId: searchParams.get("errorId") ?? undefined,
   };
 
   const parsed = TaskRunListSearchFilters.safeParse(params);
@@ -344,7 +350,8 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("scheduleId") ||
     searchParams.has("queues") ||
     searchParams.has("machines") ||
-    searchParams.has("versions");
+    searchParams.has("versions") ||
+    searchParams.has("errorId");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1">
@@ -380,6 +387,7 @@ const filterTypes = [
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
+  { name: "error", title: "Error ID", icon: <IconBugFilled className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -434,6 +442,7 @@ function AppliedFilters({ possibleTasks, bulkActions }: RunFiltersProps) {
       <AppliedBatchIdFilter />
       <AppliedScheduleIdFilter />
       <AppliedBulkActionsFilter bulkActions={bulkActions} />
+      <AppliedErrorIdFilter />
     </>
   );
 }
@@ -470,6 +479,8 @@ function Menu(props: MenuProps) {
       return <ScheduleIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "versions":
       return <VersionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "error":
+      return <ErrorIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
   }
 }
 
@@ -655,7 +666,7 @@ function TasksDropdown({
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }
             >
-              <MiddleTruncate text={item.slug}/>
+              <MiddleTruncate text={item.slug} />
             </SelectItem>
           ))}
         </SelectList>
@@ -1205,7 +1216,7 @@ function AppliedMachinesFilter() {
   );
 }
 
-function VersionsDropdown({
+export function VersionsDropdown({
   trigger,
   clearSearchValue,
   searchValue,
@@ -1729,6 +1740,124 @@ function AppliedScheduleIdFilter() {
                 icon={filterIcon("scheduleId")}
                 value={scheduleId}
                 onRemove={() => del(["scheduleId", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function ErrorIdDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState<boolean | undefined>();
+  const { value, replace } = useSearchParams();
+  const errorIdValue = value("errorId");
+
+  const [errorId, setErrorId] = useState(errorIdValue);
+
+  const apply = useCallback(() => {
+    clearSearchValue();
+    replace({
+      cursor: undefined,
+      direction: undefined,
+      errorId: errorId === "" ? undefined : errorId?.toString(),
+    });
+
+    setOpen(false);
+  }, [errorId, replace]);
+
+  let error: string | undefined = undefined;
+  if (errorId) {
+    if (!errorId.startsWith("error_")) {
+      error = "Error IDs start with 'error_'";
+    }
+  }
+
+  return (
+    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+      {trigger}
+      <SelectPopover
+        hideOnEnter={false}
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+
+          return true;
+        }}
+        className="max-w-[min(32ch,var(--popover-available-width))]"
+      >
+        <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-1">
+            <Label>Error ID</Label>
+            <Input
+              placeholder="error_"
+              value={errorId ?? ""}
+              onChange={(e) => setErrorId(e.target.value)}
+              variant="small"
+              className="w-[29ch] font-mono"
+              spellCheck={false}
+            />
+            {error ? <FormError>{error}</FormError> : null}
+          </div>
+          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
+            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={error !== undefined || !errorId}
+              variant="secondary/small"
+              shortcut={{
+                modifiers: ["mod"],
+                key: "Enter",
+                enabledOnInputElements: true,
+              }}
+              onClick={() => apply()}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedErrorIdFilter() {
+  const { value, del } = useSearchParams();
+
+  if (value("errorId") === undefined) {
+    return null;
+  }
+
+  const errorId = value("errorId");
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <ErrorIdDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Error ID"
+                icon={filterIcon("errorId")}
+                value={errorId}
+                onRemove={() => del(["errorId", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>

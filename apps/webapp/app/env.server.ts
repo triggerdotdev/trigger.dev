@@ -39,6 +39,7 @@ const S2EnvSchema = z.preprocess(
       S2_ENABLED: z.literal("1"),
       S2_ACCESS_TOKEN: z.string(),
       S2_DEPLOYMENT_LOGS_BASIN_NAME: z.string(),
+      S2_DEPLOYMENT_STREAMS_LOCAL: z.string().default("0"),
     }),
     z.object({
       S2_ENABLED: z.literal("0"),
@@ -332,6 +333,11 @@ const EnvironmentSchema = z
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
 
+    // Compute gateway (template creation during deploy finalize)
+    COMPUTE_GATEWAY_URL: z.string().optional(),
+    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
+    COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
+
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_TIMEOUT_MS: z.coerce
       .number()
@@ -343,10 +349,17 @@ const EnvironmentSchema = z
       .default(60 * 1000 * 15), // 15 minutes
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
+    OBJECT_STORE_BUCKET: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
     OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     OBJECT_STORE_REGION: z.string().optional(),
     OBJECT_STORE_SERVICE: z.string().default("s3"),
+
+    // Protocol to use for new uploads (e.g., "s3", "r2"). Data without protocol uses default provider above.
+    // If specified, you must configure the corresponding provider using OBJECT_STORE_{PROTOCOL}_* env vars.
+    // Example: OBJECT_STORE_DEFAULT_PROTOCOL=s3 requires OBJECT_STORE_S3_BASE_URL, OBJECT_STORE_S3_ACCESS_KEY_ID, etc.
+    // Enables zero-downtime migration between providers (old data keeps working, new data uses new provider).
+    OBJECT_STORE_DEFAULT_PROTOCOL: z.string().regex(/^[a-z0-9]+$/).optional(),
 
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
@@ -992,6 +1005,9 @@ const EnvironmentSchema = z
     // Global rate limit: max items processed per second across all consumers
     // If not set, no global rate limiting is applied
     BATCH_QUEUE_GLOBAL_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+    // Max items in the worker queue before claiming pauses (protects visibility timeouts)
+    // If not set, no depth limit is applied
+    BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH: z.coerce.number().int().positive().optional(),
 
     ADMIN_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     ADMIN_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -1195,6 +1211,7 @@ const EnvironmentSchema = z
     RUN_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
     RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
+    RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
@@ -1216,6 +1233,9 @@ const EnvironmentSchema = z
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
+
+    // AI features (Prompts, Models, AI Metrics sidebar section)
+    AI_FEATURES_ENABLED: z.string().default("0"),
 
     // Logs page ClickHouse URL (for logs queries)
     LOGS_CLICKHOUSE_URL: z
@@ -1241,6 +1261,12 @@ const EnvironmentSchema = z
 
     // Metric widget concurrency limits
     METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT: z.coerce.number().int().default(30),
+
+    // Admin ClickHouse URL (for admin dashboard queries like missing models)
+    ADMIN_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
@@ -1271,6 +1297,16 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
+
+    // LLM cost tracking
+    LLM_COST_TRACKING_ENABLED: BoolEnv.default(true),
+    LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
+    LLM_PRICING_SEED_ON_STARTUP: BoolEnv.default(false),
+    LLM_PRICING_READY_TIMEOUT_MS: z.coerce.number().int().default(500),
+    LLM_METRICS_BATCH_SIZE: z.coerce.number().int().default(5000),
+    LLM_METRICS_FLUSH_INTERVAL_MS: z.coerce.number().int().default(2000),
+    LLM_METRICS_MAX_BATCH_SIZE: z.coerce.number().int().default(10000),
+    LLM_METRICS_MAX_CONCURRENCY: z.coerce.number().int().default(2),
 
     // Bootstrap
     TRIGGER_BOOTSTRAP_ENABLED: z.string().default("0"),
@@ -1344,6 +1380,8 @@ const EnvironmentSchema = z
 
     REALTIME_STREAMS_S2_BASIN: z.string().optional(),
     REALTIME_STREAMS_S2_ACCESS_TOKEN: z.string().optional(),
+    REALTIME_STREAMS_S2_ENDPOINT: z.string().optional(),
+    REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: z.enum(["true", "false"]).default("false"),
     REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS: z.coerce
       .number()
       .int()
@@ -1356,6 +1394,10 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
+
+    // Private connections
+    PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
+    PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

@@ -16,7 +16,7 @@ import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/r2.server";
+import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/objectStore.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";
@@ -48,6 +48,8 @@ export type BatchTriggerTaskServiceOptions = {
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
   realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 /**
@@ -678,6 +680,8 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         batchId: batch.id,
         batchIndex: currentIndex,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
+        triggerSource: options?.triggerSource ?? "api",
+        triggerAction: options?.triggerAction ?? "trigger",
       },
       "V2"
     );
@@ -712,10 +716,10 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
-        data: filename,
+        data: uploadedFilename,
         dataType: "application/store",
       };
     });

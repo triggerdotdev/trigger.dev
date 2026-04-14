@@ -15,7 +15,7 @@ export type RunQueueConsumerOptions = {
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
-  onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
+  onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
 };
 
 export class RunQueueConsumer implements QueueConsumer {
@@ -23,13 +23,14 @@ export class RunQueueConsumer implements QueueConsumer {
   private readonly preDequeue?: PreDequeueFn;
   private readonly preSkip?: PreSkipFn;
   private readonly maxRunCount?: number;
-  private readonly onDequeue: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
+  private readonly onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
 
   private readonly logger = new SimpleStructuredLogger("queue-consumer");
 
   private intervalMs: number;
   private idleIntervalMs: number;
   private isEnabled: boolean;
+  private lastScheduledIntervalMs: number;
 
   constructor(opts: RunQueueConsumerOptions) {
     this.isEnabled = false;
@@ -38,6 +39,7 @@ export class RunQueueConsumer implements QueueConsumer {
     this.preDequeue = opts.preDequeue;
     this.preSkip = opts.preSkip;
     this.maxRunCount = opts.maxRunCount;
+    this.lastScheduledIntervalMs = opts.idleIntervalMs;
     this.onDequeue = opts.onDequeue;
     this.client = opts.client;
   }
@@ -111,16 +113,18 @@ export class RunQueueConsumer implements QueueConsumer {
     let nextIntervalMs = this.idleIntervalMs;
 
     try {
+      const dequeueStart = performance.now();
       const response = await this.client.dequeue({
         maxResources: preDequeueResult?.maxResources,
         maxRunCount: this.maxRunCount,
       });
+      const dequeueResponseMs = Math.round(performance.now() - dequeueStart);
 
       if (!response.success) {
         this.logger.error("Failed to dequeue", { error: response.error });
       } else {
         try {
-          await this.onDequeue(response.data);
+          await this.onDequeue(response.data, { dequeueResponseMs, pollingIntervalMs: this.lastScheduledIntervalMs });
 
           if (response.data.length > 0) {
             nextIntervalMs = this.intervalMs;
@@ -141,6 +145,7 @@ export class RunQueueConsumer implements QueueConsumer {
       this.logger.verbose("scheduled dequeue with idle interval", { delayMs });
     }
 
+    this.lastScheduledIntervalMs = delayMs;
     setTimeout(this.dequeue.bind(this), delayMs);
   }
 }

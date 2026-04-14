@@ -214,6 +214,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       ttlSeconds: submission.value.ttlSeconds,
       version: submission.value.version,
       prioritySeconds: submission.value.prioritySeconds,
+      triggerSource: "dashboard",
     });
 
     if (!newRun) {

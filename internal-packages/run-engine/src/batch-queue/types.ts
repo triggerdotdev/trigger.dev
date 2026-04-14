@@ -79,6 +79,8 @@ export const BatchMeta = z.object({
   processingConcurrency: z.number().optional(),
   /** Plan type for billing (e.g., "free", "paid") - used when skipChecks is enabled */
   planType: z.string().optional(),
+  /** Trigger source for run annotations (e.g., "sdk", "cli", "mcp") */
+  triggerSource: z.string().optional(),
 });
 export type BatchMeta = z.infer<typeof BatchMeta>;
 
@@ -168,6 +170,8 @@ export type InitializeBatchOptions = {
   processingConcurrency?: number;
   /** Plan type for billing (e.g., "free", "paid") - used when skipChecks is enabled */
   planType?: string;
+  /** Trigger source for run annotations (e.g., "sdk", "cli", "mcp") */
+  triggerSource?: string;
 };
 
 /**
@@ -213,8 +217,15 @@ export type BatchQueueOptions = {
   /**
    * Optional global rate limiter to limit processing across all consumers.
    * When configured, limits the max items/second processed globally.
+   * Rate limiting happens at the worker queue consumer level (1 token per item).
    */
   globalRateLimiter?: GlobalRateLimiter;
+  /**
+   * Maximum number of items allowed in the worker queue before claiming pauses.
+   * Prevents unbounded worker queue growth which could cause visibility timeouts.
+   * Disabled by default (undefined = no limit).
+   */
+  workerQueueMaxDepth?: number;
   /** Logger instance */
   logger?: Logger;
   logLevel?: LogLevel;
@@ -258,7 +269,20 @@ export type ProcessBatchItemCallback = (params: {
   /** Whether this is the final attempt (no more retries after this). */
   isFinalAttempt: boolean;
 }) => Promise<
-  { success: true; runId: string } | { success: false; error: string; errorCode?: string }
+  | { success: true; runId: string }
+  | {
+      success: false;
+      error: string;
+      errorCode?: string;
+      /**
+       * When true, the BatchQueue will skip any remaining retries for this item
+       * and record the failure immediately, regardless of the current attempt
+       * number. Use this for errors that will deterministically fail again on
+       * retry (e.g. the environment queue is at its size limit), so the batch
+       * can finalize quickly without burning through the retry ladder.
+       */
+      skipRetries?: boolean;
+    }
 >;
 
 /**

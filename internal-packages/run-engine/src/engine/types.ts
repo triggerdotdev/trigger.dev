@@ -109,6 +109,8 @@ export type RunEngineOptions = {
     defaultConcurrency?: number;
     /** Optional global rate limiter to limit processing across all consumers */
     globalRateLimiter?: GlobalRateLimiter;
+    /** Maximum worker queue depth before claiming pauses (protects visibility timeouts) */
+    workerQueueMaxDepth?: number;
     /** Retry configuration for failed batch items */
     retry?: {
       /** Maximum number of attempts (including the first). Default: 1 (no retries) */
@@ -179,6 +181,9 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   workerQueue?: string;
+  /** When true, the run queue may push directly to the worker queue if concurrency is available.
+   *  Gated per WorkerInstanceGroup (production) or always true (development). */
+  enableFastPath?: boolean;
   queue: string;
   lockedQueueId?: string;
   isTest: boolean;
@@ -189,7 +194,7 @@ export type TriggerParams = {
   priorityMs?: number;
   queueTimestamp?: Date;
   ttl?: string;
-  tags: { id: string; name: string }[];
+  tags: string[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
   replayedFromTaskRunFriendlyId?: string;
@@ -219,6 +224,12 @@ export type TriggerParams = {
     delay: string;
     mode?: "leading" | "trailing";
     maxDelay?: string;
+  };
+  annotations?: {
+    triggerSource: string;
+    triggerAction: string;
+    rootTriggerSource: string;
+    rootScheduleId?: string;
   };
   /**
    * Called when a run is debounced (existing delayed run found with triggerAndWait).

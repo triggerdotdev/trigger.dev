@@ -293,7 +293,7 @@ export default function VercelOnboardingPage() {
     return (
       <AppContainer className="bg-charcoal-900">
         <BackgroundWrapper>
-          <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+          <MainCenteredContainer variant="onboarding" className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
             <FormTitle title="Installation Expired" description={data.error} />
             <Button
               variant="primary/medium"
@@ -325,7 +325,7 @@ export default function VercelOnboardingPage() {
     return (
       <AppContainer className="bg-charcoal-900">
         <BackgroundWrapper>
-          <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+          <MainCenteredContainer variant="onboarding" className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
             <FormTitle
               LeadingIcon={<BuildingOfficeIcon className="size-7 text-indigo-500" />}
               title="Select Organization"
@@ -401,7 +401,7 @@ export default function VercelOnboardingPage() {
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
-        <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer variant="onboarding" className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
           <FormTitle
             LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
             title="Select Project"

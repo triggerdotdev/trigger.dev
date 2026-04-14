@@ -13,6 +13,7 @@ import {
 } from "~/utils/requestIdempotency.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
@@ -65,6 +66,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
       traceparent,
       tracestate,
     } = headers;
@@ -132,6 +134,7 @@ const { action, loader } = createActionApiRoute(
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
           realtimeStreamsVersion ?? undefined
         ),
+        triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
       });
 
       const $responseHeaders = await responseHeaders(

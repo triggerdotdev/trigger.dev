@@ -198,17 +198,14 @@ export default function Page() {
 
         const readSession = await stream.readSession(
           {
-            seq_num: 0,
-            wait: 60,
-            as: "bytes",
+            start: { from: { seqNum: 0 }, clamp: true },
+            stop: { waitSecs: 60 },
           },
           { signal: abortController.signal }
         );
 
-        const decoder = new TextDecoder();
-
         for await (const record of readSession) {
-          const decoded = decoder.decode(record.body);
+          const decoded = record.body;
           const result = DeploymentEventFromString.safeParse(decoded);
 
           if (!result.success) {
@@ -217,8 +214,8 @@ export default function Page() {
               const headers: Record<string, string> = {};
 
               if (record.headers) {
-                for (const [nameBytes, valueBytes] of record.headers) {
-                  headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+                for (const [name, value] of record.headers) {
+                  headers[name] = value;
                 }
               }
               const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";

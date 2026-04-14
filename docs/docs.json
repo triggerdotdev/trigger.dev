@@ -137,7 +137,7 @@
               "realtime/run-object",
               "realtime/auth",
               {
-                "group": "React hooks (frontend)",
+                "group": "React hooks",
                 "pages": [
                   "realtime/react-hooks/overview",
                   "realtime/react-hooks/triggering",
@@ -306,6 +306,7 @@
           {
             "group": "Deployments API",
             "pages": [
+              "management/deployments/list",
               "management/deployments/retrieve",
               "management/deployments/get-latest",
               "management/deployments/promote"
@@ -323,7 +324,7 @@
           },
           {
             "group": "Query API",
-            "pages": ["management/query/execute"]
+            "pages": ["management/query/execute", "management/query/schema", "management/query/dashboards"]
           }
         ]
       },
@@ -368,6 +369,7 @@
               "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
+              "guides/frameworks/nango",
               "guides/frameworks/sequin",
               {
                 "group": "Supabase",
@@ -397,6 +399,10 @@
                 ]
               }
             ]
+          },
+          {
+            "group": "Migration guides",
+            "pages": ["migration-mergent", "migration-n8n"]
           },
           {
             "group": "Use cases",
@@ -467,10 +473,6 @@
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]
-          },
-          {
-            "group": "Migration guides",
-            "pages": ["migration-mergent"]
           },
           {
             "group": "Community packages",
@@ -641,6 +643,10 @@
     {
       "source": "/trigger-config",
       "destination": "/config/config-file"
+    },
+    {
+      "source": "/guides/frameworks",
+      "destination": "/guides/frameworks/nextjs"
     },
     {
       "source": "/guides/frameworks/introduction",

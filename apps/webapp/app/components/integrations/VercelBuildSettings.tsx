@@ -2,6 +2,7 @@ import { Switch } from "~/components/primitives/Switch";
 import { Label } from "~/components/primitives/Label";
 import { Hint } from "~/components/primitives/Hint";
 import { TextLink } from "~/components/primitives/TextLink";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   EnvironmentIcon,
   environmentFullTitle,
@@ -18,6 +19,10 @@ type BuildSettingsFieldsProps = {
   atomicBuilds: EnvSlug[];
   onAtomicBuildsChange: (slugs: EnvSlug[]) => void;
   envVarsConfigLink?: string;
+  /** Slugs that should be forced off and disabled, with tooltip reason. */
+  disabledEnvSlugs?: Partial<Record<EnvSlug, string>>;
+  autoPromote?: boolean;
+  onAutoPromoteChange?: (value: boolean) => void;
 };
 
 export function BuildSettingsFields({
@@ -29,42 +34,53 @@ export function BuildSettingsFields({
   atomicBuilds,
   onAtomicBuildsChange,
   envVarsConfigLink,
+  disabledEnvSlugs,
+  autoPromote,
+  onAutoPromoteChange,
 }: BuildSettingsFieldsProps) {
+  const isSlugDisabled = (slug: EnvSlug) => !!disabledEnvSlugs?.[slug];
+  const enabledSlugs = availableEnvSlugs.filter((s) => !isSlugDisabled(s));
+
   return (
     <>
       {/* Pull env vars before build */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <div>
+        <div className="mb-2">
+          <div className="flex items-center justify-between">
             <Label>Pull env vars before build</Label>
-            <Hint>
-              Select which environments should pull environment variables from Vercel before each
-              build.{" "}
-              {envVarsConfigLink && (
-                <>
-                  <TextLink to={envVarsConfigLink}>Configure which variables to pull</TextLink>.
-                </>
-              )}
-            </Hint>
+            {availableEnvSlugs.length > 1 && (
+              <Switch
+                variant="small"
+                checked={
+                  enabledSlugs.length > 0 &&
+                  enabledSlugs.every((s) => pullEnvVarsBeforeBuild.includes(s))
+                }
+                onCheckedChange={(checked) => {
+                  onPullEnvVarsChange(checked ? [...enabledSlugs] : []);
+                }}
+              />
+            )}
           </div>
-          {availableEnvSlugs.length > 1 && (
-            <Switch
-              variant="small"
-              checked={
-                availableEnvSlugs.length > 0 &&
-                availableEnvSlugs.every((s) => pullEnvVarsBeforeBuild.includes(s))
-              }
-              onCheckedChange={(checked) => {
-                onPullEnvVarsChange(checked ? [...availableEnvSlugs] : []);
-              }}
-            />
-          )}
+          <Hint className="pr-6">
+            Select which environments should pull environment variables from Vercel before each
+            build.{" "}
+            {envVarsConfigLink && (
+              <>
+                <TextLink to={envVarsConfigLink}>Configure which variables to pull</TextLink>.
+              </>
+            )}
+          </Hint>
         </div>
         <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
           {availableEnvSlugs.map((slug) => {
             const envType = envSlugToType(slug);
-            return (
-              <div key={slug} className="flex items-center justify-between">
+            const disabled = isSlugDisabled(slug);
+            const disabledReason = disabledEnvSlugs?.[slug];
+            const row = (
+              <div
+                key={slug}
+                className={`flex items-center justify-between ${disabled ? "opacity-50" : ""}`}
+              >
                 <div className="flex items-center gap-1.5">
                   <EnvironmentIcon environment={{ type: envType }} className="size-4" />
                   <span className={`text-sm ${environmentTextClassName({ type: envType })}`}>
@@ -73,7 +89,8 @@ export function BuildSettingsFields({
                 </div>
                 <Switch
                   variant="small"
-                  checked={pullEnvVarsBeforeBuild.includes(slug)}
+                  checked={disabled ? false : pullEnvVarsBeforeBuild.includes(slug)}
+                  disabled={disabled}
                   onCheckedChange={(checked) => {
                     onPullEnvVarsChange(
                       checked
@@ -84,49 +101,57 @@ export function BuildSettingsFields({
                 />
               </div>
             );
+            if (disabled && disabledReason) {
+              return (
+                <SimpleTooltip key={slug} button={row} content={disabledReason} side="left" />
+              );
+            }
+            return row;
           })}
         </div>
       </div>
 
       {/* Discover new env vars */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <div>
+        <div className="mb-2">
+          <div className="flex items-center justify-between">
             <Label>Discover new env vars</Label>
-            <Hint>
-              Select which environments should automatically discover and create new environment
-              variables from Vercel during builds.
-            </Hint>
+            {availableEnvSlugs.length > 1 && (
+              <Switch
+                variant="small"
+                checked={
+                  enabledSlugs.length > 0 &&
+                  enabledSlugs.every(
+                    (s) => discoverEnvVars.includes(s) || !pullEnvVarsBeforeBuild.includes(s)
+                  ) &&
+                  enabledSlugs.some((s) => discoverEnvVars.includes(s))
+                }
+                disabled={!enabledSlugs.some((s) => pullEnvVarsBeforeBuild.includes(s))}
+                onCheckedChange={(checked) => {
+                  onDiscoverEnvVarsChange(
+                    checked
+                      ? enabledSlugs.filter((s) => pullEnvVarsBeforeBuild.includes(s))
+                      : []
+                  );
+                }}
+              />
+            )}
           </div>
-          {availableEnvSlugs.length > 1 && (
-            <Switch
-              variant="small"
-              checked={
-                availableEnvSlugs.length > 0 &&
-                availableEnvSlugs.every(
-                  (s) => discoverEnvVars.includes(s) || !pullEnvVarsBeforeBuild.includes(s)
-                ) &&
-                availableEnvSlugs.some((s) => discoverEnvVars.includes(s))
-              }
-              disabled={!availableEnvSlugs.some((s) => pullEnvVarsBeforeBuild.includes(s))}
-              onCheckedChange={(checked) => {
-                onDiscoverEnvVarsChange(
-                  checked
-                    ? availableEnvSlugs.filter((s) => pullEnvVarsBeforeBuild.includes(s))
-                    : []
-                );
-              }}
-            />
-          )}
+          <Hint className="pr-6">
+            Select which environments should automatically discover and create new environment
+            variables from Vercel during builds.
+          </Hint>
         </div>
         <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
           {availableEnvSlugs.map((slug) => {
             const envType = envSlugToType(slug);
+            const disabled = isSlugDisabled(slug);
+            const disabledReason = disabledEnvSlugs?.[slug];
             const isPullDisabled = !pullEnvVarsBeforeBuild.includes(slug);
-            return (
+            const row = (
               <div
                 key={slug}
-                className={`flex items-center justify-between ${isPullDisabled ? "opacity-50" : ""}`}
+                className={`flex items-center justify-between ${disabled || isPullDisabled ? "opacity-50" : ""}`}
               >
                 <div className="flex items-center gap-1.5">
                   <EnvironmentIcon environment={{ type: envType }} className="size-4" />
@@ -136,8 +161,8 @@ export function BuildSettingsFields({
                 </div>
                 <Switch
                   variant="small"
-                  checked={discoverEnvVars.includes(slug)}
-                  disabled={isPullDisabled}
+                  checked={disabled ? false : discoverEnvVars.includes(slug)}
+                  disabled={disabled || isPullDisabled}
                   onCheckedChange={(checked) => {
                     onDiscoverEnvVarsChange(
                       checked
@@ -148,6 +173,12 @@ export function BuildSettingsFields({
                 />
               </div>
             );
+            if (disabled && disabledReason) {
+              return (
+                <SimpleTooltip key={slug} button={row} content={disabledReason} side="left" />
+              );
+            }
+            return row;
           })}
         </div>
       </div>
@@ -155,13 +186,7 @@ export function BuildSettingsFields({
       {/* Atomic deployments */}
       <div>
         <div className="flex items-center justify-between">
-          <div>
-            <Label>Atomic deployments</Label>
-            <Hint>
-              When enabled, production deployments wait for Vercel deployment to complete before
-              promoting the Trigger.dev deployment.
-            </Hint>
-          </div>
+          <Label>Atomic deployments</Label>
           <Switch
             variant="small"
             checked={atomicBuilds.includes("prod")}
@@ -170,7 +195,36 @@ export function BuildSettingsFields({
             }}
           />
         </div>
+        <Hint className="pr-6">
+          When enabled, production deployments wait for Vercel deployment to complete before
+          promoting the Trigger.dev deployment. This will disable the "Auto-assign Custom
+          Production Domains" option in your Vercel project settings to perform staged
+          deployments.{" "}
+          <TextLink href="https://trigger.dev/docs/vercel-integration#atomic-deployments" target="_blank">
+            Learn more
+          </TextLink>
+          .
+        </Hint>
       </div>
+
+      {/* Auto promotion — only visible when atomic deployments are on */}
+      {atomicBuilds.includes("prod") && onAutoPromoteChange !== undefined && (
+        <div>
+          <div className="flex items-center justify-between">
+            <Label>Auto promotion</Label>
+            <Switch
+              variant="small"
+              checked={autoPromote ?? true}
+              onCheckedChange={onAutoPromoteChange}
+            />
+          </div>
+          <Hint className="pr-6">
+            When enabled, the integration automatically promotes the Vercel deployment after
+            the Trigger.dev build completes. Turn off to manually promote from your Vercel
+            dashboard — Trigger.dev will then promote automatically once you do.
+          </Hint>
+        </div>
+      )}
     </>
   );
 }

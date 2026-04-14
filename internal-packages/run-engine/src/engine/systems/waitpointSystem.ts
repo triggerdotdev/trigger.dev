@@ -526,6 +526,85 @@ export class WaitpointSystem {
   }
 
   /**
+   * Lockless version of blockRunWithWaitpoint for batch item processing.
+   *
+   * When processing batchTriggerAndWait items, blockRunWithCreatedBatch has already
+   * transitioned the parent run to EXECUTING_WITH_WAITPOINTS before any items are
+   * processed. Per-item calls to blockRunWithWaitpoint would all compete for the same
+   * parent run lock just to insert a TaskRunWaitpoint row — causing lock contention
+   * and LockAcquisitionTimeoutError with large batches.
+   *
+   * This method performs only the CTE insert (which is idempotent via ON CONFLICT DO
+   * NOTHING) and timeout scheduling, without acquiring the parent run lock.
+   */
+  async blockRunWithWaitpointLockless({
+    runId,
+    waitpoints,
+    projectId,
+    timeout,
+    spanIdToComplete,
+    batch,
+    tx,
+  }: {
+    runId: string;
+    waitpoints: string | string[];
+    projectId: string;
+    timeout?: Date;
+    spanIdToComplete?: string;
+    batch: { id: string; index?: number };
+    tx?: PrismaClientOrTransaction;
+  }): Promise<void> {
+    const prisma = tx ?? this.$.prisma;
+    const $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
+
+    // Insert the blocking connections and the historical run connections.
+    // No lock needed: ON CONFLICT DO NOTHING makes concurrent inserts safe,
+    // and the parent snapshot is already EXECUTING_WITH_WAITPOINTS from
+    // blockRunWithCreatedBatch.
+    await prisma.$queryRaw`
+      WITH inserted AS (
+        INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
+        SELECT
+          gen_random_uuid(),
+          ${runId},
+          w.id,
+          ${projectId},
+          NOW(),
+          NOW(),
+          ${spanIdToComplete ?? null},
+          ${batch.id},
+          ${batch.index ?? null}
+        FROM "Waitpoint" w
+        WHERE w.id IN (${Prisma.join($waitpoints)})
+        ON CONFLICT DO NOTHING
+        RETURNING "waitpointId"
+      ),
+      connected_runs AS (
+        INSERT INTO "_WaitpointRunConnections" ("A", "B")
+        SELECT ${runId}, w.id
+        FROM "Waitpoint" w
+        WHERE w.id IN (${Prisma.join($waitpoints)})
+        ON CONFLICT DO NOTHING
+      )
+      SELECT COUNT(*) FROM inserted`;
+
+    // Schedule timeout jobs if needed
+    if (timeout) {
+      for (const waitpoint of $waitpoints) {
+        await this.$.worker.enqueue({
+          id: `finishWaitpoint.${waitpoint}`,
+          job: "finishWaitpoint",
+          payload: {
+            waitpointId: waitpoint,
+            error: JSON.stringify(timeoutError(timeout)),
+          },
+          availableAt: timeout,
+        });
+      }
+    }
+  }
+
+  /**
    * Blocks a run with a waitpoint and immediately completes the waitpoint.
    *
    * Used when creating a pre-failed child run: the parent needs to be blocked

@@ -8,10 +8,10 @@ import {
   QuestionMarkCircleIcon,
   RectangleGroupIcon,
   RectangleStackIcon,
-  ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
+import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
@@ -23,21 +23,28 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import {
   docsPath,
   v3BillingPath,
   v3CreateBulkActionPath,
   v3EnvironmentPath,
-  v3EnvironmentVariablesPath,
   v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
 import { AskAI } from "./AskAI";
+import { CodeBlock } from "./code/CodeBlock";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
 import { Feedback } from "./Feedback";
 import { EnvironmentSelector } from "./navigation/EnvironmentSelector";
 import { Button, LinkButton } from "./primitives/Buttons";
+import {
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "./primitives/ClientTabs";
 import { Header1 } from "./primitives/Headers";
 import { InfoPanel } from "./primitives/InfoPanel";
 import { Paragraph } from "./primitives/Paragraph";
@@ -52,13 +59,6 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "./primitives/ClientTabs";
-import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 
 export function HasNoTasksDev() {
   return (
@@ -601,7 +601,9 @@ function DeploymentOnboardingSteps() {
       <div className="mb-2 flex items-center justify-between border-b">
         <div className="mb-2 flex min-w-0 items-center gap-2">
           <EnvironmentIcon environment={environment} className="-ml-1 size-8 shrink-0" />
-          <Header1 className="truncate">Deploy your tasks to {environmentFullTitle(environment)}</Header1>
+          <Header1 className="truncate">
+            Deploy your tasks to {environmentFullTitle(environment)}
+          </Header1>
         </div>
         <div className="flex items-center">
           <SimpleTooltip
@@ -653,7 +655,7 @@ function DeploymentOnboardingSteps() {
                 organizationSlug={organization.slug}
                 projectSlug={project.slug}
                 environmentSlug={environment.slug}
-                billingPath={v3BillingPath({ slug: organization.slug })}              
+                billingPath={v3BillingPath({ slug: organization.slug })}
               />
             </div>
           </StepContentContainer>
@@ -684,5 +686,52 @@ function DeploymentOnboardingSteps() {
         <Paragraph>This page will automatically refresh when your tasks are deployed.</Paragraph>
       </StepContentContainer>
     </PackageManagerProvider>
+  );
+}
+
+export function PromptsNone() {
+  return (
+    <InfoPanel
+      title="Define your first prompt"
+      icon={AIPromptsIcon}
+      iconClassName="text-aiPrompts"
+      panelClassName="max-w-lg"
+      accessory={
+        <LinkButton
+          to={docsPath("prompt-management")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          Prompts docs
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Managed prompts let you define AI prompts in code with typesafe variables, then edit and
+        version them from the dashboard without redeploying.
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        Add a prompt to your project using <InlineCode variant="small">prompts.define()</InlineCode>
+        :
+      </Paragraph>
+      <CodeBlock
+        code={`import { prompts } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+export const myPrompt = prompts.define({
+  id: "my-prompt",
+  variables: z.object({
+    name: z.string(),
+  }),
+  content: \`Hello {{name}}!\`,
+});`}
+        showLineNumbers={false}
+        showOpenInModal={false}
+      />
+      <Paragraph variant="small" className="mt-2">
+        Deploy your project and your prompts will appear here with version history and a live
+        editor.
+      </Paragraph>
+    </InfoPanel>
   );
 }

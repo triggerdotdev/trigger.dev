@@ -81,6 +81,11 @@ function getFormattedValue(value: unknown, column: OutputColumnMetadata): string
           return formatDurationMilliseconds(value * 1000, { style: "short" });
         }
         break;
+      case "durationNs":
+        if (typeof value === "number") {
+          return formatDurationMilliseconds(value / 1_000_000, { style: "short" });
+        }
+        break;
       case "cost":
         if (typeof value === "number") {
           return formatCurrencyAccurate(value / 100);
@@ -282,6 +287,12 @@ function getDisplayLength(value: unknown, column: OutputColumnMetadata): number 
           return formatted.length;
         }
         return 10;
+      case "durationNs":
+        if (typeof value === "number") {
+          const formatted = formatDurationMilliseconds(value / 1_000_000, { style: "short" });
+          return formatted.length;
+        }
+        return 10;
       case "cost":
       case "costInDollars":
         // Currency format: "$1,234.56"
@@ -449,10 +460,12 @@ function CellValueWrapper({
   value,
   column,
   prettyFormatting,
+  row,
 }: {
   value: unknown;
   column: OutputColumnMetadata;
   prettyFormatting: boolean;
+  row?: Record<string, unknown>;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -467,6 +480,7 @@ function CellValueWrapper({
         column={column}
         prettyFormatting={prettyFormatting}
         hovered={hovered}
+        row={row}
       />
     </span>
   );
@@ -480,11 +494,13 @@ function CellValue({
   column,
   prettyFormatting = true,
   hovered = false,
+  row,
 }: {
   value: unknown;
   column: OutputColumnMetadata;
   prettyFormatting?: boolean;
   hovered?: boolean;
+  row?: Record<string, unknown>;
 }) {
   // Plain text mode - render everything as monospace text with truncation
   if (!prettyFormatting) {
@@ -551,12 +567,20 @@ function CellValue({
     switch (column.customRenderType) {
       case "runId": {
         if (typeof value === "string") {
+          const spanId = row?.["span_id"];
+          const runPath = v3RunPathFromFriendlyId(value);
+          const href = typeof spanId === "string" && spanId
+            ? `${runPath}?span=${spanId}`
+            : runPath;
+          const tooltip = typeof spanId === "string" && spanId
+            ? "Jump to span"
+            : "Jump to run";
           return (
             <SimpleTooltip
-              content="Jump to run"
+              content={tooltip}
               disableHoverableContent
               hidden={!hovered}
-              button={<TextLink to={v3RunPathFromFriendlyId(value)}>{value}</TextLink>}
+              button={<TextLink to={href}>{value}</TextLink>}
             />
           );
         }
@@ -594,6 +618,15 @@ function CellValue({
           return (
             <span className="tabular-nums">
               {formatDurationMilliseconds(value * 1000, { style: "short" })}
+            </span>
+          );
+        }
+        return <span>{String(value)}</span>;
+      case "durationNs":
+        if (typeof value === "number") {
+          return (
+            <span className="tabular-nums">
+              {formatDurationMilliseconds(value / 1_000_000, { style: "short" })}
             </span>
           );
         }
@@ -990,6 +1023,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   prettyFormatting = true,
   sorting: defaultSorting = [],
   showHeaderOnEmpty = false,
+  hiddenColumns,
 }: {
   rows: Record<string, unknown>[];
   columns: OutputColumnMetadata[];
@@ -997,6 +1031,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   sorting?: SortingState;
   /** When true, show column headers + "No results" on empty data. When false, show a blank state icon. */
   showHeaderOnEmpty?: boolean;
+  /** Column names to hide from display but keep in row data (useful for linking) */
+  hiddenColumns?: string[];
 }) {
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -1010,9 +1046,13 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
 
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
+  const visibleColumns = useMemo(
+    () => hiddenColumns?.length ? columns.filter((col) => !hiddenColumns.includes(col.name)) : columns,
+    [columns, hiddenColumns]
+  );
   const columnDefs = useMemo<ColumnDef<RowData, unknown>[]>(
     () =>
-      columns.map((col) => ({
+      visibleColumns.map((col) => ({
         id: col.name,
         accessorKey: col.name,
         header: () => col.name,
@@ -1021,6 +1061,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             value={info.getValue()}
             column={col}
             prettyFormatting={prettyFormatting}
+            row={info.row.original}
           />
         ),
         meta: {
@@ -1030,7 +1071,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
         size: calculateColumnWidth(col.name, rows, col),
         filterFn: fuzzyFilter,
       })),
-    [columns, rows, prettyFormatting]
+    [visibleColumns, rows, prettyFormatting]
   );
 
   // Initialize TanStack Table

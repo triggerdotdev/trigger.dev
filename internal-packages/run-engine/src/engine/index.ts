@@ -398,6 +398,7 @@ export class RunEngine {
       consumerIntervalMs: options.batchQueue?.consumerIntervalMs ?? 100,
       defaultConcurrency: options.batchQueue?.defaultConcurrency ?? 10,
       globalRateLimiter: options.batchQueue?.globalRateLimiter,
+      workerQueueMaxDepth: options.batchQueue?.workerQueueMaxDepth,
       startConsumers: startBatchQueueConsumers,
       retry: options.batchQueue?.retry,
       tracer: options.tracer,
@@ -461,6 +462,7 @@ export class RunEngine {
       cliVersion,
       concurrencyKey,
       workerQueue,
+      enableFastPath,
       queue,
       lockedQueueId,
       isTest,
@@ -494,6 +496,7 @@ export class RunEngine {
       planType,
       realtimeStreamsVersion,
       debounce,
+      annotations,
       onDebounced,
     }: TriggerParams,
     tx?: PrismaClientOrTransaction
@@ -634,13 +637,7 @@ export class RunEngine {
               priorityMs,
               queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
               ttl: resolvedTtl,
-              tags:
-                tags.length === 0
-                  ? undefined
-                  : {
-                    connect: tags,
-                  },
-              runTags: tags.length === 0 ? undefined : tags.map((tag) => tag.name),
+              runTags: tags.length === 0 ? undefined : tags,
               oneTimeUseToken,
               parentTaskRunId,
               rootTaskRunId,
@@ -667,6 +664,7 @@ export class RunEngine {
                   createdAt: new Date(),
                 }
                 : undefined,
+              annotations,
               executionSnapshots: {
                 create: {
                   engine: "V2",
@@ -727,17 +725,32 @@ export class RunEngine {
 
         //triggerAndWait or batchTriggerAndWait
         if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
-          //this will block the parent run from continuing until this waitpoint is completed (and removed)
-          await this.waitpointSystem.blockRunWithWaitpoint({
-            runId: parentTaskRunId,
-            waitpoints: taskRun.associatedWaitpoint.id,
-            projectId: taskRun.associatedWaitpoint.projectId,
-            organizationId: environment.organization.id,
-            batch,
-            workerId,
-            runnerId,
-            tx: prisma,
-          });
+          if (batch) {
+            // Batch path: lockless insert. The parent is already EXECUTING_WITH_WAITPOINTS
+            // from blockRunWithCreatedBatch, so we only need to insert the TaskRunWaitpoint
+            // row without acquiring the parent run lock. This avoids lock contention when
+            // processing large batches with high concurrency.
+            await this.waitpointSystem.blockRunWithWaitpointLockless({
+              runId: parentTaskRunId,
+              waitpoints: taskRun.associatedWaitpoint.id,
+              projectId: taskRun.associatedWaitpoint.projectId,
+              batch,
+              tx: prisma,
+            });
+          } else {
+            // Single triggerAndWait: acquire the parent run lock to safely transition
+            // the snapshot and insert the waitpoint
+            await this.waitpointSystem.blockRunWithWaitpoint({
+              runId: parentTaskRunId,
+              waitpoints: taskRun.associatedWaitpoint.id,
+              projectId: taskRun.associatedWaitpoint.projectId,
+              organizationId: environment.organization.id,
+              batch,
+              workerId,
+              runnerId,
+              tx: prisma,
+            });
+          }
         }
 
         if (taskRun.delayUntil) {
@@ -768,19 +781,33 @@ export class RunEngine {
             }
           }
         } else {
-          if (taskRun.ttl) {
-            await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
-          }
+          try {
+            if (taskRun.ttl) {
+              await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
+            }
 
-          await this.enqueueSystem.enqueueRun({
-            run: taskRun,
-            env: environment,
-            workerId,
-            runnerId,
-            tx: prisma,
-            skipRunLock: true,
-            includeTtl: true,
-          });
+            await this.enqueueSystem.enqueueRun({
+              run: taskRun,
+              env: environment,
+              workerId,
+              runnerId,
+              tx: prisma,
+              skipRunLock: true,
+              includeTtl: true,
+              enableFastPath,
+            });
+          } catch (enqueueError) {
+            this.logger.error("engine.trigger(): failed to schedule TTL or enqueue run", {
+              runId: taskRun.id,
+              friendlyId: taskRun.friendlyId,
+              taskIdentifier: taskRun.taskIdentifier,
+              environmentId: environment.id,
+              ttl: taskRun.ttl,
+              error: enqueueError,
+            });
+
+            throw enqueueError;
+          }
         }
 
         this.eventBus.emit("runCreated", {
