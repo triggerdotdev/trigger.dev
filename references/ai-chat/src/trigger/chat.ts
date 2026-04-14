@@ -359,7 +359,7 @@ export const aiChat = chat
     // #region onTurnStart — persist messages + write status via writer
     onTurnStart: async ({ chatId, uiMessages, writer, runId }) => {
       warmCodeSandbox(runId);
-      writer.write({ type: "data-turn-status", data: { status: "preparing" } });
+      writer.write({ type: "data-turn-status", data: { status: "preparing" }, transient: true });
       chat.defer(
         prisma.chat.update({
           where: { id: chatId },
@@ -373,15 +373,35 @@ export const aiChat = chat
       await disposeCodeSandboxForRun(ctx.run.id);
     },
 
+    // #region onBeforeTurnComplete — add a persistent data part to test chat.response
+    onBeforeTurnComplete: async ({ writer, turn }) => {
+      writer.write({
+        type: "data-turn-metadata",
+        data: { turn, timestamp: Date.now(), source: "onBeforeTurnComplete" },
+      });
+    },
+    // #endregion
+
     // #region onTurnComplete — persist + background self-review via chat.inject()
     onTurnComplete: async ({
       chatId,
       uiMessages,
       messages,
+      responseMessage,
       runId,
       chatAccessToken,
       lastEventId,
     }) => {
+      // Log whether data-turn-metadata persisted to the response
+      const metadataParts = responseMessage?.parts?.filter(
+        (p: any) => p.type === "data-turn-metadata"
+      );
+      logger.info("onTurnComplete response parts check", {
+        hasResponseMessage: !!responseMessage,
+        totalParts: responseMessage?.parts?.length ?? 0,
+        metadataPartsCount: metadataParts?.length ?? 0,
+        metadataParts,
+      });
       await prisma.chat.update({
         where: { id: chatId },
         data: { messages: uiMessages as unknown as ChatMessagesForWrite },

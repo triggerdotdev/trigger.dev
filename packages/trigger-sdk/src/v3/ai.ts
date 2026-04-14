@@ -453,6 +453,45 @@ export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
 const chatStream = streams.define<UIMessageChunk>({ id: _CHAT_STREAM_KEY });
 
 // ---------------------------------------------------------------------------
+// chat.response — write data parts that persist to the response message
+// ---------------------------------------------------------------------------
+
+/**
+ * Write data parts that both stream to the frontend AND persist in
+ * `onTurnComplete`'s `responseMessage` and `uiMessages`.
+ *
+ * Non-transient data chunks (`type` starts with `data-`, no `transient: true`)
+ * are queued for accumulation into the assistant response message.
+ * Transient or non-data chunks are streamed only (same as `chat.stream`).
+ *
+ * @example
+ * ```ts
+ * // Persists to responseMessage.parts
+ * chat.response.write({ type: "data-handover", data: { context: summary } });
+ *
+ * // Transient — streams only, not in responseMessage
+ * chat.response.write({ type: "data-progress", data: { percent: 50 }, transient: true });
+ * ```
+ */
+const chatResponse = {
+  /**
+   * Write a single chunk. Non-transient data parts are accumulated into the
+   * response message; everything else is stream-only.
+   */
+  write(part: UIMessageChunk): void {
+    queueResponsePart(part);
+    const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+      spanName: "chat.response.write",
+      collapsed: true,
+      execute: ({ write }) => {
+        write(part);
+      },
+    });
+    waitUntilComplete().catch(() => {});
+  },
+};
+
+// ---------------------------------------------------------------------------
 // ChatWriter — stream writer for callbacks
 // ---------------------------------------------------------------------------
 
@@ -516,6 +555,7 @@ function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void
     writer: {
       write(part: UIMessageChunk) {
         ensureInitialized();
+        queueResponsePart(part);
         writeImpl!(part);
       },
       merge(stream: ReadableStream<UIMessageChunk>) {
@@ -963,6 +1003,30 @@ const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendi
 const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQueue");
 /** @internal — IDs of messages that were successfully injected via prepareStep */
 const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
+/** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
+const chatResponsePartsKey = locals.create<unknown[]>("chat.responseParts");
+
+/**
+ * Check if a chunk is a non-transient data part that should persist to the response message.
+ * @internal
+ */
+function isNonTransientDataPart(part: unknown): boolean {
+  if (typeof part !== "object" || part === null) return false;
+  const p = part as Record<string, unknown>;
+  return typeof p.type === "string" && p.type.startsWith("data-") && p.transient !== true;
+}
+
+/**
+ * Queue a chunk for accumulation into the response message (if it's a non-transient data part).
+ * Called by `chat.response.write()` and `ChatWriter.write()`.
+ * @internal
+ */
+function queueResponsePart(part: unknown): void {
+  if (!isNonTransientDataPart(part)) return;
+  const parts = locals.get(chatResponsePartsKey) ?? [];
+  parts.push(part);
+  locals.set(chatResponsePartsKey, parts);
+}
 
 /**
  * Event passed to the `prepareMessages` hook.
@@ -1272,6 +1336,7 @@ async function chatCompact(
             type: "data-compaction",
             id: compactionId,
             data: { status: "compacting", totalTokens },
+            transient: true,
           });
 
           // Generate summary
@@ -1317,6 +1382,7 @@ async function chatCompact(
             type: "data-compaction",
             id: compactionId,
             data: { status: "complete", totalTokens },
+            transient: true,
           });
           write({ type: "finish-step" });
         },
@@ -2889,6 +2955,7 @@ function chatAgent<
                   locals.set(chatDeferKey, new Set());
                   locals.set(chatCompactionStateKey, undefined);
                   locals.set(chatSteeringQueueKey, []);
+                  locals.set(chatResponsePartsKey, []);
                   // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
                   // by deferred work from the previous turn's onTurnComplete need to
                   // survive into the next turn. The queue is drained before run().
@@ -3358,6 +3425,15 @@ function chatAgent<
                     if (!capturedResponseMessage.id) {
                       capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
                     }
+                    // Append any non-transient data parts queued via chat.response or writer.write()
+                    const queuedParts = locals.get(chatResponsePartsKey);
+                    if (queuedParts && queuedParts.length > 0) {
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        parts: [...capturedResponseMessage.parts, ...queuedParts],
+                      } as TUIMessage;
+                      locals.set(chatResponsePartsKey, []);
+                    }
                     accumulatedUIMessages.push(capturedResponseMessage);
                     turnNewUIMessages.push(capturedResponseMessage);
                     try {
@@ -3370,10 +3446,21 @@ function chatAgent<
                       // Conversion failed — skip accumulation for this turn
                     }
                   }
-                  // TODO: When the user calls `pipeChat` manually instead of returning a
-                  // StreamTextResult, we don't have access to onFinish. A future iteration
-                  // should let manual-mode users report back response messages for
-                  // accumulation (e.g. via a `chat.addMessages()` helper).
+                  // If there's no captured response (manual pipe mode) but there are
+                  // queued data parts, create a minimal response message to hold them.
+                  if (!capturedResponseMessage) {
+                    const remainingParts = locals.get(chatResponsePartsKey);
+                    if (remainingParts && remainingParts.length > 0) {
+                      capturedResponseMessage = {
+                        id: generateMessageId(),
+                        role: "assistant" as const,
+                        parts: [...remainingParts],
+                      } as TUIMessage;
+                      locals.set(chatResponsePartsKey, []);
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                      turnNewUIMessages.push(capturedResponseMessage);
+                    }
+                  }
 
                   if (runSignal.aborted) return "exit";
 
@@ -3422,6 +3509,7 @@ function chatAgent<
                                 type: "data-compaction",
                                 id: compactionId,
                                 data: { status: "compacting", totalTokens: turnUsage.totalTokens },
+                                transient: true,
                               });
 
                               const summary = await outerCompaction.summarize({
@@ -3493,6 +3581,7 @@ function chatAgent<
                                 type: "data-compaction",
                                 id: compactionId,
                                 data: { status: "complete", totalTokens: turnUsage.totalTokens },
+                                transient: true,
                               });
                             },
                           });
@@ -3574,6 +3663,23 @@ function chatAgent<
                         },
                       }
                     );
+                  }
+
+                  // Drain any late response parts added during onBeforeTurnComplete
+                  const lateParts = locals.get(chatResponsePartsKey);
+                  if (lateParts && lateParts.length > 0 && capturedResponseMessage) {
+                    const idx = accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id);
+                    if (idx !== -1) {
+                      const msg = accumulatedUIMessages[idx]!;
+                      accumulatedUIMessages[idx] = {
+                        ...msg,
+                        parts: [...(msg.parts ?? []), ...lateParts],
+                      } as TUIMessage;
+                      capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
+                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                    }
+                    locals.set(chatResponsePartsKey, []);
                   }
 
                   // Write turn-complete control chunk — closes the frontend stream.
@@ -4986,6 +5092,8 @@ function createChatSession(
           // Reset stop signal for this turn
           stop.reset();
 
+          // Reset per-turn state
+          locals.set(chatResponsePartsKey, []);
           // Set up steering queue and pending messages config in locals
           // so toStreamTextOptions() auto-injects prepareStep for steering
           const turnSteeringQueue: SteeringQueueEntry[] = [];
@@ -5092,7 +5200,24 @@ function createChatSession(
                   stop.signal.aborted && !runSignal.aborted
                     ? cleanupAbortedParts(response)
                     : response;
+                // Append any non-transient data parts queued via chat.response or writer.write()
+                const queuedParts = locals.get(chatResponsePartsKey);
+                if (queuedParts && queuedParts.length > 0) {
+                  (cleaned as any).parts = [...(cleaned.parts ?? []), ...queuedParts];
+                  locals.set(chatResponsePartsKey, []);
+                }
                 await accumulator.addResponse(cleaned);
+              } else {
+                // No response (manual pipe mode) but there are queued data parts
+                const queuedParts = locals.get(chatResponsePartsKey);
+                if (queuedParts && queuedParts.length > 0) {
+                  await accumulator.addResponse({
+                    id: generateMessageId(),
+                    role: "assistant" as const,
+                    parts: queuedParts as UIMessage["parts"],
+                  });
+                  locals.set(chatResponsePartsKey, []);
+                }
               }
 
               // Capture token usage from the streamText result
@@ -5169,6 +5294,12 @@ function createChatSession(
             },
 
             async addResponse(response: UIMessage) {
+              // Append any non-transient data parts queued via chat.response or writer.write()
+              const queuedParts = locals.get(chatResponsePartsKey);
+              if (queuedParts && queuedParts.length > 0) {
+                response = { ...response, parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])] };
+                locals.set(chatResponsePartsKey, []);
+              }
               await accumulator.addResponse(response);
             },
 
@@ -5576,6 +5707,8 @@ export const chat = {
   inject: injectBackgroundContext,
   /** Typed chat output stream for writing custom chunks or piping from subtasks. */
   stream: chatStream,
+  /** Write data parts that persist to the response message. See {@link chatResponse}. */
+  response: chatResponse,
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
