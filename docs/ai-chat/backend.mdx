@@ -516,6 +516,38 @@ This removes tool invocation parts stuck in `partial-call` state and marks any `
   This is expected and does not require special handling.
 </Note>
 
+### Tool approvals
+
+Tools with `needsApproval: true` pause execution until the user approves or denies via the frontend. Define the tool as normal and pass it to `streamText` — `chat.agent` handles the rest:
+
+```ts
+const sendEmail = tool({
+  description: "Send an email. Requires human approval.",
+  inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+  needsApproval: true,
+  execute: async ({ to, subject, body }) => {
+    await emailService.send({ to, subject, body });
+    return { sent: true };
+  },
+});
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      tools: { sendEmail },
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+When the model calls an approval-required tool, the turn completes with the tool in `approval-requested` state. After the user approves on the frontend, the updated message is sent back and `chat.agent` replaces it in the conversation accumulator by matching the message ID. `streamText` then executes the approved tool and continues.
+
+See [Tool approvals](/ai-chat/frontend#tool-approvals) in the frontend docs for the UI setup.
+
 ### Persistence
 
 #### What needs to be persisted
