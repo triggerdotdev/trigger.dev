@@ -1,6 +1,6 @@
 # Webapp
 
-Remix 2.1.0 app serving as the main API, dashboard, and orchestration engine. Uses an Express server (`server.ts`).
+Remix 2.17.4 app serving as the main API, dashboard, and orchestration engine. Uses an Express server (`server.ts`).
 
 ## Verifying Changes
 
