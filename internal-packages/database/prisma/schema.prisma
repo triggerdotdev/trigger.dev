@@ -2192,6 +2192,8 @@ model ProjectAlertStorage {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([alertChannelId, alertType, storageId])
 }
 
 model OrganizationIntegration {
