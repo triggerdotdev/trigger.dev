@@ -98,6 +98,11 @@ export async function deleteChat(chatId: string) {
   await prisma.chatSession.delete({ where: { id: chatId } }).catch(() => { });
 }
 
+export async function deleteAllChats() {
+  await prisma.chatSession.deleteMany();
+  await prisma.chat.deleteMany();
+}
+
 export async function updateChatTitle(chatId: string, title: string) {
   await prisma.chat.update({ where: { id: chatId }, data: { title } }).catch(() => { });
 }

@@ -5,7 +5,7 @@ import { ChatSidebar } from "@/components/chat-sidebar";
 import { useChatSettings } from "@/components/chat-settings-context";
 import { useState, useCallback, useEffect } from "react";
 import { generateId } from "ai";
-import { getChatList, deleteChat as deleteChatAction } from "@/app/actions";
+import { getChatList, deleteChat as deleteChatAction, deleteAllChats } from "@/app/actions";
 
 type ChatMeta = {
   id: string;
@@ -68,6 +68,13 @@ export function ChatSidebarWrapper({
     }
   }
 
+  async function handleWipeAll() {
+    if (!confirm("Delete ALL chats? This cannot be undone.")) return;
+    await deleteAllChats();
+    setChatList([]);
+    router.push("/chats");
+  }
+
   return (
     <ChatSidebar
       chats={chatList}
@@ -75,6 +82,7 @@ export function ChatSidebarWrapper({
       onSelectChat={handleSelectChat}
       onNewChat={handleNewChat}
       onDeleteChat={handleDeleteChat}
+      onWipeAll={handleWipeAll}
       preloadEnabled={preloadEnabled}
       onPreloadChange={setPreloadEnabled}
       idleTimeoutInSeconds={idleTimeoutInSeconds}

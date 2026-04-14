@@ -12,7 +12,7 @@ import {
   deleteSessionAction,
   renewRunAccessTokenForChat,
 } from "@/app/actions";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type SessionInfo = {
@@ -39,13 +39,18 @@ export function ChatView({
   const router = useRouter();
   const { taskMode, preloadEnabled, idleTimeoutInSeconds } = useChatSettings();
 
+  const [currentSession, setCurrentSession] = useState<SessionInfo | null>(initialSession);
+
   const sessions: Record<string, SessionInfo> = {};
   if (initialSession) {
     sessions[chatId] = initialSession;
   }
 
   const handleSessionChange = useCallback((_id: string, session: SessionInfo | null) => {
-    if (!session) {
+    if (session) {
+      setCurrentSession(session);
+    } else {
+      setCurrentSession(null);
       deleteSessionAction(_id);
     }
   }, []);
@@ -86,7 +91,7 @@ export function ChatView({
     [router]
   );
 
-  const activeSession = initialSession ?? undefined;
+  const activeSession = currentSession ?? undefined;
 
   return (
     <Chat
