@@ -235,7 +235,10 @@ export default function AdminDataStoresRoute() {
                     </span>
                   </TableCell>
                   <TableCell isSticky>
-                    <DeleteButton name={ds.key} />
+                    <div className="flex items-center gap-1">
+                      <EditButton name={ds.key} organizationIds={ds.organizationIds} />
+                      <DeleteButton name={ds.key} />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -287,6 +290,70 @@ function DeleteButton({ name }: { name: string }) {
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Edit button with dialog
+// ---------------------------------------------------------------------------
+
+function EditButton({ name, organizationIds }: { name: string; organizationIds: string[] }) {
+  const [open, setOpen] = useState(false);
+  const fetcher = useFetcher<{ success?: boolean; error?: string }>();
+  const isSubmitting = fetcher.state !== "idle";
+
+  if (fetcher.data?.success && open) {
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <Button variant="secondary/small" onClick={() => setOpen(true)}>
+        Edit
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit data store</DialogTitle>
+          </DialogHeader>
+
+          <fetcher.Form method="post" className="space-y-4 pt-2">
+            <input type="hidden" name="_action" value="update" />
+            <input type="hidden" name="key" value={name} />
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-text-dimmed">Key</label>
+              <Input name="_key_display" value={name} readOnly variant="medium" className="font-mono opacity-60" />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-text-dimmed">
+                Organization IDs <span className="text-rose-400">*</span>
+              </label>
+              <Input
+                name="organizationIds"
+                defaultValue={organizationIds.join(", ")}
+                placeholder="clxxxxx, clyyyyy, clzzzzz"
+                variant="medium"
+                required
+              />
+              <p className="text-[11px] text-text-dimmed">Comma-separated organization IDs.</p>
+            </div>
+
+            {fetcher.data?.error && <p className="text-xs text-rose-400">{fetcher.data.error}</p>}
+
+            <DialogFooter>
+              <Button variant="tertiary/small" type="button" onClick={() => setOpen(false)} disabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary/small" disabled={isSubmitting}>
+                {isSubmitting ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </fetcher.Form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
