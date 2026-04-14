@@ -280,6 +280,96 @@ const stop = useCallback(() => {
 
 See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for how to handle stop signals in your task.
 
+## Tool approvals
+
+The AI SDK supports tools that require human approval before execution. To use this with `chat.agent`, define a tool with `needsApproval: true` on the backend, then handle the approval UI and configure `sendAutomaticallyWhen` on the frontend.
+
+### Backend: define an approval-required tool
+
+```ts
+import { tool } from "ai";
+import { z } from "zod";
+
+const sendEmail = tool({
+  description: "Send an email. Requires human approval before sending.",
+  inputSchema: z.object({
+    to: z.string(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  needsApproval: true,
+  execute: async ({ to, subject, body }) => {
+    await emailService.send({ to, subject, body });
+    return { sent: true, to, subject };
+  },
+});
+```
+
+Pass the tool to `streamText` in your `run` function as usual. When the model calls the tool, `chat.agent` streams a `tool-approval-request` chunk. The turn completes and the run waits for the next message.
+
+### Frontend: approval UI
+
+Import `lastAssistantMessageIsCompleteWithApprovalResponses` from the AI SDK and pass it to `sendAutomaticallyWhen`. This tells `useChat` to automatically re-send messages once all approvals have been responded to.
+
+Destructure `addToolApprovalResponse` from `useChat` and wire it to your approval buttons:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+
+function Chat({ chatId, transport }) {
+  const { messages, sendMessage, addToolApprovalResponse, status } = useChat({
+    id: chatId,
+    transport,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+  });
+
+  const handleApprove = (approvalId: string) => {
+    addToolApprovalResponse({ id: approvalId, approved: true });
+  };
+
+  const handleDeny = (approvalId: string) => {
+    addToolApprovalResponse({ id: approvalId, approved: false, reason: "User denied" });
+  };
+
+  return (
+    <div>
+      {messages.map((msg) =>
+        msg.parts.map((part, i) => {
+          if (part.state === "approval-requested") {
+            return (
+              <div key={i}>
+                <p>Tool "{part.type}" wants to run with input:</p>
+                <pre>{JSON.stringify(part.input, null, 2)}</pre>
+                <button onClick={() => handleApprove(part.approval.id)}>Approve</button>
+                <button onClick={() => handleDeny(part.approval.id)}>Deny</button>
+              </div>
+            );
+          }
+          // ... render other parts
+        })
+      )}
+    </div>
+  );
+}
+```
+
+### How it works
+
+1. Model calls a tool with `needsApproval: true` — the turn completes with the tool in `approval-requested` state
+2. Frontend shows Approve/Deny buttons
+3. User clicks Approve — `addToolApprovalResponse` updates the tool part to `approval-responded`
+4. `sendAutomaticallyWhen` returns `true` — `useChat` re-sends the updated assistant message
+5. The transport sends the message via input streams — the backend matches it by ID and replaces the existing assistant message in the accumulator
+6. `streamText` sees the approved tool, executes it, and streams the result
+
+<Info>
+  Message IDs are kept in sync between frontend and backend automatically. The backend always
+  includes a `generateMessageId` function when streaming responses, ensuring the `start` chunk
+  carries a `messageId` that the frontend uses. This makes the ID-based matching reliable
+  for tool approval updates.
+</Info>
+
 ## Self-hosting
 
 If you're self-hosting Trigger.dev, pass the `baseURL` option:
