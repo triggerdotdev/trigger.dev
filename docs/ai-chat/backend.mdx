@@ -917,6 +917,51 @@ export const myChat = chat.agent({
 });
 ```
 
+##### Custom message IDs
+
+By default, response message IDs are generated using the AI SDK's built-in `generateId`. Pass a custom `generateMessageId` function to use your own ID format (e.g. UUID-v7):
+
+```ts
+import { v7 as uuidv7 } from "uuid";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  uiMessageStreamOptions: {
+    generateMessageId: () => uuidv7(),
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+With the `.withUIMessage()` builder, set it under `streamOptions`:
+
+```ts
+import { v7 as uuidv7 } from "uuid";
+
+export const myChat = chat
+  .withUIMessage<MyChatUIMessage>({
+    streamOptions: {
+      generateMessageId: () => uuidv7(),
+      sendReasoning: true,
+    },
+  })
+  .agent({
+    id: "my-chat",
+    run: async ({ messages, signal }) => {
+      return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    },
+  });
+```
+
+<Info>
+  The generated ID is sent to the frontend in the stream's `start` chunk, so frontend and backend
+  always reference the same ID for each message. This is important for features like tool
+  approvals, where the frontend resends an assistant message and the backend needs to match it
+  by ID in the conversation accumulator.
+</Info>
+
 ##### Per-turn overrides
 
 Override per-turn with `chat.setUIMessageStreamOptions()` — per-turn values merge with the static config (per-turn wins on conflicts). The override is cleared automatically after each turn.
