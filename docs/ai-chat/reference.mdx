@@ -369,7 +369,8 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.defer(promise)`                       | Run background work in parallel with streaming, awaited before `onTurnComplete`                                              |
 | `chat.isStopped()`                          | Check if the current turn was stopped by the user                                                                            |
 | `chat.cleanupAbortedParts(message)`         | Remove incomplete parts from a stopped response message                                                                      |
-| `chat.stream`                               | Typed chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()`                                                |
+| `chat.response.write(chunk)`                | Write a data part that streams to the frontend AND persists in `onTurnComplete`'s `responseMessage`                          |
+| `chat.stream`                               | Raw chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()`. Chunks are NOT accumulated into the response.   |
 | `chat.MessageAccumulator`                   | Class that accumulates conversation messages across turns                                                                    |
 | `chat.withUIMessage(config?)`               | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. See [Types](/ai-chat/types)            |
 | `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chatwithclientdata) |

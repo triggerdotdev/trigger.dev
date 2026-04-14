@@ -116,7 +116,7 @@ export const myChat = chat.agent({
 | `clientData`      | Typed by `clientDataSchema`                   | Custom data from the frontend    |
 | `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks  |
 
-Every lifecycle callback receives a `writer` — a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend without the ceremony of `chat.stream.writer()`. See [ChatWriter](/ai-chat/reference#chatwriter).
+Every lifecycle callback receives a `writer` — a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend. Non-transient `data-*` chunks written via the `writer` are automatically added to the response message and available in `onTurnComplete`. Add `transient: true` for ephemeral chunks (progress indicators, etc.) that should not persist. See [Custom data parts](/ai-chat/features#custom-data-parts).
 
 #### onChatStart
 
