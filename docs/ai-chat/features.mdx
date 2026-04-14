@@ -181,42 +181,84 @@ export const myChat = chat.agent({
 
 ---
 
-## Custom streaming with chat.stream
+## Custom data parts
 
-`chat.stream` is a typed stream bound to the chat output. Use it to write custom `UIMessageChunk` data alongside the AI-generated response — for example, status updates or progress indicators.
+You can add custom data parts to the assistant's response message. These appear on the frontend in `message.parts` and are included in `onTurnComplete`'s `responseMessage` and `uiMessages` for persistence.
+
+### Writing persistent data parts
+
+Use `chat.response.write()` or the `writer` in lifecycle hooks. Non-transient `data-*` chunks are automatically added to the response message:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) => {
-    // Write a custom data part to the chat stream.
-    // The AI SDK's data-* chunk protocol adds this to message.parts
-    // on the frontend, where you can render it however you like.
-    const { waitUntilComplete } = chat.stream.writer({
-      execute: ({ write }) => {
-        write({
-          type: "data-status",
-          id: "search-progress",
-          data: { message: "Searching the web...", progress: 0.5 },
-        });
-      },
+  onBeforeTurnComplete: async ({ writer, turn }) => {
+    // This data part will be in responseMessage.parts in onTurnComplete
+    writer.write({
+      type: "data-metadata",
+      data: { turn, model: "gpt-4o", timestamp: Date.now() },
     });
-    await waitUntilComplete();
+  },
+  onTurnComplete: async ({ responseMessage }) => {
+    // responseMessage.parts includes the data-metadata part
+    await db.messages.save(responseMessage);
+  },
+  run: async ({ messages, signal }) => {
+    // Also works from run() via chat.response
+    chat.response.write({
+      type: "data-context",
+      data: { searchResults: results },
+    });
 
-    // Then stream the AI response
     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
   },
 });
 ```
 
-<Tip>
-  Use `data-*` chunk types (e.g. `data-status`, `data-progress`) for custom data. The AI SDK processes these into `DataUIPart` objects in `message.parts` on the frontend. Writing the same `type` + `id` again updates the existing part instead of creating a new one — useful for live progress.
-</Tip>
+### Transient data parts (ephemeral)
+
+Add `transient: true` to data chunks that should stream to the frontend but NOT persist in the response message. Use this for progress indicators, loading states, and other temporary UI:
+
+```ts
+// Transient — frontend sees it, but NOT in onTurnComplete's responseMessage
+writer.write({
+  type: "data-progress",
+  id: "search",
+  data: { percent: 50 },
+  transient: true,
+});
+```
+
+<Info>
+  This matches the AI SDK's semantics: `data-*` chunks persist to `message.parts` by default.
+  Only `transient: true` chunks are ephemeral. Non-data chunks (`text-delta`, `tool-*`, etc.)
+  are handled by `streamText` and captured via `onFinish` — they don't need `chat.response`.
+</Info>
+
+<Note>
+  `chat.response` and the `writer` accumulation behavior work with `chat.agent` and
+  `chat.createSession`. If you're using `chat.customAgent`, manage data part accumulation
+  manually via your own message accumulator.
+</Note>
+
+### Raw streaming with chat.stream
+
+For low-level stream access (piping from subtasks, reading streams by run ID), use `chat.stream`. Chunks written via `chat.stream` go directly to the realtime output — they are NOT accumulated into the response message regardless of the `transient` flag.
+
+```ts
+// Raw stream — always ephemeral, never in responseMessage
+const { waitUntilComplete } = chat.stream.writer({
+  execute: ({ write }) => {
+    write({ type: "data-status", data: { message: "Processing..." } });
+  },
+});
+await waitUntilComplete();
+```
 
 <Tip>
-  Inside lifecycle callbacks (`onPreload`, `onChatStart`, `onTurnStart`, `onBeforeTurnComplete`, `onCompacted`), you can use the `writer` parameter instead of `chat.stream.writer()` — it's simpler and avoids the `execute` + `waitUntilComplete` boilerplate. See [ChatWriter](/ai-chat/reference#chatwriter).
+  Use `data-*` chunk types (e.g. `data-status`, `data-progress`) for custom data. The AI SDK processes these into `DataUIPart` objects in `message.parts` on the frontend. Writing the same `type` + `id` again updates the existing part instead of creating a new one — useful for live progress.
 </Tip>
 
 `chat.stream` exposes the full stream API:
