@@ -369,6 +369,7 @@
               "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
+              "guides/frameworks/nango",
               "guides/frameworks/sequin",
               {
                 "group": "Supabase",
