@@ -1,25 +1,11 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 
-async function requireAdmin(request: Request) {
-  const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
-  if (!authResult) {
-    throw json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: authResult.userId } });
-  if (!user?.admin) {
-    throw json({ error: "You must be an admin to perform this action" }, { status: 403 });
-  }
-
-  return user;
-}
-
 export async function loader({ request }: LoaderFunctionArgs) {
-  await requireAdmin(request);
+  await requireAdminApiRequest(request);
 
   const url = new URL(request.url);
   const page = parseInt(url.searchParams.get("page") ?? "1");
@@ -75,7 +61,7 @@ const CreateModelSchema = z.object({
 });
 
 export async function action({ request }: ActionFunctionArgs) {
-  await requireAdmin(request);
+  await requireAdminApiRequest(request);
 
   if (request.method !== "POST") {
     return json({ error: "Method not allowed" }, { status: 405 });
