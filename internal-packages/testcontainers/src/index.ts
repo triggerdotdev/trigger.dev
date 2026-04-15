@@ -1,6 +1,7 @@
 import { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
 import { TaskContext, test } from "vitest";
@@ -106,13 +107,8 @@ export const prisma = async (
 
   console.log("Initializing Prisma with URL:", url);
 
-  const prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url,
-      },
-    },
-  });
+  const adapter = new PrismaPg(url);
+  const prisma = new PrismaClient({ adapter });
   try {
     await use(prisma);
   } finally {
