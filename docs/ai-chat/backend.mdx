@@ -181,6 +181,56 @@ export const myChat = chat.agent({
   `onValidateMessages` fires **before** `onTurnStart` and message accumulation. If you need to validate messages loaded from a database, do the loading in `onChatStart` or `onPreload` and let `onValidateMessages` validate the full incoming set each turn.
 </Note>
 
+#### hydrateMessages
+
+Load the full message history from your backend on every turn, replacing the built-in linear accumulator. When set, the hook's return value becomes the accumulated state — the normal accumulation logic (append for submit, replace for regenerate) is skipped entirely.
+
+Use this when the backend should be the source of truth for message history — abuse prevention, branching conversations (DAGs), or rollback/undo support.
+
+| Field              | Type                                                  | Description                                               |
+| ------------------ | ----------------------------------------------------- | --------------------------------------------------------- |
+| `chatId`           | `string`                                              | Chat session ID                                           |
+| `turn`             | `number`                                              | Turn number (0-indexed)                                   |
+| `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
+| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend (empty for actions) |
+| `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
+| `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
+| `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
+| `previousRunId`    | `string \| undefined`                                 | The previous run ID (if continuation)                     |
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const record = await db.chat.findUnique({ where: { id: chatId } });
+    const stored = record?.messages ?? [];
+
+    // Append the new user message and persist
+    if (trigger === "submit-message" && incomingMessages.length > 0) {
+      const newMsg = incomingMessages[incomingMessages.length - 1]!;
+      stored.push(newMsg);
+      await db.chat.update({
+        where: { id: chatId },
+        data: { messages: stored },
+      });
+    }
+
+    return stored;
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+**Lifecycle position:** `onValidateMessages` → **`hydrateMessages`** → `onChatStart` (turn 0) → `onTurnStart` → `run()`
+
+After the hook returns, any incoming wire message whose ID matches a hydrated message is auto-merged — this makes [tool approvals](/ai-chat/frontend#tool-approvals) work transparently with hydration.
+
+<Note>
+  `hydrateMessages` also fires for [action](#actions) turns (`trigger: "action"`) with empty `incomingMessages`. This lets the action handler work with the latest DB state.
+</Note>
+
 #### onTurnStart
 
 Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins — so a mid-stream page refresh still shows the user's message.
@@ -784,6 +834,96 @@ export const myChat = chat.agent({
   See [Background Injection](/ai-chat/background-injection) for the full guide — timing, self-review
   example, and how it differs from pending messages.
 </Tip>
+
+### Actions
+
+Custom actions let the frontend send structured commands (undo, rollback, edit) that modify the conversation state before the LLM responds. Actions use the same input stream as messages, so they wake the agent from suspension and trigger a full turn.
+
+Define an `actionSchema` for validation and an `onAction` handler that uses `chat.history` to modify state:
+
+```ts
+import { z } from "zod";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  actionSchema: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("undo") }),
+    z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
+    z.object({ type: z.literal("edit"), messageId: z.string(), text: z.string() }),
+  ]),
+
+  onAction: async ({ action }) => {
+    switch (action.type) {
+      case "undo":
+        chat.history.slice(0, -2); // Remove last user + assistant exchange
+        break;
+      case "rollback":
+        chat.history.rollbackTo(action.targetMessageId);
+        break;
+      case "edit":
+        chat.history.replace(action.messageId, {
+          id: action.messageId,
+          role: "user",
+          parts: [{ type: "text", text: action.text }],
+        });
+        break;
+    }
+  },
+
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+**Lifecycle flow:** Wake → parse action against `actionSchema` → `hydrateMessages` (if set) → **`onAction`** → apply `chat.history` mutations → `onTurnStart` → `run()` → `onTurnComplete`
+
+On the frontend, send actions via the transport:
+
+```ts
+// Browser — TriggerChatTransport
+const stream = await transport.sendAction(chatId, { type: "undo" });
+
+// Server — AgentChat
+const stream = await agentChat.sendAction({ type: "rollback", targetMessageId: "msg-3" });
+```
+
+The action payload is validated against `actionSchema` on the backend — invalid actions throw and abort the turn. The `action` parameter in `onAction` is fully typed from the schema.
+
+<Note>
+  Actions always trigger `run()` — the LLM responds to the modified state. For silent state changes that don't need a response (e.g. injecting background context), use [`chat.inject()`](/ai-chat/background-injection) instead.
+</Note>
+
+### chat.history {#chat-history}
+
+Imperative API for modifying the accumulated message history. Works from any hook (`onAction`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`) or from `run()` and AI SDK tools.
+
+| Method | Description |
+|--------|-------------|
+| `chat.history.all()` | Read the current accumulated UI messages (returns a copy) |
+| `chat.history.set(messages)` | Replace all messages (same as `chat.setMessages()`) |
+| `chat.history.remove(messageId)` | Remove a specific message by ID |
+| `chat.history.rollbackTo(messageId)` | Keep messages up to and including the given ID (undo) |
+| `chat.history.replace(messageId, message)` | Replace a specific message by ID (edit) |
+| `chat.history.slice(start, end?)` | Keep only messages in the given range |
+
+```ts
+// Undo the last exchange in onAction
+onAction: async ({ action }) => {
+  if (action.type === "undo") {
+    chat.history.slice(0, -2);
+  }
+},
+
+// Trim history in onTurnComplete
+onTurnComplete: async ({ uiMessages }) => {
+  if (uiMessages.length > 50) {
+    chat.history.slice(-20);
+  }
+},
+```
+
+Mutations use the same deferred mechanism as `chat.setMessages()` — they are applied at lifecycle checkpoints (after hooks return). Multiple mutations in the same hook compose correctly.
 
 ### prepareMessages
 

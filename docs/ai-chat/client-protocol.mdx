@@ -290,6 +290,34 @@ The agent matches the incoming message by its `id` against the accumulated conve
   The message `id` must match the one the agent assigned during streaming. If you're using `TriggerChatTransport`, IDs are kept in sync automatically. Custom transports should use the `messageId` from the stream's `start` chunk.
 </Note>
 
+## Custom actions
+
+Send a custom action (undo, rollback, edit) to the agent using the same `chat-messages` input stream. Actions use `trigger: "action"` and carry a custom payload in the `action` field:
+
+```bash
+POST /realtime/v1/streams/{runId}/input/chat-messages
+Authorization: Bearer <publicAccessToken>
+Content-Type: application/json
+
+{
+  "data": {
+    "messages": [],
+    "chatId": "conversation-123",
+    "trigger": "action",
+    "action": { "type": "undo" },
+    "metadata": { "userId": "user-456" }
+  }
+}
+```
+
+Actions wake the agent from suspension (same as messages), fire the `onAction` hook, then trigger a normal `run()` turn. The `action` payload is validated against the agent's `actionSchema`.
+
+After sending, subscribe to the output stream to receive the agent's response — the same flow as [Step 2](#step-2-subscribe-to-the-output-stream).
+
+<Note>
+  `messages` is empty for actions. The agent's `onAction` handler modifies the conversation state via `chat.history.*`, and the LLM responds to the updated state. See [Actions](/ai-chat/backend#actions) for backend setup.
+</Note>
+
 ## Pending and steering messages
 
 You can send messages to the agent **while it's still streaming a response**. These are called pending messages — the agent receives them mid-turn and can inject them between tool-call steps.
