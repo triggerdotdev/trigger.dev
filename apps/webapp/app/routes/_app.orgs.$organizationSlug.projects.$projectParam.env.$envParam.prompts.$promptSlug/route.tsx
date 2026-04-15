@@ -71,7 +71,6 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
 
@@ -271,7 +270,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     console.error("Prompt generations query exception:", e);
   }
 
-  // Load distinct filter values and resizable snapshots in parallel
+  // Load distinct filter values in parallel
   const distinctQuery = (col: string, name: string) =>
     clickhouseClient.reader.query({
       name,
@@ -281,16 +280,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })({ environmentId: environment.id, promptSlug: prompt.slug });
 
   const [
-    resizableOuter,
-    resizableVertical,
-    resizableGenerations,
     [modelsErr, modelsRows],
     [opsErr, opsRows],
     [provsErr, provsRows],
   ] = await Promise.all([
-    getResizableSnapshot(request, "prompt-detail"),
-    getResizableSnapshot(request, "prompt-vertical"),
-    getResizableSnapshot(request, "prompt-generations"),
     distinctQuery("response_model", "promptDistinctModels"),
     distinctQuery("operation_id", "promptDistinctOperations"),
     distinctQuery("gen_ai_system", "promptDistinctProviders"),
@@ -302,9 +295,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typedjson({
     resizable: {
-      outer: resizableOuter,
-      vertical: resizableVertical,
-      generations: resizableGenerations,
+      outer: undefined as ResizableSnapshot | undefined,
+      vertical: undefined as ResizableSnapshot | undefined,
+      generations: undefined as ResizableSnapshot | undefined,
     },
     prompt: {
       id: prompt.id,
