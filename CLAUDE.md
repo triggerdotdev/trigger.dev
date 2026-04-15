@@ -92,7 +92,7 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 
 ### Apps
 
-- **apps/webapp**: Remix 2.1.0 app - main API, dashboard, orchestration. Uses Express server.
+- **apps/webapp**: Remix 2.17.4 app - main API, dashboard, orchestration. Uses Express server.
 - **apps/supervisor**: Manages task execution containers (Docker/Kubernetes).
 
 ### Public Packages
