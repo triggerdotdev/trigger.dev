@@ -105,6 +105,7 @@
                       "ai-chat/patterns/sub-agents",
                       "ai-chat/patterns/version-upgrades",
                       "ai-chat/patterns/database-persistence",
+                      "ai-chat/patterns/branching-conversations",
                       "ai-chat/patterns/code-sandbox"
                     ]
                   },
