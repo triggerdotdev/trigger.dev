@@ -173,7 +173,7 @@ type TriggerChatTransportOptionsBase<TClientData = unknown> = {
    * });
    * ```
    */
-  sessions?: Record<string, { runId: string; publicAccessToken: string; lastEventId?: string }>;
+  sessions?: Record<string, { runId: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean }>;
 
   /**
    * Called whenever a chat session's state changes.
@@ -203,7 +203,7 @@ type TriggerChatTransportOptionsBase<TClientData = unknown> = {
    */
   onSessionChange?: (
     chatId: string,
-    session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
+    session: { runId: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean } | null
   ) => void;
 
   /**
@@ -336,6 +336,8 @@ type ChatSessionState = {
   lastEventId?: string;
   /** Set when the stream was aborted mid-turn (stop). On reconnect, skip chunks until trigger:turn-complete. */
   skipToTurnComplete?: boolean;
+  /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
+  isStreaming?: boolean;
 };
 
 /**
@@ -385,7 +387,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private _onSessionChange:
     | ((
         chatId: string,
-        session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
+        session: { runId: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean } | null
       ) => void)
     | undefined;
 
@@ -428,6 +430,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           runId: session.runId,
           publicAccessToken: session.publicAccessToken,
           lastEventId: session.lastEventId,
+          isStreaming: session.isStreaming,
         });
       }
     }
@@ -515,6 +518,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           this.activeStreams.delete(chatId);
         }
 
+        currentSession.isStreaming = true;
+        this.notifySessionChange(chatId, currentSession);
+
         return this.subscribeToStream(
           currentSession.runId,
           currentSession.publicAccessToken,
@@ -534,7 +540,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const { runId, publicAccessToken } = await this.triggerNewRun(chatId, triggerPayload, "trigger");
 
-    const newSession: ChatSessionState = { runId, publicAccessToken };
+    const newSession: ChatSessionState = { runId, publicAccessToken, isStreaming: true };
     this.sessions.set(chatId, newSession);
     this.notifySessionChange(chatId, newSession);
     return this.subscribeToStream(runId, publicAccessToken, abortSignal, chatId, {
@@ -614,6 +620,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   ): Promise<ReadableStream<UIMessageChunk> | null> => {
     const session = this.sessions.get(options.chatId);
     if (!session) {
+      return null;
+    }
+
+    // No active stream — the last turn completed before the page refreshed.
+    // Return null so useChat settles into "ready" state instead of hanging.
+    if (!session.isStreaming) {
       return null;
     }
 
@@ -790,13 +802,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    */
   getSession = (
     chatId: string
-  ): { runId: string; publicAccessToken: string; lastEventId?: string } | undefined => {
+  ): { runId: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean } | undefined => {
     const session = this.sessions.get(chatId);
     if (!session) return undefined;
     return {
       runId: session.runId,
       publicAccessToken: session.publicAccessToken,
       lastEventId: session.lastEventId,
+      isStreaming: session.isStreaming,
     };
   };
 
@@ -808,7 +821,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     callback:
       | ((
           chatId: string,
-          session: { runId: string; publicAccessToken: string; lastEventId?: string } | null
+          session: { runId: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean } | null
         ) => void)
       | undefined
   ): void {
@@ -966,6 +979,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         runId: session.runId,
         publicAccessToken: session.publicAccessToken,
         lastEventId: session.lastEventId,
+        isStreaming: session.isStreaming,
       });
     } else {
       this._onSessionChange(chatId, null);
@@ -1212,8 +1226,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                   if (session && typeof chunk.publicAccessToken === "string") {
                     session.publicAccessToken = chunk.publicAccessToken;
                   }
-                  // Notify with updated session (including refreshed token)
+                  // Mark streaming as complete so reconnectToStream doesn't
+                  // hang on page refresh when no turn is in-flight.
                   if (session) {
+                    session.isStreaming = false;
                     this.notifySessionChange(chatId, session);
                   }
 

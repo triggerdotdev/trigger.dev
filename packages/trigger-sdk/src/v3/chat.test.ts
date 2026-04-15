@@ -502,6 +502,145 @@ describe("TriggerChatTransport", () => {
 
       expect(receivedChunks.length).toBeGreaterThan(0);
     });
+
+    it("should return null when session exists but isStreaming is false (TRI-8557)", async () => {
+      // Simulate a session restored from DB after a completed turn
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        sessions: {
+          "chat-completed": {
+            runId: "run_completed",
+            publicAccessToken: "pub_token",
+            lastEventId: "42",
+            isStreaming: false,
+          },
+        },
+      });
+
+      // reconnectToStream should return null immediately — no hanging
+      const result = await transport.reconnectToStream({
+        chatId: "chat-completed",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should reconnect when session exists and isStreaming is true", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks: UIMessageChunk[] = [
+            { type: "text-start", id: "part-1" },
+            { type: "text-delta", id: "part-1", delta: "Resumed!" },
+            { type: "text-end", id: "part-1" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+        sessions: {
+          "chat-streaming": {
+            runId: "run_streaming",
+            publicAccessToken: "pub_token",
+            lastEventId: "10",
+            isStreaming: true,
+          },
+        },
+      });
+
+      const stream = await transport.reconnectToStream({
+        chatId: "chat-streaming",
+      });
+
+      expect(stream).toBeInstanceOf(ReadableStream);
+    });
+
+    it("should set isStreaming to false via onSessionChange when turn completes", async () => {
+      const sessionChanges: Array<{
+        chatId: string;
+        session: { isStreaming?: boolean } | null;
+      }> = [];
+
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+
+        if (urlStr.includes("/trigger")) {
+          return new Response(JSON.stringify({ id: "run_streaming_flag" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_token",
+            },
+          });
+        }
+
+        if (urlStr.includes("/realtime/v1/streams/")) {
+          const chunks = [
+            { type: "text-start", id: "part-1" },
+            { type: "text-delta", id: "part-1", delta: "Hi" },
+            { type: "text-end", id: "part-1" },
+            { type: "trigger:turn-complete", publicAccessToken: "refreshed_token" },
+          ];
+          return new Response(createSSEStream(sseEncode(chunks)), {
+            status: 200,
+            headers: {
+              "content-type": "text/event-stream",
+              "X-Stream-Version": "v1",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-task",
+        accessToken: "token",
+        baseURL: "https://api.test.trigger.dev",
+        onSessionChange: (chatId, session) => {
+          sessionChanges.push({ chatId, session });
+        },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-flag-test",
+        messageId: undefined,
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+
+      // Drain the stream
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+      // Find the session changes for this chat
+      const changes = sessionChanges.filter((c) => c.chatId === "chat-flag-test");
+
+      // First change: session created with isStreaming: true
+      expect(changes[0]?.session?.isStreaming).toBe(true);
+
+      // Last change: turn completed, isStreaming: false
+      const lastChange = changes[changes.length - 1];
+      expect(lastChange?.session?.isStreaming).toBe(false);
+    });
   });
 
   describe("renewRunAccessToken", () => {
@@ -650,6 +789,15 @@ describe("TriggerChatTransport", () => {
         const { done } = await fr.read();
         if (done) break;
       }
+
+      // Simulate mid-stream state (isStreaming must be true for reconnect to attempt)
+      const session = transport.getSession("chat-fail-renew");
+      transport.setOnSessionChange(undefined); // prevent side-effects
+      // Re-seed with isStreaming: true to simulate reconnect during an active turn
+      (transport as any).sessions.set("chat-fail-renew", {
+        ...session,
+        isStreaming: true,
+      });
 
       const stream = await transport.reconnectToStream({ chatId: "chat-fail-renew" });
       const reader = stream!.getReader();
@@ -1013,13 +1161,21 @@ describe("TriggerChatTransport", () => {
       const r2 = s2.getReader();
       while (!(await r2.read()).done) {}
 
-      // Both sessions should be independently reconnectable
+      // Both sessions should exist but not be reconnectable (turns completed)
+      const sessionA = transport.getSession("session-a");
+      const sessionB = transport.getSession("session-b");
+      expect(sessionA).toBeDefined();
+      expect(sessionB).toBeDefined();
+      expect(sessionA!.isStreaming).toBe(false);
+      expect(sessionB!.isStreaming).toBe(false);
+
+      // Completed turns return null on reconnect (TRI-8557 fix)
       const streamA = await transport.reconnectToStream({ chatId: "session-a" });
       const streamB = await transport.reconnectToStream({ chatId: "session-b" });
       const streamC = await transport.reconnectToStream({ chatId: "nonexistent" });
 
-      expect(streamA).toBeInstanceOf(ReadableStream);
-      expect(streamB).toBeInstanceOf(ReadableStream);
+      expect(streamA).toBeNull();
+      expect(streamB).toBeNull();
       expect(streamC).toBeNull();
     });
   });
@@ -2060,6 +2216,7 @@ describe("TriggerChatTransport", () => {
         runId: triggerRunId,
         publicAccessToken: publicToken,
         lastEventId: undefined,
+        isStreaming: true,
       });
 
       // Consume stream
