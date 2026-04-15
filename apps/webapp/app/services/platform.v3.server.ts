@@ -73,8 +73,8 @@ function initializePlatformCache() {
     }),
     entitlement: new Namespace<ReportUsageResult>(ctx, {
       stores: [memory, redisCacheStore],
-      fresh: 60_000, // 60 seconds
-      stale: 60_000, // 60 seconds
+      fresh: 60_000, // serve without revalidation for 60s
+      stale: 120_000, // total TTL — fresh 0-60s, stale-revalidate 60-120s
     }),
   });
 
