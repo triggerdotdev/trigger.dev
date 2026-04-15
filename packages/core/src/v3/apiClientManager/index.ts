@@ -62,7 +62,13 @@ export class APIClientManagerAPI {
     const requestOptions = this.#getConfig()?.requestOptions;
     const futureFlags = this.#getConfig()?.future;
 
-    return new ApiClient(this.baseURL, this.accessToken, this.branchName, requestOptions, futureFlags);
+    return new ApiClient(
+      this.baseURL,
+      this.accessToken,
+      this.branchName,
+      requestOptions,
+      futureFlags
+    );
   }
 
   clientOrThrow(config?: ApiClientConfiguration): ApiClient {
@@ -78,6 +84,32 @@ export class APIClientManagerAPI {
     const futureFlags = config?.future ?? this.#getConfig()?.future;
 
     return new ApiClient(baseURL, accessToken, branchName, requestOptions, futureFlags);
+  }
+
+  /**
+   * Resolves the value to send as `lockToVersion` on a trigger request.
+   *
+   * Precedence (highest first):
+   *   1. Per-call `version` option (a string pins; `null` explicitly unpins).
+   *   2. Scoped `version` in `ApiClientConfiguration` (via `runWithConfig` / `auth.withAuth`).
+   *   3. `TRIGGER_VERSION` environment variable.
+   *
+   * Returns `undefined` when the result should not be sent (unpinned, server resolves
+   * to the current deployed version). Returns a version string when the request should
+   * be pinned to that specific version. `undefined` at any level falls through to the
+   * next level; only `null` explicitly unpins.
+   */
+  resolveLockToVersion(callVersion?: string | null): string | undefined {
+    if (callVersion !== undefined) {
+      return callVersion === null ? undefined : callVersion;
+    }
+
+    const scopedVersion = this.#getConfig()?.version;
+    if (scopedVersion !== undefined) {
+      return scopedVersion === null ? undefined : scopedVersion;
+    }
+
+    return getEnvVar("TRIGGER_VERSION");
   }
 
   runWithConfig<R extends (...args: any[]) => Promise<any>>(

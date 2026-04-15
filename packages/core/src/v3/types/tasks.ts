@@ -895,16 +895,25 @@ export type TriggerOptions = {
    * but you can specify a specific version to run here. You can also set the TRIGGER_VERSION environment
    * variables to run a specific version for all tasks.
    *
+   * Pass `null` to explicitly unpin this call: `lockToVersion` is omitted from the request and the
+   * server resolves to the current deployed version, ignoring the `TRIGGER_VERSION` environment
+   * variable. Useful when triggering into a project where the ambient `TRIGGER_VERSION` does not
+   * apply (for example, cross-project triggers).
+   *
    * @example
    *
    * ```ts
+   * // Pin to a specific version
    * await myTask.trigger({ foo: "bar" }, { version: "20250208.1" });
+   *
+   * // Explicitly use the current deployed version, ignoring TRIGGER_VERSION
+   * await myTask.trigger({ foo: "bar" }, { version: null });
    * ```
    *
    * Note that this option is only available for `trigger` and NOT `triggerAndWait` (and their batch counterparts). The "wait" versions will always be locked
    * to the same version as the parent task that is triggering the child tasks.
    */
-  version?: string;
+  version?: string | null;
 
   /**
    * Specify the region to run the task in. This overrides the default region set for your project in the dashboard.
