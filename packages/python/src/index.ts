@@ -97,7 +97,6 @@ export const python = {
                 }=trigger,${Object.entries(taskContext.attributes)
                   .map(([key, value]) => `${key}=${value}`)
                   .join(",")}`,
-                OTEL_LOG_LEVEL: "DEBUG",
               },
             },
             throwOnError: false,
