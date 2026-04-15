@@ -4,6 +4,18 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 15, 2026" description="0.0.0-chat-prerelease-20260415164455" tags={["SDK"]}>
+
+## Fix: `resume: true` hangs on completed turns
+
+When refreshing a page after a turn completed, `useChat` with `resume: true` would hang indefinitely — `reconnectToStream` opened an SSE connection that never received data.
+
+Added `isStreaming` to session state. The transport sets it to `true` when streaming starts and `false` on `trigger:turn-complete`. `reconnectToStream` returns `null` immediately when `isStreaming` is false, so `resume: initialMessages.length > 0` is now safe to pass unconditionally.
+
+The flag flows through `onSessionChange` and is restored from `sessions` — no extra persistence code needed.
+
+</Update>
+
 <Update label="April 15, 2026" description="0.0.0-chat-prerelease-20260415152704" tags={["SDK"]}>
 
 ## `hydrateMessages` — backend-controlled message history
