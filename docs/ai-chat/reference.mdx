@@ -16,6 +16,9 @@ Options for `chat.agent()`.
 | `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
 | `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires on turn 0 before `run()`                                                                      |
 | `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/backend#onvalidatemessages) |
+| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/backend#hydratemessages) |
+| `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/backend#actions) |
+| `onAction`                    | `(event: ActionEvent) => Promise<void> \| void`             | —                              | Handle custom actions. Fires after hydration, before `onTurnStart`. See [Actions](/ai-chat/backend#actions) |
 | `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
 | `onBeforeTurnComplete`        | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | —                              | Fires after response but before stream closes. Includes `writer`.                                   |
 | `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
@@ -115,6 +118,34 @@ Passed to the `onValidateMessages` callback.
 | `chatId`  | `string`                                                        | Chat session ID                          |
 | `turn`    | `number`                                                        | Turn number (0-indexed)                  |
 | `trigger` | `"submit-message" \| "regenerate-message" \| "preload" \| "close"` | The trigger type for this turn        |
+
+## HydrateMessagesEvent
+
+Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/backend#hydratemessages).
+
+| Field              | Type                                                  | Description                                               |
+| ------------------ | ----------------------------------------------------- | --------------------------------------------------------- |
+| `chatId`           | `string`                                              | Chat session ID                                           |
+| `turn`             | `number`                                              | Turn number (0-indexed)                                   |
+| `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
+| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend (empty for actions) |
+| `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
+| `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
+| `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
+| `previousRunId`    | `string \| undefined`                                 | Previous run ID (only when `continuation` is true)        |
+
+## ActionEvent
+
+Passed to the `onAction` callback. See [Actions](/ai-chat/backend#actions).
+
+| Field        | Type                        | Description                                              |
+| ------------ | --------------------------- | -------------------------------------------------------- |
+| `action`     | Typed by `actionSchema`     | The parsed and validated action payload                  |
+| `chatId`     | `string`                    | Chat session ID                                          |
+| `turn`       | `number`                    | Turn number (0-indexed)                                  |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                            |
+| `uiMessages` | `UIMessage[]`               | Accumulated UI messages (after hydration, if set)        |
+| `messages`   | `ModelMessage[]`            | Accumulated model messages (after hydration, if set)     |
 
 ## TurnStartEvent
 
@@ -371,6 +402,12 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.cleanupAbortedParts(message)`         | Remove incomplete parts from a stopped response message                                                                      |
 | `chat.response.write(chunk)`                | Write a data part that streams to the frontend AND persists in `onTurnComplete`'s `responseMessage`                          |
 | `chat.stream`                               | Raw chat output stream — use `.writer()`, `.pipe()`, `.append()`, `.read()`. Chunks are NOT accumulated into the response.   |
+| `chat.history.all()`                        | Read the current accumulated UI messages (returns a copy). See [chat.history](/ai-chat/backend#chat-history)                  |
+| `chat.history.set(messages)`                | Replace all accumulated messages (same as `chat.setMessages()`)                                                              |
+| `chat.history.remove(messageId)`            | Remove a specific message by ID                                                                                              |
+| `chat.history.rollbackTo(messageId)`        | Keep messages up to and including the given ID (undo/rollback)                                                               |
+| `chat.history.replace(messageId, message)`  | Replace a specific message by ID (edit)                                                                                      |
+| `chat.history.slice(start, end?)`           | Keep only messages in the given range                                                                                        |
 | `chat.MessageAccumulator`                   | Class that accumulates conversation messages across turns                                                                    |
 | `chat.withUIMessage(config?)`               | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. See [Types](/ai-chat/types)            |
 | `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chatwithclientdata) |
@@ -544,6 +581,25 @@ const stop = useCallback(() => {
 ```
 
 See [Stop generation](/ai-chat/frontend#stop-generation) for full details.
+
+### transport.sendAction()
+
+Send a custom action to the agent. Actions wake the agent from suspension, fire `onAction`, then trigger a normal `run()` turn.
+
+```ts
+transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>
+```
+
+The action payload is validated against the agent's `actionSchema` on the backend.
+
+```tsx
+// Undo button
+<button onClick={() => transport.sendAction(chatId, { type: "undo" })}>
+  Undo
+</button>
+```
+
+See [Actions](/ai-chat/backend#actions) for backend setup and [Sending actions](/ai-chat/frontend#sending-actions) for frontend usage.
 
 ### transport.preload()
 

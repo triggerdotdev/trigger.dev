@@ -370,6 +370,42 @@ function Chat({ chatId, transport }) {
   for tool approval updates.
 </Info>
 
+## Sending actions
+
+Send custom actions (undo, rollback, edit) to the agent via `transport.sendAction()`. Actions wake the agent, fire the `onAction` hook, and trigger a normal response — the LLM responds to the modified state.
+
+```tsx
+function ChatControls({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+
+  return (
+    <div>
+      <button onClick={() => transport.sendAction(chatId, { type: "undo" })}>
+        Undo last exchange
+      </button>
+      <button onClick={() => transport.sendAction(chatId, { type: "rollback", targetMessageId: "msg-5" })}>
+        Rollback to message
+      </button>
+    </div>
+  );
+}
+```
+
+The action payload is validated against the agent's `actionSchema` on the backend — invalid actions are rejected. See [Actions](/ai-chat/backend#actions) for the backend setup.
+
+<Note>
+  `sendAction` returns a `ReadableStream<UIMessageChunk>` — the agent's response to the modified state. If you're using `useChat`, the response is handled automatically through the transport.
+</Note>
+
+For server-to-server usage, `AgentChat` has the same method:
+
+```ts
+const stream = await agentChat.sendAction({ type: "undo" });
+for await (const chunk of stream) {
+  if (chunk.type === "text-delta") process.stdout.write(chunk.delta);
+}
+```
+
 ## Self-hosting
 
 If you're self-hosting Trigger.dev, pass the `baseURL` option:

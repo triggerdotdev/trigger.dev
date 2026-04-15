@@ -4,6 +4,69 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 15, 2026" description="0.0.0-chat-prerelease-20260415152704" tags={["SDK"]}>
+
+## `hydrateMessages` — backend-controlled message history
+
+Load message history from your database on every turn instead of trusting the frontend accumulator. The hook replaces the built-in linear accumulation entirely — the backend is the source of truth.
+
+```ts
+chat.agent({
+  id: "my-chat",
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const stored = await db.getMessages(chatId);
+    if (trigger === "submit-message" && incomingMessages.length > 0) {
+      stored.push(incomingMessages[incomingMessages.length - 1]!);
+      await db.persistMessages(chatId, stored);
+    }
+    return stored;
+  },
+});
+```
+
+Tool approval updates are auto-merged after hydration — no extra handling needed.
+
+See [hydrateMessages](/ai-chat/backend#hydratemessages).
+
+## `chat.history` — imperative message mutations
+
+Modify the accumulated message history from any hook or `run()`:
+
+```ts
+chat.history.rollbackTo(messageId);  // Undo — keep up to this message
+chat.history.remove(messageId);      // Remove one message
+chat.history.replace(id, newMsg);    // Edit a message
+chat.history.slice(0, -2);           // Remove last 2 messages
+chat.history.all();                  // Read current state
+```
+
+See [chat.history](/ai-chat/backend#chat-history).
+
+## Custom actions — `actionSchema` + `onAction`
+
+Send typed actions (undo, rollback, edit) from the frontend via `transport.sendAction()`. Actions wake the agent, fire `onAction`, then trigger a normal `run()` turn.
+
+```ts
+chat.agent({
+  id: "my-chat",
+  actionSchema: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("undo") }),
+    z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
+  ]),
+  onAction: async ({ action }) => {
+    if (action.type === "undo") chat.history.slice(0, -2);
+    if (action.type === "rollback") chat.history.rollbackTo(action.targetMessageId);
+  },
+});
+```
+
+Frontend: `transport.sendAction(chatId, { type: "undo" })`
+Server: `agentChat.sendAction({ type: "undo" })`
+
+See [Actions](/ai-chat/backend#actions) and [Sending actions](/ai-chat/frontend#sending-actions).
+
+</Update>
+
 <Update label="April 14, 2026" description="0.0.0-chat-prerelease-20260414181032" tags={["SDK"]}>
 
 ## `chat.response` — persistent data parts

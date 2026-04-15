@@ -113,6 +113,38 @@ chat.agent({
 });
 ```
 
+## Alternative: `hydrateMessages`
+
+For apps that need the backend to be the single source of truth for message history — abuse prevention, branching conversations, or rollback support — use [`hydrateMessages`](/ai-chat/backend#hydratemessages) instead of relying on the frontend's accumulated state.
+
+With hydration, the hook loads messages from your database on every turn. The frontend's messages are ignored (except for the new user message, which arrives in `incomingMessages`):
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const record = await db.chat.findUnique({ where: { id: chatId } });
+    const stored = record?.messages ?? [];
+
+    if (trigger === "submit-message" && incomingMessages.length > 0) {
+      stored.push(incomingMessages[incomingMessages.length - 1]!);
+      await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+    }
+
+    return stored;
+  },
+  onTurnComplete: async ({ chatId, uiMessages }) => {
+    // Persist the response
+    await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+This replaces the `onTurnStart` persistence pattern — the hook handles both loading and persisting the new message in one place.
+
 ## Design notes
 
 - **`chatId`** is stable for the life of a thread; **`runId`** changes when the user starts a **new** run (timeout, cancel, explicit new chat). Session rows must always reflect the **current** run.
