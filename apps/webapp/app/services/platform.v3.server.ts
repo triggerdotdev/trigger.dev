@@ -373,6 +373,7 @@ export async function setPlan(
       if (result.accepted) {
         // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
+        await platformCache.entitlement.remove(organization.id);
         return redirect(newProjectPath(organization, "You're on the Free plan."));
       } else {
         return redirectWithErrorMessage(
@@ -389,11 +390,13 @@ export async function setPlan(
     case "updated_subscription": {
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
+      await platformCache.entitlement.remove(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
+      await platformCache.entitlement.remove(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
   }
