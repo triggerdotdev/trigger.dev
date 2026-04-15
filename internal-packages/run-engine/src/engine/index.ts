@@ -46,7 +46,7 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
-import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
+import { NotImplementedError, RunDuplicateIdempotencyKeyError, RunOneTimeUseTokenError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
@@ -703,15 +703,25 @@ export class RunEngine {
             });
 
             if (error.code === "P2002") {
-              this.logger.debug("engine.trigger(): throwing RunDuplicateIdempotencyKeyError", {
+              const target = (error.meta as Record<string, unknown>)?.target;
+              const targetFields = Array.isArray(target) ? target : [];
+
+              this.logger.debug("engine.trigger(): P2002 unique constraint violation", {
                 code: error.code,
                 message: error.message,
                 meta: error.meta,
+                target: targetFields,
                 idempotencyKey,
                 environmentId: environment.id,
               });
 
-              //this happens if a unique constraint failed, i.e. duplicate idempotency
+              if (targetFields.includes("oneTimeUseToken")) {
+                throw new RunOneTimeUseTokenError(
+                  `One-time use token has already been used`
+                );
+              }
+
+              // Only idempotency key collisions should be retried
               throw new RunDuplicateIdempotencyKeyError(
                 `Run with idempotency key ${idempotencyKey} already exists`
               );
