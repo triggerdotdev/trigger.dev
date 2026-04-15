@@ -438,7 +438,6 @@ export class DequeueSystem {
                 },
                 include: {
                   runtimeEnvironment: true,
-                  tags: true,
                 },
               });
 
