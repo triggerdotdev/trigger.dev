@@ -71,6 +71,11 @@ function initializePlatformCache() {
       fresh: 60_000 * 5, // 5 minutes
       stale: 60_000 * 10, // 10 minutes
     }),
+    entitlement: new Namespace<ReportUsageResult>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000, // 60 seconds
+      stale: 60_000, // 60 seconds
+    }),
   });
 
   return cache;
@@ -531,21 +536,25 @@ export async function getEntitlement(
 ): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
-  try {
-    const result = await client.getEntitlement(organizationId);
-    if (!result.success) {
-      logger.error("Error getting entitlement - no success", { error: result.error });
+  const result = await platformCache.entitlement.swr(organizationId, async () => {
+    try {
+      const response = await client.getEntitlement(organizationId);
+      if (!response.success) {
+        logger.error("Error getting entitlement - no success", { error: response.error });
+        return {
+          hasAccess: true as const,
+        };
+      }
+      return response;
+    } catch (e) {
+      logger.error("Error getting entitlement - caught error", { error: e });
       return {
         hasAccess: true as const,
       };
     }
-    return result;
-  } catch (e) {
-    logger.error("Error getting entitlement - caught error", { error: e });
-    return {
-      hasAccess: true as const,
-    };
-  }
+  });
+
+  return result.val;
 }
 
 export async function projectCreated(
