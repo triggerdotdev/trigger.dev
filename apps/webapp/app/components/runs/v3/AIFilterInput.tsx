@@ -1,3 +1,4 @@
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useFetcher, useNavigate } from "@remix-run/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
@@ -6,6 +7,7 @@ import { Input } from "~/components/primitives/Input";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -107,6 +109,11 @@ export function AIFilterInput() {
                     form.requestSubmit();
                   }
                 }
+                if (e.key === "Escape") {
+                  e.stopPropagation();
+                  setText("");
+                  e.currentTarget.blur();
+                }
               }}
               onFocus={() => setIsFocused(true)}
               onBlur={() => {
@@ -125,11 +132,36 @@ export function AIFilterInput() {
                     className="size-4 opacity-80"
                   />
                 ) : text.length > 0 ? (
-                  <ShortcutKey
-                    shortcut={{ key: "enter" }}
-                    variant="small"
-                    className={cn("transition-opacity", text.length === 0 && "opacity-0")}
-                  />
+                  <div className="-mr-1 flex items-center gap-1.5">
+                    <ShortcutKey
+                      shortcut={{ key: "enter" }}
+                      variant="medium"
+                      className="border-none"
+                    />
+                    <SimpleTooltip
+                      asChild
+                      button={
+                        <button
+                          type="button"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            setText("");
+                          }}
+                          className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
+                        >
+                          <XMarkIcon className="size-3" />
+                        </button>
+                      }
+                      content={
+                        <div className="flex items-center gap-1">
+                          <span className="text-text-dimmed">Clear field</span>
+                          <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+                        </div>
+                      }
+                      className="px-2 py-1.5 text-xs"
+                      disableHoverableContent
+                    />
+                  </div>
                 ) : undefined
               }
             />
