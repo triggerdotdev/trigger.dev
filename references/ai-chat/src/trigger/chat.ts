@@ -809,6 +809,132 @@ export const aiChatSession = chat
 // #endregion
 
 // ============================================================================
+// Hydrated agent — backend is source of truth for message history
+// ============================================================================
+//
+// Demonstrates three features:
+//
+// 1. `hydrateMessages` — backend loads message history from the DB on every
+//    turn instead of trusting the frontend. Prevents fabricated history.
+//
+// 2. `actionSchema` + `onAction` — typed custom actions (undo, rollback)
+//    sent via transport.sendAction(). The agent modifies history via
+//    chat.history.*, then the LLM responds to the updated state.
+//
+// 3. `chat.history` — imperative mutations used inside onAction to
+//    implement undo (slice off last exchange) and rollback (truncate to
+//    a specific message).
+//
+
+export const aiChatHydrated = chat
+  .withClientData({
+    schema: z.object({ model: z.string().optional(), userId: z.string() }),
+  })
+  .agent({
+    id: "ai-chat-hydrated",
+    idleTimeoutInSeconds: 60,
+
+    // Load message history from the database on every turn.
+    // The frontend's accumulated messages are ignored — the DB is the
+    // single source of truth. New user messages arrive in `incomingMessages`
+    // and are appended + persisted before returning.
+    hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+      const record = await prisma.chat.findUnique({ where: { id: chatId } });
+      const stored = (record?.messages as unknown as UIMessage[]) ?? [];
+
+      if (trigger === "submit-message" && incomingMessages.length > 0) {
+        const newMsg = incomingMessages[incomingMessages.length - 1]!;
+        stored.push(newMsg);
+        await prisma.chat.update({
+          where: { id: chatId },
+          data: { messages: stored as unknown as ChatMessagesForWrite },
+        });
+      }
+
+      return stored;
+    },
+
+    // Typed actions the frontend can send via transport.sendAction()
+    actionSchema: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("undo") }),
+      z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
+      z.object({ type: z.literal("remove"), messageId: z.string() }),
+      z.object({
+        type: z.literal("replace"),
+        messageId: z.string(),
+        text: z.string(),
+      }),
+    ]),
+
+    onAction: async ({ action }) => {
+      switch (action.type) {
+        case "undo":
+          // Remove the last user message + assistant response
+          chat.history.slice(0, -2);
+          break;
+        case "rollback":
+          // Keep messages up to and including the target
+          chat.history.rollbackTo(action.targetMessageId);
+          break;
+        case "remove":
+          chat.history.remove(action.messageId);
+          break;
+        case "replace":
+          // Build a new UIMessage with the updated text
+          chat.history.replace(action.messageId, {
+            id: action.messageId,
+            role: "user" as const,
+            parts: [{ type: "text" as const, text: action.text }],
+          });
+          break;
+      }
+    },
+
+    onChatStart: async ({ chatId, runId, chatAccessToken, clientData, preloaded }) => {
+      if (preloaded) return;
+      await initUserContext(clientData.userId, chatId, clientData.model);
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+        update: { runId, publicAccessToken: chatAccessToken },
+      });
+    },
+
+    onPreload: async ({ chatId, runId, chatAccessToken, clientData }) => {
+      if (!clientData) return;
+      await initUserContext(clientData.userId, chatId, clientData.model);
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+        update: { runId, publicAccessToken: chatAccessToken },
+      });
+    },
+
+    onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+      await prisma.chat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+      });
+      await prisma.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+      });
+    },
+
+    run: async ({ messages, clientData, stopSignal }) => {
+      return streamText({
+        ...chat.toStreamTextOptions(),
+        model: languageModelForChatTurn(
+          clientData?.model ?? userContext.preferredModel ?? undefined
+        ),
+        messages,
+        abortSignal: stopSignal,
+      });
+    },
+  });
+
+// ============================================================================
 // Upgrade test agent — calls chat.requestUpgrade() after 3 turns
 // ============================================================================
 
