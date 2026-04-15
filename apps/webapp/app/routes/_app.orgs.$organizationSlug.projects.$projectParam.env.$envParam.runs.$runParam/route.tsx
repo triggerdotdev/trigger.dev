@@ -12,7 +12,7 @@ import {
   StopCircleIcon,
 } from "@heroicons/react/20/solid";
 
-import { useLoaderData, useRevalidator } from "@remix-run/react";
+import { type ClientLoaderFunctionArgs, useLoaderData, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs, type SerializeFrom, json } from "@remix-run/server-runtime";
 import { type Virtualizer } from "@tanstack/react-virtual";
 import {
@@ -95,7 +95,6 @@ import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPr
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
-import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
@@ -279,10 +278,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw error;
   }
 
-  //resizable settings
-  const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
-  const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
-
   const runsList = await getRunsListFromTableState({
     tableStateParam: url.searchParams.get("tableState"),
     organizationSlug,
@@ -297,12 +292,39 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     trace: result.trace,
     maximumLiveReloadingSetting: result.maximumLiveReloadingSetting,
     resizable: {
-      parent,
-      tree,
+      parent: undefined as ResizableSnapshot | undefined,
+      tree: undefined as ResizableSnapshot | undefined,
     },
     runsList,
   });
 };
+
+function getLocalStorageSnapshot(key: string): ResizableSnapshot | undefined {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed != null && typeof parsed === "object" && "status" in parsed) {
+        return parsed as ResizableSnapshot;
+      }
+    }
+  } catch {
+    // Silently ignore localStorage errors
+  }
+  return undefined;
+}
+
+export async function clientLoader({ serverLoader }: ClientLoaderFunctionArgs) {
+  const serverData = await serverLoader<typeof loader>();
+  return {
+    ...serverData,
+    resizable: {
+      parent: getLocalStorageSnapshot(resizableSettings.parent.autosaveId),
+      tree: getLocalStorageSnapshot(resizableSettings.tree.autosaveId),
+    },
+  };
+}
+clientLoader.hydrate = true as const;
 
 type LoaderData = SerializeFrom<typeof loader>;
 
