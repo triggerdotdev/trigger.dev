@@ -709,6 +709,71 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   };
 
   /**
+   * Send a custom action to the agent. The action payload is validated
+   * against the agent's `actionSchema` on the backend.
+   *
+   * Actions wake the agent from suspension, fire `onAction`, then trigger
+   * a normal `run()` turn so the LLM can respond to the modified state.
+   *
+   * Returns a `ReadableStream<UIMessageChunk>` for the agent's response,
+   * just like `sendMessages`.
+   *
+   * @example
+   * ```ts
+   * const stream = await transport.sendAction(chatId, { type: "undo" });
+   * ```
+   */
+  sendAction = async (
+    chatId: string,
+    action: unknown
+  ): Promise<ReadableStream<UIMessageChunk>> => {
+    const session = this.sessions.get(chatId);
+
+    if (session?.runId) {
+      const mergedMetadata = this.defaultMetadata ?? undefined;
+
+      const payload = {
+        messages: [] as never[],
+        chatId,
+        trigger: "action" as const,
+        action,
+        metadata: mergedMetadata,
+      };
+
+      const apiClient = new ApiClient(this.baseURL, session.publicAccessToken);
+
+      try {
+        await apiClient.sendInputStream(session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+      } catch (err) {
+        if (isRunPatAuthError(err) && this.renewRunAccessToken) {
+          const newToken = await this.renewRunPatForSession(chatId, session.runId);
+          if (newToken) {
+            const renewedClient = new ApiClient(this.baseURL, newToken);
+            await renewedClient.sendInputStream(
+              session.runId,
+              CHAT_MESSAGES_STREAM_ID,
+              payload
+            );
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
+
+      return this.subscribeToStream(
+        session.runId,
+        session.publicAccessToken,
+        undefined,
+        chatId
+      );
+    }
+
+    throw new Error(`No active session for chatId "${chatId}". Cannot send action.`);
+  };
+
+  /**
    * Get the current session state for a chat, suitable for external persistence.
    *
    * Returns `undefined` if no active session exists for this chatId.
