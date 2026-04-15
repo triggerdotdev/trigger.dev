@@ -464,6 +464,55 @@ export class AgentChat<TAgent = unknown> {
       .catch(() => {});
   }
 
+  /**
+   * Send a custom action to the agent.
+   *
+   * Actions wake the agent, fire the `onAction` hook (which can modify
+   * conversation history via `chat.history.*`), then trigger a normal
+   * `run()` turn so the LLM responds to the updated state.
+   *
+   * The action payload is validated against the agent's `actionSchema`
+   * on the backend.
+   *
+   * @returns A `ChatStream` for the agent's response.
+   *
+   * @example
+   * ```ts
+   * const stream = await agentChat.sendAction({ type: "undo" });
+   * for await (const chunk of stream) {
+   *   if (chunk.type === "text-delta") process.stdout.write(chunk.delta);
+   * }
+   * ```
+   */
+  async sendAction(
+    action: unknown,
+    options?: { abortSignal?: AbortSignal }
+  ): Promise<ChatStream> {
+    if (!this.session?.runId) {
+      throw new Error("No active session. Send a message first or call preload().");
+    }
+
+    const payload = {
+      messages: [] as never[],
+      chatId: this.chatId,
+      trigger: "action" as const,
+      action,
+      metadata: this.clientData,
+    };
+
+    try {
+      const api = this.createApiClient();
+      await api.sendInputStream(this.session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+    } catch {
+      throw new Error("Failed to send action. The session may have ended.");
+    }
+
+    const rawStream = this.subscribeToStream(this.session.runId, options?.abortSignal);
+    return new ChatStream(rawStream, (assistantMessage) => {
+      this.accumulatedMessages.push(assistantMessage);
+    });
+  }
+
   /** Close the conversation — agent exits its loop gracefully. */
   async close(): Promise<boolean> {
     if (!this.session?.runId) return false;

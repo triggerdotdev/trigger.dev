@@ -590,9 +590,11 @@ async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Pr
 export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
   messages: TMessage[];
   chatId: string;
-  trigger: "submit-message" | "regenerate-message" | "preload" | "close";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "close" | "action";
   messageId?: string;
   metadata?: TMetadata;
+  /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
+  action?: unknown;
   /** Whether this run is continuing an existing chat whose previous run ended. */
   continuation?: boolean;
   /** The run ID of the previous run (only set when `continuation` is true). */
@@ -760,6 +762,13 @@ function addUsage(a: LanguageModelUsage, b: LanguageModelUsage): LanguageModelUs
 const chatOverrideMessagesKey = locals.create<UIMessage[]>("chat.overrideMessages");
 
 /**
+ * Tracks the current accumulated UI messages so chat.history.all() can
+ * read them from outside the chatAgent closure.
+ * @internal
+ */
+const chatCurrentUIMessagesKey = locals.create<UIMessage[]>("chat.currentUIMessages");
+
+/**
  * Replace the accumulated conversation messages for the current run.
  *
  * Call from `onTurnStart` to compact before `run()` executes, or from
@@ -769,6 +778,65 @@ const chatOverrideMessagesKey = locals.create<UIMessage[]>("chat.overrideMessage
 function setChatMessages<TUIM extends UIMessage = UIMessage>(uiMessages: TUIM[]): void {
   locals.set(chatOverrideMessagesKey, uiMessages);
 }
+
+// ---------------------------------------------------------------------------
+// chat.history — imperative message history mutations
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the current message history state, accounting for pending overrides.
+ * @internal
+ */
+function getChatHistoryState(): UIMessage[] {
+  const pending = locals.get(chatOverrideMessagesKey);
+  if (pending) return pending;
+  return locals.get(chatCurrentUIMessagesKey) ?? [];
+}
+
+/**
+ * Imperative API for modifying the accumulated message history.
+ *
+ * Mutations use the same deferred override mechanism as `chat.setMessages()`:
+ * they are applied at lifecycle checkpoints (after hooks return).
+ *
+ * Can be called from `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`,
+ * `run()`, or AI SDK tools.
+ */
+const chatHistory = {
+  /** Read the current accumulated UI messages (copy). */
+  all(): UIMessage[] {
+    return [...getChatHistoryState()];
+  },
+
+  /** Replace all accumulated messages. Same as `chat.setMessages()`. */
+  set(messages: UIMessage[]): void {
+    locals.set(chatOverrideMessagesKey, messages);
+  },
+
+  /** Remove a specific message by ID. */
+  remove(messageId: string): void {
+    chatHistory.set(getChatHistoryState().filter((m) => m.id !== messageId));
+  },
+
+  /** Keep messages up to and including the given ID (undo/rollback). */
+  rollbackTo(messageId: string): void {
+    const current = getChatHistoryState();
+    const idx = current.findIndex((m) => m.id === messageId);
+    if (idx !== -1) {
+      chatHistory.set(current.slice(0, idx + 1));
+    }
+  },
+
+  /** Replace a specific message by ID (edit). */
+  replace(messageId: string, message: UIMessage): void {
+    chatHistory.set(getChatHistoryState().map((m) => (m.id === messageId ? message : m)));
+  },
+
+  /** Keep only messages in the given range. */
+  slice(start: number, end?: number): void {
+    chatHistory.set(getChatHistoryState().slice(start, end));
+  },
+};
 
 /**
  * Model-only message override. Set by compaction to replace only the model
@@ -1997,6 +2065,28 @@ export type ChatStartEvent<TClientData = unknown> = {
 };
 
 /**
+ * Event passed to the `hydrateMessages` callback.
+ */
+export type HydrateMessagesEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The trigger type for this turn. */
+  trigger: "submit-message" | "regenerate-message" | "action";
+  /** Validated incoming UI messages from the wire payload (what the frontend sent). Empty for actions. */
+  incomingMessages: TUIM[];
+  /** The accumulated UI messages before this turn (empty on turn 0). */
+  previousMessages: TUIM[];
+  /** Parsed client data from the transport metadata. */
+  clientData?: TClientData;
+  /** Whether this run is continuing from a previous run. */
+  continuation: boolean;
+  /** The ID of the previous run (if continuation). */
+  previousRunId?: string;
+};
+
+/**
  * Event passed to the `onValidateMessages` callback.
  */
 export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
@@ -2008,6 +2098,28 @@ export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
   turn: number;
   /** The trigger type for this turn. */
   trigger: "submit-message" | "regenerate-message" | "preload" | "close";
+};
+
+/**
+ * Event passed to the `onAction` callback.
+ */
+export type ActionEvent<
+  TAction = unknown,
+  TClientData = unknown,
+  TUIM extends UIMessage = UIMessage,
+> = {
+  /** The parsed and validated action payload. */
+  action: TAction;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** Parsed client data from the transport metadata. */
+  clientData?: TClientData;
+  /** The accumulated UI messages (after hydration, if set). */
+  uiMessages: TUIM[];
+  /** The accumulated model messages (after hydration, if set). */
+  messages: ModelMessage[];
 };
 
 /**
@@ -2189,6 +2301,7 @@ export type ChatAgentOptions<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
+  TActionSchema extends TaskSchema | undefined = undefined,
 > = Omit<
   TaskOptions<
     TIdentifier,
@@ -2217,6 +2330,48 @@ export type ChatAgentOptions<
    * ```
    */
   clientDataSchema?: TClientDataSchema;
+
+  /**
+   * Schema for validating custom actions sent via `transport.sendAction()`.
+   *
+   * When the frontend sends `trigger: "action"`, the `action` payload is
+   * parsed against this schema before reaching `onAction`. Invalid actions
+   * throw and abort the turn.
+   *
+   * @example
+   * ```ts
+   * import { z } from "zod";
+   *
+   * chat.agent({
+   *   id: "my-chat",
+   *   actionSchema: z.discriminatedUnion("type", [
+   *     z.object({ type: z.literal("undo") }),
+   *     z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
+   *   ]),
+   *   onAction: async ({ action }) => {
+   *     if (action.type === "undo") chat.history.slice(0, -2);
+   *     if (action.type === "rollback") chat.history.rollbackTo(action.targetMessageId);
+   *   },
+   *   run: async ({ messages, signal }) => { ... },
+   * });
+   * ```
+   */
+  actionSchema?: TActionSchema;
+
+  /**
+   * Called when the frontend sends a custom action via `transport.sendAction()`.
+   *
+   * Fires after message hydration (if set) but before `onTurnStart` and `run()`.
+   * Use `chat.history.*` to modify the conversation state — the LLM will respond
+   * to the modified state.
+   */
+  onAction?: (
+    event: ActionEvent<
+      [TActionSchema] extends [TaskSchema] ? inferSchemaOut<TActionSchema> : unknown,
+      inferSchemaOut<TClientDataSchema>,
+      TUIMessage
+    >
+  ) => Promise<void> | void;
 
   /**
    * The run function for the chat task.
@@ -2287,6 +2442,45 @@ export type ChatAgentOptions<
    */
   onValidateMessages?: (
     event: ValidateMessagesEvent<TUIMessage>
+  ) => TUIMessage[] | Promise<TUIMessage[]>;
+
+  /**
+   * Load the full message history from your backend on every turn,
+   * replacing the built-in linear accumulator.
+   *
+   * When set, the returned messages become the accumulated state for this turn.
+   * The normal accumulation logic (append for submit, replace for regenerate)
+   * is skipped entirely — the hook is the source of truth.
+   *
+   * After the hook returns, any incoming wire messages with matching IDs are
+   * auto-merged (handles tool approval responses transparently).
+   *
+   * Use cases:
+   * - Backend trust: prevent clients from injecting fabricated history
+   * - Branching conversations (DAGs): load only the active branch
+   * - Rollback/undo: exclude undone messages from history
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+   *     // Persist the new message
+   *     const newMsg = incomingMessages[incomingMessages.length - 1];
+   *     if (newMsg && trigger === "submit-message") {
+   *       await db.chatMessages.create({ chatId, message: newMsg });
+   *     }
+   *     // Return the full authoritative history
+   *     return db.chatMessages.findMany({ where: { chatId } });
+   *   },
+   *   run: async ({ messages, signal }) => {
+   *     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+   *   },
+   * });
+   * ```
+   */
+  hydrateMessages?: (
+    event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
   ) => TUIMessage[] | Promise<TUIMessage[]>;
 
   /**
@@ -2665,8 +2859,9 @@ function chatAgent<
   TIdentifier extends string,
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
+  TActionSchema extends TaskSchema | undefined = undefined,
 >(
-  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
+  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
@@ -2674,6 +2869,9 @@ function chatAgent<
     onPreload,
     onChatStart,
     onValidateMessages,
+    hydrateMessages,
+    actionSchema,
+    onAction,
     onTurnStart,
     onBeforeTurnComplete,
     onCompacted,
@@ -2695,6 +2893,7 @@ function chatAgent<
   } = options;
 
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
+  const parseAction = actionSchema ? getSchemaParseFn(actionSchema) : undefined;
 
   const task = createTask<
     TIdentifier,
@@ -3032,11 +3231,97 @@ function chatAgent<
                     );
                   });
 
+                  // Track new messages for this turn (user input + assistant response).
+                  const turnNewModelMessages: ModelMessage[] = [];
+                  const turnNewUIMessages: TUIMessage[] = [];
+
+                  // ── Action handling ──────────────────────────────────────
+                  // Actions arrive via the same chat-messages stream but with
+                  // trigger === "action". They wake the agent, modify state
+                  // (via onAction + chat.history), then fall through to run().
+                  if (currentWirePayload.trigger === "action") {
+                    // Parse and validate the action payload
+                    const parsedAction = parseAction
+                      ? await parseAction(currentWirePayload.action)
+                      : currentWirePayload.action;
+
+                    // Hydrate messages from backend if configured
+                    if (hydrateMessages) {
+                      const hydrated = await tracer.startActiveSpan(
+                        "hydrateMessages()",
+                        async () => {
+                          return hydrateMessages({
+                            chatId: currentWirePayload.chatId,
+                            turn,
+                            trigger: "action",
+                            incomingMessages: [] as TUIMessage[],
+                            previousMessages: [...accumulatedUIMessages],
+                            clientData,
+                            continuation,
+                            previousRunId,
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.turn": turn + 1,
+                            "chat.trigger": "action",
+                          },
+                        }
+                      );
+                      accumulatedUIMessages = [...hydrated] as TUIMessage[];
+                      accumulatedMessages = await toModelMessages(hydrated);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
+
+                    // Fire onAction — handler uses chat.history.* to modify state
+                    if (onAction) {
+                      await tracer.startActiveSpan(
+                        "onAction()",
+                        async () => {
+                          await onAction({
+                            action: parsedAction as any,
+                            chatId: currentWirePayload.chatId,
+                            turn,
+                            clientData,
+                            uiMessages: accumulatedUIMessages,
+                            messages: accumulatedMessages,
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.turn": turn + 1,
+                            "chat.action": typeof parsedAction === "object" && parsedAction !== null
+                              ? JSON.stringify(parsedAction)
+                              : String(parsedAction),
+                          },
+                        }
+                      );
+
+                      // Apply chat.history mutations from onAction
+                      const actionOverride = locals.get(chatOverrideMessagesKey);
+                      if (actionOverride) {
+                        locals.set(chatOverrideMessagesKey, undefined);
+                        accumulatedUIMessages = [...actionOverride] as TUIMessage[];
+                        accumulatedMessages = await toModelMessages(actionOverride);
+                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      }
+                    }
+                  }
+
+                  // ── Message handling (non-action turns) ───────────────────
                   // Clean up any incomplete tool parts in the incoming history.
                   // When a previous run was stopped mid-tool-call, the frontend's
                   // useChat state may still contain assistant messages with tool parts
                   // in partial/input-available state. These cause API errors (e.g.
                   // Anthropic requires every tool_use to have a matching tool_result).
+                  if (currentWirePayload.trigger !== "action") {
+
                   let cleanedUIMessages = uiMessages.map((msg) =>
                     msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
                   );
@@ -3051,7 +3336,7 @@ function chatAgent<
                           messages: cleanedUIMessages as TUIMessage[],
                           chatId: currentWirePayload.chatId,
                           turn,
-                          trigger: currentWirePayload.trigger,
+                          trigger: currentWirePayload.trigger as ValidateMessagesEvent["trigger"],
                         });
                       },
                       {
@@ -3066,59 +3351,124 @@ function chatAgent<
                     );
                   }
 
-                  // Convert the incoming UIMessages to model messages and update the accumulator.
-                  // Turn 1: full history from the frontend → replaces the accumulator.
-                  // Turn 2+: only the new message(s) → appended to the accumulator.
-                  const incomingModelMessages = await toModelMessages(cleanedUIMessages);
+                  if (hydrateMessages) {
+                    // Backend hydration: load the full message history from the user's
+                    // backend, replacing the built-in linear accumulator entirely.
+                    const hydrated = await tracer.startActiveSpan(
+                      "hydrateMessages()",
+                      async () => {
+                        return hydrateMessages({
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          trigger: currentWirePayload.trigger as
+                            | "submit-message"
+                            | "regenerate-message",
+                          incomingMessages: cleanedUIMessages as TUIMessage[],
+                          previousMessages: [...accumulatedUIMessages],
+                          clientData,
+                          continuation,
+                          previousRunId,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.trigger": currentWirePayload.trigger,
+                          "chat.incoming_messages.count": cleanedUIMessages.length,
+                        },
+                      }
+                    );
 
-                  // Track new messages for this turn (user input + assistant response).
-                  const turnNewModelMessages: ModelMessage[] = [];
-                  const turnNewUIMessages: TUIMessage[] = [];
-
-                  if (turn === 0) {
-                    accumulatedMessages = incomingModelMessages;
-                    accumulatedUIMessages = [...cleanedUIMessages];
-                    // On first turn, the "new" messages are just the last user message
-                    // (the rest is history). We'll add the response after streaming.
-                    if (cleanedUIMessages.length > 0) {
-                      turnNewUIMessages.push(cleanedUIMessages[cleanedUIMessages.length - 1]!);
-                      const lastModel = incomingModelMessages[incomingModelMessages.length - 1];
-                      if (lastModel) turnNewModelMessages.push(lastModel);
-                    }
-                  } else if (currentWirePayload.trigger === "regenerate-message") {
-                    // Regenerate: frontend sent full history with last assistant message
-                    // removed. Reset the accumulator to match.
-                    accumulatedMessages = incomingModelMessages;
-                    accumulatedUIMessages = [...cleanedUIMessages];
-                    // No new user messages for regenerate — just the response (added below)
-                  } else {
-                    // Submit: check if any incoming message updates an existing one (by ID).
-                    // This handles tool approval responses, where the frontend resends the
-                    // assistant message with updated tool parts (approval-responded).
-                    // IDs match because we always pass generateMessageId + originalMessages
-                    // to toUIMessageStream, so the backend's start chunk carries the same
-                    // messageId that the frontend uses.
-                    let replaced = false;
+                    // Auto-merge tool approval updates: if any incoming wire message
+                    // has an ID that matches a hydrated message, replace it. This makes
+                    // tool approvals work transparently with backend hydration.
+                    const merged = [...hydrated] as TUIMessage[];
                     for (const incoming of cleanedUIMessages) {
-                      const idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
+                      if (!incoming.id) continue;
+                      const idx = merged.findIndex((m) => m.id === incoming.id);
                       if (idx !== -1) {
-                        accumulatedUIMessages[idx] = incoming as TUIMessage;
-                        replaced = true;
-                      } else {
-                        accumulatedUIMessages.push(incoming as TUIMessage);
-                        turnNewUIMessages.push(incoming as TUIMessage);
+                        merged[idx] = incoming as TUIMessage;
                       }
                     }
-                    if (replaced) {
-                      // Reconvert all model messages since a replacement changes the structure
-                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+
+                    accumulatedUIMessages = merged;
+                    accumulatedMessages = await toModelMessages(merged);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
+                    // Track new messages for onTurnComplete.newUIMessages
+                    if (
+                      currentWirePayload.trigger === "submit-message" &&
+                      cleanedUIMessages.length > 0
+                    ) {
+                      const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
+                      turnNewUIMessages.push(lastUI);
+                      const lastModel = (await toModelMessages([lastUI]))[0];
+                      if (lastModel) turnNewModelMessages.push(lastModel);
+                    }
+                  } else {
+                    // Default linear accumulation.
+                    // Turn 1: full history from the frontend → replaces the accumulator.
+                    // Turn 2+: only the new message(s) → appended to the accumulator.
+                    const incomingModelMessages = await toModelMessages(cleanedUIMessages);
+
+                    if (turn === 0) {
+                      accumulatedMessages = incomingModelMessages;
+                      accumulatedUIMessages = [...cleanedUIMessages];
+                      // On first turn, the "new" messages are just the last user message
+                      // (the rest is history). We'll add the response after streaming.
+                      if (cleanedUIMessages.length > 0) {
+                        turnNewUIMessages.push(
+                          cleanedUIMessages[cleanedUIMessages.length - 1]!
+                        );
+                        const lastModel =
+                          incomingModelMessages[incomingModelMessages.length - 1];
+                        if (lastModel) turnNewModelMessages.push(lastModel);
+                      }
+                    } else if (currentWirePayload.trigger === "regenerate-message") {
+                      // Regenerate: frontend sent full history with last assistant message
+                      // removed. Reset the accumulator to match.
+                      accumulatedMessages = incomingModelMessages;
+                      accumulatedUIMessages = [...cleanedUIMessages];
+                      // No new user messages for regenerate — just the response (added below)
                     } else {
-                      accumulatedMessages.push(...incomingModelMessages);
+                      // Submit: check if any incoming message updates an existing one (by ID).
+                      // This handles tool approval responses, where the frontend resends the
+                      // assistant message with updated tool parts (approval-responded).
+                      // IDs match because we always pass generateMessageId + originalMessages
+                      // to toUIMessageStream, so the backend's start chunk carries the same
+                      // messageId that the frontend uses.
+                      let replaced = false;
+                      for (const incoming of cleanedUIMessages) {
+                        const idx = accumulatedUIMessages.findIndex(
+                          (m) => m.id === incoming.id
+                        );
+                        if (idx !== -1) {
+                          accumulatedUIMessages[idx] = incoming as TUIMessage;
+                          replaced = true;
+                        } else {
+                          accumulatedUIMessages.push(incoming as TUIMessage);
+                          turnNewUIMessages.push(incoming as TUIMessage);
+                        }
+                      }
+                      if (replaced) {
+                        // Reconvert all model messages since a replacement changes the structure
+                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      } else {
+                        accumulatedMessages.push(...incomingModelMessages);
+                      }
+                      if (turnNewUIMessages.length > 0) {
+                        turnNewModelMessages.push(
+                          ...(await toModelMessages(turnNewUIMessages))
+                        );
+                      }
                     }
-                    if (turnNewUIMessages.length > 0) {
-                      turnNewModelMessages.push(...(await toModelMessages(turnNewUIMessages)));
-                    }
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
+
+                  } // end if (trigger !== "action")
 
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
@@ -3197,12 +3547,13 @@ function chatAgent<
                           });
                         });
 
-                        // Check if onTurnStart replaced messages (compaction)
+                        // Check if onTurnStart replaced messages (compaction or chat.history)
                         const turnStartOverride = locals.get(chatOverrideMessagesKey);
                         if (turnStartOverride) {
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnStartOverride);
+                          locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
                       {
@@ -3279,11 +3630,19 @@ function chatAgent<
                     if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
                       onFinishAttached = true;
                       const resolvedOptions = resolveUIMessageStreamOptions();
+                      // For action turns, don't pass originalMessages: the response
+                      // should always be a fresh assistant message, not a continuation
+                      // of whatever trailing assistant was left after chat.history
+                      // mutations.
+                      const isActionTurn = currentWirePayload.trigger === "action";
                       const uiStream = runResult.toUIMessageStream({
                         ...resolvedOptions,
                         // Pass originalMessages so the AI SDK reuses message IDs across
                         // turns (e.g. for tool approval continuations / HITL flows).
-                        originalMessages: accumulatedUIMessages,
+                        // Omit for action turns to force a fresh response ID.
+                        ...(isActionTurn
+                          ? {}
+                          : { originalMessages: accumulatedUIMessages }),
                         // Always provide generateMessageId so the start chunk carries a
                         // messageId. Without this, the frontend and backend generate IDs
                         // independently and they won't match for ID-based dedup.
@@ -3364,14 +3723,15 @@ function chatAgent<
                     }
                   }
 
-                  // Check if run() (e.g. via prepareStep) replaced messages during this turn.
-                  // This supports intra-turn compaction — the compacted messages become the
-                  // new base, and the response gets appended on top.
+                  // Check if run() (e.g. via prepareStep or chat.history) replaced messages
+                  // during this turn. The updated messages become the new base, and the
+                  // response gets appended on top.
                   const runOverride = locals.get(chatOverrideMessagesKey);
                   if (runOverride) {
                     locals.set(chatOverrideMessagesKey, undefined);
                     accumulatedUIMessages = [...runOverride] as TUIMessage[];
                     accumulatedMessages = await toModelMessages(runOverride);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
                   // Check if compaction set a model-only override (preserves UI messages).
@@ -3434,13 +3794,33 @@ function chatAgent<
                       } as TUIMessage;
                       locals.set(chatResponsePartsKey, []);
                     }
-                    accumulatedUIMessages.push(capturedResponseMessage);
+                    // Tool-approval continuations: the AI SDK reuses the trailing
+                    // assistant's ID (via originalMessages) so the captured response
+                    // carries the same ID as an existing message. Replace in place
+                    // instead of pushing a duplicate. For action turns this never
+                    // matches because originalMessages is omitted (fresh ID).
+                    const existingIdx = capturedResponseMessage.id
+                      ? accumulatedUIMessages.findIndex(
+                          (m) => m.id === capturedResponseMessage!.id
+                        )
+                      : -1;
+                    if (existingIdx !== -1) {
+                      accumulatedUIMessages[existingIdx] = capturedResponseMessage;
+                    } else {
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                    }
                     turnNewUIMessages.push(capturedResponseMessage);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     try {
                       const responseModelMessages = await toModelMessages([
                         stripProviderMetadata(capturedResponseMessage),
                       ]);
-                      accumulatedMessages.push(...responseModelMessages);
+                      if (existingIdx !== -1) {
+                        // Reconvert all model messages since we replaced rather than appended
+                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      } else {
+                        accumulatedMessages.push(...responseModelMessages);
+                      }
                       turnNewModelMessages.push(...responseModelMessages);
                     } catch {
                       // Conversion failed — skip accumulation for this turn
@@ -3459,6 +3839,7 @@ function chatAgent<
                       locals.set(chatResponsePartsKey, []);
                       accumulatedUIMessages.push(capturedResponseMessage);
                       turnNewUIMessages.push(capturedResponseMessage);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
                   }
 
@@ -3643,12 +4024,13 @@ function chatAgent<
                           await onBeforeTurnComplete({ ...turnCompleteEvent, writer });
                         });
 
-                        // Check if the hook replaced messages (compaction)
+                        // Check if the hook replaced messages (compaction or chat.history)
                         const override = locals.get(chatOverrideMessagesKey);
                         if (override) {
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...override] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(override);
+                          locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                           // Update event so onTurnComplete sees compacted messages
                           turnCompleteEvent.messages = accumulatedMessages;
                           turnCompleteEvent.uiMessages = accumulatedUIMessages;
@@ -3698,12 +4080,13 @@ function chatAgent<
                           lastEventId: turnCompleteResult?.lastEventId,
                         });
 
-                        // Check if onTurnComplete replaced messages (compaction)
+                        // Check if onTurnComplete replaced messages (compaction or chat.history)
                         const turnCompleteOverride = locals.get(chatOverrideMessagesKey);
                         if (turnCompleteOverride) {
                           locals.set(chatOverrideMessagesKey, undefined);
                           accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
                           accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                          locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                         }
                       },
                       {
@@ -4015,11 +4398,11 @@ export interface ChatBuilder<
    * (backwards compatible).
    */
   agent: [TClientDataSchema] extends [undefined]
-  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined>(
-    options: ChatAgentOptions<TId, TInfer, TUIMessage>
+  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined>(
+    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction>
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
-  : <TId extends string>(
-    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage>, "clientDataSchema">
+  : <TId extends string, TAction extends TaskSchema | undefined = undefined>(
+    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction>, "clientDataSchema">
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 
   /**
@@ -5740,6 +6123,12 @@ export const chat = {
    * converts to `ModelMessage[]` internally.
    */
   setMessages: setChatMessages,
+  /**
+   * Imperative API for modifying the accumulated message history.
+   * Supports rollback, remove, replace, slice, and full replacement.
+   * Can be called from any hook or `run()`.
+   */
+  history: chatHistory,
   /** Check if it's safe to compact messages (no in-flight tool calls). */
   isCompactionSafe,
   /** Returns a `prepareStep` function that handles context compaction automatically. */

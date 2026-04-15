@@ -3,22 +3,32 @@
 import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
-import type { aiChat, aiChatRaw, aiChatSession } from "@/trigger/chat";
+import type { aiChat, aiChatHydrated, aiChatRaw, aiChatSession } from "@/trigger/chat";
 import type { ChatUiMessage } from "@/lib/chat-tools";
 import { prisma } from "@/lib/prisma";
 
 /** Short-lived PATs for local testing of expiry + `renewRunAccessToken` (not for production). */
 const CHAT_EXAMPLE_PAT_TTL = "1h" as const;
 
-export type ChatReferenceTaskId = "ai-chat" | "ai-chat-raw" | "ai-chat-session";
+export type ChatReferenceTaskId =
+  | "ai-chat"
+  | "ai-chat-hydrated"
+  | "ai-chat-raw"
+  | "ai-chat-session";
 
 function isChatReferenceTaskId(id: string): id is ChatReferenceTaskId {
-  return id === "ai-chat" || id === "ai-chat-raw" || id === "ai-chat-session";
+  return (
+    id === "ai-chat" ||
+    id === "ai-chat-hydrated" ||
+    id === "ai-chat-raw" ||
+    id === "ai-chat-session"
+  );
 }
 
 /** Keeps compile-time alignment with exported chat tasks. */
 type TaskIdentifierForChat =
   | (typeof aiChat)["id"]
+  | (typeof aiChatHydrated)["id"]
   | (typeof aiChatRaw)["id"]
   | (typeof aiChatSession)["id"];
 
