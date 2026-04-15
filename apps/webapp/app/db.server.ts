@@ -120,7 +120,7 @@ function getClient() {
   const adapter = new PrismaPg({
     connectionString: databaseUrl.href,
     max: env.DATABASE_CONNECTION_LIMIT,
-    idleTimeoutMillis: env.DATABASE_POOL_TIMEOUT * 1000,
+    idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
     connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
   });
 
@@ -243,7 +243,7 @@ function getReplicaClient() {
   const adapter = new PrismaPg({
     connectionString: replicaUrl.href,
     max: env.DATABASE_CONNECTION_LIMIT,
-    idleTimeoutMillis: env.DATABASE_POOL_TIMEOUT * 1000,
+    idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
     connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
   });
 
