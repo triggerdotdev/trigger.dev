@@ -1,4 +1,4 @@
-import { WorkerInstanceGroup, WorkerInstanceGroupType } from "@trigger.dev/database";
+import { WorkerInstanceGroup, WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
 import { WithRunEngine } from "../baseService.server";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
@@ -14,11 +14,25 @@ export class WorkerGroupService extends WithRunEngine {
     organizationId,
     name,
     description,
+    type,
+    hidden,
+    workloadType,
+    cloudProvider,
+    location,
+    staticIPs,
+    enableFastPath,
   }: {
     projectId?: string;
     organizationId?: string;
     name?: string;
     description?: string;
+    type?: WorkerInstanceGroupType;
+    hidden?: boolean;
+    workloadType?: WorkloadType;
+    cloudProvider?: string;
+    location?: string;
+    staticIPs?: string;
+    enableFastPath?: boolean;
   }) {
     if (!name) {
       name = await this.generateWorkerName({ projectId });
@@ -30,15 +44,24 @@ export class WorkerGroupService extends WithRunEngine {
     });
     const token = await tokenService.createToken();
 
+    const resolvedType =
+      type ?? (projectId ? WorkerInstanceGroupType.UNMANAGED : WorkerInstanceGroupType.MANAGED);
+
     const workerGroup = await this._prisma.workerInstanceGroup.create({
       data: {
         projectId,
         organizationId,
-        type: projectId ? WorkerInstanceGroupType.UNMANAGED : WorkerInstanceGroupType.MANAGED,
+        type: resolvedType,
         masterQueue: this.generateMasterQueueName({ projectId, name }),
         tokenId: token.id,
         description,
         name,
+        hidden,
+        workloadType,
+        cloudProvider,
+        location,
+        staticIPs,
+        enableFastPath,
       },
     });
 
