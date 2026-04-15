@@ -6,9 +6,9 @@ import {
   ExclamationTriangleIcon,
   LightBulbIcon,
   MagnifyingGlassIcon,
-  XMarkIcon,
   UserPlusIcon,
   VideoCameraIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useRevalidator } from "@remix-run/react";
@@ -62,6 +62,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
@@ -250,10 +251,11 @@ export default function Page() {
                         placeholder="Search tasks…"
                         autoFocus
                       />
-                        {!showUsefulLinks && (
+                      {!showUsefulLinks && (
                         <Button
                           variant="secondary/small"
                           TrailingIcon={LightBulbIcon}
+                          trailingIconClassName="text-text-dimmed"
                           onClick={() => toggleUsefulLinks(true)}
                           className="px-2.5"
                         />
@@ -443,9 +445,7 @@ export default function Page() {
             collapseAnimation={RESIZABLE_PANEL_ANIMATION}
           >
             <div className="h-full" style={{ minWidth: 400 }}>
-              {hasTasks && (
-                <HelpfulInfoHasTasks onClose={() => toggleUsefulLinks(false)} />
-              )}
+              {hasTasks && <HelpfulInfoHasTasks onClose={() => toggleUsefulLinks(false)} />}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -900,18 +900,38 @@ function AnimatedSearchField({
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            onChange("");
+            e.currentTarget.blur();
+          }
         }}
-        icon={<MagnifyingGlassIcon className="size-4" />}
+        icon={<MagnifyingGlassIcon className="size-4 text-text-bright" />}
         accessory={
           value.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => onChange("")}
-              className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
-            >
-              <XMarkIcon className="size-3" />
-            </button>
+            <SimpleTooltip
+              asChild
+              button={
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    onChange("");
+                  }}
+                  className="-mr-1 flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
+                >
+                  <XMarkIcon className="size-3" />
+                </button>
+              }
+              content={
+                <div className="flex items-center gap-1">
+                  <span className="text-text-dimmed">Clear field</span>
+                  <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
+                </div>
+              }
+              className="px-2 py-1.5 text-xs"
+              disableHoverableContent
+            />
           ) : undefined
         }
       />
