@@ -382,6 +382,11 @@ export class TestTaskPresenter {
 
 async function getScheduleTaskRunPayload(payload: string, payloadType: string) {
   const packet = await parsePacket({ data: payload, dataType: payloadType });
+
+  if (!packet) {
+    return { success: false as const, error: new Error("Empty payload") };
+  }
+
   if (!packet.timezone) {
     packet.timezone = "UTC";
   }
