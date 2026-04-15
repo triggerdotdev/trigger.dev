@@ -536,23 +536,32 @@ export async function getEntitlement(
 ): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
+  // Errors must be caught inside the loader — @unkey/cache passes the loader
+  // promise to waitUntil() with no .catch(), so an unhandled rejection during
+  // background SWR revalidation would crash the process. Returning undefined
+  // on error tells SWR not to commit a fail-open value to the cache, which
+  // prevents transient billing errors from overwriting a legitimate
+  // hasAccess: false entry. The fail-open default is applied *outside* the
+  // SWR call so it never becomes a cached access decision.
   const result = await platformCache.entitlement.swr(organizationId, async () => {
     try {
       const response = await client.getEntitlement(organizationId);
       if (!response.success) {
         logger.error("Error getting entitlement - no success", { error: response.error });
-        return {
-          hasAccess: true as const,
-        };
+        return undefined;
       }
       return response;
     } catch (e) {
       logger.error("Error getting entitlement - caught error", { error: e });
-      return {
-        hasAccess: true as const,
-      };
+      return undefined;
     }
   });
+
+  if (result.err || result.val === undefined) {
+    return {
+      hasAccess: true as const,
+    };
+  }
 
   return result.val;
 }
