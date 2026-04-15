@@ -1,0 +1,38 @@
+diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
+index 1f4ff1a53983a76140f6349c8ef9b91ca9eee6ef..a193ecbf5257e5bdc8524e7b75a23c0bcb19b179 100644
+--- a/dist/commonjs/index.js
++++ b/dist/commonjs/index.js
+@@ -469,7 +469,7 @@ const PanelResizerVisible = react_1.default.forwardRef(function PanelResizerVisi
+     if (!panelBeforeHandle || !(0, state_1.isPanelData)(panelBeforeHandle)) {
+         return null;
+     }
+-    return (react_1.default.createElement("div", { ref: ref, role: "separator", "data-splitter-type": "handle", "data-splitter-id": handleId, "data-handle-orientation": orientation, "data-state": isDragging ? "dragging" : "idle", "aria-label": "Resize Handle", "aria-disabled": disabled, "aria-controls": panelBeforeHandle.id, "aria-valuemin": (0, state_1.getUnitPercentageValue)(groupsSize, panelBeforeHandle.min), "aria-valuemax": panelBeforeHandle.max === "1fr"
++    return (react_1.default.createElement("div", { ref: ref, role: "separator", suppressHydrationWarning: true, "data-splitter-type": "handle", "data-splitter-id": handleId, "data-handle-orientation": orientation, "data-state": isDragging ? "dragging" : "idle", "aria-label": "Resize Handle", "aria-disabled": disabled, "aria-controls": panelBeforeHandle.id, "aria-valuemin": (0, state_1.getUnitPercentageValue)(groupsSize, panelBeforeHandle.min), "aria-valuemax": panelBeforeHandle.max === "1fr"
+             ? 100
+             : (0, state_1.getUnitPercentageValue)(groupsSize, panelBeforeHandle.max), "aria-valuenow": (0, state_1.getUnitPercentageValue)(groupsSize, panelBeforeHandle.currentValue), ...(0, react_aria_1.mergeProps)(props, disabled ? {} : buttonProps, disabled ? {} : moveProps, { onKeyDown }), tabIndex: 0, style: {
+             cursor,
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 0102166ddd34988ec06d1991290dcf8d748a44cd..10e320df665c27e1b4cce4a6a6f47dd505d0c5a6 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -440,7 +440,7 @@ const PanelResizerVisible = React.forwardRef(function PanelResizerVisible({ size
+     if (!panelBeforeHandle || !isPanelData(panelBeforeHandle)) {
+         return null;
+     }
+-    return (React.createElement("div", { ref: ref, role: "separator", "data-splitter-type": "handle", "data-splitter-id": handleId, "data-handle-orientation": orientation, "data-state": isDragging ? "dragging" : "idle", "aria-label": "Resize Handle", "aria-disabled": disabled, "aria-controls": panelBeforeHandle.id, "aria-valuemin": getUnitPercentageValue(groupsSize, panelBeforeHandle.min), "aria-valuemax": panelBeforeHandle.max === "1fr"
++    return (React.createElement("div", { ref: ref, role: "separator", suppressHydrationWarning: true, "data-splitter-type": "handle", "data-splitter-id": handleId, "data-handle-orientation": orientation, "data-state": isDragging ? "dragging" : "idle", "aria-label": "Resize Handle", "aria-disabled": disabled, "aria-controls": panelBeforeHandle.id, "aria-valuemin": getUnitPercentageValue(groupsSize, panelBeforeHandle.min), "aria-valuemax": panelBeforeHandle.max === "1fr"
+             ? 100
+             : getUnitPercentageValue(groupsSize, panelBeforeHandle.max), "aria-valuenow": getUnitPercentageValue(groupsSize, panelBeforeHandle.currentValue), ...mergeProps(props, disabled ? {} : buttonProps, disabled ? {} : moveProps, { onKeyDown }), tabIndex: 0, style: {
+             cursor,
+diff --git a/src/index.tsx b/src/index.tsx
+index c00b560a0a19759ee6e32c0bd42b105d28ec41fc..ea14614d97f9e30c36131537dbb73192e047dc79 100644
+--- a/src/index.tsx
++++ b/src/index.tsx
+@@ -805,6 +805,7 @@ const PanelResizerVisible = React.forwardRef<
+     <div
+       ref={ref as unknown as React.Ref<HTMLDivElement>}
+       role="separator"
++      suppressHydrationWarning
+       data-splitter-type="handle"
+       data-splitter-id={handleId}
+       data-handle-orientation={orientation}
