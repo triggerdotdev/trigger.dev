@@ -3,7 +3,8 @@ import { Form, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { PlusIcon } from "@heroicons/react/20/solid";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type MatchedOrganization, useDashboardLimits } from "~/hooks/useOrganizations";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Feedback } from "~/components/Feedback";
@@ -118,17 +119,19 @@ export function CreateDashboardPageButton({
   organization,
   project,
   environment,
+  shortcut,
 }: {
   organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
+  shortcut?: ShortcutDefinition;
 }) {
   const dashboard = useCreateDashboard({ organization, project, environment });
 
   return (
     <Dialog open={dashboard.isOpen} onOpenChange={dashboard.setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="primary/small" LeadingIcon={PlusIcon}>
+        <Button variant="primary/small" LeadingIcon={PlusIcon} shortcut={shortcut} className="pr-2">
           Create custom dashboard
         </Button>
       </DialogTrigger>
@@ -162,7 +165,6 @@ function CreateDashboardUpgradeDialog({
   isFreePlan: boolean;
   organization: { slug: string };
 }) {
-
   if (isFreePlan) {
     return (
       <DialogContent>
