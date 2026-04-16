@@ -89,7 +89,12 @@ export const python = {
             nodeOptions: {
               ...(options.nodeOptions || {}),
               env: {
-                ...process.env,
+                // Filter out parent OTEL vars to prevent stderr flood
+                ...Object.fromEntries(
+                  Object.entries(process.env).filter(
+                    ([key]) => !key.startswith("OTEL_")
+                  )
+                ),
                 ...options.env,
                 TRACEPARENT: carrier["traceparent"],
                 OTEL_RESOURCE_ATTRIBUTES: `${
@@ -97,7 +102,6 @@ export const python = {
                 }=trigger,${Object.entries(taskContext.attributes)
                   .map(([key, value]) => `${key}=${value}`)
                   .join(",")}`,
-                OTEL_LOG_LEVEL: "DEBUG",
               },
             },
             throwOnError: false,
@@ -151,7 +155,12 @@ export const python = {
               nodeOptions: {
                 ...(options.nodeOptions || {}),
                 env: {
-                  ...process.env,
+                  // Filter out parent OTEL vars to prevent stderr flood
+                ...Object.fromEntries(
+                  Object.entries(process.env).filter(
+                    ([key]) => !key.startswith("OTEL_")
+                  )
+                ),
                   ...options.env,
                   TRACEPARENT: carrier["traceparent"],
                   OTEL_RESOURCE_ATTRIBUTES: `${
