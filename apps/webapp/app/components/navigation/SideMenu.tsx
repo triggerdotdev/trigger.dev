@@ -489,7 +489,7 @@ export function SideMenu({
                   />
                 )}
                 <SideMenuItem
-                  name="AI Metrics"
+                  name="AI metrics"
                   icon={AIMetricsIcon}
                   trailingIconClassName="size-5"
                   activeIconColor="text-aiMetrics"
