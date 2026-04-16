@@ -600,7 +600,7 @@ export class SharedQueueConsumer {
       (!retryingFromCheckpoint &&
         !EXECUTABLE_RUN_STATUSES.withoutCheckpoint.includes(existingTaskRun.status))
     ) {
-      logger.error("Task run has invalid status for execution. Going to ack", {
+      logger.warn("Task run has invalid status for execution. Going to ack", {
         queueMessage: message.data,
         messageId: message.messageId,
         taskRun: existingTaskRun.id,
