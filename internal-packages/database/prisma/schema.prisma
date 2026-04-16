@@ -354,6 +354,7 @@ model RuntimeEnvironment {
   customerQueries      CustomerQuery[]
   prompts              Prompt[]
   errorGroupStates     ErrorGroupState[]
+  taskIdentifiers      TaskIdentifier[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -429,6 +430,7 @@ model Project {
   prompts               Prompt[]
   platformNotifications PlatformNotification[]
   errorGroupStates      ErrorGroupState[]
+  taskIdentifiers       TaskIdentifier[]
 }
 
 enum ProjectVersion {
@@ -516,6 +518,8 @@ model BackgroundWorker {
   workerGroupId String?
 
   supportsLazyAttempts Boolean @default(false)
+
+  taskIdentifiers TaskIdentifier[]
 
   @@unique([projectId, runtimeEnvironmentId, version])
   @@index([runtimeEnvironmentId])
@@ -659,6 +663,7 @@ model BackgroundWorkerTask {
   // Quick lookup of task identifiers
   @@index([projectId, slug])
   @@index([runtimeEnvironmentId, projectId])
+  @@index([runtimeEnvironmentId, slug, triggerSource])
 }
 
 enum TaskTriggerSource {
@@ -2918,4 +2923,28 @@ model ErrorGroupState {
 
   @@unique([environmentId, taskIdentifier, errorFingerprint])
   @@index([environmentId, status])
+}
+
+model TaskIdentifier {
+  id String @id @default(cuid())
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  slug String
+
+  currentTriggerSource TaskTriggerSource @default(STANDARD)
+
+  currentWorker   BackgroundWorker? @relation(fields: [currentWorkerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentWorkerId String?
+
+  firstSeenAt          DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  isInLatestDeployment Boolean  @default(true)
+
+  @@unique([runtimeEnvironmentId, slug])
+  @@index([runtimeEnvironmentId, isInLatestDeployment])
 }

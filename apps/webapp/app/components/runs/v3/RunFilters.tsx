@@ -36,6 +36,8 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   ComboBox,
   SelectButtonItem,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -322,7 +324,7 @@ export function getRunFiltersFromSearchParams(
 }
 
 type RunFiltersProps = {
-  possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
+  possibleTasks: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
   bulkActions: {
     id: string;
     type: BulkActionType;
@@ -627,7 +629,7 @@ function TasksDropdown({
   clearSearchValue: () => void;
   searchValue: string;
   onClose?: () => void;
-  possibleTasks: { slug: string; triggerSource: TaskTriggerSource }[];
+  possibleTasks: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
 }) {
   const { values, replace } = useSearchParams();
 
@@ -658,17 +660,42 @@ function TasksDropdown({
       >
         <ComboBox placeholder={"Filter by task..."} value={searchValue} />
         <SelectList>
-          {filtered.map((item, index) => (
-            <SelectItem
-              key={`${item.triggerSource}-${item.slug}`}
-              value={item.slug}
-              icon={
-                <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
-              }
-            >
-              <MiddleTruncate text={item.slug} />
-            </SelectItem>
-          ))}
+          {filtered
+            .filter((item) => item.isInLatestDeployment)
+            .map((item) => (
+              <SelectItem
+                key={item.slug}
+                value={item.slug}
+                icon={
+                  <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
+                }
+              >
+                <MiddleTruncate text={item.slug} />
+              </SelectItem>
+            ))}
+          {filtered.some((item) => !item.isInLatestDeployment) && (
+            <SelectGroup>
+              <SelectGroupLabel>Archived</SelectGroupLabel>
+              {filtered
+                .filter((item) => !item.isInLatestDeployment)
+                .map((item) => (
+                  <SelectItem
+                    key={item.slug}
+                    value={item.slug}
+                    icon={
+                      <span className="opacity-50">
+                        <TaskTriggerSourceIcon
+                          source={item.triggerSource}
+                          className="size-4 flex-none"
+                        />
+                      </span>
+                    }
+                  >
+                    <MiddleTruncate text={item.slug} />
+                  </SelectItem>
+                ))}
+            </SelectGroup>
+          )}
         </SelectList>
       </SelectPopover>
     </SelectProvider>
