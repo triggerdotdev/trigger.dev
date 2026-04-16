@@ -241,12 +241,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const clickhouseClient = await clickhouseFactory.getClickhouseForOrganization(
-    environment.organizationId,
-    "logs"
-  );
+  const [logsClickhouseClient, clickhouseClient] = await Promise.all([
+    clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "logs"),
+    clickhouseFactory.getClickhouseForOrganization(environment.organizationId, "standard"),
+  ]);
 
-  const presenter = new ErrorGroupPresenter($replica, clickhouseClient, clickhouseClient);
+  const presenter = new ErrorGroupPresenter($replica, logsClickhouseClient, clickhouseClient);
 
   const detailPromise = presenter
     .call(project.organizationId, environment.id, {

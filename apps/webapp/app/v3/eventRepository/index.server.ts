@@ -57,14 +57,15 @@ export async function getConfiguredEventRepository(
     (organization.featureFlags as Record<string, unknown> | null) ?? undefined
   );
 
-  const { repository: resolvedRepository } =
-    await clickhouseFactory.getEventRepositoryForOrganization(taskEventStore, organizationId);
-
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization(taskEventStore, organizationId);
     return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
   }
 
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE) {
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization(taskEventStore, organizationId);
     return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
   }
 
@@ -104,6 +105,15 @@ export async function getV3EventRepository(
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
   if (typeof parentStore === "string") {
+    // Support legacy Postgres store for self-hosters and runs persisted with a
+    // non-ClickHouse store — fall back to the Prisma-based event repository.
+    if (
+      parentStore !== EVENT_STORE_TYPES.CLICKHOUSE &&
+      parentStore !== EVENT_STORE_TYPES.CLICKHOUSE_V2
+    ) {
+      return { repository: eventRepository, store: parentStore };
+    }
+
     const { repository: resolvedRepository } =
       await clickhouseFactory.getEventRepositoryForOrganization(parentStore, organizationId);
     return { repository: resolvedRepository, store: parentStore };
