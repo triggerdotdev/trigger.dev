@@ -90,6 +90,7 @@ import { MetricWidget } from "~/routes/resources.metric";
 import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 
 import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
+import { IconColumns3 } from "@tabler/icons-react";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Models | Trigger.dev" }];
@@ -238,23 +239,25 @@ function FiltersBar({
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
-      <div className="flex flex-row flex-wrap items-center gap-2">
+      <div className="flex flex-row flex-wrap items-center gap-1.5">
+        <SearchInput placeholder="Search models…" />
         <ProviderFilter providers={allProviders} />
         <FeaturesFilter features={allFeatures} />
-        <SearchInput placeholder="Search models…" />
         {hasFilters && (
           <Form className="-ml-1 h-6">
             <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
           </Form>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <Button
           variant="secondary/small"
           disabled={compareDisabled}
-          className="px-1.5"
+          className="pl-1 pr-1.5"
           tooltip={compareDisabled ? "Choose 2–4 models to compare" : "Compare selected models"}
           onClick={compareDisabled ? undefined : onCompare}
+          LeadingIcon={IconColumns3}
+          leadingIconClassName="-mr-2"
         >
           <span className="flex items-center overflow-hidden">
             <span className={!compareDisabled ? "text-text-bright" : undefined}>Compare</span>
