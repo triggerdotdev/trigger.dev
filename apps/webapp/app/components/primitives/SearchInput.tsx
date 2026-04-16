@@ -9,6 +9,8 @@ import { cn } from "~/utils/cn";
 
 export type SearchInputProps = {
   placeholder?: string;
+  /** The URL search param name to read/write. Defaults to "search". */
+  paramName?: string;
   /** Additional URL params to reset when searching or clearing (e.g. pagination). Defaults to ["cursor", "direction"]. */
   resetParams?: string[];
   autoFocus?: boolean;
@@ -16,6 +18,7 @@ export type SearchInputProps = {
 
 export function SearchInput({
   placeholder = "Search logs…",
+  paramName = "search",
   resetParams = ["cursor", "direction"],
   autoFocus,
 }: SearchInputProps) {
@@ -23,31 +26,31 @@ export function SearchInput({
 
   const { value, replace, del } = useSearchParams();
 
-  const initialSearch = value("search") ?? "";
+  const initialSearch = value(paramName) ?? "";
 
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);
 
   useEffect(() => {
-    const urlSearch = value("search") ?? "";
+    const urlSearch = value(paramName) ?? "";
     if (urlSearch !== text && !isFocused) {
       setText(urlSearch);
     }
-  }, [value, text, isFocused]);
+  }, [value, text, isFocused, paramName]);
 
   const handleSubmit = useCallback(() => {
     const resetValues = Object.fromEntries(resetParams.map((p) => [p, undefined]));
     if (text.trim()) {
-      replace({ search: text.trim(), ...resetValues });
+      replace({ [paramName]: text.trim(), ...resetValues });
     } else {
-      del(["search", ...resetParams]);
+      del([paramName, ...resetParams]);
     }
-  }, [text, replace, del, resetParams]);
+  }, [text, replace, del, resetParams, paramName]);
 
   const handleClear = useCallback(() => {
     setText("");
-    del(["search", ...resetParams]);
-  }, [del, resetParams]);
+    del([paramName, ...resetParams]);
+  }, [del, resetParams, paramName]);
 
   return (
     <div className="flex items-center gap-1">
