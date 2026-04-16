@@ -8,7 +8,7 @@ import * as Ariakit from "@ariakit/react";
 import { Form, type MetaFunction, useFetcher } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   AnthropicIcon,
@@ -44,6 +44,7 @@ import {
   useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Switch } from "~/components/primitives/Switch";
 import {
   SelectProvider,
@@ -62,6 +63,7 @@ import {
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { appliedSummary } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -148,32 +150,59 @@ const providerIcons: Record<string, (props: { className?: string }) => JSX.Eleme
 
 function providerIcon(slug: string) {
   const Icon = providerIcons[slug] ?? CubeIcon;
-  return <Icon className="size-4" />;
+  return <Icon className="size-4 text-text-dimmed" />;
 }
 
 // --- Filter Components ---
+
+const providerShortcut = { key: "p" };
 
 function ProviderFilter({ providers }: { providers: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("providers");
   const hasFilter = selected.length > 0;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: providerShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <SelectProvider value={selected} setValue={(v) => replace({ providers: v })}>
-      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-        <AppliedFilter
-          icon={<CubeIcon className="size-4" />}
-          label={hasFilter ? "Provider" : undefined}
-          value={hasFilter ? appliedSummary(selected.map(formatProviderName))! : "Provider"}
-          valueClassName={hasFilter ? undefined : "text-text-bright"}
-          removable={hasFilter}
-          onRemove={() => del("providers")}
-        />
-      </Ariakit.Select>
+      <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+        <Ariakit.TooltipAnchor
+          render={
+            <Ariakit.Select
+              ref={triggerRef as any}
+              render={<div className="group cursor-pointer focus-custom" />}
+            />
+          }
+        >
+          <AppliedFilter
+            icon={<CubeIcon className="size-4" />}
+            label={hasFilter ? "Provider" : undefined}
+            value={hasFilter ? appliedSummary(selected.map(formatProviderName))! : "Provider"}
+            valueClassName={hasFilter ? undefined : "text-text-bright"}
+            removable={hasFilter}
+            onRemove={() => del("providers")}
+          />
+        </Ariakit.TooltipAnchor>
+        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+          <div className="flex items-center gap-3">
+            <span>Filter by provider</span>
+            <ShortcutKey className="size-4 flex-none" shortcut={providerShortcut} variant="small" />
+          </div>
+        </Ariakit.Tooltip>
+      </Ariakit.TooltipProvider>
       <SelectPopover>
         <SelectList>
           {providers.map((p) => (
-            <SelectItem key={p} value={p} icon={providerIcon(p)}>
+            <SelectItem key={p} value={p} icon={providerIcon(p)} className="text-text-bright">
               {formatProviderName(p)}
             </SelectItem>
           ))}
@@ -183,27 +212,54 @@ function ProviderFilter({ providers }: { providers: string[] }) {
   );
 }
 
+const featuresShortcut = { key: "f" };
+
 function FeaturesFilter({ features }: { features: string[] }) {
   const { values, replace, del } = useSearchParams();
   const selected = values("features");
   const hasFilter = selected.length > 0;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: featuresShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <SelectProvider value={selected} setValue={(v) => replace({ features: v })}>
-      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-        <AppliedFilter
-          icon={<AdjustmentsHorizontalIcon className="size-4" />}
-          label={hasFilter ? "Features" : undefined}
-          value={hasFilter ? appliedSummary(selected.map(formatFeature))! : "Features"}
-          valueClassName={hasFilter ? undefined : "text-text-bright"}
-          removable={hasFilter}
-          onRemove={() => del("features")}
-        />
-      </Ariakit.Select>
+      <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+        <Ariakit.TooltipAnchor
+          render={
+            <Ariakit.Select
+              ref={triggerRef as any}
+              render={<div className="group cursor-pointer focus-custom" />}
+            />
+          }
+        >
+          <AppliedFilter
+            icon={<AdjustmentsHorizontalIcon className="size-4" />}
+            label={hasFilter ? "Features" : undefined}
+            value={hasFilter ? appliedSummary(selected.map(formatFeature))! : "Features"}
+            valueClassName={hasFilter ? undefined : "text-text-bright"}
+            removable={hasFilter}
+            onRemove={() => del("features")}
+          />
+        </Ariakit.TooltipAnchor>
+        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+          <div className="flex items-center gap-3">
+            <span>Filter by features</span>
+            <ShortcutKey className="size-4 flex-none" shortcut={featuresShortcut} variant="small" />
+          </div>
+        </Ariakit.Tooltip>
+      </Ariakit.TooltipProvider>
       <SelectPopover>
         <SelectList>
           {features.map((f) => (
-            <SelectItem key={f} value={f}>
+            <SelectItem key={f} value={f} className="text-text-bright">
               {formatFeature(f)}
             </SelectItem>
           ))}
@@ -236,6 +292,18 @@ function FiltersBar({
     searchParams.has("providers") || searchParams.has("features") || searchParams.has("search");
 
   const compareDisabled = compareSet.size < 2;
+  const compareShortcut = { key: "c" };
+  const detailsShortcut = { key: "d" };
+
+  useShortcutKeys({
+    shortcut: compareShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onCompare();
+    },
+    disabled: compareDisabled,
+  });
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
@@ -249,12 +317,25 @@ function FiltersBar({
           </Form>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
         <Button
           variant="secondary/small"
           disabled={compareDisabled}
           className="pl-1 pr-1.5"
-          tooltip={compareDisabled ? "Choose 2–4 models to compare" : "Compare selected models"}
+          tooltip={
+            compareDisabled ? (
+              <span className="text-text-dimmed">Choose 2–4 models to compare</span>
+            ) : (
+              <span className="flex items-center gap-3 text-text-dimmed">
+                Compare selected models
+                <ShortcutKey
+                  className="size-4 flex-none"
+                  shortcut={compareShortcut}
+                  variant="small"
+                />
+              </span>
+            )
+          }
           onClick={compareDisabled ? undefined : onCompare}
           LeadingIcon={IconColumns3}
           leadingIconClassName="-mr-2"
@@ -277,12 +358,27 @@ function FiltersBar({
             </AnimatePresence>
           </span>
         </Button>
-        <Switch
-          variant="secondary/small"
-          label="All details"
-          checked={showAllDetails}
-          onCheckedChange={onToggleAllDetails}
-        />
+        <Ariakit.TooltipProvider timeout={200} hideTimeout={0}>
+          <Ariakit.TooltipAnchor render={<div />}>
+            <Switch
+              variant="secondary/small"
+              label="All details"
+              checked={showAllDetails}
+              onCheckedChange={onToggleAllDetails}
+              shortcut={detailsShortcut}
+            />
+          </Ariakit.TooltipAnchor>
+          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+            <div className="flex items-center gap-3">
+              <span>Toggle all details</span>
+              <ShortcutKey
+                className="size-4 flex-none"
+                shortcut={detailsShortcut}
+                variant="small"
+              />
+            </div>
+          </Ariakit.Tooltip>
+        </Ariakit.TooltipProvider>
       </div>
     </div>
   );
@@ -588,13 +684,13 @@ function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-fit !px-0 !pb-0 sm:!max-w-[90vw]">
-        <DialogHeader className="px-4">
+      <DialogContent className="!w-fit gap-[0.4375rem] !px-0 !pb-0 !pt-0 sm:!max-w-[90vw]">
+        <DialogHeader className="h-11 justify-center px-4">
           <DialogTitle>Compare models</DialogTitle>
         </DialogHeader>
         {rows.length > 0 ? (
           <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
-            <Table>
+            <Table stickyHeader showTopBorder={false}>
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell>Metric</TableHeaderCell>
@@ -1119,7 +1215,7 @@ export default function ModelsPage() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="models-main" min="100px">
-            <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden">
+            <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
               <FiltersBar
                 allProviders={allProviders}
                 allFeatures={allFeatures}
