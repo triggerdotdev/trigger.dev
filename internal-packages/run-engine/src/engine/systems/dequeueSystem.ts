@@ -3,7 +3,7 @@ import { startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
-import { getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
+import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
@@ -417,7 +417,7 @@ export class DequeueSystem {
                 : result.task.retryConfig;
 
               // Pre-generate snapshot ID so we can construct the result without an extra read
-              const snapshotIds = SnapshotId.generate();
+              const snapshotId = generateInternalId();
 
               const lockedTaskRun = await prisma.taskRun.update({
                 where: {
@@ -440,7 +440,7 @@ export class DequeueSystem {
                   maxAttempts: maxAttempts ?? undefined,
                   executionSnapshots: {
                     create: {
-                      id: snapshotIds.id,
+                      id: snapshotId,
                       engine: "V2",
                       executionStatus: "PENDING_EXECUTING",
                       description: "Run was dequeued for execution",
@@ -557,7 +557,7 @@ export class DequeueSystem {
                   id: runId,
                 },
                 snapshot: {
-                  id: snapshotIds.id,
+                  id: snapshotId,
                   executionStatus: "PENDING_EXECUTING",
                   description: "Run was dequeued for execution",
                   runStatus: "PENDING",
@@ -572,7 +572,7 @@ export class DequeueSystem {
               });
 
               await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded({
-                id: snapshotIds.id,
+                id: snapshotId,
                 runId,
                 executionStatus: "PENDING_EXECUTING",
               });
@@ -582,8 +582,8 @@ export class DequeueSystem {
                 dequeuedAt: new Date(),
                 workerQueueLength: message.workerQueueLength,
                 snapshot: {
-                  id: snapshotIds.id,
-                  friendlyId: snapshotIds.friendlyId,
+                  id: snapshotId,
+                  friendlyId: SnapshotId.toFriendlyId(snapshotId),
                   executionStatus: "PENDING_EXECUTING" as const,
                   description: "Run was dequeued for execution",
                   createdAt: snapshotCreatedAt,
