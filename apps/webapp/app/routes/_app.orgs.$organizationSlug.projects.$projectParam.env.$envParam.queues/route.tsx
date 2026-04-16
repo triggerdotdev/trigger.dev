@@ -3,7 +3,6 @@ import {
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
-  MagnifyingGlassIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
@@ -32,6 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -59,7 +59,6 @@ import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -438,13 +437,8 @@ export default function Page() {
           </div>
 
           {success ? (
-            <div
-              className={cn(
-                "grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto",
-                pagination.totalPages > 1 && "grid-rows-[auto_1fr_auto]"
-              )}
-            >
-              <div className="flex items-center gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
+            <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
+              <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
                 <QueueFilters />
                 <PaginationControls
                   currentPage={pagination.currentPage}
@@ -682,27 +676,6 @@ export default function Page() {
                 </TableBody>
               </Table>
 
-              {pagination.totalPages > 1 && (
-                <div
-                  className={cn(
-                    "grid h-fit max-h-full min-h-full overflow-x-auto",
-                    pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex min-h-full",
-                      pagination.totalPages > 1 &&
-                        "justify-end border-t border-grid-dimmed px-2 py-3"
-                    )}
-                  >
-                    <PaginationControls
-                      currentPage={pagination.currentPage}
-                      totalPages={pagination.totalPages}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
@@ -1076,39 +1049,7 @@ export function isEnvironmentPauseResumeFormSubmission(
 }
 
 export function QueueFilters() {
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const handleSearchChange = useThrottle((value: string) => {
-    if (value) {
-      setSearchParams((prev) => {
-        prev.set("query", value);
-        prev.delete("page");
-        return prev;
-      });
-    } else {
-      setSearchParams((prev) => {
-        prev.delete("query");
-        prev.delete("page");
-        return prev;
-      });
-    }
-  }, 300);
-
-  const search = searchParams.get("query") ?? "";
-
-  return (
-    <div className="flex grow">
-      <Input
-        name="search"
-        placeholder="Search queue name"
-        icon={MagnifyingGlassIcon}
-        variant="tertiary"
-        className="grow"
-        defaultValue={search}
-        onChange={(e) => handleSearchChange(e.target.value)}
-      />
-    </div>
-  );
+  return <SearchInput placeholder="Search queues…" paramName="query" resetParams={["page"]} />;
 }
 
 function BurstFactorTooltip({
