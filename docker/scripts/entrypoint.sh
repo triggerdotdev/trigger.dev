@@ -41,7 +41,6 @@ fi
 
 # Copy over required prisma files
 cp internal-packages/database/prisma/schema.prisma apps/webapp/prisma/
-cp node_modules/@prisma/engines/*.node apps/webapp/prisma/
 
 cd /triggerdotdev/apps/webapp
 
