@@ -111,7 +111,7 @@ function ProvidersDropdown({
         <ComboBox placeholder="Filter by provider..." value={searchValue} />
         <SelectList>
           {filtered.map((provider) => (
-            <SelectItem key={provider} value={provider} icon={<ServerIcon className="size-4" />}>
+            <SelectItem key={provider} value={provider} className="text-text-bright" icon={<ServerIcon className="size-4 text-text-dimmed" />}>
               {provider}
             </SelectItem>
           ))}
