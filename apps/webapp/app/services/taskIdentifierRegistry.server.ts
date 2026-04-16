@@ -1,4 +1,4 @@
-import { TaskTriggerSource } from "@trigger.dev/database";
+import { type PrismaClient, TaskTriggerSource } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { logger } from "./logger.server";
@@ -17,47 +17,64 @@ export async function syncTaskIdentifiers(
   environmentId: string,
   projectId: string,
   workerId: string,
-  tasks: { id: string; triggerSource?: string }[]
+  tasks: { id: string; triggerSource?: string }[],
+  db: PrismaClient = prisma
 ): Promise<void> {
   const slugs = tasks.map((t) => t.id);
+  const now = new Date();
 
+  // Group slugs by resolved triggerSource for bulk updates
+  const slugsBySource = new Map<TaskTriggerSource, string[]>();
   for (const task of tasks) {
-    await prisma.taskIdentifier.upsert({
-      where: {
-        runtimeEnvironmentId_slug: {
-          runtimeEnvironmentId: environmentId,
-          slug: task.id,
-        },
-      },
-      create: {
+    const source = toTriggerSource(task.triggerSource);
+    const existing = slugsBySource.get(source);
+    if (existing) {
+      existing.push(task.id);
+    } else {
+      slugsBySource.set(source, [task.id]);
+    }
+  }
+
+  // Batch: insert new rows, update existing rows per source group, archive removed tasks
+  await db.$transaction([
+    // Insert any new task identifiers (skips rows that already exist)
+    db.taskIdentifier.createMany({
+      data: tasks.map((task) => ({
         runtimeEnvironmentId: environmentId,
         projectId,
         slug: task.id,
         currentTriggerSource: toTriggerSource(task.triggerSource),
         currentWorkerId: workerId,
-        isInLatestDeployment: true,
-      },
-      update: {
-        currentTriggerSource: toTriggerSource(task.triggerSource),
-        currentWorkerId: workerId,
-        lastSeenAt: new Date(),
-        isInLatestDeployment: true,
-      },
-    });
-  }
-
-  if (slugs.length > 0) {
-    await prisma.taskIdentifier.updateMany({
+      })),
+      skipDuplicates: true,
+    }),
+    // Update existing rows — one updateMany per distinct triggerSource value
+    ...Array.from(slugsBySource.entries()).map(([source, taskSlugs]) =>
+      db.taskIdentifier.updateMany({
+        where: {
+          runtimeEnvironmentId: environmentId,
+          slug: { in: taskSlugs },
+        },
+        data: {
+          currentTriggerSource: source,
+          currentWorkerId: workerId,
+          lastSeenAt: now,
+          isInLatestDeployment: true,
+        },
+      })
+    ),
+    // Archive tasks no longer in this deploy
+    db.taskIdentifier.updateMany({
       where: {
         runtimeEnvironmentId: environmentId,
         slug: { notIn: slugs },
         isInLatestDeployment: true,
       },
       data: { isInLatestDeployment: false },
-    });
-  }
+    }),
+  ]);
 
-  const allIdentifiers = await prisma.taskIdentifier.findMany({
+  const allIdentifiers = await db.taskIdentifier.findMany({
     where: { runtimeEnvironmentId: environmentId },
     select: {
       slug: true,
@@ -87,12 +104,13 @@ function sortEntries(entries: TaskIdentifierEntry[]): TaskIdentifierEntry[] {
 }
 
 export async function getTaskIdentifiers(
-  environmentId: string
+  environmentId: string,
+  db: PrismaClient = $replica
 ): Promise<TaskIdentifierEntry[]> {
   const cached = await getTaskIdentifiersFromCache(environmentId);
   if (cached) return sortEntries(cached);
 
-  const dbRows = await $replica.taskIdentifier.findMany({
+  const dbRows = await db.taskIdentifier.findMany({
     where: { runtimeEnvironmentId: environmentId },
     select: {
       slug: true,
