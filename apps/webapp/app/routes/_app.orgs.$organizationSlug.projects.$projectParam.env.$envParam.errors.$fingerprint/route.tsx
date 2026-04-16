@@ -1,60 +1,16 @@
-import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { parse } from "@conform-to/zod";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   IconAlarmSnooze as IconAlarmSnoozeBase,
   IconBugFilled,
   IconCircleDotted,
 } from "@tabler/icons-react";
-import { parse } from "@conform-to/zod";
-import { z } from "zod";
-import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
-import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
-import { requireUser, requireUserId } from "~/services/session.server";
-import {
-  EnvironmentParamSchema,
-  v3CreateBulkActionPath,
-  v3ErrorsPath,
-  v3RunsPath,
-} from "~/utils/pathBuilder";
-import { findProjectBySlug } from "~/models/project.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import {
-  ErrorGroupPresenter,
-  type ErrorGroupActivity,
-  type ErrorGroupActivityVersions,
-  type ErrorGroupOccurrences,
-  type ErrorGroupSummary,
-  type ErrorGroupState,
-} from "~/presenters/v3/ErrorGroupPresenter.server";
-import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
-import { $replica } from "~/db.server";
-import {
-  clickhouseFactory,
-  getDefaultClickhouseClient,
-  getDefaultLogsClickhouseClient,
-} from "~/services/clickhouse/clickhouseFactory.server";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import { PageBody } from "~/components/layout/AppLayout";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "~/components/primitives/Resizable";
+import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
+import { isPast } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Spinner } from "~/components/primitives/Spinner";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import { Callout } from "~/components/primitives/Callout";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-
-import { formatDistanceToNow, isPast } from "date-fns";
-
-import * as Property from "~/components/primitives/PropertyTable";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
-import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
-import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import {
   Bar,
   BarChart,
@@ -65,31 +21,68 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import TooltipPortal from "~/components/primitives/TooltipPortal";
-import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
-import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
-import { useSearchParams } from "~/hooks/useSearchParam";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { cn } from "~/utils/cn";
-import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
 import { CodeBlock } from "~/components/code/CodeBlock";
-
-import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
-import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
+import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import {
-  ErrorStatusMenuItems,
   CustomIgnoreDialog,
+  ErrorStatusMenuItems,
   statusActionToastMessage,
 } from "~/components/errors/ErrorStatusMenu";
+import { PageBody } from "~/components/layout/AppLayout";
+import { DirectionSchema, ListPagination } from "~/components/ListPagination";
+import { LogsVersionFilter } from "~/components/logs/LogsVersionFilter";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
+import * as Property from "~/components/primitives/PropertyTable";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
+import { Spinner } from "~/components/primitives/Spinner";
 import { useToast } from "~/components/primitives/Toast";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
+import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { $replica } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import {
+  type ErrorGroupActivity,
+  type ErrorGroupActivityVersions,
+  type ErrorGroupOccurrences,
+  ErrorGroupPresenter,
+  type ErrorGroupState,
+  type ErrorGroupSummary,
+} from "~/presenters/v3/ErrorGroupPresenter.server";
+import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { requireUser, requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
+import {
+  EnvironmentParamSchema,
+  v3CreateBulkActionPath,
+  v3ErrorsPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   return [
@@ -251,7 +244,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const clickhouseClient = await clickhouseFactory.getClickhouseForOrganization(
     environment.organizationId,
-    "query"
+    "logs"
   );
 
   const presenter = new ErrorGroupPresenter($replica, clickhouseClient, clickhouseClient);
