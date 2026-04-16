@@ -55,20 +55,24 @@ function SpanAccessory({
     case "pills": {
       return (
         <span className="flex items-center gap-1">
-          {accessory.items.map((item, index) => (
-            <SpanPill key={index} text={item.text} icon={item.icon} />
-          ))}
+          {accessory.items
+            .filter((item) => typeof item.text === "string")
+            .map((item, index) => (
+              <SpanPill key={index} text={item.text} icon={item.icon} />
+            ))}
         </span>
       );
     }
     default: {
       return (
         <span className={cn("flex gap-1")}>
-          {accessory.items.map((item, index) => (
-            <span key={index} className={cn("inline-flex items-center gap-1")}>
-              {item.text}
-            </span>
-          ))}
+          {accessory.items
+            .filter((item) => typeof item.text === "string")
+            .map((item, index) => (
+              <span key={index} className={cn("inline-flex items-center gap-1")}>
+                {item.text}
+              </span>
+            ))}
         </span>
       );
     }
