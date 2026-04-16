@@ -30,6 +30,7 @@ module.exports = {
     "redlock",
     "parse-duration",
     "uncrypto",
+    "std-env",
   ],
   browserNodeBuiltinsPolyfill: {
     modules: {
