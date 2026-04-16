@@ -5,6 +5,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { inflate } from "node:zlib";
@@ -92,7 +93,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         const result = streamText({
           model: openai(env.AI_RUN_FILTER_MODEL ?? "gpt-5-mini"),
           temperature: 1,
-          abortSignal: request.signal,
+          abortSignal: getRequestAbortSignal(),
           system: systemPrompt,
           prompt,
           tools: {

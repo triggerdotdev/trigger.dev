@@ -1,6 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import {
   getInputStreamWaitpoint,
   deleteInputStreamWaitpoint,
@@ -162,7 +163,7 @@ const loader = createLoaderApiRoute(
       request,
       run.friendlyId,
       `$trigger.input:${params.streamId}`,
-      request.signal,
+      getRequestAbortSignal(),
       {
         lastEventId,
         timeoutInSeconds,

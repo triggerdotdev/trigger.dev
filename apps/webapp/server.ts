@@ -145,9 +145,11 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     app.use((req, res, next) => {
       // Generate a unique request ID for each request
       const requestId = nanoid();
+      const abortController = new AbortController();
+      res.on("close", () => abortController.abort());
 
       runWithHttpContext(
-        { requestId, path: req.url, host: req.hostname, method: req.method },
+        { requestId, path: req.url, host: req.hostname, method: req.method, abortController },
         next
       );
     });
