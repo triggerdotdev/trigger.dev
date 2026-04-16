@@ -212,5 +212,10 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (error) {
+    if (debug) {
+      // fallback if no logger available
+      console.warn("Failed to release stream reader lock", error);
+    }
+  }
 }
