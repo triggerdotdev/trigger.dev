@@ -13,7 +13,12 @@ export class OrganizationDataStoresRegistry {
   private _loaded = false;
   private _readyResolve!: () => void;
 
-  /** Resolves once the initial `loadFromDatabase()` completes successfully. */
+  /**
+   * Resolves once the initial `loadFromDatabase()` completes successfully.
+   * At process startup the singleton loads the registry with unbounded retries
+   * (exponential backoff, capped delay) until Postgres is reachable; until then
+   * this promise stays pending and callers that await readiness will block.
+   */
   readonly isReady: Promise<void>;
 
   constructor(prisma: PrismaClient | PrismaReplicaClient) {
