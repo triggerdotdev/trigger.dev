@@ -435,6 +435,32 @@ export class DequeueSystem {
                   cliVersion: result.worker.cliVersion,
                   maxDurationInSeconds,
                   maxAttempts: maxAttempts ?? undefined,
+                  executionSnapshots: {
+                    create: {
+                      engine: "V2",
+                      executionStatus: "PENDING_EXECUTING",
+                      description: "Run was dequeued for execution",
+                      // Map DEQUEUED -> PENDING for backwards compatibility with older runners
+                      runStatus: "PENDING",
+                      attemptNumber: result.run.attemptNumber ?? undefined,
+                      previousSnapshotId: snapshot.id,
+                      environmentId: snapshot.environmentId,
+                      environmentType: snapshot.environmentType,
+                      projectId: snapshot.projectId,
+                      organizationId: snapshot.organizationId,
+                      checkpointId: snapshot.checkpointId ?? undefined,
+                      batchId: snapshot.batchId ?? undefined,
+                      completedWaitpoints: {
+                        connect: snapshot.completedWaitpoints.map((w) => ({ id: w.id })),
+                      },
+                      completedWaitpointOrder: snapshot.completedWaitpoints
+                        .filter((c) => c.index !== undefined)
+                        .sort((a, b) => a.index! - b.index!)
+                        .map((w) => w.id),
+                      workerId,
+                      runnerId,
+                    },
+                  },
                 },
                 include: {
                   runtimeEnvironment: true,
@@ -516,30 +542,22 @@ export class DequeueSystem {
                 hasPrivateLink = billingResult.val.hasPrivateLink;
               }
 
-              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-                prisma,
-                {
-                  run: {
-                    id: runId,
-                    status: lockedTaskRun.status,
-                    attemptNumber: lockedTaskRun.attemptNumber,
-                  },
-                  snapshot: {
-                    executionStatus: "PENDING_EXECUTING",
-                    description: "Run was dequeued for execution",
-                  },
-                  previousSnapshotId: snapshot.id,
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                  projectId: snapshot.projectId,
-                  organizationId: snapshot.organizationId,
-                  checkpointId: snapshot.checkpointId ?? undefined,
-                  batchId: snapshot.batchId ?? undefined,
-                  completedWaitpoints: snapshot.completedWaitpoints,
-                  workerId,
-                  runnerId,
-                }
-              );
+              // Snapshot was created as part of the taskRun.update above (single transaction).
+              // Fetch the enhanced snapshot and handle side effects (heartbeat + event) manually.
+              const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+              this.$.eventBus.emit("executionSnapshotCreated", {
+                time: newSnapshot.createdAt,
+                run: {
+                  id: newSnapshot.runId,
+                },
+                snapshot: {
+                  ...newSnapshot,
+                  completedWaitpointIds: newSnapshot.completedWaitpoints.map((wp) => wp.id),
+                },
+              });
+
+              await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded(newSnapshot);
 
               return {
                 version: "1" as const,
