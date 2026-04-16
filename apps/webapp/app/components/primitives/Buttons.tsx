@@ -362,7 +362,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={isDisabled ? "cursor-default" : undefined}>
+              <span className={cn("flex", isDisabled && "cursor-default")}>
                 {buttonElement}
               </span>
             </TooltipTrigger>
