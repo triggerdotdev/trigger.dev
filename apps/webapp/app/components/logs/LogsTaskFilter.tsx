@@ -130,6 +130,7 @@ function TasksDropdown({
             <SelectItem
               key={`${item.triggerSource}-${item.slug}`}
               value={item.slug}
+              className="text-text-bright"
               icon={
                 <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
               }

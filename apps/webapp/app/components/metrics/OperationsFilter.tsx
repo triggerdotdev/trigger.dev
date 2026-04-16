@@ -125,7 +125,7 @@ function OperationsDropdown({
         <ComboBox placeholder="Filter by operation..." value={searchValue} />
         <SelectList>
           {filtered.map((op) => (
-            <SelectItem key={op} value={op} icon={<CommandLineIcon className="size-4" />}>
+            <SelectItem key={op} value={op} className="text-text-bright" icon={<CommandLineIcon className="size-4 text-text-dimmed" />}>
               {formatOperation(op)}
             </SelectItem>
           ))}
