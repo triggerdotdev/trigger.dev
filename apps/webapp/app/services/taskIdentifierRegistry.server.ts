@@ -136,7 +136,7 @@ export async function getTaskIdentifiers(
     return sortEntries(entries);
   }
 
-  const legacyRows = await getAllTaskIdentifiers($replica, environmentId);
+  const legacyRows = await getAllTaskIdentifiers(db, environmentId);
   const entries: TaskIdentifierEntry[] = legacyRows.map((t) => ({
     slug: t.slug,
     triggerSource: t.triggerSource,

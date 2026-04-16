@@ -2938,8 +2938,8 @@ model TaskIdentifier {
 
   currentTriggerSource TaskTriggerSource @default(STANDARD)
 
-  currentWorker   BackgroundWorker @relation(fields: [currentWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  currentWorkerId String
+  currentWorker   BackgroundWorker? @relation(fields: [currentWorkerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentWorkerId String?
 
   firstSeenAt          DateTime @default(now())
   lastSeenAt           DateTime @default(now())

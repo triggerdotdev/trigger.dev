@@ -5,7 +5,7 @@ CREATE TABLE "TaskIdentifier" (
     "projectId" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "currentTriggerSource" "TaskTriggerSource" NOT NULL DEFAULT 'STANDARD',
-    "currentWorkerId" TEXT NOT NULL,
+    "currentWorkerId" TEXT,
     "firstSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "isInLatestDeployment" BOOLEAN NOT NULL DEFAULT true,
@@ -37,4 +37,4 @@ ALTER TABLE "TaskIdentifier"
 ALTER TABLE "TaskIdentifier"
     ADD CONSTRAINT "TaskIdentifier_currentWorkerId_fkey"
     FOREIGN KEY ("currentWorkerId") REFERENCES "BackgroundWorker"("id")
-    ON DELETE CASCADE ON UPDATE CASCADE;
+    ON DELETE SET NULL ON UPDATE CASCADE;
