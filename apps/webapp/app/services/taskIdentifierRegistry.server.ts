@@ -1,4 +1,4 @@
-import { type PrismaClient, TaskTriggerSource } from "@trigger.dev/database";
+import { type PrismaClient, type PrismaClientOrTransaction, TaskTriggerSource } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { logger } from "./logger.server";
@@ -105,7 +105,7 @@ function sortEntries(entries: TaskIdentifierEntry[]): TaskIdentifierEntry[] {
 
 export async function getTaskIdentifiers(
   environmentId: string,
-  db: PrismaClient = $replica
+  db: PrismaClientOrTransaction = $replica
 ): Promise<TaskIdentifierEntry[]> {
   const cached = await getTaskIdentifiersFromCache(environmentId);
   if (cached) return sortEntries(cached);
