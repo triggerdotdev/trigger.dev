@@ -3,7 +3,7 @@ import { startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import { DequeuedMessage, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
-import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
+import { getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
@@ -416,6 +416,9 @@ export class DequeueSystem {
                 ? undefined
                 : result.task.retryConfig;
 
+              // Pre-generate snapshot ID so we can construct the result without an extra read
+              const snapshotIds = SnapshotId.generate();
+
               const lockedTaskRun = await prisma.taskRun.update({
                 where: {
                   id: runId,
@@ -437,6 +440,7 @@ export class DequeueSystem {
                   maxAttempts: maxAttempts ?? undefined,
                   executionSnapshots: {
                     create: {
+                      id: snapshotIds.id,
                       engine: "V2",
                       executionStatus: "PENDING_EXECUTING",
                       description: "Run was dequeued for execution",
@@ -543,35 +547,49 @@ export class DequeueSystem {
               }
 
               // Snapshot was created as part of the taskRun.update above (single transaction).
-              // Fetch the enhanced snapshot and handle side effects (heartbeat + event) manually.
-              const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+              // Construct the snapshot info from data we already have and handle side effects
+              // (heartbeat + event) manually — no extra DB read needed.
+              const snapshotCreatedAt = new Date();
 
               this.$.eventBus.emit("executionSnapshotCreated", {
-                time: newSnapshot.createdAt,
+                time: snapshotCreatedAt,
                 run: {
-                  id: newSnapshot.runId,
+                  id: runId,
                 },
                 snapshot: {
-                  ...newSnapshot,
-                  completedWaitpointIds: newSnapshot.completedWaitpoints.map((wp) => wp.id),
+                  id: snapshotIds.id,
+                  executionStatus: "PENDING_EXECUTING",
+                  description: "Run was dequeued for execution",
+                  runStatus: "PENDING",
+                  attemptNumber: result.run.attemptNumber ?? null,
+                  checkpointId: snapshot.checkpointId ?? null,
+                  workerId: workerId ?? null,
+                  runnerId: runnerId ?? null,
+                  isValid: true,
+                  error: null,
+                  completedWaitpointIds: snapshot.completedWaitpoints.map((wp) => wp.id),
                 },
               });
 
-              await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded(newSnapshot);
+              await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded({
+                id: snapshotIds.id,
+                runId,
+                executionStatus: "PENDING_EXECUTING",
+              });
 
               return {
                 version: "1" as const,
                 dequeuedAt: new Date(),
                 workerQueueLength: message.workerQueueLength,
                 snapshot: {
-                  id: newSnapshot.id,
-                  friendlyId: newSnapshot.friendlyId,
-                  executionStatus: newSnapshot.executionStatus,
-                  description: newSnapshot.description,
-                  createdAt: newSnapshot.createdAt,
+                  id: snapshotIds.id,
+                  friendlyId: snapshotIds.friendlyId,
+                  executionStatus: "PENDING_EXECUTING" as const,
+                  description: "Run was dequeued for execution",
+                  createdAt: snapshotCreatedAt,
                 },
                 image: result.deployment?.imageReference ?? undefined,
-                checkpoint: newSnapshot.checkpoint ?? undefined,
+                checkpoint: snapshot.checkpoint ?? undefined,
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {
                   id: result.worker.id,
