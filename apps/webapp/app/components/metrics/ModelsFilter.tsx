@@ -16,7 +16,7 @@ import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { AnthropicLogoIcon } from "~/assets/icons/AnthropicLogoIcon";
 
-const shortcut = { key: "l" };
+const shortcut = { key: "m" };
 
 export type ModelOption = {
   model: string;

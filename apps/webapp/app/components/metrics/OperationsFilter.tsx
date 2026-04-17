@@ -13,7 +13,7 @@ import {
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { appliedSummary, FilterMenuProvider } from "~/components/runs/v3/SharedFilters";
 
-const shortcut = { key: "n" };
+const shortcut = { key: "o" };
 
 interface OperationsFilterProps {
   possibleOperations: string[];
