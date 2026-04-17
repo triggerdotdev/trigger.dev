@@ -21,7 +21,10 @@ import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { createSearchParams } from "~/utils/searchParams";
 import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
-import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
+import {
+  llmPricingRegistry,
+  publishLlmRegistryReload,
+} from "~/v3/llmPricingRegistry.server";
 
 const PAGE_SIZE = 50;
 
@@ -89,6 +92,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const result = await seedLlmPricing(prisma);
     console.log(`[admin] seed complete: ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`);
     await llmPricingRegistry?.reload();
+    await publishLlmRegistryReload("admin-ui-seed");
     console.log("[admin] registry reloaded after seed");
     return typedjson({
       success: true,
@@ -101,6 +105,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const result = await syncLlmCatalog(prisma);
     console.log(`[admin] sync complete: ${result.modelsUpdated} updated, ${result.modelsSkipped} skipped`);
     await llmPricingRegistry?.reload();
+    await publishLlmRegistryReload("admin-ui-sync");
     console.log("[admin] registry reloaded after sync");
     return typedjson({
       success: true,
@@ -111,6 +116,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (_action === "reload") {
     console.log("[admin] reload action started");
     await llmPricingRegistry?.reload();
+    await publishLlmRegistryReload("admin-ui-reload");
     console.log("[admin] registry reloaded");
     return typedjson({ success: true, message: "Registry reloaded" });
   }
@@ -139,6 +145,7 @@ export async function action({ request }: ActionFunctionArgs) {
     if (typeof modelId === "string") {
       await prisma.llmModel.delete({ where: { id: modelId } });
       await llmPricingRegistry?.reload();
+      await publishLlmRegistryReload("admin-ui-delete");
     }
     return typedjson({ success: true });
   }

@@ -1,4 +1,5 @@
 import { modelCatalog } from "@internal/llm-model-catalog";
+import { metrics } from "@opentelemetry/api";
 import type { CreateEventInput, LlmMetricsData } from "../eventRepository/eventRepository.types";
 
 // Registry interface — matches ModelPricingRegistry from @internal/llm-model-catalog
@@ -22,6 +23,41 @@ type CostRegistry = {
 let _registry: CostRegistry | undefined;
 
 const ENRICHABLE_KINDS = new Set(["INTERNAL", "SERVER", "CLIENT", "CONSUMER", "PRODUCER"]);
+
+// Low-cardinality allowlist of gen_ai.system values. Anything outside this set
+// is collapsed into "other" to keep the metric cardinality bounded. Keep in
+// sync with the OpenTelemetry GenAI semantic conventions.
+const KNOWN_GEN_AI_SYSTEMS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "vertex_ai",
+  "aws.bedrock",
+  "az.ai.openai",
+  "az.ai.inference",
+  "cohere",
+  "deepseek",
+  "groq",
+  "ibm.watsonx.ai",
+  "mistral_ai",
+  "perplexity",
+  "xai",
+]);
+
+function normalizeGenAiSystem(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) return "unknown";
+  const normalized = value.toLowerCase();
+  return KNOWN_GEN_AI_SYSTEMS.has(normalized) ? normalized : "other";
+}
+
+// Emits a metric whenever we see an LLM span with usage data but can't resolve
+// a price from the in-memory registry. Used by the llm-registry productionization
+// pipeline to detect missing models without having to query ClickHouse.
+const llmMeter = metrics.getMeter("trigger.dev.llm_registry", "1.0.0");
+const missingModelCounter = llmMeter.createCounter("llm_missing_model_enrichment", {
+  description:
+    "LLM spans with gen_ai.response.model + usage data that could not be priced by the registry",
+});
 
 export function setLlmPricingRegistry(registry: CostRegistry): void {
   _registry = registry;
@@ -101,6 +137,17 @@ function enrichLlmMetrics(event: CreateEventInput): void {
   let providerCost: { totalCost: number; source: string } | null = null;
   if (!cost) {
     providerCost = extractProviderCost(props);
+  }
+
+  // Observability: if the registry is loaded but couldn't price this span, emit
+  // a low-cardinality counter so the productionization pipeline can detect
+  // missing models without hitting ClickHouse. We tag by gen_ai.system (bounded
+  // enum) and whether a provider-reported cost rescued the span.
+  if (_registry?.isLoaded && !cost) {
+    missingModelCounter.add(1, {
+      gen_ai_system: normalizeGenAiSystem(props["gen_ai.system"]),
+      has_provider_cost: providerCost !== null,
+    });
   }
 
   if (cost) {

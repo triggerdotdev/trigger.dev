@@ -9,7 +9,10 @@ import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
-import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
+import {
+  llmPricingRegistry,
+  publishLlmRegistryReload,
+} from "~/v3/llmPricingRegistry.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -65,6 +68,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (_action === "delete") {
     await prisma.llmModel.delete({ where: { id: modelId } });
     await llmPricingRegistry?.reload();
+    await publishLlmRegistryReload("admin-ui-delete");
     return redirect("/admin/llm-models");
   }
 
@@ -138,6 +142,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     await llmPricingRegistry?.reload();
+    await publishLlmRegistryReload("admin-ui-update");
     return typedjson({ success: true });
   }
 

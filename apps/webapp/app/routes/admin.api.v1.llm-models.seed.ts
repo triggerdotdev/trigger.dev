@@ -2,7 +2,10 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
+import {
+  llmPricingRegistry,
+  publishLlmRegistryReload,
+} from "~/v3/llmPricingRegistry.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
@@ -16,6 +19,7 @@ export async function action({ request }: ActionFunctionArgs) {
     if (llmPricingRegistry) {
       await llmPricingRegistry.reload();
     }
+    await publishLlmRegistryReload("admin-sync");
 
     return json({
       success: true,
@@ -30,6 +34,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (llmPricingRegistry) {
     await llmPricingRegistry.reload();
   }
+  await publishLlmRegistryReload("admin-seed");
 
   return json({
     success: true,

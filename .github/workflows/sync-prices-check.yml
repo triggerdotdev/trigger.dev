@@ -1,0 +1,45 @@
+name: "💰 LLM Prices Drift"
+
+# Non-blocking drift check for the Langfuse-sourced LLM prices JSON. Runs on
+# every PR; failure here is a warning only (does not block merge) and is there
+# to prompt a human to run `pnpm run sync-prices` when the upstream JSON has
+# moved ahead of our checked-in copy. Phase 2 of the productionization pipeline
+# replaces this with an hourly trigger.dev task that writes directly to
+# Postgres, at which point this workflow can be removed.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-prices-check:
+    name: sync-prices drift (non-blocking)
+    runs-on: ubuntu-latest
+    # IMPORTANT: non-blocking — do not remove. This job is advisory only while
+    # the productionization pipeline is being rolled out.
+    continue-on-error: true
+
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 💰 Check Langfuse prices drift
+        run: pnpm run --filter @internal/llm-model-catalog sync-prices:check

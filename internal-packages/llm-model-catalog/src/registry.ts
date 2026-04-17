@@ -45,7 +45,14 @@ export class ModelPricingRegistry {
 
   async loadFromDatabase(): Promise<void> {
     const models = await this._prisma.llmModel.findMany({
-      where: { projectId: null },
+      where: {
+        projectId: null,
+        // Exclude rows awaiting admin approval (e.g. auto-priced rows written
+        // by the detect-missing-models trigger.dev task, or freshly-synced
+        // Langfuse rows that haven't been reviewed yet). These fields were
+        // added as part of the llm-registry productionization work.
+        needsReview: false,
+      },
       include: {
         pricingTiers: {
           include: { prices: true },

@@ -2,6 +2,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-r
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { publishLlmRegistryReload } from "~/v3/llmPricingRegistry.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   await requireAdminApiRequest(request);
@@ -23,16 +24,35 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return json({ model });
 }
 
+// Keep in sync with admin.api.v1.llm-models.ts.
+const ModelSourceSchema = z.enum([
+  "default",
+  "admin",
+  "langfuse",
+  "auto",
+  "research",
+  "provider-api",
+]);
+
 const UpdateModelSchema = z.object({
   modelName: z.string().min(1).optional(),
   matchPattern: z.string().min(1).optional(),
   startDate: z.string().nullable().optional(),
+  source: ModelSourceSchema.optional(),
   provider: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   contextWindow: z.number().int().nullable().optional(),
   maxOutputTokens: z.number().int().nullable().optional(),
   capabilities: z.array(z.string()).optional(),
   isHidden: z.boolean().optional(),
+  needsReview: z.boolean().optional(),
+  resolvedAt: z.string().datetime().nullable().optional(),
+  releaseDate: z.string().datetime().nullable().optional(),
+  deprecationDate: z.string().datetime().nullable().optional(),
+  knowledgeCutoff: z.string().datetime().nullable().optional(),
+  supportsStructuredOutput: z.boolean().nullable().optional(),
+  supportsParallelToolCalls: z.boolean().nullable().optional(),
+  supportsStreamingToolCalls: z.boolean().nullable().optional(),
   pricingTiers: z
     .array(
       z.object({
@@ -66,6 +86,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     await prisma.llmModel.delete({ where: { id: modelId } });
+    await publishLlmRegistryReload(`admin-delete:${existing.source}`);
     return json({ success: true });
   }
 
@@ -86,7 +107,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request body", details: parsed.error.issues }, { status: 400 });
   }
 
-  const { modelName, matchPattern, startDate, pricingTiers, provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
+  const {
+    modelName,
+    matchPattern,
+    startDate,
+    source,
+    pricingTiers,
+    provider,
+    description,
+    contextWindow,
+    maxOutputTokens,
+    capabilities,
+    isHidden,
+    needsReview,
+    resolvedAt,
+    releaseDate,
+    deprecationDate,
+    knowledgeCutoff,
+    supportsStructuredOutput,
+    supportsParallelToolCalls,
+    supportsStreamingToolCalls,
+  } = parsed.data;
 
   // Validate regex if provided — strip (?i) POSIX flag since our registry handles it
   if (matchPattern) {
@@ -106,12 +147,29 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ...(modelName !== undefined && { modelName }),
         ...(matchPattern !== undefined && { matchPattern }),
         ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
+        ...(source !== undefined && { source }),
         ...(provider !== undefined && { provider }),
         ...(description !== undefined && { description }),
         ...(contextWindow !== undefined && { contextWindow }),
         ...(maxOutputTokens !== undefined && { maxOutputTokens }),
         ...(capabilities !== undefined && { capabilities }),
         ...(isHidden !== undefined && { isHidden }),
+        ...(needsReview !== undefined && { needsReview }),
+        ...(resolvedAt !== undefined && {
+          resolvedAt: resolvedAt ? new Date(resolvedAt) : null,
+        }),
+        ...(releaseDate !== undefined && {
+          releaseDate: releaseDate ? new Date(releaseDate) : null,
+        }),
+        ...(deprecationDate !== undefined && {
+          deprecationDate: deprecationDate ? new Date(deprecationDate) : null,
+        }),
+        ...(knowledgeCutoff !== undefined && {
+          knowledgeCutoff: knowledgeCutoff ? new Date(knowledgeCutoff) : null,
+        }),
+        ...(supportsStructuredOutput !== undefined && { supportsStructuredOutput }),
+        ...(supportsParallelToolCalls !== undefined && { supportsParallelToolCalls }),
+        ...(supportsStreamingToolCalls !== undefined && { supportsStreamingToolCalls }),
       },
     });
 
@@ -145,6 +203,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
   });
+
+  await publishLlmRegistryReload(`admin-update:${updated?.source ?? "unknown"}`);
 
   return json({ model: updated });
 }

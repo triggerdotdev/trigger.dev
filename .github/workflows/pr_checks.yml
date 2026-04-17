@@ -33,3 +33,7 @@ jobs:
   sdk-compat:
     uses: ./.github/workflows/sdk-compat.yml
     secrets: inherit
+
+  sync-prices-check:
+    uses: ./.github/workflows/sync-prices-check.yml
+    secrets: inherit

@@ -2694,18 +2694,40 @@ model LlmModel {
   modelName    String    @map("model_name")
   matchPattern String    @map("match_pattern")
   startDate    DateTime? @map("start_date")
-  source       String    @default("default") // "default", "admin", "project"
+  /// Where the row originated. Known values: "default", "admin", "project",
+  /// "langfuse" (synced from the Langfuse model-prices JSON),
+  /// "auto" (priced from provider-reported span cost), "research" (upserted
+  /// by the Claude-driven research task), "provider-api" (polled from a
+  /// provider's models endpoint).
+  source       String    @default("default")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Catalog metadata for model registry
-  provider        String?  @map("provider")
-  description     String?  @map("description")
-  contextWindow   Int?     @map("context_window")
-  maxOutputTokens Int?     @map("max_output_tokens")
-  capabilities    String[] @default([]) @map("capabilities")
-  isHidden        Boolean  @default(false) @map("is_hidden")
-  baseModelName   String?  @map("base_model_name")
+  provider        String?   @map("provider")
+  description     String?   @map("description")
+  contextWindow   Int?      @map("context_window")
+  maxOutputTokens Int?      @map("max_output_tokens")
+  capabilities    String[]  @default([]) @map("capabilities")
+  isHidden        Boolean   @default(false) @map("is_hidden")
+  baseModelName   String?   @map("base_model_name")
+  /// When this model row was last resolved by the research task. Used by the
+  /// refresh-stale job to re-research rows that are older than the staleness
+  /// window (default 7 days).
+  resolvedAt      DateTime? @map("resolved_at")
+  /// When true, the row is hidden from the in-memory pricing registry until a
+  /// human approves it. Used to gate auto-priced and freshly-synced rows.
+  needsReview     Boolean   @default(false) @map("needs_review")
+  /// When the model was announced / released. Populated by the research task.
+  releaseDate     DateTime? @map("release_date")
+  /// When the model was (or will be) deprecated. Populated by the research task.
+  deprecationDate DateTime? @map("deprecation_date")
+  /// Knowledge cutoff of the model's training data.
+  knowledgeCutoff DateTime? @map("knowledge_cutoff")
+  /// Capability flags populated by the research task. Null means unknown.
+  supportsStructuredOutput   Boolean? @map("supports_structured_output")
+  supportsParallelToolCalls  Boolean? @map("supports_parallel_tool_calls")
+  supportsStreamingToolCalls Boolean? @map("supports_streaming_tool_calls")
 
   pricingTiers LlmPricingTier[]
   prices       LlmPrice[]

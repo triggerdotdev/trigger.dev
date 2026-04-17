@@ -9,7 +9,10 @@ import { Input } from "~/components/primitives/Input";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
+import {
+  llmPricingRegistry,
+  publishLlmRegistryReload,
+} from "~/v3/llmPricingRegistry.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -105,6 +108,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   await llmPricingRegistry?.reload();
+  await publishLlmRegistryReload("admin-ui-create");
   return redirect(`/admin/llm-models/${model.friendlyId}`);
 }
 
