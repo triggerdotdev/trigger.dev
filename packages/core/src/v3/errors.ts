@@ -154,13 +154,64 @@ export function isCompleteTaskWithOutput(error: unknown): error is CompleteTaskW
   return error instanceof Error && error.name === "CompleteTaskWithOutput";
 }
 
+const MAX_STACK_FRAMES = 50;
+const KEEP_TOP_FRAMES = 5;
+const MAX_STACK_LINE_LENGTH = 1024;
+const MAX_MESSAGE_LENGTH = 1_000;
+
+/** Truncate a stack trace to at most MAX_STACK_FRAMES frames, keeping
+ *  the top (closest to throw) and bottom (entry points) frames. */
+export function truncateStack(stack: string | undefined): string {
+  if (!stack) return "";
+
+  const lines = stack.split("\n");
+
+  // First line(s) before the first frame are the error message
+  const messageLines: string[] = [];
+  const frameLines: string[] = [];
+
+  for (const line of lines) {
+    if (frameLines.length === 0 && !line.trimStart().startsWith("at ")) {
+      messageLines.push(line);
+    } else {
+      // Truncate individual lines to prevent regex DoS in downstream parsers
+      frameLines.push(
+        line.length > MAX_STACK_LINE_LENGTH
+          ? line.slice(0, MAX_STACK_LINE_LENGTH) + "...[truncated]"
+          : line
+      );
+    }
+  }
+
+  if (frameLines.length <= MAX_STACK_FRAMES) {
+    return [...messageLines, ...frameLines].join("\n");
+  }
+
+  const keepBottom = MAX_STACK_FRAMES - KEEP_TOP_FRAMES;
+  const omitted = frameLines.length - MAX_STACK_FRAMES;
+
+  return [
+    ...messageLines,
+    ...frameLines.slice(0, KEEP_TOP_FRAMES),
+    `    ... ${omitted} frames omitted ...`,
+    ...frameLines.slice(-keepBottom),
+  ].join("\n");
+}
+
+export function truncateMessage(message: string | undefined): string {
+  if (!message) return "";
+  return message.length > MAX_MESSAGE_LENGTH
+    ? message.slice(0, MAX_MESSAGE_LENGTH) + "...[truncated]"
+    : message;
+}
+
 export function parseError(error: unknown): TaskRunError {
   if (isInternalError(error)) {
     return {
       type: "INTERNAL_ERROR",
       code: error.code,
-      message: error.message,
-      stackTrace: error.stack ?? "",
+      message: truncateMessage(error.message),
+      stackTrace: truncateStack(error.stack),
     };
   }
 
@@ -168,8 +219,8 @@ export function parseError(error: unknown): TaskRunError {
     return {
       type: "BUILT_IN_ERROR",
       name: error.name,
-      message: error.message,
-      stackTrace: error.stack ?? "",
+      message: truncateMessage(error.message),
+      stackTrace: truncateStack(error.stack),
     };
   }
 
@@ -248,35 +299,35 @@ export function createJsonErrorObject(error: TaskRunError): SerializedError {
   }
 }
 
-// Removes any null characters from the error message
+// Removes null characters and truncates oversized fields to prevent OOM
 export function sanitizeError(error: TaskRunError): TaskRunError {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
       return {
         type: "BUILT_IN_ERROR",
-        message: error.message?.replace(/\0/g, ""),
+        message: truncateMessage(error.message?.replace(/\0/g, "")),
         name: error.name?.replace(/\0/g, ""),
-        stackTrace: error.stackTrace?.replace(/\0/g, ""),
+        stackTrace: truncateStack(error.stackTrace?.replace(/\0/g, "")),
       };
     }
     case "STRING_ERROR": {
       return {
         type: "STRING_ERROR",
-        raw: error.raw.replace(/\0/g, ""),
+        raw: truncateMessage(error.raw.replace(/\0/g, "")),
       };
     }
     case "CUSTOM_ERROR": {
       return {
         type: "CUSTOM_ERROR",
-        raw: error.raw.replace(/\0/g, ""),
+        raw: truncateMessage(error.raw.replace(/\0/g, "")),
       };
     }
     case "INTERNAL_ERROR": {
       return {
         type: "INTERNAL_ERROR",
         code: error.code,
-        message: error.message?.replace(/\0/g, ""),
-        stackTrace: error.stackTrace?.replace(/\0/g, ""),
+        message: truncateMessage(error.message?.replace(/\0/g, "")),
+        stackTrace: truncateStack(error.stackTrace?.replace(/\0/g, "")),
       };
     }
   }
