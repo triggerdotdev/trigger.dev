@@ -32,6 +32,27 @@ export function resolveEventRepositoryForStore(
   return eventRepository;
 }
 
+/**
+ * Async variant of {@link resolveEventRepositoryForStore}. Awaits the factory's
+ * registry readiness before returning the ClickHouse event repository; for
+ * non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
+ * runs) it returns the Prisma event repository without ever touching the
+ * factory — so the factory never needs to know about Postgres.
+ */
+export async function getEventRepositoryForStore(
+  store: string,
+  organizationId: string
+): Promise<IEventRepository> {
+  if (store !== EVENT_STORE_TYPES.CLICKHOUSE && store !== EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    return eventRepository;
+  }
+  const { repository } = await clickhouseFactory.getEventRepositoryForOrganization(
+    store,
+    organizationId
+  );
+  return repository;
+}
+
 export async function getConfiguredEventRepository(
   organizationId: string
 ): Promise<{ repository: IEventRepository; store: EventStoreType }> {
@@ -219,11 +240,10 @@ async function recordRunEvent(
       };
     }
 
-    const { repository: $eventRepository } =
-      await clickhouseFactory.getEventRepositoryForOrganization(
-        foundRun.taskEventStore,
-        foundRun.runtimeEnvironment.organizationId
-      );
+    const $eventRepository = await getEventRepositoryForStore(
+      foundRun.taskEventStore,
+      foundRun.runtimeEnvironment.organizationId
+    );
 
     const { attributes, startTime, ...optionsRest } = options;
 

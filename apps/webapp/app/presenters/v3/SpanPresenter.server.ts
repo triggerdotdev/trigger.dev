@@ -29,7 +29,7 @@ import {
   extractAIToolCallData,
   extractAIEmbedData,
 } from "~/components/runs/v3/ai";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 export type PromptSpanData = {
   slug: string;
@@ -130,7 +130,7 @@ export class SpanPresenter extends BasePresenter {
 
     const { traceId } = parentRun;
 
-    const { repository } = await clickhouseFactory.getEventRepositoryForOrganization(
+    const repository = await getEventRepositoryForStore(
       parentRun.taskEventStore,
       project.organizationId
     );
