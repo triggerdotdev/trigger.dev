@@ -132,10 +132,11 @@ export class OrganizationDataStoresRegistry {
       data: {
         key,
         organizationIds,
-        kind: "CLICKHOUSE",
+        kind,
         config: { version: 1, data: { secretKey } },
       },
     });
+
   }
 
   async updateDataStore({
