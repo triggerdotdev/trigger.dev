@@ -242,10 +242,15 @@ export class ErrorGroupPresenter extends BasePresenter {
 
     const sortedVersions = sortVersionsDescending([...versionSet]);
 
+    // Build the data for the graph
+    // For each time bucket, if a value exists for a version set the value (don't add zeros)
     const data = buckets.map((epoch) => {
       const point: Record<string, number | Date> = { date: new Date(epoch * 1000) };
       for (const version of sortedVersions) {
-        point[version] = byBucketVersion.get(`${epoch}:${version}`) ?? 0;
+        const versionValue = byBucketVersion.get(`${epoch}:${version}`);
+        if (versionValue) {
+          point[version] = versionValue;
+        }
       }
       return point;
     });
