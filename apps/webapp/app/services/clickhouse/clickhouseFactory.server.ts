@@ -36,6 +36,21 @@ const defaultLogsClickhouseClient = singleton(
   initializeLogsClickhouseClient
 );
 
+function getLogsListClickhouseSettings() {
+  return {
+    max_memory_usage: env.CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE.toString(),
+    max_bytes_before_external_sort:
+      env.CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT.toString(),
+    max_threads: env.CLICKHOUSE_LOGS_LIST_MAX_THREADS,
+    ...(env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ && {
+      max_rows_to_read: env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ.toString(),
+    }),
+    ...(env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME && {
+      max_execution_time: env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME,
+    }),
+  };
+}
+
 function initializeLogsClickhouseClient() {
   if (!env.LOGS_CLICKHOUSE_URL) {
     throw new Error("LOGS_CLICKHOUSE_URL is not set");
@@ -54,18 +69,7 @@ function initializeLogsClickhouseClient() {
     logLevel: env.CLICKHOUSE_LOG_LEVEL,
     compression: { request: true },
     maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
-    clickhouseSettings: {
-      max_memory_usage: env.CLICKHOUSE_LOGS_LIST_MAX_MEMORY_USAGE.toString(),
-      max_bytes_before_external_sort:
-        env.CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT.toString(),
-      max_threads: env.CLICKHOUSE_LOGS_LIST_MAX_THREADS,
-      ...(env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ && {
-        max_rows_to_read: env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ.toString(),
-      }),
-      ...(env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME && {
-        max_execution_time: env.CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME,
-      }),
-    },
+    clickhouseSettings: getLogsListClickhouseSettings(),
   });
 }
 
@@ -163,18 +167,63 @@ export type ClientType = "standard" | "events" | "replication" | "logs" | "query
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
   parsed.searchParams.delete("secure");
+  const name = `org-clickhouse-${clientType}`;
 
-  return new ClickHouse({
-    url: parsed.toString(),
-    name: `org-clickhouse-${clientType}`,
-    keepAlive: {
-      enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
-    },
-    logLevel: env.CLICKHOUSE_LOG_LEVEL,
-    compression: { request: true },
-    maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
-  });
+  switch (clientType) {
+    case "events":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.EVENTS_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
+    case "replication":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+        compression: { request: true },
+        maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
+      });
+    case "logs":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.CLICKHOUSE_LOG_LEVEL,
+        compression: { request: true },
+        maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+        clickhouseSettings: getLogsListClickhouseSettings(),
+      });
+    case "standard":
+    case "query":
+    case "admin":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.CLICKHOUSE_LOG_LEVEL,
+        compression: { request: true },
+        maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
+  }
 }
 
 // ---------------------------------------------------------------------------
