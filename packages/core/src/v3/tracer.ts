@@ -145,11 +145,7 @@ export class TriggerTracer {
           }
 
           if (!spanEnded) {
-            if (typeof e === "string" || e instanceof Error) {
-              span.recordException(e);
-            }
-
-            span.setStatus({ code: SpanStatusCode.ERROR });
+            recordSpanException(span, e);
           }
 
           throw e;
