@@ -33,10 +33,18 @@ export class OrganizationDataStoresRegistry {
   }
 
   async loadFromDatabase(): Promise<void> {
-    const rows = await this._prisma.organizationDataStore.findMany();
+    // Sort by `key` (unique, immutable) to ensure a deterministic winner when the
+    // same `${orgId}:${kind}` appears in multiple rows. The registry must never
+    // throw on overlap — failing the load would break every customer, not just the
+    // misconfigured orgs — so we keep the first entry and log an error instead.
+    const rows = await this._prisma.organizationDataStore.findMany({
+      orderBy: { key: "asc" },
+    });
     const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
 
     const lookup = new Map<string, ParsedDataStore>();
+    /** Tracks which row's `key` already owns each `${orgId}:${kind}` so we can log conflicts. */
+    const winnerByLookupKey = new Map<string, string>();
 
     for (const row of rows) {
       let parsed: ParsedDataStore | null = null;
@@ -75,8 +83,16 @@ export class OrganizationDataStoresRegistry {
       }
 
       for (const orgId of row.organizationIds) {
-        const key = `${orgId}:${row.kind}`;
-        lookup.set(key, parsed);
+        const lookupKey = `${orgId}:${row.kind}`;
+        const existingWinner = winnerByLookupKey.get(lookupKey);
+        if (existingWinner) {
+          console.error(
+            `[OrganizationDataStoresRegistry] Overlapping OrganizationDataStore assignment for orgId="${orgId}" kind=${row.kind}: already routed to "${existingWinner}", ignoring "${row.key}". Pick one store per (org, kind) to resolve.`
+          );
+          continue;
+        }
+        winnerByLookupKey.set(lookupKey, row.key);
+        lookup.set(lookupKey, parsed);
       }
     }
 
