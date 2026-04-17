@@ -22,7 +22,7 @@ function ToolInvocation({
   part: any;
   onApprove?: (approvalId: string) => void;
   onDeny?: (approvalId: string) => void;
-  onToolOutput?: (toolCallId: string, output: unknown) => void;
+  onToolOutput?: (tool: string, toolCallId: string, output: unknown) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : "tool";
@@ -87,7 +87,7 @@ function ToolInvocation({
                 key={opt.id}
                 type="button"
                 onClick={() =>
-                  onToolOutput?.(part.toolCallId, {
+                  onToolOutput?.(toolName, part.toolCallId, {
                     skipped: false,
                     answers: [{ questionId: args.question, optionId: opt.id, text: opt.label }],
                   })
@@ -566,7 +566,7 @@ export function Chat({
           </p>
         )}
 
-        {messages.map((message, messageIndex) => (
+        {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
@@ -580,17 +580,7 @@ export function Chat({
                 {message.parts.map((part, i) => {
                   if (part.type === "text") {
                     if (message.role === "assistant") {
-                      return (
-                        <Streamdown
-                          key={i}
-                          animated
-                          isAnimating={
-                            status === "streaming" && messageIndex === messages.length - 1
-                          }
-                        >
-                          {part.text}
-                        </Streamdown>
-                      );
+                      return <Streamdown key={i}>{part.text}</Streamdown>;
                     }
                     return <span key={i}>{part.text}</span>;
                   }
@@ -652,8 +642,8 @@ export function Chat({
                         part={part}
                         onApprove={handleApprove}
                         onDeny={handleDeny}
-                        onToolOutput={(toolCallId, output) =>
-                          addToolOutput({ toolCallId, output })
+                        onToolOutput={(tool, toolCallId, output) =>
+                          addToolOutput({ tool, toolCallId, output })
                         }
                       />
                     );
