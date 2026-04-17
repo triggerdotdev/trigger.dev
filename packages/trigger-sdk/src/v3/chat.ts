@@ -37,6 +37,7 @@ function isRunPatAuthError(error: unknown): boolean {
   return e.name === "TriggerApiError" && (e.status === 401 || e.status === 403);
 }
 import { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID } from "./chat-constants.js";
+import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 
 const DEFAULT_STREAM_KEY = "chat";
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
@@ -259,6 +260,20 @@ type TriggerChatTransportOptionsBase<TClientData = unknown> = {
   ) => string | undefined | null | Promise<string | undefined | null>;
 
   /**
+   * Enable multi-tab coordination. When `true`, only one browser tab
+   * can send messages to a given chatId at a time. Other tabs enter
+   * read-only mode. Uses `BroadcastChannel` for cross-tab communication.
+   *
+   * Use `transport.isReadOnly(chatId)` or the `useChatTabCoordination` hook
+   * to check read-only state and disable the input UI.
+   *
+   * No-op when `BroadcastChannel` is unavailable (SSR, Node.js).
+   *
+   * @default false
+   */
+  multiTab?: boolean;
+
+  /**
    * Read-only "watch" mode for observing an existing chat run from the
    * outside (e.g. a dashboard viewer that wants to show an agent run's
    * conversation as it unfolds).
@@ -384,6 +399,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly defaultMetadata: Record<string, unknown> | undefined;
   private readonly triggerOptions: TriggerChatTransportOptions["triggerOptions"];
   private readonly watchMode: boolean;
+  private coordinator: ChatTabCoordinator | null = null;
   private _onSessionChange:
     | ((
         chatId: string,
@@ -423,6 +439,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.renewRunAccessToken = options.renewRunAccessToken;
     this.watchMode = options.watch ?? false;
 
+    if (options.multiTab && !this.watchMode) {
+      this.coordinator = new ChatTabCoordinator();
+
+      // Sync session state (lastEventId) from other tabs so this tab
+      // doesn't replay old SSE events when it takes over sending.
+      this.coordinator.addSessionListener((chatId, sessionUpdate) => {
+        const session = this.sessions.get(chatId);
+        if (session && sessionUpdate.lastEventId) {
+          session.lastEventId = sessionUpdate.lastEventId;
+        }
+      });
+    }
+
     // Restore sessions from external storage
     if (options.sessions) {
       for (const [chatId, session] of Object.entries(options.sessions)) {
@@ -446,6 +475,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk>> => {
     const { trigger, chatId, messageId, messages, abortSignal, body, metadata } = options;
+
+    // Multi-tab coordination: prevent sending from a read-only tab
+    if (this.coordinator) {
+      if (this.coordinator.isReadOnly(chatId)) {
+        throw new Error("This chat is active in another tab");
+      }
+      this.coordinator.claim(chatId);
+    }
 
     const mergedMetadata =
       this.defaultMetadata || metadata
@@ -501,6 +538,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         } else {
           previousRunId = session.runId;
           this.sessions.delete(chatId);
+          this.coordinator?.release(chatId);
           this.notifySessionChange(chatId, null);
           isContinuation = true;
         }
@@ -739,6 +777,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     chatId: string,
     action: unknown
   ): Promise<ReadableStream<UIMessageChunk>> => {
+    // Multi-tab coordination: prevent sending from a read-only tab
+    if (this.coordinator) {
+      if (this.coordinator.isReadOnly(chatId)) {
+        throw new Error("This chat is active in another tab");
+      }
+      this.coordinator.claim(chatId);
+    }
+
     const session = this.sessions.get(chatId);
 
     if (session?.runId) {
@@ -842,6 +888,59 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     fn: ((params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult>) | undefined
   ): void {
     this.triggerTaskFn = fn;
+  }
+
+  /**
+   * Check if a chatId is read-only (another tab is actively sending).
+   * Always returns `false` when `multiTab` is not enabled.
+   */
+  isReadOnly(chatId: string): boolean {
+    return this.coordinator?.isReadOnly(chatId) ?? false;
+  }
+
+  /**
+   * Check if THIS tab currently holds a claim for the chatId
+   * (i.e. this tab called sendMessages and the turn is in-flight).
+   */
+  hasClaim(chatId: string): boolean {
+    return this.coordinator?.hasClaim(chatId) ?? false;
+  }
+
+  /**
+   * Listen for read-only state changes across tabs.
+   * The listener receives `(chatId, isReadOnly)`.
+   */
+  addReadOnlyListener(fn: (chatId: string, isReadOnly: boolean) => void): void {
+    this.coordinator?.addListener(fn);
+  }
+
+  /** Remove a previously added read-only listener. */
+  removeReadOnlyListener(fn: (chatId: string, isReadOnly: boolean) => void): void {
+    this.coordinator?.removeListener(fn);
+  }
+
+  /** Broadcast messages to other tabs for real-time sync. */
+  broadcastMessages(chatId: string, messages: unknown[]): void {
+    this.coordinator?.broadcastMessages(chatId, messages);
+  }
+
+  /** Listen for message updates from other tabs. */
+  addMessagesListener(fn: (chatId: string, messages: unknown[]) => void): void {
+    this.coordinator?.addMessagesListener(fn);
+  }
+
+  /** Remove a previously added messages listener. */
+  removeMessagesListener(fn: (chatId: string, messages: unknown[]) => void): void {
+    this.coordinator?.removeMessagesListener(fn);
+  }
+
+  /**
+   * Clean up resources (BroadcastChannel, heartbeat timers).
+   * Call on component unmount when using `multiTab`.
+   */
+  dispose(): void {
+    this.coordinator?.dispose();
+    this.coordinator = null;
   }
 
   /**
@@ -1175,6 +1274,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
                   // Clear session so triggerNewRun creates a fresh one
                   this.sessions.delete(chatId);
+                  this.coordinator?.release(chatId);
                   this.notifySessionChange(chatId, null);
 
                   try {
@@ -1233,6 +1333,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                     this.notifySessionChange(chatId, session);
                   }
 
+                  // Release multi-tab claim so other tabs can send
+                  this.coordinator?.release(chatId);
+
+                  // Broadcast session to other tabs so they have the latest
+                  // lastEventId (prevents replaying old SSE events on next send)
+                  if (session) {
+                    this.coordinator?.broadcastSession(chatId, {
+                      lastEventId: session.lastEventId,
+                    });
+                  }
+
                   // Watch mode: keep the subscription open across turn
                   // boundaries so the consumer sees turn 2, 3, etc. through
                   // a single long-lived ReadableStream. Filter the control
@@ -1269,6 +1380,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
 
           controller.error(error);
+        } finally {
+          // Release multi-tab claim when the stream closes for any reason
+          // (turn-complete, error, abort, stream end)
+          if (chatId) {
+            this.coordinator?.release(chatId);
+          }
         }
       },
     });

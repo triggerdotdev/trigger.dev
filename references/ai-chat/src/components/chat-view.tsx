@@ -63,6 +63,7 @@ export function ChatView({
     sessions,
     onSessionChange: handleSessionChange,
     clientData: { userId: "user_123" },
+    multiTab: true,
     triggerOptions: {
       tags: ["user:user_123"],
     },
