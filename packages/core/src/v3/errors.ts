@@ -160,7 +160,9 @@ const MAX_STACK_LINE_LENGTH = 1024;
 const MAX_MESSAGE_LENGTH = 1_000;
 
 /** Truncate a stack trace to at most MAX_STACK_FRAMES frames, keeping
- *  the top (closest to throw) and bottom (entry points) frames. */
+ *  the top (closest to throw) and bottom (entry points) frames.
+ *  Individual lines (including message lines) are capped at MAX_STACK_LINE_LENGTH
+ *  to prevent OOM from huge error messages embedded in the stack. */
 export function truncateStack(stack: string | undefined): string {
   if (!stack) return "";
 
@@ -171,15 +173,14 @@ export function truncateStack(stack: string | undefined): string {
   const frameLines: string[] = [];
 
   for (const line of lines) {
+    const safe =
+      line.length > MAX_STACK_LINE_LENGTH
+        ? line.slice(0, MAX_STACK_LINE_LENGTH) + "...[truncated]"
+        : line;
     if (frameLines.length === 0 && !line.trimStart().startsWith("at ")) {
-      messageLines.push(line);
+      messageLines.push(safe);
     } else {
-      // Truncate individual lines to prevent regex DoS in downstream parsers
-      frameLines.push(
-        line.length > MAX_STACK_LINE_LENGTH
-          ? line.slice(0, MAX_STACK_LINE_LENGTH) + "...[truncated]"
-          : line
-      );
+      frameLines.push(safe);
     }
   }
 
@@ -317,9 +318,17 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
       };
     }
     case "CUSTOM_ERROR": {
+      // CUSTOM_ERROR.raw holds JSON.stringify(error) which is later parsed by
+      // JSON.parse in createErrorTaskError. Naive truncation would cut mid-token
+      // and produce invalid JSON — wrap the preview in a valid JSON envelope.
+      const clean = error.raw.replace(/\0/g, "");
+      const safeRaw =
+        clean.length > MAX_MESSAGE_LENGTH
+          ? JSON.stringify({ truncated: true, preview: clean.slice(0, MAX_MESSAGE_LENGTH) })
+          : clean;
       return {
         type: "CUSTOM_ERROR",
-        raw: truncateMessage(error.raw.replace(/\0/g, "")),
+        raw: safeRaw,
       };
     }
     case "INTERNAL_ERROR": {

@@ -162,4 +162,49 @@ describe("sanitizeError truncation", () => {
       expect(result.raw).toContain("...[truncated]");
     }
   });
+
+  it("preserves small CUSTOM_ERROR raw as valid JSON", () => {
+    const originalJson = JSON.stringify({ foo: "bar", nested: { baz: 1 } });
+    const result = sanitizeError({
+      type: "CUSTOM_ERROR",
+      raw: originalJson,
+    });
+
+    if (result.type === "CUSTOM_ERROR") {
+      // Small JSON should pass through unchanged and remain parseable
+      expect(result.raw).toBe(originalJson);
+      expect(() => JSON.parse(result.raw)).not.toThrow();
+    }
+  });
+
+  it("wraps oversized CUSTOM_ERROR raw in a valid JSON envelope", () => {
+    const hugeJson = JSON.stringify({ data: "x".repeat(5000) });
+    const result = sanitizeError({
+      type: "CUSTOM_ERROR",
+      raw: hugeJson,
+    });
+
+    if (result.type === "CUSTOM_ERROR") {
+      // Must remain valid JSON (critical: createErrorTaskError calls JSON.parse on this)
+      expect(() => JSON.parse(result.raw)).not.toThrow();
+      const parsed = JSON.parse(result.raw);
+      expect(parsed.truncated).toBe(true);
+      expect(typeof parsed.preview).toBe("string");
+      expect(parsed.preview.length).toBeLessThanOrEqual(1000);
+    }
+  });
+});
+
+describe("truncateStack message line bounding", () => {
+  it("truncates huge error messages embedded in the stack", () => {
+    // V8 format: "Error: <message>\n    at ..."
+    // A huge message on the first line must still be bounded.
+    const hugeMessage = "x".repeat(100_000);
+    const stack = `Error: ${hugeMessage}\n    at fn (/path.ts:1:1)`;
+    const result = truncateStack(stack);
+
+    // Total output should be bounded (not 100KB+)
+    expect(result.length).toBeLessThan(5_000);
+    expect(result).toContain("...[truncated]");
+  });
 });
