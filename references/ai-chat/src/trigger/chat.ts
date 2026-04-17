@@ -176,7 +176,7 @@ export const aiChat = chat
   .agent({
     id: "ai-chat",
     idleTimeoutInSeconds: 60,
-    chatAccessTokenTTL: "1m",
+    chatAccessTokenTTL: "1m", // TRI-8556 test
 
     // #region Compaction — automatic context window management
     compaction: {
@@ -392,15 +392,16 @@ export const aiChat = chat
       chatAccessToken,
       lastEventId,
     }) => {
-      // Log whether data-turn-metadata persisted to the response
-      const metadataParts = responseMessage?.parts?.filter(
-        (p: any) => p.type === "data-turn-metadata"
-      );
-      logger.info("onTurnComplete response parts check", {
+      // Log responseMessage parts for debugging TRI-8556
+      const partTypes = responseMessage?.parts?.map((p: any) => p.type) ?? [];
+      const toolParts = responseMessage?.parts?.filter((p: any) => p.type?.startsWith("tool-")) ?? [];
+      logger.info("onTurnComplete responseMessage", {
         hasResponseMessage: !!responseMessage,
+        responseMessageId: responseMessage?.id,
         totalParts: responseMessage?.parts?.length ?? 0,
-        metadataPartsCount: metadataParts?.length ?? 0,
-        metadataParts,
+        partTypes,
+        toolPartsCount: toolParts.length,
+        toolParts: toolParts.map((p: any) => ({ type: p.type, state: p.state, toolCallId: p.toolCallId })),
       });
       await prisma.chat.update({
         where: { id: chatId },

@@ -1,7 +1,10 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+import {
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  lastAssistantMessageIsCompleteWithToolCalls,
+} from "ai";
 import type { ChatUiMessage } from "@/lib/chat-tools";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
@@ -14,10 +17,12 @@ function ToolInvocation({
   part,
   onApprove,
   onDeny,
+  onToolOutput,
 }: {
   part: any;
   onApprove?: (approvalId: string) => void;
   onDeny?: (approvalId: string) => void;
+  onToolOutput?: (toolCallId: string, output: unknown) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const toolName = part.type.startsWith("tool-") ? part.type.slice(5) : "tool";
@@ -69,6 +74,31 @@ function ToolInvocation({
           >
             Deny
           </button>
+        </div>
+      )}
+
+      {/* askUser tool: show question + option buttons when input-available */}
+      {toolName === "askUser" && state === "input-available" && args?.question && (
+        <div className="border-t border-gray-200 px-3 py-2 space-y-2">
+          <div className="font-medium text-gray-700">{args.question}</div>
+          <div className="flex flex-wrap gap-2">
+            {(args.options ?? []).map((opt: any) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() =>
+                  onToolOutput?.(part.toolCallId, {
+                    skipped: false,
+                    answers: [{ questionId: args.question, optionId: opt.id, text: opt.label }],
+                  })
+                }
+                className="rounded border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-100"
+                title={opt.description}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -310,6 +340,7 @@ export function Chat({
     sendMessage,
     stop: aiStop,
     addToolApprovalResponse,
+    addToolOutput,
     status,
     error,
   } = useChat({
@@ -317,7 +348,9 @@ export function Chat({
     messages: initialMessages,
     transport,
     resume: resumeProp,
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+    sendAutomaticallyWhen: (opts) =>
+      lastAssistantMessageIsCompleteWithApprovalResponses(opts) ||
+      lastAssistantMessageIsCompleteWithToolCalls(opts),
   });
 
   // Use transport.stopGeneration for reliable stop after reconnect.
@@ -616,6 +649,9 @@ export function Chat({
                         part={part}
                         onApprove={handleApprove}
                         onDeny={handleDeny}
+                        onToolOutput={(toolCallId, output) =>
+                          addToolOutput({ toolCallId, output })
+                        }
                       />
                     );
                   }
