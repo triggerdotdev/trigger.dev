@@ -4,6 +4,28 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 17, 2026" description="0.0.0-chat-prerelease-20260417152143" tags={["SDK"]}>
+
+## Multi-tab coordination
+
+Prevent duplicate messages when the same chat is open in multiple browser tabs. Enable with `multiTab: true` on the transport.
+
+```tsx
+const transport = useTriggerChatTransport({ task: "my-chat", multiTab: true, accessToken });
+const { messages, setMessages } = useChat({ id: chatId, transport });
+const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
+```
+
+Only one tab can send at a time. Other tabs enter read-only mode with real-time message updates via `BroadcastChannel`. When the active tab's turn completes, any tab can send next. Crashed tabs are detected via heartbeat timeout (10s).
+
+See [Multi-tab coordination](/ai-chat/frontend#multi-tab-coordination) and [`useMultiTabChat`](/ai-chat/reference#usemultitabchat).
+
+## Error stack truncation
+
+Large error stacks no longer OOM the worker process. Stacks are capped at 50 frames (top 5 + bottom 45), individual lines at 1024 chars, messages at 1000 chars. Applied in `parseError`, `sanitizeError`, and OTel span recording.
+
+</Update>
+
 <Update label="April 15, 2026" description="0.0.0-chat-prerelease-20260415164455" tags={["SDK"]}>
 
 ## Fix: `resume: true` hangs on completed turns

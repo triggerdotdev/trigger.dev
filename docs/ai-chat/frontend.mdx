@@ -406,6 +406,65 @@ for await (const chunk of stream) {
 }
 ```
 
+## Multi-tab coordination
+
+When the same chat is open in multiple browser tabs, `multiTab: true` prevents duplicate messages and syncs conversation state across tabs. Only one tab can send at a time. Other tabs enter read-only mode with real-time message updates.
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useMultiTabChat } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+
+function Chat({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken,
+    multiTab: true,
+  });
+
+  const { messages, setMessages, sendMessage } = useChat({
+    id: chatId,
+    transport,
+  });
+
+  const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
+
+  return (
+    <div>
+      {isReadOnly && (
+        <div className="bg-amber-50 text-amber-700 p-2 text-sm">
+          This chat is active in another tab. Messages are read-only.
+        </div>
+      )}
+      {/* message list */}
+      <input
+        disabled={isReadOnly}
+        placeholder={isReadOnly ? "Active in another tab" : "Type a message..."}
+      />
+    </div>
+  );
+}
+```
+
+### How it works
+
+1. When a tab sends a message, the transport "claims" the chatId via `BroadcastChannel`
+2. Other tabs detect the claim and enter read-only mode (`isReadOnly: true`)
+3. The active tab broadcasts its messages so read-only tabs see updates in real-time
+4. When the turn completes, the claim is released. Any tab can send next.
+5. Heartbeats detect crashed tabs (10s timeout clears stale claims)
+
+### What `useMultiTabChat` does
+
+- Returns `{ isReadOnly }` for disabling the input UI
+- Broadcasts `messages` from the active tab to other tabs
+- Calls `setMessages` on read-only tabs when messages arrive from the active tab
+- Tracks read-only state via the transport's `BroadcastChannel` coordinator
+
+<Note>
+  Multi-tab coordination is same-browser only (`BroadcastChannel` is a browser API). It gracefully degrades to a no-op in Node.js, SSR, or browsers without `BroadcastChannel` support. Cross-device coordination requires server-side involvement.
+</Note>
+
 ## Self-hosting
 
 If you're self-hosting Trigger.dev, pass the `baseURL` option:

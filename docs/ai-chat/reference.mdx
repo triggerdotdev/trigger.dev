@@ -534,6 +534,20 @@ const transport = useTriggerChatTransport({
 });
 ```
 
+### multiTab
+
+Enable multi-tab coordination. When `true`, only one browser tab can send messages to a given chatId at a time. Other tabs enter read-only mode with real-time message updates via `BroadcastChannel`.
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken,
+  multiTab: true,
+});
+```
+
+No-op when `BroadcastChannel` is unavailable (SSR, Node.js). See [Multi-tab coordination](/ai-chat/frontend#multi-tab-coordination).
+
 ### triggerOptions
 
 Options forwarded to the Trigger.dev API when starting a new run. Only applies to the first message — subsequent messages reuse the same run.
@@ -628,6 +642,32 @@ const transport = useTriggerChatTransport<typeof myChat>({
 ```
 
 The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
+
+## useMultiTabChat
+
+React hook for multi-tab message coordination. Import from `@trigger.dev/sdk/chat/react`.
+
+```tsx
+import { useMultiTabChat } from "@trigger.dev/sdk/chat/react";
+
+const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `transport` | `TriggerChatTransport` | Transport instance with `multiTab: true` |
+| `chatId` | `string` | The chat session ID |
+| `messages` | `UIMessage[]` | Current messages from `useChat` |
+| `setMessages` | `(messages) => void` | Message setter from `useChat` |
+
+**Returns:** `{ isReadOnly: boolean }` — `true` when another tab is actively sending to this chatId.
+
+The hook handles:
+- Tracking read-only state from the transport's `BroadcastChannel` coordinator
+- Broadcasting messages when this tab is the active sender
+- Receiving messages from other tabs and updating via `setMessages`
+
+See [Multi-tab coordination](/ai-chat/frontend#multi-tab-coordination).
 
 ## Related
 
