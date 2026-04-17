@@ -79,8 +79,12 @@ export async function getEventRepository(
 ): Promise<{ repository: IEventRepository; store: string }> {
   const taskEventStore = parentStore ?? (await resolveTaskEventRepositoryFlag(featureFlags));
 
-  // Support legacy Postgres store for self-hosters
-  if (taskEventStore === EVENT_STORE_TYPES.POSTGRES) {
+  // Non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
+  // runs, or the legacy "postgres" value) resolve to the Prisma event repo.
+  if (
+    taskEventStore !== EVENT_STORE_TYPES.CLICKHOUSE &&
+    taskEventStore !== EVENT_STORE_TYPES.CLICKHOUSE_V2
+  ) {
     return { repository: eventRepository, store: getTaskEventStore() };
   }
 
