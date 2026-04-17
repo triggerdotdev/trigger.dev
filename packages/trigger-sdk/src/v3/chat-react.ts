@@ -103,7 +103,70 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
     ref.current?.setTriggerTask(triggerTask);
   }, [triggerTask]);
 
+  // Note: dispose() is NOT called in effect cleanup because React strict mode
+  // runs cleanup+re-setup, but the transport lives in a ref and isn't recreated.
+  // Calling dispose() would permanently close the BroadcastChannel.
+  // The coordinator's beforeunload handler handles tab close cleanup instead.
+
   return ref.current;
+}
+
+/**
+ * Sync chat messages across browser tabs.
+ *
+ * Requires `multiTab: true` on the transport. Handles:
+ * - Tracking read-only state (`isReadOnly`) when another tab is active
+ * - Broadcasting messages from the active tab to other tabs
+ * - Receiving messages from other tabs and updating local state via `setMessages`
+ *
+ * @example
+ * ```tsx
+ * const transport = useTriggerChatTransport({ task: "my-chat", multiTab: true, accessToken });
+ * const { messages, setMessages } = useChat({ id: chatId, transport });
+ * const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
+ *
+ * <input disabled={isReadOnly} placeholder={isReadOnly ? "Active in another tab" : "Type a message..."} />
+ * ```
+ */
+export function useMultiTabChat<T = unknown>(
+  transport: TriggerChatTransport,
+  chatId: string,
+  messages: T[],
+  setMessages: (messages: T[]) => void
+): { isReadOnly: boolean } {
+  const [isReadOnly, setIsReadOnly] = useState(() => transport.isReadOnly(chatId));
+
+  // Track read-only state
+  useEffect(() => {
+    const listener = (id: string, readOnly: boolean) => {
+      if (id === chatId) setIsReadOnly(readOnly);
+    };
+    transport.addReadOnlyListener(listener);
+    setIsReadOnly(transport.isReadOnly(chatId));
+    return () => transport.removeReadOnlyListener(listener);
+  }, [transport, chatId]);
+
+  // Active tab: broadcast messages to other tabs on change.
+  // Only broadcast when THIS tab holds the claim (is the current sender).
+  // Using !isReadOnly alone causes a feedback loop when both tabs are idle.
+  useEffect(() => {
+    if (transport.hasClaim(chatId) && messages.length > 0) {
+      transport.broadcastMessages(chatId, messages as unknown[]);
+    }
+  }, [transport, chatId, messages]);
+
+  // Read-only tab: receive messages from the active tab
+  useEffect(() => {
+    const listener = (id: string, msgs: unknown[]) => {
+      if (id === chatId) {
+        setMessages(msgs as T[]);
+      }
+    };
+    transport.addMessagesListener(listener);
+    return () => transport.removeMessagesListener(listener);
+  }, [transport, chatId, setMessages]);
+
+  return { isReadOnly };
 }
 
 // ---------------------------------------------------------------------------

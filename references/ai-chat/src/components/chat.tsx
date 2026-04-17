@@ -8,7 +8,7 @@ import {
 import type { ChatUiMessage } from "@/lib/chat-tools";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
-import { usePendingMessages } from "@trigger.dev/sdk/chat/react";
+import { usePendingMessages, useMultiTabChat } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { MODEL_OPTIONS } from "@/lib/models";
@@ -352,6 +352,9 @@ export function Chat({
       lastAssistantMessageIsCompleteWithApprovalResponses(opts) ||
       lastAssistantMessageIsCompleteWithToolCalls(opts),
   });
+
+  // Multi-tab coordination: sync messages between tabs
+  const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
 
   // Use transport.stopGeneration for reliable stop after reconnect.
   // Once the AI SDK passes abortSignal through reconnectToStream,
@@ -768,17 +771,23 @@ export function Chat({
         }}
         className="shrink-0 border-t border-gray-200 bg-white p-4"
       >
+        {isReadOnly && (
+          <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+            This chat is active in another tab. Messages are read-only.
+          </div>
+        )}
         <div className="flex gap-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            placeholder={isReadOnly ? "Chat is active in another tab" : "Type a message..."}
+            disabled={isReadOnly}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
           />
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() || isReadOnly}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             Send
