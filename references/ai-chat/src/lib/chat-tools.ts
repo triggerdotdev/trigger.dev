@@ -324,6 +324,27 @@ export const sendEmail = tool({
   },
 });
 
+export const askUser = tool({
+  description:
+    "Ask the user a question when you need clarification or input before proceeding. " +
+    "Present 2-4 options for the user to choose from. Use when uncertain about the user's intent.",
+  inputSchema: z.object({
+    question: z.string().describe("The question to ask the user"),
+    options: z
+      .array(
+        z.object({
+          id: z.string().describe("Unique option identifier"),
+          label: z.string().describe("Short option title"),
+          description: z.string().optional().describe("Longer explanation"),
+        })
+      )
+      .min(2)
+      .max(4),
+  }),
+  // No execute function — streamText ends, turn completes,
+  // frontend sends the answer via addToolOutput
+});
+
 /** Tool set passed to `streamText` for the main `chat.agent` run (includes PostHog). */
 export const chatTools = {
   inspectEnvironment,
@@ -333,6 +354,7 @@ export const chatTools = {
   executeCode,
   executeJs,
   sendEmail,
+  askUser,
 };
 
 type ChatToolSet = typeof chatTools;
