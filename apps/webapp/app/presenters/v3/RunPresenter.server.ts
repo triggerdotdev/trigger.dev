@@ -7,7 +7,7 @@ import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -145,7 +145,7 @@ export class RunPresenter {
       };
     }
 
-    const { repository } = await clickhouseFactory.getEventRepositoryForOrganization(
+    const repository = await getEventRepositoryForStore(
       run.taskEventStore,
       run.runtimeEnvironment.organizationId
     );

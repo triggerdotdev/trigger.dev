@@ -6,7 +6,6 @@ import { singleton } from "~/utils/singleton";
 import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
-import { eventRepository as postgresEventRepository } from "~/v3/eventRepository/eventRepository.server";
 
 // ---------------------------------------------------------------------------
 // Default clients (singleton per process)
@@ -255,14 +254,6 @@ export class ClickhouseFactory {
     store: string,
     organizationId: string
   ): { key: string; repository: IEventRepository } {
-    // Non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
-    // runs, or "postgres") fall back to the Prisma event repository. This lets
-    // callers pass `run.taskEventStore` directly without needing to guard
-    // against legacy/Postgres values.
-    if (store !== "clickhouse" && store !== "clickhouse_v2") {
-      return { key: `postgres:${store}`, repository: postgresEventRepository };
-    }
-
     const dataStore = this._registry.get(organizationId, "CLICKHOUSE");
 
     if (!dataStore) {
