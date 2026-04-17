@@ -11,7 +11,7 @@ import type { TableSchema, WhereClauseCondition } from "@internal/tsql";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { clickhouseFactory } from "./clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "./clickhouse/clickhouseFactoryInstance.server";
 import {
   queryConcurrencyLimiter,
   DEFAULT_ORG_CONCURRENCY_LIMIT,

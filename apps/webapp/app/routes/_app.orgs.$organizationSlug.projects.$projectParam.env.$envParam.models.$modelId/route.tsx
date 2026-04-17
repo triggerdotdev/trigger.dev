@@ -28,7 +28,7 @@ import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ModelRegistryPresenter } from "~/presenters/v3/ModelRegistryPresenter.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";

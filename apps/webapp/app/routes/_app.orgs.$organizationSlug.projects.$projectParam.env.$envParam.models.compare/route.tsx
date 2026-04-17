@@ -20,7 +20,7 @@ import {
   type ModelComparisonItem,
   ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";

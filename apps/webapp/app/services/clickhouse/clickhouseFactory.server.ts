@@ -3,7 +3,6 @@ import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
-import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 
@@ -280,15 +279,6 @@ export class ClickhouseFactory {
     return { key: cacheKey, repository: repository };
   }
 }
-
-// ---------------------------------------------------------------------------
-// Singleton factory instance
-// ---------------------------------------------------------------------------
-
-export const clickhouseFactory = singleton(
-  "clickhouseFactory",
-  () => new ClickhouseFactory(organizationDataStoresRegistry)
-);
 
 /**
  * Get admin ClickHouse client for cross-organization queries.

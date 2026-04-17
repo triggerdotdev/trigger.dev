@@ -1,7 +1,7 @@
 import { ScheduleObject } from "@trigger.dev/core/v3";
 import { PrismaClient, prisma } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { nextScheduledTimestamps } from "~/v3/utils/calculateNextSchedule.server";
 import { NextRunListPresenter } from "./NextRunListPresenter.server";
 import { scheduleWhereClause } from "~/models/schedules.server";

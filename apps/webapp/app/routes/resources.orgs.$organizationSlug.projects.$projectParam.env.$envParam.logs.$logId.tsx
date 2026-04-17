@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";

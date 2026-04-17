@@ -6,7 +6,7 @@ import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 export const EVENT_STORE_TYPES = {
   POSTGRES: "postgres",

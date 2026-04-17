@@ -74,7 +74,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { $replica } from "~/db.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
 import { TestSidebarTabs } from "./TestSidebarTabs";
 import { AIPayloadTabContent } from "./AIPayloadTabContent";

@@ -1,6 +1,6 @@
 import invariant from "tiny-invariant";
 import { env } from "~/env.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { meter, provider } from "~/v3/tracer.server";
 import { RunsReplicationService } from "./runsReplicationService.server";

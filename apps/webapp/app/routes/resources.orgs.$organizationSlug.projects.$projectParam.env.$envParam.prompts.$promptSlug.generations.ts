@@ -6,7 +6,7 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   PromptPresenter,
   type GenerationRow,
