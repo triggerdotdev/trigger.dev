@@ -4,7 +4,7 @@ import {
   type TaskTriggerSource,
 } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   type AverageDurations,
   ClickHouseEnvironmentMetricsRepository,

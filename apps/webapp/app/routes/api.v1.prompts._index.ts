@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(

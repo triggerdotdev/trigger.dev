@@ -7,7 +7,7 @@ import {
 } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { ErrorAlertConfig } from "~/models/projectAlert.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 

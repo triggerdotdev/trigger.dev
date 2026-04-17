@@ -31,7 +31,7 @@ import {
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";

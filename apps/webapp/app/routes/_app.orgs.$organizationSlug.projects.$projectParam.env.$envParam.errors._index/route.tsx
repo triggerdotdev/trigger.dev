@@ -70,7 +70,7 @@ import {
   type ErrorOccurrences,
   type ErrorsList as ErrorsListData,
 } from "~/presenters/v3/ErrorsListPresenter.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";

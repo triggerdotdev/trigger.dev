@@ -20,10 +20,8 @@ import {
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
-import {
-  clickhouseFactory,
-  type ClickhouseFactory,
-} from "~/services/clickhouse/clickhouseFactory.server";
+import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 import { generateSpanId } from "./eventRepository/common.server";
 import type {
