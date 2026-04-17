@@ -102,9 +102,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
-  const presenter = new TestTaskPresenter($replica, clickhouse);
   try {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      project.organizationId,
+      "standard"
+    );
+    const presenter = new TestTaskPresenter($replica, clickhouse);
+
     const [result, regionsResult] = await Promise.all([
       presenter.call({
         userId: user.id,
