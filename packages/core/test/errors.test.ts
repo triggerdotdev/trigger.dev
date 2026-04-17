@@ -195,6 +195,36 @@ describe("sanitizeError truncation", () => {
   });
 });
 
+describe("sanitizeError INTERNAL_ERROR optional fields", () => {
+  it("preserves undefined message (does not convert to empty string)", () => {
+    const result = sanitizeError({
+      type: "INTERNAL_ERROR",
+      code: "SOME_INTERNAL_CODE" as any,
+      // message and stackTrace intentionally undefined
+    });
+
+    if (result.type === "INTERNAL_ERROR") {
+      // Must stay undefined so `error.message ?? fallback` works downstream
+      expect(result.message).toBeUndefined();
+      expect(result.stackTrace).toBeUndefined();
+    }
+  });
+
+  it("truncates INTERNAL_ERROR message when present", () => {
+    const result = sanitizeError({
+      type: "INTERNAL_ERROR",
+      code: "SOME_INTERNAL_CODE" as any,
+      message: "x".repeat(5000),
+    });
+
+    if (result.type === "INTERNAL_ERROR") {
+      expect(result.message).toBeDefined();
+      expect(result.message!.length).toBeLessThan(1100);
+      expect(result.message).toContain("...[truncated]");
+    }
+  });
+});
+
 describe("truncateStack message line bounding", () => {
   it("truncates huge error messages embedded in the stack", () => {
     // V8 format: "Error: <message>\n    at ..."

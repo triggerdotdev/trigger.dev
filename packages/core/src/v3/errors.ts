@@ -332,11 +332,20 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
       };
     }
     case "INTERNAL_ERROR": {
+      // message and stackTrace are optional for INTERNAL_ERROR — preserve
+      // `undefined` so the `error.message ?? "Internal error (CODE)"` fallback
+      // in createErrorTaskError still kicks in (empty string is not nullish).
       return {
         type: "INTERNAL_ERROR",
         code: error.code,
-        message: truncateMessage(error.message?.replace(/\0/g, "")),
-        stackTrace: truncateStack(error.stackTrace?.replace(/\0/g, "")),
+        message:
+          error.message != null
+            ? truncateMessage(error.message.replace(/\0/g, ""))
+            : undefined,
+        stackTrace:
+          error.stackTrace != null
+            ? truncateStack(error.stackTrace.replace(/\0/g, ""))
+            : undefined,
       };
     }
   }
