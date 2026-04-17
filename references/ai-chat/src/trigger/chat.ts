@@ -176,7 +176,7 @@ export const aiChat = chat
   .agent({
     id: "ai-chat",
     idleTimeoutInSeconds: 60,
-    chatAccessTokenTTL: "1m", // TRI-8556 test
+    chatAccessTokenTTL: "1m",
 
     // #region Compaction — automatic context window management
     compaction: {
