@@ -148,12 +148,43 @@ export function useMultiTabChat<T = unknown>(
 
   // Active tab: broadcast messages to other tabs on change.
   // Only broadcast when THIS tab holds the claim (is the current sender).
-  // Using !isReadOnly alone causes a feedback loop when both tabs are idle.
+  // Deferred via requestIdleCallback so the structured clone in
+  // BroadcastChannel.postMessage never blocks rendering during streaming.
+  const idleRef = useRef<number | ReturnType<typeof setTimeout> | null>(null);
+  const latestMessagesRef = useRef(messages);
+  latestMessagesRef.current = messages;
+
   useEffect(() => {
-    if (transport.hasClaim(chatId) && messages.length > 0) {
-      transport.broadcastMessages(chatId, messages as unknown[]);
-    }
+    if (!transport.hasClaim(chatId) || messages.length === 0) return;
+    if (idleRef.current !== null) return; // Already scheduled
+
+    const schedule =
+      typeof requestIdleCallback === "function"
+        ? requestIdleCallback
+        : (fn: () => void) => setTimeout(fn, 50);
+
+    idleRef.current = schedule(() => {
+      idleRef.current = null;
+      if (transport.hasClaim(chatId)) {
+        transport.broadcastMessages(chatId, latestMessagesRef.current as unknown[]);
+      }
+    });
   }, [transport, chatId, messages]);
+
+  // Flush final state when claim is released (turn complete)
+  useEffect(() => {
+    if (!transport.hasClaim(chatId) && latestMessagesRef.current.length > 0) {
+      if (idleRef.current !== null) {
+        const cancel =
+          typeof cancelIdleCallback === "function"
+            ? cancelIdleCallback
+            : clearTimeout;
+        cancel(idleRef.current as any);
+        idleRef.current = null;
+      }
+      transport.broadcastMessages(chatId, latestMessagesRef.current as unknown[]);
+    }
+  }, [transport, chatId, isReadOnly]);
 
   // Read-only tab: receive messages from the active tab
   useEffect(() => {
