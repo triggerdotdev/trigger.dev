@@ -37,7 +37,7 @@ export default function Page() {
               to: "/admin/llm-models",
             },
             {
-              label: "Feature Flags",
+              label: "Global Feature Flags",
               to: "/admin/feature-flags",
             },
             {
