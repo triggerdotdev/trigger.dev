@@ -117,6 +117,39 @@ describe("OrganizationDataStoresRegistry", () => {
     expect(z?.url).toBe(TEST_URL);
   });
 
+  postgresTest(
+    "when an org appears in multiple data stores, first row by id asc wins",
+    async ({ prisma }) => {
+      const registry = new OrganizationDataStoresRegistry(prisma);
+      const sharedOrg = "org-dup-overlap";
+
+      await registry.addDataStore({
+        key: "dup-overlap-first",
+        kind: "CLICKHOUSE",
+        organizationIds: [sharedOrg],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+      });
+      await registry.addDataStore({
+        key: "dup-overlap-second",
+        kind: "CLICKHOUSE",
+        organizationIds: [sharedOrg],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL_2 }),
+      });
+
+      const [winner] = await prisma.organizationDataStore.findMany({
+        where: { key: { in: ["dup-overlap-first", "dup-overlap-second"] } },
+        orderBy: { id: "asc" },
+      });
+      expect(winner).toBeDefined();
+
+      await registry.loadFromDatabase();
+
+      const expectedUrl =
+        winner!.key === "dup-overlap-first" ? TEST_URL : TEST_URL_2;
+      expect(registry.get(sharedOrg, "CLICKHOUSE")?.url).toBe(expectedUrl);
+    }
+  );
+
   postgresTest("updateDataStore updates organizationIds and rotates the secret", async ({ prisma }) => {
     const registry = new OrganizationDataStoresRegistry(prisma);
 
