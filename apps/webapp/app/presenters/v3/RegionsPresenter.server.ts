@@ -1,3 +1,4 @@
+import { type WorkloadType } from "@trigger.dev/database";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -15,6 +16,7 @@ export type Region = {
   staticIPs?: string | null;
   isDefault: boolean;
   isHidden: boolean;
+  workloadType: WorkloadType;
 };
 
 export class RegionsPresenter extends BasePresenter {
@@ -76,6 +78,7 @@ export class RegionsPresenter extends BasePresenter {
         location: true,
         staticIPs: true,
         hidden: true,
+        workloadType: true,
       },
       where: isAdmin
         ? undefined
@@ -99,6 +102,7 @@ export class RegionsPresenter extends BasePresenter {
       staticIPs: region.staticIPs ?? undefined,
       isDefault: region.id === defaultWorkerInstanceGroupId,
       isHidden: region.hidden,
+      workloadType: region.workloadType,
     }));
 
     if (project.defaultWorkerGroupId) {
@@ -111,6 +115,7 @@ export class RegionsPresenter extends BasePresenter {
           location: true,
           staticIPs: true,
           hidden: true,
+          workloadType: true,
         },
         where: { id: project.defaultWorkerGroupId },
       });
@@ -131,6 +136,7 @@ export class RegionsPresenter extends BasePresenter {
           staticIPs: defaultWorkerGroup.staticIPs ?? undefined,
           isDefault: true,
           isHidden: defaultWorkerGroup.hidden,
+          workloadType: defaultWorkerGroup.workloadType,
         });
       }
     }
