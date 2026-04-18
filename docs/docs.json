@@ -108,7 +108,8 @@
                       "ai-chat/patterns/version-upgrades",
                       "ai-chat/patterns/database-persistence",
                       "ai-chat/patterns/branching-conversations",
-                      "ai-chat/patterns/code-sandbox"
+                      "ai-chat/patterns/code-sandbox",
+                      "ai-chat/patterns/human-in-the-loop"
                     ]
                   },
                   "ai-chat/client-protocol",

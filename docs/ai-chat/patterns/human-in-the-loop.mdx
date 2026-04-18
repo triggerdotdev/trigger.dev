@@ -1,0 +1,240 @@
+---
+title: "Human-in-the-loop"
+sidebarTitle: "Human-in-the-loop"
+description: "Pause the agent mid-response to ask the user a clarifying question, then resume with their answer."
+---
+
+Some turns need to stop and ask the user something before they can finish — picking between options, confirming a destructive action, or clarifying an ambiguous request. The AI SDK calls this **human-in-the-loop** (HITL), and the building block is a tool with no `execute` function.
+
+When the LLM calls a tool that has no `execute`, `streamText` ends with the tool call still pending. The turn completes cleanly, the frontend renders UI to collect the answer, and when the user responds, a new turn resumes with the answer merged into the same assistant message.
+
+## How it works
+
+```
+Turn N:
+  User message → run()
+  LLM streams text → calls askUser tool (no execute)
+  streamText ends with tool-call in `input-available` state
+  onTurnComplete fires (finishReason = "tool-calls")
+  Agent idle
+
+Frontend:
+  Renders question + option buttons from tool input
+  User clicks → addToolOutput({ tool, toolCallId, output })
+  sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls
+  → sendMessage() fires next turn
+
+Turn N+1:
+  hydrateMessages / accumulator sees the updated assistant message
+  run() is called, LLM continues from the tool result
+  onTurnComplete fires (finishReason = "stop", responseMessage is the FULL merged message)
+```
+
+The AI SDK's `toUIMessageStream` automatically reuses the assistant message ID across the pause (we pass `originalMessages` internally), so `responseMessage` in the post-resume `onTurnComplete` is the **full merged message** — the original text, the completed tool call, and any follow-up content — not just the new parts.
+
+## Backend: define the tool
+
+A HITL tool has an `inputSchema` describing what the model can ask, but **no `execute` function**. When the LLM calls it, `streamText` returns control to your agent.
+
+```ts trigger/my-chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, tool } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const askUser = tool({
+  description:
+    "Ask the user a clarifying question when you need their input. " +
+    "Present 2-4 options for them to pick from.",
+  inputSchema: z.object({
+    question: z.string(),
+    options: z
+      .array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          description: z.string().optional(),
+        })
+      )
+      .min(2)
+      .max(4),
+  }),
+  // No execute function — streamText ends, the frontend supplies the output
+  // via addToolOutput, and the next turn continues from the result.
+});
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      tools: { askUser },
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+## Frontend: render the question and collect the answer
+
+Two pieces on the client:
+
+1. **UI for the pending tool call** — render when the tool part is in `input-available` state, i.e. the LLM has called the tool but there's no output yet.
+2. **Auto-send on resolution** — use `sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls` so answering kicks off the next turn without the user having to hit "send."
+
+```tsx
+import { useChat, lastAssistantMessageIsCompleteWithToolCalls } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/react-hooks";
+
+function ChatView({ chatId, accessToken }: { chatId: string; accessToken: string }) {
+  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+  const { messages, sendMessage, addToolOutput } = useChat({
+    id: chatId,
+    transport,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+  });
+
+  return (
+    <>
+      {messages.map((m) =>
+        m.parts.map((part, i) => {
+          if (part.type === "tool-askUser" && part.state === "input-available") {
+            return (
+              <AskUserCard
+                key={i}
+                question={part.input.question}
+                options={part.input.options}
+                onAnswer={(opt) =>
+                  addToolOutput({
+                    tool: "askUser",
+                    toolCallId: part.toolCallId,
+                    output: { optionId: opt.id, label: opt.label },
+                  })
+                }
+              />
+            );
+          }
+          if (part.type === "text") return <Markdown key={i}>{part.text}</Markdown>;
+          return null;
+        })
+      )}
+    </>
+  );
+}
+```
+
+`addToolOutput` patches the assistant message locally with `state: "output-available"` and fills in `output`. `lastAssistantMessageIsCompleteWithToolCalls` detects that every pending tool call now has a result, and `useChat` fires a new `sendMessage` — the backend picks it up as the next turn.
+
+## Detecting a paused turn in `onTurnComplete`
+
+Two ways to detect "this turn paused for user input" vs "this turn finished normally":
+
+### Via `finishReason` (recommended)
+
+The AI SDK's finish reason is surfaced on every `onTurnComplete` event. If the model stopped on tool calls, it's `"tool-calls"`:
+
+```ts
+onTurnComplete: async ({ finishReason, responseMessage }) => {
+  if (finishReason === "tool-calls") {
+    // Turn paused — assistant message has pending tool call(s)
+    const pending = responseMessage?.parts.filter(
+      (p) => p.type.startsWith("tool-") && p.state === "input-available"
+    );
+    // Persist as a checkpoint / partial turn
+  } else {
+    // finishReason === "stop" — normal completion
+    // Persist as a completed turn
+  }
+};
+```
+
+<Note>
+  `finishReason` is only undefined for manual `chat.pipe()` flows or aborted streams. For the common `run() → return streamText(...)` pattern it's always populated.
+</Note>
+
+### Via response parts
+
+If you need more nuance (e.g. which specific tool is pending), inspect the parts directly:
+
+```ts
+function pendingToolCalls(message: UIMessage): string[] {
+  return message.parts
+    .filter((p) => p.type.startsWith("tool-") && p.state === "input-available")
+    .map((p) => p.toolCallId);
+}
+```
+
+Both `finishReason === "tool-calls"` and `pendingToolCalls(responseMessage).length > 0` are equivalent in practice. Use `finishReason` for dispatch, parts for detail.
+
+## Persistence: one message vs one record per pause
+
+Because the AI SDK reuses the assistant message ID across the pause, the "same turn" from the user's perspective maps to **two `onTurnComplete` firings** on the server — but both receive a `responseMessage` with the **same `id`**, and the second firing's `responseMessage` contains the fully merged content.
+
+Two common persistence patterns:
+
+### Overwrite on every turn (simplest)
+
+Just store the latest `uiMessages` array on every `onTurnComplete`. The paused-turn write is overwritten by the resume-turn write; the final DB state has the full merged message.
+
+```ts
+onTurnComplete: async ({ chatId, uiMessages }) => {
+  await db.chat.update({
+    where: { id: chatId },
+    data: { messages: uiMessages },
+  });
+},
+```
+
+Use this unless you specifically need an audit trail.
+
+### Checkpoint nodes (immutable history)
+
+For apps that want every pause point recorded as its own immutable snapshot (branching, replay, diff review), save a checkpoint when paused and a sibling when complete:
+
+```ts
+onTurnComplete: async ({ chatId, responseMessage, finishReason, uiMessages }) => {
+  if (!responseMessage) return;
+
+  if (finishReason === "tool-calls") {
+    // Paused — save a checkpoint
+    await db.turnCheckpoint.create({
+      data: {
+        chatId,
+        messageId: responseMessage.id,
+        parts: responseMessage.parts,
+        kind: "partial",
+      },
+    });
+  } else {
+    // Completed — save a sibling with the merged full message
+    await db.turnCheckpoint.create({
+      data: {
+        chatId,
+        messageId: responseMessage.id,
+        parts: responseMessage.parts,
+        kind: "final",
+      },
+    });
+  }
+
+  // Always update the canonical chat record for `hydrateMessages` to load
+  await db.chat.update({
+    where: { id: chatId },
+    data: { messages: uiMessages },
+  });
+};
+```
+
+Both writes see `responseMessage.id` as the same value — they're checkpoints of the same logical message. Grouping by `messageId` + ordering by `createdAt` gives you the progression.
+
+## Multi-pause turns
+
+A single logical turn can pause more than once — the LLM asks question A, gets the answer, thinks, then asks question B before finishing. Each pause fires its own `onTurnComplete` with `finishReason === "tool-calls"`; only the last firing has `finishReason === "stop"`. The checkpoint pattern above handles this naturally — each pause adds a new checkpoint sharing the same `responseMessage.id`.
+
+## Gotchas
+
+- **Don't set an `execute` function on the HITL tool.** If it has one, `streamText` will call it immediately instead of handing control back.
+- **The frontend must use `sendAutomaticallyWhen`.** Without it, the user has to press Enter after answering — `addToolOutput` updates local state but doesn't fire a new turn by itself.
+- **Don't mutate `responseMessage` in `onTurnComplete`.** It's the captured snapshot. To add custom parts, use `chat.response.append()` in `onBeforeTurnComplete` (while the stream is open).
+- **Stop handling.** If the user stops the run while a pause is active (`chat.stop()` on the transport), `onTurnComplete` fires with `stopped: true` and `finishReason` reflecting the last successful step. Treat stopped paused turns the same as stopped normal turns.
