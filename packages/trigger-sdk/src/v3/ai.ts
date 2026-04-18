@@ -873,6 +873,13 @@ const chatPrepareMessagesKey =
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
 
 /**
+ * @internal Flag set by `chat.endRun()` to exit the loop after the current
+ * turn completes, without any upgrade semantics. Checked at the same
+ * post-turn / pre-wait sites as `chatUpgradeRequestedKey`.
+ */
+const chatEndRunRequestedKey = locals.create<boolean>("chat.endRunRequested");
+
+/**
  * Event passed to `summarize` callbacks.
  */
 export type SummarizeEvent = {
@@ -4160,7 +4167,11 @@ function chatAgent<
 
                   // chat.requestUpgrade() was called — exit the loop so the
                   // transport triggers a new run on the latest version.
-                  if (locals.get(chatUpgradeRequestedKey)) {
+                  // chat.endRun() — same exit, no upgrade semantics.
+                  if (
+                    locals.get(chatUpgradeRequestedKey) ||
+                    locals.get(chatEndRunRequestedKey)
+                  ) {
                     return "exit";
                   }
 
@@ -4277,8 +4288,11 @@ function chatAgent<
                 // Best-effort — if stream write fails, let the run continue anyway
               }
 
-              // chat.requestUpgrade() — exit after error turn too
-              if (locals.get(chatUpgradeRequestedKey)) {
+              // chat.requestUpgrade() / chat.endRun() — exit after error turn too
+              if (
+                locals.get(chatUpgradeRequestedKey) ||
+                locals.get(chatEndRunRequestedKey)
+              ) {
                 return;
               }
 
@@ -4859,6 +4873,36 @@ function isStopped(): boolean {
  */
 function requestUpgrade(): void {
   locals.set(chatUpgradeRequestedKey, true);
+}
+
+/**
+ * Exit the run after the current turn completes, without waiting for the
+ * next message. Unlike {@link requestUpgrade}, no upgrade-required signal
+ * is sent to the client — the turn finishes normally, `onTurnComplete`
+ * fires, and the loop exits instead of going idle.
+ *
+ * Call from `run()`, `chat.defer()`, `onBeforeTurnComplete`, or
+ * `onTurnComplete` to end the run on your own terms (budget exhausted,
+ * task complete, goal achieved, etc.).
+ *
+ * The next user message on the same `chatId` starts a fresh run via the
+ * normal continuation mechanism.
+ *
+ * @example
+ * ```ts
+ * chat.agent({
+ *   id: "one-shot-agent",
+ *   run: async ({ messages, signal }) => {
+ *     const result = streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+ *     // Single-response agent — exit after this turn.
+ *     chat.endRun();
+ *     return result;
+ *   },
+ * });
+ * ```
+ */
+function endRun(): void {
+  locals.set(chatEndRunRequestedKey, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -5474,8 +5518,11 @@ function createChatSession(
 
           // Subsequent turns: wait for the next message
           if (turn > 0) {
-            // chat.requestUpgrade() — exit before waiting
-            if (locals.get(chatUpgradeRequestedKey)) {
+            // chat.requestUpgrade() / chat.endRun() — exit before waiting
+            if (
+              locals.get(chatUpgradeRequestedKey) ||
+              locals.get(chatEndRunRequestedKey)
+            ) {
               stop.cleanup();
               return { done: true, value: undefined };
             }
@@ -6108,6 +6155,8 @@ export const chat = {
   isStopped,
   /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
   requestUpgrade,
+  /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
+  endRun,
   /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
   cleanupAbortedParts,
   /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
