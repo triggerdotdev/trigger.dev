@@ -43,6 +43,10 @@ import { auth } from "./auth.js";
 import { locals } from "./locals.js";
 import { metadata } from "./metadata.js";
 import type { ResolvedPrompt } from "./prompt.js";
+import type { ResolvedSkill } from "./skill.js";
+import { spawn } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as nodePath from "node:path";
 import { streams } from "./streams.js";
 import { createTask, trigger as triggerTaskInternal } from "./shared.js";
 import { resourceCatalog } from "@trigger.dev/core/v3";
@@ -1756,6 +1760,212 @@ function getChatPrompt(): ChatPromptValue {
   return prompt;
 }
 
+// ---------------------------------------------------------------------------
+// chat.skills — store resolved agent skills and inject them into streamText
+// ---------------------------------------------------------------------------
+
+/** @internal */
+const chatSkillsKey = locals.create<ResolvedSkill[]>("chat.skills");
+
+/** Limits applied by the auto-injected `loadSkill` / `readFile` / `bash` tools. */
+const DEFAULT_READ_FILE_BYTES = 1024 * 1024; // 1 MB
+const DEFAULT_BASH_OUTPUT_BYTES = 64 * 1024; // 64 KB
+
+/**
+ * Store resolved skills for the current run. Call from any hook
+ * (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
+ */
+function setChatSkills(skills: ResolvedSkill[]): void {
+  locals.set(chatSkillsKey, skills);
+}
+
+/** Read the stored skills. Returns `undefined` if none set. */
+function getChatSkills(): ResolvedSkill[] | undefined {
+  return locals.get(chatSkillsKey);
+}
+
+/**
+ * Build the system-prompt preamble advertising available skills. Only the
+ * frontmatter description surfaces here — full SKILL.md body is loaded
+ * on-demand via the `loadSkill` tool.
+ */
+function buildSkillsSystemPrompt(skills: ResolvedSkill[]): string {
+  if (skills.length === 0) return "";
+  const lines = skills.map(
+    (s) => `- ${s.frontmatter.name}: ${s.frontmatter.description}`
+  );
+  return [
+    "Available skills (call `loadSkill` to read the full instructions before using one):",
+    ...lines,
+  ].join("\n");
+}
+
+function truncate(s: string, limit: number): string {
+  if (s.length <= limit) return s;
+  return s.slice(0, limit) + `\n…[truncated ${s.length - limit} bytes]`;
+}
+
+/** Resolve a skill by its frontmatter `name`. */
+function findSkillByName(skills: ResolvedSkill[], name: string): ResolvedSkill | undefined {
+  return skills.find((s) => s.frontmatter.name === name);
+}
+
+/**
+ * Check that `candidate` resolves inside `root` — guards against path
+ * traversal via `..` or absolute paths. Returns the resolved path or
+ * throws.
+ */
+function safeJoinInside(root: string, relative: string): string {
+  if (nodePath.isAbsolute(relative)) {
+    throw new Error(`Path must be relative to the skill directory: ${relative}`);
+  }
+  const resolved = nodePath.resolve(root, relative);
+  const normalized = nodePath.resolve(root) + nodePath.sep;
+  if (resolved !== nodePath.resolve(root) && !resolved.startsWith(normalized)) {
+    throw new Error(`Path escapes the skill directory: ${relative}`);
+  }
+  return resolved;
+}
+
+/**
+ * Build the three tools we auto-inject into `streamText` when skills are
+ * set: `loadSkill`, `readFile`, `bash`. Scoped per-skill by name.
+ *
+ * Exported so callers can use the same tools outside the auto-wired path
+ * (e.g. in a `chat.createSession` loop with custom streamText).
+ */
+export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
+  const loadSkill = aiTool({
+    description:
+      "Load the full instructions for a skill by its name. Call this first before using a skill.",
+    inputSchema: jsonSchema<{ name: string }>({
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "The `name` field from the skill's frontmatter.",
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    } as JSONSchema7),
+    execute: async ({ name }: { name: string }) => {
+      const skill = findSkillByName(skills, name);
+      if (!skill) {
+        return {
+          error: `Skill "${name}" not found. Available: ${skills
+            .map((s) => s.frontmatter.name)
+            .join(", ")}`,
+        };
+      }
+      return {
+        name: skill.frontmatter.name,
+        description: skill.frontmatter.description,
+        body: skill.body,
+        path: skill.path,
+      };
+    },
+  });
+
+  const readFile = aiTool({
+    description:
+      "Read a file from a skill's bundled folder. Paths must be relative to the skill's root.",
+    inputSchema: jsonSchema<{ skill: string; path: string }>({
+      type: "object",
+      properties: {
+        skill: { type: "string", description: "The skill's name (from frontmatter)." },
+        path: {
+          type: "string",
+          description: "Relative path inside the skill folder (e.g. `references/citation-style.md`).",
+        },
+      },
+      required: ["skill", "path"],
+      additionalProperties: false,
+    } as JSONSchema7),
+    execute: async ({ skill: skillName, path: relPath }: { skill: string; path: string }) => {
+      const skill = findSkillByName(skills, skillName);
+      if (!skill) {
+        return { error: `Skill "${skillName}" not found.` };
+      }
+      let absolute: string;
+      try {
+        absolute = safeJoinInside(skill.path, relPath);
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
+      try {
+        const content = await fs.readFile(absolute, "utf8");
+        return { content: truncate(content, DEFAULT_READ_FILE_BYTES) };
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
+    },
+  });
+
+  const bash = aiTool({
+    description:
+      "Run a bash command inside a skill's bundled folder. Use this to invoke the skill's scripts. The working directory is the skill's root.",
+    inputSchema: jsonSchema<{ skill: string; command: string }>({
+      type: "object",
+      properties: {
+        skill: { type: "string", description: "The skill's name (from frontmatter)." },
+        command: {
+          type: "string",
+          description: "Bash command to run. Relative script paths resolve against the skill's root.",
+        },
+      },
+      required: ["skill", "command"],
+      additionalProperties: false,
+    } as JSONSchema7),
+    execute: async (
+      { skill: skillName, command }: { skill: string; command: string },
+      { abortSignal }: { abortSignal?: AbortSignal } = {}
+    ) => {
+      const skill = findSkillByName(skills, skillName);
+      if (!skill) {
+        return { error: `Skill "${skillName}" not found.` };
+      }
+      return await new Promise<{
+        exitCode: number | null;
+        stdout: string;
+        stderr: string;
+      } | { error: string }>((resolvePromise) => {
+        let child;
+        try {
+          child = spawn("bash", ["-c", command], {
+            cwd: skill.path,
+            signal: abortSignal,
+          });
+        } catch (err) {
+          resolvePromise({ error: (err as Error).message });
+          return;
+        }
+
+        let stdout = "";
+        let stderr = "";
+        child.stdout?.on("data", (chunk: Buffer | string) => {
+          stdout += chunk.toString();
+        });
+        child.stderr?.on("data", (chunk: Buffer | string) => {
+          stderr += chunk.toString();
+        });
+        child.once("close", (code: number | null) => {
+          resolvePromise({
+            exitCode: code,
+            stdout: truncate(stdout, DEFAULT_BASH_OUTPUT_BYTES),
+            stderr: truncate(stderr, DEFAULT_BASH_OUTPUT_BYTES),
+          });
+        });
+        child.once("error", (err: Error) => {
+          resolvePromise({ error: err.message });
+        });
+      });
+    },
+  });
+
+  return { loadSkill, readFile, bash };
+}
+
 /**
  * Options for {@link toStreamTextOptions}.
  */
@@ -1772,6 +1982,16 @@ export type ToStreamTextOptionsOptions = {
    * (e.g. `"openai:gpt-4o"`, `"anthropic:claude-sonnet-4-6"`).
    */
   registry?: { languageModel(modelId: string): unknown };
+  /**
+   * User-defined tools to merge alongside the auto-injected skill tools
+   * (`loadSkill`, `readFile`, `bash`). User tools win on name conflicts.
+   *
+   * If you don't pass `tools` here and skills are set, the returned options
+   * will include just the skill tools — spread after any `tools` you pass
+   * directly to `streamText` and they'll be replaced. Easiest: pass all
+   * your tools here.
+   */
+  tools?: Record<string, Tool>;
 };
 
 /**
@@ -1787,12 +2007,18 @@ export type ToStreamTextOptionsOptions = {
  */
 function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
   const prompt = locals.get(chatPromptKey);
+  const skills = locals.get(chatSkillsKey);
   const result: Record<string, unknown> = {};
+
+  // Build the combined system prompt: stored prompt + skills preamble.
+  const promptText = prompt?.text ?? "";
+  const skillsText = skills && skills.length > 0 ? buildSkillsSystemPrompt(skills) : "";
+  if (promptText || skillsText) {
+    result.system = [promptText, skillsText].filter(Boolean).join("\n\n");
+  }
 
   // Prompt-related options (only if chat.prompt.set() was called)
   if (prompt) {
-    result.system = prompt.text;
-
     // Resolve model via registry if both are present
     if (options?.registry && prompt.model) {
       result.model = options.registry.languageModel(prompt.model);
@@ -1806,6 +2032,15 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
     // Add telemetry (forward additional metadata from caller)
     const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
     Object.assign(result, telemetry);
+  }
+
+  // Skills: merge auto-injected tools with any user-provided tools.
+  // User tools override on name conflict (though we namespace ours).
+  if (skills && skills.length > 0) {
+    const skillTools = buildSkillTools(skills);
+    result.tools = { ...skillTools, ...(options?.tools ?? {}) };
+  } else if (options?.tools) {
+    result.tools = options.tools;
   }
 
   // Auto-inject prepareStep for compaction, pending messages, and background context injection.
@@ -6190,6 +6425,18 @@ export const chat = {
    * - `chat.prompt()` — read the stored prompt (throws if not set)
    */
   prompt: Object.assign(getChatPrompt, { set: setChatPrompt }),
+  /**
+   * Store and retrieve resolved agent skills for the current run.
+   *
+   * - `chat.skills.set([...])` — store an array of `ResolvedSkill`s
+   * - `chat.skills()` — read the stored skills (returns undefined if none)
+   *
+   * Skills set here are automatically injected into `streamText` by
+   * `chat.toStreamTextOptions()`: skill descriptions land in the system
+   * prompt and `loadSkill` / `readFile` / `bash` tools are added to the
+   * tool set.
+   */
+  skills: Object.assign(getChatSkills, { set: setChatSkills }),
   /**
    * Returns an options object ready to spread into `streamText()`.
    * Reads the stored prompt and returns `{ system, experimental_telemetry, ...config }`.
