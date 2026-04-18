@@ -98,6 +98,7 @@
                   "ai-chat/compaction",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
+                  "ai-chat/error-handling",
                   "ai-chat/mcp",
                   "ai-chat/testing",
                   {
