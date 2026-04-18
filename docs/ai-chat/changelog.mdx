@@ -4,6 +4,58 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 18, 2026" description="0.0.0-chat-prerelease-20260418083610" tags={["SDK"]}>
+
+## Offline test harness for `chat.agent`
+
+`@trigger.dev/sdk/ai/test` now ships `mockChatAgent`, a harness that drives a `chat.agent` definition through real turns without network or task runtime. Send messages, actions, and stop signals; inspect emitted chunks; assert on hook order.
+
+```ts
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+import { MockLanguageModelV3 } from "ai/test";
+import { myAgent } from "./my-agent";
+
+const harness = mockChatAgent(myAgent, {
+  chatId: "test-1",
+  clientData: { model: new MockLanguageModelV3({ /* ... */ }) },
+});
+
+const turn = await harness.sendMessage({
+  id: "u1",
+  role: "user",
+  parts: [{ type: "text", text: "hi" }],
+});
+expect(turn.chunks).toContainEqual(
+  expect.objectContaining({ type: "text-delta", delta: "hello" }),
+);
+await harness.close();
+```
+
+### Dependency injection via locals
+
+`setupLocals` pre-seeds `locals` before `run()` starts — the pattern for injecting database clients, service stubs, and other server-side dependencies that shouldn't leak through untrusted `clientData`:
+
+```ts
+import { dbKey } from "./db";
+
+const harness = mockChatAgent(agent, {
+  chatId: "test-1",
+  setupLocals: ({ set }) => {
+    set(dbKey, testDb);
+  },
+});
+```
+
+Hooks then read the seeded value with `locals.get(dbKey)`. Falls through to the production client in real runs.
+
+See [Testing](/ai-chat/testing).
+
+## `runInMockTaskContext` — lower-level test harness
+
+`@trigger.dev/core/v3/test` now exports `runInMockTaskContext` for unit-testing any task code offline (not just chat agents). Installs in-memory managers for `locals`, `lifecycleHooks`, `runtime`, `inputStreams`, and `realtimeStreams`, plus a mock `TaskContext`. Drivers let you push data into input streams and inspect chunks written to output streams.
+
+</Update>
+
 <Update label="April 17, 2026" description="0.0.0-chat-prerelease-20260417152143" tags={["SDK"]}>
 
 ## Multi-tab coordination
