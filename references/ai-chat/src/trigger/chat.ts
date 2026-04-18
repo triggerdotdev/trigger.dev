@@ -1,5 +1,5 @@
 import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { logger, prompts } from "@trigger.dev/sdk";
+import { logger, prompts, skills } from "@trigger.dev/sdk";
 import {
   streamText,
   generateText,
@@ -87,6 +87,11 @@ When the user asks you to research a topic, use the deep research tool with rele
 - Match the user's formality level. If they're casual, be casual back.
 - Use markdown formatting for code blocks, lists, and structured output.
 - Keep responses under a few paragraphs unless the user asks for more.`,
+});
+
+const timeUtilsSkill = skills.define({
+  id: "time-utils",
+  path: "./skills/time-utils",
 });
 
 const selfReviewPrompt = prompts.define({
@@ -274,6 +279,7 @@ export const aiChat = chat
         plan: user.plan as string,
       });
       chat.prompt.set(resolved);
+      chat.skills.set([await timeUtilsSkill.local()]);
 
       await prisma.chat.upsert({
         where: { id: chatId },
@@ -322,6 +328,7 @@ export const aiChat = chat
         plan: user.plan as string,
       });
       chat.prompt.set(resolved);
+      chat.skills.set([await timeUtilsSkill.local()]);
 
       if (!continuation) {
         await prisma.chat.upsert({
