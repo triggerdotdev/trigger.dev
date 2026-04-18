@@ -4,6 +4,53 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 18, 2026" description="0.0.0-chat-prerelease-20260418174118" tags={["SDK"]}>
+
+## `chat.endRun()` — exit on your own terms
+
+New imperative API to exit the loop after the current turn completes, without the upgrade-required signal that `chat.requestUpgrade()` sends. Use for one-shot agents, budget-exhausted exits, or goal-reached completions.
+
+```ts
+chat.agent({
+  id: "one-shot",
+  run: async ({ messages, signal }) => {
+    chat.endRun();
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+The current turn streams normally, `onBeforeTurnComplete` / `onTurnComplete` fire, the turn-complete chunk is written, and the run exits instead of suspending. Callable from `run()`, `chat.defer()`, `onBeforeTurnComplete`, or `onTurnComplete`. See [Ending a run on your terms](/ai-chat/backend#ending-a-run-on-your-terms).
+
+## `finishReason` on turn-complete events
+
+`TurnCompleteEvent` and `BeforeTurnCompleteEvent` now include the AI SDK's `finishReason` (`"stop" | "tool-calls" | "length" | "content-filter" | "error" | "other"`). Clean signal for distinguishing a normal turn end from one paused on a pending tool call (HITL flows like `ask_user`):
+
+```ts
+onTurnComplete: async ({ finishReason, responseMessage }) => {
+  if (finishReason === "tool-calls") {
+    // Paused — assistant message has a pending tool call waiting for user input
+    await persistCheckpoint(responseMessage);
+  } else {
+    await persistCompleted(responseMessage);
+  }
+};
+```
+
+Undefined for manual `chat.pipe()` flows or aborted streams. See the new [Human-in-the-loop pattern](/ai-chat/patterns/human-in-the-loop).
+
+## User-initiated compaction pattern
+
+The [Compaction guide](/ai-chat/compaction) now covers how to wire a "Summarize conversation" button or `/compact` slash command via `actionSchema` + `onAction`. The agent summarizes on demand, rewrites history with `chat.history.set()`, and short-circuits the LLM call for action turns.
+
+Needed a small type fix for this: `ChatTaskPayload.trigger` now correctly includes `"action"`, so `run()` handlers can short-circuit with `if (trigger === "action") return` when an action doesn't need a response.
+
+## Human-in-the-loop pattern page
+
+New [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop) page walks through `ask_user`-style mid-turn user input end-to-end: defining a no-execute tool, rendering pending tool calls on the frontend with `addToolOutput` + `sendAutomaticallyWhen`, detecting paused turns via `finishReason`, and two persistence strategies (overwrite vs. checkpoint nodes).
+
+</Update>
+
 <Update label="April 18, 2026" description="0.0.0-chat-prerelease-20260418083610" tags={["SDK"]}>
 
 ## Offline test harness for `chat.agent`
