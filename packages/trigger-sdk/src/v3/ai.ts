@@ -17,6 +17,7 @@ import {
   type TaskWithSchema,
 } from "@trigger.dev/core/v3";
 import type {
+  FinishReason,
   ModelMessage,
   ToolSet,
   UIMessage,
@@ -2211,6 +2212,22 @@ export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UI
   usage?: LanguageModelUsage;
   /** Cumulative token usage across all turns in this run (including this turn). */
   totalUsage: LanguageModelUsage;
+  /**
+   * Why the LLM stopped generating this turn:
+   * - `"stop"` — model generated a stop sequence (normal completion)
+   * - `"tool-calls"` — model stopped on one or more tool calls. If any tool
+   *   has no `execute` function (e.g. an `ask_user` HITL tool), the turn is
+   *   paused awaiting user input; inspect `responseMessage.parts` for tool
+   *   parts in `input-available` state to distinguish.
+   * - `"length"` — max tokens reached
+   * - `"content-filter"` — content filter stopped the model
+   * - `"error"` — model errored
+   * - `"other"` — provider-specific reason
+   *
+   * Undefined if the underlying stream didn't provide a finish reason (e.g.
+   * manual `pipeChat()` or an aborted stream).
+   */
+  finishReason?: FinishReason;
 };
 
 /**
@@ -3582,6 +3599,7 @@ function chatAgent<
 
                   // Captured by the onFinish callback below — works even on abort/stop.
                   let capturedResponseMessage: TUIMessage | undefined;
+                  let capturedFinishReason: FinishReason | undefined;
 
                   // Promise that resolves when the AI SDK's onFinish fires.
                   // On abort, the stream's cancel() handler calls onFinish
@@ -3647,8 +3665,15 @@ function chatAgent<
                         // messageId. Without this, the frontend and backend generate IDs
                         // independently and they won't match for ID-based dedup.
                         generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
-                        onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
+                        onFinish: ({
+                          responseMessage,
+                          finishReason,
+                        }: {
+                          responseMessage: UIMessage;
+                          finishReason?: FinishReason;
+                        }) => {
                           capturedResponseMessage = responseMessage as TUIMessage;
+                          capturedFinishReason = finishReason;
                           resolveOnFinish!();
                         },
                       });
@@ -4012,6 +4037,7 @@ function chatAgent<
                     preloaded,
                     usage: turnUsage,
                     totalUsage: cumulativeUsage,
+                    finishReason: capturedFinishReason,
                   };
 
                   // Fire onBeforeTurnComplete — stream is still open so the hook
