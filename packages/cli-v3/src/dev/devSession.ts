@@ -9,6 +9,7 @@ import {
   logBuildFailure,
   logBuildWarnings,
 } from "../build/bundle.js";
+import { bundleSkills } from "../build/bundleSkills.js";
 import {
   createBuildContext,
   notifyExtensionOnBuildComplete,
@@ -117,6 +118,26 @@ export async function startDevSession({
       join(workerDir?.path ?? destination.path, "metafile.json"),
       bundle.metafile
     );
+
+    // Built-in skill bundling — copies registered skill folders into
+    // `.trigger/skills/{id}/` so `skill.local()` works at dev runtime.
+    try {
+      const buildManifestPath = join(
+        workerDir?.path ?? destination.path,
+        "build.json"
+      );
+      await writeJSONFile(buildManifestPath, buildManifest);
+      const skillsResult = await bundleSkills({
+        buildManifest,
+        buildManifestPath,
+        workingDir: rawConfig.workingDir,
+        env: process.env,
+        logger: buildContext.logger,
+      });
+      buildManifest = skillsResult.buildManifest;
+    } catch (err) {
+      logger.debug("Skill bundling failed during dev rebuild", err);
+    }
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 

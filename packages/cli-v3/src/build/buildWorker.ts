@@ -1,6 +1,7 @@
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget } from "@trigger.dev/core/v3/schemas";
 import { BundleResult, bundleWorker, createBuildManifestFromBundle } from "./bundle.js";
+import { bundleSkills } from "./bundleSkills.js";
 import {
   createBuildContext,
   notifyExtensionOnBuildComplete,
@@ -8,6 +9,8 @@ import {
   resolvePluginsForContext,
 } from "./extensions.js";
 import { createExternalsBuildExtension } from "./externals.js";
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { generateContainerfile } from "../deploy/buildImage.js";
 import { writeFile } from "node:fs/promises";
@@ -96,6 +99,29 @@ export async function buildWorker(options: BuildWorkerOptions) {
     target: options.target,
     envVars: options.envVars,
   });
+
+  // Built-in skill bundler — discovers `ai.defineSkill` registrations
+  // via a local indexer run and copies each skill folder into
+  // `{destination}/.trigger/skills/{id}/` before Docker COPY picks up
+  // the bundle. First-class, not a build extension.
+  const skillsTmpDir = await mkdtemp(join(tmpdir(), "trigger-skills-"));
+  const skillsBuildManifestPath = join(skillsTmpDir, "build.json");
+  try {
+    await writeFile(skillsBuildManifestPath, JSON.stringify(buildManifest));
+    const skillsResult = await bundleSkills({
+      buildManifest,
+      buildManifestPath: skillsBuildManifestPath,
+      workingDir: resolvedConfig.workingDir,
+      env: {
+        ...process.env,
+        ...(options.envVars ?? {}),
+      },
+      logger: buildContext.logger,
+    });
+    buildManifest = skillsResult.buildManifest;
+  } catch (err) {
+    logger.debug("Skill bundling failed; continuing without skills", err);
+  }
 
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
