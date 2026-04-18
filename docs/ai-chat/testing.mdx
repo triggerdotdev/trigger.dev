@@ -1,0 +1,540 @@
+---
+title: "Testing"
+sidebarTitle: "Testing"
+description: "Drive a chat.agent through real turns in unit tests — no network, no task runtime, no mocking the SDK."
+---
+
+## Overview
+
+`@trigger.dev/sdk/ai/test` exports `mockChatAgent`, an offline harness that runs your `chat.agent` definition's `run()` function inside an in-memory task runtime. You send messages, actions, and stop signals through driver methods and assert against the chunks the agent emits.
+
+The harness exercises the real turn loop, lifecycle hooks, validation, hydration, and action routing — only the language model and the surrounding Trigger.dev runtime are replaced. Pair it with [`MockLanguageModelV3`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/mock-language-model-v3) and `simulateReadableStream` from `ai` to control LLM responses.
+
+<Note>
+  Import `@trigger.dev/sdk/ai/test` **before** your agent module. It installs the resource catalog so `chat.agent({ id, ... })` can register tasks during testing.
+</Note>
+
+## Quick start
+
+```ts trigger/my-chat.test.ts
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+
+import { describe, expect, it } from "vitest";
+import { simulateReadableStream } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { myChatAgent } from "./my-chat.js";
+
+function modelWithText(text: string) {
+  const chunks: LanguageModelV3StreamPart[] = [
+    { type: "text-start", id: "t1" },
+    { type: "text-delta", id: "t1", delta: text },
+    { type: "text-end", id: "t1" },
+    {
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 10, text: 10, reasoning: undefined },
+      },
+    },
+  ];
+  return new MockLanguageModelV3({
+    doStream: async () => ({ stream: simulateReadableStream({ chunks }) }),
+  });
+}
+
+describe("myChatAgent", () => {
+  it("streams the model's response", async () => {
+    const model = modelWithText("hello world");
+    const harness = mockChatAgent(myChatAgent, {
+      chatId: "test-1",
+      clientData: { model },
+    });
+
+    try {
+      const turn = await harness.sendMessage({
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "hi" }],
+      });
+
+      const text = turn.chunks
+        .filter((c) => c.type === "text-delta")
+        .map((c) => (c as { delta: string }).delta)
+        .join("");
+      expect(text).toBe("hello world");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+```
+
+The agent reads the mock model from `clientData`:
+
+```ts trigger/my-chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, type LanguageModel } from "ai";
+import { z } from "zod";
+
+type ClientData = { model: LanguageModel };
+
+export const myChatAgent = chat
+  .withClientData({
+    schema: z.custom<ClientData>(
+      (v) => !!v && typeof v === "object" && "model" in (v as object)
+    ),
+  })
+  .agent({
+    id: "my-chat",
+    run: async ({ messages, clientData, signal }) => {
+      return streamText({
+        model: clientData?.model ?? "openai/gpt-4o-mini",
+        messages,
+        abortSignal: signal,
+      });
+    },
+  });
+```
+
+## Setup
+
+### Install dev dependencies
+
+The harness itself ships with `@trigger.dev/sdk`. You need a test runner and the AI SDK's mock model utilities:
+
+```bash
+pnpm add -D vitest ai @ai-sdk/provider
+```
+
+`@ai-sdk/provider` is only needed to type the chunk array as `LanguageModelV3StreamPart[]` — drop it if you cast inline.
+
+### Vitest config
+
+A minimal `vitest.config.ts` for a Trigger.dev project:
+
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
+  },
+});
+```
+
+### Import order
+
+`mockChatAgent` must be imported **first** so the resource catalog is installed before any `chat.agent({ id, ... })` registration runs:
+
+```ts
+// ✅ Correct
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+import { myAgent } from "./my-agent.js";
+
+// ❌ Wrong — agent loads before the catalog exists
+import { myAgent } from "./my-agent.js";
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+```
+
+If the agent isn't registered when `mockChatAgent` runs, you'll get:
+
+```
+mockChatAgent: no task registered with id "my-chat".
+```
+
+## Inject the model via clientData
+
+`MockLanguageModelV3` lives in test code and shouldn't leak into your agent module. Pass it through `clientData` so the agent picks it up at runtime in tests, and falls back to a real model in production:
+
+```ts trigger/agent.ts
+type ClientData = { model?: LanguageModel };
+
+export const agent = chat
+  .withClientData({ schema: z.custom<ClientData>() })
+  .agent({
+    id: "agent",
+    run: async ({ messages, clientData, signal }) => {
+      return streamText({
+        model: clientData?.model ?? openai("gpt-4o-mini"),
+        messages,
+        abortSignal: signal,
+      });
+    },
+  });
+```
+
+```ts agent.test.ts
+const harness = mockChatAgent(agent, {
+  chatId: "test",
+  clientData: { model: mockModel },
+});
+```
+
+## Driving turns
+
+The harness exposes one method per chat trigger. Each waits for the next `trigger:turn-complete` chunk before resolving.
+
+### sendMessage
+
+```ts
+const turn = await harness.sendMessage({
+  id: "u1",
+  role: "user",
+  parts: [{ type: "text", text: "hi" }],
+});
+```
+
+Pass an array to send multiple messages at once.
+
+### sendRegenerate
+
+```ts
+const turn = await harness.sendRegenerate(messages);
+```
+
+Equivalent to the frontend's `useChat().regenerate()` — replays a turn with the given message history.
+
+### sendAction
+
+Routes a payload through `actionSchema` + `onAction`:
+
+```ts
+const turn = await harness.sendAction({ type: "undo" });
+```
+
+If the action fails schema validation, an `error` chunk appears in `turn.rawChunks`.
+
+### sendStop
+
+Fires a stop signal. Does **not** wait for a turn — the agent's `signal.aborted` becomes `true` and the current turn unwinds:
+
+```ts
+await harness.sendStop("user requested stop");
+```
+
+### close
+
+Sends a `close` trigger, closes the input stream, and aborts the run signal so the task exits cleanly. Always call this at the end of every test:
+
+```ts
+afterEach(() => harness.close());
+// or with a try/finally
+try {
+  await harness.sendMessage(...);
+} finally {
+  await harness.close();
+}
+```
+
+## Inspecting output
+
+Each turn returns:
+
+```ts
+type MockChatAgentTurn = {
+  chunks: UIMessageChunk[];   // text-delta, tool-call, etc.
+  rawChunks: unknown[];       // includes control chunks (turn-complete, errors)
+};
+```
+
+The harness also exposes accumulators across all turns:
+
+```ts
+harness.allChunks;     // every UIMessageChunk since creation
+harness.allRawChunks;  // every raw chunk including control frames
+```
+
+A small helper to assemble streamed text:
+
+```ts
+function collectText(chunks: UIMessageChunk[]): string {
+  return chunks
+    .filter((c) => c.type === "text-delta")
+    .map((c) => (c as { delta: string }).delta)
+    .join("");
+}
+```
+
+## Common patterns
+
+### Asserting hook order
+
+```ts
+const events: string[] = [];
+const agent = chat.agent({
+  id: "hook-order",
+  onChatStart: async () => { events.push("onChatStart"); },
+  onTurnStart: async () => { events.push("onTurnStart"); },
+  onBeforeTurnComplete: async () => { events.push("onBeforeTurnComplete"); },
+  onTurnComplete: async () => { events.push("onTurnComplete"); },
+  run: async ({ messages, signal }) => {
+    events.push("run");
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+const harness = mockChatAgent(agent, { chatId: "t" });
+await harness.sendMessage(userMessage("hi"));
+
+// onTurnComplete fires after the turn-complete chunk is written —
+// give it a tick before asserting.
+await new Promise((r) => setTimeout(r, 20));
+expect(events).toEqual([
+  "onChatStart",
+  "onTurnStart",
+  "run",
+  "onBeforeTurnComplete",
+  "onTurnComplete",
+]);
+await harness.close();
+```
+
+### Testing onValidateMessages
+
+```ts
+const turn = await harness.sendMessage(userMessage("hello blocked-word"));
+
+// The turn completes with an error chunk, not text
+expect(collectText(turn.chunks)).toBe("");
+expect(turn.rawChunks.some((c) =>
+  typeof c === "object" && c !== null &&
+  (c as { type?: string }).type === "trigger:turn-complete"
+)).toBe(true);
+```
+
+### Testing actions and rejection
+
+```ts
+// Valid action
+await harness.sendAction({ type: "undo" });
+
+// Invalid action — schema validation fails, error chunk emitted
+const turn = await harness.sendAction({ type: "not-a-real-action" });
+const errors = turn.rawChunks.filter((c) =>
+  typeof c === "object" && c !== null &&
+  (c as { type?: string }).type === "error"
+);
+expect(errors.length).toBeGreaterThan(0);
+```
+
+### Multi-turn accumulation
+
+The harness preserves chat history across turns, just like the real runtime:
+
+```ts
+const seenLengths: number[] = [];
+const agent = chat.agent({
+  id: "multi-turn",
+  run: async ({ messages, signal }) => {
+    seenLengths.push(messages.length);
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+const harness = mockChatAgent(agent, { chatId: "t" });
+await harness.sendMessage(userMessage("first"));
+await harness.sendMessage(userMessage("second"));
+await harness.sendMessage(userMessage("third"));
+
+// Turn 1: 1 message; turn 2: user + assistant + user = 3; turn 3: 5
+expect(seenLengths).toEqual([1, 3, 5]);
+```
+
+### Hydrating from a "database"
+
+Use `clientData` to seed a synthetic prior context for `hydrateMessages`:
+
+```ts
+const hydrated = [
+  { id: "h1", role: "user", parts: [{ type: "text", text: "prior question" }] },
+  { id: "h2", role: "assistant", parts: [{ type: "text", text: "prior answer" }] },
+];
+
+const harness = mockChatAgent(agent, {
+  chatId: "test-hydrate",
+  clientData: { model, hydrated: [...hydrated, userMessage("follow up")] },
+});
+
+await harness.sendMessage(userMessage("follow up"));
+
+// Model should have been called with the hydrated context
+expect(model.doStreamCalls[0]!.prompt.length).toBeGreaterThanOrEqual(3);
+```
+
+The agent reads `clientData.hydrated` inside its `hydrateMessages` hook:
+
+```ts
+hydrateMessages: async ({ clientData, incomingMessages }) => {
+  return clientData?.hydrated ?? incomingMessages;
+},
+```
+
+## Testing against a database
+
+Most agents call into a database from `hydrateMessages` or `onTurnComplete` to load history and persist replies. You shouldn't pass database clients through `clientData` — that's wire-data from the browser. Use **`locals` for dependency injection** instead.
+
+`locals` are task-scoped, server-side only, and untyped to the wire format. The mock harness exposes a `setupLocals` callback that pre-seeds them before the agent's `run()` starts.
+
+### Define a locals key for the dependency
+
+Create a single key per dependency, exported from your project:
+
+```ts db.ts
+import { locals } from "@trigger.dev/sdk";
+import { PrismaClient } from "@prisma/client";
+
+export type Db = PrismaClient;
+export const dbKey = locals.create<Db>("db");
+
+export function getDb(): Db {
+  // Returns the seeded test instance if present, otherwise lazy-creates prod.
+  return locals.get(dbKey) ?? locals.set(dbKey, new PrismaClient());
+}
+```
+
+### Use the dependency from agent hooks
+
+Hooks read from `locals` instead of constructing clients themselves:
+
+```ts trigger/agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { getDb } from "../db";
+
+export const agent = chat.agent({
+  id: "agent",
+  hydrateMessages: async ({ chatId }) => {
+    const db = getDb();
+    const row = await db.chat.findUnique({ where: { id: chatId } });
+    return (row?.messages as UIMessage[]) ?? [];
+  },
+  onTurnComplete: async ({ chatId, messages }) => {
+    const db = getDb();
+    await db.chat.upsert({
+      where: { id: chatId },
+      create: { id: chatId, messages },
+      update: { messages },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+### Inject a test database in the harness
+
+`setupLocals` runs *before* the agent starts, so `getDb()` returns the test instance for every hook:
+
+```ts agent.test.ts
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+import { dbKey } from "./db";
+import { agent } from "./trigger/agent";
+
+const harness = mockChatAgent(agent, {
+  chatId: "test-1",
+  setupLocals: ({ set }) => {
+    set(dbKey, testDb); // testDb = your testcontainers Prisma client, sqlite stub, etc.
+  },
+});
+```
+
+### Pick a backing database
+
+You still need to decide what `testDb` actually is:
+
+- **Testcontainers (recommended).** Spin up Postgres in Docker via `@internal/testcontainers` (or `testcontainers` directly), run migrations, hand the resulting `PrismaClient` to `set(dbKey, ...)`. Highest fidelity — catches schema drift, migration bugs, transaction issues.
+- **Embedded SQLite / PGlite.** Fast and no Docker, but a different SQL dialect from production. Fine for hooks that only do simple CRUD; risky for raw SQL or Postgres-specific features.
+- **In-memory fake.** Hand-rolled object with the same interface as your DB module. Fastest, lowest fidelity — works when you only care about whether the agent *called* the right method, not what the DB *did* with it.
+
+### Drizzle, Kysely, etc.
+
+The pattern is the same — replace `PrismaClient` with your client class:
+
+```ts db.ts
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+
+export type Db = ReturnType<typeof drizzle>;
+export const dbKey = locals.create<Db>("db");
+
+export function getDb(): Db {
+  return locals.get(dbKey) ?? locals.set(
+    dbKey,
+    drizzle(new Pool({ connectionString: process.env.DATABASE_URL })),
+  );
+}
+```
+
+<Tip>
+  The same `setupLocals` pattern works for any server-side dependency: feature flag clients, Stripe SDK, internal HTTP clients, Sentry. Anything you'd normally inject via constructor parameters in a class-based design.
+</Tip>
+
+## API reference
+
+### mockChatAgent(agent, options?)
+
+```ts
+function mockChatAgent(
+  agent: { id: string },
+  options?: MockChatAgentOptions,
+): MockChatAgentHarness;
+```
+
+#### MockChatAgentOptions
+
+| Option         | Type                       | Default       | Description                                                                                            |
+| -------------- | -------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| `chatId`       | `string`                   | `"test-chat"` | Chat session id passed in every wire payload.                                                          |
+| `clientData`   | `unknown`                  | `undefined`   | Client-provided data forwarded to `run()` and every hook.                                              |
+| `taskContext`  | `MockTaskContextOptions`   | `{}`          | Overrides for the mock `TaskRunContext` (run id, environment, organization, etc.).                     |
+| `preload`      | `boolean`                  | `true`        | Start in preload mode. When `false`, the first `sendMessage()` starts turn 0 directly without preload. |
+| `setupLocals`  | `({ set }) => void \| Promise<void>` | `undefined` | Callback invoked before `run()` starts. Use `set(key, value)` to inject server-side dependencies (DB clients, service stubs) that the agent reads via `locals.get()`. |
+
+#### MockChatAgentHarness
+
+| Member                                | Description                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `chatId`                              | The chat session id used by this harness.                                                              |
+| `sendMessage(message \| messages)`    | Send a user message (or array). Returns the chunks produced during the resulting turn.                 |
+| `sendRegenerate(messages)`            | Send a regenerate trigger with a message history.                                                      |
+| `sendAction(action)`                  | Route a custom action through `actionSchema` + `onAction`.                                             |
+| `sendStop(message?)`                  | Fire a stop signal. Does not wait for the turn — the run's `signal.aborted` becomes `true`.            |
+| `close()`                             | Send a `close` trigger, abort the signal, wait for `run()` to return. Always call at end of test.      |
+| `allChunks`                           | Every `UIMessageChunk` emitted since the harness was created.                                          |
+| `allRawChunks`                        | Every raw chunk emitted since creation, including control chunks (`trigger:turn-complete`, errors).    |
+
+### runInMockTaskContext
+
+`mockChatAgent` is a higher-level wrapper around `runInMockTaskContext`, exported from `@trigger.dev/core/v3/test`. Use it directly when you need to drive a non-chat task offline:
+
+```ts
+import { runInMockTaskContext } from "@trigger.dev/core/v3/test";
+
+await runInMockTaskContext(
+  async ({ inputs, outputs, ctx }) => {
+    setTimeout(() => {
+      inputs.send("chat-messages", { messages: [], chatId: "c1" });
+    }, 0);
+
+    await myTask.fns.run(payload, {
+      ctx,
+      signal: new AbortController().signal,
+    });
+
+    expect(outputs.chunks("chat")).toContainEqual(
+      expect.objectContaining({ type: "text-delta", delta: "hi" }),
+    );
+  },
+  { ctx: { run: { id: "run_abc" } } },
+);
+```
+
+## Limitations
+
+- **No network.** The mock task context replaces realtime streams, run metadata, lifecycle managers, and the runtime. Anything that bypasses these (raw `fetch`, direct DB clients) runs against the real network.
+- **Single agent per process.** The resource catalog is process-global; tests within a file are sequential by default. If you parallelize across files, vitest runs each file in its own worker, which avoids registry collisions.
+- **Time-sensitive hooks.** `onTurnComplete` runs *after* the `turn-complete` chunk is written, so `sendMessage()` resolves before that hook finishes. Add a brief `await new Promise((r) => setTimeout(r, 20))` if you need to assert on hook side-effects.
+- **No real LLM.** The harness does not call providers — you must inject `MockLanguageModelV3` (or another mock) yourself.
