@@ -626,8 +626,12 @@ export type ChatTaskPayload<TClientData = unknown> = {
    * - `"submit-message"`: A new user message
    * - `"regenerate-message"`: Regenerate the last assistant response
    * - `"preload"`: Run was preloaded before the first message (only on turn 0)
+   * - `"action"`: A typed action from the frontend (see `actionSchema` + `onAction`).
+   *   The action has already been applied before `run()` fires — check `trigger === "action"`
+   *   to short-circuit the LLM call when an action doesn't need a response.
+   * - `"close"`: The chat session is being closed (internal; `run()` is not called).
    */
-  trigger: "submit-message" | "regenerate-message" | "preload" | "close";
+  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "close";
 
   /** The ID of the message to regenerate (only for `"regenerate-message"`) */
   messageId?: string;
