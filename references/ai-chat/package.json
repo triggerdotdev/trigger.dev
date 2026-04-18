@@ -9,7 +9,8 @@
     "dev:trigger": "trigger dev",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:generate": "prisma generate"
+    "db:generate": "prisma generate",
+    "test": "vitest"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
@@ -31,6 +32,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@ai-sdk/provider": "3.0.8",
     "@tailwindcss/postcss": "^4",
     "@trigger.dev/build": "workspace:*",
     "@types/node": "^22",
@@ -40,6 +42,7 @@
     "tailwindcss": "^4",
     "prisma": "^7.4.2",
     "trigger.dev": "workspace:*",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.1.4"
   }
 }
