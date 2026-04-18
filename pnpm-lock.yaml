@@ -2142,6 +2142,9 @@ importers:
         specifier: ^8.11.0
         version: 8.12.0(bufferutil@4.0.9)
     devDependencies:
+      '@ai-sdk/provider':
+        specifier: 3.0.8
+        version: 3.0.8
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
@@ -2233,6 +2236,9 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@ai-sdk/provider':
+        specifier: 3.0.8
+        version: 3.0.8
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.0.17
@@ -2263,6 +2269,9 @@ importers:
       typescript:
         specifier: 5.5.4
         version: 5.5.4
+      vitest:
+        specifier: ^3.1.4
+        version: 3.1.4(@types/debug@4.1.12)(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.44.1)
 
   references/bun-catalog:
     dependencies:
@@ -44252,11 +44261,11 @@ snapshots:
       '@vitest/spy': 3.1.4
       '@vitest/utils': 3.1.4
       chai: 5.2.0
-      debug: 4.4.1
+      debug: 4.4.3(supports-color@10.0.0)
       expect-type: 1.2.1
       magic-string: 0.30.21
       pathe: 2.0.3
-      std-env: 3.9.0
+      std-env: 3.10.0
       tinybench: 2.9.0
       tinyexec: 0.3.2
       tinyglobby: 0.2.13
