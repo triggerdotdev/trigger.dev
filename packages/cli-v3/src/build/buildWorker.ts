@@ -120,7 +120,7 @@ export async function buildWorker(options: BuildWorkerOptions) {
     });
     buildManifest = skillsResult.buildManifest;
   } catch (err) {
-    logger.debug("Skill bundling failed; continuing without skills", err);
+    logger.warn("Skill bundling failed; continuing without skills", err);
   }
 
   buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);

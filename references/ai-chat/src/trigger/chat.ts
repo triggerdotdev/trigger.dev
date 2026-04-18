@@ -495,10 +495,10 @@ export const aiChat = chat
         ...chat.toStreamTextOptions({
           registry,
           telemetry: clientData?.userId ? { userId: clientData.userId } : undefined,
+          tools: chatTools,
         }),
         model: languageModelForChatTurn(modelOverride),
         messages: messages,
-        tools: chatTools,
         stopWhen: stepCountIs(10),
         abortSignal: stopSignal,
         providerOptions: {

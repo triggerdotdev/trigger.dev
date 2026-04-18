@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import type { BuildManifest, SkillManifest } from "@trigger.dev/core/v3/schemas";
 import { copyDirectoryRecursive } from "@trigger.dev/build/internal";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
@@ -60,8 +60,10 @@ export async function bundleSkills(
   } catch (err) {
     // Skill discovery via the indexer is best-effort — if the user's
     // bundle doesn't load cleanly here the downstream full indexer will
-    // surface the real error. Warn and continue with no skills.
-    logger.debug(`[bundleSkills] skill discovery failed: ${(err as Error).message}`);
+    // surface the real error. Warn so the user sees what went wrong.
+    logger.warn(
+      `[bundleSkills] skill discovery failed, skipping skill bundling: ${(err as Error).message}`
+    );
     return { buildManifest, skills: [] };
   }
 
@@ -69,10 +71,26 @@ export async function bundleSkills(
     return { buildManifest, skills: [] };
   }
 
-  const destinationRoot = join(buildManifest.outputPath, ".trigger", "skills");
+  // Destination layout differs between dev and deploy:
+  // - Dev:    the worker runs with cwd = workingDir, so skills must live at
+  //           {workingDir}/.trigger/skills/{id}/ for skill.local() to find them.
+  // - Deploy: the Dockerfile COPY picks up everything under outputPath into
+  //           /app, so we target {outputPath}/.trigger/skills/{id}/ and the
+  //           container's cwd (/app) resolves correctly.
+  const destinationRoot =
+    buildManifest.target === "dev"
+      ? join(workingDir, ".trigger", "skills")
+      : join(buildManifest.outputPath, ".trigger", "skills");
 
   for (const skill of skills) {
-    const sourcePath = resolvePath(workingDir, skill.sourcePath);
+    // Resolve the skill's source folder relative to the file that called
+    // `skills.define(...)`. Absolute paths are honored as-is.
+    const callerDir = skill.filePath
+      ? dirname(resolvePath(workingDir, skill.filePath))
+      : workingDir;
+    const sourcePath = isAbsolute(skill.sourcePath)
+      ? skill.sourcePath
+      : resolvePath(callerDir, skill.sourcePath);
     const skillMdPath = join(sourcePath, "SKILL.md");
 
     let skillMd: string;

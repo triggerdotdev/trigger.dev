@@ -136,7 +136,7 @@ export async function startDevSession({
       });
       buildManifest = skillsResult.buildManifest;
     } catch (err) {
-      logger.debug("Skill bundling failed during dev rebuild", err);
+      logger.warn("Skill bundling failed during dev rebuild", err);
     }
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
