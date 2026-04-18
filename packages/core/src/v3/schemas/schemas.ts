@@ -246,6 +246,28 @@ export const PromptManifest = z.object({
 
 export type PromptManifest = z.infer<typeof PromptManifest>;
 
+// ── Skills ────────────────────────────────────────────────────────────────
+//
+// A skill is a developer-authored folder (SKILL.md + scripts/references/assets)
+// bundled into the deploy image. SkillMetadata is registered at module load
+// by `ai.defineSkill({ id, path })`; the CLI's built-in bundler picks it up
+// during deploy and copies the folder into the deploy image.
+
+const skillMetadata = {
+  id: z.string(),
+  /** Path to the skill's source folder, relative to the project root. */
+  sourcePath: z.string(),
+};
+
+export const SkillMetadata = z.object(skillMetadata);
+export type SkillMetadata = z.infer<typeof SkillMetadata>;
+
+export const SkillManifest = z.object({
+  ...skillMetadata,
+  ...taskFileMetadata,
+});
+export type SkillManifest = z.infer<typeof SkillManifest>;
+
 export const PostStartCauses = z.enum(["index", "create", "restore"]);
 export type PostStartCauses = z.infer<typeof PostStartCauses>;
 
