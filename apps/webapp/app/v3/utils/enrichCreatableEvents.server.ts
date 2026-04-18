@@ -133,11 +133,13 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     cost = _registry.calculateCost(responseModel, usageDetails);
   }
 
-  // Fallback: extract cost from provider metadata (gateway/openrouter report per-request cost)
-  let providerCost: { totalCost: number; source: string } | null = null;
-  if (!cost) {
-    providerCost = extractProviderCost(props);
-  }
+  // Always extract provider-reported cost when present (gateway/openrouter).
+  // Used two ways:
+  //   1. As a fallback total_cost when the registry can't price the span.
+  //   2. As a drift signal — llm_metrics_v1.provider_cost is compared against
+  //      llm_metrics_v1.total_cost by the llm.detect-pricing-drift trigger.dev
+  //      task to catch stale registry prices.
+  const providerCost = extractProviderCost(props);
 
   // Observability: if the registry is loaded but couldn't price this span, emit
   // a low-cardinality counter so the productionization pipeline can detect
