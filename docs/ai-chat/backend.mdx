@@ -967,6 +967,25 @@ The `reason` field tells you why messages are being prepared:
 
 Chat agent runs are pinned to the worker version they started on. When you deploy a new version, suspended runs resume on the old code. Call `chat.requestUpgrade()` in `onTurnStart` to skip `run()` and exit immediately — the transport re-triggers the same message on the latest version. See the [Version Upgrades pattern](/ai-chat/patterns/version-upgrades) for the full guide.
 
+### Ending a run on your terms
+
+By default, a chat agent stays idle after each turn waiting for the next user message. Call `chat.endRun()` from `run()`, `chat.defer()`, `onBeforeTurnComplete`, or `onTurnComplete` to exit the loop once the current turn finishes — no upgrade signal, no idle wait.
+
+```ts
+chat.agent({
+  id: "one-shot",
+  run: async ({ messages, signal }) => {
+    // Single-response agent — exit after this turn.
+    chat.endRun();
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+The current turn streams through normally, `onBeforeTurnComplete` / `onTurnComplete` fire, the turn-complete chunk is written, and the run exits instead of suspending. The next user message on the same `chatId` starts a fresh run via the standard continuation flow.
+
+Use this when the agent knows its work is done (budget exhausted, goal achieved, one-shot response) rather than relying on the idle timeout. Unlike `chat.requestUpgrade()`, no `upgrade-required` signal is sent to the client, so there's no version-migration semantics.
+
 ### Runtime configuration
 
 #### chat.setTurnTimeout()
