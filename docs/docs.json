@@ -99,6 +99,7 @@
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/mcp",
+                  "ai-chat/testing",
                   {
                     "group": "Patterns",
                     "pages": [
