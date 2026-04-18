@@ -190,6 +190,112 @@ export const myChat = chat.agent({
 });
 ```
 
+## User-initiated compaction
+
+Sometimes you want the user to decide when to compact — a "Summarize conversation" button, a `/compact` slash command, or a settings toggle. Wire this up with [actions](/ai-chat/backend#actions): the frontend sends a typed action, `onAction` runs the summary, and `chat.history.set()` replaces the conversation.
+
+### Backend
+
+Define a `compact` action that reuses your existing `summarize` function:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, generateText, generateId, convertToModelMessages } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+// Reusable summarize fn — also used by the automatic compaction config.
+async function summarize(messages: ModelMessage[]) {
+  const result = await generateText({
+    model: openai("gpt-4o-mini"),
+    messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
+  });
+  return result.text;
+}
+
+export const myChat = chat.agent({
+  id: "my-chat",
+
+  // Automatic compaction still runs on threshold.
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) => summarize(messages),
+  },
+
+  // User-initiated: the frontend sends { type: "compact" }.
+  actionSchema: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("compact") }),
+  ]),
+
+  onAction: async ({ action, uiMessages }) => {
+    if (action.type !== "compact") return;
+
+    const summary = await summarize(convertToModelMessages(uiMessages));
+
+    // Replace the full history with a single summary message.
+    chat.history.set([
+      {
+        id: generateId(),
+        role: "assistant",
+        parts: [{ type: "text", text: `[Conversation summary]\n\n${summary}` }],
+      },
+    ]);
+  },
+
+  run: async ({ messages, trigger, signal }) => {
+    // Compact action doesn't need an LLM response — just exit.
+    if (trigger === "action") return;
+
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+Actions fire `onAction`, apply any `chat.history.*` mutations, then call `run()`. For compaction there's no new user message to respond to, so `run()` returns early when `trigger === "action"`. `onTurnComplete` still fires with the compacted `uiMessages` — use it to persist the new state.
+
+### Frontend
+
+Call `transport.sendAction()` from a button or slash command:
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/react-hooks";
+import { useChat } from "@ai-sdk/react";
+
+function ChatView({ chatId, accessToken }: { chatId: string; accessToken: string }) {
+  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+  const { messages } = useChat({ id: chatId, transport });
+
+  return (
+    <>
+      <button onClick={() => transport.sendAction(chatId, { type: "compact" })}>
+        Summarize conversation
+      </button>
+      {messages.map(/* ... */)}
+    </>
+  );
+}
+```
+
+The call returns as soon as the backend accepts the action. Because `onTurnComplete` replaces the `uiMessages` with the summary, `useChat` receives the new state via the normal turn-complete flow — the UI updates automatically.
+
+### Indicating compaction in the UI
+
+For "Compacting..." feedback while the summary generates, append a transient data part from `onAction` via `chat.stream.append()`:
+
+```ts
+onAction: async ({ action, uiMessages }) => {
+  if (action.type !== "compact") return;
+
+  chat.stream.append({ type: "data-compaction", data: { status: "compacting" } });
+  const summary = await summarize(convertToModelMessages(uiMessages));
+  chat.stream.append({ type: "data-compaction", data: { status: "complete" } });
+
+  chat.history.set([ /* ... */ ]);
+},
+```
+
+See [Raw streaming with chat.stream](/ai-chat/features#raw-streaming-with-chatstream) for the full API.
+
 ## Using with chat.createSession()
 
 Pass the same `compaction` config to `chat.createSession()`. The session handles outer-loop compaction automatically inside `turn.complete()`:
