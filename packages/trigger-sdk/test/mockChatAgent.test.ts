@@ -236,6 +236,32 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("exposes finishReason on the onTurnComplete event", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("hi") }),
+    });
+
+    let seenReason: string | undefined;
+    const agent = chat.agent({
+      id: "mockChatAgent.finish-reason",
+      onTurnComplete: async ({ finishReason }) => {
+        seenReason = finishReason;
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-finish-reason" });
+    try {
+      await harness.sendMessage(userMessage("hello"));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(seenReason).toBe("stop");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("seeds locals before run() via setupLocals (DI pattern)", async () => {
     type FakeDb = { findUser(id: string): Promise<{ id: string; name: string }> };
     const dbKey = locals.create<FakeDb>("test-db");
