@@ -1,8 +1,6 @@
 {
   "extends": "../../.configs/tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
-    "isolatedDeclarations": false,
     "sourceMap": true
   },
   "include": ["./src/**/*.ts"]
