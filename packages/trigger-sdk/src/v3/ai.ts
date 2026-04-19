@@ -60,6 +60,13 @@ import {
   CHAT_MESSAGES_STREAM_ID,
   CHAT_STOP_STREAM_ID,
 } from "./chat-constants.js";
+import {
+  applyChatStorePatch,
+  type ChatStoreChunk,
+  type ChatStoreDeltaChunk,
+  type ChatStorePatchOperation,
+  type ChatStoreSnapshotChunk,
+} from "@trigger.dev/core/v3/chat-client";
 
 const METADATA_KEY = "tool.execute.options";
 
@@ -497,6 +504,129 @@ const chatResponse = {
 };
 
 // ---------------------------------------------------------------------------
+// chat.store — typed, bidirectional shared data between agent and clients
+// ---------------------------------------------------------------------------
+
+/**
+ * Listener fired when the store value changes. `operations` is present for
+ * `patch()` updates and absent for `set()` (which is a full snapshot).
+ */
+export type ChatStoreChangeListener<TStore = unknown> = (
+  value: TStore,
+  operations?: ChatStorePatchOperation[]
+) => void;
+
+/**
+ * @internal Holder for the current store value. We wrap in an object so
+ * `undefined` (cleared) is distinguishable from "never set".
+ */
+type ChatStoreSlot = { value: unknown };
+
+/** @internal */
+const chatStoreSlotKey = locals.create<ChatStoreSlot>("chat.store.slot");
+
+/** @internal */
+const chatStoreListenersKey = locals.create<Set<ChatStoreChangeListener>>(
+  "chat.store.listeners"
+);
+
+/** @internal — write a store chunk onto the chat output stream. */
+function writeStoreChunk(chunk: ChatStoreChunk): void {
+  const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+    spanName: chunk.type === "store-snapshot" ? "chat.store.set" : "chat.store.patch",
+    collapsed: true,
+    execute: ({ write }) => {
+      write(chunk as unknown as UIMessageChunk);
+    },
+  });
+  waitUntilComplete().catch(() => {});
+}
+
+/** @internal — fire all listeners, swallowing per-listener errors. */
+function fireStoreListeners(
+  value: unknown,
+  operations?: ChatStorePatchOperation[]
+): void {
+  const listeners = locals.get(chatStoreListenersKey);
+  if (!listeners || listeners.size === 0) return;
+  for (const listener of listeners) {
+    try {
+      listener(value, operations);
+    } catch {
+      // non-fatal — listener errors don't break the agent
+    }
+  }
+}
+
+/**
+ * Replace the entire store value with `value`. Emits a `store-snapshot`
+ * chunk on the chat output stream and fires all `onChange` listeners.
+ */
+function chatStoreSet<TStore = unknown>(value: TStore): void {
+  locals.set(chatStoreSlotKey, { value });
+  writeStoreChunk({ type: "store-snapshot", value } satisfies ChatStoreSnapshotChunk);
+  fireStoreListeners(value);
+}
+
+/**
+ * Apply RFC 6902 JSON Patch operations to the current store value.
+ * Emits a `store-delta` chunk on the chat output stream and fires all
+ * `onChange` listeners with the new value and the operations.
+ */
+function chatStorePatch(operations: ChatStorePatchOperation[]): void {
+  const slot = locals.get(chatStoreSlotKey);
+  const current = slot?.value;
+  const next = applyChatStorePatch(current, operations);
+  locals.set(chatStoreSlotKey, { value: next });
+  writeStoreChunk({
+    type: "store-delta",
+    operations,
+  } satisfies ChatStoreDeltaChunk);
+  fireStoreListeners(next, operations);
+}
+
+/** Get the current store value. Returns `undefined` if no value has been set. */
+function chatStoreGet<TStore = unknown>(): TStore | undefined {
+  return locals.get(chatStoreSlotKey)?.value as TStore | undefined;
+}
+
+/**
+ * Subscribe to store changes for the current run. Returns an
+ * unsubscribe function.
+ */
+function chatStoreOnChange<TStore = unknown>(
+  listener: ChatStoreChangeListener<TStore>
+): () => void {
+  let listeners = locals.get(chatStoreListenersKey);
+  if (!listeners) {
+    listeners = new Set();
+    locals.set(chatStoreListenersKey, listeners);
+  }
+  listeners.add(listener as ChatStoreChangeListener);
+  return () => {
+    listeners!.delete(listener as ChatStoreChangeListener);
+  };
+}
+
+/**
+ * @internal — set the value without emitting a chunk. Used when applying
+ * `hydrateStore` results / `incomingStore` at turn start; the emitted
+ * snapshot is written separately so we don't double-emit.
+ */
+function chatStoreSetSilent(value: unknown): void {
+  locals.set(chatStoreSlotKey, { value });
+}
+
+/**
+ * @internal — emit the current value as a snapshot without touching the
+ * slot. Used at turn start after hydration so clients observing the stream
+ * see the initial value.
+ */
+function chatStoreEmitSnapshot(value: unknown): void {
+  writeStoreChunk({ type: "store-snapshot", value } satisfies ChatStoreSnapshotChunk);
+}
+
+// ---------------------------------------------------------------------------
 // ChatWriter — stream writer for callbacks
 // ---------------------------------------------------------------------------
 
@@ -606,6 +736,16 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
   previousRunId?: string;
   /** Override idle timeout for this run (seconds). Set by transport.preload(). */
   idleTimeoutInSeconds?: number;
+  /**
+   * Client-side `chat.store` value sent by the transport. Applied at turn
+   * start before `run()` fires, overwriting any in-memory store value on the
+   * agent (last-write-wins).
+   *
+   * The transport queues this via `setStore` / `applyStorePatch` and flushes
+   * it with the next `sendMessage`. On the agent you typically don't read
+   * this directly — it's applied into `chat.store` transparently.
+   */
+  incomingStore?: unknown;
 };
 
 /**
@@ -2334,6 +2474,38 @@ export type HydrateMessagesEvent<TClientData = unknown, TUIM extends UIMessage =
 };
 
 /**
+ * Event passed to the `hydrateStore` callback.
+ *
+ * Called at turn start — before `run()` fires and before any incoming store
+ * from the wire payload is applied. Return the authoritative store value
+ * for this turn; it becomes the initial value `chat.store.get()` sees.
+ */
+export type HydrateStoreEvent<TClientData = unknown, TStore = unknown> = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The trigger type for this turn. */
+  trigger: "submit-message" | "regenerate-message" | "action" | "preload";
+  /**
+   * The in-memory store value from the previous turn of this run
+   * (`undefined` on turn 0 and after continuations).
+   */
+  previousStore: TStore | undefined;
+  /**
+   * The store value the transport sent with this turn, if any.
+   * Usually set by client-side `setStore` / `applyStorePatch`.
+   */
+  incomingStore: TStore | undefined;
+  /** Parsed client data from the transport metadata. */
+  clientData?: TClientData;
+  /** Whether this run is continuing from a previous run. */
+  continuation: boolean;
+  /** The ID of the previous run (if continuation). */
+  previousRunId?: string;
+};
+
+/**
  * Event passed to the `onValidateMessages` callback.
  */
 export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
@@ -2747,6 +2919,46 @@ export type ChatAgentOptions<
   ) => TUIMessage[] | Promise<TUIMessage[]>;
 
   /**
+   * Load the `chat.store` value for this turn from your backend.
+   *
+   * The store lives in memory on the agent instance for the lifetime of
+   * the run. After a continuation (idle timeout, `chat.requestUpgrade`,
+   * max turns), a new run starts with an empty store — this hook lets
+   * you restore it from your own persistence layer.
+   *
+   * Runs at turn start, before `run()` fires. The returned value replaces
+   * the in-memory store and is emitted as a `store-snapshot` chunk so the
+   * frontend sees the initial value.
+   *
+   * If both `hydrateStore` and `incomingStore` (from the wire payload) are
+   * present, `incomingStore` wins — it represents the client's latest
+   * local state and follows AG-UI's last-write-wins policy.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   hydrateStore: async ({ chatId, previousRunId }) => {
+   *     return db.chatStore.findUnique({ where: { chatId } })?.value;
+   *   },
+   *   onTurnComplete: async ({ chatId }) => {
+   *     await db.chatStore.upsert({
+   *       where: { chatId },
+   *       update: { value: chat.store.get() },
+   *       create: { chatId, value: chat.store.get() },
+   *     });
+   *   },
+   *   run: async ({ messages, signal }) => {
+   *     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+   *   },
+   * });
+   * ```
+   */
+  hydrateStore?: (
+    event: HydrateStoreEvent<inferSchemaOut<TClientDataSchema>>
+  ) => unknown | Promise<unknown>;
+
+  /**
    * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
    * but before the `run` function executes.
    *
@@ -3133,6 +3345,7 @@ function chatAgent<
     onChatStart,
     onValidateMessages,
     hydrateMessages,
+    hydrateStore,
     actionSchema,
     onAction,
     onTurnStart,
@@ -3430,6 +3643,83 @@ function chatAgent<
                     continuation,
                     clientData,
                   });
+
+                  // ── chat.store hydration ─────────────────────────────────
+                  // Apply `hydrateStore` (if configured) and `incomingStore`
+                  // from the wire payload before `run()` fires. Order:
+                  //
+                  //   1. `previousStore` = what's in memory from the prior turn.
+                  //   2. `hydrateStore` returns authoritative value from backend.
+                  //   3. `incomingStore` (client-side) wins if present
+                  //      (AG-UI last-write-wins).
+                  //
+                  // Emit a snapshot chunk after hydration so the frontend
+                  // observing the stream sees the initial value.
+                  {
+                    const previousStoreValue = locals.get(chatStoreSlotKey)?.value;
+                    const incomingStoreValue =
+                      "incomingStore" in currentWirePayload
+                        ? (currentWirePayload as { incomingStore?: unknown }).incomingStore
+                        : undefined;
+
+                    let nextStoreValue: unknown = previousStoreValue;
+                    let storeChanged = false;
+
+                    if (hydrateStore) {
+                      try {
+                        const hydratedValue = await tracer.startActiveSpan(
+                          "hydrateStore()",
+                          async () => {
+                            return hydrateStore({
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                              trigger: currentWirePayload.trigger as
+                                | "submit-message"
+                                | "regenerate-message"
+                                | "action"
+                                | "preload",
+                              previousStore: previousStoreValue,
+                              incomingStore: incomingStoreValue,
+                              clientData,
+                              continuation,
+                              previousRunId,
+                            });
+                          },
+                          {
+                            attributes: {
+                              [SemanticInternalAttributes.STYLE_ICON]:
+                                "task-hook-onStart",
+                              [SemanticInternalAttributes.COLLAPSED]: true,
+                              "chat.id": currentWirePayload.chatId,
+                              "chat.turn": turn + 1,
+                            },
+                          }
+                        );
+                        nextStoreValue = hydratedValue;
+                        storeChanged = true;
+                      } catch (err) {
+                        // Surface hydration failures as a turn error — users
+                        // rely on `chat.store.get()` reflecting authoritative
+                        // state, so silently continuing with stale data is
+                        // worse than failing loudly.
+                        throw err;
+                      }
+                    }
+
+                    if (incomingStoreValue !== undefined) {
+                      // Last-write-wins: the client-sent value overrides
+                      // whatever we hydrated. The client may have made local
+                      // updates the backend hasn't seen yet.
+                      nextStoreValue = incomingStoreValue;
+                      storeChanged = true;
+                    }
+
+                    if (storeChanged) {
+                      chatStoreSetSilent(nextStoreValue);
+                      chatStoreEmitSnapshot(nextStoreValue);
+                      fireStoreListeners(nextStoreValue);
+                    }
+                  }
 
                   // Per-turn stop controller (reset each turn)
                   const stopController = new AbortController();
@@ -6406,6 +6696,34 @@ export const chat = {
   stream: chatStream,
   /** Write data parts that persist to the response message. See {@link chatResponse}. */
   response: chatResponse,
+  /**
+   * Typed, bidirectional shared data slot for the chat.
+   *
+   * Use from `chat.agent` hooks and `run()` to share state with the client.
+   * Setting emits a `store-snapshot` chunk; patching emits `store-delta`.
+   * The value persists across turns within the same run, and can be
+   * restored after continuations via the `hydrateStore` config option.
+   *
+   * ```ts
+   * chat.store.set({ plan: ["research", "draft", "review"] });
+   * chat.store.patch([{ op: "replace", path: "/status", value: "done" }]);
+   * const current = chat.store.get();
+   * const off = chat.store.onChange((value, ops) => { ... });
+   * ```
+   */
+  store: {
+    /** Replace the store value. Emits a `store-snapshot` chunk. */
+    set: chatStoreSet,
+    /**
+     * Apply RFC 6902 JSON Patch operations to the current value.
+     * Emits a `store-delta` chunk.
+     */
+    patch: chatStorePatch,
+    /** Read the current store value. Returns `undefined` if never set. */
+    get: chatStoreGet,
+    /** Subscribe to store changes. Returns an unsubscribe function. */
+    onChange: chatStoreOnChange,
+  },
   /** Pre-built input stream for receiving messages from the transport. */
   messages: messagesInput,
   /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
