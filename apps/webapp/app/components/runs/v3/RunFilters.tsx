@@ -672,9 +672,20 @@ function TasksDropdown({
 }) {
   const { values, replace } = useSearchParams();
 
-  const handleChange = (values: string[]) => {
+  const handleChange = (newValues: string[]) => {
     clearSearchValue();
-    replace({ tasks: values, cursor: undefined, direction: undefined });
+    const previousTasks = values("tasks");
+    const wasEmpty = previousTasks.length === 0 || previousTasks.every((v) => v === "");
+    const isEmpty = newValues.length === 0 || newValues.every((v) => v === "");
+    // When transitioning from no tasks to tasks, force rootOnly off so users
+    // see the runs of the task they just selected (root or otherwise).
+    const transitioningToTasks = wasEmpty && !isEmpty;
+    replace({
+      tasks: newValues,
+      cursor: undefined,
+      direction: undefined,
+      ...(transitioningToTasks ? { rootOnly: "false" } : {}),
+    });
   };
 
   const filtered = useMemo(() => {
@@ -1456,16 +1467,15 @@ function AppliedVersionsFilter() {
 const rootOnlyShortcut = { key: "o" };
 
 function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
-  const { value, values, replace } = useSearchParams();
+  const { value, replace } = useSearchParams();
   const searchValue = value("rootOnly");
   const rootOnly = searchValue !== undefined ? searchValue === "true" : defaultValue;
 
   const batchId = value("batchId");
   const runId = value("runId");
   const scheduleId = value("scheduleId");
-  const tasks = values("tasks");
 
-  const disabled = !!batchId || !!runId || !!scheduleId || tasks.length > 0;
+  const disabled = !!batchId || !!runId || !!scheduleId;
 
   return (
     <Ariakit.TooltipProvider timeout={200}>
