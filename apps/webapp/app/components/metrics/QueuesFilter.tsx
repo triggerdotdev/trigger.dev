@@ -39,6 +39,7 @@ export function QueuesFilter() {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by queue"
+                className="pl-1.5"
               >
                 <span className="ml-1">Queues</span>
               </SelectTrigger>

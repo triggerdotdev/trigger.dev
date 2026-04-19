@@ -308,7 +308,13 @@ export function MetricDashboard({
           />
           {hasAppliedFilters && (
             <Form className="-ml-1 h-6">
-              <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+              <Button
+                variant="minimal/small"
+                LeadingIcon={XMarkIcon}
+                tooltip="Clear all filters"
+                className="group-hover/button:bg-transparent"
+                leadingIconClassName="group-hover/button:text-text-bright"
+              />
             </Form>
           )}
         </div>

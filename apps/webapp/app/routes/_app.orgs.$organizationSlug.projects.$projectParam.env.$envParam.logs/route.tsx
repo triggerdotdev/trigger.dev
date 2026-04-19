@@ -269,11 +269,13 @@ function FiltersBar({
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
             <LogsLevelFilter />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}
@@ -286,11 +288,13 @@ function FiltersBar({
             <LogsLevelFilter />
             <SearchInput />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}

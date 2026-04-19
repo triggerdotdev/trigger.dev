@@ -79,8 +79,14 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
       <PermanentIdempotencyKeyFilter />
       <TimeFilter shortcut={{ key: "d" }} />
       {hasFilters && (
-        <Form className="h-6">
-          <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+        <Form className="-ml-1 h-6">
+          <Button
+            variant="minimal/small"
+            LeadingIcon={XMarkIcon}
+            tooltip="Clear all filters"
+            className="group-hover/button:bg-transparent"
+            leadingIconClassName="group-hover/button:text-text-bright"
+          />
         </Form>
       )}
     </div>
@@ -193,9 +199,7 @@ function PermanentStatusFilter() {
                     label="Status"
                     icon={<StatusIcon className="size-3.5" />}
                     value={appliedSummary(
-                      selectedStatuses.map((v) =>
-                        waitpointStatusTitle(v as WaitpointTokenStatus)
-                      )
+                      selectedStatuses.map((v) => waitpointStatusTitle(v as WaitpointTokenStatus))
                     )}
                     onRemove={() => del(["statuses", "cursor", "direction"])}
                     variant="secondary/small"
@@ -391,7 +395,9 @@ function PermanentTagsFilter() {
   );
 }
 
-function WaitpointIdDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
+function WaitpointIdDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
     <IdFilterDropdown
       {...props}
@@ -474,7 +480,9 @@ function PermanentWaitpointIdFilter() {
   );
 }
 
-function IdempotencyKeyDropdown(props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">) {
+function IdempotencyKeyDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
     <IdFilterDropdown
       {...props}

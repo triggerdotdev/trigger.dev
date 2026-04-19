@@ -247,12 +247,14 @@ function ClearFiltersButton() {
   }, [location, navigate]);
 
   return (
-    <div className="h-6">
+    <div className="-ml-1 h-6">
       <Button
         variant="minimal/small"
         onClick={clearFilters}
         LeadingIcon={XMarkIcon}
         tooltip="Clear all filters"
+        className="group-hover/button:bg-transparent"
+        leadingIconClassName="group-hover/button:text-text-bright"
       />
     </div>
   );

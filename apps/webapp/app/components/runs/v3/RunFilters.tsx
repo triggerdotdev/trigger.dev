@@ -369,11 +369,17 @@ export function RunsFilters(props: RunFiltersProps) {
       <AppliedFilters {...props} />
       <FilterMenu {...props} />
       {hasFilters && (
-        <Form className="h-6">
+        <Form className="-ml-1 h-6">
           {searchParams.has("rootOnly") && (
             <input type="hidden" name="rootOnly" value={searchParams.get("rootOnly") as string} />
           )}
-          <Button variant="minimal/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+          <Button
+            variant="minimal/small"
+            LeadingIcon={XMarkIcon}
+            tooltip="Clear all filters"
+            className="group-hover/button:bg-transparent"
+            leadingIconClassName="group-hover/button:text-text-bright"
+          />
         </Form>
       )}
     </div>
