@@ -18,7 +18,7 @@
   "scripts": {
     "clean": "rimraf dist .turbo",
     "build": "tsup",
-    "dev": "tsup --watch --onSuccess 'yalc push --no-sig || true'",
+    "dev": "tsup --watch --onSuccess 'pnpm publish --registry http://localhost:4873 --no-git-checks 2>/dev/null || true'",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
