@@ -68,8 +68,9 @@ export function ModelsFilter({ possibleModels }: ModelsFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by model"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Models</span>
+                <span className="ml-1">Models</span>
               </SelectTrigger>
             }
             searchValue={search}

@@ -34,8 +34,9 @@ export function ProvidersFilter({ possibleProviders }: ProvidersFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by provider"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Providers</span>
+                <span className="ml-1">Providers</span>
               </SelectTrigger>
             }
             searchValue={search}

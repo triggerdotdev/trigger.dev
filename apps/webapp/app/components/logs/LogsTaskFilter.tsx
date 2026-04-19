@@ -42,8 +42,9 @@ export function LogsTaskFilter({ possibleTasks }: LogsTaskFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by task"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Tasks</span>
+                <span className="ml-1">Tasks</span>
               </SelectTrigger>
             }
             searchValue={search}

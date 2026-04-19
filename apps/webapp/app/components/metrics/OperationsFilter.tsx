@@ -45,8 +45,9 @@ export function OperationsFilter({ possibleOperations }: OperationsFilterProps) 
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by operation"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Operations</span>
+                <span className="ml-1">Operations</span>
               </SelectTrigger>
             }
             searchValue={search}

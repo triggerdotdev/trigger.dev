@@ -34,8 +34,9 @@ export function PromptsFilter({ possiblePrompts }: PromptsFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by prompt"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Prompts</span>
+                <span className="ml-1">Prompts</span>
               </SelectTrigger>
             }
             searchValue={search}
