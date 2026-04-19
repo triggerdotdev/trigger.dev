@@ -4,6 +4,18 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 19, 2026" description="0.0.0-chat-prerelease-20260419173457" tags={["SDK", "CLI"]}>
+
+## Agent Skills (Phase 1)
+
+Ship reusable capabilities as folders — a `SKILL.md` plus optional scripts, references, and assets. The agent sees short descriptions in its system prompt, loads full instructions on demand via `loadSkill`, and invokes bundled scripts via `bash` — no manual wiring.
+
+`skills.define({ id, path })` registers the skill; the CLI bundles the folder into the deploy image. `chat.skills.set([...])` activates skills for the run; `chat.toStreamTextOptions()` auto-injects the preamble and tools.
+
+See the new [Agent Skills guide](/ai-chat/patterns/skills).
+
+</Update>
+
 <Update label="April 18, 2026" description="0.0.0-chat-prerelease-20260418174118" tags={["SDK"]}>
 
 ## `chat.endRun()` — exit on your own terms
