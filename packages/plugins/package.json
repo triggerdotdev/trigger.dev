@@ -1,0 +1,43 @@
+{
+  "name": "@trigger.dev/plugins",
+  "version": "4.4.4",
+  "description": "Plugin contracts and interfaces for Trigger.dev",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triggerdotdev/trigger.dev",
+    "directory": "packages/plugins"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist .turbo",
+    "build": "tsup",
+    "dev": "tsup --watch --onSuccess 'yalc push --no-sig || true'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.14",
+    "rimraf": "6.0.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.20.0"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  }
+}
