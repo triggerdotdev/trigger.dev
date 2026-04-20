@@ -67,6 +67,17 @@ type PublicTokenPermissionProperties = {
    * Grant access to send data to input streams on specific runs
    */
   inputStreams?: string | string[];
+
+  /**
+   * Grant access to specific Sessions (the durable, typed I/O primitive that
+   * outlives a single run). Use the session's friendlyId (e.g. `session_abc`).
+   *
+   * `read:sessions:{id}` lets the bearer read both the `.out` and `.in`
+   * channels and list runs on the session. `write:sessions:{id}` lets the
+   * bearer append to the session's channels. `trigger:sessions:{id}` permits
+   * triggering new runs on the session.
+   */
+  sessions?: string | string[];
 };
 
 export type PublicTokenPermissions = {
