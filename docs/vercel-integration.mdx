@@ -104,6 +104,12 @@ The following variables are excluded from the Vercel → Trigger.dev sync:
 
 You can control sync behavior per-variable from your project's Vercel settings. Deselecting a variable prevents its value from being updated during future syncs.
 
+<Note>
+  Environment variables are pulled from Vercel before each build. To sync updated values into
+  Trigger.dev, trigger a new Vercel deployment — either by pushing a commit to your connected branch
+  or by redeploying from the Vercel dashboard.
+</Note>
+
 <Warning>
   If you are experiencing incorrectly populated environment variables, check that you are not using
   the `syncVercelEnvVars` build extension in your `trigger.config.ts`. This extension is deprecated
