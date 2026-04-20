@@ -89,38 +89,43 @@ const { action } = createActionApiRoute(
       let isCached = false;
 
       if (body.externalId) {
-        // Idempotent: (env, externalId) uniquely identifies the Session.
-        const existing = await prisma.session.findUnique({
+        // Atomic upsert — two concurrent POSTs with the same externalId both
+        // converge to the same row without either hitting a 500 from the
+        // unique constraint.
+        const { id, friendlyId } = SessionId.generate();
+        const externalId = body.externalId;
+        const pre = await prisma.session.findFirst({
+          where: {
+            runtimeEnvironmentId: authentication.environment.id,
+            externalId,
+          },
+          select: { id: true },
+        });
+        isCached = pre !== null;
+
+        session = await prisma.session.upsert({
           where: {
             runtimeEnvironmentId_externalId: {
               runtimeEnvironmentId: authentication.environment.id,
-              externalId: body.externalId,
+              externalId,
             },
           },
+          create: {
+            id,
+            friendlyId,
+            externalId,
+            type: body.type,
+            taskIdentifier: body.taskIdentifier ?? null,
+            tags: body.tags ?? [],
+            metadata: body.metadata as Prisma.InputJsonValue | undefined,
+            expiresAt: body.expiresAt ?? null,
+            projectId: authentication.environment.projectId,
+            runtimeEnvironmentId: authentication.environment.id,
+            environmentType: authentication.environment.type,
+            organizationId: authentication.environment.organizationId,
+          },
+          update: {},
         });
-
-        if (existing) {
-          session = existing;
-          isCached = true;
-        } else {
-          const { id, friendlyId } = SessionId.generate();
-          session = await prisma.session.create({
-            data: {
-              id,
-              friendlyId,
-              externalId: body.externalId,
-              type: body.type,
-              taskIdentifier: body.taskIdentifier ?? null,
-              tags: body.tags ?? [],
-              metadata: body.metadata as Prisma.InputJsonValue | undefined,
-              expiresAt: body.expiresAt ?? null,
-              projectId: authentication.environment.projectId,
-              runtimeEnvironmentId: authentication.environment.id,
-              environmentType: authentication.environment.type,
-              organizationId: authentication.environment.organizationId,
-            },
-          });
-        }
       } else {
         const { id, friendlyId } = SessionId.generate();
         session = await prisma.session.create({

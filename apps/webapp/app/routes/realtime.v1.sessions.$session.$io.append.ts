@@ -17,10 +17,18 @@ const ParamsSchema = z.object({
 // POST: server-side append of a single record to a session channel. Mirrors
 // the existing /realtime/v1/streams/:runId/:target/:streamId/append route,
 // scoped to a Session primitive.
+// S2 enforces a 1 MiB per-record limit (metered as
+// `8 + 2*H + Σ(header name+value) + body`). We cap the raw HTTP body at
+// 512 KiB so the JSON wrapper (`{"data":"...","id":"..."}`), string
+// escaping, and any future per-record header additions all stay comfortably
+// below S2's ceiling. See https://s2.dev/docs/limits.
+const MAX_APPEND_BODY_BYTES = 1024 * 512;
+
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
+    maxContentLength: MAX_APPEND_BODY_BYTES,
     allowJWT: true,
     corsStrategy: "all",
     authorization: {

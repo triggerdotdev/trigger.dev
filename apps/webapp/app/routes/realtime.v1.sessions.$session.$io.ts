@@ -79,7 +79,12 @@ const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (session) => ({ sessions: [session.friendlyId, session.externalId ?? ""] }),
+      resource: (session) => {
+        const ids = session.externalId
+          ? [session.friendlyId, session.externalId]
+          : [session.friendlyId];
+        return { sessions: ids };
+      },
       superScopes: ["read:sessions", "read:all", "admin"],
     },
   },
@@ -104,19 +109,22 @@ const loader = createLoaderApiRoute(
 
     const lastEventId = request.headers.get("Last-Event-ID") ?? undefined;
 
-    const timeoutInSecondsRaw = request.headers.get("Timeout-Seconds") ?? undefined;
-    const timeoutInSeconds = timeoutInSecondsRaw ? parseInt(timeoutInSecondsRaw, 10) : undefined;
-
-    if (timeoutInSeconds !== undefined && isNaN(timeoutInSeconds)) {
-      return new Response("Invalid timeout seconds", { status: 400 });
-    }
-
-    if (timeoutInSeconds !== undefined && timeoutInSeconds < 1) {
-      return new Response("Timeout seconds must be greater than 0", { status: 400 });
-    }
-
-    if (timeoutInSeconds !== undefined && timeoutInSeconds > 600) {
-      return new Response("Timeout seconds must be less than 600", { status: 400 });
+    const timeoutInSecondsRaw = request.headers.get("Timeout-Seconds");
+    let timeoutInSeconds: number | undefined;
+    if (timeoutInSecondsRaw) {
+      // `Number()` rejects `"10abc"` as NaN; `parseInt` would silently accept
+      // the trailing garbage and bypass the bounds checks below.
+      const parsed = Number(timeoutInSecondsRaw);
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+        return new Response("Invalid timeout seconds", { status: 400 });
+      }
+      if (parsed < 1) {
+        return new Response("Timeout seconds must be greater than 0", { status: 400 });
+      }
+      if (parsed > 600) {
+        return new Response("Timeout seconds must be less than 600", { status: 400 });
+      }
+      timeoutInSeconds = parsed;
     }
 
     return realtimeStream.streamResponseFromSessionStream(

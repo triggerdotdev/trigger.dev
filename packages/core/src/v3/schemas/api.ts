@@ -1456,8 +1456,8 @@ export type CompleteWaitpointTokenRequestBody = z.infer<typeof CompleteWaitpoint
 export const CreateSessionRequestBody = z.object({
   /** Plain string discriminator — e.g. `"chat.agent"`. Not validated against an enum on the server. */
   type: z.string().min(1).max(64),
-  /** User-supplied idempotency key. Unique per environment. */
-  externalId: z.string().max(256).optional(),
+  /** User-supplied idempotency key. Unique per environment. Empty strings are rejected. */
+  externalId: z.string().trim().min(1).max(256).optional(),
   /** Optional pointer for task-owned session types. */
   taskIdentifier: z.string().max(128).optional(),
   /** Up to 10 tags for dashboard filtering. */
@@ -1495,7 +1495,10 @@ export type RetrieveSessionResponseBody = z.infer<typeof RetrieveSessionResponse
 export const UpdateSessionRequestBody = z.object({
   tags: z.array(z.string().max(128)).max(10).optional(),
   metadata: z.record(z.unknown()).nullable().optional(),
-  externalId: z.string().max(256).nullable().optional(),
+  // Null explicitly clears the externalId; non-null values must be non-empty.
+  externalId: z
+    .union([z.literal(null), z.string().trim().min(1).max(256)])
+    .optional(),
 });
 export type UpdateSessionRequestBody = z.infer<typeof UpdateSessionRequestBody>;
 
@@ -1514,19 +1517,27 @@ export type SessionStatus = z.infer<typeof SessionStatus>;
  * narrowing fields — both produced automatically by `zodfetchCursorPage`
  * and the matching client-side search-query helper.
  */
-export const ListSessionsQueryParams = z.object({
-  "page[size]": z.coerce.number().int().min(1).max(100).default(20),
-  "page[after]": z.string().optional(),
-  "page[before]": z.string().optional(),
-  "filter[type]": z.union([z.string(), z.array(z.string())]).optional(),
-  "filter[tags]": z.union([z.string(), z.array(z.string())]).optional(),
-  "filter[taskIdentifier]": z.union([z.string(), z.array(z.string())]).optional(),
-  "filter[externalId]": z.string().optional(),
-  "filter[status]": z.union([SessionStatus, z.array(SessionStatus)]).optional(),
-  "filter[createdAt][period]": z.string().optional(),
-  "filter[createdAt][from]": z.coerce.number().int().optional(),
-  "filter[createdAt][to]": z.coerce.number().int().optional(),
-});
+export const ListSessionsQueryParams = z
+  .object({
+    "page[size]": z.coerce.number().int().min(1).max(100).default(20),
+    "page[after]": z.string().optional(),
+    "page[before]": z.string().optional(),
+    "filter[type]": z.union([z.string(), z.array(z.string())]).optional(),
+    "filter[tags]": z.union([z.string(), z.array(z.string())]).optional(),
+    "filter[taskIdentifier]": z.union([z.string(), z.array(z.string())]).optional(),
+    "filter[externalId]": z.string().optional(),
+    "filter[status]": z.union([SessionStatus, z.array(SessionStatus)]).optional(),
+    "filter[createdAt][period]": z.string().optional(),
+    "filter[createdAt][from]": z.coerce.number().int().optional(),
+    "filter[createdAt][to]": z.coerce.number().int().optional(),
+  })
+  .refine(
+    (value) => !(value["page[after]"] && value["page[before]"]),
+    {
+      message: "Cannot pass both page[after] and page[before] on the same request",
+      path: ["page[before]"],
+    }
+  );
 export type ListSessionsQueryParams = z.infer<typeof ListSessionsQueryParams>;
 
 /**

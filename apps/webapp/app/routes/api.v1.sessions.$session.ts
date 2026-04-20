@@ -63,23 +63,41 @@ const { action } = createActionApiRoute(
       return json({ error: "Session not found" }, { status: 404 });
     }
 
-    const updated = await prisma.session.update({
-      where: { id: existing.id },
-      data: {
-        ...(body.tags !== undefined ? { tags: body.tags } : {}),
-        ...(body.metadata !== undefined
-          ? {
-              metadata:
-                body.metadata === null
-                  ? Prisma.JsonNull
-                  : (body.metadata as Prisma.InputJsonValue),
-            }
-          : {}),
-        ...(body.externalId !== undefined ? { externalId: body.externalId } : {}),
-      },
-    });
+    try {
+      const updated = await prisma.session.update({
+        where: { id: existing.id },
+        data: {
+          ...(body.tags !== undefined ? { tags: body.tags } : {}),
+          ...(body.metadata !== undefined
+            ? {
+                metadata:
+                  body.metadata === null
+                    ? Prisma.JsonNull
+                    : (body.metadata as Prisma.InputJsonValue),
+              }
+            : {}),
+          ...(body.externalId !== undefined ? { externalId: body.externalId } : {}),
+        },
+      });
 
-    return json<RetrieveSessionResponseBody>(serializeSession(updated));
+      return json<RetrieveSessionResponseBody>(serializeSession(updated));
+    } catch (error) {
+      // A duplicate externalId in the same environment violates the
+      // `(runtimeEnvironmentId, externalId)` unique constraint. Surface that
+      // as a 409 rather than a generic 500.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        Array.isArray((error.meta as { target?: string[] })?.target) &&
+        ((error.meta as { target?: string[] }).target ?? []).includes("externalId")
+      ) {
+        return json(
+          { error: "A session with this externalId already exists in this environment" },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
   }
 );
 

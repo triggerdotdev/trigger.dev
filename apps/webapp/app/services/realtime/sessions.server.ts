@@ -27,13 +27,11 @@ export async function resolveSessionByIdOrExternalId(
     });
   }
 
-  return prisma.session.findUnique({
-    where: {
-      runtimeEnvironmentId_externalId: {
-        runtimeEnvironmentId,
-        externalId: idOrExternalId,
-      },
-    },
+  // `findFirst` rather than `findUnique` per the repo rule — `findUnique`'s
+  // implicit DataLoader has open correctness bugs in Prisma 6.x that bite
+  // hot-path lookups exactly like this one.
+  return prisma.session.findFirst({
+    where: { runtimeEnvironmentId, externalId: idOrExternalId },
   });
 }
 
