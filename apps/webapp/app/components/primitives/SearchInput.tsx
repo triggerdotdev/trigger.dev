@@ -80,9 +80,12 @@ export function SearchInput({
               handleSubmit();
             }
             if (e.key === "Escape") {
-              e.stopPropagation();
-              handleClear();
-              e.currentTarget.blur();
+              if (text.length > 0) {
+                e.stopPropagation();
+                handleClear();
+              } else {
+                e.currentTarget.blur();
+              }
             }
           }}
           onFocus={() => setIsFocused(true)}
