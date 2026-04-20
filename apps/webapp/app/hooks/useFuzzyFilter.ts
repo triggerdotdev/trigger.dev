@@ -26,11 +26,15 @@ import { matchSorter } from "match-sorter";
 export function useFuzzyFilter<T extends Object>({
   items,
   keys,
+  filterText: controlledFilterText,
 }: {
   items: T[];
   keys: (Extract<keyof T, string> | (string & {}))[];
+  /** Optional controlled filter text. If provided, internal state is ignored. */
+  filterText?: string;
 }) {
-  const [filterText, setFilterText] = useState("");
+  const [internalFilterText, setInternalFilterText] = useState("");
+  const filterText = controlledFilterText ?? internalFilterText;
 
   const filteredItems = useMemo<T[]>(() => {
     const filterTerms = filterText
@@ -43,7 +47,6 @@ export function useFuzzyFilter<T extends Object>({
       return items;
     }
 
-    // sort by the score of the first term
     return filterTerms.reduceRight(
       (results, term) =>
         matchSorter(results, term, {
@@ -55,7 +58,7 @@ export function useFuzzyFilter<T extends Object>({
 
   return {
     filterText,
-    setFilterText,
+    setFilterText: setInternalFilterText,
     filteredItems,
   };
 }

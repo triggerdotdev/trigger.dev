@@ -5,10 +5,8 @@ import {
   ChevronUpIcon,
   ExclamationTriangleIcon,
   LightBulbIcon,
-  MagnifyingGlassIcon,
   UserPlusIcon,
   VideoCameraIcon,
-  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useRevalidator } from "@remix-run/react";
@@ -38,7 +36,6 @@ import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
@@ -50,6 +47,7 @@ import {
   ResizablePanelGroup,
   collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import {
@@ -62,7 +60,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
@@ -76,6 +73,7 @@ import { useEventSource } from "~/hooks/useEventSource";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -89,7 +87,6 @@ import {
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
-import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
@@ -177,9 +174,11 @@ export default function Page() {
   const environment = useEnvironment();
   const { tasks, activity, runningStats, durations, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
-  const { filterText, setFilterText, filteredItems } = useFuzzyFilter<TaskListItem>({
+  const { value } = useSearchParams();
+  const { filteredItems } = useFuzzyFilter<TaskListItem>({
     items: tasks,
     keys: ["slug", "filePath", "triggerSource"],
+    filterText: value("search") ?? "",
   });
 
   const hasTasks = tasks.length > 0;
@@ -245,12 +244,7 @@ export default function Page() {
                   {tasks.length === 0 ? <UserHasNoTasks /> : null}
                   <div className="max-h-full overflow-hidden">
                     <div className="flex items-center justify-between gap-1 p-2">
-                      <AnimatedSearchField
-                        value={filterText}
-                        onChange={setFilterText}
-                        placeholder="Search tasks…"
-                        autoFocus
-                      />
+                      <SearchInput placeholder="Search tasks…" autoFocus />
                       {!showUsefulLinks && (
                         <Button
                           variant="secondary/small"
@@ -868,73 +862,3 @@ function FailedToLoadStats() {
   );
 }
 
-function AnimatedSearchField({
-  value,
-  onChange,
-  placeholder,
-  autoFocus,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
-}) {
-  const [isFocused, setIsFocused] = useState(false);
-
-  return (
-    <motion.div
-      initial={{ width: "auto" }}
-      animate={{ width: isFocused && value.length > 0 ? "24rem" : "auto" }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="relative h-6 min-w-52"
-    >
-      <Input
-        type="text"
-        variant="secondary-small"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        fullWidth
-        autoFocus={autoFocus}
-        className={cn(isFocused && "placeholder:text-text-dimmed/70")}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.stopPropagation();
-            onChange("");
-            e.currentTarget.blur();
-          }
-        }}
-        icon={<MagnifyingGlassIcon className="size-4 text-text-bright" />}
-        accessory={
-          value.length > 0 ? (
-            <SimpleTooltip
-              asChild
-              button={
-                <button
-                  type="button"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    onChange("");
-                  }}
-                  className="-mr-1 flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
-                >
-                  <XMarkIcon className="size-3" />
-                </button>
-              }
-              content={
-                <div className="flex items-center gap-1">
-                  <span className="text-text-dimmed">Clear field</span>
-                  <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
-                </div>
-              }
-              className="px-2 py-1.5 text-xs"
-              disableHoverableContent
-            />
-          ) : undefined
-        }
-      />
-    </motion.div>
-  );
-}
