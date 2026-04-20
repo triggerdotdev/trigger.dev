@@ -10,6 +10,7 @@ import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { logger } from "~/services/logger.server";
 import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
@@ -28,6 +29,11 @@ export const loader = createLoaderApiRoute(
     searchParams: ListSessionsQueryParams,
     allowJWT: true,
     corsStrategy: "all",
+    authorization: {
+      action: "read",
+      resource: (_, __, searchParams) => ({ tasks: searchParams["filter[taskIdentifier]"] }),
+      superScopes: ["read:sessions", "read:all", "admin"],
+    },
     findResource: async () => 1,
   },
   async ({ searchParams, authentication }) => {
@@ -93,17 +99,11 @@ const { action } = createActionApiRoute(
       if (body.externalId) {
         // Atomic upsert — two concurrent POSTs with the same externalId both
         // converge to the same row without either hitting a 500 from the
-        // unique constraint.
+        // unique constraint. Derive isCached from the upsert result: if the
+        // row pre-existed, the returned id won't match the one we just
+        // generated. Saves a round-trip and is race-free.
         const { id, friendlyId } = SessionId.generate();
         const externalId = body.externalId;
-        const pre = await prisma.session.findFirst({
-          where: {
-            runtimeEnvironmentId: authentication.environment.id,
-            externalId,
-          },
-          select: { id: true },
-        });
-        isCached = pre !== null;
 
         session = await prisma.session.upsert({
           where: {
@@ -128,6 +128,7 @@ const { action } = createActionApiRoute(
           },
           update: {},
         });
+        isCached = session.id !== id;
       } else {
         const { id, friendlyId } = SessionId.generate();
         session = await prisma.session.create({
@@ -155,9 +156,7 @@ const { action } = createActionApiRoute(
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
       }
-      if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
-      }
+      logger.error("Failed to create session", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }
