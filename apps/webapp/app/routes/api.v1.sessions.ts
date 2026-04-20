@@ -26,6 +26,8 @@ function asArray<T>(value: T | T[] | undefined): T[] | undefined {
 export const loader = createLoaderApiRoute(
   {
     searchParams: ListSessionsQueryParams,
+    allowJWT: true,
+    corsStrategy: "all",
     findResource: async () => 1,
   },
   async ({ searchParams, authentication }) => {
