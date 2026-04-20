@@ -1457,7 +1457,15 @@ export const CreateSessionRequestBody = z.object({
   /** Plain string discriminator — e.g. `"chat.agent"`. Not validated against an enum on the server. */
   type: z.string().min(1).max(64),
   /** User-supplied idempotency key. Unique per environment. Empty strings are rejected. */
-  externalId: z.string().trim().min(1).max(256).optional(),
+  externalId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(256)
+    .refine((v) => !v.startsWith("session_"), {
+      message: "externalId cannot start with 'session_' (reserved prefix for internal friendlyIds)",
+    })
+    .optional(),
   /** Optional pointer for task-owned session types. */
   taskIdentifier: z.string().max(128).optional(),
   /** Up to 10 tags for dashboard filtering. */
@@ -1497,7 +1505,18 @@ export const UpdateSessionRequestBody = z.object({
   metadata: z.record(z.unknown()).nullable().optional(),
   // Null explicitly clears the externalId; non-null values must be non-empty.
   externalId: z
-    .union([z.literal(null), z.string().trim().min(1).max(256)])
+    .union([
+      z.literal(null),
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(256)
+        .refine((v) => !v.startsWith("session_"), {
+          message:
+            "externalId cannot start with 'session_' (reserved prefix for internal friendlyIds)",
+        }),
+    ])
     .optional(),
 });
 export type UpdateSessionRequestBody = z.infer<typeof UpdateSessionRequestBody>;
