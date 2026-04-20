@@ -29,6 +29,12 @@ import {
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
+  getSessionTagsQueryBuilder,
+  getSessionsCountQueryBuilder,
+  getSessionsQueryBuilder,
+  insertSessionsCompactArrays,
+} from "./sessions.js";
+import {
   getGlobalModelMetrics,
   getGlobalModelComparison,
   getPopularModels,
@@ -57,6 +63,7 @@ export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
 export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
+export type * from "./sessions.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -68,6 +75,8 @@ export {
   getTaskRunField,
   getPayloadField,
 } from "./taskRuns.js";
+
+export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";
 
 // TSQL query execution
 export {
@@ -248,6 +257,15 @@ export class ClickHouse {
       globalMetrics: getGlobalModelMetrics(this.reader),
       comparison: getGlobalModelComparison(this.reader),
       popular: getPopularModels(this.reader),
+    };
+  }
+
+  get sessions() {
+    return {
+      insertCompactArrays: insertSessionsCompactArrays(this.writer),
+      queryBuilder: getSessionsQueryBuilder(this.reader),
+      countQueryBuilder: getSessionsCountQueryBuilder(this.reader),
+      tagQueryBuilder: getSessionTagsQueryBuilder(this.reader),
     };
   }
 

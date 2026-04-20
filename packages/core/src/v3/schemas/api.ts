@@ -1449,6 +1449,118 @@ export const CompleteWaitpointTokenRequestBody = z.object({
 });
 export type CompleteWaitpointTokenRequestBody = z.infer<typeof CompleteWaitpointTokenRequestBody>;
 
+/**
+ * Request body for `POST /api/v1/sessions`. Creates a Session — the durable,
+ * typed, bidirectional I/O primitive that outlives a single run.
+ */
+export const CreateSessionRequestBody = z.object({
+  /** Plain string discriminator — e.g. `"chat.agent"`. Not validated against an enum on the server. */
+  type: z.string().min(1).max(64),
+  /** User-supplied idempotency key. Unique per environment. */
+  externalId: z.string().max(256).optional(),
+  /** Optional pointer for task-owned session types. */
+  taskIdentifier: z.string().max(128).optional(),
+  /** Up to 10 tags for dashboard filtering. */
+  tags: z.array(z.string().max(128)).max(10).optional(),
+  /** Arbitrary JSON metadata. */
+  metadata: z.record(z.unknown()).optional(),
+  /** Absolute expiry timestamp for retention. */
+  expiresAt: z.coerce.date().optional(),
+});
+export type CreateSessionRequestBody = z.infer<typeof CreateSessionRequestBody>;
+
+export const SessionItem = z.object({
+  id: z.string(),
+  externalId: z.string().nullable(),
+  type: z.string(),
+  taskIdentifier: z.string().nullable(),
+  tags: z.array(z.string()),
+  metadata: z.record(z.unknown()).nullable(),
+  closedAt: z.coerce.date().nullable(),
+  closedReason: z.string().nullable(),
+  expiresAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type SessionItem = z.infer<typeof SessionItem>;
+
+export const CreatedSessionResponseBody = SessionItem.extend({
+  isCached: z.boolean(),
+});
+export type CreatedSessionResponseBody = z.infer<typeof CreatedSessionResponseBody>;
+
+export const RetrieveSessionResponseBody = SessionItem;
+export type RetrieveSessionResponseBody = z.infer<typeof RetrieveSessionResponseBody>;
+
+export const UpdateSessionRequestBody = z.object({
+  tags: z.array(z.string().max(128)).max(10).optional(),
+  metadata: z.record(z.unknown()).nullable().optional(),
+  externalId: z.string().max(256).nullable().optional(),
+});
+export type UpdateSessionRequestBody = z.infer<typeof UpdateSessionRequestBody>;
+
+export const CloseSessionRequestBody = z.object({
+  reason: z.string().max(256).optional(),
+});
+export type CloseSessionRequestBody = z.infer<typeof CloseSessionRequestBody>;
+
+export const SessionStatus = z.enum(["ACTIVE", "CLOSED", "EXPIRED"]);
+export type SessionStatus = z.infer<typeof SessionStatus>;
+
+/**
+ * Server-side validation schema for `GET /api/v1/sessions`. Follows the same
+ * cursor-pagination convention as runs/waitpoints (`page[size]`,
+ * `page[after]`, `page[before]`) and uses the `filter[*]` prefix for
+ * narrowing fields — both produced automatically by `zodfetchCursorPage`
+ * and the matching client-side search-query helper.
+ */
+export const ListSessionsQueryParams = z.object({
+  "page[size]": z.coerce.number().int().min(1).max(100).default(20),
+  "page[after]": z.string().optional(),
+  "page[before]": z.string().optional(),
+  "filter[type]": z.union([z.string(), z.array(z.string())]).optional(),
+  "filter[tags]": z.union([z.string(), z.array(z.string())]).optional(),
+  "filter[taskIdentifier]": z.union([z.string(), z.array(z.string())]).optional(),
+  "filter[externalId]": z.string().optional(),
+  "filter[status]": z.union([SessionStatus, z.array(SessionStatus)]).optional(),
+  "filter[createdAt][period]": z.string().optional(),
+  "filter[createdAt][from]": z.coerce.number().int().optional(),
+  "filter[createdAt][to]": z.coerce.number().int().optional(),
+});
+export type ListSessionsQueryParams = z.infer<typeof ListSessionsQueryParams>;
+
+/**
+ * Client-facing list options — flattened shape that
+ * {@link ApiClient.listSessions} converts into the `filter[*]` / `page[*]`
+ * query string before sending.
+ */
+export const ListSessionsOptions = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  after: z.string().optional(),
+  before: z.string().optional(),
+  type: z.union([z.string(), z.array(z.string())]).optional(),
+  tag: z.union([z.string(), z.array(z.string())]).optional(),
+  taskIdentifier: z.union([z.string(), z.array(z.string())]).optional(),
+  externalId: z.string().optional(),
+  status: z.union([SessionStatus, z.array(SessionStatus)]).optional(),
+  period: z.string().optional(),
+  from: z.union([z.number(), z.date()]).optional(),
+  to: z.union([z.number(), z.date()]).optional(),
+});
+export type ListSessionsOptions = z.infer<typeof ListSessionsOptions>;
+
+export const ListedSessionItem = SessionItem;
+export type ListedSessionItem = z.infer<typeof ListedSessionItem>;
+
+export const ListSessionsResponseBody = z.object({
+  data: z.array(ListedSessionItem),
+  pagination: z.object({
+    next: z.string().optional(),
+    previous: z.string().optional(),
+  }),
+});
+export type ListSessionsResponseBody = z.infer<typeof ListSessionsResponseBody>;
+
 export const CompleteWaitpointTokenResponseBody = z.object({
   success: z.literal(true),
 });

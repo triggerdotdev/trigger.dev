@@ -88,9 +88,42 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return `${this.streamPrefix}/runs/${runId}/${streamId}`;
   }
 
+  /**
+   * Build an S2 stream name for a `Session`-primitive channel, addressed by
+   * the session's `friendlyId` and the I/O direction. Used by the session
+   * realtime routes to route traffic to `sessions/{friendlyId}/{out|in}`.
+   */
+  public toSessionStreamName(friendlyId: string, io: "out" | "in"): string {
+    return `${this.streamPrefix}/sessions/${friendlyId}/${io}`;
+  }
+
   async initializeStream(
     runId: string,
     streamId: string
+  ): Promise<{ responseHeaders?: Record<string, string> }> {
+    return this.#initializeStreamByName(
+      this.toStreamName(runId, streamId),
+      `/runs/${runId}/${streamId}`
+    );
+  }
+
+  /**
+   * Initialize an S2 stream by `(sessionFriendlyId, io)` — mirrors
+   * {@link initializeStream} but addresses the new `sessions/*` key format.
+   */
+  async initializeSessionStream(
+    friendlyId: string,
+    io: "out" | "in"
+  ): Promise<{ responseHeaders?: Record<string, string> }> {
+    return this.#initializeStreamByName(
+      this.toSessionStreamName(friendlyId, io),
+      `/sessions/${friendlyId}/${io}`
+    );
+  }
+
+  async #initializeStreamByName(
+    prefixedName: string,
+    relativeName: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     const accessToken = this.skipAccessTokens
       ? this.token
@@ -99,9 +132,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return {
       responseHeaders: {
         "X-S2-Access-Token": accessToken,
-        "X-S2-Stream-Name": this.skipAccessTokens
-          ? this.toStreamName(runId, streamId)
-          : `/runs/${runId}/${streamId}`,
+        "X-S2-Stream-Name": this.skipAccessTokens ? prefixedName : relativeName,
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
@@ -121,8 +152,22 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   async appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void> {
-    const s2Stream = this.toStreamName(runId, streamId);
+    return this.#appendPartByName(part, partId, this.toStreamName(runId, streamId));
+  }
 
+  /**
+   * Append a single record to a `Session`-primitive channel.
+   */
+  async appendPartToSessionStream(
+    part: string,
+    partId: string,
+    friendlyId: string,
+    io: "out" | "in"
+  ): Promise<void> {
+    return this.#appendPartByName(part, partId, this.toSessionStreamName(friendlyId, io));
+  }
+
+  async #appendPartByName(part: string, partId: string, s2Stream: string): Promise<void> {
     this.logger.debug(`S2 appending to stream`, { part, stream: s2Stream });
 
     const result = await this.s2Append(s2Stream, {
@@ -227,7 +272,28 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     signal: AbortSignal,
     options?: StreamResponseOptions
   ): Promise<Response> {
-    const s2Stream = this.toStreamName(runId, streamId);
+    return this.#streamResponseByName(this.toStreamName(runId, streamId), signal, options);
+  }
+
+  /**
+   * Serve SSE from a `Session`-primitive channel addressed by
+   * `(friendlyId, io)`.
+   */
+  async streamResponseFromSessionStream(
+    request: Request,
+    friendlyId: string,
+    io: "out" | "in",
+    signal: AbortSignal,
+    options?: StreamResponseOptions
+  ): Promise<Response> {
+    return this.#streamResponseByName(this.toSessionStreamName(friendlyId, io), signal, options);
+  }
+
+  async #streamResponseByName(
+    s2Stream: string,
+    signal: AbortSignal,
+    options?: StreamResponseOptions
+  ): Promise<Response> {
     const startSeq = this.parseLastEventId(options?.lastEventId);
 
     this.logger.info(`S2 streaming records from stream`, { stream: s2Stream, startSeq });

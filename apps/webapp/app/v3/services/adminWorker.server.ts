@@ -4,6 +4,12 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
+// Reference-hold the sessions-replication singleton so module evaluation runs
+// its initializer (creates the ClickHouse client, subscribes to the logical
+// replication slot, wires signal handlers) when the webapp boots. A bare
+// side-effect import gets tree-shaken by the bundler.
+import { sessionsReplicationInstance } from "~/services/sessionsReplicationInstance.server";
+void sessionsReplicationInstance;
 import { singleton } from "~/utils/singleton";
 import { tracer } from "../tracer.server";
 import { $replica } from "~/db.server";

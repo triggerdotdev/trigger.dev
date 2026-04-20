@@ -23,6 +23,34 @@ import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
 } from "./v3/runEngineHandlers.server";
+import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
+import { signalsEmitter } from "./services/signals.server";
+
+// Start the sessions replication service (subscribes to the logical replication
+// slot, runs leader election, flushes to ClickHouse). Done at entry level so it
+// runs deterministically on webapp boot rather than lazily via a singleton
+// reference elsewhere in the module graph.
+if (sessionsReplicationInstance && env.SESSION_REPLICATION_ENABLED === "1") {
+  sessionsReplicationInstance
+    .start()
+    .then(() => {
+      console.log("🗃️ Sessions replication service started");
+    })
+    .catch((error) => {
+      console.error("🗃️ Sessions replication service failed to start", {
+        error,
+      });
+    });
+
+  signalsEmitter.on(
+    "SIGTERM",
+    sessionsReplicationInstance.shutdown.bind(sessionsReplicationInstance)
+  );
+  signalsEmitter.on(
+    "SIGINT",
+    sessionsReplicationInstance.shutdown.bind(sessionsReplicationInstance)
+  );
+}
 
 const ABORT_DELAY = 30000;
 

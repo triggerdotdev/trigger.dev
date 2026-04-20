@@ -686,6 +686,47 @@ enum TaskTriggerSource {
   SCHEDULED
 }
 
+/// Durable, typed, bidirectional I/O primitive. Owns two S2 streams (.out / .in).
+/// The row is essentially static — no status, no counters, no pointers. No
+/// foreign keys: project/runtimeEnvironment/organization ids are plain
+/// scalar columns (matches TaskRun pattern). List-style queries are served
+/// from ClickHouse, not Postgres, so only point-lookup indexes live here.
+model Session {
+  id         String  @id @default(cuid())
+  friendlyId String  @unique
+  /// User-supplied identifier scoped to the environment. Used for
+  /// idempotent upsert and for resolving sessions via the public API.
+  externalId String?
+
+  /// Plain string — intentionally not an enum.
+  type String
+
+  /// Denormalized scoping columns — no FK relations.
+  projectId            String
+  runtimeEnvironmentId String
+  environmentType      RuntimeEnvironmentType
+  organizationId       String
+
+  /// Informational pointer for task-owned types. Never changes after create.
+  taskIdentifier String?
+
+  tags     String[] @default([])
+  metadata Json?
+
+  /// Terminal markers — written once, never flipped back.
+  closedAt     DateTime?
+  closedReason String?
+  expiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Idempotency: `(env, externalId)` uniquely identifies a session.
+  /// PostgreSQL treats NULLs as distinct, so `externalId=NULL` rows never collide.
+  @@unique([runtimeEnvironmentId, externalId])
+  @@index([expiresAt])
+}
+
 model TaskRun {
   id String @id @default(cuid())
 
