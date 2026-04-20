@@ -13,8 +13,16 @@ import {
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
+  CloseSessionRequestBody,
   CompleteWaitpointTokenRequestBody,
   CompleteWaitpointTokenResponseBody,
+  CreatedSessionResponseBody,
+  CreateSessionRequestBody,
+  ListSessionsOptions,
+  ListSessionsResponseBody,
+  ListedSessionItem,
+  RetrieveSessionResponseBody,
+  UpdateSessionRequestBody,
   CreateBatchRequestBody,
   CreateBatchResponse,
   CreateEnvironmentVariableRequestBody,
@@ -1095,6 +1103,182 @@ export class ApiClient {
     );
   }
 
+  // ========================================================================
+  // Sessions
+  // ========================================================================
+
+  createSession(body: CreateSessionRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreatedSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveSession(sessionIdOrExternalId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateSession(
+    sessionIdOrExternalId: string,
+    body: UpdateSessionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      RetrieveSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`,
+      {
+        method: "PATCH",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  closeSession(
+    sessionIdOrExternalId: string,
+    body?: CloseSessionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      RetrieveSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/close`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body ?? {}),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listSessions(
+    options?: ListSessionsOptions,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof ListedSessionItem> {
+    const searchParams = createSearchQueryForListSessions(options);
+
+    return zodfetchCursorPage(
+      ListedSessionItem,
+      `${this.baseUrl}/api/v1/sessions`,
+      {
+        query: searchParams,
+        limit: options?.limit,
+        after: options?.after,
+        before: options?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  // ========================================================================
+  // Session realtime channels
+  // ========================================================================
+
+  async initializeSessionStream(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    requestOptions?: ZodFetchOptions
+  ) {
+    // The server returns S2 credentials in response headers alongside a tiny
+    // JSON body with the realtime version. Follow the same shape as
+    // `createStream` so downstream clients can feed them into
+    // `StreamsWriterV2`.
+    return zodfetch(
+      CreateStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(({ data, response }) => ({
+        ...data,
+        headers: Object.fromEntries(response.headers.entries()),
+      }));
+  }
+
+  async appendToSessionStream<TBody extends BodyInit>(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    part: TBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      AppendToStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}/append`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: part,
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /**
+   * Subscribe to SSE records on a Session channel. Reuses the same
+   * {@link SSEStreamSubscription} plumbing as `readStream` for run-scoped
+   * realtime streams — auto-retry, Last-Event-ID resume, abort-on-cancel.
+   */
+  async subscribeToSessionStream<T = unknown>(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    options?: {
+      signal?: AbortSignal;
+      baseUrl?: string;
+      timeoutInSeconds?: number;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      lastEventId?: string;
+      onPart?: (part: SSEStreamPart<T>) => void;
+    }
+  ): Promise<AsyncIterableStream<T>> {
+    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
+
+    const subscription = new SSEStreamSubscription(url, {
+      headers: this.getHeaders(),
+      signal: options?.signal,
+      onComplete: options?.onComplete,
+      onError: options?.onError,
+      timeoutInSeconds: options?.timeoutInSeconds,
+      lastEventId: options?.lastEventId,
+    });
+
+    const stream = await subscription.subscribe();
+    const onPart = options?.onPart;
+
+    return stream.pipeThrough(
+      new TransformStream<SSEStreamPart, T>({
+        transform(chunk, controller) {
+          const data = chunk.chunk as T;
+          onPart?.(chunk as SSEStreamPart<T>);
+          controller.enqueue(data);
+        },
+      })
+    );
+  }
+
   async waitForDuration(
     runId: string,
     body: WaitForDurationRequestBody,
@@ -1834,6 +2018,47 @@ function queueNameFromQueueTypeName(queue: QueueTypeName): string {
   }
 
   return queue.name;
+}
+
+function createSearchQueryForListSessions(options?: ListSessionsOptions): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (!options) return searchParams;
+
+  const appendMany = (name: string, value: string | string[] | undefined) => {
+    if (value === undefined) return;
+    searchParams.append(name, Array.isArray(value) ? value.join(",") : value);
+  };
+
+  appendMany("filter[type]", options.type);
+  appendMany("filter[tags]", options.tag);
+  appendMany("filter[taskIdentifier]", options.taskIdentifier);
+
+  if (options.externalId) {
+    searchParams.append("filter[externalId]", options.externalId);
+  }
+
+  appendMany("filter[status]", options.status as string | string[] | undefined);
+
+  if (options.period) {
+    searchParams.append("filter[createdAt][period]", options.period);
+  }
+
+  if (options.from !== undefined) {
+    searchParams.append(
+      "filter[createdAt][from]",
+      options.from instanceof Date ? options.from.getTime().toString() : options.from.toString()
+    );
+  }
+
+  if (options.to !== undefined) {
+    searchParams.append(
+      "filter[createdAt][to]",
+      options.to instanceof Date ? options.to.getTime().toString() : options.to.toString()
+    );
+  }
+
+  return searchParams;
 }
 
 function createSearchQueryForListWaitpointTokens(
