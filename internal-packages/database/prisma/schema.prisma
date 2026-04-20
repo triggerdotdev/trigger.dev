@@ -355,12 +355,27 @@ model RuntimeEnvironment {
   prompts              Prompt[]
   errorGroupStates     ErrorGroupState[]
   taskIdentifiers      TaskIdentifier[]
+  revokedApiKeys       RevokedApiKey[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
   @@index([organizationId])
+}
+
+/// Records of previously-valid API keys that are still accepted for authentication
+/// during a grace window after rotation. Extend or end the grace period by updating `expiresAt`.
+model RevokedApiKey {
+  id                   String             @id @default(cuid())
+  apiKey               String
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+  expiresAt            DateTime
+  createdAt            DateTime           @default(now())
+
+  @@index([apiKey])
+  @@index([runtimeEnvironmentId])
 }
 
 enum RuntimeEnvironmentType {

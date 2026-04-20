@@ -75,8 +75,9 @@ const RegenerateApiKeyModalContent = ({
   return (
     <div className="flex flex-col items-center gap-y-4 pt-4">
       <Callout variant="warning">
-        {`Regenerating the keys for this environment will temporarily break any live tasks in the
-        ${title} environment until the new API keys are set in the relevant environment variables.`}
+        {`A new API key will be issued for the ${title} environment. The previous key stays valid
+        for 24 hours so you can roll out the new key in your environment variables without downtime.
+        After 24 hours, the previous key stops working.`}
       </Callout>
       <fetcher.Form
         method="post"
