@@ -17,11 +17,13 @@
   ],
   "scripts": {
     "clean": "rimraf dist .turbo",
-    "build": "tsup",
-    "dev": "tsup --watch --onSuccess 'npm unpublish @trigger.dev/plugins --registry http://localhost:4873 --force 2>/dev/null; pnpm publish --registry http://localhost:4873 --no-git-checks 2>/dev/null || true'",
+    "build": "tsup && tsc -p tsconfig.dts.json && api-extractor run --local",
+    "dev": "tsup --watch --onSuccess 'tsc -p tsconfig.dts.json && api-extractor run --local --quiet'",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.58.2",
+    "@trigger.dev/database": "workspace:*",
     "@types/node": "^20.14.14",
     "rimraf": "6.0.1",
     "tsup": "^8.4.0",

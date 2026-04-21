@@ -1,1 +1,7 @@
-export type { RBACPlugin } from "./rbac.js";
+export type {
+  RoleBasedAccessControlPlugin,
+  RoleBaseAccessController,
+  PrismaClient,
+  Permission,
+  Role,
+} from "./rbac.js";
