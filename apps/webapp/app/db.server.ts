@@ -8,6 +8,7 @@ import {
   type PrismaTransactionOptions,
 } from "@trigger.dev/database";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { createHash } from "node:crypto";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { env } from "./env.server";
@@ -117,12 +118,20 @@ function getClient() {
 
   console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
 
-  const adapter = new PrismaPg({
-    connectionString: databaseUrl.href,
-    max: env.DATABASE_CONNECTION_LIMIT,
-    idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
-    connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
-  });
+  const adapter = new PrismaPg(
+    {
+      connectionString: databaseUrl.href,
+      max: env.DATABASE_CONNECTION_LIMIT,
+      idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
+      connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
+    },
+    {
+      // Generate deterministic prepared statement names from query SQL so PostgreSQL
+      // can reuse cached query plans. Without this, every query uses an anonymous
+      // prepared statement that PG must parse and plan from scratch each time.
+      statementNameGenerator: (query) => `p_${createHash("sha256").update(query.sql).digest("hex").slice(0, 16)}`,
+    }
+  );
 
   const client = new PrismaClient({
     adapter,
@@ -240,12 +249,17 @@ function getReplicaClient() {
 
   console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
 
-  const adapter = new PrismaPg({
-    connectionString: replicaUrl.href,
-    max: env.DATABASE_CONNECTION_LIMIT,
-    idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
-    connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
-  });
+  const adapter = new PrismaPg(
+    {
+      connectionString: replicaUrl.href,
+      max: env.DATABASE_CONNECTION_LIMIT,
+      idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
+      connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
+    },
+    {
+      statementNameGenerator: (query) => `p_${createHash("sha256").update(query.sql).digest("hex").slice(0, 16)}`,
+    }
+  );
 
   const replicaClient = new PrismaClient({
     adapter,
