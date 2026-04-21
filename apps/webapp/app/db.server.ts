@@ -13,8 +13,8 @@ import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import { singleton } from "./utils/singleton";
-import { startActiveSpan } from "./v3/tracer.server";
-import { Span } from "@opentelemetry/api";
+import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
+import { context, Span, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
 
 export type {
@@ -98,12 +98,30 @@ export async function $transaction<R>(
 
 export { Prisma };
 
-export const prisma = singleton("prisma", getClient);
+function tagDatasource<T extends PrismaClient>(
+  datasource: "writer" | "replica",
+  client: T
+): T {
+  return client.$extends({
+    name: "datasource-tagger",
+    query: {
+      $allOperations: ({ query, args }) => {
+        trace.getActiveSpan()?.setAttribute("db.datasource", datasource);
+        return context.with(
+          context.active().setValue(DATASOURCE_CONTEXT_KEY, datasource),
+          async () => await query(args)
+        );
+      },
+    },
+  }) as unknown as T;
+}
 
-export const $replica: PrismaReplicaClient = singleton(
-  "replica",
-  () => getReplicaClient() ?? prisma
-);
+export const prisma = singleton("prisma", () => tagDatasource("writer", getClient()));
+
+export const $replica: PrismaReplicaClient = singleton("replica", () => {
+  const replica = getReplicaClient();
+  return replica ? tagDatasource("replica", replica) : prisma;
+});
 
 function getClient() {
   const { DATABASE_URL } = process.env;

@@ -1,4 +1,4 @@
-import { batch, logger, task, tasks, timeout, wait } from "@trigger.dev/sdk";
+import { batch, logger, task, tasks, timeout, wait, waitUntil } from "@trigger.dev/sdk";
 import { setTimeout } from "timers/promises";
 import { ResourceMonitor } from "../resourceMonitor.js";
 import { fixedLengthTask } from "./batches.js";
@@ -20,6 +20,10 @@ export const helloWorldTask = task({
     logger.info("env vars", {
       env: process.env,
     });
+
+    waitUntil((async () => {
+      logger.info("Hello, world from the waitUntil hook", { payload });
+    })());
 
     logger.debug("debug: Hello, worlds!", { payload });
     logger.info("info: Hello, world!", { payload });
