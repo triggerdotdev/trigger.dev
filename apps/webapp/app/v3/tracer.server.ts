@@ -1,6 +1,7 @@
 import {
   type Attributes,
   type Context,
+  createContextKey,
   DiagConsoleLogger,
   DiagLogLevel,
   type Link,
@@ -60,6 +61,24 @@ import type { Prisma } from "@trigger.dev/database";
 import { performance } from "node:perf_hooks";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+
+export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
+
+class DatasourceAttributeSpanProcessor implements SpanProcessor {
+  onStart(span: Span, parentContext: Context): void {
+    const ds = parentContext.getValue(DATASOURCE_CONTEXT_KEY);
+    if (typeof ds === "string") {
+      span.setAttribute("db.datasource", ds);
+    }
+  }
+  onEnd(): void {}
+  shutdown(): Promise<void> {
+    return Promise.resolve();
+  }
+  forceFlush(): Promise<void> {
+    return Promise.resolve();
+  }
+}
 
 class CustomWebappSampler implements Sampler {
   constructor(private readonly _baseSampler: Sampler) {}
@@ -205,7 +224,7 @@ function setupTelemetry() {
 
   const samplingRate = 1.0 / Math.max(parseInt(env.INTERNAL_OTEL_TRACE_SAMPLING_RATE, 10), 1);
 
-  const spanProcessors: SpanProcessor[] = [];
+  const spanProcessors: SpanProcessor[] = [new DatasourceAttributeSpanProcessor()];
 
   if (env.INTERNAL_OTEL_TRACE_EXPORTER_URL) {
     const headers = parseInternalTraceHeaders() ?? {};
