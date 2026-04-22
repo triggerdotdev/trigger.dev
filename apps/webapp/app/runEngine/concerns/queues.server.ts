@@ -62,10 +62,15 @@ function extractQueueName(queue: { name?: unknown } | undefined): string | undef
 }
 
 export class DefaultQueueManager implements QueueManager {
+  private readonly replicaPrisma: PrismaClientOrTransaction;
+
   constructor(
     private readonly prisma: PrismaClientOrTransaction,
-    private readonly engine: RunEngine
-  ) { }
+    private readonly engine: RunEngine,
+    replicaPrisma?: PrismaClientOrTransaction
+  ) {
+    this.replicaPrisma = replicaPrisma ?? prisma;
+  }
 
   async resolveQueueProperties(
     request: TriggerTaskRequest,
@@ -103,7 +108,7 @@ export class DefaultQueueManager implements QueueManager {
 
         // Only fetch task for TTL if caller didn't provide a per-trigger TTL
         if (request.body.options?.ttl === undefined) {
-          const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+          const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
             where: {
               workerId: lockedBackgroundWorker.id,
               runtimeEnvironmentId: request.environment.id,
@@ -116,7 +121,7 @@ export class DefaultQueueManager implements QueueManager {
         }
       } else {
         // No queue override - fetch task with queue to get both default queue and TTL
-        const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+        const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
           where: {
             workerId: lockedBackgroundWorker.id,
             runtimeEnvironmentId: request.environment.id,
@@ -217,7 +222,7 @@ export class DefaultQueueManager implements QueueManager {
 
     // When queue is overridden, we only need TTL from the task (no queue join needed)
     if (overriddenQueueName) {
-      const task = await this.prisma.backgroundWorkerTask.findFirst({
+      const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
         where: {
           workerId: worker.id,
           runtimeEnvironmentId: environment.id,
@@ -229,7 +234,7 @@ export class DefaultQueueManager implements QueueManager {
       return { queueName: overriddenQueueName, taskTtl: task?.ttl };
     }
 
-    const task = await this.prisma.backgroundWorkerTask.findFirst({
+    const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
       where: {
         workerId: worker.id,
         runtimeEnvironmentId: environment.id,

@@ -1,4 +1,5 @@
 import { type IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
+import pRetry from "p-retry";
 import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -103,32 +104,46 @@ export class BatchPayloadProcessor {
         };
       }
 
-      // Upload to object store
+      // Upload to object store, retrying on transient network errors
+      const { data: packetData, dataType: packetDataType } = packet;
       const filename = `batch_${batchId}/item_${itemIndex}/payload.json`;
 
       const [uploadError, uploadedFilename] = await tryCatch(
-        uploadPacketToObjectStore(
-          filename,
-          packet.data,
-          packet.dataType,
-          environment,
-          env.OBJECT_STORE_DEFAULT_PROTOCOL
+        pRetry(
+          () =>
+            uploadPacketToObjectStore(
+              filename,
+              packetData,
+              packetDataType,
+              environment,
+              env.OBJECT_STORE_DEFAULT_PROTOCOL
+            ),
+          {
+            retries: 3,
+            minTimeout: 500,
+            maxTimeout: 2000,
+            factor: 2,
+            onFailedAttempt: (error) => {
+              logger.warn("Batch item payload upload to object store failed, retrying", {
+                batchId,
+                itemIndex,
+                attempt: error.attemptNumber,
+                retriesLeft: error.retriesLeft,
+                error: error.message,
+              });
+            },
+          }
         )
       );
 
       if (uploadError) {
-        logger.error("Failed to upload batch item payload to object store", {
+        logger.error("Failed to upload batch item payload to object store after retries", {
           batchId,
           itemIndex,
-          error: uploadError instanceof Error ? uploadError.message : String(uploadError),
+          error: uploadError.message,
         });
 
-        // Throw to fail this item - SDK can retry
-        throw new Error(
-          `Failed to upload large payload to object store: ${
-            uploadError instanceof Error ? uploadError.message : String(uploadError)
-          }`
-        );
+        throw new Error(`Failed to upload large payload to object store: ${uploadError.message}`);
       }
 
       logger.debug("Batch item payload offloaded to object store", {

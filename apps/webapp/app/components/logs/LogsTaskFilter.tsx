@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import * as Ariakit from "@ariakit/react";
 import {
   ComboBox,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -21,6 +23,7 @@ const shortcut = { key: "t" };
 type TaskOption = {
   slug: string;
   triggerSource: TaskTriggerSource;
+  isInLatestDeployment: boolean;
 };
 
 interface LogsTaskFilterProps {
@@ -127,18 +130,44 @@ function TasksDropdown({
       >
         <ComboBox placeholder={"Filter by task..."} value={searchValue} />
         <SelectList>
-          {filtered.map((item, index) => (
-            <SelectItem
-              key={`${item.triggerSource}-${item.slug}`}
-              value={item.slug}
-              className="text-text-bright"
-              icon={
-                <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
-              }
-            >
-              {item.slug}
-            </SelectItem>
-          ))}
+          {filtered
+            .filter((item) => item.isInLatestDeployment)
+            .map((item) => (
+              <SelectItem
+                key={`${item.triggerSource}-${item.slug}`}
+                value={item.slug}
+                className="text-text-bright"
+                icon={
+                  <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
+                }
+              >
+                {item.slug}
+              </SelectItem>
+            ))}
+          {filtered.some((item) => !item.isInLatestDeployment) && (
+            <SelectGroup>
+              <SelectGroupLabel>Archived</SelectGroupLabel>
+              {filtered
+                .filter((item) => !item.isInLatestDeployment)
+                .map((item) => (
+                  <SelectItem
+                    key={`${item.triggerSource}-${item.slug}`}
+                    value={item.slug}
+                    className="text-text-bright"
+                    icon={
+                      <span className="opacity-50">
+                        <TaskTriggerSourceIcon
+                          source={item.triggerSource}
+                          className="size-4 flex-none"
+                        />
+                      </span>
+                    }
+                  >
+                    {item.slug}
+                  </SelectItem>
+                ))}
+            </SelectGroup>
+          )}
         </SelectList>
       </SelectPopover>
     </SelectProvider>

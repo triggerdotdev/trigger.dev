@@ -71,6 +71,11 @@ function initializePlatformCache() {
       fresh: 60_000 * 5, // 5 minutes
       stale: 60_000 * 10, // 10 minutes
     }),
+    entitlement: new Namespace<ReportUsageResult>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000, // serve without revalidation for 60s
+      stale: 120_000, // total TTL — fresh 0-60s, stale-revalidate 60-120s
+    }),
   });
 
   return cache;
@@ -368,6 +373,7 @@ export async function setPlan(
       if (result.accepted) {
         // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
+        platformCache.entitlement.remove(organization.id).catch(() => {});
         return redirect(newProjectPath(organization, "You're on the Free plan."));
       } else {
         return redirectWithErrorMessage(
@@ -384,11 +390,13 @@ export async function setPlan(
     case "updated_subscription": {
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
+      platformCache.entitlement.remove(organization.id).catch(() => {});
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
+      platformCache.entitlement.remove(organization.id).catch(() => {});
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
   }
@@ -531,21 +539,34 @@ export async function getEntitlement(
 ): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
-  try {
-    const result = await client.getEntitlement(organizationId);
-    if (!result.success) {
-      logger.error("Error getting entitlement - no success", { error: result.error });
-      return {
-        hasAccess: true as const,
-      };
+  // Errors must be caught inside the loader — @unkey/cache passes the loader
+  // promise to waitUntil() with no .catch(), so an unhandled rejection during
+  // background SWR revalidation would crash the process. Returning undefined
+  // on error tells SWR not to commit a fail-open value to the cache, which
+  // prevents transient billing errors from overwriting a legitimate
+  // hasAccess: false entry. The fail-open default is applied *outside* the
+  // SWR call so it never becomes a cached access decision.
+  const result = await platformCache.entitlement.swr(organizationId, async () => {
+    try {
+      const response = await client.getEntitlement(organizationId);
+      if (!response.success) {
+        logger.error("Error getting entitlement - no success", { error: response.error });
+        return undefined;
+      }
+      return response;
+    } catch (e) {
+      logger.error("Error getting entitlement - caught error", { error: e });
+      return undefined;
     }
-    return result;
-  } catch (e) {
-    logger.error("Error getting entitlement - caught error", { error: e });
+  });
+
+  if (result.err || result.val === undefined) {
     return {
       hasAccess: true as const,
     };
   }
+
+  return result.val;
 }
 
 export async function projectCreated(

@@ -235,10 +235,12 @@ export default function AdminFeatureFlagsRoute() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4 lg:order-last">
       <div className="max-w-2xl space-y-4">
-        <p className="text-sm text-text-dimmed">
-          Global defaults for all organizations. Org-level overrides take precedence. When not set,
+        <Callout variant="warning">
+          These are global feature flags that affect every organization on this instance. Changing
+          values here is a dangerous operation and should rarely be done - prefer org-level
+          overrides where possible. Org-level overrides take precedence; when a flag isn't set,
           each consumer uses its own default.
-        </p>
+        </Callout>
 
         <div className={isManagedCloud ? "cursor-not-allowed" : undefined}>
           <CheckboxWithLabel

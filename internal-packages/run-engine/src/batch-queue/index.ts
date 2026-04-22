@@ -865,8 +865,16 @@ export class BatchQueue {
             span?.setAttribute("batch.errorCode", result.errorCode);
           }
 
-          // If retries are available, use FairQueue retry scheduling
-          if (!isFinalAttempt) {
+          const skipRetries = result.skipRetries === true;
+          if (skipRetries) {
+            span?.setAttribute("batch.skipRetries", true);
+          }
+
+          // If retries are available AND the callback didn't opt out, use
+          // FairQueue retry scheduling. `skipRetries` short-circuits this
+          // regardless of attempt number so the batch can finalize quickly
+          // when the error is known to be non-recoverable on retry.
+          if (!isFinalAttempt && !skipRetries) {
             span?.setAttribute("batch.retry", true);
             span?.setAttribute("batch.attempt", attempt);
 
@@ -890,7 +898,7 @@ export class BatchQueue {
             return;
           }
 
-          // Final attempt exhausted - record permanent failure
+          // Final attempt exhausted (or retries skipped) - record permanent failure
           const payloadStr = await this.#startSpan(
             "BatchQueue.serializePayload",
             async (innerSpan) => {

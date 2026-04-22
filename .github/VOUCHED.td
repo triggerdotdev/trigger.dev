@@ -11,6 +11,8 @@ myftija
 nicktrn
 samejr
 isshaddad
+# Bots
+devin-ai-integration[bot]
 # Outside contributors
 gautamsi
 capaj

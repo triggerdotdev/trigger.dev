@@ -20,14 +20,13 @@ import { CreateDashboardPageButton } from "~/components/navigation/DashboardDial
 import { Button } from "~/components/primitives/Buttons";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
-import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import {
   type BuiltInDashboardFilter,
   type LayoutItem,
@@ -73,7 +72,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationId: project.organizationId,
       key: dashboardKey,
     }),
-    getAllTaskIdentifiers($replica, environment.id),
+    getTaskIdentifiers(environment.id),
   ]);
 
   const filters = dashboard.filters ?? ["tasks", "queues"];
@@ -117,9 +116,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     ...dashboard,
     filters,
-    possibleTasks: possibleTasks
-      .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
-      .sort((a, b) => a.slug.localeCompare(b.slug)),
+    possibleTasks,
     possibleModels,
     possiblePrompts,
     possibleOperations,
@@ -206,7 +203,7 @@ export function MetricDashboard({
   /** Which filters to show. Defaults to ["tasks", "queues"]. */
   filters?: BuiltInDashboardFilter[];
   /** Possible tasks for filtering */
-  possibleTasks?: { slug: string; triggerSource: TaskTriggerSource }[];
+  possibleTasks?: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
   /** Possible models for filtering */
   possibleModels?: ModelOption[];
   /** Possible prompt slugs for filtering */

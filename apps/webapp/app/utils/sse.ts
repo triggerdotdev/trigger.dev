@@ -2,6 +2,7 @@ import { type LoaderFunctionArgs } from "@remix-run/node";
 import { type Params } from "@remix-run/router";
 import { eventStream } from "remix-utils/sse/server";
 import { setInterval } from "timers/promises";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 
 export type SendFunction = Parameters<Parameters<typeof eventStream>[1]>[0];
 
@@ -89,15 +90,17 @@ export function createSSELoader(options: SSEOptions) {
       throw new Response("Internal Server Error", { status: 500 });
     });
 
+    const requestAbortSignal = getRequestAbortSignal();
+
     const combinedSignal = AbortSignal.any([
-      request.signal,
+      requestAbortSignal,
       timeoutSignal,
       internalController.signal,
     ]);
 
     log("Start");
 
-    request.signal.addEventListener(
+    requestAbortSignal.addEventListener(
       "abort",
       () => {
         log(`request signal aborted`);

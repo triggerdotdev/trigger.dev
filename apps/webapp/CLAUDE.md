@@ -1,6 +1,6 @@
 # Webapp
 
-Remix 2.1.0 app serving as the main API, dashboard, and orchestration engine. Uses an Express server (`server.ts`).
+Remix 2.17.4 app serving as the main API, dashboard, and orchestration engine. Uses an Express server (`server.ts`).
 
 ## Verifying Changes
 
@@ -58,6 +58,17 @@ Use the `chrome-devtools` MCP server to visually verify local dashboard changes.
 
 Routes use Remix flat-file convention with dot-separated segments:
 `api.v1.tasks.$taskId.trigger.ts` -> `/api/v1/tasks/:taskId/trigger`
+
+## Abort Signals
+
+**Never use `request.signal`** for detecting client disconnects. It is broken due to a Node.js bug ([nodejs/node#55428](https://github.com/nodejs/node/issues/55428)) where the AbortSignal chain is severed when Remix internally clones the Request object. Instead, use `getRequestAbortSignal()` from `app/services/httpAsyncStorage.server.ts`, which is wired directly to Express `res.on("close")` and fires reliably.
+
+```typescript
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
+
+// In route handlers, SSE streams, or any server-side code:
+const signal = getRequestAbortSignal();
+```
 
 ## Environment Variables
 

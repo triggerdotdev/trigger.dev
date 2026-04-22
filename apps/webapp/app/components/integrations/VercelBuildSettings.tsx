@@ -21,6 +21,8 @@ type BuildSettingsFieldsProps = {
   envVarsConfigLink?: string;
   /** Slugs that should be forced off and disabled, with tooltip reason. */
   disabledEnvSlugs?: Partial<Record<EnvSlug, string>>;
+  autoPromote?: boolean;
+  onAutoPromoteChange?: (value: boolean) => void;
 };
 
 export function BuildSettingsFields({
@@ -33,6 +35,8 @@ export function BuildSettingsFields({
   onAtomicBuildsChange,
   envVarsConfigLink,
   disabledEnvSlugs,
+  autoPromote,
+  onAutoPromoteChange,
 }: BuildSettingsFieldsProps) {
   const isSlugDisabled = (slug: EnvSlug) => !!disabledEnvSlugs?.[slug];
   const enabledSlugs = availableEnvSlugs.filter((s) => !isSlugDisabled(s));
@@ -202,6 +206,25 @@ export function BuildSettingsFields({
           .
         </Hint>
       </div>
+
+      {/* Auto promotion — only visible when atomic deployments are on */}
+      {atomicBuilds.includes("prod") && onAutoPromoteChange !== undefined && (
+        <div>
+          <div className="flex items-center justify-between">
+            <Label>Auto promotion</Label>
+            <Switch
+              variant="small"
+              checked={autoPromote ?? true}
+              onCheckedChange={onAutoPromoteChange}
+            />
+          </div>
+          <Hint className="pr-6">
+            When enabled, the integration automatically promotes the Vercel deployment after
+            the Trigger.dev build completes. Turn off to manually promote from your Vercel
+            dashboard — Trigger.dev will then promote automatically once you do.
+          </Hint>
+        </div>
+      )}
     </>
   );
 }

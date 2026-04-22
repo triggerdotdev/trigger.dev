@@ -33,13 +33,17 @@ import { Badge } from "../primitives/Badge";
 export function HelpAndFeedback({
   disableShortcut = false,
   isCollapsed = false,
+  organizationId,
+  projectId,
 }: {
   disableShortcut?: boolean;
   isCollapsed?: boolean;
+  organizationId?: string;
+  projectId?: string;
 }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
   const currentPlan = useCurrentPlan();
-  const { changelogs } = useRecentChangelogs();
+  const { changelogs } = useRecentChangelogs(organizationId, projectId);
 
   useShortcutKeys({
     shortcut: disableShortcut ? undefined : { key: "h", enabledOnInputElements: false },

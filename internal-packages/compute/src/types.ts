@@ -62,12 +62,20 @@ export const SnapshotRestoreRequestSchema = z.object({
 });
 export type SnapshotRestoreRequest = z.infer<typeof SnapshotRestoreRequestSchema>;
 
-export const SnapshotCallbackPayloadSchema = z.object({
-  snapshot_id: z.string(),
-  instance_id: z.string(),
-  status: z.enum(["completed", "failed"]),
-  error: z.string().optional(),
-  metadata: z.record(z.string()).optional(),
-  duration_ms: z.number().optional(),
-});
+export const SnapshotCallbackPayloadSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("completed"),
+    snapshot_id: z.string(),
+    instance_id: z.string(),
+    metadata: z.record(z.string()).optional(),
+    duration_ms: z.number().optional(),
+  }),
+  z.object({
+    status: z.literal("failed"),
+    instance_id: z.string(),
+    error: z.string().optional(),
+    metadata: z.record(z.string()).optional(),
+    duration_ms: z.number().optional(),
+  }),
+]);
 export type SnapshotCallbackPayload = z.infer<typeof SnapshotCallbackPayloadSchema>;

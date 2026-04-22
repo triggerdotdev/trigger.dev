@@ -145,6 +145,10 @@ export type RunEngineOptions = {
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;
+  /** When true, `getSnapshotsSince` reads through the read-only replica client instead
+   *  of the primary. Defaults to false. Callers passing an explicit `tx` always use
+   *  that client regardless of this flag. */
+  readReplicaSnapshotsSinceEnabled?: boolean;
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
@@ -194,7 +198,7 @@ export type TriggerParams = {
   priorityMs?: number;
   queueTimestamp?: Date;
   ttl?: string;
-  tags: { id: string; name: string }[];
+  tags: string[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
   replayedFromTaskRunFriendlyId?: string;

@@ -51,10 +51,16 @@ export type TriggerFailedTaskRequest = {
  */
 export class TriggerFailedTaskService {
   private readonly prisma: PrismaClientOrTransaction;
+  private readonly replicaPrisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
 
-  constructor(opts: { prisma: PrismaClientOrTransaction; engine: RunEngine }) {
+  constructor(opts: {
+    prisma: PrismaClientOrTransaction;
+    engine: RunEngine;
+    replicaPrisma?: PrismaClientOrTransaction;
+  }) {
     this.prisma = opts.prisma;
+    this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
   }
 
@@ -91,7 +97,7 @@ export class TriggerFailedTaskService {
       let queueName: string | undefined;
       let lockedQueueId: string | undefined;
       try {
-        const queueConcern = new DefaultQueueManager(this.prisma, this.engine);
+        const queueConcern = new DefaultQueueManager(this.prisma, this.engine, this.replicaPrisma);
         const bodyOptions = request.options as TriggerTaskRequest["body"]["options"];
         const triggerRequest: TriggerTaskRequest = {
           taskId: request.taskId,

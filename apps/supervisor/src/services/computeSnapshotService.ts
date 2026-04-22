@@ -80,11 +80,13 @@ export class ComputeSnapshotService {
 
   /** Handle the callback from the gateway after a snapshot completes or fails. */
   async handleCallback(body: SnapshotCallbackPayload) {
+    const snapshotId = body.status === "completed" ? body.snapshot_id : undefined;
+
     this.logger.debug("Snapshot callback", {
-      snapshotId: body.snapshot_id,
+      snapshotId,
       instanceId: body.instance_id,
       status: body.status,
-      error: body.error,
+      error: body.status === "failed" ? body.error : undefined,
       metadata: body.metadata,
       durationMs: body.duration_ms,
     });
@@ -97,7 +99,7 @@ export class ComputeSnapshotService {
       return { ok: false as const, status: 400 };
     }
 
-    this.#emitSnapshotSpan(runId, body.duration_ms, body.snapshot_id);
+    this.#emitSnapshotSpan(runId, body.duration_ms, snapshotId);
 
     if (body.status === "completed") {
       const result = await this.workerClient.submitSuspendCompletion({

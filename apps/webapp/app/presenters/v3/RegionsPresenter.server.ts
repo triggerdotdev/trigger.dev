@@ -1,7 +1,9 @@
+import { type WorkloadType } from "@trigger.dev/database";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
+import { defaultVisibilityFilter, resolveComputeAccess } from "~/v3/regionAccess.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
@@ -14,6 +16,7 @@ export type Region = {
   staticIPs?: string | null;
   isDefault: boolean;
   isHidden: boolean;
+  workloadType: WorkloadType;
 };
 
 export class RegionsPresenter extends BasePresenter {
@@ -32,6 +35,9 @@ export class RegionsPresenter extends BasePresenter {
         organizationId: true,
         defaultWorkerGroupId: true,
         allowedWorkerQueues: true,
+        organization: {
+          select: { featureFlags: true },
+        },
       },
       where: {
         slug: projectSlug,
@@ -58,6 +64,11 @@ export class RegionsPresenter extends BasePresenter {
       throw new Error("Default worker instance group not found");
     }
 
+    const hasComputeAccess = await resolveComputeAccess(
+      this._replica,
+      project.organization.featureFlags
+    );
+
     const visibleRegions = await this._replica.workerInstanceGroup.findMany({
       select: {
         id: true,
@@ -67,6 +78,7 @@ export class RegionsPresenter extends BasePresenter {
         location: true,
         staticIPs: true,
         hidden: true,
+        workloadType: true,
       },
       where: isAdmin
         ? undefined
@@ -75,9 +87,7 @@ export class RegionsPresenter extends BasePresenter {
         ? {
             masterQueue: { in: project.allowedWorkerQueues },
           }
-        : {
-            hidden: false,
-          },
+        : defaultVisibilityFilter(hasComputeAccess),
       orderBy: {
         name: "asc",
       },
@@ -92,6 +102,7 @@ export class RegionsPresenter extends BasePresenter {
       staticIPs: region.staticIPs ?? undefined,
       isDefault: region.id === defaultWorkerInstanceGroupId,
       isHidden: region.hidden,
+      workloadType: region.workloadType,
     }));
 
     if (project.defaultWorkerGroupId) {
@@ -104,6 +115,7 @@ export class RegionsPresenter extends BasePresenter {
           location: true,
           staticIPs: true,
           hidden: true,
+          workloadType: true,
         },
         where: { id: project.defaultWorkerGroupId },
       });
@@ -124,6 +136,7 @@ export class RegionsPresenter extends BasePresenter {
           staticIPs: defaultWorkerGroup.staticIPs ?? undefined,
           isDefault: true,
           isHidden: defaultWorkerGroup.hidden,
+          workloadType: defaultWorkerGroup.workloadType,
         });
       }
     }

@@ -13,6 +13,7 @@ import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
 import { MetadataTooLargeError } from "~/utils/packets";
+import { QueueSizeLimitExceededError } from "~/v3/services/common.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { tracer } from "~/v3/tracer.server";
 import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
@@ -638,6 +639,15 @@ export function registerRunEngineEventBusHandlers() {
 }
 
 /**
+ * errorCode returned by the batch process-item callback when the trigger was
+ * rejected because the environment's queue is at its maximum size. The
+ * BatchQueue (via `skipRetries`) short-circuits retries for this code, and the
+ * batch completion callback collapses per-item errors into a single aggregate
+ * `BatchTaskRunError` row instead of writing one per item.
+ */
+const QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE = "QUEUE_SIZE_LIMIT_EXCEEDED";
+
+/**
  * Set up the BatchQueue processing callbacks.
  * These handle creating runs from batch items and completing batches.
  *
@@ -667,6 +677,7 @@ export function setupBatchQueueCallbacks() {
         const triggerFailedTaskService = new TriggerFailedTaskService({
           prisma,
           engine,
+          replicaPrisma: $replica,
         });
 
         // Check for pre-marked error items (e.g. oversized payloads)
@@ -808,6 +819,37 @@ export function setupBatchQueueCallbacks() {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
 
+          // Queue-size-limit rejections are a customer-overload scenario (the
+          // env's queue is at its configured max). Retrying is pointless — the
+          // same item will fail again — and creating pre-failed TaskRuns for
+          // every item of every retried batch is exactly what chews through
+          // DB capacity when a noisy tenant fills their queue. Signal the
+          // BatchQueue to skip retries and skip pre-failed run creation, and
+          // let the completion callback collapse the per-item errors into a
+          // single summary row.
+          if (error instanceof QueueSizeLimitExceededError) {
+            logger.warn("[BatchQueue] Batch item rejected: queue size limit reached", {
+              batchId,
+              friendlyId,
+              itemIndex,
+              task: item.task,
+              environmentId: meta.environmentId,
+              maximumSize: error.maximumSize,
+            });
+
+            span.setAttribute("batch.result.error", errorMessage);
+            span.setAttribute("batch.result.errorCode", QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE);
+            span.setAttribute("batch.result.skipRetries", true);
+            span.end();
+
+            return {
+              success: false as const,
+              error: errorMessage,
+              errorCode: QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE,
+              skipRetries: true,
+            };
+          }
+
           logger.error("[BatchQueue] Failed to trigger batch item", {
             batchId,
             friendlyId,
@@ -889,20 +931,51 @@ export function setupBatchQueueCallbacks() {
           },
         });
 
-        // Create error records if there were failures
+        // Create error records if there were failures.
+        //
+        // Fast-path for queue-size-limit overload: when every failure is the
+        // same QUEUE_SIZE_LIMIT_EXCEEDED error, collapse them into a single
+        // aggregate row instead of writing one per item. This keeps the DB
+        // write volume bounded to O(batches) instead of O(items) when a noisy
+        // tenant fills their queue and all of their batches start bouncing.
         if (failures.length > 0) {
-          await tx.batchTaskRunError.createMany({
-            data: failures.map((failure) => ({
-              batchTaskRunId: batchId,
-              index: failure.index,
-              taskIdentifier: failure.taskIdentifier,
-              payload: failure.payload,
-              options: failure.options as Prisma.InputJsonValue | undefined,
-              error: failure.error,
-              errorCode: failure.errorCode,
-            })),
-            skipDuplicates: true,
-          });
+          const allQueueSizeLimit = failures.every(
+            (f) => f.errorCode === QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE
+          );
+
+          if (allQueueSizeLimit) {
+            const sample = failures[0]!;
+            await tx.batchTaskRunError.createMany({
+              data: [
+                {
+                  batchTaskRunId: batchId,
+                  // Use the first item's index as a stable anchor for the
+                  // (batchTaskRunId, index) unique constraint so callback
+                  // retries remain idempotent.
+                  index: sample.index,
+                  taskIdentifier: sample.taskIdentifier,
+                  payload: sample.payload,
+                  options: sample.options as Prisma.InputJsonValue | undefined,
+                  error: `${sample.error} (${failures.length} items in this batch failed with the same error)`,
+                  errorCode: sample.errorCode,
+                },
+              ],
+              skipDuplicates: true,
+            });
+          } else {
+            await tx.batchTaskRunError.createMany({
+              data: failures.map((failure) => ({
+                batchTaskRunId: batchId,
+                index: failure.index,
+                taskIdentifier: failure.taskIdentifier,
+                payload: failure.payload,
+                options: failure.options as Prisma.InputJsonValue | undefined,
+                error: failure.error,
+                errorCode: failure.errorCode,
+              })),
+              skipDuplicates: true,
+            });
+          }
         }
       });
 

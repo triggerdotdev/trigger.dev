@@ -21,6 +21,7 @@ import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -89,7 +90,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     run.realtimeStreamsVersion
   );
 
-  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, request.signal, {
+  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, getRequestAbortSignal(), {
     lastEventId,
   });
 };

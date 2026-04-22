@@ -20,7 +20,6 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { createTags } from "~/models/taskRunTag.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
@@ -41,7 +40,7 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
-import { ServiceValidationError } from "~/v3/services/common.server";
+import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -271,8 +270,9 @@ export class RunEngineTriggerTaskService {
         );
 
         if (!queueSizeGuard.ok) {
-          throw new ServiceValidationError(
+          throw new QueueSizeLimitExceededError(
             `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            queueSizeGuard.maximumSize ?? 0,
             undefined,
             "warn"
           );
@@ -287,14 +287,13 @@ export class RunEngineTriggerTaskService {
           )
         : undefined;
 
-      //upsert tags
-      const tags = await createTags(
-        {
-          tags: body.options?.tags,
-          projectId: environment.projectId,
-        },
-        this.prisma
-      );
+      const tags = (
+        body.options?.tags
+          ? typeof body.options.tags === "string"
+            ? [body.options.tags]
+            : body.options.tags
+          : []
+      ).filter((tag) => tag.trim().length > 0);
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
