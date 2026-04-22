@@ -17,13 +17,11 @@
   ],
   "scripts": {
     "clean": "rimraf dist .turbo",
-    "build": "tsup && tsc -p tsconfig.dts.json && api-extractor run --local",
-    "dev": "tsup --watch --onSuccess 'tsc -p tsconfig.dts.json && api-extractor run --local --quiet'",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@microsoft/api-extractor": "^7.58.2",
-    "@trigger.dev/database": "workspace:*",
     "@types/node": "^20.14.14",
     "rimraf": "6.0.1",
     "tsup": "^8.4.0",

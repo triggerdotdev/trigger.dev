@@ -1,7 +1,13 @@
 export type {
   RoleBasedAccessControlPlugin,
   RoleBaseAccessController,
-  PrismaClient,
   Permission,
   Role,
+  RbacAbility,
+  RbacSubject,
+  RbacResource,
+  RbacEnvironment,
+  RbacUser,
+  BearerAuthResult,
+  SessionAuthResult,
 } from "./rbac.js";

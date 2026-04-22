@@ -4,14 +4,13 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { requireUser } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const auth = await rbac.authenticateSession(request, {});
+  if (!auth.ok) return redirect("/login");
+  if (!auth.ability.canSuper()) return redirect("/");
 
   const deployedConcurrency = await concurrencyTracker.globalConcurrentRunCount(true);
   const devConcurrency = await concurrencyTracker.globalConcurrentRunCount(false);

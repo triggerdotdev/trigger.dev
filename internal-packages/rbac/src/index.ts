@@ -1,25 +1,26 @@
 import type {
   RoleBaseAccessController,
   RoleBasedAccessControlPlugin,
-  PrismaClient,
 } from "@trigger.dev/plugins";
-import { RoleBaseAccessFallback } from "./fallback";
-export type { RoleBaseAccessController, RoleBasedAccessControlPlugin };
+import type { PrismaClient } from "@trigger.dev/database";
+import { RoleBaseAccessFallback } from "./fallback.js";
+export type { RoleBaseAccessController };
 
-class RoleBaseAccess implements RoleBasedAccessControlPlugin {
-  async create(prisma: PrismaClient) {
+type RbacHelpers = { getSessionUserId: (request: Request) => Promise<string | null> };
+
+class RoleBaseAccess {
+  async create(prisma: PrismaClient, helpers: RbacHelpers): Promise<RoleBaseAccessController> {
     try {
-      const moduleName = "@triggerdotdev/plugin-rbac";
+      const moduleName = "@triggerdotdev/plugins/rbac";
       const module = await import(moduleName);
-      const { create } = await module();
-      return create(prisma);
+      const plugin: RoleBasedAccessControlPlugin = module.default;
+      return plugin.create(helpers);
     } catch {
-      const fallback = new RoleBaseAccessFallback();
-      return fallback.create();
+      return new RoleBaseAccessFallback(prisma).create(helpers);
     }
   }
 }
 
-const plugin = new RoleBaseAccess();
+const loader = new RoleBaseAccess();
 
-export default plugin;
+export default loader;
