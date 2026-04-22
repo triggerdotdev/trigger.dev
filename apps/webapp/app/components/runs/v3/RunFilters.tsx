@@ -370,9 +370,6 @@ export function RunsFilters(props: RunFiltersProps) {
       <FilterMenu {...props} />
       {hasFilters && (
         <Form className="-ml-1 h-6">
-          {searchParams.has("rootOnly") && (
-            <input type="hidden" name="rootOnly" value={searchParams.get("rootOnly") as string} />
-          )}
           <Button
             variant="minimal/small"
             LeadingIcon={XMarkIcon}
@@ -677,14 +674,17 @@ function TasksDropdown({
     const previousTasks = values("tasks");
     const wasEmpty = previousTasks.length === 0 || previousTasks.every((v) => v === "");
     const isEmpty = newValues.length === 0 || newValues.every((v) => v === "");
-    // When transitioning from no tasks to tasks, force rootOnly off so users
-    // see the runs of the task they just selected (root or otherwise).
+    // empty -> tasks: temporarily force rootOnly off so child runs of the selected
+    // task are visible. tasks -> empty: drop rootOnly so the toggle reverts to the
+    // user's saved session preference. Neither writes to the cookie (see loader).
     const transitioningToTasks = wasEmpty && !isEmpty;
+    const transitioningToNoTasks = !wasEmpty && isEmpty;
     replace({
       tasks: newValues,
       cursor: undefined,
       direction: undefined,
       ...(transitioningToTasks ? { rootOnly: "false" } : {}),
+      ...(transitioningToNoTasks ? { rootOnly: undefined } : {}),
     });
   };
 
@@ -770,7 +770,7 @@ function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possible
                         return task ? task.slug : v;
                       })
                     )}
-                    onRemove={() => del(["tasks", "cursor", "direction"])}
+                    onRemove={() => del(["tasks", "cursor", "direction", "rootOnly"])}
                     variant="secondary/small"
                     className="pl-1"
                   />
