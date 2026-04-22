@@ -23,6 +23,8 @@ type BuildSettingsFieldsProps = {
   disabledEnvSlugs?: Partial<Record<EnvSlug, string>>;
   autoPromote?: boolean;
   onAutoPromoteChange?: (value: boolean) => void;
+  /** Hide the section-level master toggles for "Pull env vars" and "Discover new env vars". */
+  hideSectionToggles?: boolean;
 };
 
 export function BuildSettingsFields({
@@ -37,6 +39,7 @@ export function BuildSettingsFields({
   disabledEnvSlugs,
   autoPromote,
   onAutoPromoteChange,
+  hideSectionToggles,
 }: BuildSettingsFieldsProps) {
   const isSlugDisabled = (slug: EnvSlug) => !!disabledEnvSlugs?.[slug];
   const enabledSlugs = availableEnvSlugs.filter((s) => !isSlugDisabled(s));
@@ -48,7 +51,7 @@ export function BuildSettingsFields({
         <div className="mb-2">
           <div className="flex items-center justify-between">
             <Label>Pull env vars before build</Label>
-            {availableEnvSlugs.length > 1 && (
+            {!hideSectionToggles && availableEnvSlugs.length > 1 && (
               <Switch
                 variant="small"
                 checked={
@@ -116,7 +119,7 @@ export function BuildSettingsFields({
         <div className="mb-2">
           <div className="flex items-center justify-between">
             <Label>Discover new env vars</Label>
-            {availableEnvSlugs.length > 1 && (
+            {!hideSectionToggles && availableEnvSlugs.length > 1 && (
               <Switch
                 variant="small"
                 checked={
