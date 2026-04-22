@@ -865,8 +865,14 @@ export function GitHubSettingsPanel({
   const fetcher = useTypedFetcher<typeof loader>();
   const location = useLocation();
 
-  // Use provided redirectUrl or fall back to current path (without search params)
-  const effectiveRedirectUrl = location.pathname;
+  // Preserve current search params (e.g. origin=marketplace, next=...) but strip
+  // openGithubRepoModal so the modal doesn't re-open in a loop after the action redirect.
+  const effectiveRedirectUrl = (() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("openGithubRepoModal");
+    const search = params.toString();
+    return search ? `${location.pathname}?${search}` : location.pathname;
+  })();
   useEffect(() => {
     fetcher.load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
   }, [organizationSlug, projectSlug, environmentSlug]);
