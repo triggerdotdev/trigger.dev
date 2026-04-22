@@ -1633,7 +1633,8 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
-    const prisma = tx ?? this.prisma;
+    const prisma =
+      tx ?? (this.options.readReplicaSnapshotsSinceEnabled ? this.readOnlyPrisma : this.prisma);
 
     try {
       const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);
