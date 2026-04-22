@@ -212,15 +212,18 @@ export class StreamBatchItemsService extends WithRunEngine {
         // Validate we received the expected number of items
         if (enqueuedCount !== batch.runCount) {
           // The batch queue consumers may have already processed all items and
-          // cleaned up the Redis keys before we got here (especially likely when
-          // items include pre-failed runs that complete instantly). Check if the
-          // batch was already sealed/completed in Postgres.
-          const currentBatch = await this._prisma.batchTaskRun.findUnique({
+          // cleaned up the Redis keys before we got here. This happens when all
+          // runs complete fast enough that cleanup() deletes the enqueuedItemsKey
+          // before we read it — typically when the last item executes in the
+          // milliseconds between the loop ending and getBatchEnqueuedCount() being called.
+          // Check both sealed (sealed by this endpoint on a concurrent request) and
+          // COMPLETED (sealed by the BatchQueue completion path before we got here).
+          const currentBatch = await this._prisma.batchTaskRun.findFirst({
             where: { id: batchId },
             select: { sealed: true, status: true },
           });
 
-          if (currentBatch?.sealed) {
+          if (currentBatch?.sealed || currentBatch?.status === "COMPLETED") {
             logger.info("Batch already sealed before count check (fast completion)", {
               batchId: batchFriendlyId,
               itemsAccepted,
