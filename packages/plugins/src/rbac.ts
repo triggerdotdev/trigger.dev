@@ -13,7 +13,8 @@ export type Role = {
 
 export type RbacSubject =
   | { type: "user"; userId: string; organizationId: string; projectId?: string }
-  | { type: "personalAccessToken"; tokenId: string; organizationId: string; projectId?: string };
+  | { type: "personalAccessToken"; tokenId: string; organizationId: string; projectId?: string }
+  | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string };
 
 export type RbacResource = {
   type: string;
@@ -51,7 +52,13 @@ export interface RbacAbility {
 
 export type BearerAuthResult =
   | { ok: false; status: 401 | 403; error: string }
-  | { ok: true; environment: RbacEnvironment; subject: RbacSubject; ability: RbacAbility };
+  | {
+      ok: true;
+      environment: RbacEnvironment;
+      subject: RbacSubject;
+      ability: RbacAbility;
+      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean };
+    };
 
 export type SessionAuthResult =
   | { ok: false; reason: "unauthenticated" | "unauthorized" }
@@ -59,7 +66,8 @@ export type SessionAuthResult =
 
 export interface RoleBaseAccessController {
   // API routes (Bearer token): one DB query → identity + pre-built ability
-  authenticateBearer(request: Request): Promise<BearerAuthResult>;
+  // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
+  authenticateBearer(request: Request, options?: { allowJWT?: boolean }): Promise<BearerAuthResult>;
 
   // Dashboard loaders/actions (session cookie): one DB query → user + pre-built ability
   authenticateSession(
@@ -70,7 +78,8 @@ export interface RoleBaseAccessController {
   // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails
   authenticateAuthorizeBearer(
     request: Request,
-    check: { action: string; resource: RbacResource }
+    check: { action: string; resource: RbacResource },
+    options?: { allowJWT?: boolean }
   ): Promise<BearerAuthResult>;
 
   authenticateAuthorizeSession(

@@ -10,7 +10,8 @@ import type {
   RoleBaseAccessController,
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
-import { buildFallbackAbility, permissiveAbility } from "./ability.js";
+import { validateJWT } from "@trigger.dev/core/v3/jwt";
+import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 
 export class RoleBaseAccessFallback {
   constructor(private readonly prisma: PrismaClient) {}
@@ -28,12 +29,55 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     private readonly helpers: { getSessionUserId: (request: Request) => Promise<string | null> }
   ) {}
 
-  async authenticateBearer(request: Request): Promise<BearerAuthResult> {
-    const apiKey = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
-    if (!apiKey) return { ok: false, status: 401, error: "Invalid or Missing API key" };
+  async authenticateBearer(
+    request: Request,
+    options?: { allowJWT?: boolean }
+  ): Promise<BearerAuthResult> {
+    const rawToken = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    if (!rawToken) return { ok: false, status: 401, error: "Invalid or Missing API key" };
+
+    if (options?.allowJWT && isPublicJWT(rawToken)) {
+      const envId = extractJWTSub(rawToken);
+      if (!envId) return { ok: false, status: 401, error: "Invalid Public Access Token" };
+
+      const env = await this.prisma.runtimeEnvironment.findFirst({
+        where: { id: envId },
+        include: {
+          project: true,
+          organization: true,
+          parentEnvironment: { select: { apiKey: true } },
+        },
+      });
+      if (!env || env.project.deletedAt !== null) {
+        return { ok: false, status: 401, error: "Invalid Public Access Token" };
+      }
+
+      const signingKey = env.parentEnvironment?.apiKey ?? env.apiKey;
+      const result = await validateJWT(rawToken, signingKey);
+      if (!result.ok) return { ok: false, status: 401, error: "Public Access Token is invalid" };
+
+      const scopes = Array.isArray(result.payload.scopes)
+        ? (result.payload.scopes as string[])
+        : [];
+      const realtime = result.payload.realtime as { skipColumns?: string[] } | undefined;
+      const oneTimeUse = result.payload.otu === true;
+
+      return {
+        ok: true,
+        environment: toRbacEnvironment(env),
+        subject: {
+          type: "publicJWT",
+          environmentId: env.id,
+          organizationId: env.organizationId,
+          projectId: env.projectId,
+        },
+        ability: buildJwtAbility(scopes),
+        jwt: { realtime, oneTimeUse },
+      };
+    }
 
     const env = await this.prisma.runtimeEnvironment.findFirst({
-      where: { apiKey },
+      where: { apiKey: rawToken },
       include: {
         project: true,
         organization: true,
@@ -87,9 +131,10 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async authenticateAuthorizeBearer(
     request: Request,
-    check: { action: string; resource: RbacResource }
+    check: { action: string; resource: RbacResource },
+    options?: { allowJWT?: boolean }
   ): Promise<BearerAuthResult> {
-    const auth = await this.authenticateBearer(request);
+    const auth = await this.authenticateBearer(request, options);
     if (!auth.ok) return auth;
     if (!auth.ability.can(check.action, check.resource)) {
       return { ok: false, status: 403, error: "Unauthorized" };
@@ -141,6 +186,30 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async setTokenRole(): Promise<void> {}
   async removeTokenRole(): Promise<void> {}
+}
+
+function isPublicJWT(token: string): boolean {
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+    return payload !== null && typeof payload === "object" && payload.pub === true;
+  } catch {
+    return false;
+  }
+}
+
+function extractJWTSub(token: string): string | undefined {
+  const parts = token.split(".");
+  if (parts.length !== 3) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+    return payload !== null && typeof payload === "object" && typeof payload.sub === "string"
+      ? payload.sub
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function toRbacEnvironment(

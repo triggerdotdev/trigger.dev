@@ -5,9 +5,11 @@
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "dependencies": {
+    "@trigger.dev/core": "workspace:*",
     "@trigger.dev/plugins": "workspace:*"
   },
   "devDependencies": {
+    "@trigger.dev/database": "workspace:*",
     "@types/node": "^20.14.14",
     "rimraf": "6.0.1"
   },
