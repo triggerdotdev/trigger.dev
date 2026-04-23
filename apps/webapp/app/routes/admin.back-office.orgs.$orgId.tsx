@@ -1,7 +1,6 @@
 import { Form, useNavigation, useSearchParams } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { Prisma } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -17,11 +16,14 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import {
   RateLimitTokenBucketConfig,
-  type RateLimiterConfig,
+  RateLimiterConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
 import { logger } from "~/services/logger.server";
 import { type Duration } from "~/services/rateLimiter.server";
 import { requireUser } from "~/services/session.server";
+
+const SAVED_QUERY_KEY = "saved";
+const SAVED_QUERY_VALUE = "1";
 
 type EffectiveRateLimit = {
   source: "override" | "default";
@@ -41,12 +43,12 @@ function resolveEffectiveRateLimit(override: unknown): EffectiveRateLimit {
   if (override == null) {
     return { source: "default", config: systemDefaultRateLimit() };
   }
-  const parsed = RateLimitTokenBucketConfig.safeParse(override);
+  const parsed = RateLimiterConfig.safeParse(override);
   if (parsed.success) {
     return { source: "override", config: parsed.data };
   }
-  // Override exists but isn't tokenBucket (fixedWindow/slidingWindow). We can't
-  // edit it from this UI — show the default and let the admin know.
+  // Column holds malformed JSON — fall back silently. Admin must investigate
+  // at the DB level; this UI can't recover it.
   return { source: "default", config: systemDefaultRateLimit() };
 }
 
@@ -110,31 +112,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const effective = resolveEffectiveRateLimit(org.apiRateLimiterConfig);
-  const overrideIsIncompatible =
-    org.apiRateLimiterConfig != null && effective.source === "default";
 
   return typedjson({
     org,
     effective,
-    overrideIsIncompatible,
   });
 }
 
 const SetRateLimitSchema = z.object({
   intent: z.literal("set-rate-limit"),
   refillRate: z.coerce.number().int().min(1),
-  interval: z.string().min(1),
+  interval: z
+    .string()
+    .trim()
+    .refine((v) => parseDurationToMs(v) > 0, {
+      message: "Must be a duration like 10s, 1m, 500ms.",
+    }),
   maxTokens: z.coerce.number().int().min(1),
 });
-
-const ResetRateLimitSchema = z.object({
-  intent: z.literal("reset-rate-limit"),
-});
-
-const ActionSchema = z.discriminatedUnion("intent", [
-  SetRateLimitSchema,
-  ResetRateLimitSchema,
-]);
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
@@ -148,7 +143,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  const submission = ActionSchema.safeParse(Object.fromEntries(formData));
+  const submission = SetRateLimitSchema.safeParse(Object.fromEntries(formData));
   if (!submission.success) {
     return json(
       { errors: submission.error.flatten().fieldErrors },
@@ -164,46 +159,39 @@ export async function action({ request, params }: ActionFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  let next: RateLimiterConfig | null;
-  if (submission.data.intent === "set-rate-limit") {
-    const built = RateLimitTokenBucketConfig.safeParse({
-      type: "tokenBucket",
-      refillRate: submission.data.refillRate,
-      interval: submission.data.interval,
-      maxTokens: submission.data.maxTokens,
-    });
-    if (!built.success) {
-      return json(
-        { errors: built.error.flatten().fieldErrors },
-        { status: 400 }
-      );
-    }
-    next = built.data;
-  } else {
-    next = null;
+  const built = RateLimitTokenBucketConfig.safeParse({
+    type: "tokenBucket",
+    refillRate: submission.data.refillRate,
+    interval: submission.data.interval,
+    maxTokens: submission.data.maxTokens,
+  });
+  if (!built.success) {
+    return json(
+      { errors: built.error.flatten().fieldErrors },
+      { status: 400 }
+    );
   }
+  const next = built.data;
 
   await prisma.organization.update({
     where: { id: orgId },
-    data: {
-      apiRateLimiterConfig: next === null ? Prisma.JsonNull : (next as any),
-    },
+    data: { apiRateLimiterConfig: next as any },
   });
 
   logger.info("admin.backOffice.rateLimit", {
     adminUserId: user.id,
     orgId,
-    intent: submission.data.intent,
     previous: existing.apiRateLimiterConfig,
     next,
   });
 
-  return redirect(`/admin/back-office/orgs/${orgId}?saved=1`);
+  return redirect(
+    `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${SAVED_QUERY_VALUE}`
+  );
 }
 
 export default function BackOfficeOrgPage() {
-  const { org, effective, overrideIsIncompatible } =
-    useTypedLoaderData<typeof loader>();
+  const { org, effective } = useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state !== "idle";
@@ -232,7 +220,7 @@ export default function BackOfficeOrgPage() {
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const savedJustNow = searchParams.get("saved") === "1";
+  const savedJustNow = searchParams.get(SAVED_QUERY_KEY) === SAVED_QUERY_VALUE;
 
   // If a submit comes back with validation errors, re-open edit mode so the
   // admin can see and correct them without clicking Edit again.
@@ -252,7 +240,7 @@ export default function BackOfficeOrgPage() {
     const t = setTimeout(() => {
       setSearchParams(
         (prev) => {
-          prev.delete("saved");
+          prev.delete(SAVED_QUERY_KEY);
           return prev;
         },
         { replace: true, preventScrollReset: true }
@@ -303,7 +291,7 @@ export default function BackOfficeOrgPage() {
             <Button
               variant="tertiary/small"
               onClick={() => setIsEditing(true)}
-              disabled={isSubmitting}
+              disabled={isSubmitting || effective.config.type !== "tokenBucket"}
             >
               Edit
             </Button>
@@ -323,34 +311,56 @@ export default function BackOfficeOrgPage() {
           {effective.source === "override"
             ? "Custom override active."
             : "Using system default."}
-          {overrideIsIncompatible && (
-            <span className="ml-2 text-amber-500">
-              (An override exists but is not a tokenBucket — not editable here.)
-            </span>
-          )}
         </Paragraph>
 
         {!isEditing ? (
-          <Property.Table>
-            {currentDescription ? (
-              <>
-                <Property.Item>
-                  <Property.Label>Sustained rate</Property.Label>
-                  <Property.Value>{currentDescription.sustained}</Property.Value>
-                </Property.Item>
-                <Property.Item>
-                  <Property.Label>Burst allowance</Property.Label>
-                  <Property.Value>{currentDescription.burst}</Property.Value>
-                </Property.Item>
-              </>
-            ) : (
-              <Property.Item>
-                <Property.Value>
-                  No editable rate limit configured.
-                </Property.Value>
-              </Property.Item>
+          <>
+            <Property.Table>
+              {effective.config.type === "tokenBucket" ? (
+                currentDescription ? (
+                  <>
+                    <Property.Item>
+                      <Property.Label>Sustained rate</Property.Label>
+                      <Property.Value>{currentDescription.sustained}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Burst allowance</Property.Label>
+                      <Property.Value>{currentDescription.burst}</Property.Value>
+                    </Property.Item>
+                  </>
+                ) : (
+                  <Property.Item>
+                    <Property.Value>
+                      Invalid interval on the stored config.
+                    </Property.Value>
+                  </Property.Item>
+                )
+              ) : (
+                <>
+                  <Property.Item>
+                    <Property.Label>Type</Property.Label>
+                    <Property.Value>{effective.config.type}</Property.Value>
+                  </Property.Item>
+                  <Property.Item>
+                    <Property.Label>Window</Property.Label>
+                    <Property.Value>{String(effective.config.window)}</Property.Value>
+                  </Property.Item>
+                  <Property.Item>
+                    <Property.Label>Tokens</Property.Label>
+                    <Property.Value>
+                      {effective.config.tokens.toLocaleString()}
+                    </Property.Value>
+                  </Property.Item>
+                </>
+              )}
+            </Property.Table>
+            {effective.config.type !== "tokenBucket" && (
+              <Paragraph variant="small" className="text-amber-500">
+                This override is a {effective.config.type} limit and can't be
+                edited from this form. Change it in the database directly.
+              </Paragraph>
             )}
-          </Property.Table>
+          </>
         ) : (
           <Form method="post" className="flex flex-col gap-3 pt-2">
             <input type="hidden" name="intent" value="set-rate-limit" />
