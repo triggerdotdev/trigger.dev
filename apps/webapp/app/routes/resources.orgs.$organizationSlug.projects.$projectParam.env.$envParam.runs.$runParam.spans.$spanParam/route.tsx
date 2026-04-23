@@ -143,12 +143,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
 
     // For agent runs, mint a read-only run-scoped token so the Agent tab
-    // can subscribe to the run's chat output stream from the browser. We
-    // also forward the initial user messages extracted from the task
-    // payload so the AgentView can seed its merged message list (empty for
-    // runs started via `trigger: "preload"`).
+    // can subscribe to the run's backing Session from the browser. We
+    // also forward the initial user messages + the session identifier
+    // extracted from the task payload — the AgentView uses the session
+    // to subscribe to `.in` / `.out` (replaces the old run-scoped
+    // chat-messages + chat streams). Runs without an identifiable
+    // session (misformed payload, legacy pre-chat-agent runs) get
+    // `agentSession: null`; the AgentView renders a loading spinner
+    // without subscribing.
     let agentView: AgentViewAuth | null = null;
-    if (result.type === "run" && result.run.isAgentRun) {
+    if (result.type === "run" && result.run.isAgentRun && result.run.agentSession) {
       const project = await findProjectBySlug(organizationSlug, projectParam, userId);
       const environment = project
         ? await findEnvironmentBySlug(project.id, envParam, userId)
@@ -158,6 +162,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         agentView = {
           publicAccessToken,
           apiOrigin: env.API_ORIGIN || env.LOGIN_ORIGIN,
+          sessionId: result.run.agentSession,
           initialMessages: (result.run.agentInitialMessages ?? []) as AgentViewAuth["initialMessages"],
         };
       }

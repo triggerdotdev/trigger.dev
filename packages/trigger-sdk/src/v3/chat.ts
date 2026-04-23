@@ -195,7 +195,14 @@ type TriggerChatTransportOptionsBase<TClientData = unknown> = {
   sessions?: Record<
     string,
     {
-      sessionId: string;
+      /**
+       * Optional. If omitted, the transport upserts the backing
+       * Session on first use via `POST /api/v1/sessions` (keyed on
+       * `chatId` as `externalId`). Pre-Sessions persisted state
+       * won't have a sessionId — this lets old localStorage records
+       * hydrate without migration.
+       */
+      sessionId?: string;
       runId?: string;
       publicAccessToken: string;
       lastEventId?: string;

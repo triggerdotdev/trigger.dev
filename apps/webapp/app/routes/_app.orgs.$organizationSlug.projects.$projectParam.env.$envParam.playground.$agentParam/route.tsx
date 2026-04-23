@@ -720,7 +720,15 @@ function PlaygroundSidebar({
   onRegionChange: (val: string | undefined) => void;
   regions: Array<{ id: string; name: string; description?: string; isDefault: boolean }>;
   isDev: boolean;
-  session: { runId: string; publicAccessToken: string; lastEventId?: string } | undefined;
+  session:
+    | {
+        sessionId: string;
+        runId?: string;
+        publicAccessToken: string;
+        lastEventId?: string;
+        isStreaming?: boolean;
+      }
+    | undefined;
   messageCount: number;
   isStreaming: boolean;
   status: string;
