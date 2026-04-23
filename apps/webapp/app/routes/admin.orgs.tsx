@@ -85,15 +85,13 @@ export default function AdminDashboardRoute() {
               <TableHeaderCell>Slug</TableHeaderCell>
               <TableHeaderCell>Members</TableHeaderCell>
               <TableHeaderCell>id</TableHeaderCell>
-              <TableHeaderCell>v2?</TableHeaderCell>
-              <TableHeaderCell>v3?</TableHeaderCell>
               <TableHeaderCell>Deleted?</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
             {organizations.length === 0 ? (
-              <TableBlankRow colSpan={9}>
+              <TableBlankRow colSpan={6}>
                 <Paragraph>No orgs found for search</Paragraph>
               </TableBlankRow>
             ) : (
@@ -120,8 +118,6 @@ export default function AdminDashboardRoute() {
                     <TableCell>
                       <CopyableText value={org.id} />
                     </TableCell>
-                    <TableCell>{org.v2Enabled ? "✅" : ""}</TableCell>
-                    <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
                     <TableCell isSticky={true}>
                       <div className="flex items-center gap-2">
