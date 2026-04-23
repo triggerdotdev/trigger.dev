@@ -19,6 +19,6 @@
     "tinyexec": "^0.3.0"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   }
 }

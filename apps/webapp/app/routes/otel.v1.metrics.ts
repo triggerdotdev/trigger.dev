@@ -24,7 +24,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await otlpExporter.exportMetrics(exportRequest);
 
-      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish() as BodyInit, {
         status: 200,
       });
     } else {

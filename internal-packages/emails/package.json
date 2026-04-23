@@ -7,7 +7,7 @@
   "types": "./src/index.tsx",
   "scripts": {
     "dev": "PORT=3080 email dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.716.0",

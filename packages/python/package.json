@@ -40,7 +40,7 @@
     "clean": "rimraf dist",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.src.json",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },
@@ -49,7 +49,7 @@
     "tinyexec": "^0.3.2"
   },
   "devDependencies": {
-    "@types/node": "20.14.14",
+    "@types/node": "20.19.39",
     "rimraf": "6.0.1",
     "tshy": "^3.0.2",
     "typescript": "^5.5.4",

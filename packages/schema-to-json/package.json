@@ -35,7 +35,7 @@
     "build": "pnpm run clean && pnpm run build:tshy && pnpm run update-version",
     "build:tshy": "tshy",
     "dev": "tshy --watch",
-    "typecheck": "tsc -p tsconfig.src.json --noEmit",
+    "typecheck": "tsgo -p tsconfig.src.json --noEmit",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."

@@ -19,7 +19,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await otlpExporter.exportTraces(exportRequest);
 
-      return new Response(ExportTraceServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportTraceServiceResponse.encode(exportResponse).finish() as BodyInit, {
         status: 200,
       });
     } else {

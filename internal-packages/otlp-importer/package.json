@@ -24,7 +24,7 @@
     "protos": "npm run submodule && npm run protos:generate",
     "protos:generate": "node ./scripts/generate-protos.mjs",
     "submodule": "node ./scripts/submodule.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "devDependencies": {
     "@types/node": "^20",

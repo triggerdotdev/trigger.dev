@@ -15,7 +15,7 @@
   },
   "scripts": {
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "generate": "node scripts/generate.mjs",
     "sync-prices": "bash scripts/sync-model-prices.sh && node scripts/generate.mjs",
     "sync-prices:check": "bash scripts/sync-model-prices.sh --check",

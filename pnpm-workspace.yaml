@@ -12,6 +12,8 @@ minimumReleaseAgeExclude:
   - "next"
   - "@next/*"
   - "agentcrumbs"
+  - "@typescript/native-preview"
+  - "@typescript/native-preview-*"
 preferOffline: true
 
 linkWorkspacePackages: false
