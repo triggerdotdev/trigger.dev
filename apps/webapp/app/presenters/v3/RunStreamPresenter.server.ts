@@ -66,8 +66,10 @@ export class RunStreamPresenter {
                   });
                 }
               }
-              // Abort the stream on send error
-              context.controller.abort("Send error");
+              // Abort the stream on send error. No reason string — string reasons
+              // create a DOMException whose stack trace captures the surrounding
+              // closure (see sse.ts comment).
+              context.controller.abort();
             }
           },
           1000
