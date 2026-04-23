@@ -302,12 +302,14 @@ function setupTelemetry() {
   provider.register();
 
   let instrumentations: Instrumentation[] = [
-    new HttpInstrumentation(),
-    new ExpressInstrumentation(),
     new AwsSdkInstrumentation({
       suppressInternalInstrumentation: true,
     }),
   ];
+
+  if (!env.DISABLE_HTTP_INSTRUMENTATION) {
+    instrumentations.unshift(new HttpInstrumentation(), new ExpressInstrumentation());
+  }
 
   if (env.INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED === "1") {
     instrumentations.push(new PrismaInstrumentation());
