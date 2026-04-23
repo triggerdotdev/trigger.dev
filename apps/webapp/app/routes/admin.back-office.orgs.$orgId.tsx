@@ -1,6 +1,5 @@
 import { Form, useNavigation, useSearchParams } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -159,7 +158,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const formData = await request.formData();
   const submission = SetRateLimitSchema.safeParse(Object.fromEntries(formData));
   if (!submission.success) {
-    return json(
+    return typedjson(
       { errors: submission.error.flatten().fieldErrors },
       { status: 400 }
     );
@@ -180,7 +179,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     maxTokens: submission.data.maxTokens,
   });
   if (!built.success) {
-    return json(
+    return typedjson(
       { errors: built.error.flatten().fieldErrors },
       { status: 400 }
     );
