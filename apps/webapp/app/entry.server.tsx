@@ -83,6 +83,10 @@ function handleBotRequest(
 ) {
   return new Promise((resolve, reject) => {
     let shellRendered = false;
+    // Timer handle is cleared in every terminal callback so the abort closure
+    // (which captures the full React render tree + remixContext) doesn't pin
+    // memory for 30s per successful request. See react-router PR #14200.
+    let abortTimer: NodeJS.Timeout | undefined;
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
@@ -105,8 +109,10 @@ function handleBotRequest(
           );
 
           pipe(body);
+          clearTimeout(abortTimer);
         },
         onShellError(error: unknown) {
+          clearTimeout(abortTimer);
           reject(error);
         },
         onError(error: unknown) {
@@ -121,7 +127,7 @@ function handleBotRequest(
       }
     );
 
-    setTimeout(abort, ABORT_DELAY);
+    abortTimer = setTimeout(abort, ABORT_DELAY);
   });
 }
 
@@ -135,6 +141,10 @@ function handleBrowserRequest(
 ) {
   return new Promise((resolve, reject) => {
     let shellRendered = false;
+    // Timer handle is cleared in every terminal callback so the abort closure
+    // (which captures the full React render tree + remixContext) doesn't pin
+    // memory for 30s per successful request. See react-router PR #14200.
+    let abortTimer: NodeJS.Timeout | undefined;
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
@@ -157,8 +167,10 @@ function handleBrowserRequest(
           );
 
           pipe(body);
+          clearTimeout(abortTimer);
         },
         onShellError(error: unknown) {
+          clearTimeout(abortTimer);
           reject(error);
         },
         onError(error: unknown) {
@@ -173,7 +185,7 @@ function handleBrowserRequest(
       }
     );
 
-    setTimeout(abort, ABORT_DELAY);
+    abortTimer = setTimeout(abort, ABORT_DELAY);
   });
 }
 
