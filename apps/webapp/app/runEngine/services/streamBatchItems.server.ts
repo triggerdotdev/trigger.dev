@@ -282,8 +282,18 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Check if we won the race to seal the batch
         if (sealResult.count === 0) {
-          // Another request sealed the batch first - re-query to check current state
-          const currentBatch = await this._prisma.batchTaskRun.findUnique({
+          // The conditional update failed because the batch was no longer in
+          // PENDING status. Re-query to determine which path got there first:
+          //   - A concurrent streaming request already sealed and moved it to
+          //     PROCESSING.
+          //   - The BatchQueue completion path finished all runs and set it to
+          //     COMPLETED (without setting sealed=true — that's this endpoint's
+          //     job). This window exists between completionCallback (which calls
+          //     tryCompleteBatch) and cleanup() in BatchQueue — see
+          //     batch-queue/index.ts.
+          // Either way the goal — a durable batch that the SDK stops retrying —
+          // has been achieved, so we return sealed: true.
+          const currentBatch = await this._prisma.batchTaskRun.findFirst({
             where: { id: batchId },
             select: {
               id: true,
@@ -293,13 +303,17 @@ export class StreamBatchItemsService extends WithRunEngine {
             },
           });
 
-          if (currentBatch?.sealed && currentBatch.status === "PROCESSING") {
-            // The batch was sealed by another request - this is fine, the goal was achieved
-            logger.info("Batch already sealed by concurrent request", {
+          if (
+            (currentBatch?.sealed && currentBatch.status === "PROCESSING") ||
+            currentBatch?.status === "COMPLETED"
+          ) {
+            logger.info("Batch already sealed/completed by concurrent path", {
               batchId: batchFriendlyId,
               itemsAccepted,
               itemsDeduplicated,
               envId: environment.id,
+              batchStatus: currentBatch.status,
+              batchSealed: currentBatch.sealed,
             });
 
             span.setAttribute("itemsAccepted", itemsAccepted);
