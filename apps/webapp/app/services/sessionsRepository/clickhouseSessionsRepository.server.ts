@@ -74,10 +74,12 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
       }
     }
 
-    const idsToReturn =
-      options.page.direction === "backward" && hasMore
-        ? sessionIds.slice(1, options.page.size + 1)
-        : sessionIds.slice(0, options.page.size);
+    // Both directions slice the first `size` IDs: the `size+1`th item is
+    // the sentinel proving another page exists (hasMore), not part of the
+    // page content. Backward queries sort ASC (items closest to the cursor
+    // first), so `[0..size)` is still the legitimate window and the last
+    // element is the sentinel — identical to the forward case.
+    const idsToReturn = sessionIds.slice(0, options.page.size);
 
     let sessions = await this.options.prisma.session.findMany({
       where: {
