@@ -86,12 +86,13 @@ export default function AdminDashboardRoute() {
               <TableHeaderCell>Members</TableHeaderCell>
               <TableHeaderCell>id</TableHeaderCell>
               <TableHeaderCell>Deleted?</TableHeaderCell>
+              <TableHeaderCell>Back office</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
             {organizations.length === 0 ? (
-              <TableBlankRow colSpan={6}>
+              <TableBlankRow colSpan={7}>
                 <Paragraph>No orgs found for search</Paragraph>
               </TableBlankRow>
             ) : (
@@ -119,6 +120,14 @@ export default function AdminDashboardRoute() {
                       <CopyableText value={org.id} />
                     </TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
+                    <TableCell>
+                      <LinkButton
+                        to={`/admin/back-office/orgs/${org.id}`}
+                        variant="tertiary/small"
+                      >
+                        Open
+                      </LinkButton>
+                    </TableCell>
                     <TableCell isSticky={true}>
                       <div className="flex items-center gap-2">
                         <Button
