@@ -400,7 +400,16 @@ export default function BackOfficeOrgPage() {
             </Paragraph>
 
             <div className="flex items-center gap-2">
-              <Button type="submit" variant="primary/medium" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                variant="primary/medium"
+                disabled={
+                  isSubmitting ||
+                  !refillRate.trim() ||
+                  !intervalStr.trim() ||
+                  !maxTokens.trim()
+                }
+              >
                 Save
               </Button>
               <Button
