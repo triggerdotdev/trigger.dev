@@ -8,7 +8,7 @@ import { Chat } from "@/components/chat";
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { DEFAULT_MODEL } from "@/lib/models";
 import {
-  getChatToken,
+  triggerChat,
   getChatList,
   getChatMessages,
   deleteChat as deleteChatAction,
@@ -73,8 +73,14 @@ export function ChatApp({
 
   const transport = useTriggerChatTransport({
     task: taskMode,
-    accessToken: (params) => getChatToken({ ...params, taskId: taskMode }),
-    renewRunAccessToken: ({ chatId, runId }) => renewRunAccessTokenForChat(chatId, runId),
+    // Server-side trigger action creates the backing Session with the
+    // project's secret key + threads `sessionId` into the run payload.
+    // Returned PAT already has `read:runs` + `read:sessions` +
+    // `write:sessions` scopes (from `chat.createTriggerAction` Phase E),
+    // so the browser never needs to mint write:sessions itself.
+    triggerTask: triggerChat,
+    renewRunAccessToken: ({ chatId, runId, sessionId }) =>
+      renewRunAccessTokenForChat(chatId, runId, sessionId),
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     sessions: initialSessions,
     onSessionChange: handleSessionChange,
