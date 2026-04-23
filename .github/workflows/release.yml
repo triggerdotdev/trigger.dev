@@ -142,6 +142,13 @@ jobs:
           git tag "v.docker.${{ steps.get_version.outputs.package_version }}"
           git push origin "v.docker.${{ steps.get_version.outputs.package_version }}"
 
+      - name: Create and push Helm chart tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          set -e
+          git tag "helm-v${{ steps.get_version.outputs.package_version }}"
+          git push origin "helm-v${{ steps.get_version.outputs.package_version }}"
+
   # Trigger Docker builds directly via workflow_call since tags pushed with
   # GITHUB_TOKEN don't trigger other workflows (GitHub Actions limitation).
   publish-docker:
@@ -152,6 +159,18 @@ jobs:
     secrets: inherit
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
+
+  # Trigger Helm chart release directly via workflow_call (same GITHUB_TOKEN
+  # limitation as the Docker path). Runs after Docker images are published so
+  # the chart never references images that don't exist yet.
+  publish-helm:
+    name: 🧭 Publish Helm chart
+    needs: [release, publish-docker]
+    if: needs.release.outputs.published == 'true'
+    uses: ./.github/workflows/release-helm.yml
+    secrets: inherit
+    with:
+      chart_version: ${{ needs.release.outputs.published_package_version }}
 
   # After Docker images are published, update the GitHub release with the exact GHCR tag URL.
   # The GHCR package version ID is only known after the image is pushed, so we query for it here.

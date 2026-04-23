@@ -121,3 +121,35 @@ jobs:
           else
             echo "No changes to commit"
           fi
+
+  bump-chart-version:
+    name: Bump Helm chart version on release PR
+    runs-on: ubuntu-latest
+    needs: update-lockfile
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: changeset-release/main
+
+      - name: Bump Chart.yaml
+        run: |
+          set -e
+          VERSION=$(jq -r '.version' packages/cli-v3/package.json)
+          sed -i "s/^version:.*/version: ${VERSION}/" ./hosting/k8s/helm/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: v${VERSION}/" ./hosting/k8s/helm/Chart.yaml
+
+      - name: Commit and push Chart.yaml bump
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add hosting/k8s/helm/Chart.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump helm chart version for release"
+            git push origin changeset-release/main
+          else
+            echo "Chart.yaml already at target version, no-op"
+          fi
