@@ -1,16 +1,11 @@
 /**
- * Chat constants shared between backend (ai.ts) and frontend (chat.ts).
- * The ChatClient class lives in @trigger.dev/sdk/chat.
+ * Chat shared types used by backend (ai.ts) and frontend (chat.ts)
+ * code paths — primarily {@link ChatStoreChunk} + {@link applyChatStorePatch}
+ * for the `chat.store` primitive. Pre-Session transport also exported
+ * `CHAT_STREAM_KEY` / `CHAT_MESSAGES_STREAM_ID` / `CHAT_STOP_STREAM_ID`
+ * from here; those are gone — chat output and input both live on the
+ * backing Session now (see `@trigger.dev/sdk/sessions`).
  */
-
-/** The output stream key where UIMessageChunks are written. */
-export const CHAT_STREAM_KEY = "chat";
-
-/** Input stream ID for sending chat messages to the running task. */
-export const CHAT_MESSAGES_STREAM_ID = "chat-messages";
-
-/** Input stream ID for sending stop signals to abort the current generation. */
-export const CHAT_STOP_STREAM_ID = "chat-stop";
 
 // ─── chat.store chunk types ────────────────────────────────────────
 //

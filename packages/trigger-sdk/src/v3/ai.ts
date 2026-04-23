@@ -97,11 +97,6 @@ import { tracer } from "./tracer.js";
 /** Re-export for typing `ctx` in `chat.agent` hooks without importing `@trigger.dev/core`. */
 export type { TaskRunContext } from "@trigger.dev/core/v3";
 import {
-  CHAT_STREAM_KEY as _CHAT_STREAM_KEY,
-  CHAT_MESSAGES_STREAM_ID,
-  CHAT_STOP_STREAM_ID,
-} from "./chat-constants.js";
-import {
   applyChatStorePatch,
   type ChatStoreChunk,
   type ChatStoreDeltaChunk,
@@ -145,9 +140,8 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
  * Per-run slot holding the Session handle that backs this chat's `.in` /
  * `.out` channels. Populated at the top of `chatAgent`'s run function from
  * `payload.sessionId`; read by every module-level helper (`chatStream`,
- * `messagesInput`, `stopInput`, `streams.writer(CHAT_STREAM_KEY, …)`
- * callers) so the chat.agent internals can remain the same module-level
- * shape they were when the I/O was run-scoped.
+ * `messagesInput`, `stopInput`) so the chat.agent internals can remain
+ * the same module-level shape they were when the I/O was run-scoped.
  * @internal
  */
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
@@ -501,16 +495,6 @@ function createChatAccessToken<TTask extends AnyTask>(
 // ---------------------------------------------------------------------------
 
 /**
- * The default stream key used for chat transport communication.
- * Both `TriggerChatTransport` (frontend) and `pipeChat`/`chatAgent` (backend)
- * use this key by default.
- */
-export const CHAT_STREAM_KEY = _CHAT_STREAM_KEY;
-
-// Re-export input stream IDs for advanced usage
-export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
-
-/**
  * Typed chat output stream — `.writer()`, `.pipe()`, `.append()`, and
  * `.read()` methods pre-bound to this run's Session `.out` channel and
  * typed to `UIMessageChunk`.
@@ -533,7 +517,12 @@ export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
  * options on `.pipe()` are honoured as no-ops; the session is the target.
  */
 const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
-  id: _CHAT_STREAM_KEY,
+  // Stable opaque label for the run-scoped `RealtimeDefinedStream` shape.
+  // `chatStream` is backed by the Session's `.out` channel — this id is
+  // not the real addressing key (the session is). Kept as a literal so
+  // the facade type stays satisfied without re-introducing a top-level
+  // constant; dashboards/telemetry that already read "chat" keep working.
+  id: "chat",
   pipe(value, options) {
     const { target: _target, ...sessionOptions } = (options ?? {}) as PipeStreamOptions;
     return getChatSession().out.pipe<UIMessageChunk>(
@@ -966,7 +955,7 @@ export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientD
 // lazily via `getChatSession()` so the module-level references stay
 // compatible with the pre-migration wiring.
 const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
-  id: CHAT_MESSAGES_STREAM_ID,
+  id: "chat-messages",
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
       if (chunk.kind === "message") {
@@ -1003,12 +992,12 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
               [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
               ...(runId
                 ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${CHAT_MESSAGES_STREAM_ID}`,
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-messages`,
                   }
                 : {}),
-              streamId: CHAT_MESSAGES_STREAM_ID,
+              streamId: "chat-messages",
               ...accessoryAttributes({
-                items: [{ text: CHAT_MESSAGES_STREAM_ID, variant: "normal" }],
+                items: [{ text: "chat-messages", variant: "normal" }],
                 style: "codepath",
               }),
             },
@@ -1067,7 +1056,7 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
 };
 
 const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = {
-  id: CHAT_STOP_STREAM_ID,
+  id: "chat-stop",
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
       if (chunk.kind === "stop") {
@@ -1105,12 +1094,12 @@ const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = 
               [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
               ...(runId
                 ? {
-                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${CHAT_STOP_STREAM_ID}`,
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-stop`,
                   }
                 : {}),
-              streamId: CHAT_STOP_STREAM_ID,
+              streamId: "chat-stop",
               ...accessoryAttributes({
-                items: [{ text: CHAT_STOP_STREAM_ID, variant: "normal" }],
+                items: [{ text: "chat-stop", variant: "normal" }],
                 style: "codepath",
               }),
             },
@@ -3686,8 +3675,8 @@ function chatAgent<
       locals.set(chatAgentRunContextKey, ctx);
 
       // Bind the run to its backing Session so every module-level helper
-      // (chat.stream, chat.messages, streams.writer(CHAT_STREAM_KEY, …))
-      // resolves to this chat's `.in` / `.out` channels.
+      // (chat.stream, chat.messages, chat.stopSignal) resolves to this
+      // chat's `.in` / `.out` channels.
       //
       // The transport opens/creates the session with `externalId = chatId`
       // and threads its friendlyId through `payload.sessionId`. For legacy

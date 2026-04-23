@@ -37,11 +37,6 @@ function isRunPatAuthError(error: unknown): boolean {
   const e = error as { name?: string; status?: number };
   return e.name === "TriggerApiError" && (e.status === 401 || e.status === 403);
 }
-// Stream-ID constants are no longer used — the transport writes a tagged
-// ChatInputChunk to the session's `.in` channel (append route) and reads
-// UIMessageChunks from `.out` (SSE subscribe). Kept imported from
-// chat-constants.js only for callers that still import them directly; the
-// legacy constants will be deleted in a follow-up cleanup.
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 
 const DEFAULT_STREAM_KEY = "chat";
