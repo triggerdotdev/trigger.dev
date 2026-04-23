@@ -38,6 +38,7 @@ import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import { PrismaInstrumentation } from "@prisma/instrumentation";
 import { HostMetrics } from "@opentelemetry/host-metrics";
 import { AwsInstrumentation as AwsSdkInstrumentation } from "@opentelemetry/instrumentation-aws-sdk";
+import v8 from "node:v8";
 import { awsEcsDetector, awsEc2Detector } from "@opentelemetry/resource-detector-aws";
 import {
   detectResources,
@@ -630,6 +631,39 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
     unit: "1", // OpenTelemetry convention for ratios
   });
 
+  // V8 heap + process memory. `NODE_MAX_OLD_SPACE_SIZE` caps V8 old space
+  // (reflected in `heap.limit`), but doesn't cap external/arrayBuffers/native
+  // memory — which is why RSS can exceed the heap total. Tracking all of these
+  // per-worker lets us size `NODE_MAX_OLD_SPACE_SIZE` against observed heap
+  // peaks rather than RSS (which overstates heap by the external + native
+  // footprint). `host-metrics` already publishes `process.memory.usage`
+  // (RSS), but we duplicate it under `nodejs.memory.rss` so all the memory
+  // numbers land in the same scope and are queryable together.
+  const heapUsedGauge = meter.createObservableGauge("nodejs.memory.heap.used", {
+    description: "V8 heap actively in use after the last GC",
+    unit: "By",
+  });
+  const heapTotalGauge = meter.createObservableGauge("nodejs.memory.heap.total", {
+    description: "V8 heap reserved (young + old generations)",
+    unit: "By",
+  });
+  const heapLimitGauge = meter.createObservableGauge("nodejs.memory.heap.limit", {
+    description: "V8 heap size limit (configured via --max-old-space-size)",
+    unit: "By",
+  });
+  const externalMemoryGauge = meter.createObservableGauge("nodejs.memory.external", {
+    description: "Memory used by C++ objects bound to JS (Buffer, etc.)",
+    unit: "By",
+  });
+  const arrayBuffersGauge = meter.createObservableGauge("nodejs.memory.array_buffers", {
+    description: "Memory allocated for ArrayBuffers and SharedArrayBuffers",
+    unit: "By",
+  });
+  const rssGauge = meter.createObservableGauge("nodejs.memory.rss", {
+    description: "Resident set size — total physical memory held by the process",
+    unit: "By",
+  });
+
   // Get UV threadpool size (defaults to 4 if not set)
   const uvThreadpoolSize = parseInt(process.env.UV_THREADPOOL_SIZE || "4", 10);
 
@@ -687,6 +721,9 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
     // diff.utilization is between 0 and 1 (fraction of time "active")
     const utilization = Number.isFinite(diff.utilization) ? diff.utilization : 0;
 
+    const mem = process.memoryUsage();
+    const heapStats = v8.getHeapStatistics();
+
     return {
       threadpoolSize: uvThreadpoolSize,
       handlesByType,
@@ -702,6 +739,14 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
         p99: eventLoopLagP99?.values?.[0]?.value ?? 0,
         utilization,
       },
+      memory: {
+        heapUsed: mem.heapUsed,
+        heapTotal: mem.heapTotal,
+        heapLimit: heapStats.heap_size_limit,
+        external: mem.external,
+        arrayBuffers: mem.arrayBuffers,
+        rss: mem.rss,
+      },
     };
   }
 
@@ -714,6 +759,7 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
         requestsByType,
         requestsTotal,
         eventLoop,
+        memory,
       } = await readNodeMetrics();
 
       // Observe UV threadpool size
@@ -739,6 +785,14 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
       res.observe(eventLoopLagP90Gauge, eventLoop.p90);
       res.observe(eventLoopLagP99Gauge, eventLoop.p99);
       res.observe(eluGauge, eventLoop.utilization);
+
+      // Observe memory metrics (bytes)
+      res.observe(heapUsedGauge, memory.heapUsed);
+      res.observe(heapTotalGauge, memory.heapTotal);
+      res.observe(heapLimitGauge, memory.heapLimit);
+      res.observe(externalMemoryGauge, memory.external);
+      res.observe(arrayBuffersGauge, memory.arrayBuffers);
+      res.observe(rssGauge, memory.rss);
     },
     [
       uvThreadpoolSizeGauge,
@@ -753,6 +807,12 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
       eventLoopLagP90Gauge,
       eventLoopLagP99Gauge,
       eluGauge,
+      heapUsedGauge,
+      heapTotalGauge,
+      heapLimitGauge,
+      externalMemoryGauge,
+      arrayBuffersGauge,
+      rssGauge,
     ]
   );
 }
