@@ -5,7 +5,11 @@ import {
   runInMockTaskContext,
   type MockTaskContextOptions,
 } from "@trigger.dev/core/v3/test";
-import { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID } from "../chat-constants.js";
+import { __setSessionOpenImplForTests } from "../sessions.js";
+import {
+  createTestSessionHandle,
+  type TestSessionOutState,
+} from "./test-session-handle.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
 export type SetupLocals = (locals: {
@@ -24,6 +28,7 @@ type ChatWirePayload = {
   continuation?: boolean;
   previousRunId?: string;
   idleTimeoutInSeconds?: number;
+  sessionId?: string;
 };
 
 /** A reference to a `chat.agent` task returned by `chat.agent({ id, ... })`. */
@@ -163,6 +168,9 @@ export function mockChatAgent(
   options: MockChatAgentOptions = {}
 ): MockChatAgentHarness {
   const chatId = options.chatId ?? "test-chat";
+  // The agent opens the session with `payload.sessionId ?? payload.chatId`.
+  // We pass no sessionId, so it falls back to chatId.
+  const sessionId = chatId;
   const preload = options.preload ?? true;
   const clientData = options.clientData;
 
@@ -176,16 +184,21 @@ export function mockChatAgent(
 
   const runFn = taskEntry.fns.run;
 
+  // Session .out state: chunks + listener registry. Shared between the
+  // harness and the TestSessionOutputChannel installed via the open-override.
+  const sessionOutState: TestSessionOutState = {
+    chunks: [],
+    listeners: new Set(),
+  };
+
   // Buffers that survive across harness method calls
   const allRawChunks: unknown[] = [];
   const allChunks: UIMessageChunk[] = [];
 
   // Promise that resolves when the background task run() function returns.
   let taskFinished!: Promise<void>;
-  // Drivers exposed by runInMockTaskContext — set inside the ctx callback
-  let sendToInput!: (streamId: string, data: unknown) => Promise<void>;
-  let closeInputStream: ((streamId: string) => void) | undefined;
-  let outputChunksSince!: (previousLength: number) => unknown[];
+  let sendSessionInput!: (sessionId: string, data: unknown) => Promise<void>;
+  let closeSessionInput: ((sessionId: string) => void) | undefined;
   let runSignal!: AbortController;
 
   // A latch that resolves every time `trigger:turn-complete` appears on the chat stream.
@@ -202,12 +215,17 @@ export function mockChatAgent(
     harnessReadyResolve = resolve;
   });
 
+  // Install the session open override so `sessions.open(id)` returns a
+  // SessionHandle with an in-memory `.out` that captures writes. `.in`
+  // stays the real SessionInputChannel — it routes through the
+  // `sessionStreams` global, which the mock-task-context installs as a
+  // TestSessionStreamManager.
+  __setSessionOpenImplForTests((id) => createTestSessionHandle(id, sessionOutState));
+
   taskFinished = runInMockTaskContext(
     async (drivers) => {
       runSignal = new AbortController();
 
-      // Override the ctx.run.id so it matches the harness. Note:
-      // runInMockTaskContext already set a default — we just re-expose it.
       const initialPayload: ChatWirePayload = {
         messages: [],
         chatId,
@@ -215,14 +233,11 @@ export function mockChatAgent(
         metadata: clientData,
       };
 
-      sendToInput = drivers.inputs.send;
-      closeInputStream = drivers.inputs.close;
+      sendSessionInput = drivers.sessions.in.send;
+      closeSessionInput = drivers.sessions.in.close;
 
-      // Subscribe to every chunk written to any realtime stream. We only
-      // care about the "chat" stream (where chat.agent pipes its output),
-      // but accepting all streams keeps the harness forward-compatible.
-      const unsubscribe = drivers.outputs.onWrite((streamId, chunk) => {
-        if (streamId !== "chat") return;
+      // Record every chunk written to session.out, detect turn-complete.
+      const listener = (chunk: unknown) => {
         allRawChunks.push(chunk);
         if (!isControlChunk(chunk)) {
           allChunks.push(chunk as UIMessageChunk);
@@ -236,9 +251,9 @@ export function mockChatAgent(
           turnCompleteResolvers = [];
           for (const resolve of resolvers) resolve();
         }
-      });
-
-      outputChunksSince = (previousLength) => allRawChunks.slice(previousLength);
+      };
+      sessionOutState.listeners.add(listener);
+      const unsubscribe = () => sessionOutState.listeners.delete(listener);
 
       if (options.setupLocals) {
         await options.setupLocals({ set: drivers.locals.set });
@@ -271,13 +286,18 @@ export function mockChatAgent(
       }
     },
     options.taskContext
-  ).catch((err) => {
-    // Propagate errors to pending turn waiters instead of dropping them
-    const resolvers = turnCompleteResolvers;
-    turnCompleteResolvers = [];
-    for (const resolve of resolvers) resolve();
-    throw err;
-  });
+  )
+    .catch((err) => {
+      // Propagate errors to pending turn waiters instead of dropping them
+      const resolvers = turnCompleteResolvers;
+      turnCompleteResolvers = [];
+      for (const resolve of resolvers) resolve();
+      throw err;
+    })
+    .finally(() => {
+      // Always clear the session open override, even if the task threw.
+      __setSessionOpenImplForTests(undefined);
+    });
 
   const sendPayloadAndWait = async (
     payload: ChatWirePayload
@@ -285,9 +305,9 @@ export function mockChatAgent(
     await harnessReady;
     const before = allRawChunks.length;
     const turnComplete = waitForTurnComplete();
-    await sendToInput(CHAT_MESSAGES_STREAM_ID, payload);
+    await sendSessionInput(sessionId, { kind: "message", payload });
     await turnComplete;
-    const rawChunks = outputChunksSince(before);
+    const rawChunks = allRawChunks.slice(before);
     const chunks = rawChunks.filter(
       (c) => !isControlChunk(c)
     ) as UIMessageChunk[];
@@ -328,29 +348,33 @@ export function mockChatAgent(
 
     async sendStop(message) {
       await harnessReady;
-      await sendToInput(CHAT_STOP_STREAM_ID, { stop: true, message });
+      await sendSessionInput(sessionId, { kind: "stop", message });
     },
 
     async close() {
       await harnessReady;
 
-      // Send a close trigger. The turn loop checks for this after a
-      // successful turn and exits cleanly. On error-recovery paths the
-      // loop just loops back with the close payload, so we also close
-      // the input stream below to unblock any pending once() waiters.
+      // Send a close trigger wrapped as a `kind: "message"` ChatInputChunk.
+      // The turn loop checks for this after a successful turn and exits
+      // cleanly. On error-recovery paths the loop just loops back with
+      // the close payload, so we also close the session input below to
+      // unblock any pending once() waiters.
       try {
-        await sendToInput(CHAT_MESSAGES_STREAM_ID, {
-          messages: [],
-          chatId,
-          trigger: "close",
+        await sendSessionInput(sessionId, {
+          kind: "message",
+          payload: {
+            messages: [],
+            chatId,
+            trigger: "close",
+          },
         });
       } catch {
         // best-effort
       }
-      // Resolve any pending once() waiters on the chat-messages stream
-      // with a timeout error — that makes waitWithIdleTimeout return
+      // Resolve any pending once() waiters on the session input with a
+      // timeout error — that makes waitWithIdleTimeout return
       // `{ ok: false }` and the turn loop exits cleanly.
-      closeInputStream?.(CHAT_MESSAGES_STREAM_ID);
+      closeSessionInput?.(sessionId);
 
       // Also abort the run signal so anything downstream (streamText,
       // deferred work) unwinds promptly.

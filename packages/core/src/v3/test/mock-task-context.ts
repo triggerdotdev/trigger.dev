@@ -1,5 +1,6 @@
 import { inputStreams } from "../input-streams-api.js";
 import { realtimeStreams } from "../realtime-streams-api.js";
+import { sessionStreams } from "../session-streams-api.js";
 import { localsAPI } from "../locals-api.js";
 import { runMetadata } from "../run-metadata-api.js";
 import { taskContext } from "../task-context-api.js";
@@ -11,9 +12,11 @@ import { NoopRuntimeManager } from "../runtime/noopRuntimeManager.js";
 import { unregisterGlobal } from "../utils/globals.js";
 import type { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import type { LocalsKey } from "../locals/types.js";
+import type { SessionChannelIO } from "../sessionStreams/types.js";
 import { TestInputStreamManager } from "./test-input-stream-manager.js";
 import { TestRealtimeStreamsManager } from "./test-realtime-streams-manager.js";
 import { TestRunMetadataManager } from "./test-run-metadata-manager.js";
+import { TestSessionStreamManager } from "./test-session-stream-manager.js";
 
 /**
  * Shallow-partial overrides applied on top of the default mock
@@ -82,6 +85,23 @@ export type MockTaskContextDrivers = {
      * hooks read via `locals.get()` instead of constructing the prod one.
      */
     set<T>(key: LocalsKey<T>, value: T): void;
+  };
+  /**
+   * Session-scoped channel drivers. The `.in` side is backed by a
+   * {@link TestSessionStreamManager} installed as the `sessionStreams`
+   * global — so the task's `session.in.on/once/peek/waitWithIdleTimeout`
+   * calls receive records sent through this driver.
+   */
+  sessions: {
+    in: {
+      /**
+       * Send a record onto `session.in` for the given session. Resolves
+       * pending `once()` waiters and fires all `on()` handlers.
+       */
+      send(sessionId: string, data: unknown, io?: SessionChannelIO): Promise<void>;
+      /** Close pending `once()` waiters with a timeout error. */
+      close(sessionId: string, io?: SessionChannelIO): void;
+    };
   };
   /** The mock `TaskRunContext` assembled from defaults + user overrides. */
   ctx: TaskRunContext;
@@ -198,6 +218,7 @@ export async function runInMockTaskContext<T>(
   const metadataManager = new TestRunMetadataManager();
   const inputManager = new TestInputStreamManager();
   const outputManager = new TestRealtimeStreamsManager();
+  const sessionStreamManager = new TestSessionStreamManager();
 
   // Unregister any previously-installed managers so `setGlobal*` wins —
   // `registerGlobal` returns false silently if an entry already exists.
@@ -207,6 +228,7 @@ export async function runInMockTaskContext<T>(
   unregisterGlobal("run-metadata");
   unregisterGlobal("input-streams");
   unregisterGlobal("realtime-streams");
+  unregisterGlobal("session-streams");
   unregisterGlobal("task-context");
 
   localsAPI.setGlobalLocalsManager(localsManager);
@@ -215,6 +237,7 @@ export async function runInMockTaskContext<T>(
   runMetadata.setGlobalManager(metadataManager);
   inputStreams.setGlobalManager(inputManager);
   realtimeStreams.setGlobalManager(outputManager);
+  sessionStreams.setGlobalManager(sessionStreamManager);
   taskContext.setGlobalTaskContext({
     ctx,
     worker,
@@ -237,6 +260,14 @@ export async function runInMockTaskContext<T>(
       set: <TValue>(key: LocalsKey<TValue>, value: TValue) =>
         localsManager.setLocal(key, value),
     },
+    sessions: {
+      in: {
+        send: (sessionId, data, io = "in") =>
+          sessionStreamManager.__sendFromTest(sessionId, io, data),
+        close: (sessionId, io = "in") =>
+          sessionStreamManager.__closeFromTest(sessionId, io),
+      },
+    },
     ctx,
   };
 
@@ -251,10 +282,12 @@ export async function runInMockTaskContext<T>(
     unregisterGlobal("task-context");
     unregisterGlobal("input-streams");
     unregisterGlobal("realtime-streams");
+    unregisterGlobal("session-streams");
     unregisterGlobal("run-metadata");
     localsManager.reset();
     inputManager.reset();
     outputManager.reset();
+    sessionStreamManager.reset();
     metadataManager.reset();
   }
 }

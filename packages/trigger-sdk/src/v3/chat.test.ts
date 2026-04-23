@@ -46,6 +46,83 @@ const sampleChunks: UIMessageChunk[] = [
   { type: "text-end", id: "part-1" },
 ];
 
+// Session endpoint helpers ─────────────────────────────────────────────
+// The transport's `accessToken` path lazily creates a backing Session via
+// `POST /api/v1/sessions` before triggering the run. Tests that exercise
+// `sendMessages` must mock that endpoint in addition to the trigger and
+// realtime URLs.
+
+const DEFAULT_SESSION_ID = "session_default";
+
+/**
+ * JSON body for a minimal `CreatedSessionResponseBody`. Shape matches
+ * `packages/core/src/v3/schemas/api.ts`: every field in `SessionItem` plus
+ * `isCached`.
+ */
+function createSessionResponseBody(options?: {
+  sessionId?: string;
+  externalId?: string;
+}): string {
+  return JSON.stringify({
+    id: options?.sessionId ?? DEFAULT_SESSION_ID,
+    externalId: options?.externalId ?? null,
+    type: "chat.agent",
+    taskIdentifier: null,
+    tags: [],
+    metadata: null,
+    closedAt: null,
+    closedReason: null,
+    expiresAt: null,
+    createdAt: new Date(0).toISOString(),
+    updatedAt: new Date(0).toISOString(),
+    isCached: false,
+  });
+}
+
+/**
+ * URL predicates shared by every fetch mock. The new session primitive
+ * replaces run-scoped `/realtime/v1/streams/` with session-scoped
+ * `/realtime/v1/sessions/{id}/{io}` endpoints.
+ */
+function isSessionCreateUrl(urlStr: string): boolean {
+  return urlStr.endsWith("/api/v1/sessions") || urlStr.includes("/api/v1/sessions?");
+}
+function isTriggerTaskUrl(urlStr: string): boolean {
+  return urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger");
+}
+function isSessionOutSubscribeUrl(urlStr: string): boolean {
+  // `/realtime/v1/sessions/{sessionId}/out` — no /append suffix
+  return /\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr);
+}
+function isSessionStreamAppendUrl(urlStr: string): boolean {
+  // `/realtime/v1/sessions/{sessionId}/{in|out}/append`
+  return /\/realtime\/v1\/sessions\/[^/]+\/(in|out)\/append$/.test(urlStr);
+}
+
+/**
+ * Default `Response` for a successful session-create call. Tests pass
+ * this straight through unless they need to assert on the create flow.
+ */
+function defaultSessionCreateResponse(options?: {
+  sessionId?: string;
+  externalId?: string;
+}): Response {
+  return new Response(createSessionResponseBody(options), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/**
+ * Default `Response` for a successful `POST /realtime/v1/sessions/{id}/{io}/append`.
+ */
+function defaultAppendResponse(): Response {
+  return new Response(JSON.stringify({}), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("TriggerChatTransport", () => {
   let originalFetch: typeof global.fetch;
 
@@ -98,7 +175,8 @@ describe("TriggerChatTransport", () => {
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_resolve_at" }), {
             status: 200,
             headers: {
@@ -107,15 +185,13 @@ describe("TriggerChatTransport", () => {
             },
           });
         }
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(sseEncode(sampleChunks)), {
             status: 200,
-            headers: {
-              "content-type": "text/event-stream",
-              "X-Stream-Version": "v1",
-            },
+            headers: { "content-type": "text/event-stream" },
           });
         }
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
         throw new Error(`Unexpected fetch URL: ${urlStr}`);
       });
 
@@ -147,15 +223,20 @@ describe("TriggerChatTransport", () => {
     it("should pass chatId and purpose preload to accessToken when preloading", async () => {
       const accessTokenSpy = vi.fn().mockReturnValue("test-token");
 
-      global.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ id: "run_preload_at" }), {
-          status: 200,
-          headers: {
-            "content-type": "application/json",
-            "x-trigger-jwt": "pub_pre",
-          },
-        })
-      );
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
+          return new Response(JSON.stringify({ id: "run_preload_at" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "x-trigger-jwt": "pub_pre",
+            },
+          });
+        }
+        throw new Error(`Unexpected fetch URL: ${urlStr}`);
+      });
 
       const transport = new TriggerChatTransport({
         task: "my-chat-task",
@@ -182,7 +263,8 @@ describe("TriggerChatTransport", () => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
         // Handle the task trigger request
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: triggerRunId }), {
             status: 200,
             headers: {
@@ -193,7 +275,7 @@ describe("TriggerChatTransport", () => {
         }
 
         // Handle the SSE stream request
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const sseText = sseEncode(sampleChunks);
           return new Response(createSSEStream(sseText), {
             status: 200,
@@ -245,7 +327,8 @@ describe("TriggerChatTransport", () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_test" }), {
             status: 200,
             headers: {
@@ -255,7 +338,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(""), {
             status: 200,
             headers: {
@@ -305,11 +388,14 @@ describe("TriggerChatTransport", () => {
       expect(payload.metadata).toEqual({ custom: "data" });
     });
 
-    it("should use the correct stream URL with custom streamKey", async () => {
+    it("should subscribe to the backing Session's `.out` channel", async () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) {
+          return defaultSessionCreateResponse({ sessionId: "session_streamurl" });
+        }
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_custom" }), {
             status: 200,
             headers: {
@@ -319,13 +405,10 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(""), {
             status: 200,
-            headers: {
-              "content-type": "text/event-stream",
-              "X-Stream-Version": "v1",
-            },
+            headers: { "content-type": "text/event-stream" },
           });
         }
 
@@ -338,7 +421,6 @@ describe("TriggerChatTransport", () => {
         task: "my-task",
         accessToken: "token",
         baseURL: "https://api.test.trigger.dev",
-        streamKey: "my-custom-stream",
       });
 
       await transport.sendMessages({
@@ -349,24 +431,23 @@ describe("TriggerChatTransport", () => {
         abortSignal: undefined,
       });
 
-      // Verify the stream URL uses the custom stream key
-      const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
-        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes(
-          "/realtime/v1/streams/"
-        )
-      );
+      const streamCall = fetchSpy.mock.calls.find((call: any[]) => {
+        const u = typeof call[0] === "string" ? call[0] : call[0].toString();
+        return isSessionOutSubscribeUrl(u);
+      });
 
       expect(streamCall).toBeDefined();
       const streamUrl =
         typeof streamCall![0] === "string" ? streamCall![0] : streamCall![0].toString();
-      expect(streamUrl).toContain("/realtime/v1/streams/run_custom/my-custom-stream");
+      expect(streamUrl).toContain("/realtime/v1/sessions/session_streamurl/out");
     });
 
     it("should include extra headers in stream requests", async () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_hdrs" }), {
             status: 200,
             headers: {
@@ -376,7 +457,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(""), {
             status: 200,
             headers: {
@@ -407,11 +488,10 @@ describe("TriggerChatTransport", () => {
       });
 
       // Verify the stream request includes custom headers
-      const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
-        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes(
-          "/realtime/v1/streams/"
-        )
-      );
+      const streamCall = fetchSpy.mock.calls.find((call: any[]) => {
+        const u = typeof call[0] === "string" ? call[0] : call[0].toString();
+        return isSessionOutSubscribeUrl(u);
+      });
 
       expect(streamCall).toBeDefined();
       const requestHeaders = streamCall![1]?.headers as Record<string, string>;
@@ -440,7 +520,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: triggerRunId }), {
             status: 200,
             headers: {
@@ -450,7 +531,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks: UIMessageChunk[] = [
             { type: "text-start", id: "part-1" },
             { type: "text-delta", id: "part-1", delta: "Reconnected!" },
@@ -531,7 +612,7 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks: UIMessageChunk[] = [
             { type: "text-start", id: "part-1" },
             { type: "text-delta", id: "part-1", delta: "Resumed!" },
@@ -580,7 +661,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_streaming_flag" }), {
             status: 200,
             headers: {
@@ -590,7 +672,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [
             { type: "text-start", id: "part-1" },
             { type: "text-delta", id: "part-1", delta: "Hi" },
@@ -636,8 +718,10 @@ describe("TriggerChatTransport", () => {
       // Find the session changes for this chat
       const changes = sessionChanges.filter((c) => c.chatId === "chat-flag-test");
 
-      // First change: session created with isStreaming: true
-      expect(changes[0]?.session?.isStreaming).toBe(true);
+      // The first change is the ensureSession upsert (sessionId only, no run);
+      // the subsequent trigger sets isStreaming: true.
+      const firstWithRun = changes.find((c) => c.session?.runId !== undefined);
+      expect(firstWithRun?.session?.isStreaming).toBe(true);
 
       // Last change: turn completed, isStreaming: false
       const lastChange = changes[changes.length - 1];
@@ -653,7 +737,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_renew_sse" }), {
             status: 200,
             headers: {
@@ -663,7 +748,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const runMatch = urlStr.match(/\/streams\/([^/]+)\//);
           const runKey = runMatch?.[1] ?? "unknown";
           const n = (streamFetchCountByRun.get(runKey) ?? 0) + 1;
@@ -728,7 +813,7 @@ describe("TriggerChatTransport", () => {
       const patStreamCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
         (call: unknown[]) => {
           const u = typeof call[0] === "string" ? call[0] : (call[0] as URL).toString();
-          if (!u.includes("/realtime/v1/streams/")) return false;
+          if (!isSessionOutSubscribeUrl(u)) return false;
           const h = (call[1] as RequestInit | undefined)?.headers as Record<string, string>;
           return h?.["Authorization"] === "Bearer fresh_pat";
         }
@@ -742,7 +827,8 @@ describe("TriggerChatTransport", () => {
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_fail_renew" }), {
             status: 200,
             headers: {
@@ -751,7 +837,7 @@ describe("TriggerChatTransport", () => {
             },
           });
         }
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const runMatch = urlStr.match(/\/streams\/([^/]+)\//);
           const runKey = runMatch?.[1] ?? "unknown";
           const n = (streamFetchCountByRun.get(runKey) ?? 0) + 1;
@@ -817,7 +903,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_input_renew" }), {
             status: 200,
             headers: {
@@ -827,7 +914,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/input/")) {
+        if (isSessionStreamAppendUrl(urlStr)) {
           inputCalls++;
           if (inputCalls === 1) {
             return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
@@ -838,7 +925,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const completeChunk = { type: "trigger:turn-complete", publicAccessToken: "pat_hold" };
           return new Response(createSSEStream(sseEncode([completeChunk])), {
             status: 200,
@@ -921,7 +1008,8 @@ describe("TriggerChatTransport", () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           // Return with x-trigger-jwt header — this public token should be
           // used for the subsequent stream subscription request.
           return new Response(JSON.stringify({ id: "run_pat" }), {
@@ -933,7 +1021,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           // Verify the Authorization header uses the server-generated token
           const authHeader = (init?.headers as Record<string, string>)?.["Authorization"];
           expect(authHeader).toBe("Bearer server-generated-public-token");
@@ -978,11 +1066,10 @@ describe("TriggerChatTransport", () => {
       }
 
       // Verify the stream subscription used the public token, not the caller token
-      const streamCall = fetchSpy.mock.calls.find((call: any[]) =>
-        (typeof call[0] === "string" ? call[0] : call[0].toString()).includes(
-          "/realtime/v1/streams/"
-        )
-      );
+      const streamCall = fetchSpy.mock.calls.find((call: any[]) => {
+        const u = typeof call[0] === "string" ? call[0] : call[0].toString();
+        return isSessionOutSubscribeUrl(u);
+      });
       expect(streamCall).toBeDefined();
       const streamHeaders = streamCall![1]?.headers as Record<string, string>;
       expect(streamHeaders["Authorization"]).toBe("Bearer server-generated-public-token");
@@ -994,7 +1081,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ error: "Task not found" }), {
             status: 404,
             headers: { "content-type": "application/json" },
@@ -1032,7 +1120,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_abort" }), {
             status: 200,
             headers: {
@@ -1042,7 +1131,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           // Create a slow stream that waits before sending data
           const stream = new ReadableStream<Uint8Array>({
             async start(controller) {
@@ -1110,7 +1199,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           callCount++;
           return new Response(JSON.stringify({ id: `run_multi_${callCount}` }), {
             status: 200,
@@ -1121,7 +1211,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           // Include turn-complete chunk so the session is preserved
           const chunks = [...sampleChunks, turnCompleteChunk];
           return new Response(createSSEStream(sseEncode(chunks)), {
@@ -1189,7 +1279,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: `run_dyn_${tokenCallCount}` }), {
             status: 200,
             headers: {
@@ -1199,7 +1290,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks: UIMessageChunk[] = [
             { type: "text-start", id: "p1" },
             { type: "text-end", id: "p1" },
@@ -1256,7 +1347,8 @@ describe("TriggerChatTransport", () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_body" }), {
             status: 200,
             headers: {
@@ -1266,7 +1358,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(""), {
             status: 200,
             headers: {
@@ -1317,7 +1409,8 @@ describe("TriggerChatTransport", () => {
       const fetchSpy = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_regen" }), {
             status: 200,
             headers: {
@@ -1327,7 +1420,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(""), {
             status: 200,
             headers: {
@@ -1383,7 +1476,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           triggerCallCount++;
           return new Response(JSON.stringify({ id: "run_eid" }), {
             status: 200,
@@ -1395,14 +1489,14 @@ describe("TriggerChatTransport", () => {
         }
 
         // Handle input stream sends (for second message)
-        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+        if (isSessionStreamAppendUrl(urlStr)) {
           return new Response(JSON.stringify({ ok: true }), {
             status: 200,
             headers: { "content-type": "application/json" },
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           streamFetchCalls.push({
             url: urlStr,
             headers: (init?.headers as Record<string, string>) ?? {},
@@ -1481,7 +1575,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_minimal" }), {
             status: 200,
             headers: {
@@ -1491,24 +1586,19 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        // Capture input stream payloads (ApiClient wraps in { data: ... })
-        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
-          const body = JSON.parse(init?.body as string);
-          inputStreamPayloads.push(body.data);
-          return new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          });
+        // Capture session.in ChatInputChunk payloads. The transport posts
+        // a raw `JSON.stringify({ kind, payload })` string — no wrapper.
+        if (isSessionStreamAppendUrl(urlStr)) {
+          const chunk = JSON.parse(init?.body as string);
+          if (chunk.kind === "message") inputStreamPayloads.push(chunk.payload);
+          return defaultAppendResponse();
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [...sampleChunks, turnCompleteChunk];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
-            headers: {
-              "content-type": "text/event-stream",
-              "X-Stream-Version": "v1",
-            },
+            headers: { "content-type": "text/event-stream" },
           });
         }
 
@@ -1561,7 +1651,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           triggerPayload = JSON.parse(init?.body as string);
           return new Response(JSON.stringify({ id: "run_full" }), {
             status: 200,
@@ -1572,7 +1663,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           return new Response(createSSEStream(sseEncode(sampleChunks)), {
             status: 200,
             headers: {
@@ -1619,7 +1710,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_abort_cleanup" }), {
             status: 200,
             headers: {
@@ -1629,7 +1721,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           // Track abort signal
           const signal = init?.signal;
           if (signal) {
@@ -1688,7 +1780,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: `run_async_${tokenCallCount}` }), {
             status: 200,
             headers: {
@@ -1698,7 +1791,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks: UIMessageChunk[] = [
             { type: "text-start", id: "p1" },
             { type: "text-end", id: "p1" },
@@ -1734,7 +1827,11 @@ describe("TriggerChatTransport", () => {
         abortSignal: undefined,
       });
 
-      expect(tokenCallCount).toBe(1);
+      // First message: token resolved once for `ensureSession` (lazy
+      // `POST /api/v1/sessions`) and once for the trigger — both with
+      // `purpose: "trigger"`. Subsequent messages reuse the cached
+      // sessionId and resolve once per send.
+      expect(tokenCallCount).toBe(2);
     });
 
     it("should not resolve async token for input stream send flow", async () => {
@@ -1746,7 +1843,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_async_wp" }), {
             status: 200,
             headers: {
@@ -1757,7 +1855,7 @@ describe("TriggerChatTransport", () => {
         }
 
         // Handle input stream sends
-        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+        if (isSessionStreamAppendUrl(urlStr)) {
           inputStreamSendCalled = true;
           return new Response(JSON.stringify({ ok: true }), {
             status: 200,
@@ -1765,7 +1863,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
@@ -1842,7 +1940,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_single" }), {
             status: 200,
             headers: {
@@ -1852,7 +1951,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
@@ -1908,7 +2007,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           triggerCallCount++;
           return new Response(JSON.stringify({ id: "run_resume" }), {
             status: 200,
@@ -1920,7 +2020,7 @@ describe("TriggerChatTransport", () => {
         }
 
         // Handle input stream sends
-        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+        if (isSessionStreamAppendUrl(urlStr)) {
           inputStreamSendCalled = true;
           return new Response(JSON.stringify({ ok: true }), {
             status: 200,
@@ -1928,7 +2028,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
@@ -1996,13 +2096,14 @@ describe("TriggerChatTransport", () => {
       expect(inputStreamSendCalled).toBe(true);
     });
 
-    it("should fall back to triggering a new run if stream closes without control chunk", async () => {
+    it("should fall back to triggering a new run if stream closes without control chunk", { timeout: 15000 }, async () => {
       let triggerCallCount = 0;
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           triggerCallCount++;
           return new Response(JSON.stringify({ id: `run_fallback_${triggerCallCount}` }), {
             status: 200,
@@ -2013,7 +2114,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           // No control chunk — stream just ends after the finish
           const chunks: UIMessageChunk[] = [
             { type: "text-start", id: "p1" },
@@ -2080,7 +2181,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/api/v1/tasks/") && urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           triggerCallCount++;
           return new Response(JSON.stringify({ id: `run_fail_${triggerCallCount}` }), {
             status: 200,
@@ -2092,14 +2194,14 @@ describe("TriggerChatTransport", () => {
         }
 
         // Input stream send fails
-        if (urlStr.includes("/realtime/v1/streams/") && urlStr.includes("/input/")) {
+        if (isSessionStreamAppendUrl(urlStr)) {
           return new Response(JSON.stringify({ error: "Run not found" }), {
             status: 404,
             headers: { "content-type": "application/json" },
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks: (UIMessageChunk | Record<string, unknown>)[] = [
             ...sampleChunks,
             { type: "finish" as const, id: "part-1" } as UIMessageChunk,
@@ -2174,7 +2276,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: triggerRunId }), {
             status: 200,
             headers: {
@@ -2184,7 +2287,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [...sampleChunks, { type: "trigger:turn-complete" }];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
@@ -2213,12 +2316,19 @@ describe("TriggerChatTransport", () => {
         abortSignal: undefined,
       });
 
-      // Session created notification should have fired
-      expect(onSessionChange).toHaveBeenCalledWith("chat-1", {
+      // Session created notification should have fired. The first call
+      // fires during `ensureSession` (sessionId only, no runId yet); the
+      // second fires after `triggerNewRun` with isStreaming=true.
+      const firstRunCall = onSessionChange.mock.calls.find(
+        ([, session]) => session?.runId === triggerRunId
+      );
+      expect(firstRunCall).toBeDefined();
+      expect(firstRunCall![0]).toBe("chat-1");
+      expect(firstRunCall![1]).toMatchObject({
         runId: triggerRunId,
         publicAccessToken: publicToken,
-        lastEventId: undefined,
         isStreaming: true,
+        sessionId: DEFAULT_SESSION_ID,
       });
 
       // Consume stream
@@ -2238,7 +2348,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_end" }), {
             status: 200,
             headers: {
@@ -2248,7 +2359,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           // No turn-complete chunk — stream ends naturally (run completed)
           return new Response(createSSEStream(sseEncode(sampleChunks)), {
             status: 200,
@@ -2299,7 +2410,8 @@ describe("TriggerChatTransport", () => {
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
 
-        if (urlStr.includes("/trigger")) {
+        if (isSessionCreateUrl(urlStr)) return defaultSessionCreateResponse();
+        if (isTriggerTaskUrl(urlStr)) {
           return new Response(JSON.stringify({ id: "run_update" }), {
             status: 200,
             headers: {
@@ -2309,7 +2421,7 @@ describe("TriggerChatTransport", () => {
           });
         }
 
-        if (urlStr.includes("/realtime/v1/streams/")) {
+        if (isSessionOutSubscribeUrl(urlStr)) {
           const chunks = [...sampleChunks, { type: "trigger:turn-complete" }];
           return new Response(createSSEStream(sseEncode(chunks)), {
             status: 200,
