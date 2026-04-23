@@ -57,9 +57,29 @@ import { locals } from "./locals.js";
 import { metadata } from "./metadata.js";
 import type { ResolvedPrompt } from "./prompt.js";
 import type { ResolvedSkill } from "./skill.js";
-import { spawn } from "node:child_process";
-import * as fs from "node:fs/promises";
-import * as nodePath from "node:path";
+// Bash-skill runtime lives in `./agentSkillsRuntime.ts` (exposed as
+// the `@trigger.dev/sdk/ai/skills-runtime` subpath) so `ai.ts`'s
+// top-level graph stays free of `node:*` imports. The chat-agent
+// surface in `@trigger.dev/sdk/ai` exports types like
+// `ChatUiMessage` / `CompactionChunkData` that frontend code
+// sometimes imports; Next.js + Webpack reject top-level node
+// builtins in the client graph even when only the type is used.
+//
+// The load path uses a computed-string variable so bundlers skip
+// static tracing — webpack emits a "Critical dependency" info-level
+// warning and defers resolution to runtime. On a server worker the
+// relative path lands next to `ai.js` in the emitted dist; on a
+// client bundle the bash tool is never invoked so the dynamic
+// import never fires.
+type BashRuntimeModule = typeof import("./agentSkillsRuntime.js");
+
+let cachedBashRuntime: BashRuntimeModule | undefined;
+async function loadAgentSkillsRuntime(): Promise<BashRuntimeModule> {
+  if (cachedBashRuntime) return cachedBashRuntime;
+  const modulePath: string = "./agentSkillsRuntime.js";
+  cachedBashRuntime = (await import(modulePath)) as BashRuntimeModule;
+  return cachedBashRuntime;
+}
 import { streams } from "./streams.js";
 import {
   sessions,
@@ -2231,9 +2251,6 @@ function getChatPrompt(): ChatPromptValue {
 /** @internal */
 const chatSkillsKey = locals.create<ResolvedSkill[]>("chat.skills");
 
-/** Limits applied by the auto-injected `loadSkill` / `readFile` / `bash` tools. */
-const DEFAULT_READ_FILE_BYTES = 1024 * 1024; // 1 MB
-const DEFAULT_BASH_OUTPUT_BYTES = 64 * 1024; // 64 KB
 
 /**
  * Store resolved skills for the current run. Call from any hook
@@ -2264,31 +2281,9 @@ function buildSkillsSystemPrompt(skills: ResolvedSkill[]): string {
   ].join("\n");
 }
 
-function truncate(s: string, limit: number): string {
-  if (s.length <= limit) return s;
-  return s.slice(0, limit) + `\n…[truncated ${s.length - limit} bytes]`;
-}
-
 /** Resolve a skill by its frontmatter `name`. */
 function findSkillByName(skills: ResolvedSkill[], name: string): ResolvedSkill | undefined {
   return skills.find((s) => s.frontmatter.name === name);
-}
-
-/**
- * Check that `candidate` resolves inside `root` — guards against path
- * traversal via `..` or absolute paths. Returns the resolved path or
- * throws.
- */
-function safeJoinInside(root: string, relative: string): string {
-  if (nodePath.isAbsolute(relative)) {
-    throw new Error(`Path must be relative to the skill directory: ${relative}`);
-  }
-  const resolved = nodePath.resolve(root, relative);
-  const normalized = nodePath.resolve(root) + nodePath.sep;
-  if (resolved !== nodePath.resolve(root) && !resolved.startsWith(normalized)) {
-    throw new Error(`Path escapes the skill directory: ${relative}`);
-  }
-  return resolved;
 }
 
 /**
@@ -2351,15 +2346,12 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
       if (!skill) {
         return { error: `Skill "${skillName}" not found.` };
       }
-      let absolute: string;
       try {
-        absolute = safeJoinInside(skill.path, relPath);
-      } catch (err) {
-        return { error: (err as Error).message };
-      }
-      try {
-        const content = await fs.readFile(absolute, "utf8");
-        return { content: truncate(content, DEFAULT_READ_FILE_BYTES) };
+        const { readFileInSkill } = await loadAgentSkillsRuntime();
+        return await readFileInSkill({
+          skillPath: skill.path,
+          relativePath: relPath,
+        });
       } catch (err) {
         return { error: (err as Error).message };
       }
@@ -2389,41 +2381,16 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
       if (!skill) {
         return { error: `Skill "${skillName}" not found.` };
       }
-      return await new Promise<{
-        exitCode: number | null;
-        stdout: string;
-        stderr: string;
-      } | { error: string }>((resolvePromise) => {
-        let child;
-        try {
-          child = spawn("bash", ["-c", command], {
-            cwd: skill.path,
-            signal: abortSignal,
-          });
-        } catch (err) {
-          resolvePromise({ error: (err as Error).message });
-          return;
-        }
-
-        let stdout = "";
-        let stderr = "";
-        child.stdout?.on("data", (chunk: Buffer | string) => {
-          stdout += chunk.toString();
+      try {
+        const { runBashInSkill } = await loadAgentSkillsRuntime();
+        return await runBashInSkill({
+          skillPath: skill.path,
+          command,
+          abortSignal,
         });
-        child.stderr?.on("data", (chunk: Buffer | string) => {
-          stderr += chunk.toString();
-        });
-        child.once("close", (code: number | null) => {
-          resolvePromise({
-            exitCode: code,
-            stdout: truncate(stdout, DEFAULT_BASH_OUTPUT_BYTES),
-            stderr: truncate(stderr, DEFAULT_BASH_OUTPUT_BYTES),
-          });
-        });
-        child.once("error", (err: Error) => {
-          resolvePromise({ error: err.message });
-        });
-      });
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
     },
   });
 
