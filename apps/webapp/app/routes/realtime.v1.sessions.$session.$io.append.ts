@@ -3,10 +3,13 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
+import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 const ParamsSchema = z.object({
@@ -79,6 +82,43 @@ const { action } = createActionApiRoute(
         );
       }
       return json({ ok: false, error: appendError.message }, { status: 500 });
+    }
+
+    // Fire any run-scoped waitpoints registered against this channel. Best
+    // effort — a failure here must not fail the append (the record is
+    // durable in S2; the SSE tail will still deliver it).
+    const [drainError, waitpointIds] = await tryCatch(
+      drainSessionStreamWaitpoints(session.friendlyId, params.io)
+    );
+    if (drainError) {
+      logger.error("Failed to drain session stream waitpoints", {
+        sessionFriendlyId: session.friendlyId,
+        io: params.io,
+        error: drainError,
+      });
+    } else if (waitpointIds && waitpointIds.length > 0) {
+      await Promise.all(
+        waitpointIds.map(async (waitpointId) => {
+          const [completeError] = await tryCatch(
+            engine.completeWaitpoint({
+              id: waitpointId,
+              output: {
+                value: part,
+                type: "application/json",
+                isError: false,
+              },
+            })
+          );
+          if (completeError) {
+            logger.error("Failed to complete session stream waitpoint", {
+              sessionFriendlyId: session.friendlyId,
+              io: params.io,
+              waitpointId,
+              error: completeError,
+            });
+          }
+        })
+      );
     }
 
     return json({ ok: true }, { status: 200 });

@@ -1411,6 +1411,38 @@ export type CreateInputStreamWaitpointResponseBody = z.infer<
   typeof CreateInputStreamWaitpointResponseBody
 >;
 
+/**
+ * Create a run-scoped waitpoint that completes when the next record lands on
+ * a Session channel (`.in` or `.out`). Mirrors `CreateInputStreamWaitpointRequestBody`
+ * but keyed by `{sessionId, io}` instead of `{runId, streamId}`. The run is
+ * still the thing being suspended — Session only supplies the trigger source.
+ */
+export const CreateSessionStreamWaitpointRequestBody = z.object({
+  /** Session friendlyId (`session_*`) or user-supplied externalId. */
+  session: z.string(),
+  io: z.enum(["out", "in"]),
+  timeout: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyTTL: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
+  /**
+   * Last S2 sequence number the client has seen on this session channel.
+   * Used to catch data that arrived before `.wait()` was called.
+   */
+  lastSeqNum: z.number().optional(),
+});
+export type CreateSessionStreamWaitpointRequestBody = z.infer<
+  typeof CreateSessionStreamWaitpointRequestBody
+>;
+
+export const CreateSessionStreamWaitpointResponseBody = z.object({
+  waitpointId: z.string(),
+  isCached: z.boolean(),
+});
+export type CreateSessionStreamWaitpointResponseBody = z.infer<
+  typeof CreateSessionStreamWaitpointResponseBody
+>;
+
 export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
 export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
 export type WaitpointTokenStatus = z.infer<typeof WaitpointTokenStatus>;

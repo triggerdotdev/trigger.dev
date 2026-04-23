@@ -186,7 +186,22 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     streamId: string,
     afterSeqNum?: number
   ): Promise<StreamRecord[]> {
-    const s2Stream = this.toStreamName(runId, streamId);
+    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum);
+  }
+
+  /**
+   * Read records from a `Session`-primitive channel starting after the
+   * given sequence number. Used by the `.wait()` race-check path.
+   */
+  async readSessionStreamRecords(
+    friendlyId: string,
+    io: "out" | "in",
+    afterSeqNum?: number
+  ): Promise<StreamRecord[]> {
+    return this.#readRecordsByName(this.toSessionStreamName(friendlyId, io), afterSeqNum);
+  }
+
+  async #readRecordsByName(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
     const startSeq = afterSeqNum != null ? afterSeqNum + 1 : 0;
 
     const qs = new URLSearchParams();
