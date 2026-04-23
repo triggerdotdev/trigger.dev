@@ -70,6 +70,7 @@
               "versioning",
               "machines",
               "idempotency",
+              "skip-if-active",
               "runs/max-duration",
               "tags",
               "runs/metadata",

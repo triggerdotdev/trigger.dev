@@ -31,6 +31,7 @@ import type {
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
 import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
+import { SkipIfActiveConcern } from "../concerns/skipIfActive.server";
 import type {
   PayloadProcessor,
   QueueManager,
@@ -54,6 +55,7 @@ export class RunEngineTriggerTaskService {
   private readonly validator: TriggerTaskValidator;
   private readonly payloadProcessor: PayloadProcessor;
   private readonly idempotencyKeyConcern: IdempotencyKeyConcern;
+  private readonly skipIfActiveConcern: SkipIfActiveConcern;
   private readonly runNumberIncrementer: RunNumberIncrementer;
   private readonly prisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
@@ -69,6 +71,7 @@ export class RunEngineTriggerTaskService {
     validator: TriggerTaskValidator;
     payloadProcessor: PayloadProcessor;
     idempotencyKeyConcern: IdempotencyKeyConcern;
+    skipIfActiveConcern?: SkipIfActiveConcern;
     runNumberIncrementer: RunNumberIncrementer;
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
@@ -81,6 +84,7 @@ export class RunEngineTriggerTaskService {
     this.validator = opts.validator;
     this.payloadProcessor = opts.payloadProcessor;
     this.idempotencyKeyConcern = opts.idempotencyKeyConcern;
+    this.skipIfActiveConcern = opts.skipIfActiveConcern ?? new SkipIfActiveConcern(opts.prisma);
     this.runNumberIncrementer = opts.runNumberIncrementer;
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
@@ -206,6 +210,14 @@ export class RunEngineTriggerTaskService {
       }
 
       const { idempotencyKey, idempotencyKeyExpiresAt } = idempotencyKeyConcernResult;
+
+      // `skipIfActive` — drop-on-conflict. Runs *after* idempotency so a
+      // deliberate idempotency cache-hit wins, but *before* run creation so
+      // we never touch the queue for a skipped trigger.
+      const skipIfActiveResult = await this.skipIfActiveConcern.handleTriggerRequest(triggerRequest);
+      if (skipIfActiveResult.wasSkipped) {
+        return { run: skipIfActiveResult.run, isCached: true, wasSkipped: true };
+      }
 
       if (idempotencyKey) {
         await this.triggerRacepointSystem.waitForRacepoint({

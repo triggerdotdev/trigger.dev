@@ -1,0 +1,81 @@
+---
+title: "Skip-if-active"
+description: "Drop a trigger request when a matching run is already in flight — built for cron-style scanners that should dedup without queueing."
+---
+
+## When to use `skipIfActive`
+
+`skipIfActive` is a trigger option that **drops** the request if an in-flight run with the same `taskIdentifier` and tag set already exists in the same environment. No new run is created, no queue entry is added, and the caller gets back the existing run with `wasSkipped: true`.
+
+Typical use case: a **cron-style orchestrator** that polls every minute and should start a sync if one isn't already running — but should **not** build up a backlog when the previous sync is still working.
+
+### `idempotencyKey` vs `concurrencyKey` vs `skipIfActive`
+
+| Option           | Behavior when a matching run exists            | Use when                                                 |
+|------------------|-------------------------------------------------|----------------------------------------------------------|
+| `idempotencyKey` | Returns the existing run (including completed!) | Webhook retries, "run this exactly once ever"            |
+| `concurrencyKey` | Queues the new run FIFO behind the existing one | Every request is real work that must eventually execute  |
+| `skipIfActive`   | Drops the new trigger, returns the in-flight run | Cron polling; duplicate triggers are redundant work     |
+
+`skipIfActive` differs from `idempotencyKey` because it **does not** cache completed runs — once the run reaches a terminal state the dedup window ends automatically. It differs from `concurrencyKey` because it does not queue — excess triggers are discarded, not delayed.
+
+## Example
+
+```ts
+import { tasks } from "@trigger.dev/sdk/v3";
+
+// Orchestrator fires every minute for each connector.
+for (const connector of connectors) {
+  await tasks.trigger(
+    "ezderm-notes-fetch",
+    { connectorId: connector.id },
+    {
+      tags: [`connector:${connector.id}`],
+      skipIfActive: true,
+    }
+  );
+}
+```
+
+If `ezderm-notes-fetch` is already running (PENDING / DEQUEUED / EXECUTING / WAITING_TO_RESUME / …) with `connector:<id>` in its `runTags`, the second call is a no-op.
+
+## Required: at least one tag
+
+`skipIfActive` is a no-op without a `tags` scope. Without tags every run of the task would dedup against every other, which is rarely what you want. Supply one or more tags:
+
+```ts
+await tasks.trigger("sync-patient", payload, {
+  tags: [`patient:${patientId}`],
+  skipIfActive: true,
+});
+```
+
+All supplied tags must be present on the existing run (AND semantics, powered by PostgreSQL's `array @> array` operator + the `runTags` GIN index).
+
+## Response shape
+
+```ts
+// Fresh trigger — no conflict
+{ id: "run_abc", isCached: false }
+
+// Dropped because an in-flight match was found
+{ id: "run_existing", isCached: true, wasSkipped: true }
+```
+
+`isCached: true` is reused for parity with `idempotencyKey`-matched responses. The additional `wasSkipped: true` flag distinguishes drop-on-active from idempotency reuse when the caller needs to tell them apart.
+
+## Interaction with other options
+
+| Combined with            | Behavior                                                                                 |
+|--------------------------|------------------------------------------------------------------------------------------|
+| `idempotencyKey`         | Idempotency check runs first. A match wins and skipIfActive never fires.                  |
+| `concurrencyKey`         | skipIfActive runs before queue admission. A match drops — queue is not touched.           |
+| `delay`                  | A skipped trigger never creates a delayed run. The existing in-flight run is returned.    |
+| `ttl`                    | Irrelevant for skipped triggers — no new run is created.                                  |
+| `batchTrigger`           | Applied per item. Some items may be skipped while others enqueue normally.                |
+
+## When *not* to use it
+
+- Webhooks where the duplicate represents real, distinct work that must be processed. Use `idempotencyKey` to dedup by event id, or `concurrencyKey` to serialize.
+- Workflows where losing a trigger is a data-loss bug. skipIfActive is drop-on-conflict — silently discarded triggers are the intended outcome.
+- Anywhere you want visibility of queued work on the dashboard; skipped triggers leave no trace beyond the returned `wasSkipped: true` response.

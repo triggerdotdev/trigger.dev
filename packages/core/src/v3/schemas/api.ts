@@ -191,6 +191,19 @@ export const TriggerTaskRequestBody = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /**
+       * When true, the request is a no-op if an in-flight (non-terminal) run
+       * for the same `taskIdentifier` already exists in the same runtime
+       * environment AND contains all of the supplied `tags`. The existing run
+       * is returned with `wasSkipped: true` and no new run is created.
+       *
+       * Designed for cron-style scanners that poll repeatedly but should drop
+       * duplicate work when a previous invocation is still running — unlike
+       * `idempotencyKey` (which also caches successful completions) and
+       * unlike `concurrencyKey` (which queues duplicates). Requires at least
+       * one tag to scope the check.
+       */
+      skipIfActive: z.boolean().optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -212,6 +225,11 @@ export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 export const TriggerTaskResponse = z.object({
   id: z.string(),
   isCached: z.boolean().optional(),
+  /**
+   * When true, the request matched an existing in-flight run via
+   * `skipIfActive` and no new run was created.
+   */
+  wasSkipped: z.boolean().optional(),
 });
 
 export type TriggerTaskResponse = z.infer<typeof TriggerTaskResponse>;
@@ -233,6 +251,8 @@ export const BatchTriggerTaskItem = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** See `TriggerTaskRequestBody.options.skipIfActive`. */
+      skipIfActive: z.boolean().optional(),
       lockToVersion: z.string().optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),

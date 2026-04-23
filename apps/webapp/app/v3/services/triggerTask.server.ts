@@ -45,6 +45,12 @@ export class OutOfEntitlementError extends Error {
 export type TriggerTaskServiceResult = {
   run: TaskRun;
   isCached: boolean;
+  /**
+   * True when the run returned was matched by the `skipIfActive` option and
+   * no new run was created. Always false/undefined for idempotency-cached
+   * runs — `isCached` distinguishes those.
+   */
+  wasSkipped?: boolean;
 };
 
 export const MAX_ATTEMPTS = 2;

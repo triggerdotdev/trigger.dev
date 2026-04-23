@@ -135,6 +135,7 @@ const { action, loader } = createActionApiRoute(
         {
           id: result.run.friendlyId,
           isCached: result.isCached,
+          ...(result.wasSkipped ? { wasSkipped: true } : {}),
         },
         {
           headers: $responseHeaders,
