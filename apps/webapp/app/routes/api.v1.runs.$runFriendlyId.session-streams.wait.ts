@@ -15,6 +15,7 @@ import {
   removeSessionStreamWaitpoint,
 } from "~/services/sessionStreamWaitpointCache.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { engine } from "~/v3/runEngine.server";
@@ -140,9 +141,16 @@ const { action, loader } = createActionApiRoute(
               );
             }
           }
-        } catch {
+        } catch (error) {
           // Non-fatal: pending registration stays in Redis; the next append
-          // will complete the waitpoint via the append handler path.
+          // will complete the waitpoint via the append handler path. Log so
+          // a broken race-check doesn't silently degrade to timeout-only.
+          logger.warn("session-stream wait race-check failed", {
+            sessionFriendlyId: session.friendlyId,
+            io: body.io,
+            waitpointId: WaitpointId.toFriendlyId(result.waitpoint.id),
+            error,
+          });
         }
       }
 
@@ -153,10 +161,10 @@ const { action, loader } = createActionApiRoute(
     } catch (error) {
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
       }
-
+      // Don't forward raw internal error messages (could leak Prisma/engine
+      // details). Log server-side and return a generic 500.
+      logger.error("Failed to create session-stream waitpoint", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

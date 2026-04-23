@@ -15,7 +15,7 @@ const ParamsSchema = z.object({
   session: z.string(),
 });
 
-const { action } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
     body: CloseSessionRequestBody,
@@ -46,16 +46,28 @@ const { action } = createActionApiRoute(
       return json<RetrieveSessionResponseBody>(serializeSession(existing));
     }
 
-    const updated = await prisma.session.update({
-      where: { id: existing.id },
+    // `closedAt: null` on the where clause makes the update conditional at
+    // the DB level. Two concurrent closes race through the earlier read,
+    // but only one can win this update — the loser hits `count === 0` and
+    // falls back to reading the winning row. Closedness is write-once.
+    const { count } = await prisma.session.updateMany({
+      where: { id: existing.id, closedAt: null },
       data: {
         closedAt: new Date(),
         closedReason: body.reason ?? null,
       },
     });
 
+    if (count === 0) {
+      const final = await prisma.session.findFirst({ where: { id: existing.id } });
+      if (!final) return json({ error: "Session not found" }, { status: 404 });
+      return json<RetrieveSessionResponseBody>(serializeSession(final));
+    }
+
+    const updated = await prisma.session.findFirst({ where: { id: existing.id } });
+    if (!updated) return json({ error: "Session not found" }, { status: 404 });
     return json<RetrieveSessionResponseBody>(serializeSession(updated));
   }
 );
 
-export { action };
+export { action, loader };

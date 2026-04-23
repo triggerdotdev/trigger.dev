@@ -31,7 +31,11 @@ import { signalsEmitter } from "./services/signals.server";
 // runs deterministically on webapp boot rather than lazily via a singleton
 // reference elsewhere in the module graph.
 if (sessionsReplicationInstance && env.SESSION_REPLICATION_ENABLED === "1") {
-  sessionsReplicationInstance
+  // Capture a non-nullable reference so the shutdown closure below
+  // doesn't need to re-null-check (TS narrowing doesn't follow through
+  // an inner function scope).
+  const replicator = sessionsReplicationInstance;
+  replicator
     .start()
     .then(() => {
       console.log("🗃️ Sessions replication service started");
@@ -42,14 +46,20 @@ if (sessionsReplicationInstance && env.SESSION_REPLICATION_ENABLED === "1") {
       });
     });
 
-  signalsEmitter.on(
-    "SIGTERM",
-    sessionsReplicationInstance.shutdown.bind(sessionsReplicationInstance)
-  );
-  signalsEmitter.on(
-    "SIGINT",
-    sessionsReplicationInstance.shutdown.bind(sessionsReplicationInstance)
-  );
+  // Wrap the async shutdown in a sync handler that catches rejections —
+  // SIGTERM/SIGINT fire during process teardown, and an unhandled
+  // promise rejection from `_replicationClient.stop()` there would
+  // bubble up past the process exit. Matches the pattern in
+  // dynamicFlushScheduler.server.ts.
+  const shutdownSessionsReplication = () => {
+    replicator.shutdown().catch((error) => {
+      console.error("🗃️ Sessions replication service shutdown error", {
+        error,
+      });
+    });
+  };
+  signalsEmitter.on("SIGTERM", shutdownSessionsReplication);
+  signalsEmitter.on("SIGINT", shutdownSessionsReplication);
 }
 
 const ABORT_DELAY = 30000;

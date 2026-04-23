@@ -34,6 +34,31 @@ function initializeRedis(): Redis | undefined {
 
 const redis = singleton("sessionStreamWaitpointCache", initializeRedis);
 
+// Atomic SADD + PEXPIRE that only ever extends the key's TTL.
+//
+// Two concerns rolled into one script:
+// 1. SADD + PEXPIRE as separate commands can leave the key with no TTL
+//    if the second call fails (or the process crashes in between).
+// 2. Each waitpoint registers with its own `ttlMs` (derived from the
+//    waitpoint's timeout). Calling PEXPIRE unconditionally would let a
+//    short-TTL registration shrink the key's TTL below a longer-TTL
+//    sibling — evicting the sibling early and degrading the append-path
+//    fast drain to engine-timeout-only.
+//
+// The script: SADD the member, then set PEXPIRE only if the new TTL is
+// greater than the current PTTL (or the key has no TTL yet). Engine-
+// level timeouts still fire per-waitpoint; this keeps the Redis key
+// alive for the longest-lived member.
+const ADD_WAITPOINT_SCRIPT = `
+  redis.call("SADD", KEYS[1], ARGV[1])
+  local newTtl = tonumber(ARGV[2])
+  local currentTtl = redis.call("PTTL", KEYS[1])
+  if currentTtl < 0 or newTtl > currentTtl then
+    redis.call("PEXPIRE", KEYS[1], newTtl)
+  end
+  return 1
+`;
+
 /**
  * Register a waitpoint as pending on the given session channel. Called
  * from the `.wait()` create-waitpoint route. Multiple waiters on the same
@@ -49,8 +74,13 @@ export async function addSessionStreamWaitpoint(
 
   try {
     const key = buildKey(sessionFriendlyId, io);
-    await redis.sadd(key, waitpointId);
-    await redis.pexpire(key, ttlMs ?? DEFAULT_TTL_MS);
+    await redis.eval(
+      ADD_WAITPOINT_SCRIPT,
+      1,
+      key,
+      waitpointId,
+      String(ttlMs ?? DEFAULT_TTL_MS)
+    );
   } catch (error) {
     logger.error("Failed to set session stream waitpoint cache", {
       sessionFriendlyId,

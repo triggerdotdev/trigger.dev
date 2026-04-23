@@ -21,6 +21,7 @@ const ParamsSchema = z.object({
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
+    method: "PUT",
     allowJWT: true,
     corsStrategy: "all",
     authorization: {
@@ -29,11 +30,7 @@ const { action } = createActionApiRoute(
       superScopes: ["write:sessions", "write:all", "admin"],
     },
   },
-  async ({ request, params, authentication }) => {
-    if (request.method !== "PUT") {
-      return new Response("Method not allowed", { status: 405 });
-    }
-
+  async ({ params, authentication }) => {
     const session = await resolveSessionByIdOrExternalId(
       $replica,
       authentication.environment.id,

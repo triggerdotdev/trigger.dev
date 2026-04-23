@@ -98,7 +98,7 @@ export type ListedSession = Prisma.SessionGetPayload<{
   };
 }>;
 
-export interface ISessionsRepository {
+export type ISessionsRepository = {
   name: string;
   listSessionIds(options: ListSessionsOptions): Promise<string[]>;
   listSessions(options: ListSessionsOptions): Promise<{
@@ -110,7 +110,7 @@ export interface ISessionsRepository {
   }>;
   countSessions(options: SessionListInputOptions): Promise<number>;
   listTags(options: SessionTagListOptions): Promise<SessionTagList>;
-}
+};
 
 export class SessionsRepository implements ISessionsRepository {
   private readonly clickHouseSessionsRepository: ClickHouseSessionsRepository;
