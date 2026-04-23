@@ -1,7 +1,7 @@
 import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { createSSELoader, SendFunction } from "~/utils/sse";
+import { ABORT_REASON_SEND_ERROR, createSSELoader, SendFunction } from "~/utils/sse";
 import { throttle } from "~/utils/throttle";
 import { tracePubSub } from "~/v3/services/tracePubSub.server";
 
@@ -66,10 +66,10 @@ export class RunStreamPresenter {
                   });
                 }
               }
-              // Abort the stream on send error. No reason string — string reasons
-              // create a DOMException whose stack trace captures the surrounding
-              // closure (see sse.ts comment).
-              context.controller.abort();
+              // Abort the stream on send error. Uses a stackless string sentinel
+              // from sse.ts — a no-arg abort() would create a DOMException with a
+              // stack trace, which is unnecessary retention on the signal.reason.
+              context.controller.abort(ABORT_REASON_SEND_ERROR);
             }
           },
           1000

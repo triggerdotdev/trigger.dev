@@ -38,6 +38,20 @@ type SSEOptions = {
 // This is used to track the open connections, for debugging
 const connections: Set<string> = new Set();
 
+// Stackless sentinel reasons passed to AbortController#abort. Calling .abort()
+// with no argument produces a DOMException that captures a ~500-byte stack
+// trace; a string reason is stored verbatim with no stack. The choice of
+// reason type does not cause the retention we saw in prod (that was the
+// AbortSignal.any composite — see comment near the timeoutTimer below for the
+// Node issue refs), but naming the sentinels keeps call sites readable and
+// lets future signal.reason consumers branch on the cause.
+export const ABORT_REASON_REQUEST = "request_aborted";
+export const ABORT_REASON_TIMEOUT = "timeout";
+export const ABORT_REASON_SEND_ERROR = "send_error";
+export const ABORT_REASON_INIT_STOP = "init_requested_stop";
+export const ABORT_REASON_ITERATOR_STOP = "iterator_requested_stop";
+export const ABORT_REASON_ITERATOR_ERROR = "iterator_error";
+
 export function createSSELoader(options: SSEOptions) {
   const { timeout, interval = 500, debug = false, handler } = options;
 
@@ -70,7 +84,7 @@ export function createSSELoader(options: SSEOptions) {
           // up immediately. Otherwise a send-failure in initStream leaves them
           // alive until `timeout` fires.
           if (!internalController.signal.aborted) {
-            internalController.abort();
+            internalController.abort(ABORT_REASON_SEND_ERROR);
           }
           throw error;
         }
@@ -97,18 +111,25 @@ export function createSSELoader(options: SSEOptions) {
 
     log("Start");
 
-    // Single-signal abort chain: everything rolls up into internalController with NO
-    // string reasons (string reasons create a DOMException whose stack trace pins the
-    // closure graph). Timeout is a plain setTimeout cleared on abort rather than an
-    // AbortSignal.timeout() combined via AbortSignal.any(); both of those patterns
-    // leak on Node 20 due to FinalizationRegistry tracking of dependent signals.
+    // Single-signal abort chain: everything rolls up into internalController.
+    // Timeout is a plain setTimeout cleared on abort rather than an
+    // AbortSignal.timeout() combined via AbortSignal.any() — AbortSignal.any
+    // keeps its source signals in an internal Set<WeakRef> managed by a
+    // FinalizationRegistry, and under sustained request traffic those entries
+    // accumulate faster than they get cleaned up, pinning every source signal
+    // (and its listeners, and anything those listeners close over) until the
+    // parent signal is GC'd or aborts. Reproduced locally in isolation; shape
+    // matches the ChainSafe Lodestar production case described in
+    // nodejs/node#54614. See also nodejs/node#55351 (mechanism confirmed by
+    // @jasnell, narrow fix in 22.12.0 via #55354) and nodejs/node#57584
+    // (circular-dep variant, still open).
     const timeoutTimer = setTimeout(() => {
-      if (!internalController.signal.aborted) internalController.abort();
+      if (!internalController.signal.aborted) internalController.abort(ABORT_REASON_TIMEOUT);
     }, timeout);
 
     const onRequestAbort = () => {
       log("request signal aborted");
-      if (!internalController.signal.aborted) internalController.abort();
+      if (!internalController.signal.aborted) internalController.abort(ABORT_REASON_REQUEST);
     };
 
     internalController.signal.addEventListener(
@@ -133,7 +154,7 @@ export function createSSELoader(options: SSEOptions) {
       const shouldContinue = await handlers.beforeStream();
       if (shouldContinue === false) {
         log("beforeStream returned false, so we'll exit before creating the stream");
-        internalController.abort();
+        internalController.abort(ABORT_REASON_INIT_STOP);
         return;
       }
     }
@@ -149,7 +170,7 @@ export function createSSELoader(options: SSEOptions) {
             const shouldContinue = await handlers.initStream({ send: safeSend });
             if (shouldContinue === false) {
               log("initStream returned false, so we'll stop the stream");
-              internalController.abort();
+              internalController.abort(ABORT_REASON_INIT_STOP);
               return;
             }
           }
@@ -167,7 +188,7 @@ export function createSSELoader(options: SSEOptions) {
                 const shouldContinue = await handlers.iterator({ date, send: safeSend });
                 if (shouldContinue === false) {
                   log("iterator return false, so we'll stop the stream");
-                  internalController.abort();
+                  internalController.abort(ABORT_REASON_ITERATOR_STOP);
                   break;
                 }
               } catch (error) {
@@ -176,7 +197,7 @@ export function createSSELoader(options: SSEOptions) {
                 if (error instanceof Error && error.name !== "AbortError") {
                   log(`iterator error: ${error.message}`);
                 }
-                internalController.abort();
+                internalController.abort(ABORT_REASON_ITERATOR_ERROR);
                 // No need to re-throw as we're handling it by aborting
                 return; // Exit the run function immediately
               }
