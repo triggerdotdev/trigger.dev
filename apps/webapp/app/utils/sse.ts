@@ -45,7 +45,6 @@ export function createSSELoader(options: SSEOptions) {
     const id = request.headers.get("x-request-id") || Math.random().toString(36).slice(2, 8);
 
     const internalController = new AbortController();
-    const timeoutSignal = AbortSignal.timeout(timeout);
 
     const log = (message: string) => {
       if (debug)
@@ -60,16 +59,14 @@ export function createSSELoader(options: SSEOptions) {
           if (!internalController.signal.aborted) {
             originalSend(event);
           }
-          // If controller is aborted, silently ignore the send attempt
         } catch (error) {
           if (error instanceof Error) {
             if (error.message?.includes("Controller is already closed")) {
-              // Silently handle controller closed errors
               return;
             }
             log(`Error sending event: ${error.message}`);
           }
-          throw error; // Re-throw other errors
+          throw error;
         }
       };
     };
@@ -92,51 +89,42 @@ export function createSSELoader(options: SSEOptions) {
 
     const requestAbortSignal = getRequestAbortSignal();
 
-    const combinedSignal = AbortSignal.any([
-      requestAbortSignal,
-      timeoutSignal,
-      internalController.signal,
-    ]);
-
     log("Start");
 
-    requestAbortSignal.addEventListener(
-      "abort",
-      () => {
-        log(`request signal aborted`);
-        internalController.abort("Request aborted");
-      },
-      { once: true, signal: internalController.signal }
-    );
+    // Single-signal abort chain: everything rolls up into internalController with NO
+    // string reasons (string reasons create a DOMException whose stack trace pins the
+    // closure graph). Timeout is a plain setTimeout cleared on abort rather than an
+    // AbortSignal.timeout() combined via AbortSignal.any(); both of those patterns
+    // leak on Node 20 due to FinalizationRegistry tracking of dependent signals.
+    const timeoutTimer = setTimeout(() => {
+      if (!internalController.signal.aborted) internalController.abort();
+    }, timeout);
 
-    combinedSignal.addEventListener(
-      "abort",
-      () => {
-        log(`combinedSignal aborted: ${combinedSignal.reason}`);
-      },
-      { once: true, signal: internalController.signal }
-    );
+    const onRequestAbort = () => {
+      log("request signal aborted");
+      if (!internalController.signal.aborted) internalController.abort();
+    };
+    requestAbortSignal.addEventListener("abort", onRequestAbort, { once: true });
 
-    timeoutSignal.addEventListener(
+    internalController.signal.addEventListener(
       "abort",
       () => {
-        if (internalController.signal.aborted) return;
-        log(`timeoutSignal aborted: ${timeoutSignal.reason}`);
-        internalController.abort("Timeout");
+        clearTimeout(timeoutTimer);
+        requestAbortSignal.removeEventListener("abort", onRequestAbort);
       },
-      { once: true, signal: internalController.signal }
+      { once: true }
     );
 
     if (handlers.beforeStream) {
       const shouldContinue = await handlers.beforeStream();
       if (shouldContinue === false) {
         log("beforeStream returned false, so we'll exit before creating the stream");
-        internalController.abort("Init requested stop");
+        internalController.abort();
         return;
       }
     }
 
-    return eventStream(combinedSignal, function setup(send) {
+    return eventStream(internalController.signal, function setup(send) {
       connections.add(id);
       const safeSend = createSafeSend(send);
 
@@ -147,14 +135,14 @@ export function createSSELoader(options: SSEOptions) {
             const shouldContinue = await handlers.initStream({ send: safeSend });
             if (shouldContinue === false) {
               log("initStream returned false, so we'll stop the stream");
-              internalController.abort("Init requested stop");
+              internalController.abort();
               return;
             }
           }
 
           log("Starting interval");
           for await (const _ of setInterval(interval, null, {
-            signal: combinedSignal,
+            signal: internalController.signal,
           })) {
             log("PING");
 
@@ -165,13 +153,16 @@ export function createSSELoader(options: SSEOptions) {
                 const shouldContinue = await handlers.iterator({ date, send: safeSend });
                 if (shouldContinue === false) {
                   log("iterator return false, so we'll stop the stream");
-                  internalController.abort("Iterator requested stop");
+                  internalController.abort();
                   break;
                 }
               } catch (error) {
                 log("iterator threw an error, aborting stream");
                 // Immediately abort to trigger cleanup
-                internalController.abort(error instanceof Error ? error.message : "Iterator error");
+                if (error instanceof Error && error.name !== "AbortError") {
+                  log(`iterator error: ${error.message}`);
+                }
+                internalController.abort();
                 // No need to re-throw as we're handling it by aborting
                 return; // Exit the run function immediately
               }
