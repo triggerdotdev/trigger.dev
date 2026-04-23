@@ -20,12 +20,8 @@ import type { Task } from "@trigger.dev/core/v3";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { readUIMessageStream } from "ai";
 import { ApiClient, SSEStreamSubscription, apiClientManager } from "@trigger.dev/core/v3";
-import {
-  CHAT_STREAM_KEY,
-  CHAT_MESSAGES_STREAM_ID,
-  CHAT_STOP_STREAM_ID,
-} from "./chat-constants.js";
-import type { ChatTaskWirePayload } from "./ai.js";
+import type { ChatInputChunk, ChatTaskWirePayload } from "./ai.js";
+import { sessions } from "./sessions.js";
 import { trigger } from "./shared.js";
 
 // ─── Type inference ────────────────────────────────────────────────
@@ -48,7 +44,11 @@ export type InferChatUIMessage<T> =
 
 /** Persistable session state — store this to resume across requests. */
 export type ChatSession = {
-  runId: string;
+  /** Session friendlyId (`session_*`). Durable across runs. */
+  sessionId: string;
+  /** The live run's friendlyId, if any. Optional — sessions outlive runs. */
+  runId?: string;
+  /** Last SSE event ID seen on `session.out` — used to resume without replay. */
   lastEventId?: string;
 };
 
@@ -237,7 +237,10 @@ export class ChatStream {
 // ─── Internal ──────────────────────────────────────────────────────
 
 type SessionState = {
-  runId: string;
+  /** Session friendlyId — durable across runs. */
+  sessionId: string;
+  /** The live run's friendlyId, or undefined if no run is active. */
+  runId?: string;
   lastEventId?: string;
   skipToTurnComplete?: boolean;
 };
@@ -281,7 +284,9 @@ export class AgentChat<TAgent = unknown> {
   constructor(options: AgentChatOptions<TAgent>) {
     this.taskId = options.agent;
     this.chatId = options.id ?? crypto.randomUUID();
-    this.streamKey = options.streamKey ?? CHAT_STREAM_KEY;
+    // streamKey is preserved on the type only for API parity with the
+    // pre-migration shape; session.out subscribers don't key by name.
+    this.streamKey = options.streamKey ?? "chat";
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? 120;
     this.clientData = options.clientData as Record<string, unknown> | undefined;
     this.triggerOptions = options.triggerOptions;
@@ -291,6 +296,7 @@ export class AgentChat<TAgent = unknown> {
     // Restore session if provided
     if (options.session) {
       this.session = {
+        sessionId: options.session.sessionId,
         runId: options.session.runId,
         lastEventId: options.session.lastEventId,
       };
@@ -302,10 +308,11 @@ export class AgentChat<TAgent = unknown> {
     return this.chatId;
   }
 
-  /** The current run session, if active. */
+  /** The current session state, if initialised. */
   get run(): ChatSession | undefined {
     if (!this.session) return undefined;
     return {
+      sessionId: this.session.sessionId,
       runId: this.session.runId,
       lastEventId: this.session.lastEventId,
     };
@@ -318,7 +325,11 @@ export class AgentChat<TAgent = unknown> {
    */
   async preload(options?: { idleTimeoutInSeconds?: number }): Promise<ChatSession> {
     if (this.session) {
-      return { runId: this.session.runId, lastEventId: this.session.lastEventId };
+      return {
+        sessionId: this.session.sessionId,
+        runId: this.session.runId,
+        lastEventId: this.session.lastEventId,
+      };
     }
 
     const payload = {
@@ -332,9 +343,15 @@ export class AgentChat<TAgent = unknown> {
     };
 
     this.session = await this.triggerNewRun(payload, "preload");
-    await this.onTriggered?.({ runId: this.session.runId, chatId: this.chatId });
+    await this.onTriggered?.({
+      runId: this.session.runId!,
+      chatId: this.chatId,
+    });
 
-    return { runId: this.session.runId };
+    return {
+      sessionId: this.session.sessionId,
+      runId: this.session.runId,
+    };
   }
 
   /**
@@ -394,7 +411,9 @@ export class AgentChat<TAgent = unknown> {
     let isContinuation = false;
     let previousRunId: string | undefined;
 
-    // Try input stream if session exists
+    // If a run is already live on this session, produce the new message
+    // via `session.in` so the agent's `chat.messages.waitWithIdleTimeout`
+    // picks it up without a fresh run.
     if (this.session?.runId) {
       const minimalPayload = {
         ...payload,
@@ -403,21 +422,24 @@ export class AgentChat<TAgent = unknown> {
 
       try {
         const api = this.createApiClient();
-        await api.sendInputStream(
-          this.session.runId,
-          CHAT_MESSAGES_STREAM_ID,
-          minimalPayload
+        await api.appendToSessionStream(
+          this.session.sessionId,
+          "in",
+          serializeInputChunk({
+            kind: "message",
+            payload: minimalPayload as ChatTaskWirePayload,
+          })
         );
 
-        return this.subscribeToStream(this.session.runId, options?.abortSignal);
+        return this.subscribeToSessionStream(options?.abortSignal);
       } catch {
         previousRunId = this.session.runId;
-        this.session = undefined;
+        this.session.runId = undefined;
         isContinuation = true;
       }
     }
 
-    // First message or run ended — trigger new run with full history
+    // First message or run ended — trigger new run (continues on same session).
     const triggerPayload = {
       ...payload,
       ...(isContinuation ? { messages: this.accumulatedMessages } : {}),
@@ -426,14 +448,17 @@ export class AgentChat<TAgent = unknown> {
     };
 
     this.session = await this.triggerNewRun(triggerPayload, "trigger");
-    await this.onTriggered?.({ runId: this.session.runId, chatId: this.chatId });
+    await this.onTriggered?.({
+      runId: this.session.runId!,
+      chatId: this.chatId,
+    });
 
-    return this.subscribeToStream(this.session.runId, options?.abortSignal);
+    return this.subscribeToSessionStream(options?.abortSignal);
   }
 
   /** Send a steering message during an active stream. */
   async steer(text: string): Promise<boolean> {
-    if (!this.session?.runId) return false;
+    if (!this.session?.sessionId || !this.session.runId) return false;
 
     const payload = {
       messages: [
@@ -446,7 +471,14 @@ export class AgentChat<TAgent = unknown> {
 
     try {
       const api = this.createApiClient();
-      await api.sendInputStream(this.session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+      await api.appendToSessionStream(
+        this.session.sessionId,
+        "in",
+        serializeInputChunk({
+          kind: "message",
+          payload: payload as ChatTaskWirePayload,
+        })
+      );
       return true;
     } catch {
       return false;
@@ -455,12 +487,16 @@ export class AgentChat<TAgent = unknown> {
 
   /** Stop the current generation (agent stays alive for next turn). */
   async stop(): Promise<void> {
-    if (!this.session?.runId) return;
+    if (!this.session?.sessionId) return;
 
     this.session.skipToTurnComplete = true;
     const api = this.createApiClient();
     await api
-      .sendInputStream(this.session.runId, CHAT_STOP_STREAM_ID, { stop: true })
+      .appendToSessionStream(
+        this.session.sessionId,
+        "in",
+        serializeInputChunk({ kind: "stop" })
+      )
       .catch(() => {});
   }
 
@@ -488,7 +524,7 @@ export class AgentChat<TAgent = unknown> {
     action: unknown,
     options?: { abortSignal?: AbortSignal }
   ): Promise<ChatStream> {
-    if (!this.session?.runId) {
+    if (!this.session?.sessionId || !this.session.runId) {
       throw new Error("No active session. Send a message first or call preload().");
     }
 
@@ -502,12 +538,19 @@ export class AgentChat<TAgent = unknown> {
 
     try {
       const api = this.createApiClient();
-      await api.sendInputStream(this.session.runId, CHAT_MESSAGES_STREAM_ID, payload);
+      await api.appendToSessionStream(
+        this.session.sessionId,
+        "in",
+        serializeInputChunk({
+          kind: "message",
+          payload: payload as unknown as ChatTaskWirePayload,
+        })
+      );
     } catch {
       throw new Error("Failed to send action. The session may have ended.");
     }
 
-    const rawStream = this.subscribeToStream(this.session.runId, options?.abortSignal);
+    const rawStream = this.subscribeToSessionStream(options?.abortSignal);
     return new ChatStream(rawStream, (assistantMessage) => {
       this.accumulatedMessages.push(assistantMessage);
     });
@@ -515,15 +558,22 @@ export class AgentChat<TAgent = unknown> {
 
   /** Close the conversation — agent exits its loop gracefully. */
   async close(): Promise<boolean> {
-    if (!this.session?.runId) return false;
+    if (!this.session?.sessionId) return false;
 
     try {
       const api = this.createApiClient();
-      await api.sendInputStream(this.session.runId, CHAT_MESSAGES_STREAM_ID, {
-        messages: [],
-        chatId: this.chatId,
-        trigger: "close" as const,
-      });
+      await api.appendToSessionStream(
+        this.session.sessionId,
+        "in",
+        serializeInputChunk({
+          kind: "message",
+          payload: {
+            messages: [],
+            chatId: this.chatId,
+            trigger: "close",
+          } as unknown as ChatTaskWirePayload,
+        })
+      );
       this.session = undefined;
       return true;
     } catch {
@@ -537,9 +587,7 @@ export class AgentChat<TAgent = unknown> {
   ): Promise<ReadableStream<UIMessageChunk> | null> {
     if (!this.session) return null;
 
-    return this.subscribeToStream(this.session.runId, abortSignal, {
-      sendStopOnAbort: false,
-    });
+    return this.subscribeToSessionStream(abortSignal, { sendStopOnAbort: false });
   }
 
   // ─── Private ───────────────────────────────────────────────────
@@ -561,7 +609,25 @@ export class AgentChat<TAgent = unknown> {
     const userTags = this.triggerOptions?.tags ?? [];
     const tags = [...autoTags, ...userTags].slice(0, 5);
 
-    const handle = await trigger(this.taskId, payload, {
+    // Ensure the backing Session exists before triggering so its
+    // friendlyId can ride along in the payload. `sessions.create` is
+    // idempotent on `externalId = chatId` — two AgentChats on the same
+    // chatId converge to one row.
+    const sessionId =
+      this.session?.sessionId ??
+      (
+        await sessions.create({
+          type: "chat.agent",
+          externalId: this.chatId,
+        })
+      ).id;
+
+    const payloadWithSession: Record<string, unknown> = {
+      ...payload,
+      sessionId,
+    };
+
+    const handle = await trigger(this.taskId, payloadWithSession, {
       tags,
       queue: this.triggerOptions?.queue,
       maxAttempts: this.triggerOptions?.maxAttempts,
@@ -569,16 +635,23 @@ export class AgentChat<TAgent = unknown> {
       priority: this.triggerOptions?.priority,
     });
 
-    return { runId: handle.id };
+    return {
+      sessionId,
+      runId: handle.id,
+      lastEventId: this.session?.lastEventId,
+    };
   }
 
-  private subscribeToStream(
-    runId: string,
+  private subscribeToSessionStream(
     abortSignal: AbortSignal | undefined,
     options?: { sendStopOnAbort?: boolean }
   ): ReadableStream<UIMessageChunk> {
     const self = this;
     const session = this.session;
+    if (!session) {
+      throw new Error("subscribeToSessionStream called without an active session");
+    }
+    const sessionId = session.sessionId;
     const baseURL = apiClientManager.baseURL ?? "https://api.trigger.dev";
     const accessToken = apiClientManager.accessToken ?? "";
     const onTurnComplete = this.onTurnComplete;
@@ -593,11 +666,15 @@ export class AgentChat<TAgent = unknown> {
       abortSignal.addEventListener(
         "abort",
         () => {
-          if (options?.sendStopOnAbort !== false && session) {
+          if (options?.sendStopOnAbort !== false) {
             session.skipToTurnComplete = true;
             const api = new ApiClient(baseURL, accessToken);
             api
-              .sendInputStream(session.runId, CHAT_STOP_STREAM_ID, { stop: true })
+              .appendToSessionStream(
+                sessionId,
+                "in",
+                serializeInputChunk({ kind: "stop" })
+              )
               .catch(() => {});
           }
           internalAbort.abort();
@@ -606,7 +683,7 @@ export class AgentChat<TAgent = unknown> {
       );
     }
 
-    const streamUrl = `${baseURL}/realtime/v1/streams/${runId}/${this.streamKey}`;
+    const streamUrl = `${baseURL}/realtime/v1/sessions/${encodeURIComponent(sessionId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -617,7 +694,7 @@ export class AgentChat<TAgent = unknown> {
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
-            lastEventId: session?.lastEventId,
+            lastEventId: session.lastEventId,
           });
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
@@ -640,84 +717,101 @@ export class AgentChat<TAgent = unknown> {
               const value = next.value;
 
               // Track last event ID for resume
-              if (value.id && session) {
+              if (value.id) {
                 session.lastEventId = value.id;
               }
 
-              if (value.chunk != null && typeof value.chunk === "object") {
-                const chunk = value.chunk as Record<string, unknown>;
-
-                if (session?.skipToTurnComplete) {
-                  if (chunk.type === "trigger:turn-complete") {
-                    session.skipToTurnComplete = false;
-                  }
-                  continue;
-                }
-
-                if (chunk.type === "trigger:upgrade-required") {
-                  // Agent requested a version upgrade — re-trigger with full
-                  // history and pipe the new stream through transparently.
-                  internalAbort.abort();
-                  const previousRunId = self.session?.runId;
-                  self.session = undefined;
-
+              // Session records arrive as raw JSON strings (the server
+              // wraps `{data, id}` on S2). Parse back into objects so
+              // the control-flow below can inspect chunk.type.
+              let chunkObj: Record<string, unknown> | null = null;
+              if (value.chunk != null) {
+                if (typeof value.chunk === "string") {
                   try {
-                    const triggerPayload: Record<string, unknown> = {
-                      messages: self.accumulatedMessages,
-                      chatId: self.chatId,
-                      trigger: "submit-message",
-                      metadata: self.clientData,
-                      continuation: true,
-                      ...(previousRunId ? { previousRunId } : {}),
-                    };
-
-                    self.session = await self.triggerNewRun(triggerPayload, "trigger");
-                    await self.onTriggered?.({ runId: self.session.runId, chatId: self.chatId });
-
-                    const newStream = self.subscribeToStream(
-                      self.session.runId,
-                      abortSignal
-                    );
-                    const newReader = newStream.getReader();
-                    try {
-                      while (true) {
-                        const nr = await newReader.read();
-                        if (nr.done) break;
-                        controller.enqueue(nr.value);
-                      }
-                    } finally {
-                      newReader.releaseLock();
-                    }
-                  } catch (retryError) {
-                    controller.error(retryError);
-                    return;
-                  }
-                  try {
-                    controller.close();
+                    chunkObj = JSON.parse(value.chunk) as Record<string, unknown>;
                   } catch {
-                    // Controller may already be closed
+                    chunkObj = null;
                   }
-                  return;
+                } else if (typeof value.chunk === "object") {
+                  chunkObj = value.chunk as Record<string, unknown>;
                 }
-
-                if (chunk.type === "trigger:turn-complete") {
-                  // Notify callback
-                  onTurnComplete?.({
-                    runId,
-                    chatId,
-                    lastEventId: session?.lastEventId,
-                  });
-                  internalAbort.abort();
-                  try {
-                    controller.close();
-                  } catch {
-                    // Controller may already be closed
-                  }
-                  return;
-                }
-
-                controller.enqueue(chunk as unknown as UIMessageChunk);
               }
+              if (!chunkObj) continue;
+
+              const chunk = chunkObj;
+
+              if (session.skipToTurnComplete) {
+                if (chunk.type === "trigger:turn-complete") {
+                  session.skipToTurnComplete = false;
+                }
+                continue;
+              }
+
+              if (chunk.type === "trigger:upgrade-required") {
+                // Agent requested a version upgrade — re-trigger with full
+                // history and pipe the new stream through transparently.
+                // Keep the Session (sessions outlive runs); swap runId only.
+                internalAbort.abort();
+                const previousRunId = self.session?.runId;
+                if (self.session) {
+                  self.session.runId = undefined;
+                }
+
+                try {
+                  const triggerPayload: Record<string, unknown> = {
+                    messages: self.accumulatedMessages,
+                    chatId: self.chatId,
+                    trigger: "submit-message",
+                    metadata: self.clientData,
+                    continuation: true,
+                    ...(previousRunId ? { previousRunId } : {}),
+                  };
+
+                  self.session = await self.triggerNewRun(triggerPayload, "trigger");
+                  await self.onTriggered?.({
+                    runId: self.session.runId!,
+                    chatId: self.chatId,
+                  });
+
+                  const newStream = self.subscribeToSessionStream(abortSignal);
+                  const newReader = newStream.getReader();
+                  try {
+                    while (true) {
+                      const nr = await newReader.read();
+                      if (nr.done) break;
+                      controller.enqueue(nr.value);
+                    }
+                  } finally {
+                    newReader.releaseLock();
+                  }
+                } catch (retryError) {
+                  controller.error(retryError);
+                  return;
+                }
+                try {
+                  controller.close();
+                } catch {
+                  // Controller may already be closed
+                }
+                return;
+              }
+
+              if (chunk.type === "trigger:turn-complete") {
+                onTurnComplete?.({
+                  runId: session.runId ?? "",
+                  chatId,
+                  lastEventId: session.lastEventId,
+                });
+                internalAbort.abort();
+                try {
+                  controller.close();
+                } catch {
+                  // Controller may already be closed
+                }
+                return;
+              }
+
+              controller.enqueue(chunk as unknown as UIMessageChunk);
             }
           } catch (readError) {
             reader.releaseLock();
@@ -737,4 +831,14 @@ export class AgentChat<TAgent = unknown> {
       },
     });
   }
+}
+
+/**
+ * Serialize a {@link ChatInputChunk} for `POST …/sessions/:session/:io/append`.
+ * Session channel records are raw JSON strings — the server wraps them
+ * in `{ data: <body>, id }` for S2 storage and the subscribe side
+ * parses the string back for consumers.
+ */
+function serializeInputChunk(chunk: ChatInputChunk): string {
+  return JSON.stringify(chunk);
 }
