@@ -54,21 +54,23 @@ export const sessionsSmoke = task({
 
     const handle = sessions.open(created.externalId!);
 
-    logger.info("sessions.open(...).out.initialize (S2 creds)");
-    const outCreds = await handle.out.initialize();
-    results.outInitialize = { basin: outCreds.basin, streamName: outCreds.streamName };
-
-    logger.info("sessions.open(...).out.append x2 + .in.send x1");
-    await handle.out.append({ chunk: "first", ts: Date.now() });
+    logger.info("sessions.open(...).out.writer (S2 direct-write) x1 + .out.append x1 + .in.send x1");
+    const { waitUntilComplete } = handle.out.writer<{ chunk: string; ts: number }>({
+      execute: ({ write }) => {
+        write({ chunk: "first", ts: Date.now() });
+      },
+    });
+    await waitUntilComplete();
     await handle.out.append({ chunk: "second", ts: Date.now() });
     await handle.in.send({ role: "user", content: "hello from smoketest" });
+    results.writerUsed = true;
 
-    logger.info("sessions.open(...).out.subscribe (SSE round-trip)");
+    logger.info("sessions.open(...).out.read (SSE round-trip)");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     const received: Array<{ id: string; chunk: unknown }> = [];
     try {
-      const stream = await handle.out.subscribe({
+      const stream = await handle.out.read({
         signal: controller.signal,
         timeoutInSeconds: 3,
         onPart: (part) => {

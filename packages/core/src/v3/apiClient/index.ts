@@ -28,6 +28,8 @@ import {
   CreateEnvironmentVariableRequestBody,
   CreateInputStreamWaitpointRequestBody,
   CreateInputStreamWaitpointResponseBody,
+  CreateSessionStreamWaitpointRequestBody,
+  CreateSessionStreamWaitpointResponseBody,
   CreateScheduleOptions,
   CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
@@ -1647,6 +1649,23 @@ export class ApiClient {
     return zodfetch(
       CreateInputStreamWaitpointResponseBody,
       `${this.baseUrl}/api/v1/runs/${runFriendlyId}/input-streams/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async createSessionStreamWaitpoint(
+    runFriendlyId: string,
+    body: CreateSessionStreamWaitpointRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateSessionStreamWaitpointResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/session-streams/wait`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
