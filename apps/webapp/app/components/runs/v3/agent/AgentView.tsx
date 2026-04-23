@@ -13,10 +13,18 @@ export type AgentViewAuth = {
   publicAccessToken: string;
   apiOrigin: string;
   /**
+   * Session identifier the AgentView uses to address the backing
+   * {@link Session} when subscribing to `.in` / `.out`. Accepts either
+   * a `session_*` friendlyId or the transport-supplied externalId
+   * (typically the browser's `chatId`) — the dashboard resource route
+   * resolves either form via `resolveSessionByIdOrExternalId`.
+   */
+  sessionId: string;
+  /**
    * User messages extracted from the run's task payload at load time.
-   * Empty array for runs started with `trigger: "preload"` — in that case
-   * the first user message will arrive over the chat-messages input stream
-   * and get merged in by the AgentView subscription.
+   * Empty array for runs started with `trigger: "preload"` — in that
+   * case the first user message arrives over the session's `.in`
+   * channel and is merged in by the AgentView subscription.
    */
   initialMessages: UIMessage[];
 };
@@ -25,12 +33,6 @@ type AgentViewRun = {
   friendlyId: string;
   taskIdentifier: string;
 };
-
-// Default stream IDs for Trigger.dev chat tasks — kept as literals so we
-// don't pull server-only constants from `@trigger.dev/core/v3/chat-client`
-// into a browser bundle.
-const CHAT_STREAM_KEY = "chat";
-const CHAT_MESSAGES_STREAM_ID = "chat-messages";
 
 /**
  * Max state-update interval while assistant chunks are streaming. Matches
@@ -51,20 +53,23 @@ const INITIAL_PAYLOAD_TIMESTAMP = 0;
 /**
  * Renders an agent run's chat conversation as it unfolds.
  *
- * Subscribes to two separate realtime streams for the run:
- * - The **chat output stream** delivers assistant `UIMessageChunk`s (text
- *   deltas, tool calls, reasoning, etc.) produced by `pipeChat` on the
- *   task side.
- * - The **chat-messages input stream** delivers user messages sent to the
- *   task via `sendInputStream` — each chunk carries a `ChatTaskWirePayload`
- *   with the most recent `messages` array.
+ * Subscribes to both channels of the run's backing {@link Session}:
+ * - **`.out`** delivers assistant `UIMessageChunk`s (text deltas, tool
+ *   calls, reasoning, etc.) produced by the agent's
+ *   `chatStream.writer(...)` calls — objects, already parsed by the S2
+ *   SSE reader.
+ * - **`.in`** delivers {@link ChatInputChunk}s sent by
+ *   {@link TriggerChatTransport} (or any other session writer). Each
+ *   chunk is a tagged union (`{kind: "message", payload}` for user
+ *   turns, `{kind: "stop"}` for stop signals) — the AgentView only
+ *   cares about `kind: "message"` and pulls `.payload.messages`.
  *
  * Both streams are read directly via `SSEStreamSubscription` through the
  * dashboard's session-authed resource routes — not through `useChat` or
  * `TriggerChatTransport`. This gives us per-chunk server-side timestamps
- * (Redis stream IDs) from both streams, which we use to produce a
+ * (S2 sequence numbers) from both streams, which we use to produce a
  * chronologically correct merged message list that works for replays,
- * multi-message turns, and steering messages.
+ * multi-message turns, cross-run session resumes, and steering messages.
  *
  * Intended to be mounted inside a scrollable container — the component
  * does not own its own scrollbar.
@@ -82,6 +87,7 @@ export function AgentView({
 
   const messages = useAgentRunMessages({
     runFriendlyId: run.friendlyId,
+    sessionId: agentView.sessionId,
     apiOrigin: agentView.apiOrigin,
     orgSlug: organization.slug,
     projectSlug: project.slug,
@@ -119,14 +125,24 @@ export function AgentView({
 // ---------------------------------------------------------------------------
 
 /**
- * Shape of each chunk on the chat-messages input stream. Each chunk is a
- * `ChatTaskWirePayload` whose `messages` field holds either the latest user
- * message (for `submit-message`) or the full history (for
- * `regenerate-message`). We dedupe by ID either way.
+ * Shape of each chunk on the session's `.in` channel. Mirrors the
+ * `ChatInputChunk` tagged union produced by {@link TriggerChatTransport}:
+ * - `kind: "message"` carries a `ChatTaskWirePayload` in `.payload`
+ *   (user-submitted messages or regenerate calls); we dedupe by id.
+ * - `kind: "stop"` is a stop signal — no messages, nothing to render
+ *   here, so it's filtered.
+ *
+ * The server wraps records in `{data, id}` and writes `data` as a JSON
+ * string; SSE v2 delivers the parsed string back. {@link parseChunkPayload}
+ * re-parses to recover the object.
  */
 type InputStreamChunk = {
-  messages?: Array<{ id?: string; role?: string; parts?: unknown[] }>;
-  trigger?: string;
+  kind?: "message" | "stop";
+  payload?: {
+    messages?: Array<{ id?: string; role?: string; parts?: unknown[] }>;
+    trigger?: string;
+  };
+  message?: string;
 };
 
 /**
@@ -173,17 +189,17 @@ type MessageOrchestrationState = {
 
 /**
  * `SSEStreamSubscription`'s v2 batch path delivers `parsedBody.data` as-is
- * — but for streams written via `sendInputStream` (which stores the user
- * payload as a JSON string in the record body), `data` is itself a string
- * that needs a second `JSON.parse` to recover the actual object. This
- * happens for the chat-messages input stream because the action handler
- * does `JSON.stringify(body.data.data)` before storing.
+ * — but session channels diverge by direction:
  *
- * Output streams from `pipeChat` write objects directly, so the v2 path
- * delivers them already-parsed. Either way this helper accepts both shapes
- * defensively: a string is parsed; an object is returned as-is.
+ * - `.in`: {@link TriggerChatTransport.serializeInputChunk} writes the
+ *   `ChatInputChunk` as a JSON **string**, so `data` is a string that
+ *   needs a second `JSON.parse` to recover the tagged union.
+ * - `.out`: the agent's `chatStream.writer(...)` writes
+ *   {@link UIMessageChunk} **objects** directly; `data` arrives
+ *   already-parsed.
  *
- * Returns `null` for unparseable / unexpected payloads.
+ * This helper accepts both shapes defensively: a string is parsed; an
+ * object is returned as-is. Returns `null` for unparseable payloads.
  */
 function parseChunkPayload(raw: unknown): Record<string, unknown> | null {
   if (raw == null) return null;
@@ -208,6 +224,7 @@ function createOrchestrationState(): MessageOrchestrationState {
 
 function useAgentRunMessages({
   runFriendlyId,
+  sessionId,
   apiOrigin,
   orgSlug,
   projectSlug,
@@ -215,6 +232,7 @@ function useAgentRunMessages({
   initialMessages,
 }: {
   runFriendlyId: string;
+  sessionId: string;
   apiOrigin: string;
   orgSlug: string;
   projectSlug: string;
@@ -268,13 +286,13 @@ function useAgentRunMessages({
   useEffect(() => {
     const abort = new AbortController();
 
-    const outputUrl =
+    const encodedSession = encodeURIComponent(sessionId);
+    const sessionBase =
       `${apiOrigin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
-      `/runs/${runFriendlyId}/realtime/v1/streams/${runFriendlyId}/${CHAT_STREAM_KEY}`;
+      `/runs/${runFriendlyId}/realtime/v1/sessions/${encodedSession}`;
 
-    const inputUrl =
-      `${apiOrigin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
-      `/runs/${runFriendlyId}/realtime/v1/streams/${runFriendlyId}/input/${CHAT_MESSAGES_STREAM_ID}`;
+    const outputUrl = `${sessionBase}/out`;
+    const inputUrl = `${sessionBase}/in`;
 
     const commonSubOptions = {
       signal: abort.signal,
@@ -385,7 +403,12 @@ function useAgentRunMessages({
       }
     };
 
-    // ---- Input stream: user messages ---------------------------------------
+    // ---- Input channel: user messages (`ChatInputChunk`) -------------------
+    //
+    // The transport appends a `{kind: "message", payload}` ChatInputChunk
+    // for every user turn (and `{kind: "stop"}` for stop signals). We pull
+    // user messages out of `payload.messages` for `kind: "message"` chunks
+    // and ignore the rest.
     const runInput = async () => {
       try {
         const sub = new SSEStreamSubscription(inputUrl, commonSubOptions);
@@ -397,9 +420,11 @@ function useAgentRunMessages({
             if (done) return;
 
             const chunk = parseChunkPayload(value.chunk) as InputStreamChunk | null;
-            if (!chunk || !Array.isArray(chunk.messages)) continue;
+            if (!chunk || chunk.kind !== "message") continue;
+            const payload = chunk.payload;
+            if (!payload || !Array.isArray(payload.messages)) continue;
 
-            const incomingUsers = chunk.messages.filter(
+            const incomingUsers = payload.messages.filter(
               (m): m is UIMessage =>
                 m != null && (m as { role?: string }).role === "user" && typeof m.id === "string"
             );
@@ -438,7 +463,7 @@ function useAgentRunMessages({
         pendingTimerRef.current = null;
       }
     };
-  }, [runFriendlyId, apiOrigin, orgSlug, projectSlug, envSlug]);
+  }, [runFriendlyId, sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
   return useMemo(() => {
     const timestamps = timestampsRef.current;

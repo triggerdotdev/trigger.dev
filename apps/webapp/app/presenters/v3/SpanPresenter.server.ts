@@ -260,24 +260,43 @@ export class SpanPresenter extends BasePresenter {
     const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
     const isAgentRun = taskKind === "AGENT";
 
-    // For agent runs, extract the initial user messages that were supplied
-    // via the task payload (from the original `triggerTask({ payload: { messages: [...] } })`
-    // call). When the run was started with `trigger: "preload"`, this array
-    // will be empty — in that case the first user message arrives later via
-    // the chat-messages input stream and is picked up by the AgentView.
+    // For agent runs, extract the initial user messages + the backing
+    // Session handle from the task payload (from the original
+    // `triggerTask({ payload: { messages, sessionId, chatId, ... } })`
+    // call). When the run was started with `trigger: "preload"`,
+    // `messages` is empty — the first user message arrives later over
+    // the session `.in` channel and is merged in by the AgentView.
+    //
+    // `agentSession` is the identifier the dashboard uses to address the
+    // backing Session when subscribing to `.out` / `.in`. Prefer the
+    // explicit `sessionId` threaded by `TriggerChatTransport` /
+    // `chat.createTriggerAction`; fall back to `chatId` for pre-migration
+    // agent runs (the session resource route accepts either, matching
+    // `resolveSessionByIdOrExternalId`).
     let agentInitialMessages: AgentInitialMessage[] = [];
+    let agentSession: string | null = null;
     if (isAgentRun && run.payload && run.payloadType !== "application/store") {
       try {
         const parsed = await parsePacket({
           data: typeof run.payload === "string" ? run.payload : JSON.stringify(run.payload),
           dataType: run.payloadType ?? "application/json",
         });
-        if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).messages)) {
-          agentInitialMessages = (parsed as any).messages as AgentInitialMessage[];
+        if (parsed && typeof parsed === "object") {
+          if (Array.isArray((parsed as any).messages)) {
+            agentInitialMessages = (parsed as any).messages as AgentInitialMessage[];
+          }
+          const sessionId = (parsed as any).sessionId;
+          const chatId = (parsed as any).chatId;
+          if (typeof sessionId === "string" && sessionId.length > 0) {
+            agentSession = sessionId;
+          } else if (typeof chatId === "string" && chatId.length > 0) {
+            agentSession = chatId;
+          }
         }
       } catch {
-        // Fall back to an empty initial message list — the AgentView will
-        // render whatever arrives over the input/output streams.
+        // Fall back to empty initial messages + null session — the
+        // AgentView will show a loading spinner and surface any stream
+        // subscription errors to the console.
       }
     }
 
@@ -340,6 +359,7 @@ export class SpanPresenter extends BasePresenter {
       isError: isFailedRunStatus(run.status),
       isAgentRun,
       agentInitialMessages,
+      agentSession,
       payload,
       payloadType: run.payloadType,
       output,

@@ -655,7 +655,7 @@ describe("TriggerChatTransport", () => {
     it("should set isStreaming to false via onSessionChange when turn completes", async () => {
       const sessionChanges: Array<{
         chatId: string;
-        session: { isStreaming?: boolean } | null;
+        session: { isStreaming?: boolean; runId?: string; sessionId?: string } | null;
       }> = [];
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
