@@ -55,6 +55,16 @@ export const sessions = {
   open,
 };
 
+// Test hook: lets `@trigger.dev/sdk/ai/test` replace `sessions.open()` with
+// an in-memory handle so unit tests don't hit the network. Not part of the
+// public API — only `mockChatAgent` installs it.
+type SessionOpenImpl = (sessionIdOrExternalId: string) => SessionHandle;
+let sessionOpenImpl: SessionOpenImpl | undefined;
+
+export function __setSessionOpenImplForTests(impl: SessionOpenImpl | undefined): void {
+  sessionOpenImpl = impl;
+}
+
 /**
  * Create a {@link Session} — a durable, typed, bidirectional I/O primitive
  * that outlives a single run. Idempotent via `externalId`.
@@ -183,6 +193,7 @@ function listSessions(
  * corresponding realtime endpoint.
  */
 function open(sessionIdOrExternalId: string): SessionHandle {
+  if (sessionOpenImpl) return sessionOpenImpl(sessionIdOrExternalId);
   return new SessionHandle(sessionIdOrExternalId);
 }
 
@@ -202,9 +213,12 @@ export class SessionHandle {
    */
   public readonly in: SessionInputChannel;
 
-  constructor(public readonly id: string) {
-    this.out = new SessionOutputChannel(id);
-    this.in = new SessionInputChannel(id);
+  constructor(
+    public readonly id: string,
+    overrides?: { in?: SessionInputChannel; out?: SessionOutputChannel }
+  ) {
+    this.out = overrides?.out ?? new SessionOutputChannel(id);
+    this.in = overrides?.in ?? new SessionInputChannel(id);
   }
 }
 
