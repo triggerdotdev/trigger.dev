@@ -211,6 +211,8 @@ webapp:
   # ServiceAccount configuration
   serviceAccount:
     create: true
+    # Name of the ServiceAccount to use. Required when create is false - otherwise
+    # the token-syncer RoleBinding would bind to the namespace's "default" SA.
     name: ""
     # Annotations to add to the ServiceAccount (e.g. eks.amazonaws.com/role-arn for IRSA)
     annotations: {}
