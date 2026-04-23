@@ -2,11 +2,23 @@ import {
   accessoryAttributes,
   AnyTask,
   getSchemaParseFn,
+  InputStreamOncePromise,
+  type InputStreamOnceOptions,
+  type InputStreamWaitOptions,
+  type InputStreamWaitWithIdleTimeoutOptions,
   isSchemaZodEsque,
   logger,
+  ManualWaitpointPromise,
+  type PipeStreamResult,
+  type RealtimeDefinedInputStream,
+  type RealtimeDefinedStream,
+  type ReadStreamOptions,
   SemanticInternalAttributes,
+  type SendInputStreamOptions,
   Task,
   taskContext,
+  type AppendStreamOptions,
+  type InputStreamOnceResult,
   type inferSchemaIn,
   type inferSchemaOut,
   type PipeStreamOptions,
@@ -15,6 +27,7 @@ import {
   type TaskSchema,
   type TaskRunContext,
   type TaskWithSchema,
+  type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -48,6 +61,14 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as nodePath from "node:path";
 import { streams } from "./streams.js";
+import {
+  sessions,
+  type SessionHandle,
+  type SessionInputChannel,
+  type SessionOutputChannel,
+  type SessionPipeStreamOptions,
+  type SessionSubscribeOptions,
+} from "./sessions.js";
 import { createTask, trigger as triggerTaskInternal } from "./shared.js";
 import { resourceCatalog } from "@trigger.dev/core/v3";
 import type { TriggerChatTaskParams, TriggerChatTaskResult } from "./chat.js";
@@ -99,6 +120,34 @@ type ChatTurnContext<TClientData = unknown> = {
   clientData?: TClientData;
 };
 const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
+
+/**
+ * Per-run slot holding the Session handle that backs this chat's `.in` /
+ * `.out` channels. Populated at the top of `chatAgent`'s run function from
+ * `payload.sessionId`; read by every module-level helper (`chatStream`,
+ * `messagesInput`, `stopInput`, `streams.writer(CHAT_STREAM_KEY, …)`
+ * callers) so the chat.agent internals can remain the same module-level
+ * shape they were when the I/O was run-scoped.
+ * @internal
+ */
+const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
+
+/**
+ * Resolve the Session handle for the current chat.agent run. Throws if
+ * called outside of a chat.agent `run()` — every internal consumer is
+ * inside the run, and every external consumer goes through the public
+ * `sessions.open(id)` entry point.
+ * @internal
+ */
+function getChatSession(): SessionHandle {
+  const handle = locals.get(chatSessionHandleKey);
+  if (!handle) {
+    throw new Error(
+      "chat.agent session handle is not initialized. This indicates a chat.agent helper was used outside of a chat.agent run, or the transport did not send a sessionId."
+    );
+  }
+  return handle;
+}
 
 type ToolResultContent = Array<
   | {
@@ -442,8 +491,9 @@ export const CHAT_STREAM_KEY = _CHAT_STREAM_KEY;
 export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
 
 /**
- * Typed chat output stream. Provides `.writer()`, `.pipe()`, `.append()`,
- * and `.read()` methods pre-bound to the chat stream key and typed to `UIMessageChunk`.
+ * Typed chat output stream — `.writer()`, `.pipe()`, `.append()`, and
+ * `.read()` methods pre-bound to this run's Session `.out` channel and
+ * typed to `UIMessageChunk`.
  *
  * Use from within a `chat.agent` run to write custom chunks:
  * ```ts
@@ -457,12 +507,36 @@ export { CHAT_MESSAGES_STREAM_ID, CHAT_STOP_STREAM_ID };
  * await waitUntilComplete();
  * ```
  *
- * Use from a subtask to stream back to the parent chat:
- * ```ts
- * chat.stream.pipe(myStream, { target: "root" });
- * ```
+ * Backed by the Session primitive so a chat's output outlives any single
+ * run — subscribers (browser transport, server-side `ChatStream`) read
+ * the session's `.out`, not a per-run stream. Run-scoped `target`
+ * options on `.pipe()` are honoured as no-ops; the session is the target.
  */
-const chatStream = streams.define<UIMessageChunk>({ id: _CHAT_STREAM_KEY });
+const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
+  id: _CHAT_STREAM_KEY,
+  pipe(value, options) {
+    const { target: _target, ...sessionOptions } = (options ?? {}) as PipeStreamOptions;
+    return getChatSession().out.pipe<UIMessageChunk>(
+      value,
+      sessionOptions as SessionPipeStreamOptions
+    );
+  },
+  async read(_runId, options) {
+    // Session channels don't need a runId — the session is the address.
+    // Keep the signature for backward compatibility with the run-scoped
+    // RealtimeDefinedStream shape, but ignore the argument.
+    return getChatSession().out.read<UIMessageChunk>(
+      options as SessionSubscribeOptions<UIMessageChunk> | undefined
+    );
+  },
+  async append(value, options) {
+    const { target: _target, ...sessionOptions } = (options ?? {}) as AppendStreamOptions;
+    return getChatSession().out.append(value, sessionOptions as SessionPipeStreamOptions);
+  },
+  writer(options) {
+    return getChatSession().out.writer<UIMessageChunk>(options);
+  },
+};
 
 // ---------------------------------------------------------------------------
 // chat.response — write data parts that persist to the response message
@@ -492,7 +566,7 @@ const chatResponse = {
    */
   write(part: UIMessageChunk): void {
     queueResponsePart(part);
-    const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+    const { waitUntilComplete } = chatStream.writer({
       spanName: "chat.response.write",
       collapsed: true,
       execute: ({ write }) => {
@@ -532,7 +606,7 @@ const chatStoreListenersKey = locals.create<Set<ChatStoreChangeListener>>(
 
 /** @internal — write a store chunk onto the chat output stream. */
 function writeStoreChunk(chunk: ChatStoreChunk): void {
-  const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+  const { waitUntilComplete } = chatStream.writer({
     spanName: chunk.type === "store-snapshot" ? "chat.store.set" : "chat.store.patch",
     collapsed: true,
     execute: ({ write }) => {
@@ -737,6 +811,16 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
   /** Override idle timeout for this run (seconds). Set by transport.preload(). */
   idleTimeoutInSeconds?: number;
   /**
+   * The friendlyId of the Session primitive backing this chat. The
+   * transport opens (or lazy-creates) the session with
+   * `externalId = chatId` on first message, then sends this friendlyId
+   * through to the run so the agent can attach to `.in` / `.out`
+   * without needing to round-trip through the control plane again.
+   * Optional for backward-compat while the migration is in flight;
+   * required once the legacy run-scoped stream path is removed.
+   */
+  sessionId?: string;
+  /**
    * Client-side `chat.store` value sent by the transport. Applied at turn
    * start before `run()` fires, overwriting any in-memory store value on the
    * agent (last-write-wins).
@@ -747,6 +831,30 @@ export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadat
    */
   incomingStore?: unknown;
 };
+
+/**
+ * A single record on a chat Session's `.in` channel. The transport and
+ * the agent agree on this tagged shape so one Session channel carries
+ * all the signals the old three-stream split did (`chat-messages`,
+ * `chat-stop`, plus action messages piggybacked on `chat-messages`).
+ *
+ * The agent subscribes via `session.in.on` / `.waitWithIdleTimeout`
+ * inside `chatAgent()` and dispatches on `kind`.
+ */
+export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = unknown> =
+  | {
+      kind: "message";
+      /**
+       * Full wire payload for a new user message or regeneration. Mirrors
+       * what the legacy `chat-messages` input stream carried.
+       */
+      payload: ChatTaskWirePayload<TMessage, TMetadata>;
+    }
+  | {
+      kind: "stop";
+      /** Optional human-readable reason. Maps to the legacy `chat-stop` record. */
+      message?: string;
+    };
 
 /**
  * The payload shape passed to the `chatAgent` run function.
@@ -789,6 +897,14 @@ export type ChatTaskPayload<TClientData = unknown> = {
   previousRunId?: string;
   /** Whether this run was preloaded before the first message. */
   preloaded: boolean;
+  /**
+   * The friendlyId of the Session primitive backing this chat. Use with
+   * `sessions.open(sessionId)` when you need direct access to the session's
+   * `.in` / `.out` channels outside the hooks the agent already wires for
+   * you. Undefined only for legacy transports that predate the sessions
+   * migration.
+   */
+  sessionId?: string;
 };
 
 /**
@@ -821,8 +937,213 @@ export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientD
   };
 
 // Input streams for bidirectional chat communication
-const messagesInput = streams.input<ChatTaskWirePayload>({ id: CHAT_MESSAGES_STREAM_ID });
-const stopInput = streams.input<{ stop: true; message?: string }>({ id: CHAT_STOP_STREAM_ID });
+//
+// Both `messagesInput` and `stopInput` are thin facades over the current
+// run's Session `.in` channel. The Session carries a single tagged stream
+// (`ChatInputChunk`); these facades filter by `kind` so existing call
+// sites (both internal and exposed via `chat.messages` / `chat.createStopSignal`)
+// keep their original shape. Each accessor resolves the session handle
+// lazily via `getChatSession()` so the module-level references stay
+// compatible with the pre-migration wiring.
+const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
+  id: CHAT_MESSAGES_STREAM_ID,
+  on(handler) {
+    return getChatSession().in.on<ChatInputChunk>((chunk) => {
+      if (chunk.kind === "message") {
+        return handler(chunk.payload);
+      }
+    });
+  },
+  once(options) {
+    const ctx = taskContext.ctx;
+    const runId = ctx?.run.id;
+
+    return new InputStreamOncePromise<ChatTaskWirePayload>((resolve, reject) => {
+      tracer
+        .startActiveSpan(
+          options?.spanName ?? `chat.messages.once()`,
+          async () => {
+            while (true) {
+              const result = await getChatSession().in.once<ChatInputChunk>(options);
+              if (!result.ok) {
+                resolve(result as InputStreamOnceResult<ChatTaskWirePayload>);
+                return;
+              }
+              if (result.output.kind === "message") {
+                resolve({ ok: true, output: result.output.payload });
+                return;
+              }
+              // Non-message chunks (stops) are handled by the stopInput
+              // facade's persistent listener; loop and wait for the next.
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "streams",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+              ...(runId
+                ? {
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${CHAT_MESSAGES_STREAM_ID}`,
+                  }
+                : {}),
+              streamId: CHAT_MESSAGES_STREAM_ID,
+              ...accessoryAttributes({
+                items: [{ text: CHAT_MESSAGES_STREAM_ID, variant: "normal" }],
+                style: "codepath",
+              }),
+            },
+          }
+        )
+        .catch(reject);
+    });
+  },
+  peek() {
+    const chunk = getChatSession().in.peek<ChatInputChunk>();
+    if (chunk && chunk.kind === "message") return chunk.payload;
+    return undefined;
+  },
+  wait(options) {
+    return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
+      try {
+        while (true) {
+          const result = await getChatSession().in.wait<ChatInputChunk>(options);
+          if (!result.ok) {
+            resolve(result);
+            return;
+          }
+          if (result.output.kind === "message") {
+            resolve({ ok: true, output: result.output.payload });
+            return;
+          }
+          // Stop chunks are handled by the stopInput facade's persistent
+          // listener; loop back into the suspending wait.
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+  async waitWithIdleTimeout(options) {
+    while (true) {
+      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
+      if (!result.ok) return result;
+      if (result.output.kind === "message") {
+        return { ok: true, output: result.output.payload };
+      }
+      // Swallow stop-kind chunks — persistent stop listener already handled
+      // the abort; we just loop for the next message.
+    }
+  },
+  async send(_runId, data, options) {
+    // The `runId` argument is kept for signature parity with
+    // `RealtimeDefinedInputStream` but ignored — sessions are addressed
+    // by sessionId, not runId. Callers producing messages from outside
+    // the run should prefer the transport's `session.in.send(...)` path.
+    await getChatSession().in.send(
+      { kind: "message", payload: data } satisfies ChatInputChunk,
+      options?.requestOptions
+    );
+  },
+};
+
+const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = {
+  id: CHAT_STOP_STREAM_ID,
+  on(handler) {
+    return getChatSession().in.on<ChatInputChunk>((chunk) => {
+      if (chunk.kind === "stop") {
+        return handler({ stop: true, message: chunk.message });
+      }
+    });
+  },
+  once(options) {
+    const ctx = taskContext.ctx;
+    const runId = ctx?.run.id;
+
+    return new InputStreamOncePromise<{ stop: true; message?: string }>((resolve, reject) => {
+      tracer
+        .startActiveSpan(
+          options?.spanName ?? `chat.stop.once()`,
+          async () => {
+            while (true) {
+              const result = await getChatSession().in.once<ChatInputChunk>(options);
+              if (!result.ok) {
+                resolve(result as InputStreamOnceResult<{ stop: true; message?: string }>);
+                return;
+              }
+              if (result.output.kind === "stop") {
+                resolve({
+                  ok: true,
+                  output: { stop: true, message: result.output.message },
+                });
+                return;
+              }
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "streams",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+              ...(runId
+                ? {
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${CHAT_STOP_STREAM_ID}`,
+                  }
+                : {}),
+              streamId: CHAT_STOP_STREAM_ID,
+              ...accessoryAttributes({
+                items: [{ text: CHAT_STOP_STREAM_ID, variant: "normal" }],
+                style: "codepath",
+              }),
+            },
+          }
+        )
+        .catch(reject);
+    });
+  },
+  peek() {
+    const chunk = getChatSession().in.peek<ChatInputChunk>();
+    if (chunk && chunk.kind === "stop") {
+      return { stop: true, message: chunk.message };
+    }
+    return undefined;
+  },
+  wait(options) {
+    return new ManualWaitpointPromise<{ stop: true; message?: string }>(async (resolve, reject) => {
+      try {
+        while (true) {
+          const result = await getChatSession().in.wait<ChatInputChunk>(options);
+          if (!result.ok) {
+            resolve(result);
+            return;
+          }
+          if (result.output.kind === "stop") {
+            resolve({
+              ok: true,
+              output: { stop: true, message: result.output.message },
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+  async waitWithIdleTimeout(options) {
+    while (true) {
+      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
+      if (!result.ok) return result;
+      if (result.output.kind === "stop") {
+        return { ok: true, output: { stop: true, message: result.output.message } };
+      }
+    }
+  },
+  async send(_runId, data, options) {
+    await getChatSession().in.send(
+      { kind: "stop", message: data?.message } satisfies ChatInputChunk,
+      options?.requestOptions
+    );
+  },
+};
 
 /**
  * Per-turn deferred promises. Registered via `chat.defer()`, awaited
@@ -1551,11 +1872,14 @@ async function chatCompact(
       const compactionId = generateMessageId();
       let summary!: string;
 
-      const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+      const { waitUntilComplete } = chatStream.writer({
         spanName: "stream compaction chunks",
         collapsed: true,
         execute: async ({ write, merge }) => {
-          write({ type: "step-start" });
+          // Control chunks aren't part of UIMessageChunk's discriminated
+          // union but flow on the same session.out so subscribers can
+          // intercept them — cast on the way out.
+          write({ type: "step-start" } as unknown as UIMessageChunk);
           write({
             type: "data-compaction",
             id: compactionId,
@@ -1753,7 +2077,7 @@ async function drainSteeringQueue(
       // knows which messages were injected and where in the response.
       if (injected.length > 0) {
         try {
-          const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+          const { waitUntilComplete } = chatStream.writer({
             collapsed: true,
             execute: ({ write }) => {
               write({
@@ -3386,6 +3710,17 @@ function chatAgent<
     ) => {
       locals.set(chatAgentRunContextKey, ctx);
 
+      // Bind the run to its backing Session so every module-level helper
+      // (chat.stream, chat.messages, streams.writer(CHAT_STREAM_KEY, …))
+      // resolves to this chat's `.in` / `.out` channels.
+      //
+      // The transport opens/creates the session with `externalId = chatId`
+      // and threads its friendlyId through `payload.sessionId`. For legacy
+      // transports that predate the migration the field is missing; fall
+      // back to opening by chatId (which the transport uses as externalId).
+      const sessionIdForHandle = payload.sessionId ?? payload.chatId;
+      locals.set(chatSessionHandleKey, sessions.open(sessionIdForHandle));
+
       // Set gen_ai.conversation.id on the run-level span for dashboard context
       const activeSpan = trace.getActiveSpan();
       if (activeSpan) {
@@ -3457,8 +3792,14 @@ function chatAgent<
             try {
               preloadAccessToken = await auth.createPublicToken({
                 scopes: {
-                  read: { runs: currentRunId },
-                  write: { inputStreams: currentRunId },
+                  read: {
+                    runs: currentRunId,
+                    ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                  },
+                  write: {
+                    inputStreams: currentRunId,
+                    ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                  },
                 },
                 expirationTime: chatAccessTokenTTL,
               });
@@ -4031,8 +4372,14 @@ function chatAgent<
                     try {
                       turnAccessToken = await auth.createPublicToken({
                         scopes: {
-                          read: { runs: currentRunId },
-                          write: { inputStreams: currentRunId },
+                          read: {
+                            runs: currentRunId,
+                            ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                          },
+                          write: {
+                            inputStreams: currentRunId,
+                            ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                          },
                         },
                         expirationTime: chatAccessTokenTTL,
                       });
@@ -4443,7 +4790,7 @@ function chatAgent<
                         async (compactionSpan) => {
                           const compactionId = generateMessageId();
 
-                          const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+                          const { waitUntilComplete } = chatStream.writer({
                             spanName: "stream compaction chunks",
                             collapsed: true,
                             execute: async ({ write, merge }) => {
@@ -6635,7 +6982,33 @@ function createChatTriggerAction(
   options?: CreateChatTriggerActionOptions
 ): (params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult> {
   return async (params: TriggerChatTaskParams): Promise<TriggerChatTaskResult> => {
-    const handle = await triggerTaskInternal(taskId, params.payload, {
+    // Create (or upsert) the backing Session first so we can thread its
+    // friendlyId through the run's payload and the PAT's scopes. Using
+    // the server's secret key here means the browser's `accessToken`
+    // doesn't need `write:sessions` — the session lifecycle lives on
+    // the server action side, which is what the `triggerTask` pattern
+    // is for.
+    const chatId = (params.payload as { chatId?: string }).chatId;
+    let sessionId = (params.payload as { sessionId?: string }).sessionId;
+    if (!sessionId) {
+      if (!chatId) {
+        throw new Error(
+          "chat.createTriggerAction: payload.chatId is required so the backing Session can be keyed on externalId."
+        );
+      }
+      const session = await sessions.create({
+        type: "chat.agent",
+        externalId: chatId,
+      });
+      sessionId = session.id;
+    }
+
+    const payloadWithSession = {
+      ...params.payload,
+      sessionId,
+    };
+
+    const handle = await triggerTaskInternal(taskId, payloadWithSession, {
       tags: params.options.tags,
       queue: params.options.queue,
       maxAttempts: params.options.maxAttempts,
@@ -6645,13 +7018,19 @@ function createChatTriggerAction(
 
     const publicAccessToken = await auth.createPublicToken({
       scopes: {
-        read: { runs: handle.id },
-        write: { inputStreams: handle.id },
+        read: {
+          runs: handle.id,
+          sessions: sessionId,
+        },
+        write: {
+          inputStreams: handle.id,
+          sessions: sessionId,
+        },
       },
       expirationTime: options?.tokenTTL ?? "1h",
     });
 
-    return { runId: handle.id, publicAccessToken };
+    return { runId: handle.id, publicAccessToken, sessionId };
   };
 }
 
@@ -6792,14 +7171,16 @@ async function writeTurnCompleteChunk(
   chatId?: string,
   publicAccessToken?: string
 ): Promise<StreamWriteResult> {
-  const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+  const { waitUntilComplete } = chatStream.writer({
     spanName: "turn complete",
     collapsed: true,
     execute: ({ write }) => {
+      // Transport-intercepted control chunk — not a valid UIMessageChunk
+      // type but travels on the same session.out stream.
       write({
         type: "trigger:turn-complete",
         ...(publicAccessToken ? { publicAccessToken } : {}),
-      });
+      } as unknown as UIMessageChunk);
     },
   });
   return await waitUntilComplete();
@@ -6811,13 +7192,13 @@ async function writeTurnCompleteChunk(
  * @internal
  */
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
-  const { waitUntilComplete } = streams.writer(CHAT_STREAM_KEY, {
+  const { waitUntilComplete } = chatStream.writer({
     spanName: "upgrade required",
     collapsed: true,
     execute: ({ write }) => {
       write({
         type: "trigger:upgrade-required",
-      });
+      } as unknown as UIMessageChunk);
     },
   });
   return await waitUntilComplete();

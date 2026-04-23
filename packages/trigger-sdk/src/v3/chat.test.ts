@@ -510,6 +510,7 @@ describe("TriggerChatTransport", () => {
         accessToken: "token",
         sessions: {
           "chat-completed": {
+            sessionId: "session_completed",
             runId: "run_completed",
             publicAccessToken: "pub_token",
             lastEventId: "42",
@@ -554,6 +555,7 @@ describe("TriggerChatTransport", () => {
         baseURL: "https://api.test.trigger.dev",
         sessions: {
           "chat-streaming": {
+            sessionId: "session_streaming",
             runId: "run_streaming",
             publicAccessToken: "pub_token",
             lastEventId: "10",
