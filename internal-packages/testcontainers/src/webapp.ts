@@ -87,14 +87,20 @@ export async function startWebapp(databaseUrl: string): Promise<{
     }
   });
 
+  // Capture spawn errors instead of throwing from inside the listener.
+  // A synchronous throw from an EventEmitter listener bypasses the surrounding
+  // try/catch and surfaces as an uncaughtException, tearing down the test runner.
+  let spawnError: Error | undefined;
   proc.on("error", (err) => {
-    throw new Error(`Failed to start webapp: ${err.message}`);
+    spawnError = err;
   });
 
   const baseUrl = `http://localhost:${port}`;
 
   try {
+    if (spawnError) throw spawnError;
     await waitForHealthcheck(`${baseUrl}/healthcheck`);
+    if (spawnError) throw spawnError;
   } catch (err) {
     proc.kill("SIGTERM");
     const output = [...stdout, ...stderr].join("\n");
@@ -130,17 +136,36 @@ export interface TestServer {
 /** Convenience helper: starts a postgres container + webapp and returns both for testing. */
 export async function startTestServer(): Promise<TestServer> {
   const network = await new Network().start();
-  const { url: databaseUrl, container } = await createPostgresContainer(network);
 
-  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-  const { instance: webapp, stop: stopWebapp } = await startWebapp(databaseUrl);
+  // Track each resource as we acquire it so we can tear it down if a later step fails.
+  // Without this, a healthcheck timeout in startWebapp() would leak the postgres
+  // container, network, and PrismaClient connection indefinitely.
+  let container: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let prisma: PrismaClient | undefined;
+  let stopWebapp: (() => Promise<void>) | undefined;
+  let webapp: WebappInstance;
+
+  try {
+    const pg = await createPostgresContainer(network);
+    container = pg.container;
+    prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
+    const started = await startWebapp(pg.url);
+    webapp = started.instance;
+    stopWebapp = started.stop;
+  } catch (err) {
+    await stopWebapp?.().catch(() => {});
+    await prisma?.$disconnect().catch(() => {});
+    await container?.stop().catch(() => {});
+    await network.stop().catch(() => {});
+    throw err;
+  }
 
   const stop = async () => {
-    await stopWebapp();
-    await prisma.$disconnect();
-    await container.stop();
+    await stopWebapp!();
+    await prisma!.$disconnect();
+    await container!.stop();
     await network.stop();
   };
 
-  return { webapp, prisma, stop };
+  return { webapp, prisma: prisma!, stop };
 }
