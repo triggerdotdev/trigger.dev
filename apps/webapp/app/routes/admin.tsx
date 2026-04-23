@@ -44,6 +44,11 @@ export default function Page() {
               label: "Notifications",
               to: "/admin/notifications",
             },
+            {
+              label: "Back office",
+              to: "/admin/back-office",
+              end: false,
+            },
           ]}
           layoutId={"admin"}
         />
