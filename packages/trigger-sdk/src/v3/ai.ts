@@ -2687,7 +2687,6 @@ async function pipeChat(
   options?: PipeChatOptions
 ): Promise<void> {
   locals.set(chatPipeCountKey, (locals.get(chatPipeCountKey) ?? 0) + 1);
-  const streamKey = options?.streamKey ?? CHAT_STREAM_KEY;
 
   let stream: AsyncIterable<unknown> | ReadableStream<unknown>;
 
@@ -2702,18 +2701,27 @@ async function pipeChat(
     );
   }
 
-  const pipeOptions: PipeStreamOptions = {};
+  const pipeOptions: SessionPipeStreamOptions = {};
   if (options?.signal) {
     pipeOptions.signal = options.signal;
-  }
-  if (options?.target) {
-    pipeOptions.target = options.target;
   }
   if (options?.spanName) {
     pipeOptions.spanName = options.spanName;
   }
+  // `options.target` / `options.streamKey` are accepted for API parity
+  // with the pre-migration run-scoped pipe but no longer have meaning —
+  // sessions are the address (single stream per session, no sub-run
+  // targeting). Sub-agents that need to write into a parent's chat now
+  // open that session explicitly via `sessions.open(parentSessionId).out.pipe`.
 
-  const { waitUntilComplete } = streams.pipe(streamKey, stream, pipeOptions);
+  // The generic is typed for `UIMessageChunk`, but `pipeChat` also
+  // accepts opaque UIMessageStreamable / raw iterables whose element
+  // type we don't know at compile time. Cast — runtime behaviour is
+  // identical (bytes go to session.out either way).
+  const { waitUntilComplete } = chatStream.pipe(
+    stream as ReadableStream<UIMessageChunk> | AsyncIterable<UIMessageChunk>,
+    pipeOptions
+  );
   await waitUntilComplete();
 }
 
