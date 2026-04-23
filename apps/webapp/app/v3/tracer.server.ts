@@ -307,7 +307,7 @@ function setupTelemetry() {
     }),
   ];
 
-  if (env.DISABLE_HTTP_INSTRUMENTATION !== "true") {
+  if (!env.DISABLE_HTTP_INSTRUMENTATION) {
     instrumentations.unshift(new HttpInstrumentation(), new ExpressInstrumentation());
   }
 

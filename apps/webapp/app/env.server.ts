@@ -438,7 +438,7 @@ const EnvironmentSchema = z
     INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
     INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
     INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
-    DISABLE_HTTP_INSTRUMENTATION: z.string().default("false"),
+    DISABLE_HTTP_INSTRUMENTATION: BoolEnv.default(false),
 
     INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
