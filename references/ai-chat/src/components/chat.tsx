@@ -7,7 +7,15 @@ import {
 } from "ai";
 import type { ChatUiMessage } from "@/lib/chat-tools";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import type { CompactionChunkData } from "@trigger.dev/sdk/ai";
+
+// Structural type mirroring @trigger.dev/sdk/ai's CompactionChunkData.
+// Importing from the `ai` subpath drags the full chat.agent module —
+// including skills' `node:child_process` import — into the client
+// bundle. Keeping this inline is a type-only dependency.
+type CompactionChunkData = {
+  status: "compacting" | "compacted";
+  totalTokens?: number;
+};
 import { usePendingMessages, useMultiTabChat } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
@@ -190,7 +198,7 @@ function DebugPanel({
   chatId: string;
   model: string;
   status: string;
-  session?: { runId: string; publicAccessToken: string; lastEventId?: string };
+  session?: { sessionId?: string; runId?: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
   dashboardUrl?: string;
   messageCount: number;
   ttfbHistory: TtfbEntry[];
@@ -307,7 +315,7 @@ type ChatProps = {
   model: string;
   isNewChat: boolean;
   onModelChange?: (model: string) => void;
-  session?: { runId: string; publicAccessToken: string; lastEventId?: string };
+  session?: { sessionId?: string; runId?: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
   dashboardUrl?: string;
   onFirstMessage?: (chatId: string, text: string) => void;
   onMessagesChange?: (chatId: string, messages: ChatUiMessage[]) => void;
@@ -446,7 +454,66 @@ export function Chat({
   };
 
   useEffect(() => {
+    // ── Test bridge ──────────────────────────────────────────────────
+    //
+    // Exposes `window.__chat` so an automated driver (Chrome DevTools
+    // MCP, Playwright, etc.) can exercise the chat end-to-end without
+    // clicking buttons. The bridge is mounted only when this component
+    // is alive — unmount clears `window.__chat`, so each chat page owns
+    // the namespace.
+    //
+    // Bridge surface groups:
+    //
+    // - **State accessors** (always fresh via refs): `status`, `messages`,
+    //   `pending`, `chatId`, plus the full `session` object (sessionId,
+    //   runId, lastEventId, isStreaming) and its convenience unwraps
+    //   `sessionId` / `runId` / `lastEventId`.
+    // - **Actions**: `send`, `stop`, `steer`, `queue`, `promote`, and
+    //   `setMessages` so scripts can inject fixture state for
+    //   refresh-replay tests. `stop` calls both `transport.stopGeneration`
+    //   and `aiStop()` — same surface the UI's Stop button uses.
+    // - **Waiters** — resolve a Promise when an async condition holds:
+    //   `waitForStatus(target, timeoutMs)`,
+    //   `waitForMessage(predicate, timeoutMs)`,
+    //   `waitForFirstAssistantText(timeoutMs)` (convenience — resolves
+    //   once any assistant message has a non-empty text part),
+    //   `steerOnToolCall(text)`. Default timeout 30s; rejects on timeout.
+    // - **Scripted helpers** (`steerAfterDelay`, `queueAfterDelay`) for
+    //   fire-at-time side effects.
+    //
+    // Waiters poll at 50ms. That's tight enough for text-delta races
+    // and light enough that the React tree doesn't feel it.
+    const POLL_MS = 50;
+    const DEFAULT_TIMEOUT_MS = 30_000;
+
+    const waitFor = <T,>(
+      check: () => T | false | null | undefined,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
+      label = "condition"
+    ): Promise<T> =>
+      new Promise((resolve, reject) => {
+        const start = Date.now();
+        const immediate = check();
+        if (immediate) {
+          resolve(immediate as T);
+          return;
+        }
+        const interval = setInterval(() => {
+          const got = check();
+          if (got) {
+            clearInterval(interval);
+            resolve(got as T);
+            return;
+          }
+          if (Date.now() - start > timeoutMs) {
+            clearInterval(interval);
+            reject(new Error(`__chat: timed out after ${timeoutMs}ms waiting for ${label}`));
+          }
+        }, POLL_MS);
+      });
+
     (window as any).__chat = {
+      // ── State ─────────────────────────────────────────────────────
       get status() {
         return stateRef.current.status;
       },
@@ -456,47 +523,76 @@ export function Chat({
       get pending() {
         return stateRef.current.pending;
       },
+      get session() {
+        // Live session state from the transport (sessionId, runId,
+        // lastEventId, isStreaming). Falls back to the SSR-supplied
+        // session for runs the transport hasn't observed yet.
+        return transport.getSession(chatId) ?? session ?? null;
+      },
+      get sessionId() {
+        return transport.getSession(chatId)?.sessionId ?? null;
+      },
       get runId() {
         return transport.getSession(chatId)?.runId ?? session?.runId ?? null;
       },
+      get lastEventId() {
+        return transport.getSession(chatId)?.lastEventId ?? null;
+      },
       chatId,
+
+      // ── Actions ───────────────────────────────────────────────────
       steer: (text: string) => actionsRef.current.steer(text),
       queue: (text: string) => actionsRef.current.queue(text),
       promote: (id: string) => actionsRef.current.promote(id),
       send: (text: string) => actionsRef.current.send(text),
       stop: () => actionsRef.current.stop(),
-      // Wait for a tool call to appear, then steer
-      steerOnToolCall: (text: string) =>
-        new Promise<void>((resolve) => {
-          const check = setInterval(() => {
-            const { messages: msgs } = stateRef.current;
-            const lastMsg = msgs[msgs.length - 1];
+
+      // ── Waiters ───────────────────────────────────────────────────
+      waitForStatus: (target: string, timeoutMs = DEFAULT_TIMEOUT_MS) =>
+        waitFor(
+          () => (stateRef.current.status === target ? (true as const) : false),
+          timeoutMs,
+          `status === "${target}" (current: "${stateRef.current.status}")`
+        ),
+      waitForMessage: <M = any,>(
+        predicate: (m: any, all: any[]) => boolean,
+        timeoutMs = DEFAULT_TIMEOUT_MS
+      ): Promise<M> =>
+        waitFor(
+          () => stateRef.current.messages.find((m) => predicate(m, stateRef.current.messages)) as M | undefined,
+          timeoutMs,
+          "matching message"
+        ),
+      waitForFirstAssistantText: (timeoutMs = DEFAULT_TIMEOUT_MS) =>
+        waitFor(
+          () => {
+            const assistant = stateRef.current.messages.find((m) => m.role === "assistant");
+            if (!assistant) return false;
+            const text = (assistant.parts ?? [])
+              .filter((p: any) => p.type === "text" && typeof p.text === "string" && p.text.length > 0)
+              .map((p: any) => p.text)
+              .join("");
+            return text.length > 0 ? { id: assistant.id, text } : false;
+          },
+          timeoutMs,
+          "first assistant text"
+        ),
+      steerOnToolCall: (text: string, timeoutMs = DEFAULT_TIMEOUT_MS) =>
+        waitFor(
+          () => {
+            const lastMsg = stateRef.current.messages[stateRef.current.messages.length - 1];
             const hasTool =
               lastMsg?.role === "assistant" &&
-              lastMsg.parts?.some(
-                (p: any) => p.type?.startsWith("tool-")
-              );
-            if (hasTool) {
-              clearInterval(check);
-              console.log(
-                "[__chat] steerOnToolCall: tool detected, steering now. status:",
-                stateRef.current.status
-              );
-              actionsRef.current.steer(text);
-              resolve();
-            }
-          }, 200);
-        }),
-      // Wait for status to become a value
-      waitForStatus: (target: string) =>
-        new Promise<void>((resolve) => {
-          const check = setInterval(() => {
-            if (stateRef.current.status === target) {
-              clearInterval(check);
-              resolve();
-            }
-          }, 100);
-        }),
+              lastMsg.parts?.some((p: any) => p.type?.startsWith("tool-"));
+            if (!hasTool) return false;
+            actionsRef.current.steer(text);
+            return true as const;
+          },
+          timeoutMs,
+          "tool call"
+        ),
+
+      // ── Scripted helpers ─────────────────────────────────────────
       steerAfterDelay: (text: string, ms: number) =>
         new Promise<void>((r) =>
           setTimeout(() => {
