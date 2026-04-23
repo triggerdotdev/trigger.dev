@@ -808,6 +808,7 @@ describe("TriggerChatTransport", () => {
       expect(renewSpy).toHaveBeenCalledWith({
         chatId: "chat-renew-sse",
         runId: "run_renew_sse",
+        sessionId: DEFAULT_SESSION_ID,
       });
 
       const patStreamCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find(
@@ -893,6 +894,7 @@ describe("TriggerChatTransport", () => {
       expect(renewSpy).toHaveBeenCalledWith({
         chatId: "chat-fail-renew",
         runId: "run_fail_renew",
+        sessionId: DEFAULT_SESSION_ID,
       });
     });
 
@@ -975,6 +977,7 @@ describe("TriggerChatTransport", () => {
       expect(renewSpy).toHaveBeenCalledWith({
         chatId: "chat-first",
         runId: "run_input_renew",
+        sessionId: DEFAULT_SESSION_ID,
       });
       expect(inputCalls).toBe(2);
     });

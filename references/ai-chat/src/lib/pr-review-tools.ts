@@ -6,7 +6,6 @@ import { z } from "zod";
 import { resolve } from "node:path";
 import { readFile as fsReadFile } from "node:fs/promises";
 import { git, githubApi } from "@/lib/pr-review-helpers";
-import { runInPRReviewSandbox } from "@/lib/pr-review-sandbox";
 
 // #region Repo context — shared across tools, survives snapshot/restore
 export const repo = chat.local<{
@@ -183,93 +182,8 @@ export const readFile = tool({
 });
 // #endregion
 
-// #region Tool: Execute Code
-export const executeCode = tool({
-  description:
-    "Run JavaScript code in an isolated V8 sandbox to verify claims about the code. " +
-    "Use this to PROVE claims (e.g., test a regex, validate parsing logic, check edge cases) " +
-    "before including them in your review. The sandbox has filesystem and network access. " +
-    "The repo is cloned at the provided cwd path — use it for absolute file paths. " +
-    "Assign results to module.exports.",
-  inputSchema: z.object({
-    code: z
-      .string()
-      .describe(
-        "JavaScript code to execute. Assign results to module.exports."
-      ),
-    description: z
-      .string()
-      .describe("Brief description of what this code is testing/verifying"),
-  }),
-  execute: async ({ code, description }) => {
-    const { cwd } = repo;
-
-    const result = await runInPRReviewSandbox(cwd, async (runtime) => {
-      const execResult = await runtime.run<unknown>(code);
-
-      if (execResult.code !== 0) {
-        return {
-          description,
-          success: false as const,
-          error: execResult.errorMessage ?? `Exit code ${execResult.code}`,
-        };
-      }
-
-      return {
-        description,
-        success: true as const,
-        // Sanitize the sandbox's `module.exports` so the value matches the
-        // strict JSON shape that AI SDK's `jsonValueSchema` accepts. Raw JS
-        // can produce `Infinity`, `NaN`, `undefined`, `BigInt`, etc., none
-        // of which survive Zod v4's `z.number()` (which rejects non-finite
-        // numbers). The full message history is re-validated at the start
-        // of every subsequent `streamText` call, so an unsanitized value
-        // here would crash the agent on the *next* turn even though the
-        // current turn appears to succeed.
-        result: toJsonValue(execResult.exports),
-      };
-    });
-
-    // runInPRReviewSandbox returns { error } on catch
-    if (result && typeof result === "object" && "error" in result && !("success" in result)) {
-      return { description, success: false, error: result.error };
-    }
-
-    return result;
-  },
-});
-
-/**
- * Coerce arbitrary JS to a value compatible with AI SDK's `jsonValueSchema`
- * (`null | string | number | boolean | object | array`, where `number` must
- * be finite).
- *
- * Uses `JSON.parse(JSON.stringify(...))` with a replacer so non-finite
- * numbers become `null` (matching `JSON.stringify`'s default loss for
- * `NaN`/`Infinity` when encountered as object values), `BigInt` is
- * stringified, and `undefined` / functions are dropped — same coercions
- * `JSON.stringify` already applies, but called explicitly so the result
- * is a plain JSON value tree the SDK can re-validate on later turns.
- */
-function toJsonValue(value: unknown): unknown {
-  try {
-    return JSON.parse(
-      JSON.stringify(value, (_key, v) => {
-        if (typeof v === "number" && !Number.isFinite(v)) return null;
-        if (typeof v === "bigint") return v.toString();
-        return v;
-      })
-    );
-  } catch {
-    // Circular references or other JSON.stringify failures — fall back to a
-    // descriptive placeholder so the tool result is still valid JSON.
-    return { error: "Result was not JSON-serializable" };
-  }
-}
-// #endregion
-
 // #region Exports
-export const prReviewTools = { fetchPR, readFile, executeCode };
+export const prReviewTools = { fetchPR, readFile };
 
 type PRReviewToolSet = typeof prReviewTools;
 export type PRReviewUiTools = InferUITools<PRReviewToolSet>;

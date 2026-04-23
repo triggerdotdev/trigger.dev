@@ -56,6 +56,15 @@ export type RenewRunAccessTokenParams = {
   chatId: string;
   /** The durable Trigger.dev run backing this chat session. */
   runId: string;
+  /**
+   * The durable Session friendlyId backing this chat. Present whenever
+   * the transport has observed a session for the chat (i.e. after the
+   * first trigger). Servers should mint tokens with both `read:runs:{runId}`
+   * + `write:inputStreams:{runId}` AND `read:sessions:{sessionId}` +
+   * `write:sessions:{sessionId}` so the PAT covers the run's live input
+   * stream AND the Session's `.in` / `.out` channels.
+   */
+  sessionId?: string;
 };
 
 /**
@@ -1158,7 +1167,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (pending) return pending;
 
     const doPreload = async () => {
-      const state = await this.ensureSession(chatId);
+      // Matches sendMessages: on the `triggerTask` callback path, the
+      // server action (e.g. `chat.createTriggerAction`) creates the
+      // Session with its secret key and returns `sessionId` alongside
+      // the run PAT — the browser never needs `write:sessions` itself.
+      // On the direct `accessToken` path, do the lazy upsert here so
+      // `payload.sessionId` is populated before the run starts.
+      let state: ChatSessionState | undefined = this.sessions.get(chatId);
+      if (!state?.sessionId && !this.triggerTaskFn) {
+        state = await this.ensureSession(chatId);
+      }
 
       const mergedMetadata =
         this.defaultMetadata || options?.metadata
@@ -1168,7 +1186,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       const payload = {
         messages: [] as never[],
         chatId,
-        sessionId: state.sessionId,
+        ...(state?.sessionId ? { sessionId: state.sessionId } : {}),
         trigger: "preload" as const,
         metadata: mergedMetadata,
         ...(options?.idleTimeoutInSeconds !== undefined
@@ -1176,12 +1194,28 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           : {}),
       };
 
-      const { runId, publicAccessToken } = await this.triggerNewRun(chatId, payload, "preload");
+      const result = await this.triggerNewRun(chatId, payload, "preload");
 
-      state.runId = runId;
-      state.publicAccessToken = publicAccessToken;
-      this.sessions.set(chatId, state);
-      this.notifySessionChange(chatId, state);
+      // The server action's result carries the `sessionId` it created
+      // for the triggerTask callback path; adopt it here.
+      const adoptedSessionId = result.sessionId ?? state?.sessionId;
+      if (!adoptedSessionId) {
+        // Neither path surfaced a sessionId — the server action is
+        // misconfigured. Keep the preload run but don't notify; the
+        // first sendMessage will recover via its own ensureSession.
+        return;
+      }
+
+      const nextState: ChatSessionState = {
+        sessionId: adoptedSessionId,
+        runId: result.runId,
+        publicAccessToken: result.publicAccessToken,
+        lastEventId: state?.lastEventId,
+        isStreaming: state?.isStreaming,
+        skipToTurnComplete: state?.skipToTurnComplete,
+      };
+      this.sessions.set(chatId, nextState);
+      this.notifySessionChange(chatId, nextState);
     };
 
     const promise = doPreload().finally(() => {
@@ -1279,7 +1313,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
 
     try {
-      const token = await renew({ chatId, runId });
+      const sessionId = this.sessions.get(chatId)?.sessionId;
+      const token = await renew({ chatId, runId, sessionId });
       if (typeof token !== "string" || token.length === 0) {
         return undefined;
       }

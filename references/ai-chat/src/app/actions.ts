@@ -49,20 +49,34 @@ export const triggerChat = chat.createTriggerAction("ai-chat", {
 });
 
 /**
- * Mint a fresh run-scoped PAT for an existing chat run (same scopes as the task’s turn token).
- * Used by TriggerChatTransport when the stored PAT expires (401 on realtime / input stream).
- * Persists `publicAccessToken` (and `runId`) on `ChatSession` for this `chatId`.
- * Requires TRIGGER_SECRET_KEY (or configured secret) in the server environment.
+ * Mint a fresh PAT for an existing chat (same scopes as the task's turn
+ * token). Used by TriggerChatTransport when the stored PAT expires (401
+ * on realtime / input stream). Persists `publicAccessToken` (and
+ * `runId`) on `ChatSession` for this `chatId`. Requires
+ * TRIGGER_SECRET_KEY (or configured secret) in the server environment.
+ *
+ * Scopes match the initial `chat.createTriggerAction` mint so the PAT
+ * stays valid against both run-scoped endpoints (run PAT renewal, input
+ * streams) and session-scoped endpoints (`/realtime/v1/sessions/…/in` +
+ * `/realtime/v1/sessions/…/out`). Without the session scopes, the
+ * renewed token 401s on the session append path the transport uses.
  */
 export async function renewRunAccessTokenForChat(
   chatId: string,
-  runId: string
+  runId: string,
+  sessionId?: string
 ): Promise<string | undefined> {
   try {
     const token = await auth.createPublicToken({
       scopes: {
-        read: { runs: runId },
-        write: { inputStreams: runId },
+        read: {
+          runs: runId,
+          ...(sessionId ? { sessions: sessionId } : {}),
+        },
+        write: {
+          inputStreams: runId,
+          ...(sessionId ? { sessions: sessionId } : {}),
+        },
       },
       expirationTime: CHAT_EXAMPLE_PAT_TTL,
     });
