@@ -717,6 +717,9 @@ function configureNodejsMetrics({ meter }: { meter: Meter }) {
       currentEventLoopUtilization,
       lastEventLoopUtilization
     );
+    // Rotate the baseline so the next collection reports per-interval
+    // utilization rather than the cumulative average from process start.
+    lastEventLoopUtilization = currentEventLoopUtilization;
 
     // diff.utilization is between 0 and 1 (fraction of time "active")
     const utilization = Number.isFinite(diff.utilization) ? diff.utilization : 0;
