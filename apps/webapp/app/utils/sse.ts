@@ -66,6 +66,12 @@ export function createSSELoader(options: SSEOptions) {
             }
             log(`Error sending event: ${error.message}`);
           }
+          // Abort before rethrowing so timer + request-abort listener are cleaned
+          // up immediately. Otherwise a send-failure in initStream leaves them
+          // alive until `timeout` fires.
+          if (!internalController.signal.aborted) {
+            internalController.abort();
+          }
           throw error;
         }
       };
@@ -104,7 +110,6 @@ export function createSSELoader(options: SSEOptions) {
       log("request signal aborted");
       if (!internalController.signal.aborted) internalController.abort();
     };
-    requestAbortSignal.addEventListener("abort", onRequestAbort, { once: true });
 
     internalController.signal.addEventListener(
       "abort",
@@ -114,6 +119,15 @@ export function createSSELoader(options: SSEOptions) {
       },
       { once: true }
     );
+
+    // The request could have been aborted during `await handler(context)` above.
+    // AbortSignal listeners added after the signal is already aborted never fire,
+    // so invoke cleanup synchronously in that case instead of waiting for `timeout`.
+    if (requestAbortSignal.aborted) {
+      onRequestAbort();
+    } else {
+      requestAbortSignal.addEventListener("abort", onRequestAbort, { once: true });
+    }
 
     if (handlers.beforeStream) {
       const shouldContinue = await handlers.beforeStream();
