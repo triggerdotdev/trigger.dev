@@ -167,6 +167,9 @@ jobs:
     name: 🧭 Publish Helm chart
     needs: [release, publish-docker]
     if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: write
+      packages: write
     uses: ./.github/workflows/release-helm.yml
     secrets: inherit
     with:
