@@ -90,6 +90,8 @@ const { action } = createActionApiRoute(
     body: CreateSessionRequestBody,
     method: "POST",
     maxContentLength: 1024 * 32, // 32KB — metadata is the only thing that grows
+    allowJWT: true,
+    corsStrategy: "all",
   },
   async ({ authentication, body }) => {
     try {

@@ -27,7 +27,7 @@ const ParamsSchema = z.object({
 // below S2's ceiling. See https://s2.dev/docs/limits.
 const MAX_APPEND_BODY_BYTES = 1024 * 512;
 
-const { action } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
@@ -125,4 +125,4 @@ const { action } = createActionApiRoute(
   }
 );
 
-export { action };
+export { action, loader };
