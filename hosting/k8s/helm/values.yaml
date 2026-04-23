@@ -208,6 +208,13 @@ webapp:
   runReplication:
     logLevel: "info" # one of: log, error, warn, info, debug
 
+  # ServiceAccount configuration
+  serviceAccount:
+    create: true
+    name: ""
+    # Annotations to add to the ServiceAccount (e.g. eks.amazonaws.com/role-arn for IRSA)
+    annotations: {}
+
   # Observability configuration (OTel)
   observability:
     tracing:

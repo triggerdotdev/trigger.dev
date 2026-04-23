@@ -532,6 +532,17 @@ Create the name of the supervisor service account to use
 {{- end }}
 
 {{/*
+Create the name of the webapp service account to use
+*/}}
+{{- define "trigger-v4.webappServiceAccountName" -}}
+{{- if .Values.webapp.serviceAccount.create }}
+{{- default (printf "%s-webapp" (include "trigger-v4.fullname" .)) .Values.webapp.serviceAccount.name }}
+{{- else }}
+{{- default "default" .Values.webapp.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create the name of the supervisor role to use
 */}}
 {{- define "trigger-v4.supervisorRoleName" -}}
