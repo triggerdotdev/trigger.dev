@@ -1,14 +1,8 @@
 import { z } from "zod";
 import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
-import {
-  CHAT_STREAM_KEY,
-  CHAT_MESSAGES_STREAM_ID,
-  CHAT_STOP_STREAM_ID,
-} from "@trigger.dev/core/v3/chat-client";
 import { toolsMetadata } from "../config.js";
 import { CommonProjectsInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
-import type { McpContext } from "../context.js";
 
 // ─── In-memory chat sessions ──────────────────────────────────────
 
@@ -19,6 +13,9 @@ type ChatMessage = {
 };
 
 type ChatSession = {
+  /** `session_*` friendlyId — durable identity for the conversation. */
+  sessionId: string;
+  /** Last-known live run id. Cleared when a run ends. */
   runId: string;
   chatId: string;
   agentId: string;
@@ -30,6 +27,24 @@ type ChatSession = {
 };
 
 const activeSessions = new Map<string, ChatSession>();
+
+// ─── ChatInputChunk serialization (mirrors TriggerChatTransport) ──
+
+type ChatInputChunk =
+  | {
+      kind: "message";
+      payload: {
+        messages: ChatMessage[];
+        chatId: string;
+        trigger: "submit-message" | "close" | "preload" | "regenerate-message" | "action";
+        metadata?: unknown;
+      };
+    }
+  | { kind: "stop"; message?: string };
+
+function serializeInputChunk(chunk: ChatInputChunk): string {
+  return JSON.stringify(chunk);
+}
 
 // ─── Start Agent Chat ─────────────────────────────────────────────
 
@@ -75,7 +90,12 @@ export const startAgentChatTool = {
     const apiClient = await ctx.getApiClient({
       projectRef,
       environment: input.environment,
-      scopes: ["write:tasks", "read:runs", "write:inputStreams"],
+      scopes: [
+        "write:tasks",
+        "read:runs",
+        "read:sessions",
+        "write:sessions",
+      ],
       branch: input.branch,
     });
 
@@ -93,11 +113,20 @@ export const startAgentChatTool = {
       };
     }
 
+    // Create (or upsert) the backing Session. Idempotent via externalId —
+    // two MCP clients targeting the same chatId converge to the same row.
+    const session = await apiClient.createSession({
+      type: "chat.agent",
+      externalId: chatId,
+    });
+
     if (input.preload) {
-      // Trigger a preload run
+      // Trigger a preload run. The agent opens the session via
+      // `sessions.open(payload.sessionId)` on startup.
       const payload = {
         messages: [],
         chatId,
+        sessionId: session.id,
         trigger: "preload",
         metadata: input.clientData,
       };
@@ -111,6 +140,7 @@ export const startAgentChatTool = {
       });
 
       activeSessions.set(chatId, {
+        sessionId: session.id,
         runId: result.id,
         chatId,
         agentId: input.agentId,
@@ -126,6 +156,7 @@ export const startAgentChatTool = {
             text: [
               `Agent chat started and preloaded.`,
               `- Chat ID: ${chatId}`,
+              `- Session ID: ${session.id}`,
               `- Agent: ${input.agentId}`,
               `- Run ID: ${result.id}`,
               ``,
@@ -136,8 +167,9 @@ export const startAgentChatTool = {
       };
     }
 
-    // No preload — just register the session, first sendMessage will trigger
+    // No preload — register the session, first sendMessage will trigger.
     activeSessions.set(chatId, {
+      sessionId: session.id,
       runId: "",
       chatId,
       agentId: input.agentId,
@@ -153,6 +185,7 @@ export const startAgentChatTool = {
           text: [
             `Agent chat created (not yet preloaded).`,
             `- Chat ID: ${chatId}`,
+            `- Session ID: ${session.id}`,
             `- Agent: ${input.agentId}`,
             ``,
             `Use send_agent_message with chatId "${chatId}" to send the first message (this will trigger the run).`,
@@ -193,27 +226,29 @@ export const sendAgentMessageTool = {
     // Track the outgoing user message
     session.messages.push(userMessage);
 
-    const messagePayload = {
+    const wirePayload = {
       messages: [userMessage],
       chatId: session.chatId,
-      trigger: "submit-message",
+      trigger: "submit-message" as const,
       metadata: session.clientData,
     };
 
-    // If we have an active run, send via input stream
+    // If we have an active run, send via session.in. If that fails
+    // (run ended, token expired, etc.) fall back to triggering a new
+    // run on the same session with the full history.
     if (session.runId) {
       try {
-        await session.apiClient.sendInputStream(
-          session.runId,
-          CHAT_MESSAGES_STREAM_ID,
-          messagePayload
+        await session.apiClient.appendToSessionStream(
+          session.sessionId,
+          "in",
+          serializeInputChunk({ kind: "message", payload: wirePayload })
         );
       } catch (sendErr: any) {
-        // Run may have ended — trigger a new one with full history
         const result = await session.apiClient.triggerTask(session.agentId, {
           payload: {
             messages: session.messages,
             chatId: session.chatId,
+            sessionId: session.sessionId,
             trigger: "submit-message",
             metadata: session.clientData,
             continuation: true,
@@ -228,9 +263,12 @@ export const sendAgentMessageTool = {
         session.lastEventId = undefined;
       }
     } else {
-      // No run yet — trigger one
+      // No run yet — trigger one (agent opens the session on startup).
       const result = await session.apiClient.triggerTask(session.agentId, {
-        payload: messagePayload,
+        payload: {
+          ...wirePayload,
+          sessionId: session.sessionId,
+        },
         options: {
           payloadType: "application/json",
           tags: [`chat:${session.chatId}`],
@@ -277,14 +315,17 @@ export const closeAgentChatTool = {
 
     if (session.runId) {
       try {
-        await session.apiClient.sendInputStream(
-          session.runId,
-          CHAT_MESSAGES_STREAM_ID,
-          {
-            messages: [],
-            chatId: session.chatId,
-            trigger: "close",
-          }
+        await session.apiClient.appendToSessionStream(
+          session.sessionId,
+          "in",
+          serializeInputChunk({
+            kind: "message",
+            payload: {
+              messages: [],
+              chatId: session.chatId,
+              trigger: "close",
+            },
+          })
         );
       } catch {
         // Best effort — run may already be done
@@ -310,7 +351,7 @@ async function collectAgentResponse(
   session: ChatSession
 ): Promise<{ text: string; toolCalls: string[]; assistantMessage: ChatMessage }> {
   const baseURL = session.apiClient.baseUrl;
-  const streamUrl = `${baseURL}/realtime/v1/streams/${session.runId}/${CHAT_STREAM_KEY}`;
+  const streamUrl = `${baseURL}/realtime/v1/sessions/${encodeURIComponent(session.sessionId)}/out`;
 
   const subscription = new SSEStreamSubscription(streamUrl, {
     headers: {
@@ -340,6 +381,8 @@ async function collectAgentResponse(
         session.lastEventId = value.id;
       }
 
+      // v2 (session) SSE already parses record.body.data, so `chunk` is
+      // the UIMessageChunk object written by the agent.
       if (value.chunk != null && typeof value.chunk === "object") {
         const chunk = value.chunk as Record<string, unknown>;
 
@@ -348,12 +391,14 @@ async function collectAgentResponse(
         }
 
         if (chunk.type === "trigger:upgrade-required") {
-          // Agent requested upgrade — trigger continuation with full history
+          // Agent requested upgrade — trigger continuation with full history.
+          // Same session, new run — reuse sessionId, swap runId.
           const previousRunId = session.runId;
           const result = await session.apiClient.triggerTask(session.agentId, {
             payload: {
               messages: session.messages,
               chatId: session.chatId,
+              sessionId: session.sessionId,
               trigger: "submit-message",
               metadata: session.clientData,
               continuation: true,
@@ -367,7 +412,7 @@ async function collectAgentResponse(
           session.runId = result.id;
           session.lastEventId = undefined;
           reader.releaseLock();
-          // Recurse — subscribe to the new run's stream
+          // Recurse — subscribe to the new run's stream (same session.out URL)
           return collectAgentResponse(session);
         }
 
