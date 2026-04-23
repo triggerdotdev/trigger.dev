@@ -18,7 +18,7 @@ import { StartedClickHouseContainer } from "./clickhouse";
 import { StartedMinIOContainer, type MinIOConnectionConfig } from "./minio";
 import { ClickHouseClient, createClient } from "@clickhouse/client";
 
-export { assertNonNullable } from "./utils";
+export { assertNonNullable, createPostgresContainer } from "./utils";
 export { logCleanup };
 export type { MinIOConnectionConfig };
 
