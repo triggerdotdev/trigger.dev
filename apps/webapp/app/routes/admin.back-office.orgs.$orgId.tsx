@@ -78,9 +78,23 @@ function describeRateLimit(
   maxTokens: number
 ): { sustained: string; burst: string } | null {
   if (refillRate <= 0 || intervalMs <= 0 || maxTokens <= 0) return null;
-  const perMin = Math.round((refillRate * 60_000) / intervalMs);
+  const perMin = (refillRate * 60_000) / intervalMs;
+  let sustained: string;
+  if (perMin >= 1) {
+    sustained = `${Math.round(perMin).toLocaleString()} requests per minute`;
+  } else {
+    const perHour = perMin * 60;
+    if (perHour >= 1) {
+      sustained = `${Math.round(perHour).toLocaleString()} requests per hour`;
+    } else {
+      const perDay = perHour * 24;
+      const formatted =
+        perDay >= 10 ? Math.round(perDay).toLocaleString() : perDay.toFixed(1);
+      sustained = `${formatted} requests per day`;
+    }
+  }
   return {
-    sustained: `${perMin.toLocaleString()} requests per minute`,
+    sustained,
     burst: `${maxTokens.toLocaleString()} request burst allowance`,
   };
 }
