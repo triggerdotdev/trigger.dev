@@ -11,6 +11,7 @@ import type { TestServer } from "@internal/testcontainers/webapp";
 import { startTestServer } from "@internal/testcontainers/webapp";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
+import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
 
 vi.setConfig({ testTimeout: 180_000 });
 
@@ -129,6 +130,144 @@ describe("RBAC plugin — fallback wiring", () => {
   it("unauthenticated dashboard route redirects to /login via the OSS fallback", async () => {
     const res = await server.webapp.fetch("/admin/concurrency", { redirect: "manual" });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/login");
+    const location = res.headers.get("location") ?? "";
+    expect(new URL(location, "http://placeholder").pathname).toBe("/login");
+  });
+});
+
+// Covers createActionApiRoute's bearer auth path. The target route is
+// POST /api/v1/idempotencyKeys/:key/reset — allowJWT: true, superScopes: ["write:runs", "admin"].
+// Tests assert HTTP-observable behavior so they remain valid after TRI-8719 swaps
+// authenticateApiRequestWithFailure for rbac.authenticateBearer.
+describe("API bearer auth — action requests", () => {
+  const targetPath = "/api/v1/idempotencyKeys/does-not-exist/reset";
+
+  it("valid API key: auth passes (body validation fails, not 401/403)", async () => {
+    const { apiKey } = await seedTestEnvironment(server.prisma);
+    const res = await server.webapp.fetch(targetPath, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({}), // missing taskIdentifier → zod validation error
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+
+  it("missing Authorization header: 401", async () => {
+    const res = await server.webapp.fetch(targetPath, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ taskIdentifier: "noop" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("invalid API key: 401", async () => {
+    const res = await server.webapp.fetch(targetPath, {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer tr_dev_completely_invalid_key_xyz_not_real",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ taskIdentifier: "noop" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+});
+
+describe("JWT bearer auth — action requests", () => {
+  const targetPath = "/api/v1/idempotencyKeys/does-not-exist/reset";
+
+  it("JWT with matching scope: auth passes", async () => {
+    const { environment } = await seedTestEnvironment(server.prisma);
+    const jwt = await generateTestJWT(environment, { scopes: ["write:runs"] });
+    const res = await server.webapp.fetch(targetPath, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+
+  it("JWT with wrong scope (read-only) on write route: 403", async () => {
+    const { environment } = await seedTestEnvironment(server.prisma);
+    const jwt = await generateTestJWT(environment, { scopes: ["read:runs"] });
+    const res = await server.webapp.fetch(targetPath, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "content-type": "application/json" },
+      body: JSON.stringify({ taskIdentifier: "noop" }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
+// Covers createLoaderPATApiRoute via GET /api/v1/projects/:projectRef/runs.
+// authenticateApiRequestWithPersonalAccessToken rejects anything that isn't tr_pat_-prefixed
+// or doesn't match a non-revoked PersonalAccessToken row.
+describe("Personal access token auth", () => {
+  const pathFor = (ref: string) => `/api/v1/projects/${ref}/runs`;
+
+  it("missing Authorization header: 401", async () => {
+    const res = await server.webapp.fetch(pathFor("nonexistent"));
+    expect(res.status).toBe(401);
+  });
+
+  it("API key (tr_dev_*) on PAT-only route: 401", async () => {
+    const { apiKey } = await seedTestEnvironment(server.prisma);
+    const res = await server.webapp.fetch(pathFor("nonexistent"), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("malformed PAT (wrong prefix): 401", async () => {
+    const res = await server.webapp.fetch(pathFor("nonexistent"), {
+      headers: { Authorization: "Bearer not_a_pat_at_all_random_string" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("well-formed but unknown PAT: 401", async () => {
+    const res = await server.webapp.fetch(pathFor("nonexistent"), {
+      headers: {
+        Authorization: "Bearer tr_pat_0000000000000000000000000000000000000000",
+      },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("revoked PAT: 401", async () => {
+    const user = await seedTestUser(server.prisma);
+    const { token } = await seedTestPAT(server.prisma, user.id, { revoked: true });
+    const res = await server.webapp.fetch(pathFor("nonexistent"), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("valid PAT on nonexistent project: 404 (auth passes)", async () => {
+    const user = await seedTestUser(server.prisma);
+    const { token } = await seedTestPAT(server.prisma, user.id);
+    const res = await server.webapp.fetch(pathFor("nonexistent"), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+// Edge cases where auth-path DB state should cause 401 even with a valid-looking token.
+describe("API bearer auth — environment/project edge cases", () => {
+  it("valid API key whose project is soft-deleted: 401", async () => {
+    const { apiKey, project } = await seedTestEnvironment(server.prisma);
+    await server.prisma.project.update({
+      where: { id: project.id },
+      data: { deletedAt: new Date() },
+    });
+    const res = await server.webapp.fetch("/api/v1/runs/run_doesnotexist/result", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    expect(res.status).toBe(401);
   });
 });
