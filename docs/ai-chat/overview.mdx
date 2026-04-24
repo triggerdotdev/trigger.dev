@@ -114,11 +114,13 @@ sequenceDiagram
 
 ## How multi-turn works
 
-### One run, many turns
+### One conversation, many runs
 
-The entire conversation lives in a **single Trigger.dev run**. After each AI response, the run waits for the next message via input streams. The frontend transport handles this automatically — it triggers a new run for the first message and sends subsequent messages to the existing run.
+Each chat is backed by a [Session](/sessions/overview) — a durable, bidirectional I/O primitive that outlives any single run. The conversation's identity (`sessionId`) stays the same across run boundaries. Messages flow through the session's `.in` channel; responses stream on `.out`.
 
-This means your conversation has full observability in the Trigger.dev dashboard: every turn is a span inside the same run.
+Within a session, a single run handles many turns. After each AI response, the run waits for the next message via the session's `.in` channel. The frontend transport handles this automatically — triggers a new run on the session for the first message, and sends subsequent messages into the existing run.
+
+Every turn is a span inside the same run in the Trigger.dev dashboard. The Agents dashboard view also lets you inspect the session directly — all runs that have ever touched it, filterable and resumable.
 
 ### Warm and suspended states
 
@@ -127,11 +129,27 @@ After each turn, the run goes through two phases of waiting:
 1. **Warm phase** (default 30s) — The run stays active and responds instantly to the next message. Uses compute.
 2. **Suspended phase** (default up to 1h) — The run suspends, freeing compute. It wakes when the next message arrives. There's a brief delay as the run resumes.
 
-If no message arrives within the turn timeout, the run ends gracefully. The next message from the frontend will automatically start a fresh run.
+If no message arrives within the turn timeout, the run ends gracefully. The session stays open. The next message from the frontend automatically starts a fresh run **on the same session** — chat history and identity persist across the run boundary.
 
 <Info>
   You are not charged for compute during the suspended phase. Only the idle phase uses compute resources.
 </Info>
+
+### Resume and inbox
+
+Because the session outlives the run, a chat you were in yesterday resumes against the same session today — even after the original run has idle-timed out or crashed. Pass `resume: true` to `useChat` on page load and the transport reconnects via `sessionId` + `lastEventId`, kicking off a new run only if the user sends a message.
+
+You can also enumerate every chat in your environment with `sessions.list`:
+
+```ts
+import { sessions } from "@trigger.dev/sdk";
+
+for await (const s of sessions.list({ type: "chat.agent", tag: "user:user-456" })) {
+  console.log(s.id, s.externalId, s.createdAt, s.closedAt);
+}
+```
+
+This powers inbox-style UIs (your own chat list page) without maintaining a separate index.
 
 ### What the backend accumulates
 
@@ -157,6 +175,7 @@ There are three ways to build the backend, from most opinionated to most flexibl
 ## Related
 
 - [Quick Start](/ai-chat/quick-start) — Get a working chat in 3 steps
+- [Sessions](/sessions/overview) — The durable primitive chat.agent is built on
 - [Database persistence](/ai-chat/patterns/database-persistence) — Conversation + session state across hooks (ORM-agnostic)
 - [Code execution sandbox](/ai-chat/patterns/code-sandbox) — Warm/teardown pattern for E2B (or similar) with `onWait` / `chat.local`
 - [Backend](/ai-chat/backend) — Backend approaches in detail

@@ -1,0 +1,128 @@
+---
+title: "Quick Start"
+sidebarTitle: "Quick Start"
+description: "Create a session, write to it from a task, subscribe from a client, and close it — in four steps."
+---
+
+This walkthrough uses the raw `sessions` API directly. If you're building a chat app, start with [`chat.agent`](/ai-chat/quick-start) instead — it wraps all of this for you.
+
+<Steps>
+  <Step title="Create a session from your backend">
+    Call `sessions.create` with a `type` discriminator and (optionally) an `externalId` — your own stable ID for the thing this session represents. Creating with the same `externalId` twice returns the same session, so it's safe to call from concurrent requests.
+
+    ```ts app/actions.ts
+    "use server";
+
+    import { sessions } from "@trigger.dev/sdk";
+
+    export async function createConversation(conversationId: string) {
+      const session = await sessions.create({
+        type: "agent.conversation",
+        externalId: conversationId,
+        tags: ["user:abc-123"],
+      });
+
+      return { sessionId: session.id };
+    }
+    ```
+
+    <Tip>
+      `type` is a free-form string you choose. Use it to distinguish different kinds of sessions in your environment — e.g. `"chat.agent"`, `"agent.conversation"`, `"data-sync"`. It's what you'll filter on later in `sessions.list`.
+    </Tip>
+  </Step>
+
+  <Step title="Open the session from inside a task and write to `.out`">
+    Trigger a task with the `sessionId` in the payload. Inside the task, open the session and write records to `.out`. Records can be any JSON-serializable value — strings, objects, streams.
+
+    ```ts trigger/agent.ts
+    import { sessions, task } from "@trigger.dev/sdk";
+
+    export const runAgent = task({
+      id: "run-agent",
+      run: async (payload: { sessionId: string; prompt: string }) => {
+        const handle = sessions.open(payload.sessionId);
+
+        await handle.out.append({ type: "status", message: "Thinking..." });
+
+        // Simulate streaming output
+        for (const word of payload.prompt.split(" ")) {
+          await handle.out.append({ type: "token", text: word });
+        }
+
+        await handle.out.append({ type: "done" });
+      },
+    });
+    ```
+
+    <Note>
+      `sessions.open(id)` does not make a network call — each channel method (`append`, `pipe`, `read`, etc.) hits its own endpoint when invoked. You can open the handle once at the top of `run()` and reuse it.
+    </Note>
+  </Step>
+
+  <Step title="Subscribe to `.out` from a client">
+    Any client with read access to the session can subscribe to `.out` as an SSE stream. This works from a browser, a server action, or another task.
+
+    ```ts app/subscribe.ts
+    import { sessions } from "@trigger.dev/sdk";
+
+    async function watch(sessionId: string) {
+      const handle = sessions.open(sessionId);
+      const stream = await handle.out.read({ lastEventId: "-1" });
+
+      for await (const chunk of stream) {
+        console.log("received:", chunk);
+      }
+    }
+    ```
+
+    Records are delivered as parsed objects — you do not need to `JSON.parse` them.
+
+    **Resume semantics.** `lastEventId` is the cursor. `"-1"` (or omitting the option on a fresh subscription) starts from the beginning. Pass the last-seen event ID to resume mid-stream after a disconnect.
+  </Step>
+
+  <Step title="Close the session when you're done">
+    Closing marks the session terminal. You can still read history from `.out`, but no new records can be appended.
+
+    ```ts app/actions.ts
+    "use server";
+
+    import { sessions } from "@trigger.dev/sdk";
+
+    export async function endConversation(sessionId: string) {
+      await sessions.close(sessionId, { reason: "user-ended" });
+    }
+    ```
+
+    <Tip>
+      Closing is optional. A long-running session that's just between turns is a live session, not a closed one — don't close it just because you don't have anything to write right now.
+    </Tip>
+  </Step>
+</Steps>
+
+## What about `.in`?
+
+The walkthrough above only uses `.out`. The reverse direction — external clients sending records **into** the task — is handled by `.in`.
+
+Inside the task:
+
+```ts
+const handle = sessions.open(payload.sessionId);
+
+// Suspend until a message arrives. Frees compute while waiting.
+const message = await handle.in.wait<{ text: string }>();
+```
+
+From a client:
+
+```ts
+const handle = sessions.open(sessionId);
+await handle.in.send({ text: "Hello" });
+```
+
+See [Channels](/sessions/channels) for the full `.in` API — `on`, `once`, `peek`, `wait`, `waitWithIdleTimeout`.
+
+## Next steps
+
+- [Channels](/sessions/channels) — The full `.in` / `.out` API, waitpoint semantics, serialization
+- [API Reference](/sessions/reference) — All methods and types
+- [AI Chat Quick Start](/ai-chat/quick-start) — The higher-level chat primitive built on sessions

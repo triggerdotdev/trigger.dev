@@ -17,7 +17,9 @@ When `chat.requestUpgrade()` is called in `onTurnStart` or `onValidateMessages`:
 3. The transport receives the chunk and immediately triggers a **new run** on the currently promoted deployment with the same message (as a continuation)
 4. The new run's response is piped through transparently — the user sees a single seamless response from the upgraded agent
 
-When called from inside `run()` or `chat.defer()`, the current turn completes normally first and the run exits afterward. The next message triggers the continuation.
+The new run lives on the **same [Session](/sessions/overview)** as the old run — `sessionId` persists across the upgrade. Only `runId` and `publicAccessToken` refresh. The transport's SSE subscription to `session.out` doesn't even need to re-establish; it just continues receiving chunks from whichever run is currently writing.
+
+When called from inside `run()` or `chat.defer()`, the current turn completes normally first and the run exits afterward. The next message triggers the continuation on the same session.
 
 ```mermaid
 sequenceDiagram
@@ -90,7 +92,7 @@ export const myChat = chat
   });
 ```
 
-The transport includes `clientData` in every payload — both the initial trigger and subsequent input stream messages — so the agent always has the current value.
+The transport includes `clientData` in every payload — both the initial trigger and subsequent records on the session's `.in` channel — so the agent always has the current value.
 
 This pattern is useful when:
 - Your frontend is backwards-compatible across several agent versions, but occasionally ships breaking changes
