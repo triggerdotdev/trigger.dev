@@ -3,7 +3,7 @@ import { createServer } from "net";
 import { delimiter, resolve } from "path";
 import { Network } from "testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { createPostgresContainer } from "./utils";
+import { createPostgresContainer, createRedisContainer } from "./utils";
 
 const WEBAPP_ROOT = resolve(__dirname, "../../../apps/webapp");
 // pnpm hoists transitive deps to node_modules/.pnpm/node_modules but does NOT symlink them
@@ -37,7 +37,10 @@ export interface WebappInstance {
   fetch(path: string, init?: RequestInit): Promise<Response>;
 }
 
-export async function startWebapp(databaseUrl: string): Promise<{
+export async function startWebapp(
+  databaseUrl: string,
+  redis: { host: string; port: number }
+): Promise<{
   instance: WebappInstance;
   stop: () => Promise<void>;
 }> {
@@ -64,8 +67,8 @@ export async function startWebapp(databaseUrl: string): Promise<{
       CLICKHOUSE_URL: "http://localhost:19123", // dummy, auth paths never connect
       DEPLOY_REGISTRY_HOST: "registry.example.com", // dummy, not needed for auth tests
       ELECTRIC_ORIGIN: "http://localhost:3060",
-      REDIS_HOST: "localhost", // dummy, satisfies module-level validation; auth paths never use Redis
-      REDIS_PORT: "6379",
+      REDIS_HOST: redis.host,
+      REDIS_PORT: String(redis.port),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -135,29 +138,33 @@ export interface TestServer {
   stop: () => Promise<void>;
 }
 
-/** Convenience helper: starts a postgres container + webapp and returns both for testing. */
+/** Convenience helper: starts a postgres + redis container + webapp and returns both for testing. */
 export async function startTestServer(): Promise<TestServer> {
   const network = await new Network().start();
 
   // Track each resource as we acquire it so we can tear it down if a later step fails.
-  // Without this, a healthcheck timeout in startWebapp() would leak the postgres
-  // container, network, and PrismaClient connection indefinitely.
-  let container: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
   let prisma: PrismaClient | undefined;
   let stopWebapp: (() => Promise<void>) | undefined;
   let webapp: WebappInstance;
 
   try {
     const pg = await createPostgresContainer(network);
-    container = pg.container;
+    pgContainer = pg.container;
+
+    const { container: rc } = await createRedisContainer({ network });
+    redisContainer = rc;
+
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
-    const started = await startWebapp(pg.url);
+    const started = await startWebapp(pg.url, { host: rc.getHost(), port: rc.getPort() });
     webapp = started.instance;
     stopWebapp = started.stop;
   } catch (err) {
     await stopWebapp?.().catch(() => {});
     await prisma?.$disconnect().catch(() => {});
-    await container?.stop().catch(() => {});
+    await pgContainer?.stop().catch(() => {});
+    await redisContainer?.stop().catch(() => {});
     await network.stop().catch(() => {});
     throw err;
   }
@@ -165,7 +172,8 @@ export async function startTestServer(): Promise<TestServer> {
   const stop = async () => {
     await stopWebapp!().catch((err) => console.error("stopWebapp failed:", err));
     await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
-    await container!.stop().catch((err) => console.error("container.stop failed:", err));
+    await pgContainer!.stop().catch((err) => console.error("pgContainer.stop failed:", err));
+    await redisContainer!.stop().catch((err) => console.error("redisContainer.stop failed:", err));
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
