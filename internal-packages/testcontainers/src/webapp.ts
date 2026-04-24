@@ -64,6 +64,8 @@ export async function startWebapp(databaseUrl: string): Promise<{
       CLICKHOUSE_URL: "http://localhost:19123", // dummy, auth paths never connect
       DEPLOY_REGISTRY_HOST: "registry.example.com", // dummy, not needed for auth tests
       ELECTRIC_ORIGIN: "http://localhost:3060",
+      REDIS_HOST: "localhost", // dummy, satisfies module-level validation; auth paths never use Redis
+      REDIS_PORT: "6379",
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
