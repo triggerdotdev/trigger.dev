@@ -69,10 +69,16 @@ export async function startWebapp(
       ELECTRIC_ORIGIN: "http://localhost:3060",
       REDIS_HOST: redis.host,
       REDIS_PORT: String(redis.port),
-      // Disable background workers and logical replication: they are irrelevant for auth
-      // tests and in CI the replication slot creation holds a snapshot lock that blocks
-      // the test process's Prisma writes to the same DB.
-      WORKER_ENABLED: "false",
+      // Disable all background workers. Each worker has its own env var and its own
+      // check idiom ("0" vs "false" vs boolean), so we set all of them explicitly.
+      WORKER_ENABLED: "false",          // disables workerQueue.initialize() (checked === "true")
+      RUN_ENGINE_WORKER_ENABLED: "0",   // disables run engine workers (checked === "0", default "1")
+      SCHEDULE_WORKER_ENABLED: "0",     // disables schedule engine worker (checked === "0")
+      BATCH_QUEUE_WORKER_ENABLED: "false", // disables batch queue consumers (BoolEnv)
+      LEGACY_RUN_ENGINE_WORKER_ENABLED: "0", // disables legacy run engine worker
+      COMMON_WORKER_ENABLED: "0",       // disables common worker
+      RUN_ENGINE_TTL_SYSTEM_DISABLED: "true",     // disables TTL expiry system (BoolEnv)
+      RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true",  // disables TTL consumers (BoolEnv)
       RUN_REPLICATION_ENABLED: "0",
       NODE_PATH: nodePath,
     },
@@ -153,6 +159,7 @@ export async function startTestServer(): Promise<TestServer> {
   let prisma: PrismaClient | undefined;
   let stopWebapp: (() => Promise<void>) | undefined;
   let webapp: WebappInstance;
+  let diagInterval: ReturnType<typeof setInterval> | undefined;
 
   try {
     const pg = await createPostgresContainer(network);
@@ -163,6 +170,27 @@ export async function startTestServer(): Promise<TestServer> {
 
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
     await prisma.$connect(); // pre-warm pool; surface connection failures before tests start
+
+    // Periodically dump pg_stat_activity when debugging to identify hangs.
+    if (process.env.WEBAPP_TEST_VERBOSE) {
+      diagInterval = setInterval(async () => {
+        try {
+          const rows = await prisma!.$queryRawUnsafe<Record<string, unknown>[]>(`
+            SELECT pid, state, wait_event_type, wait_event,
+                   LEFT(query, 300) AS query,
+                   EXTRACT(EPOCH FROM (now() - state_change))::int AS state_age_secs,
+                   EXTRACT(EPOCH FROM (now() - query_start))::int  AS query_age_secs
+            FROM   pg_stat_activity
+            WHERE  datname = current_database() AND pid != pg_backend_pid()
+            ORDER  BY query_start NULLS LAST
+          `);
+          process.stderr.write(`[pg_stat_activity] ${JSON.stringify(rows)}\n`);
+        } catch {
+          // Diagnostic failures are non-fatal; ignore them.
+        }
+      }, 10_000);
+    }
+
     const started = await startWebapp(pg.url, { host: rc.getHost(), port: rc.getPort() });
     webapp = started.instance;
     stopWebapp = started.stop;
@@ -176,6 +204,7 @@ export async function startTestServer(): Promise<TestServer> {
   }
 
   const stop = async () => {
+    if (diagInterval) clearInterval(diagInterval);
     await stopWebapp!().catch((err) => console.error("stopWebapp failed:", err));
     await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
     await pgContainer!.stop().catch((err) => console.error("pgContainer.stop failed:", err));
