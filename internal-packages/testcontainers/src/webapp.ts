@@ -161,10 +161,10 @@ export async function startTestServer(): Promise<TestServer> {
   }
 
   const stop = async () => {
-    await stopWebapp!();
-    await prisma!.$disconnect();
-    await container!.stop();
-    await network.stop();
+    await stopWebapp!().catch((err) => console.error("stopWebapp failed:", err));
+    await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
+    await container!.stop().catch((err) => console.error("container.stop failed:", err));
+    await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
   return { webapp, prisma: prisma!, stop };
