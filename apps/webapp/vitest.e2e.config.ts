@@ -3,8 +3,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   test: {
-    include: ["test/**/*.test.ts"],
-    exclude: ["test/**/*.e2e.test.ts"],
+    include: ["test/**/*.e2e.test.ts"],
     globals: true,
     pool: "forks",
   },
