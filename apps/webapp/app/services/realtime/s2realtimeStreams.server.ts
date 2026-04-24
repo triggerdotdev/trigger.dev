@@ -293,6 +293,18 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   /**
    * Serve SSE from a `Session`-primitive channel addressed by
    * `(friendlyId, io)`.
+   *
+   * For `io=out`, peek the tail record first. If it's
+   * `trigger:turn-complete`, the agent has finished a turn and is
+   * either idle-waiting on `.in` or has exited — either way, no more
+   * chunks will arrive without further user action. We switch the
+   * downstream S2 read to `wait=0` (drain whatever's left, close fast)
+   * and set `X-Session-Settled: true` so the client knows this SSE
+   * close is terminal instead of the normal 60s long-poll cycle.
+   *
+   * Mid-turn tail (streaming UIMessageChunk) falls through to the
+   * long-poll path; a crashed-mid-turn stream is indistinguishable
+   * here and behaves like today (client sees wait=60 close, retries).
    */
   async streamResponseFromSessionStream(
     request: Request,
@@ -301,7 +313,98 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     signal: AbortSignal,
     options?: StreamResponseOptions
   ): Promise<Response> {
-    return this.#streamResponseByName(this.toSessionStreamName(friendlyId, io), signal, options);
+    const s2Stream = this.toSessionStreamName(friendlyId, io);
+
+    let waitSeconds = options?.timeoutInSeconds ?? this.s2WaitSeconds;
+    let settled = false;
+
+    if (io === "out") {
+      const lastChunk = await this.#peekLastChunkBody(s2Stream);
+      if (
+        lastChunk != null &&
+        typeof lastChunk === "object" &&
+        (lastChunk as { type?: unknown }).type === "trigger:turn-complete"
+      ) {
+        settled = true;
+        waitSeconds = 0;
+      }
+    }
+
+    const s2Response = await this.#streamResponseByName(s2Stream, signal, {
+      ...options,
+      timeoutInSeconds: waitSeconds,
+    });
+
+    if (!settled) return s2Response;
+
+    const headers = new Headers(s2Response.headers);
+    headers.set("X-Session-Settled", "true");
+    return new Response(s2Response.body, {
+      status: s2Response.status,
+      statusText: s2Response.statusText,
+      headers,
+    });
+  }
+
+  async #peekLastChunkBody(s2Stream: string): Promise<unknown | null> {
+    const qs = new URLSearchParams();
+    // `tail_offset=1` reads one record before the next seq — i.e. the
+    // most recently appended record. `count=1` caps it to just that
+    // record. `wait=0` returns immediately with no long-poll.
+    qs.set("tail_offset", "1");
+    qs.set("count", "1");
+    qs.set("wait", "0");
+
+    let res: Response;
+    try {
+      res = await fetch(
+        `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?${qs}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            Accept: "application/json",
+            "S2-Format": "raw",
+            "S2-Basin": this.basin,
+          },
+        }
+      );
+    } catch (err) {
+      this.logger.warn("S2 peek last record: fetch failed", { err, stream: s2Stream });
+      return null;
+    }
+
+    if (!res.ok) {
+      // 404: stream has never been written to. 416: range not
+      // satisfiable (empty stream). Both mean "nothing to peek."
+      if (res.status === 404 || res.status === 416) return null;
+      const text = await res.text().catch(() => "");
+      this.logger.warn("S2 peek last record failed", {
+        status: res.status,
+        statusText: res.statusText,
+        text,
+        stream: s2Stream,
+      });
+      return null;
+    }
+
+    try {
+      const json = (await res.json()) as {
+        records?: Array<{ body: string; seq_num: number; timestamp: number }>;
+      };
+      const record = json.records?.[0];
+      if (!record) return null;
+      // The record body is a JSON string `{data: <chunk>, id: partId}`
+      // where `<chunk>` is the raw UIMessageChunk object (see
+      // `StreamsWriterV2` — the agent-side writer serializes the chunk
+      // object directly, not double-encoded). Unwrap the envelope and
+      // return `data` as-is.
+      const envelope = JSON.parse(record.body) as { data: unknown; id: string };
+      return envelope.data;
+    } catch (err) {
+      this.logger.warn("S2 peek last record: parse failed", { err, stream: s2Stream });
+      return null;
+    }
   }
 
   async #streamResponseByName(
