@@ -67,7 +67,8 @@ The payload passed to the `run` function.
 | -------------- | ------------------------------------------ | -------------------------------------------------------------------- |
 | `ctx`          | `TaskRunContext`                           | Full task run context — same as `task` `run`’s `{ ctx }`             |
 | `messages`     | `ModelMessage[]`                           | Model-ready messages — pass directly to `streamText`                 |
-| `chatId`       | `string`                                   | Unique chat session ID                                               |
+| `chatId`       | `string`                                   | Your conversation ID (the session's `externalId`)                    |
+| `sessionId`    | `string \| undefined`                      | Friendly ID of the backing [Session](/sessions/overview) (`session_*`). Use with `sessions.open()` for advanced cases. |
 | `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
 | `messageId`    | `string \| undefined`                      | Message ID (for regenerate)                                          |
 | `clientData`   | Typed by `clientDataSchema`                | Custom data from the frontend (typed when schema is provided)        |
@@ -496,8 +497,8 @@ Options for the frontend transport constructor and `useTriggerChatTransport` hoo
 | `headers`              | `Record<string, string>`                                             | —                           | Extra headers for API requests                                              |
 | `streamTimeoutSeconds` | `number`                                                             | `120`                       | How long to wait for stream data                                            |
 | `clientData`           | Typed by `clientDataSchema`                                          | —                           | Default client data for every request                                       |
-| `sessions`             | `Record<string, {...}>`                                              | —                           | Restore sessions from storage                                               |
-| `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes                                            |
+| `sessions`             | `Record<string, ChatSession>`                                        | —                           | Restore sessions from storage. See [ChatSession](#chatsession).             |
+| `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes. `session` is the full `ChatSession` or `null` when the run ends. |
 | `renewRunAccessToken`  | `(params: RenewRunAccessTokenParams) => string \| ... \| Promise<...>` | —                           | Mint a new run-scoped PAT when the run PAT returns 401 (realtime / input stream). Retries once. |
 | `triggerOptions`       | `{...}`                                                              | —                           | Options for the initial task trigger (see below)                            |
 
@@ -512,7 +513,20 @@ Use this to mint or log per-chat trigger tokens. A plain **`string`** is still s
 
 ### `renewRunAccessToken` callback
 
-Optional. When the **run** public access token used for realtime SSE or input streams expires, the transport calls this once with **`RenewRunAccessTokenParams`** (`chatId`, `runId`), then retries the failing request. Implement it with your server `auth.createPublicToken` (scopes `read:runs:<runId>` and `write:inputStreams:<runId>`). See [Authentication](/realtime/auth).
+Optional. When the public access token the transport holds returns 401 (realtime SSE, `.in` append, etc.), the transport calls this once with **`RenewRunAccessTokenParams`**, then retries the failing request. Implement it with your server `auth.createPublicToken`. See [Authentication](/realtime/auth).
+
+`RenewRunAccessTokenParams`:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `chatId` | `string` | Your conversation id. |
+| `runId` | `string` | The current run backing the chat. |
+| `sessionId` | `string \| undefined` | The backing [Session](/sessions/overview) friendlyId. Present after the transport has observed a session for this chat. |
+
+Minted tokens should carry **both** run and session scopes so the PAT covers the live input stream AND the Session's `.in` / `.out` channels:
+
+- `read:runs:<runId>` + `write:inputStreams:<runId>`
+- `read:sessions:<sessionId>` + `write:sessions:<sessionId>` (when `sessionId` is present)
 
 ```ts
 import { auth } from "@trigger.dev/sdk";
@@ -525,9 +539,18 @@ async function getChatToken(input: ResolveChatAccessTokenParams) {
 const transport = useTriggerChatTransport({
   task: "my-chat",
   accessToken: getChatToken,
-  renewRunAccessToken: async ({ chatId, runId }) => {
+  renewRunAccessToken: async ({ chatId, runId, sessionId }) => {
     return auth.createPublicToken({
-      scopes: { read: { runs: runId }, write: { inputStreams: runId } },
+      scopes: {
+        read: {
+          runs: runId,
+          ...(sessionId ? { sessions: sessionId } : {}),
+        },
+        write: {
+          inputStreams: runId,
+          ...(sessionId ? { sessions: sessionId } : {}),
+        },
+      },
       expirationTime: "1h",
     });
   },
@@ -669,8 +692,52 @@ The hook handles:
 
 See [Multi-tab coordination](/ai-chat/frontend#multi-tab-coordination).
 
+## ChatSession
+
+Persistable session state for the frontend `TriggerChatTransport` and the server-side `AgentChat`. `sessionId` is the durable key — it stays the same for the life of the conversation, even across run boundaries.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `sessionId` | `string` | Friendly ID of the backing [Session](/sessions/overview) (`session_*`). Durable across runs. |
+| `publicAccessToken` | `string` | JWT covering both run + session scopes for this chat. Refreshed via `trigger:turn-complete` chunks. |
+| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream after a disconnect. |
+| `runId` | `string \| undefined` | Current run ID. Changes on continuations. `undefined` means no live run. |
+| `isStreaming` | `boolean \| undefined` | Optional. If persisted, `reconnectToStream` uses it as a fast-path short-circuit. If omitted, the server decides via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) response header. |
+
+## ChatInputChunk
+
+The wire shape for records sent on `.in`. Consumed by `chat.agent` internally — you typically don't write these yourself; `transport.sendMessage`, `transport.stopGeneration`, and `transport.sendAction` all serialize into this shape.
+
+```ts
+type ChatInputChunk<TMessage = UIMessage, TMetadata = unknown> =
+  | { kind: "message"; payload: ChatTaskWirePayload<TMessage, TMetadata> }
+  | { kind: "stop"; message?: string };
+```
+
+| Variant | When | Payload |
+| --- | --- | --- |
+| `kind: "message"` | New message, action, approval response, or close | `payload` is a full `ChatTaskWirePayload` — its `trigger` field (`"submit-message"` / `"action"` / `"close"`) determines the agent's dispatch |
+| `kind: "stop"` | Client aborted the active turn | Optional `message` surfaces in the stop handler |
+
+For the raw wire format, see [Client Protocol — ChatInputChunk](/ai-chat/client-protocol#chatinputchunk).
+
+## Session scopes
+
+Tokens minted for `TriggerChatTransport` and `AgentChat` carry both run and session scopes. Full surface:
+
+| Scope | Grants |
+| --- | --- |
+| `read:sessions:<sessionId>` | Subscribe to `.out`, retrieve the session row |
+| `write:sessions:<sessionId>` | Append to `.in`, close the session, update metadata |
+| `read:runs:<runId>` | Read run state |
+| `write:inputStreams:<runId>` | Legacy run-scoped input streams (used alongside session scopes during live runs) |
+
+See [Sessions Reference — Token scopes](/sessions/reference#token-scopes) for the full scope list including wildcards and admin scopes.
+
 ## Related
 
+- [Sessions Overview](/sessions/overview) — The durable primitive chat.agent is built on
+- [Sessions Reference](/sessions/reference) — Full `sessions.*` API
 - [Realtime Streams](/tasks/streams) — How streams work under the hood
 - [Using the Vercel AI SDK](/guides/examples/vercel-ai-sdk) — Basic AI SDK usage with Trigger.dev
 - [Realtime React Hooks](/realtime/react-hooks/overview) — Lower-level realtime hooks

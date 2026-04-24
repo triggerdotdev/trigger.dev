@@ -73,6 +73,18 @@ const transport = useTriggerChatTransport({
 
 ## Session management
 
+Every chat is backed by a [Session](/sessions/overview) — a durable, bidirectional I/O primitive that outlives any single run. The transport manages the session for you; what you persist on your side is a small piece of state per chat.
+
+### What the transport persists per chat
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `sessionId` | `string` | `session_*` friendly ID. **Durable** — stays the same for the life of the conversation. |
+| `publicAccessToken` | `string` | JWT for session + run access. Refreshed via `trigger:turn-complete` chunks. |
+| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream. |
+| `runId` | `string \| undefined` | Current run ID. Changes on continuations. `undefined` means no live run right now. |
+| `isStreaming` | `boolean \| undefined` | **Optional.** The transport sets it internally, but you don't have to persist it — the server decides "nothing is streaming" via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) signal on reconnect. If you do persist it, the transport keeps the fast-path short-circuit. If you drop it, reconnects open the SSE and close fast on settled sessions. |
+
 ### Session cleanup (frontend)
 
 Since session creation and updates are handled server-side, the frontend only needs to handle session deletion when a run ends:
@@ -93,6 +105,8 @@ const transport = useTriggerChatTransport<typeof myChat>({
 ### Restoring on page load
 
 On page load, fetch both the messages and the session from your database, then pass them to `useChat` and the transport. Pass `resume: true` to `useChat` when there's an existing conversation — this tells the AI SDK to reconnect to the stream via the transport.
+
+Because sessions outlive individual runs, a chat you were in yesterday resumes against the same `sessionId` — even if the original run has long since exited. The transport uses `sessionId` + `lastEventId` to resubscribe, and triggers a fresh run on the same session if the client tries to send a new message.
 
 ```tsx app/page.tsx
 "use client";

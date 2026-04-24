@@ -12,6 +12,10 @@ The highest-level approach. Handles message accumulation, stop signals, turn lif
   To fix a **custom** `UIMessage` subtype or typed client data schema, use the [ChatBuilder](/ai-chat/types#chatbuilder) via `chat.withUIMessage<...>()` and/or `chat.withClientData({ schema })`. Builder-level hooks can also be chained before `.agent()`. See [Types](/ai-chat/types).
 </Tip>
 
+<Info>
+  Every `chat.agent` conversation is backed by a [Session](/sessions/overview) — `externalId` is your `chatId`, `type` is `"chat.agent"`. The session outlives any single run, which is why chats can resume across days or deploys without losing identity. You rarely need to touch the session directly (`chat.stream`, `chat.messages`, `chat.stopSignal` wrap everything), but `payload.sessionId` is available if you want to reach in — e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
+</Info>
+
 ### Simple: return a StreamTextResult
 
 Return the `streamText` result from `run` and it's automatically piped to the frontend:

@@ -1,0 +1,214 @@
+---
+title: "Channels"
+sidebarTitle: "Channels"
+description: "Deep dive on `.in` and `.out` — producer/consumer asymmetry, suspend-while-idle, serialization, and the full method surface."
+---
+
+Every session exposes two channels accessed through a [`SessionHandle`](/sessions/reference#sessionhandle):
+
+```ts
+const handle = sessions.open(sessionIdOrExternalId);
+
+handle.out; // SessionOutputChannel
+handle.in;  // SessionInputChannel
+```
+
+The two channels are **disjoint** — no method name appears on both. Producer/consumer roles are fixed per channel:
+
+| Channel | Task role | External-client role |
+|---|---|---|
+| `.out` | Producer (`append`, `pipe`, `writer`) | Consumer (`read`) |
+| `.in` | Consumer (`on`, `once`, `peek`, `wait`, `waitWithIdleTimeout`) | Producer (`send`) |
+
+This asymmetry makes directional intent obvious at every call site.
+
+## `.out` — task writes, client reads
+
+The task is the producer; browsers or other tasks consume via SSE.
+
+### Producing: `append`, `pipe`, `writer`
+
+All three write methods route through the same underlying S2 direct-write pipeline, so subscribers always receive parsed objects (not raw strings), regardless of which producer you use.
+
+#### `append` — single record
+
+```ts
+await handle.out.append({ type: "status", message: "Processing..." });
+```
+
+Returns once the record has been acknowledged. Use when you're writing a small, bounded number of discrete events.
+
+#### `pipe` — forward a ReadableStream or AsyncIterable
+
+```ts
+const { stream, waitUntilComplete } = handle.out.pipe(
+  streamText({ model, messages }).toUIMessageStream()
+);
+
+await waitUntilComplete();
+```
+
+`pipe` attaches your source stream to the session channel and returns immediately. It mirrors [`streams.pipe`](/tasks/streams) but session-scoped — there's no `target` option because the session is the target.
+
+`stream` is a local `ReadableStream` you can `await` / consume if you also want to observe the records from inside the producing task. `waitUntilComplete()` resolves when all source records have been flushed to S2.
+
+#### `writer({ execute })` — fine-grained control
+
+Use when you want to produce records imperatively or interleave multiple sources:
+
+```ts
+const { waitUntilComplete } = handle.out.writer({
+  execute: ({ write, merge }) => {
+    write({ type: "start" });
+    write({ type: "section", title: "Summary" });
+    merge(llmStream.toUIMessageStream()); // splice in another stream
+    write({ type: "end" });
+  },
+});
+
+await waitUntilComplete();
+```
+
+`write` enqueues a single record. `merge` pulls records from another stream into the same channel in order. `execute` can be async — the writer stays open until your callback returns.
+
+Mirrors [`streams.writer`](/tasks/streams#writer) but session-scoped.
+
+### Consuming: `read`
+
+```ts
+const handle = sessions.open(sessionId);
+const stream = await handle.out.read<MyChunk>({
+  lastEventId: "-1",
+  timeoutInSeconds: 60,
+});
+
+for await (const chunk of stream) {
+  console.log(chunk); // MyChunk, already parsed
+}
+```
+
+Options:
+
+| Option | Type | Notes |
+|---|---|---|
+| `lastEventId` | `string \| number` | Resume cursor. `-1` (or omit) starts from the beginning. Use the last seen event ID to resume after a disconnect. |
+| `timeoutInSeconds` | `number` | Max time SSE will hold the connection open between records. Default 60. |
+| `signal` | `AbortSignal` | Cancel the subscription. |
+| `onPart` | `(part) => void` | Observe raw SSE parts (id + chunk + timestamp). |
+| `onComplete` | `() => void` | Fires when the stream closes. |
+| `onError` | `(err) => void` | Fires on subscription errors. |
+
+`read` returns an async iterable — use `for await` to consume. The underlying SSE transport handles reconnection, `Last-Event-ID` resume, and abort propagation automatically.
+
+## `.in` — client writes, task reads
+
+External clients produce via `.send`; the task consumes via `on` / `once` / `peek` / `wait` / `waitWithIdleTimeout`.
+
+### Producing: `send`
+
+```ts
+await handle.in.send({ kind: "message", text: "Hello" });
+```
+
+Any JSON-serializable value. Strings are passed through as-is; objects are `JSON.stringify`-ed.
+
+### Consuming: non-blocking vs. suspending
+
+The consuming-side methods fall into two groups:
+
+- **Non-blocking / keep-running**: `on`, `once`, `peek`. The task stays awake while consuming.
+- **Suspending**: `wait`, `waitWithIdleTimeout`. The run suspends via a [session-stream waitpoint](#suspend-while-idle), freeing compute until a record arrives.
+
+#### `on` — handler fires for every record
+
+```ts
+const { off } = handle.in.on<{ kind: "message" | "stop" }>((msg) => {
+  if (msg.kind === "stop") controller.abort();
+});
+
+// later
+off();
+```
+
+Handlers are flushed with any buffered records on attach, and cleaned up when the task run completes. Use for long-lived listeners (e.g. a stop-signal listener that lives across turns).
+
+#### `once` — await the next record
+
+```ts
+const { ok, output, error } = await handle.in.once<Message>({ timeout: "30s" });
+
+if (ok) {
+  console.log(output);
+}
+```
+
+Returns on the next arrival, or `{ ok: false, error }` on timeout. Non-suspending — the run stays active while waiting. Chain `.unwrap()` to get the output directly and throw on timeout:
+
+```ts
+const msg = await handle.in.once<Message>({ timeout: "30s" }).unwrap();
+```
+
+#### `peek` — inspect buffer without consuming
+
+```ts
+const pending = handle.in.peek<Message>();
+if (pending) { /* ... */ }
+```
+
+Returns `undefined` if the buffer is empty. Does not consume the record — next `on` / `once` / `wait` still sees it.
+
+#### `wait` — suspend until next record
+
+```ts
+const msg = await handle.in.wait<Message>({ timeout: "5m" });
+```
+
+**Suspends the run** while idle. Unlike `once`, the task's container can be hibernated, freeing compute. When a record lands on `.in`, the run-engine waitpoint fires and the run resumes with the message as the resolved value.
+
+Only callable from inside `task.run()`. Throws on timeout.
+
+#### `waitWithIdleTimeout` — suspend with a resetting timeout
+
+```ts
+const msg = await handle.in.waitWithIdleTimeout<Message>({ idleTimeout: "5m" });
+```
+
+Like `wait`, but the timeout **resets on every message**. Use for conversational patterns: "end the conversation after 5 minutes of silence, but stay alive as long as the user keeps talking."
+
+### Suspend-while-idle
+
+`wait` and `waitWithIdleTimeout` use Trigger.dev's run-engine waitpoints — the same primitive behind [`wait-for-token`](/wait-for-token) and [`streams.input.wait`](/tasks/input-streams). When the task calls `wait()`:
+
+1. The run-engine suspends the run and deallocates its container.
+2. You stop paying for compute.
+3. When a record arrives on `.in` (via `send` from any client), the waitpoint is fired synchronously by the append handler.
+4. The run resumes with the record as the resolved value.
+
+Multiple concurrent waiters on the same session (e.g. two agents) are all woken by the same append.
+
+## Serialization
+
+All `.out` producer methods route through a uniform pipeline, so:
+
+- **Subscribers always receive parsed objects.** `handle.out.read<T>()` yields `T` values directly — you never need `JSON.parse`.
+- **Mixed producers work cleanly.** A record written via `append` looks identical on the wire to one emitted by `writer` or `pipe`.
+
+On `.in`, `send` accepts any JSON-serializable value. Strings are passed through; objects are serialized. Consumers decide how to type the records (`on<T>`, `once<T>`, `wait<T>`).
+
+## Buffering and attachment
+
+Records that arrive on `.in` **before** a consumer attaches are buffered on the task side. The first `on` / `once` / `peek` call to attach sees the buffered records in order, followed by live records as they arrive. This means you don't have to race the task's boot against the client's first `send`.
+
+On `.out`, records are appended to the underlying append-only log. Subscribers read from a cursor (`lastEventId`), so a late-connecting client can start from the beginning or resume mid-stream — nothing is lost.
+
+## Abort and cleanup
+
+- Handlers registered via `on` and long-lived subscriptions auto-clean on task-run completion. You don't need to explicitly unsubscribe.
+- Passing `signal` to `read` ties the SSE subscription to your `AbortController`. Aborting the signal closes the SSE cleanly.
+- `pipe` / `writer` return `waitUntilComplete` so you can serialize subsequent logic after all records are flushed.
+
+## Related
+
+- [Overview](/sessions/overview) — Conceptual intro to sessions
+- [API Reference](/sessions/reference) — Types, signatures, token scopes
+- [Run-scoped streams](/tasks/streams) — The ephemeral counterpart; same underlying transport

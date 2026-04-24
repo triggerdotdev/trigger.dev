@@ -1,7 +1,7 @@
 ---
 title: "Client Protocol"
 sidebarTitle: "Client Protocol"
-description: "The wire protocol for building custom chat transports — how clients communicate with chat agents over input streams and SSE."
+description: "The wire protocol for building custom chat transports — how clients communicate with chat agents over Sessions and SSE."
 ---
 
 This page documents the protocol that chat clients use to communicate with `chat.agent()` tasks. Use this if you're building a custom transport (e.g., for a Slack bot, CLI tool, or native app) instead of using the built-in `TriggerChatTransport` or `AgentChat`.
@@ -12,11 +12,14 @@ This page documents the protocol that chat clients use to communicate with `chat
 
 ## Overview
 
-The protocol has three parts:
+`chat.agent` is built on [Sessions](/sessions/overview) — a durable, bidirectional I/O primitive that outlives a single run. A conversation is one session; a session can host many runs over its lifetime.
 
-1. **Trigger** — start a new run by calling the task trigger API
-2. **Input streams** — send messages and signals to a running agent
-3. **Output stream** — subscribe to the agent's response via SSE
+The protocol has four parts:
+
+1. **Create the session** — idempotent on your chat ID
+2. **Trigger a run** — start an agent run bound to the session
+3. **Subscribe to `.out`** — receive `UIMessageChunk` events via SSE
+4. **Append to `.in`** — send messages, stops, or actions
 
 ```mermaid
 sequenceDiagram
@@ -24,19 +27,59 @@ sequenceDiagram
   participant API as Trigger.dev API
   participant Agent as Chat Agent Run
 
-  Client->>API: POST /api/v1/tasks/{taskId}/trigger (first message)
+  Client->>API: POST /api/v1/sessions { externalId: chatId }
+  API-->>Client: { id: sessionId }
+  Client->>API: POST /api/v1/tasks/{taskId}/trigger (payload includes sessionId)
   API-->>Client: { id: runId, publicAccessToken }
-  Client->>API: GET /realtime/v1/streams/{runId}/chat (SSE subscribe)
+  Client->>API: GET /realtime/v1/sessions/{sessionId}/out (SSE subscribe)
   Agent-->>Client: UIMessageChunk stream...
   Agent-->>Client: { type: "trigger:turn-complete" }
-  Client->>API: POST /realtime/v1/streams/{runId}/input/chat-messages (next message)
+  Client->>API: POST /realtime/v1/sessions/{sessionId}/in/append { kind: "message", payload }
   Agent-->>Client: UIMessageChunk stream...
   Agent-->>Client: { type: "trigger:turn-complete" }
 ```
 
-## Step 1: Trigger the first run
+## Step 1: Create the session
 
-Start a conversation by triggering the agent task. The payload follows the `ChatTaskWirePayload` shape:
+Before triggering a run, create a Session. Use your stable chat ID as `externalId` — this makes creation idempotent, so two concurrent clients for the same chat converge on the same session.
+
+```bash
+POST /api/v1/sessions
+Authorization: Bearer <secret-key-or-jwt>
+Content-Type: application/json
+
+{
+  "type": "chat.agent",
+  "externalId": "conversation-123",
+  "tags": ["user:user-456"]
+}
+```
+
+Response:
+
+```json
+{
+  "id": "session_cm4z2plfh000abcd1efgh",
+  "externalId": "conversation-123",
+  "type": "chat.agent",
+  "tags": ["user:user-456"],
+  "metadata": null,
+  "closedAt": null,
+  "closedReason": null,
+  "expiresAt": null,
+  "createdAt": "2026-04-24T09:00:00.000Z",
+  "updatedAt": "2026-04-24T09:00:00.000Z",
+  "isCached": false
+}
+```
+
+`id` is the `session_*` friendly ID — persist it alongside your chat state. `isCached: true` means the server returned an existing session for this `externalId` (safe to ignore).
+
+See [`POST /api/v1/sessions`](/sessions/reference#create) for the full request / response schema.
+
+## Step 2: Trigger a run
+
+Start an agent run bound to the session. The payload follows the `ChatTaskWirePayload` shape plus a `sessionId` field:
 
 ```bash
 POST /api/v1/tasks/{taskId}/trigger
@@ -53,6 +96,7 @@ Content-Type: application/json
       }
     ],
     "chatId": "conversation-123",
+    "sessionId": "session_cm4z2plfh000abcd1efgh",
     "trigger": "submit-message",
     "metadata": { "userId": "user-456" }
   },
@@ -62,7 +106,7 @@ Content-Type: application/json
 }
 ```
 
-The response body contains the `runId`:
+Response:
 
 ```json
 {
@@ -70,14 +114,16 @@ The response body contains the `runId`:
 }
 ```
 
-The **response headers** contain the public access token (a JWT scoped to this run):
+The response headers contain `x-trigger-jwt` — a JWT with the scopes the transport needs to operate against the session:
 
-The `x-trigger-jwt` header contains a JWT with `read:runs:{runId}` and `write:inputStreams:{runId}` scopes. Use this for all stream operations.
+- `read:runs:{runId}` — read the run
+- `read:sessions:{sessionId}` — subscribe to `.out`
+- `write:sessions:{sessionId}` — append to `.in`, close the session
 
-Store the `runId` and the `x-trigger-jwt` value — you need both for input streams and SSE.
+Persist `runId` + `publicAccessToken` + `sessionId` + `lastEventId` as your client-side chat state.
 
 <Note>
-  The built-in SDK clients (`TriggerChatTransport`, `AgentChat`) extract the JWT from the response header automatically. If you're using the `ApiClient` from `@trigger.dev/core/v3`, `triggerTask()` returns `{ id, publicAccessToken }` with the header already extracted.
+  The built-in SDK clients (`TriggerChatTransport`, `AgentChat`) mint this token with the right scopes automatically. If you're using the `ApiClient` from `@trigger.dev/core/v3`, `triggerTask()` returns `{ id, publicAccessToken }` with the header already extracted.
 </Note>
 
 ### Preloading (optional)
@@ -89,58 +135,57 @@ To preload an agent before the first message, trigger with `"trigger": "preload"
   "payload": {
     "messages": [],
     "chatId": "conversation-123",
+    "sessionId": "session_cm4z2plfh000abcd1efgh",
     "trigger": "preload",
     "metadata": { "userId": "user-456" }
   }
 }
 ```
 
-The agent starts, runs `onPreload`, and waits for the first real message via the input stream.
+The agent starts, runs `onPreload`, opens the session handle, and waits for the first real message on `.in`.
 
-## Step 2: Subscribe to the output stream
+## Step 3: Subscribe to `.out`
 
-Subscribe to the agent's response via SSE:
+Subscribe to the agent's response via SSE on the session's `.out` channel:
 
 ```
-GET /realtime/v1/streams/{runId}/chat
+GET /realtime/v1/sessions/{sessionId}/out
 Authorization: Bearer <publicAccessToken>
 Accept: text/event-stream
 ```
 
+The URL uses `sessionId` — not `runId`. A session's `.out` stays the same across runs, so the client doesn't need to re-subscribe when a new run starts on the same chat.
+
 ### Stream format (S2)
 
-The output stream uses [S2](https://s2.dev) (a durable streaming service) under the hood. SSE events arrive as **batches** — each event has `event: batch` and a `data` field containing an array of records:
+The output stream uses [S2](https://s2.dev) under the hood. SSE events arrive as batches — each event has `event: batch` and a `data` field containing an array of records:
 
-```json
+```
 event: batch
 data: {
   "records": [
     {
-      "body": "{\"data\": {\"type\": \"text-delta\", \"delta\": \"Hello\"}, \"id\": \"abc123\"}",
+      "body": "{\"data\":{\"type\":\"text-delta\",\"delta\":\"Hello\"},\"id\":\"abc\"}",
       "seq_num": 1,
       "timestamp": 1712150400000
-    },
-    {
-      "body": "{\"data\": {\"type\": \"text-delta\", \"delta\": \" world\"}, \"id\": \"def456\"}",
-      "seq_num": 2,
-      "timestamp": 1712150400001
     }
   ]
 }
 ```
 
-Each record's `body` is a JSON string containing `{ data, id }`. The `data` field is the actual `UIMessageChunk`. The `seq_num` is used for stream resumption.
+Each record's `body` is a JSON string containing `{ data, id }`. `data` is the actual `UIMessageChunk` object (not a stringified payload). `seq_num` is the resume cursor.
 
-**Recommended:** Use `SSEStreamSubscription` from `@trigger.dev/core/v3` to handle parsing automatically — it takes care of batch decoding, deduplication, and resume tracking:
+**Recommended:** use `SSEStreamSubscription` from `@trigger.dev/core/v3` to handle parsing automatically — it takes care of batch decoding, deduplication, and `Last-Event-ID` tracking:
 
 ```ts
 import { SSEStreamSubscription } from "@trigger.dev/core/v3";
 
 const subscription = new SSEStreamSubscription(
-  `${baseUrl}/realtime/v1/streams/${runId}/chat`,
+  `${baseUrl}/realtime/v1/sessions/${sessionId}/out`,
   {
     headers: { Authorization: `Bearer ${publicAccessToken}` },
     timeoutInSeconds: 120,
+    lastEventId,
   }
 );
 
@@ -159,13 +204,11 @@ while (true) {
 }
 ```
 
-If you prefer to parse the S2 protocol yourself, see the [S2 documentation](https://s2.dev/docs) for the full SSE batch protocol reference.
+If you prefer to parse the S2 protocol yourself, see the [S2 documentation](https://s2.dev/docs).
 
 ### Chunk types
 
-Each chunk's `data` field is a `UIMessageChunk` from the [AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/ui-message-stream). The stream contains standard AI SDK chunk types (`text-delta`, `reasoning-delta`, `tool-input-available`, `tool-output-available`, `error`, etc.) plus two Trigger.dev-specific control chunks.
-
-See the [AI SDK UIMessageStream documentation](https://ai-sdk.dev/docs/ai-sdk-ui/ui-message-stream) for the full list of chunk types and their shapes.
+Each chunk's `data` field is a `UIMessageChunk` from the [AI SDK](https://ai-sdk.dev/docs/ai-sdk-ui/ui-message-stream) plus two Trigger.dev-specific control chunks (`trigger:turn-complete`, `trigger:upgrade-required`) covered below.
 
 ### `trigger:turn-complete`
 
@@ -181,54 +224,87 @@ Signals that the agent's turn is finished — stop reading and wait for user inp
 | Field | Type | Description |
 | --- | --- | --- |
 | `type` | `"trigger:turn-complete"` | Always this string |
-| `publicAccessToken` | `string` (optional) | A refreshed JWT for this run. If present, replace your stored token with this one — the previous token may be close to expiry. |
+| `publicAccessToken` | `string` (optional) | A refreshed JWT with the same session + run scopes. If present, replace your stored token. |
 
 When you receive this chunk:
-1. Update `publicAccessToken` if one is included
-2. Close the stream reader
-3. Wait for the next user message before subscribing again
+1. Update `publicAccessToken` if one is included.
+2. Close the stream reader (unless you want to keep it open across turns — see [Resuming a stream](#resuming-a-stream)).
+3. Wait for the next user message before sending on `.in`.
 
 ### `trigger:upgrade-required`
 
-Signals that the agent cannot handle this message on its current version and the client should retry on a new run. This is emitted when the agent calls [`chat.requestUpgrade()`](/ai-chat/patterns/version-upgrades) before processing the turn.
+Signals that the agent cannot handle this message on its current version and the client should re-trigger on a new run. Emitted when the agent calls [`chat.requestUpgrade()`](/ai-chat/patterns/version-upgrades) before processing the turn.
 
 ```json
-{
-  "type": "trigger:upgrade-required"
-}
+{ "type": "trigger:upgrade-required" }
 ```
 
 When you receive this chunk:
-1. Close the stream reader
-2. Clear the current session
-3. Immediately trigger a **new run** with the full message history and `continuation: true` (same as [Step 4: Handle continuations](#step-4-handle-continuations))
-4. Subscribe to the new run's stream and pipe it through to the consumer
+1. Close the stream reader.
+2. Immediately trigger a **new run** on the **same session** — keep `sessionId`, refresh `runId` + `publicAccessToken`. Include `continuation: true` in the payload.
+3. Resubscribe to `/realtime/v1/sessions/{sessionId}/out`.
 
-The user's message is **not lost** — it gets replayed on the new version. The built-in clients (`TriggerChatTransport`, `AgentChat`) handle this transparently. The consumer sees a seamless response from the upgraded agent.
+The user's message is not lost — it gets replayed on the new version. The built-in clients handle this transparently.
 
 ### Resuming a stream
 
 If the SSE connection drops, reconnect with the `Last-Event-ID` header set to the last `seq_num` you received:
 
 ```
-GET /realtime/v1/streams/{runId}/chat
+GET /realtime/v1/sessions/{sessionId}/out
 Authorization: Bearer <publicAccessToken>
 Last-Event-ID: 42
 ```
 
 `SSEStreamSubscription` tracks this automatically via its `lastEventId` option.
 
-## Step 3: Send subsequent messages
+### `X-Session-Settled` — fast close on idle reconnects
 
-After the first turn, send messages via the run's input stream instead of triggering a new run:
+When you reconnect to `.out` and the last record on the session is a `trigger:turn-complete` marker (the agent has finished a turn and is either idle-waiting or exited), the server responds with:
 
-```bash
-POST /realtime/v1/streams/{runId}/input/chat-messages
+- `X-Session-Settled: true` response header
+- A fast SSE close (milliseconds instead of the usual 60s long-poll)
+
+This lets the client distinguish a close that means "nothing is streaming right now" from a normal mid-stream disconnect. Your transport can use this to settle into a "ready" state on page reload without maintaining its own `isStreaming` flag.
+
+```ts
+const response = await fetch(sseUrl, { headers });
+const settled = response.headers.get("X-Session-Settled") === "true";
+// ...subscribe as normal; if settled and nothing arrives, you're done.
+```
+
+## Step 4: Send messages, stops, and actions
+
+All client-to-agent signals are appended to the session's `.in` channel:
+
+```
+POST /realtime/v1/sessions/{sessionId}/in/append
+Authorization: Bearer <publicAccessToken>
+Content-Type: application/json
+```
+
+The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk) — a tagged union covering messages, stops, and actions. Send them as raw JSON strings (not wrapped in a `data` field).
+
+### `ChatInputChunk`
+
+```ts
+type ChatInputChunk =
+  | { kind: "message"; payload: ChatTaskWirePayload }
+  | { kind: "stop"; message?: string };
+```
+
+The discriminator `kind` drives the agent's dispatch — `"message"` goes to the turn loop, `"stop"` fires the abort controller.
+
+### Sending a message
+
+```
+POST /realtime/v1/sessions/{sessionId}/in/append
 Authorization: Bearer <publicAccessToken>
 Content-Type: application/json
 
 {
-  "data": {
+  "kind": "message",
+  "payload": {
     "messages": [
       {
         "id": "msg-2",
@@ -243,25 +319,53 @@ Content-Type: application/json
 }
 ```
 
-Note the `{ "data": ... }` wrapper — the input stream API wraps the payload in a `data` field.
-
-After sending, subscribe to the output stream again (same URL, same auth) to receive the response.
+After sending, subscribe to `.out` (if you closed the stream after `trigger:turn-complete`) to receive the response.
 
 <Warning>
-  On turn 2+, only send the **new** message(s) in the `messages` array — not the full history. The agent accumulates the conversation internally. On turn 1 (or after a continuation), send the **full** message history.
+  On turn 2+ against an existing run, only send the **new** message(s) in `messages` — not the full history. The agent accumulates the conversation internally. On turn 1 (or after a continuation), send the **full** message history.
 </Warning>
+
+### Sending a stop
+
+```json
+{ "kind": "stop" }
+```
+
+Interrupts the agent's current turn. `streamText` aborts, the agent emits `trigger:turn-complete`, and the run returns to idle.
+
+An optional `message` field surfaces in the agent's stop handler:
+
+```json
+{ "kind": "stop", "message": "user cancelled" }
+```
+
+### Sending an action
+
+Custom actions (undo, rollback, edit) ride on the same `.in` channel using `kind: "message"` with `trigger: "action"` in the payload:
+
+```json
+{
+  "kind": "message",
+  "payload": {
+    "messages": [],
+    "chatId": "conversation-123",
+    "trigger": "action",
+    "action": { "type": "undo" },
+    "metadata": { "userId": "user-456" }
+  }
+}
+```
+
+Actions wake the agent from suspension (same as messages), fire the `onAction` hook, then trigger a normal `run()` turn. The `action` payload is validated against the agent's `actionSchema`. See [Actions](/ai-chat/backend#actions).
 
 ### Tool approval responses
 
-When a tool requires approval (`needsApproval: true`), the agent streams the tool call with an `approval-requested` state and completes the turn. After the user approves or denies, send the **updated assistant message** (with `approval-responded` tool parts) back via the same input stream:
+When a tool requires approval (`needsApproval: true`), the agent streams the tool call with an `approval-requested` state and completes the turn. After the user approves or denies, send the **updated assistant message** (with `approval-responded` tool parts) back as a `kind: "message"` chunk:
 
-```bash
-POST /realtime/v1/streams/{runId}/input/chat-messages
-Authorization: Bearer <publicAccessToken>
-Content-Type: application/json
-
+```json
 {
-  "data": {
+  "kind": "message",
+  "payload": {
     "messages": [
       {
         "id": "asst-msg-1",
@@ -284,89 +388,39 @@ Content-Type: application/json
 }
 ```
 
-The agent matches the incoming message by its `id` against the accumulated conversation. If a match is found, it **replaces** the existing message (instead of appending). This updates the tool approval state, and `streamText` executes the approved tool on the next step.
+The agent matches the incoming message by `id` against the accumulated conversation. If a match is found, it **replaces** the existing message instead of appending.
 
 <Note>
-  The message `id` must match the one the agent assigned during streaming. If you're using `TriggerChatTransport`, IDs are kept in sync automatically. Custom transports should use the `messageId` from the stream's `start` chunk.
-</Note>
-
-## Custom actions
-
-Send a custom action (undo, rollback, edit) to the agent using the same `chat-messages` input stream. Actions use `trigger: "action"` and carry a custom payload in the `action` field:
-
-```bash
-POST /realtime/v1/streams/{runId}/input/chat-messages
-Authorization: Bearer <publicAccessToken>
-Content-Type: application/json
-
-{
-  "data": {
-    "messages": [],
-    "chatId": "conversation-123",
-    "trigger": "action",
-    "action": { "type": "undo" },
-    "metadata": { "userId": "user-456" }
-  }
-}
-```
-
-Actions wake the agent from suspension (same as messages), fire the `onAction` hook, then trigger a normal `run()` turn. The `action` payload is validated against the agent's `actionSchema`.
-
-After sending, subscribe to the output stream to receive the agent's response — the same flow as [Step 2](#step-2-subscribe-to-the-output-stream).
-
-<Note>
-  `messages` is empty for actions. The agent's `onAction` handler modifies the conversation state via `chat.history.*`, and the LLM responds to the updated state. See [Actions](/ai-chat/backend#actions) for backend setup.
+  The message `id` must match the one the agent assigned during streaming. `TriggerChatTransport` keeps IDs in sync automatically. Custom transports should use the `messageId` from the stream's `start` chunk.
 </Note>
 
 ## Pending and steering messages
 
-You can send messages to the agent **while it's still streaming a response**. These are called pending messages — the agent receives them mid-turn and can inject them between tool-call steps.
+You can send messages while the agent is still streaming a response. These are **pending messages** — the agent receives them mid-turn and can inject them between tool-call steps.
 
-Send a pending message to the same `chat-messages` input stream:
+The wire format is identical to a normal message — the same `kind: "message"` on `.in`. The difference is timing. What happens depends on the agent's `pendingMessages` configuration:
 
-```bash
-POST /realtime/v1/streams/{runId}/input/chat-messages
-Authorization: Bearer <publicAccessToken>
-Content-Type: application/json
-
-{
-  "data": {
-    "messages": [
-      {
-        "id": "msg-steering-1",
-        "role": "user",
-        "parts": [{ "type": "text", "text": "Actually, focus on the security issues first" }]
-      }
-    ],
-    "chatId": "conversation-123",
-    "trigger": "submit-message",
-    "metadata": { "userId": "user-456" }
-  }
-}
-```
-
-This is the same endpoint and format as a normal message. The difference is timing — the agent is already streaming. What happens to the message depends on the agent's `pendingMessages` configuration:
-
-- **With `pendingMessages.shouldInject`**: The message is injected into the model's context at the next `prepareStep` boundary (between tool-call steps). The agent sees it and can adjust its behavior mid-response.
-- **Without `pendingMessages` config**: The message queues for the next turn. It becomes the `currentWirePayload` for the following turn, skipping the wait-for-message phase.
+- **With `pendingMessages.shouldInject`**: the message is injected into the model's context at the next `prepareStep` boundary. The agent sees it and can adjust its behavior mid-response.
+- **Without `pendingMessages` config**: the message queues for the next turn.
 
 See [Pending Messages](/ai-chat/pending-messages) for how to configure the agent side.
 
 <Note>
-  Unlike a normal `sendMessage`, pending messages should **not** cancel the active stream subscription. Keep reading the current response stream — the agent incorporates the pending message into the same turn or queues it for the next one.
+  Unlike a normal `sendMessage`, pending messages should **not** cancel the active stream subscription. Keep reading — the agent incorporates the message into the same turn or queues it for the next one.
 </Note>
 
-## Step 4: Handle continuations
+## Continuations
 
-A run can end for several reasons: idle timeout, max turns reached, `chat.requestUpgrade()`, or cancellation. When this happens, the input stream POST will fail (400 "Cannot send to input stream on a completed run").
+A run can end for several reasons: idle timeout, max turns reached, `chat.requestUpgrade()`, crash, or cancellation. When this happens, the append POST to `.in` will deliver the record to the session — but with no live run consuming `.in`, nothing will happen until the next run starts.
 
-When this error occurs, trigger a **new run** with the full message history and `continuation: true`:
+The transport's job is to detect "no live run" and trigger a new one on the **same session**. Trigger with `continuation: true` so the agent's `onChatStart` hook can distinguish from a brand-new conversation:
 
 ```json
 {
   "payload": {
     "messages": [/* full UIMessage history */],
     "chatId": "conversation-123",
+    "sessionId": "session_cm4z2plfh000abcd1efgh",
     "trigger": "submit-message",
     "metadata": { "userId": "user-456" },
     "continuation": true,
@@ -375,49 +429,25 @@ When this error occurs, trigger a **new run** with the full message history and 
 }
 ```
 
-The new run picks up the latest deployed version automatically. The agent's `onChatStart` hook receives `continuation: true` and `previousRunId` so it can distinguish from a brand new conversation.
+`sessionId` is reused. Only `runId` and `publicAccessToken` change.
 
 <Tip>
-  This is how [version upgrades](/ai-chat/patterns/version-upgrades) work transparently — the agent calls `chat.requestUpgrade()`, the run exits, and the client's next message triggers a continuation on the new version. No special handling needed beyond the standard continuation flow.
+  This is how [version upgrades](/ai-chat/patterns/version-upgrades) work transparently — the agent calls `chat.requestUpgrade()`, the run exits, and the client's next message triggers a continuation on the new version. Same session, new run.
 </Tip>
 
-## Stopping and closing
+## Closing the conversation
 
-### Stop the current turn
-
-Send a stop signal to interrupt the agent mid-response:
+When the user is done with the conversation, close the session:
 
 ```bash
-POST /realtime/v1/streams/{runId}/input/chat-stop
-Authorization: Bearer <publicAccessToken>
+POST /api/v1/sessions/{sessionId}/close
+Authorization: Bearer <secret-key-or-jwt>
 Content-Type: application/json
 
-{
-  "data": { "stop": true }
-}
+{ "reason": "user-ended" }
 ```
 
-The agent's stop signal fires, `streamText` aborts, and a `trigger:turn-complete` chunk is emitted.
-
-### Close the conversation
-
-Send a close signal to end the conversation gracefully:
-
-```bash
-POST /realtime/v1/streams/{runId}/input/chat-messages
-Authorization: Bearer <publicAccessToken>
-Content-Type: application/json
-
-{
-  "data": {
-    "messages": [],
-    "chatId": "conversation-123",
-    "trigger": "close"
-  }
-}
-```
-
-The agent exits its loop and the run completes. If you skip this, the agent closes on its own when the idle/turn timeout expires.
+Closing is idempotent and optional. A long-running chat that's just between turns is a **live** session, not a closed one — don't close it prematurely.
 
 ## Session state
 
@@ -425,26 +455,33 @@ A client needs to track per-conversation:
 
 | Field | Description |
 | --- | --- |
-| `chatId` | Stable conversation ID (survives continuations) |
-| `runId` | Current run ID (changes on continuation) |
-| `publicAccessToken` | JWT for stream auth (refreshed on each turn-complete) |
-| `lastEventId` | Last SSE event ID (for stream resumption) |
+| `sessionId` | Durable session ID (`session_*`). Stable for the life of the conversation. |
+| `chatId` | Your stable conversation ID (passed as `externalId` on create). |
+| `runId` | Current run ID. Changes when a run ends and a continuation starts. |
+| `publicAccessToken` | JWT for session + run access. Refreshed via `trigger:turn-complete` chunks. |
+| `lastEventId` | Last SSE event ID received on `.out`. Use to resume mid-stream. |
 
-On continuation, `runId` and `publicAccessToken` change. `chatId` stays the same.
+`sessionId` and `chatId` are durable. `runId` and `publicAccessToken` are live-run state that refreshes on each new run. On reload, you only need `sessionId` + `publicAccessToken` + `lastEventId` to resume — `runId` is a live-run hint that can be `null` when no run is active.
 
 ## Authentication
 
 | Operation | Auth |
 | --- | --- |
-| Trigger task | Secret API key or scoped JWT with `write:tasks` |
-| Input stream POST | JWT with `write:inputStreams` scope for the run |
-| Output stream GET | JWT with `read:runs` scope for the run |
+| Create session (`POST /api/v1/sessions`) | Secret API key or JWT with `write:sessions` |
+| Close session (`POST /api/v1/sessions/{id}/close`) | Secret API key or JWT with `admin:sessions:{id}` |
+| Trigger task | Secret API key or JWT with `write:tasks` |
+| `.in` append | JWT with `write:sessions:{id}` (or `write:sessions:{id}:in`) |
+| `.out` subscribe | JWT with `read:sessions:{id}` |
 
-The `publicAccessToken` returned from the trigger response has both `read:runs` and `write:inputStreams` scopes for the run. Use it for all stream operations.
+The transport-facing `publicAccessToken` returned from the trigger response carries both `read:sessions:{id}` and `write:sessions:{id}` for the session, plus `read:runs:{runId}` + `write:inputStreams:{runId}` for the run. Use it for all session operations.
+
+See [Session reference — Token scopes](/sessions/reference#token-scopes) for the full scope list.
 
 ## See also
 
-- [`TriggerChatTransport`](/ai-chat/frontend) — built-in frontend transport (implements this protocol)
-- [`AgentChat`](/ai-chat/server-chat) — built-in server-side client (implements this protocol)
-- [Backend lifecycle](/ai-chat/backend#lifecycle-hooks) — what the agent does on each event
-- [Version upgrades](/ai-chat/patterns/version-upgrades) — how `chat.requestUpgrade()` uses continuations
+- [Sessions Overview](/sessions/overview) — The durable primitive chat.agent is built on
+- [Sessions Reference](/sessions/reference) — Full `sessions.*` API and wire endpoints
+- [`TriggerChatTransport`](/ai-chat/frontend) — Built-in browser transport (implements this protocol)
+- [`AgentChat`](/ai-chat/server-chat) — Built-in server-side client
+- [Backend lifecycle](/ai-chat/backend#lifecycle-hooks) — What the agent does on each event
+- [Version upgrades](/ai-chat/patterns/version-upgrades) — How `chat.requestUpgrade()` uses continuations

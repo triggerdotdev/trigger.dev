@@ -4,6 +4,39 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="April 24, 2026" description="chat.agent on Sessions" tags={["SDK", "Platform"]}>
+
+## `chat.agent` now runs on Sessions
+
+Every chat is backed by a [Session](/sessions/overview) — a new public, durable, bidirectional I/O primitive that outlives any single run. `externalId` = your chat ID, `type` = `"chat.agent"`. Under the hood:
+
+- Output chunks stream on `session.out` (was a run-scoped `streams.writer("chat")`).
+- Client messages and stops land on `session.in` as a [`ChatInputChunk`](/ai-chat/reference#chatinputchunk) tagged union (was two run-scoped `streams.input` definitions).
+- Wire endpoints moved from `/realtime/v1/streams/{runId}/...` to `/realtime/v1/sessions/{sessionId}/...`. See the rewritten [Client Protocol](/ai-chat/client-protocol).
+
+Public surface (`chat.agent()`, `TriggerChatTransport`, `AgentChat`, `chat.stream` / `chat.messages` / `chat.stopSignal`) is unchanged — existing apps keep working. What's new is:
+
+- **Cross-run resume is free.** A chat you were in yesterday resumes against the same `sessionId` today, even if the original run long since exited. No more lost conversations when a run idle-times-out.
+- **Inbox views via `sessions.list({type: "chat.agent"})`.** Enumerate every chat in your environment, filter by tag or status.
+- **`TriggerChatTaskResult.sessionId`** + **`ChatTaskRunPayload.sessionId`** — you can reach into the raw session via `sessions.open(payload.sessionId)` for advanced cases (writing from a sub-agent, custom transport).
+- **Dashboard Agent tab** resolves via `sessionId` and stays in sync with the live stream across runs.
+
+See the new [Sessions docs](/sessions/overview) for the underlying primitive.
+
+## `X-Session-Settled` — fast reconnect on idle chats
+
+When a client reconnects to `session.out` and the tail record is a `trigger:turn-complete` marker (agent finished a turn, idle-waiting or exited), the server sets `X-Session-Settled: true` and uses `wait=0` on the underlying S2 read. The SSE drains any remaining records then closes in ~1s instead of long-polling for 60s.
+
+Practical impact: `TriggerChatTransport.reconnectToStream` no longer needs a client-side `isStreaming` flag. You can drop the field from your persisted `ChatSession` state entirely — the server decides. Existing callers that still persist `isStreaming` are unaffected; `reconnectToStream` keeps the fast-path short-circuit when it's `false`.
+
+## Migration
+
+Nothing to do for users of `chat.agent()` + `TriggerChatTransport` + `AgentChat`. Your existing code keeps working; you pick up the new durability guarantees for free.
+
+If you built a custom transport against the old `/realtime/v1/streams/{runId}/...` endpoints, see the rewritten [Client Protocol](/ai-chat/client-protocol) for the new session-based wire format. The old constants (`CHAT_STREAM_KEY`, `CHAT_MESSAGES_STREAM_ID`, `CHAT_STOP_STREAM_ID`) are removed from `@trigger.dev/core/v3/chat-client` — migrate to `sessions.open(sessionId).out` / `.in`.
+
+</Update>
+
 <Update label="April 19, 2026" description="0.0.0-chat-prerelease-20260419173457" tags={["SDK", "CLI"]}>
 
 ## Agent Skills (Phase 1)

@@ -1,0 +1,169 @@
+---
+title: "Sessions"
+sidebarTitle: "Overview"
+description: "A durable, typed, bidirectional I/O primitive that outlives any single run — built for chat agents, long-running workflows, and any conversation you need to resume across runs."
+---
+
+A **Session** is a durable identity for a bidirectional stream of records. Once you create one, it outlives the run that opened it, survives process crashes, and can be resumed from any client that knows its ID.
+
+Under the hood, each session exposes two channels:
+
+- **`.out`** — the task writes, external clients read.
+- **`.in`** — external clients write, the task reads.
+
+Both channels use Trigger.dev's realtime streams, with SSE subscribe, `Last-Event-ID` resume, and direct-to-storage writes.
+
+## Why sessions
+
+Run-scoped streams ([streams.pipe](/tasks/streams) / [streams.input](/tasks/input-streams)) are great for ephemeral I/O within a single run: LLM output from a one-shot task, file chunks during processing, etc. Once the run ends, the stream is gone.
+
+Sessions give you a channel that **isn't tied to a single run**. You can:
+
+- **Resume a conversation across runs.** A chat that ran yesterday, crashed, or hit an idle timeout can pick back up on the same session when the user sends the next message.
+- **Share a channel across runs.** A coordinator run writes to `session.out`; a worker run reads from `session.in` — different runs, same channel.
+- **Show an inbox view.** `sessions.list({ type: "chat.agent" })` returns every chat in your environment, filterable by tag or status.
+- **Key everything on one ID.** `externalId` (your own string — a chat ID, a conversation UUID) is the primary key. Internally, Trigger.dev mints a stable `session_*` friendly ID you can use interchangeably.
+
+## Identity
+
+A session has two equivalent identifiers:
+
+| Field | Who owns it | Example | Notes |
+|---|---|---|---|
+| `externalId` | You | `"chat-abc-123"` | User-supplied idempotency key. Unique per environment. Optional but recommended. |
+| `id` (friendly) | Trigger.dev | `"session_cm4z2plfh000abcd1efgh"` | Stable server-generated identifier. Always present. |
+
+Both work as lookup keys. The server disambiguates via the `session_` prefix — anything else is treated as `externalId`.
+
+Creating a session with the same `externalId` twice returns the same session (idempotent). This is intentional: it's safe to call `sessions.create({ externalId: chatId })` from two browser tabs racing for the same chat.
+
+```ts
+const a = await sessions.create({ type: "chat.agent", externalId: "chat-abc" });
+const b = await sessions.create({ type: "chat.agent", externalId: "chat-abc" });
+
+a.id === b.id; // true — same session
+```
+
+## Channels
+
+```
+SessionHandle
+├── .out  — producer on the task side, consumer on the client side
+└── .in   — producer on the client side, consumer on the task side
+```
+
+The two channels are **disjoint** — no method name appears on both sides. Directional intent is always obvious at the call site.
+
+### `.out` — task writes, client reads
+
+Inside a task:
+
+```ts
+const handle = sessions.open(sessionId);
+
+// Single record
+await handle.out.append({ type: "message", text: "Hello" });
+
+// Pipe a ReadableStream or AsyncIterable
+const { waitUntilComplete } = handle.out.pipe(streamText(...).toUIMessageStream());
+await waitUntilComplete();
+
+// Fine-grained control
+const { waitUntilComplete } = handle.out.writer({
+  execute: ({ write }) => {
+    write({ type: "start" });
+    write({ type: "text-delta", delta: "Hi" });
+    write({ type: "finish" });
+  },
+});
+await waitUntilComplete();
+```
+
+Outside a task (browser, server action, another task):
+
+```ts
+const handle = sessions.open(sessionId);
+const stream = await handle.out.read({ lastEventId: "-1" });
+
+for await (const chunk of stream) {
+  console.log(chunk); // parsed object, not a string
+}
+```
+
+### `.in` — client writes, task reads
+
+Inside a task (consume):
+
+```ts
+const handle = sessions.open(sessionId);
+
+// Fire-and-forget handler
+handle.in.on((msg) => console.log("got", msg));
+
+// Await the next message without suspending
+const { ok, output } = await handle.in.once({ timeout: "30s" });
+
+// Suspend while idle — frees compute until a record arrives
+const msg = await handle.in.wait();
+
+// Suspend with an idle timeout that resets on every message
+await handle.in.waitWithIdleTimeout({ idleTimeout: "5m" });
+```
+
+Outside a task (produce):
+
+```ts
+const handle = sessions.open(sessionId);
+await handle.in.send({ kind: "message", text: "Hello" });
+```
+
+See [Channels](/sessions/channels) for the full surface.
+
+## Durability
+
+A session is durable until you explicitly close it:
+
+- Runs come and go. Starting a new run on an existing session is a normal operation — the run opens the handle and picks up from wherever the channels left off.
+- `sessions.close(id, { reason })` marks the session terminal. Closed sessions still let you subscribe to their `.out` to read history, but no new records can be appended.
+- Close is **client-driven only**. The task runtime never auto-closes on your behalf — a chat that's "between turns" is a live session, not a closed one.
+- Optional `expiresAt` sets a retention window. Past `expiresAt`, the session is treated as closed for new writes.
+
+## When to use sessions vs. run-scoped streams
+
+Use **run-scoped streams** ([`streams.pipe`](/tasks/streams), [`streams.input`](/tasks/input-streams)) when:
+
+- The data is tied to one run's lifetime.
+- You don't need to resume from a different process or user.
+- The stream lives inside your task-runtime boundary (one producer, one consumer, both in the same run).
+
+Use **sessions** when:
+
+- The channel needs to outlive any single run.
+- You want to address it from multiple places (browser + server + another task) using a stable ID.
+- You need a typed bidirectional pair rather than a one-way stream.
+- You want the data visible across runs for resume, inbox views, or cross-run coordination.
+
+Both primitives share the same underlying realtime-streams infrastructure (S2, SSE, `Last-Event-ID` resume). Sessions layer durable identity + bidirectional channels on top.
+
+## Relationship to chat.agent
+
+`chat.agent()` is built on sessions. Every chat conversation is one session:
+
+- `externalId` = your chat ID
+- `type` = `"chat.agent"`
+- `.out` carries `UIMessageChunk` events
+- `.in` carries a `ChatInputChunk` tagged union (`{kind: "message", ...}` or `{kind: "stop"}`)
+
+If you're using `chat.agent` + `TriggerChatTransport` / `AgentChat`, sessions are handled for you. You only need this section directly if you're:
+
+- Building a custom chat transport (e.g. for Slack or a native app — see [Client Protocol](/ai-chat/client-protocol)).
+- Using sessions for a non-chat workload (background agents, cross-run pipelines).
+- Reaching into the underlying primitive for advanced cases.
+
+## Related
+
+- [Quick Start](/sessions/quick-start) — Create, write, read, close in 4 steps
+- [Channels](/sessions/channels) — Full `.in` / `.out` API, waitpoint semantics, serialization
+- [API Reference](/sessions/reference) — `sessions.*` methods, types, scopes
+- [AI Chat](/ai-chat/overview) — The chat primitive built on sessions
+- [Run-scoped streams](/tasks/streams) — The ephemeral counterpart
