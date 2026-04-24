@@ -162,6 +162,7 @@ export async function startTestServer(): Promise<TestServer> {
     redisContainer = rc;
 
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
+    await prisma.$connect(); // pre-warm pool; surface connection failures before tests start
     const started = await startWebapp(pg.url, { host: rc.getHost(), port: rc.getPort() });
     webapp = started.instance;
     stopWebapp = started.stop;

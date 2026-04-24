@@ -87,3 +87,5 @@ jobs:
 
       - name: 🧪 Run Webapp E2E Tests
         run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default
+        env:
+          WEBAPP_TEST_VERBOSE: "1"
