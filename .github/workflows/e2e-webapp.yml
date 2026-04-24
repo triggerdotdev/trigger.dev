@@ -85,4 +85,4 @@ jobs:
         run: pnpm run build --filter webapp
 
       - name: 🧪 Run Webapp E2E Tests
-        run: cd apps/webapp && pnpm exec vitest run test/api-auth.e2e.test.ts --reporter=default
+        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default
