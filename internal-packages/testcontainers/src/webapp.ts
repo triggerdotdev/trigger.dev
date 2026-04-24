@@ -69,6 +69,7 @@ export async function startWebapp(
       ELECTRIC_ORIGIN: "http://localhost:3060",
       REDIS_HOST: redis.host,
       REDIS_PORT: String(redis.port),
+      REDIS_TLS_DISABLED: "true", // all *_REDIS_TLS_DISABLED vars default to this; test Redis has no TLS
       // Disable all background workers. Each worker has its own env var and its own
       // check idiom ("0" vs "false" vs boolean), so we set all of them explicitly.
       WORKER_ENABLED: "false",          // disables workerQueue.initialize() (checked === "true")
