@@ -2507,6 +2507,7 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
+            debounce: item.options?.debounce,
           },
         };
       })

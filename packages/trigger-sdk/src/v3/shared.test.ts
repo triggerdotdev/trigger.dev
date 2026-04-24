@@ -1,5 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { readableStreamToAsyncIterable } from "./shared.js";
+
+let taskIdCounter = 0;
 
 describe("readableStreamToAsyncIterable", () => {
   it("yields all values from the stream", async () => {
@@ -217,3 +219,114 @@ describe("readableStreamToAsyncIterable", () => {
   });
 });
 
+describe("batchTriggerAndWait debounce forwarding", () => {
+  afterEach(() => {
+    vi.doUnmock("@trigger.dev/core/v3");
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  async function setupBatchTriggerAndWaitHarness() {
+    vi.resetModules();
+
+    const capturedItems: any[] = [];
+
+    const createBatch = vi.fn(async ({ runCount }: { runCount: number }) => ({
+      id: "batch_test123",
+      runCount,
+      publicAccessToken: "access_token",
+      isCached: false,
+    }));
+
+    const streamBatchItems = vi.fn(async (_batchId: string, items: any[]) => {
+      capturedItems.push(...items);
+
+      return {
+        id: "batch_test123",
+        itemsAccepted: items.length,
+        itemsDeduplicated: 0,
+        sealed: true,
+      };
+    });
+
+    const waitForBatch = vi.fn(async ({ id }: { id: string }) => ({
+      id,
+      items: [],
+    }));
+
+    vi.doMock("@trigger.dev/core/v3", async (importOriginal) => {
+      const original = await importOriginal<typeof import("@trigger.dev/core/v3")>();
+
+      return {
+        ...original,
+        apiClientManager: {
+          clientOrThrow: vi.fn(() => ({
+            createBatch,
+            streamBatchItems,
+          })),
+        } as any,
+        runtime: {
+          ...original.runtime,
+          waitForBatch,
+        } as any,
+        taskContext: {
+          ctx: {
+            run: {
+              id: "run_123",
+              isTest: false,
+            },
+          },
+          worker: {
+            version: "worker_123",
+          },
+        } as any,
+      };
+    });
+
+    const tasksModule = await import("./tasks.js");
+
+    return {
+      ...tasksModule,
+      capturedItems,
+      createBatch,
+      streamBatchItems,
+      waitForBatch,
+    };
+  }
+
+  it("forwards per-item debounce for task.batchTriggerAndWait array items", async () => {
+    const { task, capturedItems, streamBatchItems, waitForBatch } =
+      await setupBatchTriggerAndWaitHarness();
+    const debounce = { key: "same-key", delay: "30s", mode: "trailing" as const };
+    const taskId = `batch-debounce-task-${++taskIdCounter}`;
+
+    const myTask = task({
+      id: taskId,
+      run: async (payload: { id: string }) => payload,
+    });
+
+    await myTask.batchTriggerAndWait([{ payload: { id: "a" }, options: { debounce } }]);
+
+    expect(streamBatchItems).toHaveBeenCalledTimes(1);
+    expect(waitForBatch).toHaveBeenCalledTimes(1);
+    expect(capturedItems).toHaveLength(1);
+    expect(capturedItems[0]?.task).toBe(taskId);
+    expect(capturedItems[0]?.options?.debounce).toEqual(debounce);
+  });
+
+  it("forwards per-item debounce for tasks.batchTriggerAndWait array items", async () => {
+    const { tasks, capturedItems, streamBatchItems, waitForBatch } =
+      await setupBatchTriggerAndWaitHarness();
+    const debounce = { key: "same-key", delay: "30s", mode: "trailing" as const };
+
+    await tasks.batchTriggerAndWait("batch-debounce-by-id-task", [
+      { payload: { id: "a" }, options: { debounce } },
+    ]);
+
+    expect(streamBatchItems).toHaveBeenCalledTimes(1);
+    expect(waitForBatch).toHaveBeenCalledTimes(1);
+    expect(capturedItems).toHaveLength(1);
+    expect(capturedItems[0]?.task).toBe("batch-debounce-by-id-task");
+    expect(capturedItems[0]?.options?.debounce).toEqual(debounce);
+  });
+});
