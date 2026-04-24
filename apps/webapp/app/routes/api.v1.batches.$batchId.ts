@@ -25,8 +25,7 @@ export const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (batch) => ({ batch: batch.friendlyId }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (batch) => ({ type: "batch", id: batch.friendlyId }),
     },
   },
   async ({ resource: batch }) => {

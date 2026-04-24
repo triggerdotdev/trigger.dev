@@ -26,13 +26,17 @@ export const loader = createLoaderApiRoute(
     shouldRetryNotFound: true,
     authorization: {
       action: "read",
-      resource: (run) => ({
-        runs: run.friendlyId,
-        tags: run.runTags,
-        batch: run.batchId ? BatchId.toFriendlyId(run.batchId) : undefined,
-        tasks: run.taskIdentifier,
-      }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (run) => {
+        const resources = [
+          { type: "runs", id: run.friendlyId },
+          { type: "tasks", id: run.taskIdentifier },
+          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+        ];
+        if (run.batchId) {
+          resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
+        }
+        return resources;
+      },
     },
   },
   async ({ resource: run, authentication }) => {

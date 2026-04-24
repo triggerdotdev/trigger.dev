@@ -13,8 +13,13 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "read",
-      resource: (_, __, searchParams) => ({ tasks: searchParams["filter[taskIdentifier]"] }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (_, __, searchParams) => {
+        const taskFilter = searchParams["filter[taskIdentifier]"] ?? [];
+        return [
+          { type: "runs" },
+          ...taskFilter.map((id) => ({ type: "tasks", id })),
+        ];
+      },
     },
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },

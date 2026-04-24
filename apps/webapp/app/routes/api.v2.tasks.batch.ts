@@ -32,10 +32,11 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "batchTrigger",
-      resource: (_, __, ___, body) => ({
-        tasks: Array.from(new Set(body.items.map((i) => i.task))),
-      }),
-      superScopes: ["write:tasks", "admin"],
+      resource: (_, __, ___, body) =>
+        Array.from(new Set(body.items.map((i) => i.task))).map((id) => ({
+          type: "tasks",
+          id,
+        })),
     },
     corsStrategy: "all",
   },

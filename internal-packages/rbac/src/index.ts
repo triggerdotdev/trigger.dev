@@ -8,7 +8,7 @@ import type {
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
 import { RoleBaseAccessFallback } from "./fallback.js";
-export type { RoleBaseAccessController };
+export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
 
 type RbacHelpers = { getSessionUserId: (request: Request) => Promise<string | null> };
 

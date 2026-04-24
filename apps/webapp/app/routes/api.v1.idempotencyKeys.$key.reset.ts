@@ -21,8 +21,7 @@ export const { action } = createActionApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "write",
-      resource: () => ({}),
-      superScopes: ["write:runs", "admin"],
+      resource: () => ({ type: "runs" }),
     },
   },
   async ({ params, body, authentication }) => {

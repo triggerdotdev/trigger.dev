@@ -21,8 +21,10 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // This is a dummy value, it's not used
     authorization: {
       action: "read",
-      resource: (_, __, searchParams) => searchParams,
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (_, __, searchParams) => [
+        { type: "runs" },
+        ...(searchParams.tags ?? []).map((tag) => ({ type: "tags", id: tag })),
+      ],
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {

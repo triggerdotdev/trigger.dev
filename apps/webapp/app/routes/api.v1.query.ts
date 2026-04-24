@@ -36,9 +36,10 @@ const { action, loader } = createActionApiRoute(
       action: "read",
       resource: (_, __, ___, body) => {
         const tables = detectTables(body.query);
-        return { query: tables.length > 0 ? tables : "all" };
+        return tables.length > 0
+          ? tables.map((id) => ({ type: "query", id }))
+          : { type: "query", id: "all" };
       },
-      superScopes: ["read:query", "read:all", "admin"],
     },
   },
   async ({ body, authentication }) => {
