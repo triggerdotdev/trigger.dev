@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import { createServer } from "net";
-import { resolve } from "path";
+import { delimiter, resolve } from "path";
 import { Network } from "testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
 import { createPostgresContainer } from "./utils";
@@ -46,7 +46,7 @@ export async function startWebapp(databaseUrl: string): Promise<{
   // Merge NODE_PATH so transitive pnpm deps (hoisted to .pnpm/node_modules) are resolvable
   const existingNodePath = process.env.NODE_PATH;
   const nodePath = existingNodePath
-    ? `${PNPM_HOISTED_MODULES}:${existingNodePath}`
+    ? `${PNPM_HOISTED_MODULES}${delimiter}${existingNodePath}`
     : PNPM_HOISTED_MODULES;
 
   const proc = spawn(process.execPath, ["build/server.js"], {
