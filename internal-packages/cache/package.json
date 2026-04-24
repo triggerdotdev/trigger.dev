@@ -14,7 +14,7 @@
     "superjson": "^2.2.1"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest",
     "test:watch": "vitest"
   }

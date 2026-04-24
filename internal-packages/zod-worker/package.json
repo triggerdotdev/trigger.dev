@@ -17,6 +17,6 @@
     "@types/pg": "8.6.6"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   }
 }

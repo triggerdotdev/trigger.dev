@@ -485,8 +485,8 @@ export class CliApiClient {
     source.onConnectionError((error) => {
       let message = error.message ?? "Unknown error";
 
-      if (error.status !== undefined) {
-        message = `HTTP ${error.status} ${message}`;
+      if (error.code !== undefined) {
+        message = `HTTP ${error.code} ${message}`;
       }
 
       resolvePromise({

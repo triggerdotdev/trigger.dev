@@ -21,7 +21,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
     "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
     "dev": "tsc --noEmit false --outDir dist --declaration --watch"
   }

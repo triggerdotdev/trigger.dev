@@ -3,7 +3,7 @@
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "moduleDetection": "force",
     "verbatimModuleSyntax": false,
     "types": ["vitest/globals"],

@@ -19,7 +19,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.build.json",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --watch  -p tsconfig.build.json",
     "db:migrate": "docker compose -p triggerdotdev-docker -f ../../docker/docker-compose.yml up clickhouse_migrator --build",

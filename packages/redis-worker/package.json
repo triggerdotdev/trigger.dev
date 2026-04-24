@@ -19,7 +19,7 @@
     "clean": "rimraf dist .turbo",
     "build": "tsup",
     "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.src.json",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   },
   "dependencies": {

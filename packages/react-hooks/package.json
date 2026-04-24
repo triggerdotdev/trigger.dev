@@ -32,7 +32,7 @@
     "clean": "rimraf dist .tshy .tshy-build .turbo",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },

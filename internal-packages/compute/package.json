@@ -21,7 +21,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --watch -p tsconfig.build.json"
   }
