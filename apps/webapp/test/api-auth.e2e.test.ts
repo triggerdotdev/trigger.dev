@@ -12,6 +12,7 @@ import { startTestServer } from "@internal/testcontainers/webapp";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
+import { seedTestWaitpoint } from "./helpers/seedTestWaitpoint";
 
 vi.setConfig({ testTimeout: 180_000 });
 
@@ -254,6 +255,92 @@ describe("Personal access token auth", () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// Verifies resource-scoped JWT behaviour end-to-end against a real seeded resource.
+// Target: POST /api/v1/waitpoints/tokens/:waitpointFriendlyId/complete — allowJWT: true,
+// authorization: { action: "write", resource: (params) => ({ waitpoints: params.waitpointFriendlyId }),
+// superScopes: ["write:waitpoints", "admin"] }.
+//
+// The Waitpoint is seeded with status COMPLETED so the handler short-circuits with
+// { success: true } once auth passes — no run-engine worker needed. "Auth passes" is
+// observable as a 200 response; "auth fails" is observable as a 403.
+describe("JWT bearer auth — resource-scoped scopes", () => {
+  const pathFor = (friendlyId: string) => `/api/v1/waitpoints/tokens/${friendlyId}/complete`;
+
+  async function seedEnvAndWaitpoint() {
+    const seed = await seedTestEnvironment(server.prisma);
+    const waitpoint = await seedTestWaitpoint(server.prisma, {
+      environmentId: seed.environment.id,
+      projectId: seed.project.id,
+    });
+    return { ...seed, waitpoint };
+  }
+
+  async function completeRequest(friendlyId: string, jwt: string) {
+    return server.webapp.fetch(pathFor(friendlyId), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  }
+
+  it("scope matches exact resource id: 200", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, {
+      scopes: [`write:waitpoints:${waitpoint.friendlyId}`],
+    });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(200);
+  });
+
+  it("scope targets a different resource id: 403", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, {
+      scopes: ["write:waitpoints:waitpoint_someoneelse000000000000000"],
+    });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(403);
+  });
+
+  it("type-level scope (no id) grants all resources of that type: 200", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, { scopes: ["write:waitpoints"] });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(200);
+  });
+
+  it("scope action mismatch (read-only on write route) with matching resource id: 403", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, {
+      scopes: [`read:waitpoints:${waitpoint.friendlyId}`],
+    });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(403);
+  });
+
+  it("scope targets a different resource type: 403", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, {
+      scopes: ["write:runs:run_abc000000000000000000000"],
+    });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(403);
+  });
+
+  it("admin super-scope grants access (legacy behaviour): 200", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, { scopes: ["admin"] });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(200);
+  });
+
+  it("unrelated type scope with no super-scope match: 403", async () => {
+    const { environment, waitpoint } = await seedEnvAndWaitpoint();
+    const jwt = await generateTestJWT(environment, { scopes: ["read:runs"] });
+    const res = await completeRequest(waitpoint.friendlyId, jwt);
+    expect(res.status).toBe(403);
   });
 });
 
