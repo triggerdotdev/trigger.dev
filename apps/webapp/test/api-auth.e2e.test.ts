@@ -12,6 +12,7 @@ import { startTestServer } from "@internal/testcontainers/webapp";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
+import { seedTestRun } from "./helpers/seedTestRun";
 import { seedTestWaitpoint } from "./helpers/seedTestWaitpoint";
 
 vi.setConfig({ testTimeout: 180_000 });
@@ -342,6 +343,70 @@ describe("JWT bearer auth — resource-scoped scopes", () => {
     const res = await completeRequest(waitpoint.friendlyId, jwt);
     expect(res.status).toBe(403);
   });
+});
+
+// Pre-migration coverage for the three behavioural constraints captured in TRI-8719.
+// Each test locks in an observable current behaviour that the migration must preserve:
+// - custom actions (trigger/batchTrigger/update) satisfied by write:* scopes
+// - multi-key resource callbacks (runs/tags/batch/tasks) — any key match grants access
+// - empty resource callbacks relying on superScopes
+describe("JWT bearer auth — behaviours to preserve through TRI-8719", () => {
+  it("custom action: type-level write:tasks scope satisfies action=\"trigger\" (auth passes)", async () => {
+    const { environment } = await seedTestEnvironment(server.prisma);
+    // Current SDK + MCP JWTs for task-trigger use type-level scope, e.g. write:tasks.
+    // Legacy checkAuthorization passes via exact superScope match ["write:tasks", "admin"].
+    // After TRI-8719, the ACTION_ALIASES map must keep this working: trigger action is
+    // satisfied by a scope whose action is write.
+    const jwt = await generateTestJWT(environment, { scopes: ["write:tasks"] });
+    const res = await server.webapp.fetch("/api/v1/tasks/nonexistent-task/trigger", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${jwt}`, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+
+  it("multi-key resource: read:tags:<tag> scope grants access to a run carrying that tag (auth passes)", async () => {
+    const { environment, project } = await seedTestEnvironment(server.prisma);
+    const { runFriendlyId } = await seedTestRun(server.prisma, {
+      environmentId: environment.id,
+      projectId: project.id,
+      runTags: ["my-resource-scoped-tag"],
+    });
+    const jwt = await generateTestJWT(environment, {
+      scopes: ["read:tags:my-resource-scoped-tag"],
+    });
+    const res = await server.webapp.fetch(`/api/v1/runs/${runFriendlyId}/trace`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+
+  it("multi-key resource: read:batch:<friendlyId> scope grants access to a run in that batch (auth passes)", async () => {
+    const { environment, project } = await seedTestEnvironment(server.prisma);
+    const { runFriendlyId, batchFriendlyId } = await seedTestRun(server.prisma, {
+      environmentId: environment.id,
+      projectId: project.id,
+      withBatch: true,
+    });
+    const jwt = await generateTestJWT(environment, {
+      scopes: [`read:batch:${batchFriendlyId}`],
+    });
+    const res = await server.webapp.fetch(`/api/v1/runs/${runFriendlyId}/trace`, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+
+  // Empty-resource routes (api.v1.batches.ts, api.v1.idempotencyKeys.$key.reset.ts)
+  // currently DENY all JWTs because legacy checkAuthorization's empty-resource check
+  // fires before the superScope check. TRI-8719's plan to add explicit { type: "runs" }
+  // changes this to "JWTs with read:runs or write:runs now work on these routes" — an
+  // intentional improvement, not a preserved behaviour. See TRI-8719 description for
+  // the note; there's nothing to lock in with a test here.
 });
 
 // Edge cases where auth-path DB state should cause 401 even with a valid-looking token.
