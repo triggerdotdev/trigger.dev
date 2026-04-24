@@ -69,6 +69,11 @@ export async function startWebapp(
       ELECTRIC_ORIGIN: "http://localhost:3060",
       REDIS_HOST: redis.host,
       REDIS_PORT: String(redis.port),
+      // Disable background workers and logical replication: they are irrelevant for auth
+      // tests and in CI the replication slot creation holds a snapshot lock that blocks
+      // the test process's Prisma writes to the same DB.
+      WORKER_ENABLED: "false",
+      RUN_REPLICATION_ENABLED: "0",
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
