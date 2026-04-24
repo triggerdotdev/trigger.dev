@@ -72,7 +72,7 @@ jobs:
         run: |
           echo "Pre-pulling Docker images with authenticated session..."
           docker pull postgres:14
-          docker pull redis:7-alpine
+          docker pull redis:7.2
           docker pull testcontainers/ryuk:0.11.0
           echo "Image pre-pull complete"
 
