@@ -11,16 +11,29 @@ export type { RoleBaseAccessController };
 
 type RbacHelpers = { getSessionUserId: (request: Request) => Promise<string | null> };
 
+export type RbacCreateOptions = {
+  // When true, skip loading the enterprise plugin and use the OSS fallback directly.
+  // Useful for tests that need deterministic auth behavior without the enterprise plugin.
+  forceFallback?: boolean;
+};
+
 // Loads the enterprise plugin lazily; falls back to the OSS implementation if not installed.
 // Synchronous create() avoids top-level await (not supported in the webapp's CJS build).
 class LazyController implements RoleBaseAccessController {
   private readonly _init: Promise<RoleBaseAccessController>;
 
-  constructor(prisma: PrismaClient, helpers: RbacHelpers) {
-    this._init = this.load(prisma, helpers);
+  constructor(prisma: PrismaClient, helpers: RbacHelpers, options?: RbacCreateOptions) {
+    this._init = this.load(prisma, helpers, options);
   }
 
-  private async load(prisma: PrismaClient, helpers: RbacHelpers): Promise<RoleBaseAccessController> {
+  private async load(
+    prisma: PrismaClient,
+    helpers: RbacHelpers,
+    options?: RbacCreateOptions
+  ): Promise<RoleBaseAccessController> {
+    if (options?.forceFallback) {
+      return new RoleBaseAccessFallback(prisma).create(helpers);
+    }
     try {
       const moduleName = "@triggerdotdev/plugins/rbac";
       const module = await import(moduleName);
@@ -98,8 +111,12 @@ class LazyController implements RoleBaseAccessController {
 
 class RoleBaseAccess {
   // Synchronous — returns a lazy controller that loads the enterprise plugin on first call.
-  create(prisma: PrismaClient, helpers: RbacHelpers): RoleBaseAccessController {
-    return new LazyController(prisma, helpers);
+  create(
+    prisma: PrismaClient,
+    helpers: RbacHelpers,
+    options?: RbacCreateOptions
+  ): RoleBaseAccessController {
+    return new LazyController(prisma, helpers, options);
   }
 }
 

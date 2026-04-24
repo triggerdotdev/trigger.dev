@@ -81,6 +81,9 @@ export async function startWebapp(
       RUN_ENGINE_TTL_SYSTEM_DISABLED: "true",     // disables TTL expiry system (BoolEnv)
       RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true",  // disables TTL consumers (BoolEnv)
       RUN_REPLICATION_ENABLED: "0",
+      // Force the RBAC plugin to use the OSS fallback in e2e tests so auth behavior is
+      // deterministic regardless of whether the enterprise plugin is installed.
+      RBAC_FORCE_FALLBACK: "1",
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
