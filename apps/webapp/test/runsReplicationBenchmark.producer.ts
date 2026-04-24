@@ -5,6 +5,7 @@
  */
 
 import { PrismaClient } from "@trigger.dev/database";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { performance } from "node:perf_hooks";
 
 interface ProducerConfig {
@@ -91,13 +92,8 @@ function generateError() {
 }
 
 async function runProducer(config: ProducerConfig) {
-  const prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: config.postgresUrl,
-      },
-    },
-  });
+  const adapter = new PrismaPg(config.postgresUrl);
+  const prisma = new PrismaClient({ adapter });
 
   try {
     console.log(

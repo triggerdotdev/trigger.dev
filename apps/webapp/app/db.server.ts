@@ -7,6 +7,8 @@ import {
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
 } from "@trigger.dev/database";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { createHash } from "node:crypto";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { env } from "./env.server";
@@ -127,21 +129,30 @@ function getClient() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
-  const databaseUrl = extendQueryParams(DATABASE_URL, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
-  });
+  const databaseUrl = new URL(DATABASE_URL);
+
+  // Set application_name as a query param on the connection string (pg understands this)
+  databaseUrl.searchParams.set("application_name", env.SERVICE_NAME);
 
   console.log(`🔌 setting up prisma client to ${redactUrlSecrets(databaseUrl)}`);
 
-  const client = new PrismaClient({
-    datasources: {
-      db: {
-        url: databaseUrl.href,
-      },
+  const adapter = new PrismaPg(
+    {
+      connectionString: databaseUrl.href,
+      max: env.DATABASE_CONNECTION_LIMIT,
+      idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
+      connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
     },
+    {
+      // Generate deterministic prepared statement names from query SQL so PostgreSQL
+      // can reuse cached query plans. Without this, every query uses an anonymous
+      // prepared statement that PG must parse and plan from scratch each time.
+      statementNameGenerator: (query) => `p_${createHash("sha256").update(query.sql).digest("hex").slice(0, 16)}`,
+    }
+  );
+
+  const client = new PrismaClient({
+    adapter,
     log: [
       // events
       {
@@ -251,21 +262,25 @@ function getReplicaClient() {
     return;
   }
 
-  const replicaUrl = extendQueryParams(env.DATABASE_READ_REPLICA_URL, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
-    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
-    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
-    application_name: env.SERVICE_NAME,
-  });
+  const replicaUrl = new URL(env.DATABASE_READ_REPLICA_URL);
+  replicaUrl.searchParams.set("application_name", env.SERVICE_NAME);
 
   console.log(`🔌 setting up read replica connection to ${redactUrlSecrets(replicaUrl)}`);
 
-  const replicaClient = new PrismaClient({
-    datasources: {
-      db: {
-        url: replicaUrl.href,
-      },
+  const adapter = new PrismaPg(
+    {
+      connectionString: replicaUrl.href,
+      max: env.DATABASE_CONNECTION_LIMIT,
+      idleTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
+      connectionTimeoutMillis: env.DATABASE_CONNECTION_TIMEOUT * 1000,
     },
+    {
+      statementNameGenerator: (query) => `p_${createHash("sha256").update(query.sql).digest("hex").slice(0, 16)}`,
+    }
+  );
+
+  const replicaClient = new PrismaClient({
+    adapter,
     log: [
       // events
       {
@@ -366,19 +381,6 @@ function getReplicaClient() {
   console.log(`🔌 read replica connected`);
 
   return replicaClient;
-}
-
-function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
-  const url = new URL(hrefOrUrl);
-  const query = url.searchParams;
-
-  for (const [key, val] of Object.entries(queryParams)) {
-    query.set(key, val);
-  }
-
-  url.search = query.toString();
-
-  return url;
 }
 
 function redactUrlSecrets(hrefOrUrl: string | URL) {

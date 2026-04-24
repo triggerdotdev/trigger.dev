@@ -1,6 +1,6 @@
 import { PrismaClient } from "../generated/prisma";
 import { Decimal } from "decimal.js";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/client";
 
 // Define the isolation levels manually
 type TransactionIsolationLevel =
@@ -37,7 +37,23 @@ export function isPrismaKnownError(error: unknown): error is PrismaClientKnownRe
 */
 const retryCodes = ["P2024", "P2028", "P2034"];
 
+/**
+ * With Prisma 7's driver adapter (PrismaPg), write conflicts (PostgreSQL 40001)
+ * surface as a DriverAdapterError with message "TransactionWriteConflict" instead
+ * of a PrismaClientKnownRequestError with code P2034. This function detects that
+ * error so the retry logic still works.
+ */
+function isDriverAdapterTransactionWriteConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const err = error as { name?: string; message?: string };
+  return err.name === "DriverAdapterError" && err.message === "TransactionWriteConflict";
+}
+
 export function isPrismaRetriableError(error: unknown): boolean {
+  if (isDriverAdapterTransactionWriteConflict(error)) {
+    return true;
+  }
+
   if (!isPrismaKnownError(error)) {
     return false;
   }
@@ -90,15 +106,16 @@ export async function $transaction<R>(
   try {
     return await (prisma as PrismaClient).$transaction(fn, options);
   } catch (error) {
-    if (isPrismaKnownError(error)) {
-      if (
-        retryCodes.includes(error.code) &&
-        typeof options?.maxRetries === "number" &&
-        attempt < options.maxRetries
-      ) {
-        return $transaction(prisma, fn, prismaError, options, attempt + 1);
-      }
+    // With Prisma 7 driver adapters, write conflicts (PG 40001) surface as
+    // DriverAdapterError instead of PrismaClientKnownRequestError P2034.
+    // Check for both error shapes so retries work correctly.
+    const retriable = isPrismaRetriableError(error);
 
+    if (retriable && typeof options?.maxRetries === "number" && attempt < options.maxRetries) {
+      return $transaction(prisma, fn, prismaError, options, attempt + 1);
+    }
+
+    if (isPrismaKnownError(error)) {
       prismaError(error);
 
       if (options?.swallowPrismaErrors) {

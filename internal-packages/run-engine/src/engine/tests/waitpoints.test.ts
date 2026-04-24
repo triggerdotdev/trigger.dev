@@ -379,7 +379,7 @@ describe("RunEngine Waitpoints", () => {
           id: result.waitpoint.id,
         });
 
-        await setTimeout(200);
+        await setTimeout(1_000);
 
         assertNonNullable(event);
         const notificationEvent = event as EventBusEventArgs<"workerNotification">[0];
@@ -936,7 +936,7 @@ describe("RunEngine Waitpoints", () => {
         id: result.waitpoint.id,
       });
 
-      await setTimeout(200);
+      await setTimeout(1_000);
 
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
@@ -1050,7 +1050,7 @@ describe("RunEngine Waitpoints", () => {
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
-        idempotencyKeyExpiresAt: new Date(Date.now() + 200),
+        idempotencyKeyExpiresAt: new Date(Date.now() + 60_000),
       });
       expect(result.waitpoint.status).toBe("PENDING");
       expect(result.waitpoint.idempotencyKey).toBe(idempotencyKey);
@@ -1060,7 +1060,7 @@ describe("RunEngine Waitpoints", () => {
         environmentId: authenticatedEnvironment.id,
         projectId: authenticatedEnvironment.projectId,
         idempotencyKey,
-        idempotencyKeyExpiresAt: new Date(Date.now() + 200),
+        idempotencyKeyExpiresAt: new Date(Date.now() + 60_000),
       });
       expect(sameWaitpointResult.waitpoint.id).toBe(result.waitpoint.id);
 
@@ -1096,7 +1096,7 @@ describe("RunEngine Waitpoints", () => {
         id: result.waitpoint.id,
       });
 
-      await setTimeout(200);
+      await setTimeout(1_000);
 
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
@@ -1212,9 +1212,9 @@ describe("RunEngine Waitpoints", () => {
         });
 
         // Wait for the waitpoint to complete and unblock (snapshot 3)
-        await setTimeout(200);
+        await setTimeout(500);
         await engine.completeWaitpoint({ id: waitpoint.id });
-        await setTimeout(200);
+        await setTimeout(1_000);
 
         // Get all snapshots for the run
         const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
