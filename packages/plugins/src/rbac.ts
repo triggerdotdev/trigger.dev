@@ -46,7 +46,11 @@ export type RbacUser = {
 
 /** Pre-built ability returned by authenticate* — all checks are sync, no DB call. */
 export interface RbacAbility {
-  can(action: string, resource: RbacResource): boolean;
+  // Array form means "grant access if any resource in the array passes" —
+  // used by routes that touch multiple resources (e.g. a run also carries
+  // a batch id, tags, a task identifier) so a JWT scoped to any of them
+  // grants access.
+  can(action: string, resource: RbacResource | RbacResource[]): boolean;
   canSuper(): boolean;
 }
 

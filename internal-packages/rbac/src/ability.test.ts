@@ -83,6 +83,38 @@ describe("buildJwtAbility", () => {
   });
 });
 
+describe("buildJwtAbility — array resources", () => {
+  it("authorizes when any resource in the array passes a scope check", () => {
+    const ability = buildJwtAbility(["read:batch:batch_abc"]);
+    const resources = [
+      { type: "runs", id: "run_xyz" },
+      { type: "batch", id: "batch_abc" },
+      { type: "tasks", id: "task_other" },
+    ];
+    expect(ability.can("read", resources)).toBe(true);
+  });
+
+  it("rejects when no resource in the array passes a scope check", () => {
+    const ability = buildJwtAbility(["read:batch:batch_abc"]);
+    const resources = [
+      { type: "runs", id: "run_xyz" },
+      { type: "batch", id: "batch_other" },
+      { type: "tasks", id: "task_other" },
+    ];
+    expect(ability.can("read", resources)).toBe(false);
+  });
+
+  it("empty array never authorizes", () => {
+    const ability = buildJwtAbility(["read:all"]);
+    expect(ability.can("read", [])).toBe(false);
+  });
+
+  it("authorizes a single resource via the non-array form (backwards compatible)", () => {
+    const ability = buildJwtAbility(["read:runs:run_abc"]);
+    expect(ability.can("read", { type: "runs", id: "run_abc" })).toBe(true);
+  });
+});
+
 describe("buildFallbackAbility", () => {
   it("returns permissiveAbility for non-admin users", () => {
     const ability = buildFallbackAbility(false);
