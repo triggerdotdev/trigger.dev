@@ -7,4 +7,6 @@ async function getSessionUserId(request: Request): Promise<string | null> {
   return id ?? null;
 }
 
-export const rbac = await plugin.create(prisma, { getSessionUserId });
+// plugin.create() is synchronous — returns a lazy controller that loads the enterprise plugin
+// on first call. Top-level await is not used because CJS output format does not support it.
+export const rbac = plugin.create(prisma, { getSessionUserId });
