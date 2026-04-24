@@ -121,6 +121,16 @@ const Env = z
 
     KUBERNETES_MEMORY_OVERHEAD_GB: z.coerce.number().min(0).optional(), // Optional memory overhead to add to the limit in GB
     KUBERNETES_SCHEDULER_NAME: z.string().optional(), // Custom scheduler name for pods
+
+    // Pod DNS config — override the cluster default ndots to `KUBERNETES_POD_DNS_NDOTS`.
+    // Default k8s ndots is 5: any name with fewer than 5 dots (e.g. `api.example.com`, 2 dots) is first walked
+    // through every entry in the cluster search list (`<ns>.svc.cluster.local`, `svc.cluster.local`, `cluster.local`)
+    // before being tried as-is, turning one resolution into 4+ CoreDNS queries (×2 with A+AAAA).
+    // Overriding the default can be useful to cut CoreDNS query amplification for external domains.
+    // Note: before enabling, make sure no code path relies on search-list expansion for names with dots ≥ the value
+    // set here — those names will now hit their as-is form first and could resolve externally before falling back.
+    KUBERNETES_POD_DNS_NDOTS_OVERRIDE_ENABLED: BoolEnv.default(false),
+    KUBERNETES_POD_DNS_NDOTS: z.coerce.number().int().min(1).max(15).default(2),
     // Large machine affinity settings - large-* presets prefer a dedicated pool
     KUBERNETES_LARGE_MACHINE_AFFINITY_ENABLED: BoolEnv.default(false),
     KUBERNETES_LARGE_MACHINE_AFFINITY_POOL_LABEL_KEY: z
@@ -189,7 +199,9 @@ const Env = z
             if (!validEffects.includes(effect)) {
               ctx.addIssue({
                 code: z.ZodIssueCode.custom,
-                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(", ")}`,
+                message: `Invalid toleration effect "${effect}" in "${entry}". Must be one of: ${validEffects.join(
+                  ", "
+                )}`,
               });
               return z.NEVER;
             }
