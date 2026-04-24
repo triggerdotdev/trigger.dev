@@ -827,9 +827,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state = this.sessions.get(options.chatId);
     if (!state) return null;
 
-    // No active stream — the last turn completed before the page refreshed.
-    // Return null so useChat settles into "ready" state instead of hanging.
-    if (!state.isStreaming) return null;
+    // Fast-path: if the caller still tracks `isStreaming` in their
+    // persisted state and knows the last turn completed, skip the SSE
+    // open. Undefined (caller dropped the flag) falls through and the
+    // server decides via the peek-tail-settled path — on a settled
+    // session the SSE uses wait=0 and closes immediately, so there's
+    // no 60s hang to worry about.
+    if (state.isStreaming === false) return null;
 
     // Deduplicate: if there's already an active stream for this chatId,
     // return null so the second caller no-ops.
