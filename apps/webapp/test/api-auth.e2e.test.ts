@@ -6,7 +6,7 @@
  *
  * Requires a pre-built webapp: pnpm run build --filter webapp
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { TestServer } from "@internal/testcontainers/webapp";
 import { startTestServer } from "@internal/testcontainers/webapp";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
