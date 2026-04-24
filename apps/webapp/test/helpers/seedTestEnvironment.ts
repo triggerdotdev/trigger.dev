@@ -10,9 +10,6 @@ export async function seedTestEnvironment(prisma: PrismaClient) {
   const apiKey = `tr_dev_${randomHex(24)}`;
   const pkApiKey = `pk_dev_${randomHex(24)}`;
 
-  const t0 = Date.now();
-  process.stderr.write(`[seed] creating organization (${suffix})...\n`);
-
   const organization = await prisma.organization.create({
     data: {
       title: `e2e-test-org-${suffix}`,
@@ -20,7 +17,6 @@ export async function seedTestEnvironment(prisma: PrismaClient) {
       v3Enabled: true,
     },
   });
-  process.stderr.write(`[seed] organization created in ${Date.now() - t0}ms\n`);
 
   const project = await prisma.project.create({
     data: {
@@ -31,7 +27,6 @@ export async function seedTestEnvironment(prisma: PrismaClient) {
       engine: "V2",
     },
   });
-  process.stderr.write(`[seed] project created in ${Date.now() - t0}ms\n`);
 
   const environment = await prisma.runtimeEnvironment.create({
     data: {
@@ -44,7 +39,6 @@ export async function seedTestEnvironment(prisma: PrismaClient) {
       organizationId: organization.id,
     },
   });
-  process.stderr.write(`[seed] environment created in ${Date.now() - t0}ms\n`);
 
   return { organization, project, environment, apiKey };
 }
