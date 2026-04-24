@@ -20,6 +20,7 @@ describe("RunEngine priority", () => {
       const engine = new RunEngine({
         prisma,
         worker: {
+          disabled: true,
           redis: redisOptions,
           workers: 1,
           tasksPerWorker: 10,
