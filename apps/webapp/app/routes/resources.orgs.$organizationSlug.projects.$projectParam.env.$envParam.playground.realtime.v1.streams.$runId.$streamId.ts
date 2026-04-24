@@ -1,6 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -54,8 +55,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const realtimeStream = getRealtimeStreamInstance(environment, run.realtimeStreamsVersion);
 
-  return realtimeStream.streamResponse(request, run.friendlyId, streamId, request.signal, {
-    lastEventId,
-    timeoutInSeconds,
-  });
+  // `request.signal` is severed by Remix's Request.clone() + Node undici GC bug
+  // (see apps/webapp/CLAUDE.md). Use the Express res.on('close')-backed signal.
+  return realtimeStream.streamResponse(
+    request,
+    run.friendlyId,
+    streamId,
+    getRequestAbortSignal(),
+    {
+      lastEventId,
+      timeoutInSeconds,
+    }
+  );
 }
