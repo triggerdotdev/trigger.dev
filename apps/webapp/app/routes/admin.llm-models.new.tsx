@@ -1,5 +1,4 @@
 import { Form, useActionData, useSearchParams } from "@remix-run/react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
@@ -7,16 +6,16 @@ import { useState } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
-  return typedjson({});
-};
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async () => {
+    return typedjson({});
+  }
+);
 
 const CreateSchema = z.object({
   modelName: z.string().min(1),
@@ -30,83 +29,82 @@ const CreateSchema = z.object({
   isHidden: z.string().optional(),
 });
 
-export async function action({ request }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
+export const action = dashboardAction(
+  { authorization: { requireSuper: true } },
+  async ({ request }) => {
+    const formData = await request.formData();
+    const raw = Object.fromEntries(formData);
+    console.log("[admin] create model form data:", JSON.stringify(raw).slice(0, 500));
+    const parsed = CreateSchema.safeParse(raw);
 
-  const formData = await request.formData();
-  const raw = Object.fromEntries(formData);
-  console.log("[admin] create model form data:", JSON.stringify(raw).slice(0, 500));
-  const parsed = CreateSchema.safeParse(raw);
+    if (!parsed.success) {
+      console.log("[admin] create model validation error:", JSON.stringify(parsed.error.issues));
+      return typedjson({ error: "Invalid form data", details: parsed.error.issues }, { status: 400 });
+    }
 
-  if (!parsed.success) {
-    console.log("[admin] create model validation error:", JSON.stringify(parsed.error.issues));
-    return typedjson({ error: "Invalid form data", details: parsed.error.issues }, { status: 400 });
-  }
+    const { modelName, matchPattern, pricingTiersJson } = parsed.data;
 
-  const { modelName, matchPattern, pricingTiersJson } = parsed.data;
+    // Validate regex — strip (?i) POSIX flag since our registry handles it
+    try {
+      const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
+      new RegExp(testPattern);
+    } catch {
+      return typedjson({ error: "Invalid regex in matchPattern" }, { status: 400 });
+    }
 
-  // Validate regex — strip (?i) POSIX flag since our registry handles it
-  try {
-    const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
-    new RegExp(testPattern);
-  } catch {
-    return typedjson({ error: "Invalid regex in matchPattern" }, { status: 400 });
-  }
+    let pricingTiers: Array<{
+      name: string;
+      isDefault: boolean;
+      priority: number;
+      conditions: Array<{ usageDetailPattern: string; operator: string; value: number }>;
+      prices: Record<string, number>;
+    }>;
+    try {
+      pricingTiers = JSON.parse(pricingTiersJson) as typeof pricingTiers;
+    } catch {
+      return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
+    }
 
-  let pricingTiers: Array<{
-    name: string;
-    isDefault: boolean;
-    priority: number;
-    conditions: Array<{ usageDetailPattern: string; operator: string; value: number }>;
-    prices: Record<string, number>;
-  }>;
-  try {
-    pricingTiers = JSON.parse(pricingTiersJson) as typeof pricingTiers;
-  } catch {
-    return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
-  }
+    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
 
-  const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
-
-  const model = await prisma.llmModel.create({
-    data: {
-      friendlyId: generateFriendlyId("llm_model"),
-      modelName,
-      matchPattern,
-      source: "admin",
-      provider: provider || null,
-      description: description || null,
-      contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
-      maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
-      capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
-      isHidden: isHidden === "on",
-    },
-  });
-
-  for (const tier of pricingTiers) {
-    await prisma.llmPricingTier.create({
+    const model = await prisma.llmModel.create({
       data: {
-        modelId: model.id,
-        name: tier.name,
-        isDefault: tier.isDefault,
-        priority: tier.priority,
-        conditions: tier.conditions,
-        prices: {
-          create: Object.entries(tier.prices).map(([usageType, price]) => ({
-            modelId: model.id,
-            usageType,
-            price,
-          })),
-        },
+        friendlyId: generateFriendlyId("llm_model"),
+        modelName,
+        matchPattern,
+        source: "admin",
+        provider: provider || null,
+        description: description || null,
+        contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
+        maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
+        capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        isHidden: isHidden === "on",
       },
     });
-  }
 
-  await llmPricingRegistry?.reload();
-  return redirect(`/admin/llm-models/${model.friendlyId}`);
-}
+    for (const tier of pricingTiers) {
+      await prisma.llmPricingTier.create({
+        data: {
+          modelId: model.id,
+          name: tier.name,
+          isDefault: tier.isDefault,
+          priority: tier.priority,
+          conditions: tier.conditions,
+          prices: {
+            create: Object.entries(tier.prices).map(([usageType, price]) => ({
+              modelId: model.id,
+              usageType,
+              price,
+            })),
+          },
+        },
+      });
+    }
+
+    await llmPricingRegistry?.reload();
+    return redirect(`/admin/llm-models/${model.friendlyId}`);
+  }
+);
 
 export default function AdminLlmModelNewRoute() {
   const actionData = useActionData<{ error?: string; details?: unknown[] }>();

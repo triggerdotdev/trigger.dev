@@ -1,6 +1,6 @@
 import { useNavigation, useSearchParams } from "@remix-run/react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect } from "react";
+import { z } from "zod";
 import {
   redirect,
   typedjson,
@@ -36,59 +36,50 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { requireUser } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 
 const SAVED_QUERY_KEY = "saved";
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
+const ParamsSchema = z.object({
+  orgId: z.string(),
+});
+
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true }, params: ParamsSchema },
+  async ({ params }) => {
+    const orgId = params.orgId;
+
+    const org = await prisma.organization.findFirst({
+      where: { id: orgId },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        createdAt: true,
+        apiRateLimiterConfig: true,
+        batchRateLimitConfig: true,
+        maximumProjectCount: true,
+      },
+    });
+
+    if (!org) {
+      throw new Response(null, { status: 404 });
+    }
+
+    const apiEffective = resolveEffectiveApiRateLimit(org.apiRateLimiterConfig);
+    const batchEffective = resolveEffectiveBatchRateLimit(org.batchRateLimitConfig);
+
+    return typedjson({ org, apiEffective, batchEffective });
   }
+);
 
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response(null, { status: 404 });
-  }
+export const action = dashboardAction(
+  { authorization: { requireSuper: true }, params: ParamsSchema },
+  async ({ user, params, request }) => {
+    const orgId = params.orgId;
 
-  const org = await prisma.organization.findFirst({
-    where: { id: orgId },
-    select: {
-      id: true,
-      slug: true,
-      title: true,
-      createdAt: true,
-      apiRateLimiterConfig: true,
-      batchRateLimitConfig: true,
-      maximumProjectCount: true,
-    },
-  });
-
-  if (!org) {
-    throw new Response(null, { status: 404 });
-  }
-
-  const apiEffective = resolveEffectiveApiRateLimit(org.apiRateLimiterConfig);
-  const batchEffective = resolveEffectiveBatchRateLimit(
-    org.batchRateLimitConfig
-  );
-
-  return typedjson({ org, apiEffective, batchEffective });
-}
-
-export async function action({ request, params }: ActionFunctionArgs) {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
-
-  const orgId = params.orgId;
-  if (!orgId) {
-    throw new Response(null, { status: 404 });
-  }
-
-  const formData = await request.formData();
-  const intent = formData.get("intent");
+    const formData = await request.formData();
+    const intent = formData.get("intent");
 
   if (intent === MAX_PROJECTS_INTENT) {
     const result = await handleMaxProjectsAction(formData, orgId, user.id);
@@ -129,11 +120,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  return typedjson(
-    { section: null, errors: { intent: ["Unknown intent."] } },
-    { status: 400 }
-  );
-}
+    return typedjson(
+      { section: null, errors: { intent: ["Unknown intent."] } },
+      { status: 400 }
+    );
+  }
+);
 
 export default function BackOfficeOrgPage() {
   const { org, apiEffective, batchEffective } =

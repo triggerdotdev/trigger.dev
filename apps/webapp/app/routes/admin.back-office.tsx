@@ -1,15 +1,13 @@
 import { Outlet } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson } from "remix-typedjson";
-import { requireUser } from "~/services/session.server";
+import { typedjson } from "remix-typedjson";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async () => {
+    return typedjson({});
   }
-  return typedjson({});
-}
+);
 
 export default function BackOfficeLayout() {
   return (

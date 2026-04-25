@@ -1,39 +1,40 @@
 import { useState } from "react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 import {
   getMissingModelSamples,
   type MissingModelSample,
 } from "~/services/admin/missingLlmModels.server";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
+const ParamsSchema = z.object({
+  model: z.string(),
+});
 
-  // Model name is URL-encoded in the URL param
-  const modelName = decodeURIComponent(params.model ?? "");
-  if (!modelName) throw new Response("Missing model param", { status: 400 });
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true }, params: ParamsSchema },
+  async ({ params, request }) => {
+    // Model name is URL-encoded in the URL param
+    const modelName = decodeURIComponent(params.model);
+    if (!modelName) throw new Response("Missing model param", { status: 400 });
 
-  const url = new URL(request.url);
-  const lookbackHours = parseInt(url.searchParams.get("lookbackHours") ?? "24", 10);
+    const url = new URL(request.url);
+    const lookbackHours = parseInt(url.searchParams.get("lookbackHours") ?? "24", 10);
 
-  let samples: MissingModelSample[] = [];
-  let error: string | undefined;
+    let samples: MissingModelSample[] = [];
+    let error: string | undefined;
 
-  try {
-    samples = await getMissingModelSamples({ model: modelName, lookbackHours, limit: 10 });
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to query ClickHouse";
+    try {
+      samples = await getMissingModelSamples({ model: modelName, lookbackHours, limit: 10 });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to query ClickHouse";
+    }
+
+    return typedjson({ modelName, samples, lookbackHours, error });
   }
-
-  return typedjson({ modelName, samples, lookbackHours, error });
-};
+);
 
 export default function AdminMissingModelDetailRoute() {
   const { modelName, samples, lookbackHours, error } = useTypedLoaderData<typeof loader>();

@@ -1,7 +1,5 @@
 import { TrashIcon } from "@heroicons/react/20/solid";
 import { useFetcher, useSearchParams } from "@remix-run/react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -41,9 +39,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { prisma } from "~/db.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
 import {
   archivePlatformNotification,
   createPlatformNotification,
@@ -68,55 +65,54 @@ const SearchParams = z.object({
   hideInactive: z.coerce.boolean().optional(),
 });
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ user, request }) => {
+    const searchParams = createSearchParams(request.url, SearchParams);
+    if (!searchParams.success) throw new Error(searchParams.error);
+    const { page: rawPage, hideInactive } = searchParams.params.getAll();
+    const page = rawPage ?? 1;
 
-  const searchParams = createSearchParams(request.url, SearchParams);
-  if (!searchParams.success) throw new Error(searchParams.error);
-  const { page: rawPage, hideInactive } = searchParams.params.getAll();
-  const page = rawPage ?? 1;
+    const data = await getAdminNotificationsList({
+      page,
+      pageSize: PAGE_SIZE,
+      hideInactive: hideInactive ?? false,
+    });
 
-  const data = await getAdminNotificationsList({
-    page,
-    pageSize: PAGE_SIZE,
-    hideInactive: hideInactive ?? false,
-  });
-
-  return typedjson({ ...data, userId });
-};
-
-export async function action({ request }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
-
-  const formData = await request.formData();
-  const _action = formData.get("_action");
-
-  if (_action === "create" || _action === "create-preview") {
-    return handleCreateAction(formData, userId, _action === "create-preview");
+    return typedjson({ ...data, userId: user.id });
   }
+);
 
-  if (_action === "archive") {
-    return handleArchiveAction(formData);
+export const action = dashboardAction(
+  { authorization: { requireSuper: true } },
+  async ({ user, request }) => {
+    const userId = user.id;
+    const formData = await request.formData();
+    const _action = formData.get("_action");
+
+    if (_action === "create" || _action === "create-preview") {
+      return handleCreateAction(formData, userId, _action === "create-preview");
+    }
+
+    if (_action === "archive") {
+      return handleArchiveAction(formData);
+    }
+
+    if (_action === "delete") {
+      return handleDeleteAction(formData);
+    }
+
+    if (_action === "publish-now") {
+      return handlePublishNowAction(formData);
+    }
+
+    if (_action === "edit") {
+      return handleEditAction(formData);
+    }
+
+    return typedjson({ error: "Unknown action" }, { status: 400 });
   }
-
-  if (_action === "delete") {
-    return handleDeleteAction(formData);
-  }
-
-  if (_action === "publish-now") {
-    return handlePublishNowAction(formData);
-  }
-
-  if (_action === "edit") {
-    return handleEditAction(formData);
-  }
-
-  return typedjson({ error: "Unknown action" }, { status: 400 });
-}
+);
 
 function parseNotificationFormData(formData: FormData) {
   const surface = formData.get("surface") as string;

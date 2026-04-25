@@ -1,18 +1,13 @@
 import { Outlet } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson } from "remix-typedjson";
+import { typedjson } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
-import { requireUser } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
-
-  return typedjson({ user });
-}
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ user }) => typedjson({ user })
+);
 
 export default function Page() {
   return (

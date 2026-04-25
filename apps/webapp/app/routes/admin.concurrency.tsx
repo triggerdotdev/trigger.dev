@@ -1,22 +1,19 @@
 import { InformationCircleIcon } from "@heroicons/react/20/solid";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { rbac } from "~/services/rbac.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const auth = await rbac.authenticateSession(request, {});
-  if (!auth.ok) return redirect("/login");
-  if (!auth.ability.canSuper()) return redirect("/");
-
-  const deployedConcurrency = await concurrencyTracker.globalConcurrentRunCount(true);
-  const devConcurrency = await concurrencyTracker.globalConcurrentRunCount(false);
-
-  return typedjson({ deployedConcurrency, devConcurrency });
-};
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async () => {
+    const deployedConcurrency = await concurrencyTracker.globalConcurrentRunCount(true);
+    const devConcurrency = await concurrencyTracker.globalConcurrentRunCount(false);
+    return typedjson({ deployedConcurrency, devConcurrency });
+  }
+);
 
 export default function AdminDashboardRoute() {
   const { deployedConcurrency, devConcurrency } = useTypedLoaderData<typeof loader>();
