@@ -143,6 +143,7 @@ export async function getSessionForChat(chatId: string) {
   const session = await prisma.chatSession.findUnique({ where: { id: chatId } });
   if (!session) return null;
   return {
+    sessionId: session.sessionId ?? undefined,
     runId: session.runId,
     publicAccessToken: session.publicAccessToken,
     lastEventId: session.lastEventId ?? undefined,
@@ -151,10 +152,13 @@ export async function getSessionForChat(chatId: string) {
 
 export async function getAllSessions() {
   const sessions = await prisma.chatSession.findMany();
-  const result: Record<string, { runId: string; publicAccessToken: string; lastEventId?: string }> =
-    {};
+  const result: Record<
+    string,
+    { sessionId?: string; runId: string; publicAccessToken: string; lastEventId?: string }
+  > = {};
   for (const s of sessions) {
     result[s.id] = {
+      sessionId: s.sessionId ?? undefined,
       runId: s.runId,
       publicAccessToken: s.publicAccessToken,
       lastEventId: s.lastEventId ?? undefined,

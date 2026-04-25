@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type SessionInfo = {
+  sessionId?: string;
   runId: string;
   publicAccessToken: string;
   lastEventId?: string;

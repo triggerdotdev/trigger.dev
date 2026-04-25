@@ -38,8 +38,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/turndown": "^5.0.6",
-    "tailwindcss": "^4",
     "prisma": "^7.4.2",
+    "tailwindcss": "^4",
     "trigger.dev": "workspace:*",
     "typescript": "^5",
     "vitest": "^3.1.4"

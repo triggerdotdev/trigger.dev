@@ -26,6 +26,7 @@ type ChatMeta = {
 };
 
 type SessionInfo = {
+  sessionId?: string;
   runId: string;
   publicAccessToken: string;
   lastEventId?: string;
