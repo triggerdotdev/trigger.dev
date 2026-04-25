@@ -210,9 +210,14 @@ For custom transports or direct HTTP use. See [AI Chat — Client Protocol](/ai-
 | `POST` | `/realtime/v1/sessions/:session/:io/append` | Append a record. `:io` is `"in"` for clients or `"out"` for direct server writes. |
 | `PUT` | `/realtime/v1/sessions/:session/:io` | Initialize an S2 direct-write channel. Returns S2 credentials in response headers. |
 
-### `X-Session-Settled` response header
+### `X-Peek-Settled` request header (opt-in) / `X-Session-Settled` response header
 
-Set on `GET /realtime/v1/sessions/:session/out` when the tail record is a terminal chunk (for chat agents: `trigger:turn-complete`). The server uses a short-wait drain instead of long-polling, so the SSE closes in milliseconds rather than up to 60 seconds. Clients can use this to tell a "nothing is streaming right now" close apart from a normal long-poll close.
+On `GET /realtime/v1/sessions/:session/out`, the client can send `X-Peek-Settled: 1` to ask the server to peek the tail record before proxying. If the last chunk on `.out` is a terminal marker (for chat agents: `trigger:turn-complete`), the server:
+
+- Uses `wait=0` on the downstream read — drains any residual records and closes in ~1s instead of long-polling for 60s.
+- Sets `X-Session-Settled: true` on the response so the client can tell the close is terminal rather than a normal long-poll cycle.
+
+Without `X-Peek-Settled`, the SSE always long-polls (unconditional `wait` from the caller). Clients should only opt in on **reconnect-on-reload** paths — sending the header while a turn is about to be triggered races the new turn's first chunk and would close the SSE before records land.
 
 ## Related
 
