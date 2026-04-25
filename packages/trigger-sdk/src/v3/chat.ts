@@ -24,7 +24,7 @@
 
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
 import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
-import type { ChatInputChunk } from "./ai.js";
+import type { ChatInputChunk } from "./ai-shared.js";
 
 /**
  * Detect 401/403 from realtime/input-stream calls without relying on `instanceof`
@@ -833,11 +833,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // server decides via the peek-tail-settled path — on a settled
     // session the SSE uses wait=0 and closes immediately, so there's
     // no 60s hang to worry about.
-    if (state.isStreaming === false) return null;
+    if (state.isStreaming === false) {
+      return null;
+    }
 
     // Deduplicate: if there's already an active stream for this chatId,
     // return null so the second caller no-ops.
-    if (this.activeStreams.has(options.chatId)) return null;
+    if (this.activeStreams.has(options.chatId)) {
+      return null;
+    }
 
     const abortController = new AbortController();
     this.activeStreams.set(options.chatId, abortController);
@@ -854,7 +858,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       state,
       abortSignal,
       options.chatId,
-      { sendStopOnAbort: !!options.abortSignal }
+      {
+        sendStopOnAbort: !!options.abortSignal,
+        // Only reconnect-on-reload opts into the server's peek-tail
+        // settled shortcut. The active send-a-message path would race
+        // the newly-triggered turn's first chunk and close the SSE
+        // before records land.
+        peekSettled: true,
+      }
     );
   };
 
@@ -1342,6 +1353,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         payload: Record<string, unknown>;
         messages: UIMessage[];
       };
+      /**
+       * When `true`, ask the server to consider the settled-peek
+       * shortcut (set `X-Peek-Settled: 1`). Only `reconnectToStream`
+       * opts in — active send-a-message paths must keep wait=60 so
+       * the peek doesn't race the newly-triggered turn's first chunk.
+       */
+      peekSettled?: boolean;
     }
   ): ReadableStream<UIMessageChunk> {
     const sessionId = state.sessionId;
@@ -1388,6 +1406,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             headers: {
               Authorization: `Bearer ${token}`,
               ...this.extraHeaders,
+              // Opt-in: only reconnect paths ask for the server's
+              // peek-tail shortcut. Active send paths must stay on
+              // wait=60 so the server doesn't close the SSE before
+              // the just-triggered turn's first chunk lands.
+              ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
