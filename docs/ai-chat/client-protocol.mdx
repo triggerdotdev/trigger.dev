@@ -258,19 +258,34 @@ Last-Event-ID: 42
 
 `SSEStreamSubscription` tracks this automatically via its `lastEventId` option.
 
-### `X-Session-Settled` — fast close on idle reconnects
+### `X-Peek-Settled` / `X-Session-Settled` — opt-in fast close on idle reconnects
 
-When you reconnect to `.out` and the last record on the session is a `trigger:turn-complete` marker (the agent has finished a turn and is either idle-waiting or exited), the server responds with:
+On **reconnect-on-reload** paths (resuming a chat where nothing may be streaming), send `X-Peek-Settled: 1` as a request header when opening the SSE. When present, the server peeks the tail record of `.out`; if it's `trigger:turn-complete` (agent finished a turn and is idle-waiting or exited), the SSE:
 
-- `X-Session-Settled: true` response header
-- A fast SSE close (milliseconds instead of the usual 60s long-poll)
+- Uses `wait=0` internally — drains any residual records and closes in ~1s instead of long-polling for 60s.
+- Sets the `X-Session-Settled: true` response header so the client can tell the close is terminal rather than a mid-stream drop.
 
-This lets the client distinguish a close that means "nothing is streaming right now" from a normal mid-stream disconnect. Your transport can use this to settle into a "ready" state on page reload without maintaining its own `isStreaming` flag.
+**Do not send `X-Peek-Settled` on the active-send response-stream path.** The peek would race the newly-triggered turn's first chunk — if the agent hasn't written the new turn's first record yet, the peek sees the prior turn's `trigger:turn-complete` and closes the SSE before the response lands on S2. The built-in `TriggerChatTransport.reconnectToStream` sets the header; `sendMessages → subscribeToStream` does not.
 
 ```ts
-const response = await fetch(sseUrl, { headers });
+// Reconnect path (page reload)
+const response = await fetch(sseUrl, {
+  headers: {
+    Authorization: `Bearer ${publicAccessToken}`,
+    "X-Peek-Settled": "1",
+    "Last-Event-ID": lastEventId,
+  },
+});
 const settled = response.headers.get("X-Session-Settled") === "true";
 // ...subscribe as normal; if settled and nothing arrives, you're done.
+
+// Active send path — no X-Peek-Settled, keep long-poll semantics
+const liveResponse = await fetch(sseUrl, {
+  headers: {
+    Authorization: `Bearer ${publicAccessToken}`,
+    "Last-Event-ID": lastEventId,
+  },
+});
 ```
 
 ## Step 4: Send messages, stops, and actions
