@@ -20,7 +20,7 @@ import type { Task } from "@trigger.dev/core/v3";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { readUIMessageStream } from "ai";
 import { ApiClient, SSEStreamSubscription, apiClientManager } from "@trigger.dev/core/v3";
-import type { ChatInputChunk, ChatTaskWirePayload } from "./ai.js";
+import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { sessions } from "./sessions.js";
 import { trigger } from "./shared.js";
 
