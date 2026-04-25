@@ -58,28 +58,14 @@ import { metadata } from "./metadata.js";
 import type { ResolvedPrompt } from "./prompt.js";
 import type { ResolvedSkill } from "./skill.js";
 // Bash-skill runtime lives in `./agentSkillsRuntime.ts` (exposed as
-// the `@trigger.dev/sdk/ai/skills-runtime` subpath) so `ai.ts`'s
-// top-level graph stays free of `node:*` imports. The chat-agent
-// surface in `@trigger.dev/sdk/ai` exports types like
-// `ChatUiMessage` / `CompactionChunkData` that frontend code
-// sometimes imports; Next.js + Webpack reject top-level node
-// builtins in the client graph even when only the type is used.
-//
-// The load path uses a computed-string variable so bundlers skip
-// static tracing — webpack emits a "Critical dependency" info-level
-// warning and defers resolution to runtime. On a server worker the
-// relative path lands next to `ai.js` in the emitted dist; on a
-// client bundle the bash tool is never invoked so the dynamic
-// import never fires.
-type BashRuntimeModule = typeof import("./agentSkillsRuntime.js");
-
-let cachedBashRuntime: BashRuntimeModule | undefined;
-async function loadAgentSkillsRuntime(): Promise<BashRuntimeModule> {
-  if (cachedBashRuntime) return cachedBashRuntime;
-  const modulePath: string = "./agentSkillsRuntime.js";
-  cachedBashRuntime = (await import(modulePath)) as BashRuntimeModule;
-  return cachedBashRuntime;
-}
+// the `@trigger.dev/sdk/ai/skills-runtime` subpath). It's a normal
+// static import — `ai.ts` is server-only by reachability now that
+// browser-side primitives (PENDING_MESSAGE_INJECTED_TYPE and the
+// chat-task wire types) live in `./ai-shared.ts`. Any browser bundle
+// that wants those primitives imports `./ai-shared.js` directly and
+// never touches `ai.ts`'s module graph, so the `node:*` builtins
+// pulled in transitively here never reach a client chunk.
+import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
 import { streams } from "./streams.js";
 import {
   sessions,
@@ -801,69 +787,12 @@ async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Pr
   return result;
 }
 
-/**
- * The wire payload shape sent by `TriggerChatTransport`.
- * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
- */
-export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
-  messages: TMessage[];
-  chatId: string;
-  trigger: "submit-message" | "regenerate-message" | "preload" | "close" | "action";
-  messageId?: string;
-  metadata?: TMetadata;
-  /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
-  action?: unknown;
-  /** Whether this run is continuing an existing chat whose previous run ended. */
-  continuation?: boolean;
-  /** The run ID of the previous run (only set when `continuation` is true). */
-  previousRunId?: string;
-  /** Override idle timeout for this run (seconds). Set by transport.preload(). */
-  idleTimeoutInSeconds?: number;
-  /**
-   * The friendlyId of the Session primitive backing this chat. The
-   * transport opens (or lazy-creates) the session with
-   * `externalId = chatId` on first message, then sends this friendlyId
-   * through to the run so the agent can attach to `.in` / `.out`
-   * without needing to round-trip through the control plane again.
-   * Optional for backward-compat while the migration is in flight;
-   * required once the legacy run-scoped stream path is removed.
-   */
-  sessionId?: string;
-  /**
-   * Client-side `chat.store` value sent by the transport. Applied at turn
-   * start before `run()` fires, overwriting any in-memory store value on the
-   * agent (last-write-wins).
-   *
-   * The transport queues this via `setStore` / `applyStorePatch` and flushes
-   * it with the next `sendMessage`. On the agent you typically don't read
-   * this directly — it's applied into `chat.store` transparently.
-   */
-  incomingStore?: unknown;
-};
-
-/**
- * A single record on a chat Session's `.in` channel. The transport and
- * the agent agree on this tagged shape so one Session channel carries
- * all the signals the old three-stream split did (`chat-messages`,
- * `chat-stop`, plus action messages piggybacked on `chat-messages`).
- *
- * The agent subscribes via `session.in.on` / `.waitWithIdleTimeout`
- * inside `chatAgent()` and dispatches on `kind`.
- */
-export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = unknown> =
-  | {
-      kind: "message";
-      /**
-       * Full wire payload for a new user message or regeneration. Mirrors
-       * what the legacy `chat-messages` input stream carried.
-       */
-      payload: ChatTaskWirePayload<TMessage, TMetadata>;
-    }
-  | {
-      kind: "stop";
-      /** Optional human-readable reason. Maps to the legacy `chat-stop` record. */
-      message?: string;
-    };
+// `ChatTaskWirePayload` and `ChatInputChunk` live in `./ai-shared.ts` so
+// browser bundles (which import them via `chat-client.ts` / `chat.ts`)
+// can pull the types without dragging `ai.ts` into the client graph.
+// Re-exported here so `@trigger.dev/sdk/ai` consumers see them.
+import type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
+export type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
 
 /**
  * The payload shape passed to the `chatAgent` run function.
@@ -1547,7 +1476,12 @@ export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
  * between tool-call steps. The frontend can match on this to render
  * injection points inline in the assistant response.
  */
-export const PENDING_MESSAGE_INJECTED_TYPE = "data-pending-message-injected" as const;
+// `PENDING_MESSAGE_INJECTED_TYPE` lives in `./ai-shared.ts` so the chat
+// React hooks (`@trigger.dev/sdk/chat/react`) can import it without
+// dragging `ai.ts` into the browser graph. Re-exported here so
+// `@trigger.dev/sdk/ai` consumers still see it.
+export { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
 
 /** @internal */
 type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
@@ -2240,7 +2174,6 @@ function getChatPrompt(): ChatPromptValue {
 /** @internal */
 const chatSkillsKey = locals.create<ResolvedSkill[]>("chat.skills");
 
-
 /**
  * Store resolved skills for the current run. Call from any hook
  * (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
@@ -2336,7 +2269,6 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
         return { error: `Skill "${skillName}" not found.` };
       }
       try {
-        const { readFileInSkill } = await loadAgentSkillsRuntime();
         return await readFileInSkill({
           skillPath: skill.path,
           relativePath: relPath,
@@ -2371,7 +2303,6 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
         return { error: `Skill "${skillName}" not found.` };
       }
       try {
-        const { runBashInSkill } = await loadAgentSkillsRuntime();
         return await runBashInSkill({
           skillPath: skill.path,
           command,
@@ -3595,7 +3526,7 @@ function chatCustomAgent<
 >(
   options: ChatCustomAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
-  const { clientDataSchema, ...restOptions } = options;
+  const { clientDataSchema, run: userRun, ...restOptions } = options;
 
   const task = createTask<
     TIdentifier,
@@ -3605,6 +3536,20 @@ function chatCustomAgent<
     ...restOptions,
     triggerSource: "agent",
     agentConfig: { type: "ai-sdk-chat" },
+    run: async (
+      payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+      runOptions
+    ) => {
+      // Bind the run to its backing Session so module-level helpers
+      // (chat.messages, chat.stream, chat.createStopSignal, chat.createSession)
+      // resolve to this chat's `.in` / `.out` channels — same setup as
+      // chat.agent. Without this, any helper that calls getChatSession()
+      // throws "session handle is not initialized".
+      const sessionIdForHandle = payload.sessionId ?? payload.chatId;
+      locals.set(chatSessionHandleKey, sessions.open(sessionIdForHandle));
+      locals.set(chatAgentRunContextKey, runOptions.ctx);
+      return userRun(payload, runOptions);
+    },
   });
 
   // Register clientDataSchema so the CLI converts it to JSONSchema
@@ -4553,10 +4498,17 @@ function chatAgent<
 
                   // Capture token usage from the streamText result (if available).
                   // totalUsage is a PromiseLike that resolves after the stream is consumed.
+                  // Race with a 2s timeout — on stop-abort the AI SDK's totalUsage
+                  // promise can hang indefinitely (the underlying provider stream
+                  // never reports final usage), which would block the turn loop
+                  // from ever firing onTurnComplete / writeTurnComplete.
                   let turnUsage: LanguageModelUsage | undefined;
                   if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
                     try {
-                      turnUsage = await (runResult as any).totalUsage;
+                      turnUsage = (await Promise.race([
+                        (runResult as any).totalUsage,
+                        new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+                      ])) as LanguageModelUsage | undefined;
                     } catch {
                       /* non-fatal — usage capture failed */
                     }
@@ -6882,32 +6834,12 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
  * // { model?: string; userId: string }
  * ```
  */
-export type InferChatClientData<TTask extends AnyTask> = TTask extends Task<
-  string,
-  ChatTaskWirePayload<any, infer TMetadata>,
-  any
->
-  ? TMetadata
-  : unknown;
-
-/**
- * Extracts the UI message type from a chat task (wire payload `messages` items).
- *
- * @example
- * ```ts
- * import type { InferChatUIMessage } from "@trigger.dev/sdk/ai";
- * import type { myChat } from "@/trigger/chat";
- *
- * type Msg = InferChatUIMessage<typeof myChat>;
- * ```
- */
-export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
-  string,
-  ChatTaskWirePayload<infer TUIM extends UIMessage, any>,
-  any
->
-  ? TUIM
-  : UIMessage;
+// `InferChatClientData` and `InferChatUIMessage` live in `./ai-shared.ts`
+// so the chat React hooks can import them without dragging `ai.ts` into
+// the browser graph. Re-exported here so `@trigger.dev/sdk/ai` consumers
+// still see them.
+import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
+export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 
 /**
  * Options for {@link createChatTriggerAction}.
@@ -7124,6 +7056,14 @@ export const chat = {
   compact: chatCompact,
   /** Read the current compaction state (summary + base message count). */
   getCompactionState,
+  /**
+   * The friendlyId (`session_*`) of the backing Session for the current chat.agent run.
+   * Useful for persisting alongside `runId` so reloads can resume the same session.
+   * Throws if called outside a chat.agent `run()` or hook.
+   */
+  get sessionId(): string {
+    return getChatSession().id;
+  },
 };
 
 /**

@@ -1,5 +1,6 @@
 import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { logger, prompts, skills } from "@trigger.dev/sdk";
+
 import {
   streamText,
   generateText,
@@ -293,8 +294,8 @@ export const aiChat = chat
       });
       await prisma.chatSession.upsert({
         where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-        update: { runId, publicAccessToken: chatAccessToken },
+        create: { id: chatId, sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
+        update: { sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
       });
     },
     // #endregion
@@ -345,8 +346,8 @@ export const aiChat = chat
 
       await prisma.chatSession.upsert({
         where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-        update: { runId, publicAccessToken: chatAccessToken },
+        create: { id: chatId, sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
+        update: { sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
       });
     },
     // #endregion
@@ -416,8 +417,8 @@ export const aiChat = chat
       });
       await prisma.chatSession.upsert({
         where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
-        update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+        create: { id: chatId, sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken, lastEventId },
       });
 
       // Background self-review — a cheap model critiques the response and
@@ -903,8 +904,8 @@ export const aiChatHydrated = chat
       await initUserContext(clientData.userId, chatId, clientData.model);
       await prisma.chatSession.upsert({
         where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-        update: { runId, publicAccessToken: chatAccessToken },
+        create: { id: chatId, sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
+        update: { sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
       });
     },
 
@@ -913,8 +914,8 @@ export const aiChatHydrated = chat
       await initUserContext(clientData.userId, chatId, clientData.model);
       await prisma.chatSession.upsert({
         where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken },
-        update: { runId, publicAccessToken: chatAccessToken },
+        create: { id: chatId, sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
+        update: { sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken },
       });
     },
 
@@ -925,8 +926,8 @@ export const aiChatHydrated = chat
       });
       await prisma.chatSession.upsert({
         where: { id: chatId },
-        create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
-        update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+        create: { id: chatId, sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { sessionId: chat.sessionId, runId, publicAccessToken: chatAccessToken, lastEventId },
       });
     },
 
