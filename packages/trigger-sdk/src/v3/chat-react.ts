@@ -30,7 +30,7 @@ import {
   PENDING_MESSAGE_INJECTED_TYPE,
   type InferChatClientData,
   type InferChatUIMessage,
-} from "./ai.js";
+} from "./ai-shared.js";
 import type { UIMessage, ChatRequestOptions } from "ai";
 
 /**
