@@ -318,8 +318,17 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     let waitSeconds = options?.timeoutInSeconds ?? this.s2WaitSeconds;
     let settled = false;
 
-    if (io === "out") {
+    // Only peek + settle when the client opts in via `options.peekSettled`.
+    // Reconnect-on-reload paths (`TriggerChatTransport.reconnectToStream`)
+    // set it; active send-a-message paths don't — otherwise the peek
+    // races the newly-triggered turn's first chunk and the SSE closes
+    // before records land.
+    if (io === "out" && options?.peekSettled) {
       const lastChunk = await this.#peekLastChunkBody(s2Stream);
+      const lastChunkType =
+        lastChunk != null && typeof lastChunk === "object"
+          ? (lastChunk as { type?: unknown }).type
+          : null;
       if (
         lastChunk != null &&
         typeof lastChunk === "object" &&

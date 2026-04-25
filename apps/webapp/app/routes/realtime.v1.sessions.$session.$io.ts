@@ -124,12 +124,20 @@ const loader = createLoaderApiRoute(
       timeoutInSeconds = parsed;
     }
 
+    // Opt-in: only consider the settled-peek shortcut when the client
+    // asks for it via `X-Peek-Settled: 1`. Reconnect-on-reload paths
+    // (`TriggerChatTransport.reconnectToStream`) set this; the active
+    // send-a-message path (`sendMessages → subscribeToSessionStream`)
+    // does not — otherwise the peek races with the newly-triggered
+    // turn's first chunk and the SSE closes before records land.
+    const peekSettled = request.headers.get("X-Peek-Settled") === "1";
+
     return realtimeStream.streamResponseFromSessionStream(
       request,
       session.friendlyId,
       params.io,
       getRequestAbortSignal(),
-      { lastEventId, timeoutInSeconds }
+      { lastEventId, timeoutInSeconds, peekSettled }
     );
   }
 );
