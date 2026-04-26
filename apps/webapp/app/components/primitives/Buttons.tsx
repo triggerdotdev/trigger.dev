@@ -353,7 +353,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         form={props.form}
         autoFocus={autoFocus}
       >
-        <ButtonContent {...props} tooltip={undefined} />
+        <ButtonContent
+          {...props}
+          tooltip={undefined}
+          hideShortcutKey={props.tooltip ? true : props.hideShortcutKey}
+        />
       </button>
     );
 
