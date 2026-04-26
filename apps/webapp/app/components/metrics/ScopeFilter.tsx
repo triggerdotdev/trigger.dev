@@ -19,12 +19,27 @@ const scopeOptions = [
   { value: "organization", label: "Organization" },
 ] as const;
 
-export function ScopeFilter({ shortcut }: { shortcut?: ShortcutDefinition } = {}) {
-  const { value, replace } = useSearchParams();
-  const scope = (value("scope") as QueryScope) ?? "environment";
+export type ScopeFilterProps = {
+  shortcut?: ShortcutDefinition;
+  /** Controlled value. If provided, the filter uses controlled mode and ignores search params. */
+  value?: QueryScope;
+  /** Called when the user selects a new scope. Required when `value` is provided. */
+  onValueChange?: (scope: QueryScope) => void;
+};
+
+export function ScopeFilter({ shortcut, value, onValueChange }: ScopeFilterProps = {}) {
+  const { value: paramValue, replace } = useSearchParams();
+  const isControlled = value !== undefined;
+  const scope: QueryScope = isControlled
+    ? value
+    : ((paramValue("scope") as QueryScope) ?? "environment");
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const handleChange = (newScope: string) => {
+    if (isControlled) {
+      onValueChange?.(newScope as QueryScope);
+      return;
+    }
     replace({ scope: newScope === "environment" ? undefined : newScope });
   };
 
@@ -57,8 +72,8 @@ export function ScopeFilter({ shortcut }: { shortcut?: ShortcutDefinition } = {}
           />
         </Ariakit.TooltipAnchor>
         {shortcut && (
-          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
-            <div className="flex items-center gap-3">
+          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-2 text-xs text-text-dimmed">
+            <div className="flex items-center gap-1.5">
               <span>Change scope</span>
               <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant="small" />
             </div>

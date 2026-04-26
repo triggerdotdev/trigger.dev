@@ -104,6 +104,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   open?: boolean;
   setOpen?: (open: boolean) => void;
   shortcut?: ShortcutDefinition;
+  tooltipTitle?: string;
   allowItemShortcuts?: boolean;
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
@@ -127,6 +128,7 @@ export function Select<TValue extends string | string[], TItem>({
   open,
   setOpen,
   shortcut,
+  tooltipTitle,
   allowItemShortcuts = true,
   disabled,
   clearSearchOnSelection = true,
@@ -206,6 +208,7 @@ export function Select<TValue extends string | string[], TItem>({
         text={text}
         placeholder={placeholder}
         shortcut={shortcut}
+        tooltipTitle={tooltipTitle}
         disabled={disabled}
         dropdownIcon={dropdownIcon}
         {...props}
