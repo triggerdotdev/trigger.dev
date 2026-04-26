@@ -3,8 +3,10 @@ import type {
   RbacAbility,
   Role,
   RbacResource,
+  RoleAssignmentResult,
   RoleBaseAccessController,
   RoleBasedAccessControlPlugin,
+  RoleMutationResult,
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
 import { RoleBaseAccessFallback } from "./fallback.js";
@@ -121,15 +123,21 @@ class LazyController implements RoleBaseAccessController {
     return (await this.c()).allRoles(...args);
   }
 
-  async createRole(...args: Parameters<RoleBaseAccessController["createRole"]>): Promise<Role> {
+  async createRole(
+    ...args: Parameters<RoleBaseAccessController["createRole"]>
+  ): Promise<RoleMutationResult> {
     return (await this.c()).createRole(...args);
   }
 
-  async updateRole(...args: Parameters<RoleBaseAccessController["updateRole"]>): Promise<Role> {
+  async updateRole(
+    ...args: Parameters<RoleBaseAccessController["updateRole"]>
+  ): Promise<RoleMutationResult> {
     return (await this.c()).updateRole(...args);
   }
 
-  async deleteRole(...args: Parameters<RoleBaseAccessController["deleteRole"]>): Promise<void> {
+  async deleteRole(
+    ...args: Parameters<RoleBaseAccessController["deleteRole"]>
+  ): Promise<RoleAssignmentResult> {
     return (await this.c()).deleteRole(...args);
   }
 
@@ -137,11 +145,15 @@ class LazyController implements RoleBaseAccessController {
     return (await this.c()).getUserRole(...args);
   }
 
-  async setUserRole(...args: Parameters<RoleBaseAccessController["setUserRole"]>): Promise<void> {
+  async setUserRole(
+    ...args: Parameters<RoleBaseAccessController["setUserRole"]>
+  ): Promise<RoleAssignmentResult> {
     return (await this.c()).setUserRole(...args);
   }
 
-  async removeUserRole(...args: Parameters<RoleBaseAccessController["removeUserRole"]>): Promise<void> {
+  async removeUserRole(
+    ...args: Parameters<RoleBaseAccessController["removeUserRole"]>
+  ): Promise<RoleAssignmentResult> {
     return (await this.c()).removeUserRole(...args);
   }
 
@@ -149,11 +161,15 @@ class LazyController implements RoleBaseAccessController {
     return (await this.c()).getTokenRole(...args);
   }
 
-  async setTokenRole(...args: Parameters<RoleBaseAccessController["setTokenRole"]>): Promise<void> {
+  async setTokenRole(
+    ...args: Parameters<RoleBaseAccessController["setTokenRole"]>
+  ): Promise<RoleAssignmentResult> {
     return (await this.c()).setTokenRole(...args);
   }
 
-  async removeTokenRole(...args: Parameters<RoleBaseAccessController["removeTokenRole"]>): Promise<void> {
+  async removeTokenRole(
+    ...args: Parameters<RoleBaseAccessController["removeTokenRole"]>
+  ): Promise<RoleAssignmentResult> {
     return (await this.c()).removeTokenRole(...args);
   }
 }

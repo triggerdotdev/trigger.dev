@@ -1,6 +1,8 @@
 export type {
   RoleBasedAccessControlPlugin,
   RoleBaseAccessController,
+  RoleAssignmentResult,
+  RoleMutationResult,
   Permission,
   Role,
   RbacAbility,

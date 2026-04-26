@@ -98,24 +98,31 @@ export interface RoleBaseAccessController {
   allPermissions(organizationId: string): Promise<Permission[]>;
   allRoles(organizationId: string): Promise<Role[]>;
 
-  // Role management (throws in OSS fallback)
+  // Role management. Mutation methods return a discriminated Result
+  // rather than throwing — the cloud webapp surfaces `error` strings
+  // directly to the user (system role edits, plan-gating, validation
+  // conflicts), so a thrown exception is only ever for unexpected
+  // failures (DB outage, bug). The OSS fallback returns
+  // `{ ok: false, error: "RBAC plugin not installed" }` for these.
   createRole(params: {
     organizationId: string;
     name: string;
     description: string;
     permissions: string[];
-  }): Promise<Role>;
+  }): Promise<RoleMutationResult>;
 
   updateRole(params: {
     roleId: string;
     name?: string;
     description?: string;
     permissions?: string[];
-  }): Promise<Role>;
+  }): Promise<RoleMutationResult>;
 
-  deleteRole(roleId: string): Promise<void>;
+  deleteRole(roleId: string): Promise<RoleAssignmentResult>;
 
-  // Role assignments (no-ops in OSS fallback)
+  // Role assignments. Same Result discipline as the role-management
+  // methods above. The OSS fallback returns
+  // `{ ok: false, error: "RBAC plugin not installed" }`.
   getUserRole(params: {
     userId: string;
     organizationId: string;
@@ -127,18 +134,27 @@ export interface RoleBaseAccessController {
     organizationId: string;
     roleId: string;
     projectId?: string;
-  }): Promise<void>;
+  }): Promise<RoleAssignmentResult>;
 
   removeUserRole(params: {
     userId: string;
     organizationId: string;
     projectId?: string;
-  }): Promise<void>;
+  }): Promise<RoleAssignmentResult>;
 
   getTokenRole(tokenId: string): Promise<Role | null>;
-  setTokenRole(params: { tokenId: string; roleId: string }): Promise<void>;
-  removeTokenRole(tokenId: string): Promise<void>;
+  setTokenRole(params: { tokenId: string; roleId: string }): Promise<RoleAssignmentResult>;
+  removeTokenRole(tokenId: string): Promise<RoleAssignmentResult>;
 }
+
+// Mutation result for role create/update — success carries the new
+// `role`, failure carries a user-facing `error` string.
+export type RoleMutationResult =
+  | { ok: true; role: Role }
+  | { ok: false; error: string };
+
+// Result for assignment / deletion mutations that don't return a value.
+export type RoleAssignmentResult = { ok: true } | { ok: false; error: string };
 
 export interface RoleBasedAccessControlPlugin {
   create(

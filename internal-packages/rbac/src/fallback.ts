@@ -7,7 +7,9 @@ import type {
   RbacResource,
   BearerAuthResult,
   SessionAuthResult,
+  RoleAssignmentResult,
   RoleBaseAccessController,
+  RoleMutationResult,
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
@@ -163,29 +165,41 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return [];
   }
 
-  async createRole(): Promise<Role> {
-    throw new Error("RBAC plugin not installed");
+  async createRole(): Promise<RoleMutationResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
   }
 
-  async updateRole(): Promise<Role> {
-    throw new Error("RBAC plugin not installed");
+  async updateRole(): Promise<RoleMutationResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
   }
 
-  async deleteRole(): Promise<void> {}
+  async deleteRole(): Promise<RoleAssignmentResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
+  }
 
   async getUserRole(): Promise<Role | null> {
     return null;
   }
 
-  async setUserRole(): Promise<void> {}
-  async removeUserRole(): Promise<void> {}
+  async setUserRole(): Promise<RoleAssignmentResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
+  }
+
+  async removeUserRole(): Promise<RoleAssignmentResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
+  }
 
   async getTokenRole(): Promise<Role | null> {
     return null;
   }
 
-  async setTokenRole(): Promise<void> {}
-  async removeTokenRole(): Promise<void> {}
+  async setTokenRole(): Promise<RoleAssignmentResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
+  }
+
+  async removeTokenRole(): Promise<RoleAssignmentResult> {
+    return { ok: false, error: "RBAC plugin not installed" };
+  }
 }
 
 function isPublicJWT(token: string): boolean {
