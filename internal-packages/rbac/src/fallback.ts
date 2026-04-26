@@ -131,7 +131,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async authenticateAuthorizeBearer(
     request: Request,
-    check: { action: string; resource: RbacResource },
+    check: { action: string; resource: RbacResource | RbacResource[] },
     options?: { allowJWT?: boolean }
   ): Promise<BearerAuthResult> {
     const auth = await this.authenticateBearer(request, options);
@@ -145,7 +145,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   async authenticateAuthorizeSession(
     request: Request,
     context: { organizationId?: string; projectId?: string },
-    check: { action: string; resource: RbacResource }
+    check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult> {
     const auth = await this.authenticateSession(request, context);
     if (!auth.ok) return auth;

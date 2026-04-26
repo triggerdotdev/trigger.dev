@@ -79,17 +79,19 @@ export interface RoleBaseAccessController {
     context: { organizationId?: string; projectId?: string }
   ): Promise<SessionAuthResult>;
 
-  // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails
+  // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails.
+  // resource accepts the same single-or-array shape as RbacAbility.can — array form means
+  // "grant access if any element passes".
   authenticateAuthorizeBearer(
     request: Request,
-    check: { action: string; resource: RbacResource },
+    check: { action: string; resource: RbacResource | RbacResource[] },
     options?: { allowJWT?: boolean }
   ): Promise<BearerAuthResult>;
 
   authenticateAuthorizeSession(
     request: Request,
     context: { organizationId?: string; projectId?: string },
-    check: { action: string; resource: RbacResource }
+    check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult>;
 
   // Role introspection (enterprise: DB-backed; OSS: returns [])
