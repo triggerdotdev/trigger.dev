@@ -7,7 +7,11 @@ import path from "path";
 import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
-import { expect, TaskContext } from "vitest";
+// `expect` is only used inside assertNonNullable — lazy-loaded via require
+// inside the function so this module can be imported in non-test contexts
+// (e.g. a vitest globalSetup that starts containers before any worker
+// exists, where vitest's expect-init-at-load-time would crash).
+import type { TaskContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
@@ -186,6 +190,10 @@ export async function createMinIOContainer(network: StartedNetwork) {
 }
 
 export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
+  // Loaded lazily so importers of this module don't pay the vitest top-level
+  // init cost outside a test worker. See the import note at the top.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { expect } = require("vitest") as typeof import("vitest");
   expect(value).toBeDefined();
   expect(value).not.toBeNull();
 }

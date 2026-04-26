@@ -1,0 +1,116 @@
+name: "🛡️ E2E Tests: Webapp Auth (full)"
+
+# Comprehensive RBAC auth test suite — see TRI-8731. Runs separately from
+# the smoke e2e-webapp.yml because it covers every route family with a
+# pass/fail matrix and would otherwise dominate per-PR CI time.
+#
+# Triggered:
+#   - Manually via workflow_dispatch.
+#   - Nightly via schedule.
+#   - On pull requests touching auth-relevant files only (paths filter).
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC daily
+  pull_request:
+    paths:
+      - "apps/webapp/app/services/routeBuilders/**"
+      - "apps/webapp/app/services/rbac.server.ts"
+      - "apps/webapp/app/services/apiAuth.server.ts"
+      - "apps/webapp/app/services/personalAccessToken.server.ts"
+      - "apps/webapp/app/services/sessionStorage.server.ts"
+      - "apps/webapp/app/routes/api.v*.**"
+      - "apps/webapp/app/routes/realtime.v*.**"
+      - "apps/webapp/test/**/*.e2e.full.test.ts"
+      - "apps/webapp/test/setup/global-e2e-full-setup.ts"
+      - "apps/webapp/test/helpers/sharedTestServer.ts"
+      - "apps/webapp/test/helpers/seedTestSession.ts"
+      - "apps/webapp/vitest.e2e.full.config.ts"
+      - "internal-packages/rbac/**"
+      - "packages/plugins/**"
+      - ".github/workflows/e2e-webapp-auth-full.yml"
+
+jobs:
+  e2eAuthFull:
+    name: "🛡️ E2E Auth Tests (full)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+      - name: 🔧 Configure docker address pool
+        run: |
+          CONFIG='{
+            "default-address-pools" : [
+              {
+                "base" : "172.17.0.0/12",
+                "size" : 20
+              },
+              {
+                "base" : "192.168.0.0/16",
+                "size" : 24
+              }
+            ]
+          }'
+          mkdir -p /etc/docker
+          echo "$CONFIG" | sudo tee /etc/docker/daemon.json
+
+      - name: 🔧 Restart docker daemon
+        run: sudo systemctl restart docker
+
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - name: ⎔ Setup node
+        uses: buildjet/setup-node@v4
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      - name: 🐳 Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: 🐳 Skipping DockerHub login (no secrets available)
+        if: ${{ !env.DOCKERHUB_USERNAME }}
+        run: echo "DockerHub login skipped because secrets are not available."
+
+      - name: 🐳 Pre-pull testcontainer images
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        run: |
+          docker pull postgres:14
+          docker pull redis:7.2
+          docker pull testcontainers/ryuk:0.11.0
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🏗️ Build Webapp
+        run: pnpm run build --filter webapp
+
+      - name: 🛡️ Run Webapp Full Auth E2E Tests
+        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.full.config.ts --reporter=default
+        env:
+          WEBAPP_TEST_VERBOSE: "1"

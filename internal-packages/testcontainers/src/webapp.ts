@@ -150,6 +150,9 @@ export async function startWebapp(
 export interface TestServer {
   webapp: WebappInstance;
   prisma: PrismaClient;
+  // Postgres connection string. Useful when test workers run in separate
+  // processes and need to construct their own clients against the same DB.
+  databaseUrl: string;
   stop: () => Promise<void>;
 }
 
@@ -159,6 +162,7 @@ export async function startTestServer(): Promise<TestServer> {
 
   // Track each resource as we acquire it so we can tear it down if a later step fails.
   let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let pgUrl: string | undefined;
   let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
   let prisma: PrismaClient | undefined;
   let stopWebapp: (() => Promise<void>) | undefined;
@@ -167,6 +171,7 @@ export async function startTestServer(): Promise<TestServer> {
   try {
     const pg = await createPostgresContainer(network);
     pgContainer = pg.container;
+    pgUrl = pg.url;
 
     const { container: rc } = await createRedisContainer({ network });
     redisContainer = rc;
@@ -193,5 +198,5 @@ export async function startTestServer(): Promise<TestServer> {
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
-  return { webapp, prisma: prisma!, stop };
+  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, stop };
 }
