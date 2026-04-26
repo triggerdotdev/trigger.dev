@@ -819,6 +819,7 @@ function ConnectedVercelProjectForm({
                 onAutoPromoteChange={(value) =>
                   setConfigValues((prev) => ({ ...prev, autoPromote: value }))
                 }
+                hideSectionToggles
               />
 
               {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}
@@ -903,12 +904,6 @@ function VercelSettingsPanel({
       setHasFetched(true);
     }
   }, [organizationSlug, projectSlug, environmentSlug, data?.authInvalid, hasError, data, hasFetched]);
-
-  useEffect(() => {
-    if (hasFetched && fetcher.state === "idle" && fetcher.data === undefined && !hasError) {
-      setHasError(true);
-    }
-  }, [fetcher.state, fetcher.data, hasError, hasFetched]);
 
   if (hasError) {
     return (
