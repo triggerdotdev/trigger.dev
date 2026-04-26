@@ -191,6 +191,7 @@ function QueuesDropdown({
                 <SelectItem
                   key={queue.value}
                   value={queue.value}
+                  className="text-text-bright"
                   icon={
                     queue.type === "task" ? (
                       <TaskIcon className="size-4 shrink-0 text-blue-500" />
