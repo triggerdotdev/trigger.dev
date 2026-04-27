@@ -3108,87 +3108,86 @@ describe("RunEngine debounce", () => {
             data: { delayUntil: new Date(Date.now() + 2_000) },
           });
 
-          // Count taskRun.update calls so we can assert that the fast-path
-          // actually short-circuits the herd's writes. We monkey-patch the
-          // bound method on the prisma instance the engine is holding.
-          let updateCount = 0;
-          const originalUpdate = prisma.taskRun.update.bind(prisma.taskRun);
-          (prisma.taskRun as unknown as { update: typeof originalUpdate }).update = ((
-            ...args: Parameters<typeof originalUpdate>
-          ) => {
-            updateCount++;
-            return originalUpdate(...args);
-          }) as typeof originalUpdate;
+          // Subscribe to `runDelayRescheduled` so we can count how many times
+          // the herd actually pushed `delayUntil` forward. Each event corresponds
+          // to a successful reschedule under the lock - the fast-path/contention
+          // fallback paths skip the reschedule entirely. We use the engine's
+          // public eventBus, which is the same observable interface other tests
+          // in this repo (ttl, trigger, cancelling, waitpoints) use.
+          let rescheduleCount = 0;
+          engine.eventBus.on("runDelayRescheduled", () => {
+            rescheduleCount++;
+          });
 
-          try {
-            const N = 40;
-            const triggers = Array.from({ length: N }, (_, i) =>
-              engine.trigger(
-                {
-                  number: i + 1,
-                  friendlyId: `run_stress${i + 1}`,
-                  environment: authenticatedEnvironment,
-                  taskIdentifier,
-                  payload: `{"data": "stress-${i}"}`,
-                  payloadType: "application/json",
-                  context: {},
-                  traceContext: {},
-                  traceId: `t_stress_${i}`,
-                  spanId: `s_stress_${i}`,
-                  workerQueue: "main",
-                  queue: "task/test-task",
-                  isTest: false,
-                  tags: [],
-                  delayUntil: new Date(Date.now() + 30_000),
-                  debounce: {
-                    key: "stress-key",
-                    delay: "30s",
-                  },
+          const N = 40;
+          const triggers = Array.from({ length: N }, (_, i) =>
+            engine.trigger(
+              {
+                number: i + 1,
+                friendlyId: `run_stress${i + 1}`,
+                environment: authenticatedEnvironment,
+                taskIdentifier,
+                payload: `{"data": "stress-${i}"}`,
+                payloadType: "application/json",
+                context: {},
+                traceContext: {},
+                traceId: `t_stress_${i}`,
+                spanId: `s_stress_${i}`,
+                workerQueue: "main",
+                queue: "task/test-task",
+                isTest: false,
+                tags: [],
+                delayUntil: new Date(Date.now() + 30_000),
+                debounce: {
+                  key: "stress-key",
+                  delay: "30s",
                 },
-                prisma
-              )
-            );
+              },
+              prisma
+            )
+          );
 
-            const start = performance.now();
-            const settled = await Promise.allSettled(triggers);
-            const durationMs = performance.now() - start;
+          const start = performance.now();
+          const settled = await Promise.allSettled(triggers);
+          const durationMs = performance.now() - start;
 
-            const fulfilled = settled.filter(
-              (r): r is PromiseFulfilledResult<{ id: string }> => r.status === "fulfilled"
-            );
-            const rejected = settled.filter((r) => r.status === "rejected");
+          const fulfilled = settled.filter(
+            (r): r is PromiseFulfilledResult<{ id: string }> => r.status === "fulfilled"
+          );
+          const rejected = settled.filter((r) => r.status === "rejected");
 
-            // No 5xx feedback loop: every concurrent trigger succeeds and
-            // returns the existing run id.
-            expect(rejected).toHaveLength(0);
-            expect(fulfilled).toHaveLength(N);
-            for (const r of fulfilled) {
-              expect(r.value.id).toBe(seed.id);
-            }
+          // No 5xx feedback loop: every concurrent trigger succeeds and
+          // returns the existing run id.
+          expect(rejected).toHaveLength(0);
+          expect(fulfilled).toHaveLength(N);
+          for (const r of fulfilled) {
+            expect(r.value.id).toBe(seed.id);
+          }
 
-            // Only one row, regardless of contention path.
-            const runs = await prisma.taskRun.findMany({
-              where: { taskIdentifier, runtimeEnvironmentId: authenticatedEnvironment.id },
-            });
-            expect(runs.length).toBe(1);
+          // Only one row, regardless of contention path.
+          const runs = await prisma.taskRun.findMany({
+            where: { taskIdentifier, runtimeEnvironmentId: authenticatedEnvironment.id },
+          });
+          expect(runs.length).toBe(1);
 
-            console.log(
-              `[stress fixed=${fixed}] N=${N} duration=${durationMs.toFixed(
-                0
-              )}ms taskRun.update=${updateCount}`
-            );
+          // Wait briefly for any in-flight reschedule events to flush before
+          // asserting on the count. EventBus emit is synchronous here but
+          // settle a microtask just to be safe.
+          await new Promise((resolve) => setImmediate(resolve));
 
-            if (fixed) {
-              // With fast-path + quantization: the herd collapses onto the
-              // same quantized newDelayUntil. Trigger #1 takes the lock and
-              // updates delayUntil; every subsequent trigger sees a covering
-              // delayUntil on the unlocked read and short-circuits. So at
-              // most one update lands on the run row.
-              expect(updateCount).toBeLessThanOrEqual(1);
-            }
-          } finally {
-            (prisma.taskRun as unknown as { update: typeof originalUpdate }).update =
-              originalUpdate;
+          console.log(
+            `[stress fixed=${fixed}] N=${N} duration=${durationMs.toFixed(
+              0
+            )}ms reschedules=${rescheduleCount}`
+          );
+
+          if (fixed) {
+            // With fast-path + quantization: the herd collapses onto the
+            // same quantized newDelayUntil. Trigger #1 takes the lock and
+            // pushes delayUntil; every subsequent trigger sees a covering
+            // delayUntil on the unlocked read and short-circuits without
+            // emitting a reschedule. So at most one reschedule fires.
+            expect(rescheduleCount).toBeLessThanOrEqual(1);
           }
         } finally {
           await engine.quit();
