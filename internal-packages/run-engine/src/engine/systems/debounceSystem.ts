@@ -63,11 +63,8 @@ export type DebounceSystemOptions = {
    */
   fastPathSkipEnabled?: boolean;
   /**
-   * When true, route the cheap probe of the unlocked fast-path through
-   * `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer. The
-   * full-run read used to construct the returned `existing` result still
-   * goes through the writer, so callers never see a run whose status has
-   * already moved out of DELAYED on the writer due to replica lag.
+   * When true, route the unlocked fast-path reads (probe + full-run fetch)
+   * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
    */
   useReplicaForFastPathRead?: boolean;
 };
@@ -482,13 +479,16 @@ return 0
     tx?: PrismaClientOrTransaction;
   }): Promise<DebounceResult> {
     const prisma = tx ?? this.$.prisma;
-    // The cheap probe in the fast-path skip can run on `readOnlyPrisma` when
-    // configured. Replica lag is fine because the probe is best-effort: a
-    // stale view either falls through to the locked path or is rejected by
-    // the writer-validated re-check inside `#tryFastPathSkip`. Only divert
-    // the probe when the caller isn't inside a tx (where the read needs to
-    // see the tx's writes).
-    const probeReadPrisma =
+    // Reads in the unlocked fast-path can run on `readOnlyPrisma` when
+    // configured (e.g. an Aurora reader). Replica lag is fine: debounce is
+    // best-effort and a stale read either falls through to the locked path
+    // (when delayUntil hasn't replicated yet) or returns the existing run
+    // (when the run's status is stale). The latter is the same outcome the
+    // caller would see if their trigger had simply landed a few hundred ms
+    // earlier, which is within the natural debounce race. Only divert reads
+    // when the caller isn't inside a tx (where the read needs to see the
+    // tx's writes).
+    const fastPathReadPrisma =
       tx ?? (this.useReplicaForFastPathRead ? this.$.readOnlyPrisma : this.$.prisma);
 
     // Compute the (quantized) target delayUntil up-front, before taking any lock.
@@ -507,12 +507,7 @@ return 0
         existingRunId,
         newDelayUntil,
         debounce,
-        probePrisma: probeReadPrisma,
-        // The full-run read used to construct the returned `existing` result
-        // always goes through the writer, even when the cheap probe is on a
-        // replica. Otherwise replica lag could let us return a run whose
-        // status has already moved out of DELAYED on the writer.
-        validatePrisma: prisma,
+        prisma: fastPathReadPrisma,
       });
       if (fastPathResult) {
         return fastPathResult;
@@ -588,25 +583,22 @@ return 0
    * already exceeded its max debounce duration so the locked path can return
    * `max_duration_exceeded` and let the caller create a new run.
    *
-   * The cheap probe (`probePrisma`) may be on a read replica - replica lag is
-   * fine because the monotonic-forward invariant means a stale view just falls
-   * through to the locked path. The full-run read used to construct the
-   * returned `existing` result always goes through `validatePrisma` (the
-   * writer), so callers never receive a run whose status has already moved out
-   * of DELAYED on the writer due to replica lag.
+   * `prisma` may be a read replica - replica lag is acceptable because
+   * debounce is best-effort. A stale `delayUntil` either matches reality or
+   * undershoots (we fall through to the locked path); a stale `status` at
+   * worst returns the existing run, which is the same outcome the caller
+   * would see if their trigger had landed a few hundred ms earlier.
    */
   async #tryFastPathSkip({
     existingRunId,
     newDelayUntil,
     debounce,
-    probePrisma,
-    validatePrisma,
+    prisma,
   }: {
     existingRunId: string;
     newDelayUntil: Date;
     debounce: DebounceOptions;
-    probePrisma: PrismaClientOrTransaction | PrismaReplicaClient;
-    validatePrisma: PrismaClientOrTransaction;
+    prisma: PrismaClientOrTransaction | PrismaReplicaClient;
   }): Promise<DebounceResult | null> {
     // Trailing mode with updateData still needs the lock so the data update is
     // applied; only short-circuit when there's nothing to update.
@@ -614,7 +606,7 @@ return 0
       return null;
     }
 
-    const probe = await probePrisma.taskRun.findFirst({
+    const probe = await prisma.taskRun.findFirst({
       where: { id: existingRunId },
       select: { status: true, delayUntil: true, createdAt: true },
     });
@@ -640,20 +632,11 @@ return 0
       return null;
     }
 
-    // Validate against the writer before returning. Also re-checks delayUntil
-    // and the max-duration window in case the writer has moved on since the
-    // (possibly stale) probe.
-    const fullRun = await validatePrisma.taskRun.findFirst({
+    const fullRun = await prisma.taskRun.findFirst({
       where: { id: existingRunId },
       include: { associatedWaitpoint: true },
     });
-    if (!fullRun || fullRun.status !== "DELAYED" || !fullRun.delayUntil) {
-      return null;
-    }
-    if (newDelayUntil.getTime() > fullRun.delayUntil.getTime()) {
-      return null;
-    }
-    if (newDelayUntil.getTime() > fullRun.createdAt.getTime() + maxDurationMs) {
+    if (!fullRun || fullRun.status !== "DELAYED") {
       return null;
     }
 

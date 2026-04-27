@@ -154,12 +154,13 @@ export type RunEngineOptions = {
      */
     fastPathSkipEnabled?: boolean;
     /**
-     * Whether to route the cheap probe of the unlocked fast-path through
-     * `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer. The
-     * full-run read used to construct the returned `existing` result still
-     * goes through the writer, so callers never see a run whose status has
-     * already moved out of DELAYED on the writer. Replica lag at worst means
-     * a few extra callers fall through to the lock.
+     * Whether to route the unlocked fast-path reads (probe + full-run fetch)
+     * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
+     * Safe because debounce is best-effort: a stale `delayUntil` falls
+     * through to the locked path (the locked path re-checks under the lock),
+     * and a stale `status` at worst returns the existing run, which is the
+     * same outcome the caller would see if their trigger had landed a few
+     * hundred ms earlier.
      *
      * Default: false.
      */
