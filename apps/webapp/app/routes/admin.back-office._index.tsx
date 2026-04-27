@@ -2,7 +2,7 @@ import { typedjson } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
 export const loader = dashboardLoader(
   { authorization: { requireSuper: true } },

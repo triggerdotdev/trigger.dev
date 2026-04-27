@@ -1,6 +1,6 @@
 import { Outlet } from "@remix-run/react";
 import { typedjson } from "remix-typedjson";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
 export const loader = dashboardLoader(
   { authorization: { requireSuper: true } },

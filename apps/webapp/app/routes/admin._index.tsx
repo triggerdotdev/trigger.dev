@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({

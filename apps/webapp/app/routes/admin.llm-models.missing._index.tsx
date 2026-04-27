@@ -12,7 +12,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { getMissingLlmModels } from "~/services/admin/missingLlmModels.server";
 
 const LOOKBACK_OPTIONS = [

@@ -7,7 +7,7 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
 const ParamsSchema = z.object({

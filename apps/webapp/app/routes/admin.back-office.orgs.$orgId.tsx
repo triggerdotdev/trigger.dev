@@ -36,7 +36,7 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
 const SAVED_QUERY_KEY = "saved";
 

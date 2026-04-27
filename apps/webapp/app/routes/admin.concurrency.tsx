@@ -3,7 +3,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 
 export const loader = dashboardLoader(

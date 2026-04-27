@@ -39,7 +39,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { logger } from "~/services/logger.server";
 import {
   archivePlatformNotification,

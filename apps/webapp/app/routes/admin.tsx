@@ -2,7 +2,7 @@ import { Outlet } from "@remix-run/react";
 import { typedjson } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
 export const loader = dashboardLoader(
   { authorization: { requireSuper: true } },

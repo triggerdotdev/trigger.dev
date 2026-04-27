@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { seedLlmPricing, syncLlmCatalog } from "@internal/llm-model-catalog";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";

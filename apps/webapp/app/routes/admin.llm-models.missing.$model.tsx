@@ -3,7 +3,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   getMissingModelSamples,
   type MissingModelSample,

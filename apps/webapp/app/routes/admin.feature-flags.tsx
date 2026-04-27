@@ -10,7 +10,7 @@ import { env } from "~/env.server";
 import {
   dashboardAction,
   dashboardLoader,
-} from "~/services/routeBuilders/dashboardBuilder.server";
+} from "~/services/routeBuilders/dashboardBuilder";
 import {
   FEATURE_FLAG,
   GLOBAL_LOCKED_FLAGS,

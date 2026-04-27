@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { adminGetOrganizations } from "~/models/admin.server";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({

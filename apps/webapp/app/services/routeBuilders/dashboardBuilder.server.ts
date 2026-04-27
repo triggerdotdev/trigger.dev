@@ -1,71 +1,20 @@
-import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  json,
-  redirect,
-} from "@remix-run/server-runtime";
-import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
-import type { z } from "zod";
-import { fromZodError } from "zod-validation-error";
-import { rbac } from "~/services/rbac.server";
+// Server-only impl backing dashboardBuilder.ts. Imports rbac.server and
+// runs the actual auth/authorization. The wrappers in dashboardBuilder.ts
+// dynamic-import this module from inside the loader/action body, so it
+// never reaches the client bundle.
 
-// The dashboard counterpart to apiBuilder. Routes that need session auth
-// (with optional admin / ability checks) opt in by exporting their
-// loader/action via dashboardLoader / dashboardAction. Routes that just
-// need a logged-in user with no authorisation can keep using requireUser.
+import { json, redirect } from "@remix-run/server-runtime";
+import type { RbacAbility } from "@trigger.dev/rbac";
+import { rbac } from "~/services/rbac.server";
+import type {
+  AuthorizationOption,
+  DashboardLoaderOptions,
+  SessionUser,
+} from "./dashboardBuilder";
+import { fromZodError } from "zod-validation-error";
+import type { z } from "zod";
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
-
-type InferZod<T> = T extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
-  ? z.infer<T>
-  : undefined;
-
-type SessionUser = {
-  id: string;
-  email: string;
-  name: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-  admin: boolean;
-  confirmedBasicDetails: boolean;
-  isImpersonating: boolean;
-};
-
-// `requireSuper: true` enforces ability.canSuper(). Otherwise an explicit
-// action + resource pair is checked via ability.can(...).
-type AuthorizationOption =
-  | { requireSuper: true }
-  | {
-      action: string;
-      resource: RbacResource | RbacResource[];
-    };
-
-type DashboardLoaderOptions<TParams, TSearchParams> = {
-  params?: TParams;
-  searchParams?: TSearchParams;
-  // Optional: provides organizationId / projectId to rbac.authenticateSession
-  // when the route's ability check needs it (enterprise-only — fallback
-  // currently ignores context).
-  context?: (
-    params: InferZod<TParams>,
-    request: Request
-  ) => { organizationId?: string; projectId?: string } | Promise<{ organizationId?: string; projectId?: string }>;
-  authorization?: AuthorizationOption;
-  // Where to send unauthenticated requests. Defaults to /login with a
-  // redirectTo back to the original path.
-  loginRedirect?: string;
-  // Where to send users who pass auth but fail the ability check. Defaults
-  // to "/" (the home page).
-  unauthorizedRedirect?: string;
-};
-
-type DashboardLoaderHandlerArgs<TParams, TSearchParams> = {
-  params: InferZod<TParams>;
-  searchParams: InferZod<TSearchParams>;
-  user: SessionUser;
-  ability: RbacAbility;
-  request: Request;
-};
 
 function loginRedirectFor(request: Request, override?: string): Response {
   if (override) return redirect(override);
@@ -81,7 +30,7 @@ function isAuthorized(ability: RbacAbility, authorization: AuthorizationOption):
   return ability.can(authorization.action, authorization.resource);
 }
 
-async function authenticateAndAuthorize<TParams, TSearchParams>(
+export async function authenticateAndAuthorize<TParams, TSearchParams>(
   request: Request,
   rawParams: unknown,
   options: DashboardLoaderOptions<TParams, TSearchParams>
@@ -91,8 +40,8 @@ async function authenticateAndAuthorize<TParams, TSearchParams>(
       ok: true;
       user: SessionUser;
       ability: RbacAbility;
-      params: InferZod<TParams>;
-      searchParams: InferZod<TSearchParams>;
+      params: unknown;
+      searchParams: unknown;
     }
 > {
   let parsedParams: any = undefined;
@@ -132,17 +81,11 @@ async function authenticateAndAuthorize<TParams, TSearchParams>(
     if (auth.reason === "unauthenticated") {
       return { ok: false, response: loginRedirectFor(request, options.loginRedirect) };
     }
-    return {
-      ok: false,
-      response: redirect(options.unauthorizedRedirect ?? "/"),
-    };
+    return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
   }
 
   if (options.authorization && !isAuthorized(auth.ability, options.authorization)) {
-    return {
-      ok: false,
-      response: redirect(options.unauthorizedRedirect ?? "/"),
-    };
+    return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
   }
 
   return {
@@ -151,58 +94,5 @@ async function authenticateAndAuthorize<TParams, TSearchParams>(
     ability: auth.ability,
     params: parsedParams,
     searchParams: parsedSearchParams,
-  };
-}
-
-export function dashboardLoader<
-  TParams extends AnyZodSchema | undefined = undefined,
-  TSearchParams extends AnyZodSchema | undefined = undefined,
-  TReturn extends Response = Response
->(
-  options: DashboardLoaderOptions<TParams, TSearchParams>,
-  handler: (args: DashboardLoaderHandlerArgs<TParams, TSearchParams>) => Promise<TReturn>
-) {
-  return async function loader({ request, params }: LoaderFunctionArgs): Promise<TReturn> {
-    const result = await authenticateAndAuthorize(request, params, options);
-    // Auth/authorization failure is signalled by throwing the redirect/json
-    // response. This keeps the loader's success-path return type narrow so
-    // useTypedLoaderData<typeof loader>() picks up the handler's TypedResponse.
-    if (!result.ok) throw result.response;
-
-    return handler({
-      params: result.params,
-      searchParams: result.searchParams,
-      user: result.user,
-      ability: result.ability,
-      request,
-    });
-  };
-}
-
-type DashboardActionOptions<TParams, TSearchParams> = DashboardLoaderOptions<TParams, TSearchParams>;
-
-type DashboardActionHandlerArgs<TParams, TSearchParams> = DashboardLoaderHandlerArgs<TParams, TSearchParams> & {
-  request: Request;
-};
-
-export function dashboardAction<
-  TParams extends AnyZodSchema | undefined = undefined,
-  TSearchParams extends AnyZodSchema | undefined = undefined,
-  TReturn extends Response = Response
->(
-  options: DashboardActionOptions<TParams, TSearchParams>,
-  handler: (args: DashboardActionHandlerArgs<TParams, TSearchParams>) => Promise<TReturn>
-) {
-  return async function action({ request, params }: ActionFunctionArgs): Promise<TReturn> {
-    const result = await authenticateAndAuthorize(request, params, options);
-    if (!result.ok) throw result.response;
-
-    return handler({
-      params: result.params,
-      searchParams: result.searchParams,
-      user: result.user,
-      ability: result.ability,
-      request,
-    });
   };
 }

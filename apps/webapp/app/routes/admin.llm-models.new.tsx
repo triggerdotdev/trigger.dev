@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { prisma } from "~/db.server";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
