@@ -2945,10 +2945,16 @@ describe("RunEngine debounce", () => {
         // the engine's runLock cannot acquire it. Since we configured
         // `retryConfig.maxAttempts: 0` and `maxTotalWaitTime: 1`, the second
         // trigger should hit the contention fallback rather than bubble a 5xx.
+        // Note: the prefix template here intentionally matches what the engine
+        // builds at index.ts:120 (no `?? ""` fallback) so that the keys line up
+        // even when redisOptions.keyPrefix is undefined.
         const blockingRedis = createRedisClient({
           ...redisOptions,
-          keyPrefix: `${redisOptions.keyPrefix ?? ""}runlock:`,
+          keyPrefix: `${redisOptions.keyPrefix}runlock:`,
         });
+
+        const originalDelayUntil = run1.delayUntil;
+        assertNonNullable(originalDelayUntil);
 
         try {
           const blockResult = await blockingRedis.set(
@@ -2987,6 +2993,16 @@ describe("RunEngine debounce", () => {
 
           // We did NOT 5xx; we returned the existing run.
           expect(run2.id).toBe(run1.id);
+
+          // Prove the fallback actually ran rather than the lock being acquired
+          // normally: the second trigger could not push delayUntil forward
+          // because rescheduling is skipped on contention.
+          const updatedRun = await prisma.taskRun.findFirst({
+            where: { id: run1.id },
+          });
+          assertNonNullable(updatedRun);
+          assertNonNullable(updatedRun.delayUntil);
+          expect(updatedRun.delayUntil.getTime()).toBe(originalDelayUntil.getTime());
         } finally {
           await blockingRedis.del(run1.id);
           await blockingRedis.quit();
