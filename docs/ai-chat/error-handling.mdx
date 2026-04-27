@@ -300,7 +300,12 @@ const { messages, error, status } = useChat({
 
 ```tsx
 function Chat() {
-  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
   const { messages, error, sendMessage } = useChat({ transport });
 
   return (
@@ -343,6 +348,30 @@ uiMessageStreamOptions: {
 <Tip>
   For richer error structures, use [`chat.response.write()`](/ai-chat/features#custom-data-parts) with a custom `data-error` part type. This lets you ship structured error metadata (codes, retry hints, etc.) instead of stringly-typed messages.
 </Tip>
+
+### Errors from `accessToken` / `startSession`
+
+If your `accessToken` or `startSession` callback throws (auth failure, DB write failure, network error), the rejection surfaces through `useChat`'s `error` state — same as a stream error. The transport doesn't retry the callback automatically; the customer is responsible for handling it.
+
+```tsx
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: async ({ chatId }) => {
+    try {
+      return await mintChatAccessToken(chatId);
+    } catch (err) {
+      // Customer's server action failed (e.g. user lost auth).
+      // Re-throw to surface as a useChat error, or return a sentinel
+      // your UI can detect and prompt re-auth.
+      throw new Error(`AUTH_REFRESH: ${err.message}`);
+    }
+  },
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+});
+```
+
+`startSession` failures most commonly mean the customer's authorization layer rejected the request (no plan, quota exceeded, user not allowed to chat with this agent). The customer's server should produce a meaningful error message; the transport propagates it verbatim to `useChat`'s `error` state.
 
 ## Run-level retries
 

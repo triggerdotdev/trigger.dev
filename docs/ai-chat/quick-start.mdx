@@ -35,25 +35,39 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
 
   </Step>
 
-  <Step title="Generate an access token">
-    On your server (e.g. a Next.js server action), create a trigger public token scoped to your chat agent. The transport calls your function with `chatId` and `purpose` (`"trigger"` or `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` so the signature matches — see [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
+  <Step title="Add two server actions">
+    On your server (e.g. as Next.js server actions), expose two helpers the transport will call: one that creates the chat session, and one that mints a fresh session-scoped access token for refresh.
 
     ```ts app/actions.ts
     "use server";
 
+    import { auth } from "@trigger.dev/sdk";
     import { chat } from "@trigger.dev/sdk/ai";
-    import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
-    import type { myChat } from "@/trigger/chat";
 
-    export async function getChatToken(_input: ResolveChatAccessTokenParams) {
-      return chat.createAccessToken<typeof myChat>("my-chat");
+    // Creates the Session row + triggers the first run, returns the
+    // session PAT. Idempotent on (env, chatId) so concurrent calls
+    // converge to the same session.
+    export const startChatSession = chat.createStartSessionAction("my-chat");
+
+    // Pure mint — fresh session-scoped PAT for an existing session.
+    // The transport calls this on 401/403 to refresh.
+    export async function mintChatAccessToken(chatId: string) {
+      return auth.createPublicToken({
+        scopes: {
+          read: { sessions: chatId },
+          write: { sessions: chatId },
+        },
+        expirationTime: "1h",
+      });
     }
     ```
+
+    The browser never holds your environment's secret key — both helpers run on your server, where customer-side authorization (per-user, per-plan, etc.) lives alongside any DB writes you want to pair with session creation.
 
   </Step>
 
   <Step title="Use in the frontend">
-    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
+    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`. Wire both server actions into the transport's `accessToken` and `startSession` callbacks:
 
     ```tsx app/components/chat.tsx
     "use client";
@@ -61,12 +75,14 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
     import { useChat } from "@ai-sdk/react";
     import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
     import type { myChat } from "@/trigger/chat";
-    import { getChatToken } from "@/app/actions";
+    import { mintChatAccessToken, startChatSession } from "@/app/actions";
 
     export function Chat() {
       const transport = useTriggerChatTransport<typeof myChat>({
         task: "my-chat",
-        accessToken: getChatToken,
+        accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+        startSession: ({ chatId, taskId, clientData }) =>
+          startChatSession({ chatId, taskId, clientData }),
       });
 
       const { messages, sendMessage, stop, status } = useChat({ transport });
@@ -114,6 +130,5 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
 
 - [Backend](/ai-chat/backend) — Lifecycle hooks, persistence, session iterator, raw task primitives
 - [Frontend](/ai-chat/frontend) — Session management, client data, reconnection
-- [Sessions](/sessions/overview) — The durable primitive chat.agent is built on (for cross-run resume, inbox views, and custom transports)
 - [Types](/ai-chat/types) — `chat.withUIMessage`, `InferChatUIMessage`, and related typing
 - [Features](/ai-chat/features) — Per-run data, deferred work, streaming, subtasks

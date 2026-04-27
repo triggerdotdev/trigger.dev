@@ -8,7 +8,7 @@ description: "Pre-release updates for AI chat agents."
 
 ## `chat.agent` now runs on Sessions
 
-Every chat is backed by a [Session](/sessions/overview) — a new public, durable, bidirectional I/O primitive that outlives any single run. `externalId` = your chat ID, `type` = `"chat.agent"`. Under the hood:
+Every chat is backed by a durable Session row that outlives any single run. `externalId` = your chat ID, `type` = `"chat.agent"`. Under the hood:
 
 - Output chunks stream on `session.out` (was a run-scoped `streams.writer("chat")`).
 - Client messages and stops land on `session.in` as a [`ChatInputChunk`](/ai-chat/reference#chatinputchunk) tagged union (was two run-scoped `streams.input` definitions).
@@ -21,7 +21,7 @@ Public surface (`chat.agent()`, `TriggerChatTransport`, `AgentChat`, `chat.strea
 - **`TriggerChatTaskResult.sessionId`** + **`ChatTaskRunPayload.sessionId`** — you can reach into the raw session via `sessions.open(payload.sessionId)` for advanced cases (writing from a sub-agent, custom transport).
 - **Dashboard Agent tab** resolves via `sessionId` and stays in sync with the live stream across runs.
 
-See the new [Sessions docs](/sessions/overview) for the underlying primitive.
+The full wire-level protocol (session create, channel routes, JWT scopes) is documented in [Client Protocol](/ai-chat/client-protocol).
 
 ## `X-Session-Settled` — fast reconnect on idle chats
 

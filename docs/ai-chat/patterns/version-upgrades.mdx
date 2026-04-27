@@ -13,11 +13,11 @@ Chat agent runs are pinned to the worker version they started on. When you deplo
 When `chat.requestUpgrade()` is called in `onTurnStart` or `onValidateMessages`:
 
 1. `run()` is **skipped** — no response is generated on old code
-2. The agent writes a `trigger:upgrade-required` control chunk to the stream
-3. The transport receives the chunk and immediately triggers a **new run** on the currently promoted deployment with the same message (as a continuation)
-4. The new run's response is piped through transparently — the user sees a single seamless response from the upgraded agent
+2. The agent calls the server-side `endAndContinueSession` endpoint, which atomically swaps the Session's `currentRunId` to a freshly-triggered run on the latest deployment (optimistic-claim against `currentRunVersion`)
+3. The new run picks up the conversation and produces the response
+4. The transport's existing SSE subscription to `session.out` keeps receiving chunks across the swap — no client-side reconnect
 
-The new run lives on the **same [Session](/sessions/overview)** as the old run — `sessionId` persists across the upgrade. Only `runId` and `publicAccessToken` refresh. The transport's SSE subscription to `session.out` doesn't even need to re-establish; it just continues receiving chunks from whichever run is currently writing.
+The new run lives on the **same Session** as the old one. `chatId` is the durable identity; only the underlying `currentRunId` rotates. The audit log records the new run with `reason: "upgrade"`.
 
 When called from inside `run()` or `chat.defer()`, the current turn completes normally first and the run exits afterward. The next message triggers the continuation on the same session.
 
@@ -51,7 +51,9 @@ import { useChat } from "@ai-sdk/react";
 export function Chat() {
   const transport = useTriggerChatTransport({
     task: "my-chat",
-    accessToken: getChatToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     // Bump this when you ship a breaking change to the chat UI or tools
     clientData: { userId: user.id, protocolVersion: "v2" },
   });
@@ -112,7 +114,9 @@ const APP_VERSION = process.env.NEXT_PUBLIC_VERCEL_DEPLOYMENT_ID
 export function Chat() {
   const transport = useTriggerChatTransport({
     task: "my-chat",
-    accessToken: getChatToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     clientData: { userId: user.id, appVersion: APP_VERSION },
   });
   // ...

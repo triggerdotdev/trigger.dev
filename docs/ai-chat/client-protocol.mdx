@@ -12,7 +12,7 @@ This page documents the protocol that chat clients use to communicate with `chat
 
 ## Overview
 
-`chat.agent` is built on [Sessions](/sessions/overview) — a durable, bidirectional I/O primitive that outlives a single run. A conversation is one session; a session can host many runs over its lifetime.
+`chat.agent` is built on a durable Session row — the unit of state that owns the chat's runs across their full lifecycle. A conversation is one session; a session can host many runs over its lifetime.
 
 The protocol has four parts:
 
@@ -75,7 +75,7 @@ Response:
 
 `id` is the `session_*` friendly ID — persist it alongside your chat state. `isCached: true` means the server returned an existing session for this `externalId` (safe to ignore).
 
-See [`POST /api/v1/sessions`](/sessions/reference#create) for the full request / response schema.
+`POST /api/v1/sessions` is documented inline in the wire-protocol section below.
 
 ## Step 2: Trigger a run
 
@@ -485,17 +485,13 @@ A client needs to track per-conversation:
 | Create session (`POST /api/v1/sessions`) | Secret API key or JWT with `write:sessions` |
 | Close session (`POST /api/v1/sessions/{id}/close`) | Secret API key or JWT with `admin:sessions:{id}` |
 | Trigger task | Secret API key or JWT with `write:tasks` |
-| `.in` append | JWT with `write:sessions:{id}` (or `write:sessions:{id}:in`) |
+| `.in` append | JWT with `write:sessions:{id}` |
 | `.out` subscribe | JWT with `read:sessions:{id}` |
 
-The transport-facing `publicAccessToken` returned from the trigger response carries both `read:sessions:{id}` and `write:sessions:{id}` for the session, plus `read:runs:{runId}` + `write:inputStreams:{runId}` for the run. Use it for all session operations.
-
-See [Session reference — Token scopes](/sessions/reference#token-scopes) for the full scope list.
+The transport-facing `publicAccessToken` returned from `POST /api/v1/sessions` carries both `read:sessions:{id}` and `write:sessions:{id}` for the session — use it for all session operations. A token minted for either the externalId form or the friendlyId form authorizes both URL forms on every read and write route.
 
 ## See also
 
-- [Sessions Overview](/sessions/overview) — The durable primitive chat.agent is built on
-- [Sessions Reference](/sessions/reference) — Full `sessions.*` API and wire endpoints
 - [`TriggerChatTransport`](/ai-chat/frontend) — Built-in browser transport (implements this protocol)
 - [`AgentChat`](/ai-chat/server-chat) — Built-in server-side client
 - [Backend lifecycle](/ai-chat/backend#lifecycle-hooks) — What the agent does on each event

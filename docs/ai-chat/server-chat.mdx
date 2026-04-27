@@ -116,9 +116,7 @@ for await (const chunk of stream) {
 
 In a stateless environment (HTTP handler, serverless function), you need to persist and restore the session across requests.
 
-Each chat is backed by a [Session](/sessions/overview), addressed by a durable `sessionId` that outlives any single run. `AgentChat` exposes the session state via `chat.run` (a `ChatSession` object — the name is legacy, the content is the full session state).
-
-`AgentChat` provides a `session` option and two callbacks for persistence:
+Each chat is backed by a durable Session row that outlives any single run. `AgentChat` exposes the persistable state via `chat.session` (the SSE resume cursor) and surfaces the current run id via the `onTriggered` callback for telemetry / dashboard linking.
 
 ```ts
 import { AgentChat } from "@trigger.dev/sdk/chat";
@@ -130,17 +128,17 @@ export async function POST(req: Request) {
   const chat = new AgentChat({
     agent: "my-agent",
     id: chatId,
-    // Restore from previous request. sessionId is the durable key —
-    // runId + lastEventId are live-run hints that speed up resume.
-    session: saved
-      ? { sessionId: saved.sessionId, runId: saved.runId, lastEventId: saved.lastEventId }
-      : undefined,
-    // Persist when a new run starts against this session
-    onTriggered: async ({ runId, chatId }) => {
+    // Restore from previous request — `lastEventId` is the SSE resume
+    // cursor; the underlying Session is keyed on `chatId` so it's
+    // implicit and durable.
+    session: saved ? { lastEventId: saved.lastEventId } : undefined,
+    // Useful for telemetry / dashboard linking. The `runId` is the
+    // current run, which may change across continuations and upgrades.
+    onTriggered: async ({ runId }) => {
       await db.sessions.upsert({ chatId, runId });
     },
     // Persist after each turn for stream resumption
-    onTurnComplete: async ({ lastEventId, chatId }) => {
+    onTurnComplete: async ({ lastEventId }) => {
       await db.sessions.update({ chatId, lastEventId });
     },
   });
@@ -148,37 +146,18 @@ export async function POST(req: Request) {
   const stream = await chat.sendMessage(message);
   const text = await stream.text();
 
-  // On first-ever request there was no session in the DB — save the
-  // sessionId that AgentChat just created server-side. For subsequent
-  // requests this is a cheap no-op upsert.
-  if (chat.run?.sessionId) {
-    await db.sessions.upsert({
-      chatId,
-      sessionId: chat.run.sessionId,
-      runId: chat.run.runId,
-      lastEventId: chat.run.lastEventId,
-    });
-  }
-
   return Response.json({ text });
 }
 ```
 
 <Info>
-  Because `sessionId` is durable, a chat that was active yesterday resumes against the same session today — even if the original run has long since exited. `AgentChat` triggers a fresh run on the same session when needed, carrying the conversation forward without losing history or identity.
+  The Session row is the run manager — a chat that was active yesterday
+  resumes against the same chatId today, even if the original run has
+  long since exited. `AgentChat` (server-side) and `TriggerChatTransport`
+  (browser) both rely on this: send a new message and the server
+  triggers a fresh continuation run on the same session, carrying the
+  conversation forward without losing history or identity.
 </Info>
-
-### Inbox view of all chats
-
-Use [`sessions.list`](/sessions/reference#list-sessions) to enumerate every chat in your environment, filtered by tag or status:
-
-```ts
-import { sessions } from "@trigger.dev/sdk";
-
-for await (const session of sessions.list({ type: "chat.agent", tag: "user:user-456" })) {
-  console.log(session.id, session.createdAt, session.closedAt);
-}
-```
 
 ## Sub-agent tool pattern
 
@@ -261,7 +240,7 @@ const stream = await chat.reconnect();
 | `agent` | `string` | required | The agent task ID to trigger |
 | `id` | `string` | `crypto.randomUUID()` | Conversation ID for tagging and correlation |
 | `clientData` | typed from agent | `undefined` | Client data included in every request |
-| `session` | `ChatSession` (`{ sessionId: string; runId?: string; lastEventId?: string }`) | `undefined` | Restore a previous session. `sessionId` is the durable key; `runId` and `lastEventId` are live-run hints. |
+| `session` | `ChatSession` (`{ lastEventId?: string }`) | `undefined` | Restore a previous session's SSE resume cursor. The Session row itself is keyed on `chatId` (durable) — no other state to thread. |
 | `onTriggered` | `(event) => void` | `undefined` | Called when a new run is created |
 | `onTurnComplete` | `(event) => void` | `undefined` | Called when a turn's stream ends |
 | `streamKey` | `string` | `"chat"` | Output stream key |

@@ -116,7 +116,7 @@ sequenceDiagram
 
 ### One conversation, many runs
 
-Each chat is backed by a [Session](/sessions/overview) — a durable, bidirectional I/O primitive that outlives any single run. The conversation's identity (`sessionId`) stays the same across run boundaries. Messages flow through the session's `.in` channel; responses stream on `.out`.
+Each chat is backed by a durable Session row — the unit of state that owns the chat's runs across their full lifecycle. The conversation's identity stays keyed on `chatId` across run boundaries; messages flow through the session's `.in` channel; responses stream on `.out`.
 
 Within a session, a single run handles many turns. After each AI response, the run waits for the next message via the session's `.in` channel. The frontend transport handles this automatically — triggers a new run on the session for the first message, and sends subsequent messages into the existing run.
 
@@ -175,7 +175,6 @@ There are three ways to build the backend, from most opinionated to most flexibl
 ## Related
 
 - [Quick Start](/ai-chat/quick-start) — Get a working chat in 3 steps
-- [Sessions](/sessions/overview) — The durable primitive chat.agent is built on
 - [Database persistence](/ai-chat/patterns/database-persistence) — Conversation + session state across hooks (ORM-agnostic)
 - [Code execution sandbox](/ai-chat/patterns/code-sandbox) — Warm/teardown pattern for E2B (or similar) with `onWait` / `chat.local`
 - [Backend](/ai-chat/backend) — Backend approaches in detail

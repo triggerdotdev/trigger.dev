@@ -116,7 +116,9 @@ type Msg = InferChatUIMessage<typeof myChat>;
 export function Chat() {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
-    accessToken: getChatToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
   });
 
   const { messages } = useChat<Msg>({ transport });

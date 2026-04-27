@@ -12,12 +12,14 @@ Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to cre
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useChat } from "@ai-sdk/react";
 import type { myChat } from "@/trigger/chat";
-import { getChatToken } from "@/app/actions";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
 
 export function Chat() {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
-    accessToken: getChatToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
   });
 
   const { messages, sendMessage, stop, status } = useChat({ transport });
@@ -27,9 +29,16 @@ export function Chat() {
 
 The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
 
+The two callbacks have distinct responsibilities:
+
+- **`accessToken`** is a *pure* PAT mint — the transport invokes it on a 401/403 to refresh the session-scoped token. Customer wraps `auth.createPublicToken({ scopes: { sessions: chatId } })`.
+- **`startSession`** wraps `chat.createStartSessionAction(taskId)` and is called when the transport needs to *create* the session (`transport.preload(chatId)`, or lazily on the first `sendMessage` for a chatId without a cached PAT). The customer's server controls authorization here, alongside any DB writes paired with session creation.
+
+See [Quick start](/ai-chat/quick-start) for the matching server actions.
+
 <Tip>
-  The hook keeps `onSessionChange` up to date via a ref internally, so you don't need to memoize the
-  callback or worry about stale closures.
+  The hook keeps `onSessionChange` and `clientData` up to date via internal refs, so you don't need
+  to memoize callbacks or worry about stale closures when those options change between renders.
 </Tip>
 
 ## Typed messages (`chat.withUIMessage`)
@@ -45,44 +54,50 @@ type Msg = InferChatUIMessage<typeof myChat>;
 
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
-  accessToken: getChatToken,
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
 });
 const { messages } = useChat<Msg>({ transport });
 ```
 
 See the [Types](/ai-chat/types) guide for defining `YourUIMessage`, default stream options, and backend examples.
 
-### Dynamic access tokens
+### Calling a fetch endpoint instead of a server action
 
-For token refresh, pass a function instead of a string. The transport calls it when it needs a **trigger** token: starting a run from `sendMessages`, or when you call `preload()`. The callback receives `chatId` and `purpose` (`"trigger"` | `"preload"`). Import `ResolveChatAccessTokenParams` from `@trigger.dev/sdk/chat` to type your server action or fetch handler (see [reference](/ai-chat/reference#triggerchattransport-options)).
+If you want to mint tokens via a REST endpoint instead of a Next.js server action, the same callbacks accept any async function. Import `AccessTokenParams` and `StartSessionParams` from `@trigger.dev/sdk/chat` to type your fetch handler.
 
 ```ts
-import type { ResolveChatAccessTokenParams } from "@trigger.dev/sdk/chat";
+import type { AccessTokenParams, StartSessionParams } from "@trigger.dev/sdk/chat";
 
 const transport = useTriggerChatTransport({
   task: "my-chat",
-  accessToken: async (input: ResolveChatAccessTokenParams) => {
-    const res = await fetch("/api/chat-token", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
+  accessToken: async ({ chatId }: AccessTokenParams) => {
+    const res = await fetch(`/api/chat/${chatId}/access-token`, { method: "POST" });
     return res.text();
+  },
+  startSession: async ({ chatId, taskId, clientData }: StartSessionParams) => {
+    const res = await fetch(`/api/chat/${chatId}/start`, {
+      method: "POST",
+      body: JSON.stringify({ taskId, clientData }),
+    });
+    return res.json(); // { publicAccessToken: string }
   },
 });
 ```
 
+The fetch handlers on the server side wrap the same SDK helpers as the server-action variant: `auth.createPublicToken({ scopes: { sessions: chatId } })` for refresh and `chat.createStartSessionAction(taskId)` for create.
+
 ## Session management
 
-Every chat is backed by a [Session](/sessions/overview) — a durable, bidirectional I/O primitive that outlives any single run. The transport manages the session for you; what you persist on your side is a small piece of state per chat.
+Every chat is backed by a durable Session — the row that owns the chat's runs, persists across run lifecycles, and orchestrates handoffs. The transport manages the session for you; what you persist on your side is a small piece of state per chat that lets a fresh tab resume without a round-trip to create a new session.
 
 ### What the transport persists per chat
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `sessionId` | `string` | `session_*` friendly ID. **Durable** — stays the same for the life of the conversation. |
-| `publicAccessToken` | `string` | JWT for session + run access. Refreshed via `trigger:turn-complete` chunks. |
-| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream. |
-| `runId` | `string \| undefined` | Current run ID. Changes on continuations. `undefined` means no live run right now. |
+| `publicAccessToken` | `string` | Session-scoped JWT (`read:sessions:{chatId} + write:sessions:{chatId}`). Refreshed automatically on 401/403 via `accessToken`. |
+| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream after a reload. |
 | `isStreaming` | `boolean \| undefined` | **Optional.** The transport sets it internally, but you don't have to persist it — the server decides "nothing is streaming" via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) signal on reconnect. If you do persist it, the transport keeps the fast-path short-circuit. If you drop it, reconnects open the SSE and close fast on settled sessions. |
 
 ### Session cleanup (frontend)
@@ -92,7 +107,9 @@ Since session creation and updates are handled server-side, the frontend only ne
 ```tsx
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
-  accessToken: getChatToken,
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
   sessions: loadedSessions, // Restored from DB on page load
   onSessionChange: (chatId, session) => {
     if (!session) {
@@ -104,9 +121,9 @@ const transport = useTriggerChatTransport<typeof myChat>({
 
 ### Restoring on page load
 
-On page load, fetch both the messages and the session from your database, then pass them to `useChat` and the transport. Pass `resume: true` to `useChat` when there's an existing conversation — this tells the AI SDK to reconnect to the stream via the transport.
+On page load, fetch both the messages and the session state from your database, then pass them to `useChat` and the transport. Pass `resume: true` to `useChat` when there's an existing conversation — this tells the AI SDK to reconnect to the stream via the transport.
 
-Because sessions outlive individual runs, a chat you were in yesterday resumes against the same `sessionId` — even if the original run has long since exited. The transport uses `sessionId` + `lastEventId` to resubscribe, and triggers a fresh run on the same session if the client tries to send a new message.
+Because the underlying Session row outlives individual runs, a chat you were in yesterday resumes against the same chat — even if the original run has long since exited. The transport hydrates from the persisted state and uses `lastEventId` to resubscribe; if the client tries to send a new message and no run is alive, the server triggers a fresh continuation run on the same session before the message is appended.
 
 ```tsx app/page.tsx
 "use client";
@@ -114,7 +131,13 @@ Because sessions outlive individual runs, a chat you were in yesterday resumes a
 import { useEffect, useState } from "react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useChat } from "@ai-sdk/react";
-import { getChatToken, getChatMessages, getSession, deleteSession } from "@/app/actions";
+import {
+  mintChatAccessToken,
+  startChatSession,
+  getChatMessages,
+  getSession,
+  deleteSession,
+} from "@/app/actions";
 
 export default function ChatPage({ chatId }: { chatId: string }) {
   const [initialMessages, setInitialMessages] = useState([]);
@@ -145,7 +168,9 @@ export default function ChatPage({ chatId }: { chatId: string }) {
 function ChatClient({ chatId, initialMessages, initialSessions }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
-    accessToken: getChatToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     sessions: initialSessions,
     onSessionChange: (id, session) => {
       if (!session) deleteSession(id);
@@ -195,10 +220,14 @@ Set default client data on the transport that's included in every request. When 
 ```ts
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
-  accessToken: getChatToken,
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
   clientData: { userId: currentUser.id },
 });
 ```
+
+The transport threads `clientData` through three places automatically: into `startSession`'s `params.clientData` for the first run's `payload.metadata`, into per-turn `metadata` on every `.in/append` chunk, and live-updates if the option value changes between renders (so React-driven values like the current user work without reconstructing the transport).
 
 ### Per-message metadata
 
@@ -247,7 +276,9 @@ The schema also types the `clientData` option on the frontend transport:
 // TypeScript enforces that clientData matches the schema
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
-  accessToken: getChatToken,
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
   clientData: { userId: currentUser.id },
 });
 ```
@@ -390,7 +421,12 @@ Send custom actions (undo, rollback, edit) to the agent via `transport.sendActio
 
 ```tsx
 function ChatControls({ chatId }: { chatId: string }) {
-  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
 
   return (
     <div>
@@ -432,7 +468,9 @@ import { useChat } from "@ai-sdk/react";
 function Chat({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
-    accessToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     multiTab: true,
   });
 
@@ -486,7 +524,9 @@ If you're self-hosting Trigger.dev, pass the `baseURL` option:
 ```ts
 const transport = useTriggerChatTransport({
   task: "my-chat",
-  accessToken,
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
   baseURL: "https://your-trigger-instance.com",
 });
 ```
