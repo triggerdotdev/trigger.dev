@@ -47,7 +47,7 @@ export type {
 };
 
 export const sessions = {
-  create: createSession,
+  start: startSession,
   retrieve: retrieveSession,
   update: updateSession,
   close: closeSession,
@@ -65,20 +65,46 @@ export function __setSessionOpenImplForTests(impl: SessionOpenImpl | undefined):
   sessionOpenImpl = impl;
 }
 
+// Test hook for `sessions.start()`. Sessions are task-bound and the
+// `start` call atomically creates the row + triggers the first run on
+// the server; in unit tests there's no live API to hit, so a fixture
+// implementation can be installed via this setter.
+type SessionStartImpl = (
+  body: CreateSessionRequestBody
+) => Promise<CreatedSessionResponseBody> | CreatedSessionResponseBody;
+let sessionStartImpl: SessionStartImpl | undefined;
+
+export function __setSessionStartImplForTests(impl: SessionStartImpl | undefined): void {
+  sessionStartImpl = impl;
+}
+
 /**
- * Create a {@link Session} — a durable, typed, bidirectional I/O primitive
- * that outlives a single run. Idempotent via `externalId`.
+ * Start a {@link Session} — a durable, task-bound, bidirectional I/O
+ * primitive. The server creates the row (idempotent on `externalId`)
+ * and triggers the first run from `triggerConfig` in one round-trip.
+ * Returns the new run's id and a session-scoped public access token
+ * for browser-side use against `.in/append`, `.out` SSE, and
+ * `end-and-continue`.
+ *
+ * If a session with the same `(env, externalId)` already exists,
+ * returns the existing row plus the live (or freshly re-triggered) run.
+ * Two browser tabs of the same chat converge to one session.
  */
-function createSession(
+function startSession(
   body: CreateSessionRequestBody,
   requestOptions?: ApiRequestOptions
 ): ApiPromise<CreatedSessionResponseBody> {
+  if (sessionStartImpl) {
+    const result = sessionStartImpl(body);
+    return Promise.resolve(result) as ApiPromise<CreatedSessionResponseBody>;
+  }
+
   const apiClient = apiClientManager.clientOrThrow();
 
   const $requestOptions = mergeRequestOptions(
     {
       tracer,
-      name: "sessions.create()",
+      name: "sessions.start()",
       icon: "sessions",
       attributes: sessionAttributes(body.externalId ?? body.type, {
         type: body.type,

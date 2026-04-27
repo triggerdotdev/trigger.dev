@@ -18,6 +18,8 @@ import {
   CompleteWaitpointTokenResponseBody,
   CreatedSessionResponseBody,
   CreateSessionRequestBody,
+  EndAndContinueSessionRequestBody,
+  EndAndContinueSessionResponseBody,
   ListSessionsOptions,
   ListSessionsResponseBody,
   ListedSessionItem,
@@ -1163,6 +1165,23 @@ export class ApiClient {
         method: "POST",
         headers: this.#getHeaders(false),
         body: JSON.stringify(body ?? {}),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  endAndContinueSession(
+    sessionIdOrExternalId: string,
+    body: EndAndContinueSessionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      EndAndContinueSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/end-and-continue`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );

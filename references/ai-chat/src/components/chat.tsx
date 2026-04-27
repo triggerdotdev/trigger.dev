@@ -198,15 +198,12 @@ function DebugPanel({
   chatId: string;
   model: string;
   status: string;
-  session?: { sessionId?: string; runId?: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
+  session?: { publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
   dashboardUrl?: string;
   messageCount: number;
   ttfbHistory: TtfbEntry[];
 }) {
   const [open, setOpen] = useState(false);
-
-  const runUrl =
-    session?.runId && dashboardUrl ? `${dashboardUrl}/runs/${session.runId}` : undefined;
 
   const latestTtfb = ttfbHistory.length > 0 ? ttfbHistory[ttfbHistory.length - 1]! : undefined;
   const avgTtfb =
@@ -226,7 +223,7 @@ function DebugPanel({
           className={`inline-block h-1.5 w-1.5 rounded-full ${
             status === "streaming"
               ? "bg-green-500"
-              : session?.runId
+              : session?.isStreaming
               ? "bg-yellow-500"
               : "bg-gray-300"
           }`}
@@ -237,7 +234,6 @@ function DebugPanel({
             TTFB {latestTtfb.ttfbMs.toLocaleString()}ms
           </span>
         )}
-        {session?.runId && <span className="font-mono">{session.runId}</span>}
         <span className="ml-auto text-gray-400">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -249,8 +245,8 @@ function DebugPanel({
           <Row label="Messages" value={String(messageCount)} />
           {session ? (
             <>
-              <Row label="Run ID" value={session.runId} mono link={runUrl} />
               <Row label="Last Event ID" value={session.lastEventId ?? "—"} mono />
+              <Row label="Streaming" value={session.isStreaming ? "yes" : "no"} />
             </>
           ) : (
             <Row label="Session" value="none" />
@@ -315,7 +311,7 @@ type ChatProps = {
   model: string;
   isNewChat: boolean;
   onModelChange?: (model: string) => void;
-  session?: { sessionId?: string; runId?: string; publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
+  session?: { publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
   dashboardUrl?: string;
   onFirstMessage?: (chatId: string, text: string) => void;
   onMessagesChange?: (chatId: string, messages: ChatUiMessage[]) => void;
@@ -530,10 +526,18 @@ export function Chat({
         return transport.getSession(chatId) ?? session ?? null;
       },
       get sessionId() {
-        return transport.getSession(chatId)?.sessionId ?? null;
+        // Sessions-as-run-manager: sessionId is no longer surfaced
+        // through the transport. The chat is addressed by `chatId` and
+        // any consumer that wants the friendlyId must look it up via
+        // `sessions.retrieve(chatId)` server-side.
+        return null;
       },
       get runId() {
-        return transport.getSession(chatId)?.runId ?? session?.runId ?? null;
+        // Sessions-as-run-manager: runs come and go inside the Session
+        // and are managed server-side. The transport doesn't track the
+        // live runId anymore; consumers wanting it should query
+        // `sessions.retrieve(chatId)` server-side.
+        return null;
       },
       get lastEventId() {
         return transport.getSession(chatId)?.lastEventId ?? null;

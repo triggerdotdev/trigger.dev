@@ -8,13 +8,14 @@ import { Chat } from "@/components/chat";
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { DEFAULT_MODEL } from "@/lib/models";
 import {
-  triggerChat,
+  mintChatAccessToken,
+  startChatSession,
   getChatList,
   getChatMessages,
   deleteChat as deleteChatAction,
+  deleteAllChats,
   updateChatTitle,
   deleteSessionAction,
-  renewRunAccessTokenForChat,
 } from "@/app/actions";
 
 type ChatMeta = {
@@ -26,8 +27,6 @@ type ChatMeta = {
 };
 
 type SessionInfo = {
-  sessionId?: string;
-  runId: string;
   publicAccessToken: string;
   lastEventId?: string;
 };
@@ -74,21 +73,20 @@ export function ChatApp({
 
   const transport = useTriggerChatTransport({
     task: taskMode,
-    // Server-side trigger action creates the backing Session with the
-    // project's secret key + threads `sessionId` into the run payload.
-    // Returned PAT already has `read:runs` + `read:sessions` +
-    // `write:sessions` scopes (from `chat.createTriggerAction` Phase E),
-    // so the browser never needs to mint write:sessions itself.
-    triggerTask: triggerChat,
-    renewRunAccessToken: ({ chatId, runId, sessionId }) =>
-      renewRunAccessTokenForChat(chatId, runId, sessionId),
+    // Pure mint — server action calls `auth.createPublicToken({ scopes:
+    // { sessions: chatId } })`. Fired on 401/403 refresh.
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    // Session create — server action wraps `chat.createStartSessionAction`.
+    // Transport invokes it on `preload(chatId)` and lazily on first
+    // `sendMessage` for any chatId without a cached PAT. `clientData`
+    // is threaded through to `triggerConfig.basePayload.metadata` so
+    // the first run sees the same shape as per-turn `metadata`.
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
     sessions: initialSessions,
     onSessionChange: handleSessionChange,
     clientData: { userId: "user_123" },
-    triggerOptions: {
-      tags: ["user:user_123"],
-    },
   });
 
   // Load messages when active chat changes
@@ -110,8 +108,12 @@ export function ChatApp({
     setMessages([]);
     setNewChatModel(DEFAULT_MODEL);
     if (preloadEnabled) {
-      // Eagerly start the run — onPreload fires immediately for initialization
-      transport.preload(id, { idleTimeoutInSeconds });
+      // Eagerly create the session + first run before the user types.
+      // Transport calls `startSession({ chatId: id, taskId: taskMode })`.
+      // `idleTimeoutInSeconds` lives on the agent definition's
+      // `idleTimeoutInSeconds`, not per-call.
+      void transport.preload(id);
+      void idleTimeoutInSeconds;
     }
   }
 
@@ -130,6 +132,14 @@ export function ChatApp({
         setActiveChatId(null);
       }
     }
+  }
+
+  async function handleWipeAll() {
+    await deleteAllChats();
+    setChatList([]);
+    setActiveChatId(null);
+    setMessages([]);
+    setSessions({});
   }
 
   const handleFirstMessage = useCallback(async (chatId: string, text: string) => {
@@ -162,6 +172,7 @@ export function ChatApp({
         onSelectChat={handleSelectChat}
         onNewChat={handleNewChat}
         onDeleteChat={handleDeleteChat}
+        onWipeAll={handleWipeAll}
         preloadEnabled={preloadEnabled}
         onPreloadChange={setPreloadEnabled}
         idleTimeoutInSeconds={idleTimeoutInSeconds}

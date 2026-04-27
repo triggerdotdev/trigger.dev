@@ -13,7 +13,6 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import type { TriggerChatTaskParams, TriggerChatTaskResult } from "@trigger.dev/sdk/chat";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -219,14 +218,16 @@ function PlaygroundChat() {
 
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground/action`;
 
-  // Server-side trigger via Remix action (acts like a Next.js server action)
-  const triggerTask = useCallback(
-    async (params: TriggerChatTaskParams): Promise<TriggerChatTaskResult> => {
+  // Server-side `start` via Remix action — atomically creates the
+  // backing Session for `chatId` and triggers the first run, returns
+  // the session-scoped PAT. Idempotent: called on initial use AND on
+  // 401, so the same code path serves both first-run and PAT renewal.
+  const startSession = useCallback(
+    async (): Promise<string> => {
       const formData = new FormData();
-      formData.set("intent", "trigger");
+      formData.set("intent", "start");
       formData.set("agentSlug", agent.slug);
       formData.set("chatId", chatId);
-      formData.set("payload", JSON.stringify(params.payload));
       formData.set("clientData", clientDataJsonRef.current);
       if (tags.length > 0) formData.set("tags", tags.join(","));
       if (machine) formData.set("machine", machine);
@@ -243,32 +244,17 @@ function PlaygroundChat() {
         error?: string;
       };
 
-      if (!response.ok || !data.runId || !data.publicAccessToken) {
-        throw new Error(data.error ?? "Failed to trigger agent");
+      if (!response.ok || !data.publicAccessToken) {
+        throw new Error(data.error ?? "Failed to start chat session");
       }
 
       if (data.conversationId) {
         setConversationId(data.conversationId);
       }
 
-      return { runId: data.runId, publicAccessToken: data.publicAccessToken };
-    },
-    [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]
-  );
-
-  // Token renewal via Remix action
-  const renewToken = useCallback(
-    async ({ runId }: { chatId: string; runId: string }): Promise<string | undefined> => {
-      const formData = new FormData();
-      formData.set("intent", "renew");
-      formData.set("agentSlug", agent.slug);
-      formData.set("runId", runId);
-
-      const response = await fetch(actionPath, { method: "POST", body: formData });
-      const data = (await response.json()) as { publicAccessToken?: string };
       return data.publicAccessToken;
     },
-    [actionPath, agent.slug]
+    [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]
   );
 
   // Resource route prefix — all realtime traffic goes through session-authed routes
@@ -280,15 +266,22 @@ function PlaygroundChat() {
   if (transportRef.current === null) {
     transportRef.current = new TriggerChatTransport({
       task: agent.slug,
-      triggerTask,
-      renewRunAccessToken: renewToken,
+      // The Remix action is idempotent on `(env, externalId)` and
+      // returns a fresh session PAT every time, so it serves both
+      // first-run create and PAT renewal. `startSession` runs on
+      // `transport.preload(chatId)` and lazily on the first
+      // `sendMessage`; `accessToken` runs on a 401/403 from any
+      // session-PAT-authed request. Wiring the same call to both
+      // keeps the Preload button working without a separate refresh
+      // route.
+      startSession: async () => ({ publicAccessToken: await startSession() }),
+      accessToken: () => startSession(),
       baseURL: playgroundBaseURL,
       clientData: JSON.parse(clientDataJson || "{}") as Record<string, unknown>,
-      ...(activeConversation?.runFriendlyId && activeConversation?.publicAccessToken
+      ...(activeConversation?.publicAccessToken
         ? {
             sessions: {
               [activeConversation.chatId]: {
-                runId: activeConversation.runFriendlyId,
                 publicAccessToken: activeConversation.publicAccessToken,
                 lastEventId: activeConversation.lastEventId ?? undefined,
               },
@@ -298,15 +291,6 @@ function PlaygroundChat() {
     });
   }
   const transport = transportRef.current;
-
-  // Keep callbacks up to date
-  useEffect(() => {
-    transport.setTriggerTask(triggerTask);
-  }, [triggerTask, transport]);
-
-  useEffect(() => {
-    transport.setRenewRunAccessToken(renewToken);
-  }, [renewToken, transport]);
 
   // Initial messages from persisted conversation (for resume)
   const initialMessages = activeConversation?.messages
@@ -382,10 +366,7 @@ function PlaygroundChat() {
   const handlePreload = useCallback(async () => {
     setPreloading(true);
     try {
-      await transport.preload(chatId, {
-        idleTimeoutInSeconds: 60,
-        metadata: safeParseJson(clientDataJsonRef.current),
-      });
+      await transport.preload(chatId);
       setPreloaded(true);
       inputRef.current?.focus();
     } finally {
@@ -467,8 +448,11 @@ function PlaygroundChat() {
               <Badge variant="extra-small">{formatAgentType(agent.type)}</Badge>
             </div>
             <div className="flex items-center gap-2">
-              {session?.runId && (
-                <LinkButton to={`/runs/${session.runId}`} variant="tertiary/small">
+              {activeConversation?.runFriendlyId && (
+                <LinkButton
+                  to={`/runs/${activeConversation.runFriendlyId}`}
+                  variant="tertiary/small"
+                >
                   View run
                 </LinkButton>
               )}
@@ -524,7 +508,7 @@ function PlaygroundChat() {
                         Type a message below to start testing{" "}
                         <code className="text-text-bright">{agent.slug}</code>
                       </Paragraph>
-                      {!session?.runId && (
+                      {!session && (
                         <Button
                           variant="tertiary/small"
                           LeadingIcon={preloading ? Spinner : BoltIcon}
@@ -646,6 +630,7 @@ function PlaygroundChat() {
           regions={regions}
           isDev={isDev}
           session={session}
+          runFriendlyId={activeConversation?.runFriendlyId ?? undefined}
           messageCount={messages.length}
           isStreaming={isStreaming}
           status={status}
@@ -696,6 +681,7 @@ function PlaygroundSidebar({
   regions,
   isDev,
   session,
+  runFriendlyId,
   messageCount,
   isStreaming,
   status,
@@ -722,13 +708,18 @@ function PlaygroundSidebar({
   isDev: boolean;
   session:
     | {
-        sessionId: string;
-        runId?: string;
         publicAccessToken: string;
         lastEventId?: string;
         isStreaming?: boolean;
       }
     | undefined;
+  /**
+   * Friendly id of the latest run for this conversation (drawn from the
+   * playground's own `playgroundConversation` table, which mirrors the
+   * Session's `currentRunId`). Optional because a conversation may
+   * exist briefly before the first run lands.
+   */
+  runFriendlyId: string | undefined;
   messageCount: number;
   isStreaming: boolean;
   status: string;
@@ -971,9 +962,11 @@ function PlaygroundSidebar({
           className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           <div className="min-w-64 space-y-3 p-3">
-            {session?.runId ? (
+            {session ? (
               <>
-                <SessionField label="Run ID" value={session.runId} />
+                {runFriendlyId && (
+                  <SessionField label="Run ID" value={runFriendlyId} />
+                )}
                 <SessionField label="Messages" value={String(messageCount)} />
                 <div>
                   <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
