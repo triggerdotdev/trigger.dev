@@ -74,6 +74,9 @@ describe("SessionsReplicationService", () => {
           environmentType: "DEVELOPMENT",
           organizationId: organization.id,
           taskIdentifier: "my-agent",
+          triggerConfig: {
+            basePayload: { messages: [], trigger: "preload" },
+          },
           tags: ["user:42", "plan:pro"],
           metadata: { plan: "pro", seats: 3 },
         },
@@ -174,6 +177,10 @@ describe("SessionsReplicationService", () => {
           runtimeEnvironmentId: environment.id,
           environmentType: "DEVELOPMENT",
           organizationId: organization.id,
+          taskIdentifier: "my-agent",
+          triggerConfig: {
+            basePayload: { messages: [], trigger: "preload" },
+          },
         },
       });
 

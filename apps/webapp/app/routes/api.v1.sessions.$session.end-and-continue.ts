@@ -27,7 +27,7 @@ const ParamsSchema = z.object({
 // (PRIVATE) bypasses authorization; a browser holding the session PAT
 // can also reach this endpoint, which is fine: if you have the session
 // PAT, you own the chat.
-const { action } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
     body: EndAndContinueSessionRequestBody,
@@ -129,4 +129,4 @@ const { action } = createActionApiRoute(
   }
 );
 
-export { action };
+export { action, loader };

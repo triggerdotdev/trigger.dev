@@ -25,6 +25,17 @@ export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfigSchema>;
 
 export type EnsureRunReason = "initial" | "continuation" | "upgrade" | "manual";
 
+/**
+ * Hard cap on how many times `ensureRunForSession` will recurse on the
+ * pathological "we lost the claim race AND the winner's run was already
+ * terminal" path. In practice progress through the run engine bounds
+ * this, but a misconfigured task that crashes before it can be dequeued
+ * could otherwise loop without limit. After this many attempts we
+ * surface `SessionRunManagerError` so the caller can 5xx instead of
+ * blowing the stack.
+ */
+const ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS = 3;
+
 type EnsureRunForSessionParams = {
   /**
    * Session row to operate on. Caller is responsible for the env match —
@@ -42,6 +53,14 @@ type EnsureRunForSessionParams = {
    * "preload"` vs `"trigger"`, etc).
    */
   payloadOverrides?: Record<string, unknown>;
+  /**
+   * @internal Recursion-guard counter for the lost-claim-race retry path.
+   * Public callers should leave this unset; the function recurses with
+   * an incremented value on the pathological "winner's run was already
+   * terminal" branch and throws once it exceeds
+   * {@link ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS}.
+   */
+  _attempt?: number;
 };
 
 export type EnsureRunResult = {
@@ -69,7 +88,13 @@ export type EnsureRunResult = {
 export async function ensureRunForSession(
   params: EnsureRunForSessionParams
 ): Promise<EnsureRunResult> {
-  const { session, environment, reason, payloadOverrides } = params;
+  const { session, environment, reason, payloadOverrides, _attempt = 1 } = params;
+
+  if (_attempt > ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS) {
+    throw new SessionRunManagerError(
+      `ensureRunForSession exceeded ${ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS} attempts for session ${session.id} — every triggered run reached a terminal state before claim could resolve`
+    );
+  }
 
   // 1. Probe currentRunId.
   if (session.currentRunId) {
@@ -153,13 +178,15 @@ export async function ensureRunForSession(
   }
 
   // Pathological: winner's run already terminal. Recurse with the fresh
-  // version. Bounded by run-engine progress — if every triggered run
-  // dies instantly we'll loop, but that's a deeper bug worth surfacing.
+  // version. Bounded by `ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS` so a task
+  // that always crashes before being dequeued surfaces as an error
+  // instead of a stack overflow.
   return ensureRunForSession({
     session: fresh,
     environment,
     reason,
     payloadOverrides,
+    _attempt: _attempt + 1,
   });
 }
 
