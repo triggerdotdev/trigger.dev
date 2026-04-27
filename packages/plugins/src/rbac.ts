@@ -98,6 +98,15 @@ export interface RoleBaseAccessController {
   allPermissions(organizationId: string): Promise<Permission[]>;
   allRoles(organizationId: string): Promise<Role[]>;
 
+  // Of the roles returned by `allRoles(organizationId)`, which IDs may
+  // be assigned right now? Used by the Teams page UI to disable
+  // role-dropdown options outside the org's plan tier (system roles
+  // gated by the subscription plan, custom roles only on Enterprise).
+  // OSS fallback returns every role id (permissive — the OSS path
+  // doesn't enforce plan gating). The actual server-side enforcement
+  // lives in setUserRole; this method is purely for UI affordance.
+  getAssignableRoleIds(organizationId: string): Promise<string[]>;
+
   // Role management. Mutation methods return a discriminated Result
   // rather than throwing — the cloud webapp surfaces `error` strings
   // directly to the user (system role edits, plan-gating, validation

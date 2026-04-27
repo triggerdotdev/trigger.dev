@@ -9,7 +9,7 @@ import {
   useFetcher,
   useNavigation,
 } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -50,7 +50,11 @@ import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import {
+  dashboardAction,
+  dashboardLoader,
+} from "~/services/routeBuilders/dashboardBuilder";
 import {
   inviteTeamMemberPath,
   organizationTeamPath,
@@ -74,31 +78,51 @@ const Params = z.object({
   organizationSlug: z.string(),
 });
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = Params.parse(params);
-
-  const organization = await $replica.organization.findFirst({
-    where: { slug: organizationSlug },
+// Resolve slug → orgId in the dashboardLoader's context callback so the
+// rbac.authenticateSession call gets a real organizationId. The result
+// is cached for the duration of the request and reused by the handler
+// below (we re-find by slug there to get a typed value — the context
+// only sees the loosely typed return type).
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({
+    where: { slug },
     select: { id: true },
   });
+  return org?.id ?? null;
+}
 
-  if (!organization) {
-    throw new Response("Not Found", { status: 404 });
+export const loader = dashboardLoader(
+  {
+    params: Params,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+    authorization: { action: "read", resource: { type: "members" } },
+  },
+  async ({ user, ability, params }) => {
+    const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+    if (!orgId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const presenter = new TeamPresenter();
+    const result = await presenter.call({
+      userId: user.id,
+      organizationId: orgId,
+    });
+
+    if (!result) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    // Pre-compute manage authority server-side so the UI gating matches
+    // the action gating (the action enforces it independently).
+    const canManageMembers = ability.can("manage", { type: "members" });
+
+    return typedjson({ ...result, canManageMembers });
   }
-
-  const presenter = new TeamPresenter();
-  const result = await presenter.call({
-    userId,
-    organizationId: organization.id,
-  });
-
-  if (!result) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return typedjson(result);
-};
+);
 
 const schema = z.object({
   memberId: z.string(),
@@ -118,82 +142,124 @@ const PurchaseSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = params;
-  invariant(organizationSlug, "organizationSlug not found");
+const SetRoleSchema = z.object({
+  userId: z.string(),
+  roleId: z.string(),
+});
 
-  const formData = await request.formData();
-  const formType = formData.get("_formType");
+export const action = dashboardAction(
+  {
+    params: Params,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+    // No top-level authorization — different intents have different
+    // requirements (set-role needs manage:members; remove/leave is
+    // gated by the existing model layer; purchase-seats by the
+    // SetSeatsAddOnService). Per-intent ability checks happen inside.
+  },
+  async ({ user, ability, request, params }) => {
+    const userId = user.id;
+    const { organizationSlug } = params;
+    invariant(organizationSlug, "organizationSlug not found");
 
-  if (formType === "purchase-seats") {
-    const org = await $replica.organization.findFirst({
-      where: { slug: organizationSlug },
-      select: { id: true },
-    });
+    const formData = await request.formData();
+    const formType = formData.get("_formType");
 
-    if (!org) {
-      return json({ ok: false, error: "Organization not found" } as const);
+    if (formType === "set-role") {
+      if (!ability.can("manage", { type: "members" })) {
+        return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+      }
+      const orgId = await resolveOrgIdFromSlug(organizationSlug);
+      if (!orgId) {
+        return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
+      }
+      const submission = parse(formData, { schema: SetRoleSchema });
+      if (!submission.value || submission.intent !== "submit") {
+        return json(submission);
+      }
+      const result = await rbac.setUserRole({
+        userId: submission.value.userId,
+        organizationId: orgId,
+        roleId: submission.value.roleId,
+      });
+      if (!result.ok) {
+        return json({ ok: false, error: result.error } as const, { status: 400 });
+      }
+      return json({ ok: true } as const);
     }
 
-    const submission = parse(formData, { schema: PurchaseSchema });
+    if (formType === "purchase-seats") {
+      const org = await $replica.organization.findFirst({
+        where: { slug: organizationSlug },
+        select: { id: true },
+      });
+
+      if (!org) {
+        return json({ ok: false, error: "Organization not found" } as const);
+      }
+
+      const submission = parse(formData, { schema: PurchaseSchema });
+
+      if (!submission.value || submission.intent !== "submit") {
+        return json(submission);
+      }
+
+      const service = new SetSeatsAddOnService();
+      const [error, result] = await tryCatch(
+        service.call({
+          userId,
+          organizationId: org.id,
+          action: submission.value.action,
+          amount: submission.value.amount,
+        })
+      );
+
+      if (error) {
+        submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+        return json(submission);
+      }
+
+      if (!result.success) {
+        submission.error.amount = [result.error];
+        return json(submission);
+      }
+
+      return json({ ok: true } as const);
+    }
+
+    const submission = parse(formData, { schema });
 
     if (!submission.value || submission.intent !== "submit") {
       return json(submission);
     }
 
-    const service = new SetSeatsAddOnService();
-    const [error, result] = await tryCatch(
-      service.call({
+    try {
+      const deletedMember = await removeTeamMember({
         userId,
-        organizationId: org.id,
-        action: submission.value.action,
-        amount: submission.value.amount,
-      })
-    );
+        memberId: submission.value.memberId,
+        slug: organizationSlug,
+      });
 
-    if (error) {
-      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-      return json(submission);
+      if (deletedMember.userId === userId) {
+        return redirectWithSuccessMessage("/", request, `You left the organization`);
+      }
+
+      return redirectWithSuccessMessage(
+        organizationTeamPath(deletedMember.organization),
+        request,
+        `Removed ${deletedMember.user.name ?? "member"} from team`
+      );
+    } catch (error: any) {
+      return json({ errors: { body: error.message } }, { status: 400 });
     }
-
-    if (!result.success) {
-      submission.error.amount = [result.error];
-      return json(submission);
-    }
-
-    return json({ ok: true } as const);
   }
-
-  const submission = parse(formData, { schema });
-
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
-
-  try {
-    const deletedMember = await removeTeamMember({
-      userId,
-      memberId: submission.value.memberId,
-      slug: organizationSlug,
-    });
-
-    if (deletedMember.userId === userId) {
-      return redirectWithSuccessMessage("/", request, `You left the organization`);
-    }
-
-    return redirectWithSuccessMessage(
-      organizationTeamPath(deletedMember.organization),
-      request,
-      `Removed ${deletedMember.user.name ?? "member"} from team`
-    );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
-  }
-};
+);
 
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
+type Role = UseDataFunctionReturn<typeof loader>["roles"][number];
 
 export default function Page() {
   const {
@@ -205,7 +271,16 @@ export default function Page() {
     seatPricing,
     maxSeatQuota,
     planSeatLimit,
+    roles,
+    assignableRoleIds,
+    memberRoles,
+    canManageMembers,
   } = useTypedLoaderData<typeof loader>();
+  // Build a userId → roleId map so the dropdown's defaultValue matches
+  // each member's current assignment without re-querying.
+  const memberRoleByUserId = new Map<string, string>(
+    memberRoles.flatMap((m) => (m.role ? [[m.userId, m.role.id]] : []))
+  );
   const user = useUser();
   const organization = useOrganization();
 
@@ -242,7 +317,24 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-          {requiresUpgrade ? (
+          {!canManageMembers ? (
+            // Gate the invite affordance on manage:members. The action
+            // route enforces this independently — hiding it here just
+            // avoids dead UI for non-managers.
+            <SimpleTooltip
+              button={
+                <ButtonContent
+                  variant="primary/small"
+                  LeadingIcon={UserPlusIcon}
+                  className="cursor-not-allowed opacity-50"
+                >
+                  Invite a team member
+                </ButtonContent>
+              }
+              content="You don't have permission to invite team members"
+              disableHoverableContent
+            />
+          ) : requiresUpgrade ? (
             <SimpleTooltip
               button={
                 <ButtonContent variant="primary/small" LeadingIcon={UserPlusIcon} className="cursor-not-allowed opacity-50">
@@ -310,10 +402,18 @@ export default function Page() {
                       <Paragraph variant="small">{member.user.email}</Paragraph>
                     </div>
                     <div className="flex grow items-center justify-end gap-4">
+                      <RolePicker
+                        memberUserId={member.user.id}
+                        currentRoleId={memberRoleByUserId.get(member.user.id) ?? null}
+                        roles={roles}
+                        assignableRoleIds={assignableRoleIds}
+                        canManageMembers={canManageMembers}
+                      />
                       <LeaveRemoveButton
                         userId={user.id}
                         member={member}
                         memberCount={members.length}
+                        canManageMembers={canManageMembers}
                       />
                     </div>
                   </li>
@@ -387,10 +487,12 @@ function LeaveRemoveButton({
   userId,
   member,
   memberCount,
+  canManageMembers,
 }: {
   userId: string;
   member: Member;
   memberCount: number;
+  canManageMembers: boolean;
 }) {
   const organization = useOrganization();
 
@@ -409,7 +511,8 @@ function LeaveRemoveButton({
       );
     }
 
-    //you leave the team
+    //you leave the team — leaving is always permitted regardless of
+    //manage:members; non-managers can still leave on their own.
     return (
       <LeaveTeamModal
         member={member}
@@ -421,7 +524,20 @@ function LeaveRemoveButton({
     );
   }
 
-  //you remove another member
+  //you remove another member — requires manage:members
+  if (!canManageMembers) {
+    return (
+      <SimpleTooltip
+        button={
+          <ButtonContent variant="secondary/small" className="cursor-not-allowed opacity-50">
+            Remove from team
+          </ButtonContent>
+        }
+        disableHoverableContent
+        content="You don't have permission to remove team members"
+      />
+    );
+  }
   return (
     <LeaveTeamModal
       member={member}
@@ -430,6 +546,79 @@ function LeaveRemoveButton({
       description={`They will no longer have access to ${organization.title}. To regain access, you will need to invite them again.`}
       actionText="Remove from team"
     />
+  );
+}
+
+// Inline role picker — submits a `_formType=set-role` form via fetcher
+// so the change persists without a full page reload. Disabled options
+// (and the picker itself) reflect plan gating + manage:members; the
+// server's setUserRole enforces both checks again as the source of
+// truth, so this is a UI-affordance layer only.
+function RolePicker({
+  memberUserId,
+  currentRoleId,
+  roles,
+  assignableRoleIds,
+  canManageMembers,
+}: {
+  memberUserId: string;
+  currentRoleId: string | null;
+  roles: Role[];
+  assignableRoleIds: string[];
+  canManageMembers: boolean;
+}) {
+  const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
+  const assignable = new Set(assignableRoleIds);
+  // OSS deployments return [] (allRoles also returns []) — when there
+  // are no roles to pick from, render nothing rather than an empty
+  // dropdown.
+  if (roles.length === 0) return null;
+
+  const isSubmitting = fetcher.state === "submitting";
+  const error =
+    fetcher.data && "error" in fetcher.data && fetcher.data.error
+      ? fetcher.data.error
+      : null;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <fetcher.Form method="post">
+        <input type="hidden" name="_formType" value="set-role" />
+        <input type="hidden" name="userId" value={memberUserId} />
+        <select
+          name="roleId"
+          defaultValue={currentRoleId ?? ""}
+          disabled={!canManageMembers || isSubmitting}
+          onChange={(e) => {
+            // Auto-submit on change so users don't need a separate
+            // "Save" button. The fetcher posts to the current route's
+            // action.
+            (e.currentTarget.form as HTMLFormElement).requestSubmit();
+          }}
+          className="rounded-sm border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-sm text-text-bright disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {currentRoleId === null && (
+            <option value="" disabled>
+              No role
+            </option>
+          )}
+          {roles.map((role) => {
+            const isAssignable = assignable.has(role.id);
+            return (
+              <option key={role.id} value={role.id} disabled={!isAssignable}>
+                {role.name}
+                {!isAssignable ? " (upgrade)" : ""}
+              </option>
+            );
+          })}
+        </select>
+      </fetcher.Form>
+      {error ? (
+        <span className="text-xs text-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

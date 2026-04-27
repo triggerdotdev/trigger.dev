@@ -165,6 +165,14 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return [];
   }
 
+  // Permissive — the OSS path has no plan gating. The Teams page UI
+  // uses this to decide which role options to render as disabled; in
+  // the OSS deployment all roles are assignable (allRoles() returns []
+  // anyway, so the practical effect is "no roles to gate").
+  async getAssignableRoleIds(): Promise<string[]> {
+    return [];
+  }
+
   async createRole(): Promise<RoleMutationResult> {
     return { ok: false, error: "RBAC plugin not installed" };
   }
