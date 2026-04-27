@@ -8,7 +8,7 @@ import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import {
   resolveSessionByIdOrExternalId,
-  serializeSession,
+  serializeSessionWithFriendlyRunId,
 } from "~/services/realtime/sessions.server";
 import {
   createActionApiRoute,
@@ -34,7 +34,9 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ resource: session }) => {
-    return json<RetrieveSessionResponseBody>(serializeSession(session));
+    return json<RetrieveSessionResponseBody>(
+      await serializeSessionWithFriendlyRunId(session)
+    );
   }
 );
 
@@ -80,7 +82,9 @@ const { action } = createActionApiRoute(
         },
       });
 
-      return json<RetrieveSessionResponseBody>(serializeSession(updated));
+      return json<RetrieveSessionResponseBody>(
+        await serializeSessionWithFriendlyRunId(updated)
+      );
     } catch (error) {
       // A duplicate externalId in the same environment violates the
       // `(runtimeEnvironmentId, externalId)` unique constraint. Surface that

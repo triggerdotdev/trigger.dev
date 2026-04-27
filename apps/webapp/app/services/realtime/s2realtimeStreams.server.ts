@@ -329,11 +329,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         lastChunk != null && typeof lastChunk === "object"
           ? (lastChunk as { type?: unknown }).type
           : null;
-      if (
-        lastChunk != null &&
-        typeof lastChunk === "object" &&
-        (lastChunk as { type?: unknown }).type === "trigger:turn-complete"
-      ) {
+      if (lastChunkType === "trigger:turn-complete") {
         settled = true;
         waitSeconds = 0;
       }

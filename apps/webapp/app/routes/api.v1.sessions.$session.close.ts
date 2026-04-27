@@ -7,7 +7,7 @@ import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import {
   resolveSessionByIdOrExternalId,
-  serializeSession,
+  serializeSessionWithFriendlyRunId,
 } from "~/services/realtime/sessions.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -43,7 +43,9 @@ const { action, loader } = createActionApiRoute(
     // Idempotent: if already closed, return the current row without clobbering
     // the original closedAt / closedReason.
     if (existing.closedAt) {
-      return json<RetrieveSessionResponseBody>(serializeSession(existing));
+      return json<RetrieveSessionResponseBody>(
+        await serializeSessionWithFriendlyRunId(existing)
+      );
     }
 
     // `closedAt: null` on the where clause makes the update conditional at
@@ -61,12 +63,16 @@ const { action, loader } = createActionApiRoute(
     if (count === 0) {
       const final = await prisma.session.findFirst({ where: { id: existing.id } });
       if (!final) return json({ error: "Session not found" }, { status: 404 });
-      return json<RetrieveSessionResponseBody>(serializeSession(final));
+      return json<RetrieveSessionResponseBody>(
+        await serializeSessionWithFriendlyRunId(final)
+      );
     }
 
     const updated = await prisma.session.findFirst({ where: { id: existing.id } });
     if (!updated) return json({ error: "Session not found" }, { status: 404 });
-    return json<RetrieveSessionResponseBody>(serializeSession(updated));
+    return json<RetrieveSessionResponseBody>(
+      await serializeSessionWithFriendlyRunId(updated)
+    );
   }
 );
 

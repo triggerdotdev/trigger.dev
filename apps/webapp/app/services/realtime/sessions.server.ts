@@ -1,5 +1,6 @@
 import type { PrismaClient, Session } from "@trigger.dev/database";
 import type { SessionItem } from "@trigger.dev/core/v3";
+import { $replica } from "~/db.server";
 
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
@@ -74,10 +75,10 @@ export function canonicalSessionAddressingKey(
  *
  * Note: `currentRunId` is left as-is — Prisma stores the internal run id
  * (cuid), but `SessionItem.currentRunId` is the *friendly* form. Routes
- * that emit `SessionItem` are responsible for resolving the friendlyId
- * (typically via a separate TaskRun lookup) and overriding the field.
- * `serializeSession` returns it raw so list endpoints don't pay an N+1
- * lookup just to surface the friendly form.
+ * that emit a single `SessionItem` should use
+ * {@link serializeSessionWithFriendlyRunId} instead, which resolves the
+ * friendlyId via a TaskRun lookup. List endpoints stay on this raw form
+ * to avoid N+1 lookups when paginating.
  */
 export function serializeSession(session: Session): SessionItem {
   return {
@@ -94,5 +95,33 @@ export function serializeSession(session: Session): SessionItem {
     expiresAt: session.expiresAt,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+  };
+}
+
+/**
+ * Same as {@link serializeSession} but resolves `currentRunId` from the
+ * internal cuid to the public `run_*` friendlyId via a TaskRun lookup.
+ * Single-row endpoints (`POST/GET/PATCH/close /api/v1/sessions/:s`) use
+ * this so the wire-side `currentRunId` is consistent with the rest of
+ * the public API (which only accepts friendlyIds for run lookups).
+ *
+ * Skips the lookup when `currentRunId` is null. The read goes through
+ * `$replica` — a TaskRun's `friendlyId` is immutable so replica lag is
+ * harmless, and serializing on the writer would just add hot-path load.
+ */
+export async function serializeSessionWithFriendlyRunId(
+  session: Session
+): Promise<SessionItem> {
+  const base = serializeSession(session);
+  if (!session.currentRunId) return base;
+
+  const run = await $replica.taskRun.findFirst({
+    where: { id: session.currentRunId },
+    select: { friendlyId: true },
+  });
+
+  return {
+    ...base,
+    currentRunId: run?.friendlyId ?? null,
   };
 }
