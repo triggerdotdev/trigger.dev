@@ -2045,6 +2045,7 @@ class SharedQueueTasks {
         traceContext: true,
         friendlyId: true,
         isTest: true,
+        replayedFromTaskRunFriendlyId: true,
         lockedBy: {
           select: {
             machineConfig: true,
@@ -2090,6 +2091,7 @@ class SharedQueueTasks {
       runId: run.friendlyId,
       messageId: run.id,
       isTest: run.isTest,
+      isReplay: !!run.replayedFromTaskRunFriendlyId,
       attemptCount,
       metrics: [],
     } satisfies TaskRunExecutionLazyAttemptPayload;
