@@ -318,6 +318,7 @@ export default function Page() {
               runs={schedule.runs}
               isLoading={false}
               variant="bright"
+              disableAdjacentRows
             />
           </div>
           <div className="flex flex-col gap-1 pt-2">

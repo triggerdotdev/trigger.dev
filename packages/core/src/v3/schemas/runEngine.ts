@@ -3,6 +3,27 @@ import { Enum, MachinePreset, RuntimeEnvironmentType, TaskRunExecution } from ".
 import { EnvironmentType } from "./schemas.js";
 import type * as DB_TYPES from "@trigger.dev/database";
 
+const anyString = z.custom<string & {}>((v) => typeof v === "string");
+
+export const TriggerSource = z
+  .enum(["sdk", "api", "dashboard", "cli", "mcp", "schedule"])
+  .or(anyString);
+
+export type TriggerSource = z.infer<typeof TriggerSource>;
+
+export const TriggerAction = z.enum(["trigger", "replay", "test"]).or(anyString);
+
+export type TriggerAction = z.infer<typeof TriggerAction>;
+
+export const RunAnnotations = z.object({
+  triggerSource: TriggerSource,
+  triggerAction: TriggerAction,
+  rootTriggerSource: TriggerSource,
+  rootScheduleId: z.string().optional(),
+});
+
+export type RunAnnotations = z.infer<typeof RunAnnotations>;
+
 export const TaskRunExecutionStatus = {
   RUN_CREATED: "RUN_CREATED",
   QUEUED: "QUEUED",
@@ -13,6 +34,7 @@ export const TaskRunExecutionStatus = {
   SUSPENDED: "SUSPENDED",
   PENDING_CANCEL: "PENDING_CANCEL",
   FINISHED: "FINISHED",
+  DELAYED: "DELAYED",
 } satisfies Enum<DB_TYPES.TaskRunExecutionStatus>;
 
 export type TaskRunExecutionStatus =
@@ -155,7 +177,8 @@ export type CompleteRunAttemptResult = z.infer<typeof CompleteRunAttemptResult>;
 export const CheckpointTypeEnum = {
   DOCKER: "DOCKER",
   KUBERNETES: "KUBERNETES",
-} satisfies Enum<DB_TYPES.CheckpointType>;
+  COMPUTE: "COMPUTE",
+} satisfies Enum<DB_TYPES.TaskRunCheckpointType>;
 export type CheckpointTypeEnum = (typeof CheckpointTypeEnum)[keyof typeof CheckpointTypeEnum];
 
 export const CheckpointType = z.enum(Object.values(CheckpointTypeEnum) as [CheckpointTypeEnum]);
@@ -258,6 +281,7 @@ export const DequeuedMessage = z.object({
     attemptNumber: z.number(),
     masterQueue: z.string(),
     traceContext: z.record(z.unknown()),
+    annotations: RunAnnotations.optional(),
   }),
   environment: z.object({
     id: z.string(),
@@ -265,6 +289,7 @@ export const DequeuedMessage = z.object({
   }),
   organization: z.object({
     id: z.string(),
+    hasPrivateLink: z.boolean().optional(),
   }),
   project: z.object({
     id: z.string(),

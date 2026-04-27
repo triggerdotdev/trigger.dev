@@ -1,9 +1,9 @@
 import type { BillingCache } from "../billingCache.js";
 import { startSpan } from "@internal/tracing";
-import { assertExhaustive } from "@trigger.dev/core";
-import { DequeuedMessage, RetryOptions } from "@trigger.dev/core/v3";
+import { assertExhaustive, tryCatch } from "@trigger.dev/core";
+import { DequeuedMessage, RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
-import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
+import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import {
   BackgroundWorker,
   BackgroundWorkerTask,
@@ -416,6 +416,9 @@ export class DequeueSystem {
                 ? undefined
                 : result.task.retryConfig;
 
+              // Pre-generate snapshot ID so we can construct the result without an extra read
+              const snapshotId = generateInternalId();
+
               const lockedTaskRun = await prisma.taskRun.update({
                 where: {
                   id: runId,
@@ -435,10 +438,36 @@ export class DequeueSystem {
                   cliVersion: result.worker.cliVersion,
                   maxDurationInSeconds,
                   maxAttempts: maxAttempts ?? undefined,
+                  executionSnapshots: {
+                    create: {
+                      id: snapshotId,
+                      engine: "V2",
+                      executionStatus: "PENDING_EXECUTING",
+                      description: "Run was dequeued for execution",
+                      // Map DEQUEUED -> PENDING for backwards compatibility with older runners
+                      runStatus: "PENDING",
+                      attemptNumber: result.run.attemptNumber ?? undefined,
+                      previousSnapshotId: snapshot.id,
+                      environmentId: snapshot.environmentId,
+                      environmentType: snapshot.environmentType,
+                      projectId: snapshot.projectId,
+                      organizationId: snapshot.organizationId,
+                      checkpointId: snapshot.checkpointId ?? undefined,
+                      batchId: snapshot.batchId ?? undefined,
+                      completedWaitpoints: {
+                        connect: snapshot.completedWaitpoints.map((w) => ({ id: w.id })),
+                      },
+                      completedWaitpointOrder: snapshot.completedWaitpoints
+                        .filter((c) => c.index !== undefined)
+                        .sort((a, b) => a.index! - b.index!)
+                        .map((w) => w.id),
+                      workerId,
+                      runnerId,
+                    },
+                  },
                 },
                 include: {
                   runtimeEnvironment: true,
-                  tags: true,
                 },
               });
 
@@ -495,6 +524,7 @@ export class DequeueSystem {
               const billingResult = await this.options.billingCache.getCurrentPlan(orgId);
 
               let isPaying: boolean;
+              let hasPrivateLink: boolean | undefined;
               if (billingResult.err || !billingResult.val) {
                 // Fallback to stored planType on TaskRun if billing cache fails or returns no value
                 this.$.logger.warn(
@@ -513,52 +543,61 @@ export class DequeueSystem {
                 isPaying = (lockedTaskRun.planType ?? "free") !== "free";
               } else {
                 isPaying = billingResult.val.isPaying;
+                hasPrivateLink = billingResult.val.hasPrivateLink;
               }
 
-              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-                prisma,
-                {
-                  run: {
-                    id: runId,
-                    status: lockedTaskRun.status,
-                    attemptNumber: lockedTaskRun.attemptNumber,
-                  },
-                  snapshot: {
-                    executionStatus: "PENDING_EXECUTING",
-                    description: "Run was dequeued for execution",
-                  },
-                  previousSnapshotId: snapshot.id,
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                  projectId: snapshot.projectId,
-                  organizationId: snapshot.organizationId,
-                  checkpointId: snapshot.checkpointId ?? undefined,
-                  batchId: snapshot.batchId ?? undefined,
-                  completedWaitpoints: snapshot.completedWaitpoints,
-                  workerId,
-                  runnerId,
-                }
-              );
+              // Snapshot was created as part of the taskRun.update above (single transaction).
+              // Construct the snapshot info from data we already have and handle side effects
+              // (heartbeat + event) manually — no extra DB read needed.
+              const snapshotCreatedAt = new Date();
+
+              this.$.eventBus.emit("executionSnapshotCreated", {
+                time: snapshotCreatedAt,
+                run: {
+                  id: runId,
+                },
+                snapshot: {
+                  id: snapshotId,
+                  executionStatus: "PENDING_EXECUTING",
+                  description: "Run was dequeued for execution",
+                  runStatus: "PENDING",
+                  attemptNumber: result.run.attemptNumber ?? null,
+                  checkpointId: snapshot.checkpointId ?? null,
+                  workerId: workerId ?? null,
+                  runnerId: runnerId ?? null,
+                  isValid: true,
+                  error: null,
+                  completedWaitpointIds: snapshot.completedWaitpoints.map((wp) => wp.id),
+                },
+              });
+
+              await this.executionSnapshotSystem.enqueueHeartbeatIfNeeded({
+                id: snapshotId,
+                runId,
+                executionStatus: "PENDING_EXECUTING",
+              });
 
               return {
                 version: "1" as const,
                 dequeuedAt: new Date(),
                 workerQueueLength: message.workerQueueLength,
                 snapshot: {
-                  id: newSnapshot.id,
-                  friendlyId: newSnapshot.friendlyId,
-                  executionStatus: newSnapshot.executionStatus,
-                  description: newSnapshot.description,
-                  createdAt: newSnapshot.createdAt,
+                  id: snapshotId,
+                  friendlyId: SnapshotId.toFriendlyId(snapshotId),
+                  executionStatus: "PENDING_EXECUTING" as const,
+                  description: "Run was dequeued for execution",
+                  createdAt: snapshotCreatedAt,
                 },
                 image: result.deployment?.imageReference ?? undefined,
-                checkpoint: newSnapshot.checkpoint ?? undefined,
+                checkpoint: snapshot.checkpoint ?? undefined,
                 completedWaitpoints: snapshot.completedWaitpoints,
                 backgroundWorker: {
                   id: result.worker.id,
                   friendlyId: result.worker.friendlyId,
                   version: result.worker.version,
                 },
+                // TODO: use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
+                // Would help make the typechecking stricter
                 deployment: {
                   id: result.deployment?.id,
                   friendlyId: result.deployment?.friendlyId,
@@ -573,6 +612,7 @@ export class DequeueSystem {
                   // Keeping this for backwards compatibility, but really this should be called workerQueue
                   masterQueue: lockedTaskRun.workerQueue,
                   traceContext: lockedTaskRun.traceContext as Record<string, unknown>,
+                  annotations: RunAnnotations.safeParse(lockedTaskRun.annotations).data,
                 },
                 environment: {
                   id: lockedTaskRun.runtimeEnvironment.id,
@@ -580,6 +620,7 @@ export class DequeueSystem {
                 },
                 organization: {
                   id: orgId,
+                  hasPrivateLink,
                 },
                 project: {
                   id: lockedTaskRun.projectId,
@@ -609,20 +650,24 @@ export class DequeueSystem {
             }
           );
 
-          const run = await prisma.taskRun.findFirst({
-            where: { id: runId },
-            include: {
-              runtimeEnvironment: true,
-            },
-          });
+          // Wrap the Prisma call with tryCatch - if DB is unavailable, we still want to nack via Redis
+          const [findError, run] = await tryCatch(
+            prisma.taskRun.findFirst({
+              where: { id: runId },
+              include: {
+                runtimeEnvironment: true,
+              },
+            })
+          );
 
-          if (!run) {
-            //this isn't ideal because we're not creating a snapshot… but we can't do much else
+          // If DB is unavailable or run not found, just nack directly via Redis
+          if (findError || !run) {
             this.$.logger.error(
-              "RunEngine.dequeueFromWorkerQueue(): Thrown error, then run not found. Nacking.",
+              "RunEngine.dequeueFromWorkerQueue(): Failed to find run, nacking directly via Redis",
               {
                 runId,
                 orgId,
+                findError,
               }
             );
             await this.$.runQueue.nackMessage({ orgId, messageId: runId });

@@ -1,10 +1,14 @@
 import {
   CreateAuthorizationCodeResponseSchema,
+  CreateArtifactRequestBody,
+  CreateArtifactResponseBody,
   CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
   DevConfigResponseBody,
   DevDequeueRequestBody,
   DevDequeueResponseBody,
+  DevDisconnectRequestBody,
+  DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
   FailDeploymentRequestBody,
   FailDeploymentResponseBody,
@@ -22,7 +26,6 @@ import {
   PromoteDeploymentResponseBody,
   StartDeploymentIndexingRequestBody,
   StartDeploymentIndexingResponseBody,
-  TaskRunExecution,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpsertBranchRequestBody,
@@ -37,6 +40,8 @@ import {
   GetJWTRequestBody,
   GetJWTResponse,
   ApiBranchListResponseBody,
+  GenerateRegistryCredentialsResponseBody,
+  RemoteBuildProviderStatusResponseBody,
 } from "@trigger.dev/core/v3";
 import {
   WorkloadDebugLogRequestBody,
@@ -51,19 +56,50 @@ import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfe
 import { EventSource } from "eventsource";
 import { z } from "zod";
 import { logger } from "./utilities/logger.js";
+import { VERSION } from "./version.js";
+
+const CliPlatformNotificationResponseSchema = z.object({
+  notification: z
+    .object({
+      id: z.string(),
+      payload: z.object({
+        version: z.string(),
+        data: z.object({
+          type: z.enum(["info", "warn", "error", "success"]),
+          title: z.string(),
+          description: z.string(),
+          actionLabel: z.string().optional(),
+          actionUrl: z.string().optional(),
+          discovery: z
+            .object({
+              filePatterns: z.array(z.string()),
+              contentPattern: z.string().optional(),
+              matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
+            })
+            .optional(),
+        }),
+      }),
+      showCount: z.number(),
+      firstSeenAt: z.string(),
+    })
+    .nullable(),
+});
 
 export class CliApiClient {
   private engineURL: string;
+  private source: "cli" | "mcp";
 
   constructor(
     public readonly apiURL: string,
     // TODO: consider making this required
     public readonly accessToken?: string,
-    public readonly branch?: string
+    public readonly branch?: string,
+    options?: { source?: "cli" | "mcp" }
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
     this.engineURL = this.apiURL;
     this.branch = branch;
+    this.source = options?.source ?? "cli";
   }
 
   async createAuthorizationCode() {
@@ -327,6 +363,49 @@ export class CliApiClient {
     );
   }
 
+  async getRemoteBuildProviderStatus() {
+    return wrapZodFetch(
+      RemoteBuildProviderStatusResponseBody,
+      `${this.apiURL}/api/v1/remote-build-provider-status`,
+      {
+        method: "GET",
+        headers: {
+          ...this.getHeaders(),
+          // probably a good idea to add this to the other requests too
+          "x-trigger-cli-version": VERSION,
+        },
+      }
+    );
+  }
+
+  async generateRegistryCredentials(deploymentId: string) {
+    if (!this.accessToken) {
+      throw new Error("generateRegistryCredentials: No access token");
+    }
+
+    return wrapZodFetch(
+      GenerateRegistryCredentialsResponseBody,
+      `${this.apiURL}/api/v1/deployments/${deploymentId}/generate-registry-credentials`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: "{}",
+      }
+    );
+  }
+
+  async createArtifact(body: CreateArtifactRequestBody) {
+    if (!this.accessToken) {
+      throw new Error("createArtifact: No access token");
+    }
+
+    return wrapZodFetch(CreateArtifactResponseBody, `${this.apiURL}/api/v1/artifacts`, {
+      method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
   async initializeDeployment(body: InitializeDeploymentRequestBody) {
     if (!this.accessToken) {
       throw new Error("initializeDeployment: No access token");
@@ -488,6 +567,25 @@ export class CliApiClient {
     );
   }
 
+  async getCliPlatformNotification(projectRef?: string, signal?: AbortSignal) {
+    if (!this.accessToken) {
+      return { success: true as const, data: { notification: null } };
+    }
+
+    const url = new URL("/api/v1/platform-notifications", this.apiURL);
+    if (projectRef) {
+      url.searchParams.set("projectRef", projectRef);
+    }
+
+    return wrapZodFetch(CliPlatformNotificationResponseSchema, url.href, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      signal,
+    });
+  }
+
   async triggerTaskRun(taskId: string, body?: TriggerTaskRequestBody) {
     if (!this.accessToken) {
       throw new Error("triggerTaskRun: No access token");
@@ -510,6 +608,7 @@ export class CliApiClient {
       heartbeatRun: this.devHeartbeatRun.bind(this),
       startRunAttempt: this.devStartRunAttempt.bind(this),
       completeRunAttempt: this.devCompleteRunAttempt.bind(this),
+      disconnect: this.devDisconnect.bind(this),
       setEngineURL: this.setEngineURL.bind(this),
     } as const;
   }
@@ -634,6 +733,23 @@ export class CliApiClient {
     return eventSource;
   }
 
+  private async devDisconnect(
+    body: DevDisconnectRequestBody
+  ): Promise<ApiResult<DevDisconnectResponseBody>> {
+    if (!this.accessToken) {
+      throw new Error("devDisconnect: No access token");
+    }
+
+    return wrapZodFetch(DevDisconnectResponseBody, `${this.engineURL}/engine/v1/dev/disconnect`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
   private async devDequeue(
     body: DevDequeueRequestBody
   ): Promise<ApiResult<DevDequeueResponseBody>> {
@@ -752,6 +868,7 @@ export class CliApiClient {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
+      "x-trigger-source": this.source,
     };
 
     if (this.branch) {

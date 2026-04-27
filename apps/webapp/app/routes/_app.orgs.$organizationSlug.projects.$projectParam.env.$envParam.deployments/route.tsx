@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PromoteIcon } from "~/assets/icons/PromoteIcon";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { DeploymentsNone, DeploymentsNoneDev } from "~/components/BlankStatePanels";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { GitMetadata } from "~/components/GitMetadata";
@@ -41,9 +42,11 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -74,7 +77,7 @@ import {
   EnvironmentParamSchema,
   docsPath,
   v3DeploymentPath,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 import { compareDeploymentVersions } from "~/v3/utils/deploymentVersions";
@@ -160,6 +163,7 @@ export default function Page() {
     connectedGithubRepository,
     environmentGitHubBranch,
     autoReloadPollIntervalMs,
+    hasVercelIntegration,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
@@ -234,6 +238,7 @@ export default function Page() {
                       <TableHeaderCell>Deployed at</TableHeaderCell>
                       <TableHeaderCell>Deployed by</TableHeaderCell>
                       <TableHeaderCell>Git</TableHeaderCell>
+                      {hasVercelIntegration && <TableHeaderCell>Linked</TableHeaderCell>}
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -252,7 +257,7 @@ export default function Page() {
                           <TableRow key={deployment.id} className="group" isSelected={isSelected}>
                             <TableCell to={path} isTabbableCell isSelected={isSelected}>
                               <div className="flex items-center gap-2">
-                                <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
+                                <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (
                                   <Badge variant="extra-small">{titleCase(deployment.label)}</Badge>
                                 )}
@@ -307,6 +312,22 @@ export default function Page() {
                                 <GitMetadata git={deployment.git} />
                               </div>
                             </TableCell>
+                            {hasVercelIntegration && (
+                              <TableCell isSelected={isSelected}>
+                                {deployment.vercelDeploymentUrl ? (
+                                  <div
+                                    className="-ml-1 flex items-center"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <VercelLink
+                                      vercelDeploymentUrl={deployment.vercelDeploymentUrl}
+                                    />
+                                  </div>
+                                ) : (
+                                  "–"
+                                )}
+                              </TableCell>
+                            )}
                             <DeploymentActionsCell
                               deployment={deployment}
                               path={path}
@@ -317,7 +338,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={8}>
+                      <TableBlankRow colSpan={hasVercelIntegration ? 9 : 8}>
                         <Paragraph className="flex items-center justify-center">
                           No deploys match your filters
                         </Paragraph>
@@ -351,7 +372,7 @@ export default function Page() {
                       <LinkButton
                         variant="minimal/small"
                         LeadingIcon={CogIcon}
-                        to={v3ProjectSettingsPath(organization, project, environment)}
+                        to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
                       />
                     </div>
                   )}
@@ -359,24 +380,36 @@ export default function Page() {
                 </div>
               </div>
             ) : environment.type === "DEVELOPMENT" ? (
-              <MainCenteredContainer className="max-w-md">
+              <MainCenteredContainer className="max-w-prose">
                 <DeploymentsNoneDev />
               </MainCenteredContainer>
             ) : (
-              <MainCenteredContainer className="max-w-md">
+              <MainCenteredContainer className="max-w-prose">
                 <DeploymentsNone />
               </MainCenteredContainer>
             )}
           </ResizablePanel>
 
-          {deploymentParam && (
-            <>
-              <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="400px" max="700px">
-                <Outlet />
-              </ResizablePanel>
-            </>
-          )}
+          <ResizableHandle
+            id="deployments-handle"
+            className={collapsibleHandleClassName(!!deploymentParam)}
+          />
+          <ResizablePanel
+            id="deployments-inspector"
+            default="400px"
+            min="400px"
+            max="800px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!deploymentParam}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 400 }}>
+              <Outlet />
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
@@ -386,8 +419,8 @@ export default function Page() {
 export function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   return (
     <div className="flex items-center gap-1">
-      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4" />
-      <Paragraph variant="extra-small">{name}</Paragraph>
+      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4 group-hover/table-row:text-text-bright" />
+      <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{name}</Paragraph>
     </div>
   );
 }

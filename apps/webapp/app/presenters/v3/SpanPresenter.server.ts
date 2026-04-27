@@ -8,6 +8,10 @@ import {
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import {
+  extractIdempotencyKeyScope,
+  getUserProvidedIdempotencyKey,
+} from "@trigger.dev/core/v3/serverOnly";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { logger } from "~/services/logger.server";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
@@ -19,6 +23,54 @@ import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
+import { safeJsonParse } from "~/utils/json";
+import {
+  extractAISpanData,
+  extractAISummarySpanData,
+  extractAIToolCallData,
+  extractAIEmbedData,
+} from "~/components/runs/v3/ai";
+
+export type PromptSpanData = {
+  slug: string;
+  version: number;
+  labels: string;
+  model?: string;
+  template?: string;
+  text?: string;
+  input?: string;
+  config?: string;
+};
+
+function extractPromptSpanData(
+  properties: Record<string, unknown>
+): PromptSpanData | undefined {
+  // Properties come as an unflattened nested object from ClickHouse,
+  // e.g. { prompt: { slug: "...", version: 3, ... } }
+  const prompt = properties.prompt;
+  if (!prompt || typeof prompt !== "object") {
+    return undefined;
+  }
+
+  const p = prompt as Record<string, unknown>;
+  const slug = p.slug;
+  const version = p.version;
+
+  if (typeof slug !== "string" || typeof version !== "number") {
+    return undefined;
+  }
+
+  return {
+    slug,
+    version,
+    labels: typeof p.labels === "string" ? p.labels : "",
+    model: typeof p.model === "string" ? p.model : undefined,
+    template: typeof p.template === "string" ? p.template : undefined,
+    text: typeof p.text === "string" ? p.text : undefined,
+    input: typeof p.input === "string" ? p.input : undefined,
+    config: typeof p.config === "string" ? p.config : undefined,
+  };
+}
 
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
@@ -34,11 +86,13 @@ export class SpanPresenter extends BasePresenter {
     projectSlug,
     spanId,
     runFriendlyId,
+    linkedRunId,
   }: {
     userId: string;
     projectSlug: string;
     spanId: string;
     runFriendlyId: string;
+    linkedRunId?: string;
   }) {
     const project = await this._replica.project.findFirst({
       where: {
@@ -87,6 +141,7 @@ export class SpanPresenter extends BasePresenter {
       traceId,
       eventRepository,
       spanId,
+      linkedRunId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
       environmentId: parentRun.runtimeEnvironmentId,
@@ -125,6 +180,7 @@ export class SpanPresenter extends BasePresenter {
     traceId,
     eventRepository,
     spanId,
+    linkedRunId,
     createdAt,
     completedAt,
   }: {
@@ -133,19 +189,12 @@ export class SpanPresenter extends BasePresenter {
     traceId: string;
     eventRepository: IEventRepository;
     spanId: string;
+    linkedRunId?: string;
     createdAt: Date;
     completedAt: Date | null;
   }) {
-    const originalRunId = await eventRepository.getSpanOriginalRunId(
-      eventStore,
-      environmentId,
-      spanId,
-      traceId,
-      createdAt,
-      completedAt ?? undefined
-    );
-
-    const run = await this.findRun({ originalRunId, spanId, environmentId });
+    // Use linkedRunId if provided (for cached spans), otherwise look up by spanId
+    const run = await this.findRun({ originalRunId: linkedRunId, spanId, environmentId });
 
     if (!run) {
       return;
@@ -231,8 +280,11 @@ export class SpanPresenter extends BasePresenter {
       isTest: run.isTest,
       replayedFromTaskRunFriendlyId: run.replayedFromTaskRunFriendlyId,
       environmentId: run.runtimeEnvironment.id,
-      idempotencyKey: run.idempotencyKey,
+      idempotencyKey: getUserProvidedIdempotencyKey(run),
       idempotencyKeyExpiresAt: run.idempotencyKeyExpiresAt,
+      idempotencyKeyScope: extractIdempotencyKeyScope(run),
+      idempotencyKeyStatus: this.getIdempotencyKeyStatus(run),
+      debounce: run.debounce as { key: string; delay: string; createdAt: Date } | null,
       schedule: await this.resolveSchedule(run.scheduleId ?? undefined),
       queue: {
         name: run.queue,
@@ -270,10 +322,35 @@ export class SpanPresenter extends BasePresenter {
       workerQueue: run.workerQueue,
       traceId: run.traceId,
       spanId: run.spanId,
-      isCached: !!originalRunId,
+      isCached: !!linkedRunId,
       machinePreset: machine?.name,
+      taskEventStore: run.taskEventStore,
       externalTraceId,
     };
+  }
+
+  private getIdempotencyKeyStatus(run: {
+    idempotencyKey: string | null;
+    idempotencyKeyExpiresAt: Date | null;
+    idempotencyKeyOptions: unknown;
+  }): "active" | "inactive" | "expired" | undefined {
+    // No idempotency configured if no scope exists
+    const scope = extractIdempotencyKeyScope(run);
+    if (!scope) {
+      return undefined;
+    }
+
+    // Check if expired first (takes precedence)
+    if (run.idempotencyKeyExpiresAt && run.idempotencyKeyExpiresAt < new Date()) {
+      return "expired";
+    }
+
+    // Check if reset (hash is null but options exist)
+    if (run.idempotencyKey === null) {
+      return "inactive";
+    }
+
+    return "active";
   }
 
   async resolveSchedule(scheduleId?: string) {
@@ -355,6 +432,9 @@ export class SpanPresenter extends BasePresenter {
         //idempotency
         idempotencyKey: true,
         idempotencyKeyExpiresAt: true,
+        idempotencyKeyOptions: true,
+        //debounce
+        debounce: true,
         //delayed
         delayUntil: true,
         //ttl
@@ -476,8 +556,7 @@ export class SpanPresenter extends BasePresenter {
         taskIdentifier: true,
         spanId: true,
         createdAt: true,
-        number: true,
-        taskVersion: true,
+        status: true,
       },
       where: {
         parentSpanId: spanId,
@@ -496,10 +575,28 @@ export class SpanPresenter extends BasePresenter {
       duration: span.duration,
       events: span.events,
       style: span.style,
-      properties: span.properties ? JSON.stringify(span.properties, null, 2) : undefined,
+      properties:
+        span.properties &&
+        typeof span.properties === "object" &&
+        Object.keys(span.properties).length > 0
+          ? JSON.stringify(span.properties, null, 2)
+          : undefined,
+      resourceProperties:
+        span.resourceProperties &&
+        typeof span.resourceProperties === "object" &&
+        Object.keys(span.resourceProperties).length > 0
+          ? JSON.stringify(span.resourceProperties, null, 2)
+          : undefined,
       entity: span.entity,
       metadata: span.metadata,
       triggeredRuns,
+      aiData:
+        span.properties && typeof span.properties === "object"
+          ? extractAISpanData(
+              span.properties as Record<string, unknown>,
+              span.duration / 1_000_000
+            )
+          : undefined,
     };
 
     switch (span.entity.type) {
@@ -551,9 +648,215 @@ export class SpanPresenter extends BasePresenter {
           },
         };
       }
-      default:
+      case "realtime-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const [runId, streamKey] = span.entity.id.split(":");
+
+        if (!runId || !streamKey) {
+          logger.error(`SpanPresenter: Invalid realtime stream id`, {
+            spanId,
+            realtimeStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const metadata = span.entity.metadata
+          ? (safeJsonParse(span.entity.metadata) as Record<string, unknown> | undefined)
+          : undefined;
+
+        return {
+          ...data,
+          entity: {
+            type: "realtime-stream" as const,
+            object: {
+              runId,
+              streamKey,
+              metadata,
+            },
+          },
+        };
+      }
+      case "input-stream": {
+        if (!span.entity.id) {
+          logger.error(`SpanPresenter: No input stream id`, {
+            spanId,
+            inputStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        const [runId, streamId] = span.entity.id.split(":");
+
+        if (!runId || !streamId) {
+          logger.error(`SpanPresenter: Invalid input stream id`, {
+            spanId,
+            inputStreamId: span.entity.id,
+          });
+          return { ...data, entity: null };
+        }
+
+        // Translate user-facing stream ID to internal S2 stream name
+        const s2StreamKey = `$trigger.input:${streamId}`;
+
+        return {
+          ...data,
+          entity: {
+            type: "realtime-stream" as const,
+            object: {
+              runId,
+              streamKey: s2StreamKey,
+              displayName: streamId,
+              metadata: undefined,
+            },
+          },
+        };
+      }
+      case "prompt": {
+        const promptData = extractPromptSpanData(span.properties as Record<string, unknown>);
+
+        if (promptData) {
+          return {
+            ...data,
+            entity: { type: "prompt" as const, object: promptData },
+          };
+        }
+
         return { ...data, entity: null };
+      }
+      default: {
+        // Check for top-level AI SDK parent spans by message name
+        const AI_SUMMARY_MESSAGES = [
+          "ai.generateText",
+          "ai.streamText",
+          "ai.generateObject",
+          "ai.streamObject",
+        ];
+
+        if (
+          typeof span.message === "string" &&
+          AI_SUMMARY_MESSAGES.includes(span.message)
+        ) {
+          const aiSummaryData = extractAISummarySpanData(
+            span.properties as Record<string, unknown>,
+            span.duration / 1_000_000
+          );
+          if (aiSummaryData) {
+            const promptVersionData = await this.#lookupPromptVersion(
+              aiSummaryData.promptSlug,
+              aiSummaryData.promptVersion,
+              aiSummaryData.promptLabels,
+              aiSummaryData.promptInput,
+              projectId,
+              environmentId
+            );
+            return {
+              ...data,
+              entity: {
+                type: "ai-summary" as const,
+                object: aiSummaryData,
+                promptVersionData,
+              },
+            };
+          }
+        }
+
+        if (span.message === "ai.toolCall") {
+          const toolCallData = extractAIToolCallData(
+            span.properties as Record<string, unknown>,
+            span.duration / 1_000_000
+          );
+          if (toolCallData) {
+            return {
+              ...data,
+              entity: { type: "ai-tool-call" as const, object: toolCallData },
+            };
+          }
+        }
+
+        if (span.message === "ai.embed") {
+          const embedData = extractAIEmbedData(
+            span.properties as Record<string, unknown>,
+            span.duration / 1_000_000
+          );
+          if (embedData) {
+            return {
+              ...data,
+              entity: { type: "ai-embed" as const, object: embedData },
+            };
+          }
+        }
+
+        // Child generation spans (doGenerate/doStream) with gen_ai.* attributes
+        if (data.aiData) {
+          const promptVersionData = await this.#lookupPromptVersion(
+            data.aiData.promptSlug,
+            data.aiData.promptVersion,
+            data.aiData.promptLabels,
+            data.aiData.promptInput,
+            projectId,
+            environmentId
+          );
+          return {
+            ...data,
+            entity: {
+              type: "ai-generation" as const,
+              object: data.aiData,
+              promptVersionData,
+            },
+          };
+        }
+        return { ...data, entity: null };
+      }
     }
+  }
+
+  async #lookupPromptVersion(
+    promptSlug: string | undefined,
+    promptVersion: string | undefined,
+    promptLabels: string | undefined,
+    promptInput: string | undefined,
+    projectId: string,
+    environmentId: string
+  ): Promise<PromptSpanData | undefined> {
+    if (!promptSlug || !promptVersion) return undefined;
+
+    const prompt = await this._replica.prompt.findUnique({
+      where: {
+        projectId_runtimeEnvironmentId_slug: {
+          projectId,
+          runtimeEnvironmentId: environmentId,
+          slug: promptSlug,
+        },
+      },
+    });
+    if (!prompt) return undefined;
+
+    const version = await this._replica.promptVersion.findUnique({
+      where: {
+        promptId_version: {
+          promptId: prompt.id,
+          version: Number(promptVersion),
+        },
+      },
+    });
+    if (!version) return undefined;
+
+    return {
+      slug: promptSlug,
+      version: version.version,
+      labels: promptLabels ?? "",
+      model: version.model ?? undefined,
+      template: version.textContent ?? undefined,
+      text: undefined,
+      input: promptInput,
+    };
   }
 
   async #getTaskRunContext({ run, machine }: { run: FindRunResult; machine?: MachinePreset }) {
@@ -596,7 +899,7 @@ export class SpanPresenter extends BasePresenter {
         createdAt: run.createdAt,
         tags: run.runTags,
         isTest: run.isTest,
-        idempotencyKey: run.idempotencyKey ?? undefined,
+        idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
         durationMs: run.usageDurationMs,
         costInCents: run.costInCents,

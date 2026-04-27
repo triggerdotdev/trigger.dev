@@ -106,11 +106,18 @@ export class ManagedRunController {
         message: "Received SIGTERM, stopping worker",
       });
 
-      // Disable warm starts
+      // Disable warm starts - prevents new warm start requests
       this.warmStartEnabled = false;
 
-      // ..now we wait for any active runs to finish
-      // SIGKILL will handle the rest, nothing to do here
+      // Abort any ongoing warm start long poll - immediately stops waiting for next run
+      // This prevents the scenario where:
+      // 1. SIGTERM kills a prepared child process
+      // 2. Warm start poll returns a new run
+      // 3. Controller tries to use the dead child process
+      this.warmStartClient?.abort();
+
+      // Now we wait for any active runs to finish gracefully
+      // SIGKILL will handle forced termination after termination grace period
     });
   }
 

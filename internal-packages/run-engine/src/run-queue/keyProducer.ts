@@ -17,6 +17,7 @@ const constants = {
   DEAD_LETTER_QUEUE_PART: "deadLetter",
   MASTER_QUEUE_PART: "masterQueue",
   WORKER_QUEUE_PART: "workerQueue",
+  CK_INDEX_PART: "ckIndex",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -299,6 +300,27 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   currentConcurrencySetKeyScanPattern(): string {
     return `*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  ttlQueueKeyForShard(shard: number): string {
+    return ["ttl", "shard", shard.toString()].join(":");
+  }
+
+  ckIndexKeyFromQueue(queue: string): string {
+    const baseQueue = queue.replace(/:ck:.+$/, "");
+    return `${baseQueue}:${constants.CK_INDEX_PART}`;
+  }
+
+  baseQueueKeyFromQueue(queue: string): string {
+    return queue.replace(/:ck:.+$/, "");
+  }
+
+  isCkWildcard(queue: string): boolean {
+    return queue.endsWith(":ck:*");
+  }
+
+  toCkWildcard(queue: string): string {
+    return queue.replace(/:ck:.+$/, ":ck:*");
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {

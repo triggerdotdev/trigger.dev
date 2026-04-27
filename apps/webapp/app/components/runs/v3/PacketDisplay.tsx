@@ -11,10 +11,14 @@ export function PacketDisplay({
   data,
   dataType,
   title,
+  searchTerm,
+  wrap,
 }: {
   data: string;
   dataType: string;
   title: string;
+  searchTerm?: string;
+  wrap?: boolean;
 }) {
   switch (dataType) {
     case "application/store": {
@@ -51,6 +55,8 @@ export function PacketDisplay({
           maxLines={20}
           showLineNumbers={false}
           showTextWrapping
+          searchTerm={searchTerm}
+          wrap={wrap}
         />
       );
     }
@@ -63,6 +69,8 @@ export function PacketDisplay({
           maxLines={20}
           showLineNumbers={false}
           showTextWrapping
+          searchTerm={searchTerm}
+          wrap={wrap}
         />
       );
     }

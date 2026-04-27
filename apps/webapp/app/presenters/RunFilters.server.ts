@@ -1,3 +1,4 @@
+import { type TaskRunStatus } from "@trigger.dev/database";
 import {
   getRunFiltersFromSearchParams,
   TaskRunListSearchFilters,
@@ -34,12 +35,13 @@ export async function getRunFiltersFromRequest(request: Request): Promise<Filter
     scheduleId,
     queues,
     machines,
+    errorId,
   } = TaskRunListSearchFilters.parse(s);
 
   return {
     tasks,
     versions,
-    statuses,
+    statuses: statuses as TaskRunStatus[] | undefined,
     tags,
     period,
     bulkId,
@@ -53,5 +55,6 @@ export async function getRunFiltersFromRequest(request: Request): Promise<Filter
     cursor: cursor,
     queues,
     machines,
+    errorId,
   };
 }

@@ -9,12 +9,13 @@ import {
   logger,
 } from "@trigger.dev/core/v3";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { generatePresignedUrl } from "~/v3/r2.server";
+import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
@@ -33,11 +34,11 @@ const commonRunSelect = {
   metadata: true,
   metadataType: true,
   ttl: true,
-  tags: true,
   costInCents: true,
   baseCostInCents: true,
   usageDurationMs: true,
   idempotencyKey: true,
+  idempotencyKeyOptions: true,
   isTest: true,
   depth: true,
   scheduleId: true,
@@ -442,7 +443,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
   return {
     id: run.friendlyId,
     taskIdentifier: run.taskIdentifier,
-    idempotencyKey: run.idempotencyKey ?? undefined,
+    idempotencyKey: getUserProvidedIdempotencyKey(run),
     version: run.lockedToVersion?.version,
     status: ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion),
     createdAt: run.createdAt,
@@ -457,9 +458,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     durationMs: run.usageDurationMs,
     isTest: run.isTest,
     depth: run.depth,
-    tags: run.tags
-      .map((t: { name: string }) => t.name)
-      .sort((a: string, b: string) => a.localeCompare(b)),
+    tags: [...(run.runTags ?? [])].sort((a: string, b: string) => a.localeCompare(b)),
     ...ApiRetrieveRunPresenter.apiBooleanHelpersFromTaskRunStatus(run.status, apiVersion),
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,

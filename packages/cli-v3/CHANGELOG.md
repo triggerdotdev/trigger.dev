@@ -1,5 +1,239 @@
 # trigger.dev
 
+## 4.4.4
+
+### Patch Changes
+
+- Add platform notifications support to the CLI. The `trigger dev` and `trigger login` commands now fetch and display platform notifications (info, warn, error, success) from the server. Includes discovery-based filtering to conditionally show notifications based on project file patterns, color markup rendering for styled terminal output, and a non-blocking display flow with a spinner fallback for slow fetches. Use `--skip-platform-notifications` flag with `trigger dev` to disable the notification check. ([#3254](https://github.com/triggerdotdev/trigger.dev/pull/3254))
+- Fix dev CLI leaking build directories on rebuild, causing disk space accumulation. Deprecated workers are now pruned (capped at 2 retained) when no active runs reference them. The watchdog process also cleans up `.trigger/tmp/` when the dev CLI is killed ungracefully (e.g. SIGKILL from pnpm). ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
+- Fix `--load` flag being silently ignored on local/self-hosted builds. ([#3114](https://github.com/triggerdotdev/trigger.dev/pull/3114))
+- Add `get_span_details` MCP tool for inspecting individual spans within a run trace. ([#3255](https://github.com/triggerdotdev/trigger.dev/pull/3255))
+
+  - New `get_span_details` tool returns full span attributes, timing, events, and AI enrichment (model, tokens, cost, speed)
+  - Span IDs now shown in `get_run_details` trace output for easy discovery
+  - New API endpoint `GET /api/v1/runs/:runId/spans/:spanId`
+  - New `retrieveSpan()` method on the API client
+
+- MCP server improvements: new tools, bug fixes, and new flags. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
+
+  **New tools:**
+
+  - `get_query_schema` — discover available TRQL tables and columns
+  - `query` — execute TRQL queries against your data
+  - `list_dashboards` — list built-in dashboards and their widgets
+  - `run_dashboard_query` — execute a single dashboard widget query
+  - `whoami` — show current profile, user, and API URL
+  - `list_profiles` — list all configured CLI profiles
+  - `switch_profile` — switch active profile for the MCP session
+  - `start_dev_server` — start `trigger dev` in the background and stream output
+  - `stop_dev_server` — stop the running dev server
+  - `dev_server_status` — check dev server status and view recent logs
+
+  **New API endpoints:**
+
+  - `GET /api/v1/query/schema` — query table schema discovery
+  - `GET /api/v1/query/dashboards` — list built-in dashboards
+
+  **New features:**
+
+  - `--readonly` flag hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes
+  - `read:query` JWT scope for query endpoint authorization
+  - `get_run_details` trace output is now paginated with cursor support
+  - MCP tool annotations (`readOnlyHint`, `destructiveHint`) for all tools
+
+  **Bug fixes:**
+
+  - Fixed `search_docs` tool failing due to renamed upstream Mintlify tool (`SearchTriggerDev` → `search_trigger_dev`)
+  - Fixed `list_deploys` failing when deployments have null `runtime`/`runtimeVersion` fields (#3139)
+  - Fixed `list_preview_branches` crashing due to incorrect response shape access
+  - Fixed `metrics` table column documented as `value` instead of `metric_value` in query docs
+  - Fixed dev CLI leaking build directories on rebuild — deprecated workers now clean up their build dirs when their last run completes
+
+  **Context optimizations:**
+
+  - `get_query_schema` now requires a table name and returns only one table's schema (was returning all tables)
+  - `get_current_worker` no longer inlines payload schemas; use new `get_task_schema` tool instead
+  - Query results formatted as text tables instead of JSON (~50% fewer tokens)
+  - `cancel_run`, `list_deploys`, `list_preview_branches` formatted as text instead of raw JSON
+  - Schema and dashboard API responses cached to avoid redundant fetches
+
+- Add support for setting TTL (time-to-live) defaults at the task level and globally in trigger.config.ts, with per-trigger overrides still taking precedence ([#3196](https://github.com/triggerdotdev/trigger.dev/pull/3196))
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+  - `@trigger.dev/build@4.4.4`
+  - `@trigger.dev/schema-to-json@4.4.4`
+
+## 4.4.3
+
+### Patch Changes
+
+- Auto-cancel in-flight dev runs when the CLI exits, using a detached watchdog process that survives pnpm SIGKILL ([#3191](https://github.com/triggerdotdev/trigger.dev/pull/3191))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+  - `@trigger.dev/build@4.4.3`
+  - `@trigger.dev/schema-to-json@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.4.2`
+  - `@trigger.dev/core@4.4.2`
+  - `@trigger.dev/schema-to-json@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Add OTEL metrics pipeline for task workers. Workers collect process CPU/memory, Node.js runtime metrics (event loop utilization, event loop delay, heap usage), and user-defined custom metrics via `otel.metrics.getMeter()`. Metrics are exported to ClickHouse with 10-second aggregation buckets and 1m/5m rollups, and are queryable through the dashboard query engine with typed attribute columns, `prettyFormat()` for human-readable values, and AI query support. ([#3061](https://github.com/triggerdotdev/trigger.dev/pull/3061))
+- Updated dependencies:
+  - `@trigger.dev/build@4.4.1`
+  - `@trigger.dev/core@4.4.1`
+  - `@trigger.dev/schema-to-json@4.4.1`
+
+## 4.4.0
+
+### Patch Changes
+
+- Fix runner getting stuck indefinitely when `execute()` is called on a dead child process. ([#2978](https://github.com/triggerdotdev/trigger.dev/pull/2978))
+- Add optional `timeoutInSeconds` parameter to the `wait_for_run_to_complete` MCP tool. Defaults to 60 seconds. If the run doesn't complete within the timeout, the current state of the run is returned instead of waiting indefinitely. ([#3035](https://github.com/triggerdotdev/trigger.dev/pull/3035))
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+  - `@trigger.dev/build@4.4.0`
+  - `@trigger.dev/schema-to-json@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+  - `@trigger.dev/build@4.3.3`
+  - `@trigger.dev/schema-to-json@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- fix(cli): update command should preserve existing package.json order ([#2810](https://github.com/triggerdotdev/trigger.dev/pull/2810))
+- Updated dependencies:
+  - `@trigger.dev/build@4.3.2`
+  - `@trigger.dev/core@4.3.2`
+  - `@trigger.dev/schema-to-json@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+  - `@trigger.dev/build@4.3.1`
+  - `@trigger.dev/schema-to-json@4.3.1`
+
+## 4.3.0
+
+### Minor Changes
+
+- feat(cli): deterministic image builds for deployments ([#2778](https://github.com/triggerdotdev/trigger.dev/pull/2778))
+- feat(cli): enable zstd compression for deployment images ([#2773](https://github.com/triggerdotdev/trigger.dev/pull/2773))
+
+### Patch Changes
+
+- The new `triggeredVia` field is now populated in deployments via the CLI. ([#2767](https://github.com/triggerdotdev/trigger.dev/pull/2767))
+- fix(dev): stop max listeners exceeded warning messages when running more than 10 runs concurrently ([#2771](https://github.com/triggerdotdev/trigger.dev/pull/2771))
+- Upgrade @modelcontextprotocol/sdk to 1.24.3 ([#2768](https://github.com/triggerdotdev/trigger.dev/pull/2768))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+  - `@trigger.dev/build@4.3.0`
+  - `@trigger.dev/schema-to-json@4.3.0`
+
+## 4.2.0
+
+### Minor Changes
+
+- feat(cli): upgrade bun deployments to v1.3.3 ([#2756](https://github.com/triggerdotdev/trigger.dev/pull/2756))
+
+### Patch Changes
+
+- fix(otel): exported logs and spans will now have matching trace IDs ([#2724](https://github.com/triggerdotdev/trigger.dev/pull/2724))
+- The `--force-local-build` flag is now renamed to just `--local-build` ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- fix(cli): header will always print the correct profile ([#2728](https://github.com/triggerdotdev/trigger.dev/pull/2728))
+- feat: add ability to set custom resource properties through trigger.config.ts or via the OTEL_RESOURCE_ATTRIBUTES env var ([#2704](https://github.com/triggerdotdev/trigger.dev/pull/2704))
+- feat(cli): implements content-addressable store for the dev CLI build outputs, reducing disk usage ([#2725](https://github.com/triggerdotdev/trigger.dev/pull/2725))
+- Added support for native build server builds in the deploy command (`--native-build-server`) ([#2702](https://github.com/triggerdotdev/trigger.dev/pull/2702))
+- Updated dependencies:
+  - `@trigger.dev/build@4.2.0`
+  - `@trigger.dev/core@4.2.0`
+  - `@trigger.dev/schema-to-json@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- - dev runs will no longer get stuck in DEQUEUED status ([#2699](https://github.com/triggerdotdev/trigger.dev/pull/2699))
+  - prevent an ENOENT "System failure" in some dev runs when making the first change after running the dev CLI.
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.2`
+  - `@trigger.dev/core@4.1.2`
+  - `@trigger.dev/schema-to-json@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.1`
+  - `@trigger.dev/core@4.1.1`
+  - `@trigger.dev/schema-to-json@4.1.1`
+
+## 4.1.0
+
+### Patch Changes
+
+- Added external cache support for local image builds ([#2682](https://github.com/triggerdotdev/trigger.dev/pull/2682))
+- Updated dependencies:
+  - `@trigger.dev/build@4.1.0`
+  - `@trigger.dev/core@4.1.0`
+  - `@trigger.dev/schema-to-json@4.1.0`
+
+## 4.0.7
+
+### Patch Changes
+
+- Fix for the MCP tool that gets run logs to help debugging ([#2653](https://github.com/triggerdotdev/trigger.dev/pull/2653))
+- Updated dependencies:
+  - `@trigger.dev/build@4.0.7`
+  - `@trigger.dev/core@4.0.7`
+  - `@trigger.dev/schema-to-json@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Added a hint about the `--force-local-build` flag on failed deployments due to upstream provider outages. ([#2646](https://github.com/triggerdotdev/trigger.dev/pull/2646))
+- Fixed misleading error message in the CLI when config file is missing ("maxDuration" is now required). A useful error message is now shown, including a hint about the `--config` flag. ([#2650](https://github.com/triggerdotdev/trigger.dev/pull/2650))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+  - `@trigger.dev/build@4.0.6`
+  - `@trigger.dev/schema-to-json@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Stop failing attempt spans when a run is cancelled ([#2530](https://github.com/triggerdotdev/trigger.dev/pull/2530))
+- Move max duration handling into the parent process ([#2637](https://github.com/triggerdotdev/trigger.dev/pull/2637))
+- Added INSTALLING status to the deployment status enum. ([#2544](https://github.com/triggerdotdev/trigger.dev/pull/2544))
+- Fix SIGTERM handling during warm start long poll ([#2593](https://github.com/triggerdotdev/trigger.dev/pull/2593))
+- Added support for deployments with local builds. ([#2628](https://github.com/triggerdotdev/trigger.dev/pull/2628))
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+  - `@trigger.dev/build@4.0.5`
+  - `@trigger.dev/schema-to-json@4.0.5`
+
 ## 4.0.4
 
 ### Patch Changes

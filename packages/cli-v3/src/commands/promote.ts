@@ -49,7 +49,7 @@ export function configurePromoteCommand(program: Command) {
       )
   ).action(async (version, options) => {
     await handleTelemetry(async () => {
-      await printStandloneInitialBanner(true);
+      await printStandloneInitialBanner(true, options.profile);
       await promoteCommand(version, options);
     });
   });

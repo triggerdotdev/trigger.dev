@@ -9,6 +9,23 @@ import { signalsEmitter } from "./services/signals.server";
 
 const THRESHOLD_NS = env.EVENT_LOOP_MONITOR_THRESHOLD_MS * 1e6;
 
+// ANSI color codes for terminal output
+const RED = "\x1b[31m";
+const YELLOW = "\x1b[33m";
+const RESET = "\x1b[0m";
+
+function notifyEventLoopBlocked(timeMs: number, asyncType: string): void {
+  if (env.EVENT_LOOP_MONITOR_NOTIFY_ENABLED !== "1") {
+    return;
+  }
+
+  console.warn(
+    `${RED}⚠️  Event loop blocked${RESET} for ${YELLOW}${timeMs.toFixed(
+      1
+    )}ms${RESET} (${asyncType})`
+  );
+}
+
 const cache = new Map<number, { type: string; start?: [number, number]; parentCtx?: Context }>();
 
 function init(asyncId: number, type: string, triggerAsyncId: number, resource: any) {
@@ -66,6 +83,8 @@ function after(asyncId: number) {
     );
 
     newSpan.end();
+
+    notifyEventLoopBlocked(time, cached.type);
   }
 }
 

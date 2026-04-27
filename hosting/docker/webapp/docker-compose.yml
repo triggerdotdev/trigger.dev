@@ -28,7 +28,13 @@ services:
     # Only needed for bootstrap
     command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
     healthcheck:
-      test: ["CMD", "node", "-e", "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -120,7 +126,7 @@ services:
       start_period: 10s
 
   electric:
-    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.0.24}
+    image: electricsql/electric:${ELECTRIC_IMAGE_TAG:-1.2.4}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     depends_on:
@@ -154,7 +160,21 @@ services:
     networks:
       - webapp
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--host", "localhost", "--port", "9000", "--user", "${CLICKHOUSE_USER:-default}", "--password", "${CLICKHOUSE_PASSWORD:-password}", "--query", "SELECT 1"]
+      test:
+        [
+          "CMD",
+          "clickhouse-client",
+          "--host",
+          "localhost",
+          "--port",
+          "9000",
+          "--user",
+          "${CLICKHOUSE_USER:-default}",
+          "--password",
+          "${CLICKHOUSE_PASSWORD:-password}",
+          "--query",
+          "SELECT 1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5

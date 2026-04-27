@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import {
   authenticateRequest,
   authenticatedEnvironmentForAuthentication,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import zlib from "node:zlib";
 
@@ -29,7 +30,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const environment = await authenticatedEnvironmentForAuthentication(
     authenticationResult,
     parsedParams.data.projectRef,
-    parsedParams.data.envSlug
+    parsedParams.data.envSlug,
+    branchNameFromRequest(request)
   );
 
   // Find the background worker and tasks and files

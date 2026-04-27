@@ -1,0 +1,28 @@
+diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
+index acb542b1b71a7e808173d938d16f45a484334f94..dc9289461b761f8f0d5c72919f48f94e394addfd 100644
+--- a/dist/commonjs/index.js
++++ b/dist/commonjs/index.js
+@@ -107,6 +107,9 @@ function prepareSnapshot(snapshot) {
+             if (item.max && item.max !== "1fr") {
+                 item.max.value = new big_js_1.default(item.max.value);
+             }
++            if (item.default && typeof item.default === "object" && item.default.value !== undefined) {
++                item.default.value = new big_js_1.default(item.default.value);
++            }
+         }
+         else {
+             item.size.value = new big_js_1.default(item.size.value);
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 8891ac0141135a3a885bd704d9d443458c7a01bf..34cd7251f2298e7f9bfedfe4cadb797aa790b59a 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -81,6 +81,9 @@ export function prepareSnapshot(snapshot) {
+             if (item.max && item.max !== "1fr") {
+                 item.max.value = new Big(item.max.value);
+             }
++            if (item.default && typeof item.default === "object" && item.default.value !== undefined) {
++                item.default.value = new Big(item.default.value);
++            }
+         }
+         else {
+             item.size.value = new Big(item.size.value);

@@ -1,30 +1,90 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
+export type { ClickHouseSettings };
 import { ClickhouseClient } from "./client/client.js";
 import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import {
-  insertTaskRuns,
-  insertRawTaskRunPayloads,
+  insertTaskRunsCompactArrays,
+  insertRawTaskRunPayloadsCompactArrays,
   getTaskRunsQueryBuilder,
   getTaskActivityQueryBuilder,
   getCurrentRunningStats,
   getAverageDurations,
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
+  getTaskRunTagsQueryBuilder,
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
+  getSpanDetailsQueryBuilderV2,
   getTraceDetailedSummaryQueryBuilder,
+  getTraceDetailedSummaryQueryBuilderV2,
   getTraceSummaryQueryBuilder,
+  getTraceSummaryQueryBuilderV2,
   insertTaskEvents,
+  insertTaskEventsV2,
+  getLogDetailQueryBuilderV2,
+  getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { insertMetrics } from "./metrics.js";
+import { insertLlmMetrics } from "./llmMetrics.js";
+import {
+  getGlobalModelMetrics,
+  getGlobalModelComparison,
+  getPopularModels,
+} from "./llmModelAggregates.js";
+import {
+  getErrorGroups,
+  getErrorInstances,
+  getErrorGroupsListQueryBuilder,
+  getErrorHourlyOccurrences,
+  getErrorOccurrencesListQueryBuilder,
+  createErrorOccurrencesQueryBuilder,
+  createErrorOccurrencesByVersionQueryBuilder,
+  getErrorAffectedVersionsQueryBuilder,
+  getOccurrenceCountSinceQueryBuilder,
+  getActiveErrorsSinceQueryBuilder,
+  getOccurrenceCountsSinceQueryBuilder,
+} from "./errors.js";
+export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export type * from "./metrics.js";
+export type * from "./llmMetrics.js";
+export type * from "./llmModelAggregates.js";
+export type * from "./errors.js";
 export type * from "./client/queryBuilder.js";
+
+// Re-export column constants, indices, and type-safe accessors
+export {
+  TASK_RUN_COLUMNS,
+  TASK_RUN_INDEX,
+  PAYLOAD_COLUMNS,
+  PAYLOAD_INDEX,
+  getTaskRunField,
+  getPayloadField,
+} from "./taskRuns.js";
+
+// TSQL query execution
+export {
+  executeTSQL,
+  createTSQLExecutor,
+  type ExecuteTSQLOptions,
+  type TableSchema,
+  type TSQLQueryResult,
+  type TSQLQuerySuccess,
+  type QueryStats,
+  type FieldMappings,
+  type WhereClauseCondition,
+} from "./client/tsql.js";
+export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
+
+// Errors
+export { QueryError } from "./client/errors.js";
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -150,10 +210,11 @@ export class ClickHouse {
 
   get taskRuns() {
     return {
-      insert: insertTaskRuns(this.writer),
-      insertPayloads: insertRawTaskRunPayloads(this.writer),
+      insertCompactArrays: insertTaskRunsCompactArrays(this.writer),
+      insertPayloadsCompactArrays: insertRawTaskRunPayloadsCompactArrays(this.writer),
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
+      tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
@@ -167,6 +228,60 @@ export class ClickHouse {
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
+    };
+  }
+
+  get metrics() {
+    return {
+      insert: insertMetrics(this.writer),
+    };
+  }
+
+  get llmMetrics() {
+    return {
+      insert: insertLlmMetrics(this.writer),
+    };
+  }
+
+  get llmModelAggregates() {
+    return {
+      globalMetrics: getGlobalModelMetrics(this.reader),
+      comparison: getGlobalModelComparison(this.reader),
+      popular: getPopularModels(this.reader),
+    };
+  }
+
+  get taskEventsV2() {
+    return {
+      insert: insertTaskEventsV2(this.writer),
+      traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
+      traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
+      spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
+      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader),
+    };
+  }
+
+  get taskEventsSearch() {
+    return {
+      logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+    };
+  }
+
+  get errors() {
+    return {
+      getGroups: getErrorGroups(this.reader),
+      getInstances: getErrorInstances(this.reader),
+      getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
+      affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
+      listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
+      occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
+      createOccurrencesQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
+      createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
+      occurrenceCountSinceQueryBuilder: getOccurrenceCountSinceQueryBuilder(this.reader),
+      activeErrorsSinceQueryBuilder: getActiveErrorsSinceQueryBuilder(this.reader),
+      occurrenceCountsSinceQueryBuilder: getOccurrenceCountsSinceQueryBuilder(this.reader),
     };
   }
 }

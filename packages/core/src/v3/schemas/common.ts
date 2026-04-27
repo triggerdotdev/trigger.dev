@@ -187,6 +187,9 @@ export const TaskRunInternalError = z.object({
     "OUTDATED_SDK_VERSION",
     "TASK_DID_CONCURRENT_WAIT",
     "RECURSIVE_WAIT_DEADLOCK",
+    "BATCH_ITEM_COULD_NOT_TRIGGER",
+    "PAYLOAD_TOO_LARGE",
+    "UNSPECIFIED_ERROR",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -214,7 +217,10 @@ export const TaskRun = z.object({
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
+  /** The user-provided idempotency key (not the hash) */
   idempotencyKey: z.string().optional(),
+  /** The scope of the idempotency key */
+  idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
@@ -339,6 +345,7 @@ export const TaskRunExecution = z.object({
   run: TaskRun.and(
     z.object({
       traceContext: z.record(z.unknown()).optional(),
+      realtimeStreamsVersion: z.string().optional(),
     })
   ),
   ...StaticTaskRunExecutionShape,
@@ -373,7 +380,10 @@ export const V3TaskRun = z.object({
   isTest: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
+  /** The user-provided idempotency key (not the hash) */
   idempotencyKey: z.string().optional(),
+  /** The scope of the idempotency key */
+  idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
   metadata: z.record(DeserializedJsonSchema).optional(),
@@ -528,13 +538,13 @@ export type WaitpointTokenResult = z.infer<typeof WaitpointTokenResult>;
 
 export type WaitpointTokenTypedResult<T> =
   | {
-      ok: true;
-      output: T;
-    }
+    ok: true;
+    output: T;
+  }
   | {
-      ok: false;
-      error: Error;
-    };
+    ok: false;
+    error: Error;
+  };
 
 export const SerializedError = z.object({
   message: z.string(),

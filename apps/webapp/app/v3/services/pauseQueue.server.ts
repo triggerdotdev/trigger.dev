@@ -88,6 +88,9 @@ export class PauseQueueService extends BaseService {
           running: results[1]?.[updatedQueue.name] ?? 0,
           queued: results[0]?.[updatedQueue.name] ?? 0,
           concurrencyLimit: updatedQueue.concurrencyLimit ?? null,
+          concurrencyLimitBase: updatedQueue.concurrencyLimitBase ?? null,
+          concurrencyLimitOverriddenAt: updatedQueue.concurrencyLimitOverriddenAt ?? null,
+          concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
           paused: updatedQueue.paused,
         }),
       };

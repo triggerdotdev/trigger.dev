@@ -15,6 +15,7 @@ import { remoteBuildsEnabled } from "../remoteImageBuilder.server";
 import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
+import { ComputeTemplateCreationService } from "./computeTemplateCreation.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -23,12 +24,6 @@ export class FinalizeDeploymentV2Service extends BaseService {
     body: FinalizeDeploymentRequestBody,
     writer?: WritableStreamDefaultWriter
   ) {
-    // If remote builds are not enabled, lets just use the v1 finalize deployment service
-    if (!remoteBuildsEnabled()) {
-      const finalizeService = new FinalizeDeploymentService();
-      return finalizeService.call(authenticatedEnv, id, body);
-    }
-
     const deployment = await this._prisma.workerDeployment.findFirst({
       where: {
         friendlyId: id,
@@ -62,13 +57,26 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     if (deployment.status === "DEPLOYED") {
       logger.debug("Worker deployment is already deployed", { id });
-
       return deployment;
     }
 
     if (deployment.status !== "DEPLOYING") {
       logger.error("Worker deployment is not in DEPLOYING status", { id });
       throw new ServiceValidationError("Worker deployment is not in DEPLOYING status");
+    }
+
+    const finalizeService = new FinalizeDeploymentService();
+
+    // If remote builds are not enabled, skip image push and go straight to template + finalize
+    if (!remoteBuildsEnabled() || body.skipPushToRegistry) {
+      if (body.skipPushToRegistry) {
+        logger.debug("Skipping push to registry during deployment finalization", {
+          deployment,
+        });
+      }
+
+      await this.#createTemplateIfNeeded(deployment, id, authenticatedEnv, writer);
+      return finalizeService.call(authenticatedEnv, id, body);
     }
 
     const externalBuildData = deployment.externalBuildData
@@ -134,10 +142,29 @@ export class FinalizeDeploymentV2Service extends BaseService {
       pushedImage: pushResult.image,
     });
 
-    const finalizeService = new FinalizeDeploymentService();
-    const finalizedDeployment = await finalizeService.call(authenticatedEnv, id, body);
+    await this.#createTemplateIfNeeded(deployment, id, authenticatedEnv, writer);
+    return finalizeService.call(authenticatedEnv, id, body);
+  }
 
-    return finalizedDeployment;
+  async #createTemplateIfNeeded(
+    deployment: { imageReference: string | null; worker: { project: { id: string } } | null },
+    deploymentFriendlyId: string,
+    authenticatedEnv: AuthenticatedEnvironment,
+    writer?: WritableStreamDefaultWriter
+  ): Promise<void> {
+    if (!deployment.imageReference || !deployment.worker) {
+      return;
+    }
+
+    const templateService = new ComputeTemplateCreationService();
+    await templateService.handleDeployTemplate({
+      projectId: deployment.worker.project.id,
+      imageReference: deployment.imageReference,
+      deploymentFriendlyId,
+      authenticatedEnv,
+      prisma: this._prisma,
+      writer,
+    });
   }
 }
 

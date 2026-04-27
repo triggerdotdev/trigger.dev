@@ -21,12 +21,13 @@ type Variant = keyof typeof variants;
 
 type AppliedFilterProps = {
   icon?: ReactNode;
-  label: ReactNode;
+  label?: ReactNode;
   value: ReactNode;
   removable?: boolean;
   onRemove?: () => void;
   variant?: Variant;
   className?: string;
+  valueClassName?: string;
 };
 
 export function AppliedFilter({
@@ -37,6 +38,7 @@ export function AppliedFilter({
   onRemove,
   variant = "secondary/small",
   className,
+  valueClassName,
 }: AppliedFilterProps) {
   const variantClassName = variants[variant];
   return (
@@ -48,14 +50,18 @@ export function AppliedFilter({
         className
       )}
     >
-      <div className="flex items-start gap-0.5 leading-4">
-        <div className="-mt-[0.5px] flex items-center gap-1">
+      <div
+        className={cn("flex items-start leading-4", label === undefined ? "gap-1.5" : "gap-0.5")}
+      >
+        <div className="-mt-[0.5px] flex items-center gap-1.5">
           {icon}
-          <div className="text-text-bright">
-            <span>{label}</span>:
-          </div>
+          {label && (
+            <div className="text-text-bright">
+              <span>{label}</span>:
+            </div>
+          )}
         </div>
-        <div className="text-text-dimmed">
+        <div className={cn("text-text-dimmed", valueClassName)}>
           <div>{value}</div>
         </div>
       </div>

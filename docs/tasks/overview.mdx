@@ -64,7 +64,7 @@ Anything you return from the `run` function will be the result of the task. Data
 
 ### `retry` options
 
-A task is retried if an error is thrown, by default we retry 3 times.
+A task is retried if an error is thrown. By default, we retry 3 times.
 
 You can set the number of retries and the delay between retries in the `retry` field:
 
@@ -83,6 +83,16 @@ export const taskWithRetries = task({
   },
 });
 ```
+
+| Option | What it does |
+|---|---|
+| `maxAttempts` | Total number of attempts (including the first). Default: 3 |
+| `factor` | Exponential backoff multiplier. Each retry delay = previous delay x factor. With `factor: 1.8` and `minTimeoutInMs: 500`, retries wait 500ms, 900ms, 1620ms, etc. |
+| `minTimeoutInMs` | Delay before the first retry |
+| `maxTimeoutInMs` | Cap on the delay between retries |
+| `randomize` | Add jitter to retry delays to prevent multiple failing tasks from retrying in lockstep |
+
+<Note>Task-level retry settings override the defaults in your `trigger.config` file.</Note>
 
 For more information read [the retrying guide](/errors-retrying).
 
@@ -136,16 +146,32 @@ export const longTask = task({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+### `ttl` option
+
+You can set a default time-to-live (TTL) on a task. If a run is not dequeued within this time, it will expire and never execute. This is useful for time-sensitive tasks where stale runs should be discarded.
+
+```ts /trigger/time-sensitive-task.ts
+export const timeSensitiveTask = task({
+  id: "time-sensitive-task",
+  ttl: "10m", // Also accepts a number of seconds, e.g. 600
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can override this per-trigger by passing `ttl` in the trigger options, or set a project-wide default in your [trigger.config.ts](/config/config-file#ttl). Set `ttl: 0` to opt out of a config-level TTL. See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
+
 ## Global lifecycle hooks
 
 <Note>When specifying global lifecycle hooks, we recommend using the `init.ts` file.</Note>
 
 You can register global lifecycle hooks that are executed for all runs, regardless of the task. While you can still define these in the `trigger.config.ts` file, you can also register them anywhere in your codebase:
 
-```ts
+```typescript
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
+tasks.onStartAttempt(({ ctx, payload, task }) => {
   console.log("Run started", ctx.run);
 });
 
@@ -160,12 +186,12 @@ tasks.onFailure(({ ctx, error }) => {
 
 ### `init.ts`
 
-If you create a `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful if you want to register global lifecycle hooks, or initialize a database connection, etc.
+If you create an `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful for registering global lifecycle hooks, initializing a database connection, etc.
 
 ```ts init.ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
+tasks.onStartAttempt(({ ctx, payload, task }) => {
   console.log("Run started", ctx.run);
 });
 ```
@@ -174,63 +200,14 @@ tasks.onStart(({ ctx, payload, task }) => {
 
 ![Lifecycle functions](/images/lifecycle-functions.png)
 
-### `init` function
-
-This function is called before a run attempt:
-
-```ts /trigger/init.ts
-export const taskWithInit = task({
-  id: "task-with-init",
-  init: async ({ payload, ctx }) => {
-    //...
-  },
-  run: async (payload: any, { ctx }) => {
-    //...
-  },
-});
-```
-
-You can also return data from the `init` function that will be available in the params of the `run`, `cleanup`, `onSuccess`, and `onFailure` functions.
-
-```ts /trigger/init-return.ts
-export const taskWithInitReturn = task({
-  id: "task-with-init-return",
-  init: async ({ payload, ctx }) => {
-    return { someData: "someValue" };
-  },
-  run: async (payload: any, { ctx, init }) => {
-    console.log(init.someData); // "someValue"
-  },
-});
-```
-
-<Info>Errors thrown in the `init` function are ignored.</Info>
-
-### `cleanup` function
-
-This function is called after the `run` function is executed, regardless of whether the run was successful or not. It's useful for cleaning up resources, logging, or other side effects.
-
-```ts /trigger/cleanup.ts
-export const taskWithCleanup = task({
-  id: "task-with-cleanup",
-  cleanup: async ({ payload, ctx }) => {
-    //...
-  },
-  run: async (payload: any, { ctx }) => {
-    //...
-  },
-});
-```
-
-<Info>Errors thrown in the `cleanup` function will fail the attempt.</Info>
-
 ### `middleware` and `locals` functions
 
 Our task middleware system runs at the top level, executing before and after all lifecycle hooks. This allows you to wrap the entire task execution lifecycle with custom logic.
 
 <Info>
   An error thrown in `middleware` is just like an uncaught error in the run function: it will
-  propagate through to `catchError()` function and then will fail the attempt (causing a retry).
+  propagate through to `catchError()` function and then will fail the attempt (either causing a
+  retry or failing the run).
 </Info>
 
 The `locals` API allows you to share data between middleware and hooks.
@@ -285,7 +262,7 @@ tasks.onResume("db", async ({ ctx, payload, task }) => {
 
 You can access the database client using `getDb()` in your tasks `run` function and all your hooks (global or task specific):
 
-```ts
+```typescript
 import { getDb } from "./db";
 
 export const myTask = task({
@@ -296,14 +273,38 @@ export const myTask = task({
 });
 ```
 
-### `onStart` function
+#### Per-task middleware
 
-When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects. This function will only be called one per run (not per retry). If you want to run code before each retry, use the `init` function.
+You can also define middleware per task by passing the `middleware` option in the task definition. This runs after global middleware and before the `run` function. Use it when only specific tasks need certain locals or setup:
+
+```typescript
+import { task, locals } from "@trigger.dev/sdk";
+
+const myLocal = locals.create<string>("myLocal");
+
+export const myTask = task({
+  id: "my-task",
+  middleware: async ({ payload, ctx, next }) => {
+    locals.set(myLocal, "some-value");
+    await next();
+  },
+  run: async (payload) => {
+    const value = locals.getOrThrow(myLocal);
+    // ...
+  },
+});
+```
+
+### `onStartAttempt` function
+
+<Info>The `onStartAttempt` function was introduced in v4.1.0</Info>
+
+Before a task run attempt starts, the `onStartAttempt` function is called. It's useful for sending notifications, logging, and other side effects.
 
 ```ts /trigger/on-start.ts
-export const taskWithOnStart = task({
-  id: "task-with-on-start",
-  onStart: async ({ payload, ctx }) => {
+export const taskWithOnStartAttempt = task({
+  id: "task-with-on-start-attempt",
+  onStartAttempt: async ({ payload, ctx }) => {
     //...
   },
   run: async (payload: any, { ctx }) => {
@@ -312,26 +313,39 @@ export const taskWithOnStart = task({
 });
 ```
 
-You can also define an `onStart` function in your `trigger.config.ts` file to get notified when any task starts.
+You can also define a global `onStartAttempt` function using `tasks.onStartAttempt()`.
 
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk";
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
 
-export default defineConfig({
-  project: "proj_1234",
-  onStart: async ({ payload, ctx }) => {
-    console.log("Task started", ctx.task.id);
-  },
+tasks.onStartAttempt(({ ctx, payload, task }) => {
+  console.log(
+    `Run ${ctx.run.id} started on task ${task} attempt ${ctx.run.attempt.number}`,
+    ctx.run
+  );
 });
 ```
 
-<Info>Errors thrown in the `onStart` function are ignored.</Info>
+<Info>Errors thrown in the `onStartAttempt` function will cause the attempt to fail.</Info>
+
+If you want to execute code before just the first attempt, you can use the `onStartAttempt` function and check `ctx.run.attempt.number === 1`:
+
+```ts /trigger/on-start-attempt.ts
+export const taskWithOnStartAttempt = task({
+  id: "task-with-on-start-attempt",
+  onStartAttempt: async ({ payload, ctx }) => {
+    if (ctx.run.attempt.number === 1) {
+      console.log("Run started on attempt 1", ctx.run);
+    }
+  },
+});
+```
 
 ### `onWait` and `onResume` functions
 
 These lifecycle hooks allow you to run code when a run is paused or resumed because of a wait:
 
-```ts
+```typescript
 export const myTask = task({
   id: "my-task",
   onWait: async ({ wait }) => {
@@ -347,6 +361,20 @@ export const myTask = task({
 
     console.log("Run finished", ctx.run);
   },
+});
+```
+
+You can also define global `onWait` and `onResume` functions using `tasks.onWait()` and `tasks.onResume()`:
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onWait(({ ctx, payload, wait, task }) => {
+  console.log("Run paused", ctx.run, wait);
+});
+
+tasks.onResume(({ ctx, payload, wait, task }) => {
+  console.log("Run resumed", ctx.run, wait);
 });
 ```
 
@@ -366,20 +394,20 @@ export const taskWithOnSuccess = task({
 });
 ```
 
-You can also define an `onSuccess` function in your `trigger.config.ts` file to get notified when any task succeeds.
+You can also define a global `onSuccess` function using `tasks.onSuccess()`.
 
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk";
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
 
-export default defineConfig({
-  project: "proj_1234",
-  onSuccess: async ({ payload, output, ctx }) => {
-    console.log("Task succeeded", ctx.task.id);
-  },
+tasks.onSuccess(({ ctx, payload, output }) => {
+  console.log("Task succeeded", ctx.task.id);
 });
 ```
 
-<Info>Errors thrown in the `onSuccess` function are ignored.</Info>
+<Info>
+  Errors thrown in the `onSuccess` function will be ignored, but you will still be able to see them
+  in the dashboard.
+</Info>
 
 ### `onComplete` function
 
@@ -397,6 +425,21 @@ export const taskWithOnComplete = task({
 });
 ```
 
+You can also define a global `onComplete` function using `tasks.onComplete()`.
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onComplete(({ ctx, payload, output }) => {
+  console.log("Task completed", ctx.task.id);
+});
+```
+
+<Info>
+  Errors thrown in the `onComplete` function will be ignored, but you will still be able to see them
+  in the dashboard.
+</Info>
+
 ### `onFailure` function
 
 When a task run fails, the `onFailure` function is called. It's useful for sending notifications, logging, or other side effects. It will only be executed once the task run has exhausted all its retries.
@@ -413,20 +456,20 @@ export const taskWithOnFailure = task({
 });
 ```
 
-You can also define an `onFailure` function in your `trigger.config.ts` file to get notified when any task fails.
+You can also define a global `onFailure` function using `tasks.onFailure()`.
 
-```ts trigger.config.ts
-import { defineConfig } from "@trigger.dev/sdk";
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
 
-export default defineConfig({
-  project: "proj_1234",
-  onFailure: async ({ payload, error, ctx }) => {
-    console.log("Task failed", ctx.task.id);
-  },
+tasks.onFailure(({ ctx, payload, error }) => {
+  console.log("Task failed", ctx.task.id);
 });
 ```
 
-<Info>Errors thrown in the `onFailure` function are ignored.</Info>
+<Info>
+  Errors thrown in the `onFailure` function will be ignored, but you will still be able to see them
+  in the dashboard.
+</Info>
 
 <Note>
   `onFailure` doesn’t fire for some of the run statuses like `Crashed`, `System failures`, and
@@ -441,11 +484,11 @@ Read more about `catchError` in our [Errors and Retrying guide](/errors-retrying
 
 <Info>Uncaught errors will throw a special internal error of the type `HANDLE_ERROR_ERROR`.</Info>
 
-### onCancel
+### `onCancel` function
 
 You can define an `onCancel` hook that is called when a run is cancelled. This is useful if you want to clean up any resources that were allocated for the run.
 
-```ts
+```typescript
 tasks.onCancel(({ ctx, signal }) => {
   console.log("Run cancelled", signal);
 });
@@ -453,7 +496,7 @@ tasks.onCancel(({ ctx, signal }) => {
 
 You can use the `onCancel` hook along with the `signal` passed into the run function to interrupt a call to an external service, for example using the [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) function from the AI SDK:
 
-```ts
+```typescript
 import { logger, tasks, schemaTask } from "@trigger.dev/sdk";
 import { streamText } from "ai";
 import { z } from "zod";
@@ -507,7 +550,7 @@ export const interruptibleChat = schemaTask({
 
 The `onCancel` hook can optionally wait for the `run` function to finish, and access the output of the run:
 
-```ts
+```typescript
 import { logger, task } from "@trigger.dev/sdk";
 import { setTimeout } from "node:timers/promises";
 
@@ -539,6 +582,108 @@ export const cancelExampleTask = task({
   You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
   point the process will be killed.
 </Note>
+
+<Warning>
+  `onCancel` only runs if the run is actively executing. If a run is cancelled while queued or
+  suspended (e.g. waiting for a token), no machine is spun up and `onCancel` will not be called.
+  This is a known limitation we're planning to address. Follow the progress on our [feedback
+  board](https://feedback.trigger.dev/p/call-the-onfailure-hook-for-runs-that-were-canceled-expired).
+</Warning>
+
+### `onStart` function (deprecated)
+
+<Info>The `onStart` function was deprecated in v4.1.0. Use `onStartAttempt` instead.</Info>
+
+When a task run starts, the `onStart` function is called. It's useful for sending notifications, logging, and other side effects.
+
+<Warning>
+  This function will only be called once per run (not per attempt). If you want to run code before
+  each attempt, use a middleware function or the `onStartAttempt` function.
+</Warning>
+
+```ts /trigger/on-start.ts
+export const taskWithOnStart = task({
+  id: "task-with-on-start",
+  onStart: async ({ payload, ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also define a global `onStart` function using `tasks.onStart()`.
+
+```ts init.ts
+import { tasks } from "@trigger.dev/sdk";
+
+tasks.onStart(({ ctx, payload, task }) => {
+  console.log(`Run ${ctx.run.id} started on task ${task}`, ctx.run);
+});
+```
+
+<Info>Errors thrown in the `onStart` function will cause the attempt to fail.</Info>
+
+### `init` function (deprecated)
+
+<Warning>
+  The `init` hook is deprecated and will be removed in the future. Use
+  [middleware](/tasks/overview#middleware-and-locals-functions) instead.
+</Warning>
+
+This function is called before a run attempt:
+
+```ts /trigger/init.ts
+export const taskWithInit = task({
+  id: "task-with-init",
+  init: async ({ payload, ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can also return data from the `init` function that will be available in the params of the `run`, `cleanup`, `onSuccess`, and `onFailure` functions.
+
+```ts /trigger/init-return.ts
+export const taskWithInitReturn = task({
+  id: "task-with-init-return",
+  init: async ({ payload, ctx }) => {
+    return { someData: "someValue" };
+  },
+  run: async (payload: any, { ctx, init }) => {
+    console.log(init.someData); // "someValue"
+  },
+});
+```
+
+<Info>Errors thrown in the `init` function will cause the attempt to fail.</Info>
+
+### `cleanup` function (deprecated)
+
+<Warning>
+  The `cleanup` hook is deprecated and will be removed in the future. Use
+  [middleware](/tasks/overview#middleware-and-locals-functions) instead.
+</Warning>
+
+This function is called after the `run` function is executed, regardless of whether the run was successful or not. It's useful for cleaning up resources, logging, or other side effects.
+
+```ts /trigger/cleanup.ts
+export const taskWithCleanup = task({
+  id: "task-with-cleanup",
+  cleanup: async ({ payload, ctx }) => {
+    //...
+  },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+<Info>Errors thrown in the `cleanup` function will cause the attempt to fail.</Info>
 
 ## Next steps
 

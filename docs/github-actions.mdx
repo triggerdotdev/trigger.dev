@@ -5,6 +5,10 @@ description: "You can easily deploy your tasks with GitHub actions and other CI 
 
 The instructions below are specific to GitHub Actions, but the same concepts can be used with other CI systems.
 
+<Tip>
+  Check out our new [GitHub integration](/github-integration) for automatic deployments, without adding any GitHub Actions workflows.
+</Tip>
+
 ## GitHub Actions example
 
 This simple GitHub action workflow will deploy your Trigger.dev tasks when new code is pushed to the `main` branch and the `trigger` directory has changes in it.
@@ -79,6 +83,41 @@ jobs:
 
 If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
 
+## Preview branches
+
+To deploy to preview branches from Pull Requests and have them archived when PRs are merged or closed, use a workflow that runs on `pull_request` with **all four types** including `closed`:
+
+```yaml .github/workflows/trigger-preview-branches.yml
+name: Deploy to Trigger.dev (preview branches)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy preview branch
+        run: npx trigger.dev@latest deploy --env preview
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+```
+
+<Note>
+  **Include `closed`** in the `pull_request.types` list. Without it, preview branches won't be archived when PRs are merged or closed, and you may hit the limit on active preview branches. See [Preview branches](/deployment/preview-branches#preview-branches-with-github-actions-recommended) for more details.
+</Note>
+
 ## Creating a Personal Access Token
 
 <Steps>
@@ -130,16 +169,11 @@ You should use the version you run locally during dev and manual deploy. The cur
 
 ## Self-hosting
 
-When self-hosting, you will have to take a few additional steps:
+When self-hosting, you need to:
 
-- Specify the `TRIGGER_API_URL` environment variable. You can add it to the GitHub secrets the same way as the access token. This should point at your webapp domain, for example: `https://trigger.example.com`
-- Setup docker as you will need to build and push the image to your registry. On [Trigger.dev Cloud](https://cloud.trigger.dev) this is all done remotely.
+- Set up Docker Buildx in your CI environment for building images locally.
 - Add your registry credentials to the GitHub secrets.
-- Use the `--self-hosted` and `--push` flags when deploying.
-
-<Tip>If you're self-hosting v4, the `--self-hosted` and `--push` flags are **NOT** needed.</Tip>
-
-Other than that, your GitHub action file will look very similar to the one above:
+- Specify the `TRIGGER_API_URL` environment variable pointing to your webapp domain, for example: `https://trigger.example.com`
 
 <CodeGroup>
 
@@ -166,13 +200,11 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # docker setup - part 1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           version: latest
 
-      # docker setup - part 2
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -182,11 +214,9 @@ jobs:
       - name: 🚀 Deploy Trigger.dev
         env:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
-          # required when self-hosting
           TRIGGER_API_URL: ${{ secrets.TRIGGER_API_URL }}
-        # deploy with additional flags
         run: |
-          npx trigger.dev@latest deploy --self-hosted --push
+          npx trigger.dev@latest deploy
 ```
 
 </CodeGroup>

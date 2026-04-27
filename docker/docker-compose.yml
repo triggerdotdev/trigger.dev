@@ -4,8 +4,11 @@ volumes:
   database-data:
   database-data-alt:
   redis-data:
+  minio-data:
   clickhouse-data:
   clickhouse-logs:
+  prometheus-data:
+  grafana-data:
 
 networks:
   app_network:
@@ -47,13 +50,53 @@ services:
     ports:
       - 6379:6379
 
+  # S3-compatible API for local object store (large payloads / packet offload).
+  # Host :9005 = S3 API, :9006 = web console (ClickHouse uses host :9000).
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9005:9000"
+      - "9006:9001"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app_network
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        mc alias set local http://minio:9000 minioadmin minioadmin
+        mc mb -p local/packets || true
+    restart: "no"
+
   electric:
     container_name: electric
-    image: electricsql/electric:1.0.22@sha256:1b151dc8a6fd5292fba70cbc744e25bd3a1e42db5fc89b7e479b7b939980a0e2
+    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
       ELECTRIC_INSECURE: true
+      ELECTRIC_ENABLE_INTEGRATION_TESTING: true
     networks:
       - app_network
     ports:
@@ -63,7 +106,7 @@ services:
 
   electric-shard-1:
     container_name: electric-shard-1
-    image: electricsql/electric:1.0.22@sha256:1b151dc8a6fd5292fba70cbc744e25bd3a1e42db5fc89b7e479b7b939980a0e2
+    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
     restart: always
     environment:
       DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
@@ -140,15 +183,90 @@ services:
     networks:
       - app_network
 
-  # otel-collector:
-  #   container_name: otel-collector
-  #   image: otel/opentelemetry-collector-contrib:latest
-  #   restart: always
-  #   command: ["--config", "/etc/otel-collector-config.yaml"]
-  #   volumes:
-  #     - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-  #   ports:
-  #     - "55680:55680"
-  #     - "55681:55681"
-  #     - "4317:4317" # OTLP gRPC receiver
-  #     - "4318:4318" # OTLP http receiver
+  s2:
+    image: ghcr.io/s2-streamstore/s2
+    command: ["lite", "--init-file", "/s2-spec.json"]
+    volumes:
+      - ./config/s2-spec.json:/s2-spec.json:ro
+    ports:
+      - "4566:80"
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/v1/basins?limit=1 || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+  toxiproxy:
+    container_name: toxiproxy
+    image: ghcr.io/shopify/toxiproxy:latest
+    restart: always
+    volumes:
+      - ./config/toxiproxy.json:/config/toxiproxy.json
+    ports:
+      - "30303:30303" # Proxied webapp port
+      - "8474:8474" # Toxiproxy API port
+    networks:
+      - app_network
+    command: ["-host", "0.0.0.0", "-config", "/config/toxiproxy.json"]
+
+  nginx-h2:
+    image: nginx:1.27
+    container_name: nginx-h2
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/certs:/etc/nginx/certs:ro
+
+  # Observability stack for local development
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    restart: always
+    command: ["--config", "/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8889:8889" # Prometheus exporter
+    networks:
+      - app_network
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.54.1
+    restart: always
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app_network
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:11.3.0
+    restart: always
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    networks:
+      - app_network
+    depends_on:
+      - prometheus

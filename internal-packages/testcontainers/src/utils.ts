@@ -9,6 +9,7 @@ import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "te
 import { x } from "tinyexec";
 import { expect, TaskContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
+import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
 
 export async function createPostgresContainer(network: StartedNetwork) {
@@ -154,7 +155,7 @@ export async function createElectricContainer(
   )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
 
   const container = await new GenericContainer(
-    "electricsql/electric:1.0.13@sha256:4e69c4a6ec3e976efbdd8b7e6de427e771aeacdbc0c8c7ca22eb0ca6ab1611ff"
+    "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
   )
     .withExposedPorts(3000)
     .withNetwork(network)
@@ -167,6 +168,18 @@ export async function createElectricContainer(
   return {
     container,
     origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
+  };
+}
+
+export async function createMinIOContainer(network: StartedNetwork) {
+  const container = await new MinIOContainer()
+    .withNetwork(network)
+    .withNetworkAliases("minio")
+    .start();
+
+  return {
+    container,
+    network,
   };
 }
 

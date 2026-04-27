@@ -32,6 +32,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const authenticatedEnv = authenticationResult.environment;
 
+  const url = new URL(request.url);
+  const allowRollbacks = url.searchParams.get("allowRollbacks") === "true";
+
   const { deploymentVersion } = parsedParams.data;
 
   const deployment = await prisma.workerDeployment.findFirst({
@@ -47,7 +50,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     const service = new ChangeCurrentDeploymentService();
-    await service.call(deployment, "promote");
+    await service.call(deployment, "promote", allowRollbacks);
 
     return json(
       {

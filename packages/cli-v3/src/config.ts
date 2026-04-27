@@ -22,6 +22,7 @@ import {
 import { prettyWarning } from "./utilities/cliOutput.js";
 import type { InstrumentationModuleDefinition } from "@opentelemetry/instrumentation";
 import { builtinModules } from "node:module";
+import { OutroCommandError } from "./cli/common.js";
 
 export type ResolveConfigOptions = {
   cwd?: string;
@@ -161,6 +162,21 @@ async function resolveConfig(
     : packageJsonPath
     ? dirname(packageJsonPath)
     : cwd;
+
+  // `trigger.config` is the fallback value set by c12
+  const missingConfigFile = !result.configFile || result.configFile === "trigger.config";
+
+  if (missingConfigFile) {
+    throw new OutroCommandError(
+      [
+        "Couldn't find your trigger.config.ts file.",
+        "",
+        "Make sure you are in the directory of your Trigger.dev project, or specify the path to your config file using the `--config <path>` flag.",
+        "",
+        "Alternatively, you can initialize a new project using `npx trigger.dev@latest init`.",
+      ].join("\n")
+    );
+  }
 
   const config =
     "config" in result.config ? (result.config.config as TriggerConfig) : result.config;

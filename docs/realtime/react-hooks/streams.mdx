@@ -1,19 +1,229 @@
 ---
-title: Streams hooks
-sidebarTitle: Streams
-description: Subscribe to real-time streams from your tasks in React components
+title: "Stream data to React (AI, files, progress)"
+sidebarTitle: "Streaming"
+description: "Display AI/LLM output token by token, stream file chunks, or pipe any continuous data from a background task into your React components."
 ---
 
-These hooks allow you to consume real-time streams from your tasks. Streams are useful for displaying AI/LLM outputs as they're generated, or any other real-time data from your tasks.
+**Display AI responses as they generate, stream file processing results, or pipe any continuous data from a running task into your React components.** Unlike [progress and status hooks](/realtime/react-hooks/subscribe) (which track run state), streaming hooks give you the raw data your task produces while it runs.
 
 <Note>
-  To learn how to emit streams from your tasks, see our [backend streams
-  documentation](/realtime/backend/streams).
+  To learn how to emit streams from your tasks, see [Streaming data from tasks](/tasks/streams).
 </Note>
+
+## useRealtimeStream (Recommended)
+
+<Note>
+  Available in SDK version **4.1.0 or later**. This is the recommended way to consume streams in
+  your React components.
+</Note>
+
+The `useRealtimeStream` hook allows you to subscribe to a specific stream by its run ID and stream key. This hook is designed to work seamlessly with [defined streams](/tasks/streams#defining-typed-streams-recommended) for full type safety.
+
+### Basic Usage
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+
+export function StreamViewer({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { parts, error } = useRealtimeStream<string>(runId, "ai-output", {
+    accessToken: publicAccessToken,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!parts) return <div>Loading...</div>;
+
+  return (
+    <div>
+      {parts.map((part, i) => (
+        <span key={i}>{part}</span>
+      ))}
+    </div>
+  );
+}
+```
+
+### With Defined Streams
+
+The recommended approach is to use defined streams for full type safety:
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+import { aiStream } from "@/app/streams";
+
+export function StreamViewer({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  // Pass the defined stream directly - full type safety!
+  const { parts, error } = useRealtimeStream(aiStream, runId, {
+    accessToken: publicAccessToken,
+    timeoutInSeconds: 600,
+    onData: (chunk) => {
+      console.log("New chunk:", chunk); // chunk is typed!
+    },
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!parts) return <div>Loading...</div>;
+
+  return (
+    <div>
+      {parts.map((part, i) => (
+        <span key={i}>{part}</span>
+      ))}
+    </div>
+  );
+}
+```
+
+### Streaming AI Responses
+
+Here's a complete example showing how to display streaming AI responses:
+
+```tsx
+"use client";
+
+import { useRealtimeStream } from "@trigger.dev/react-hooks";
+import { aiStream } from "@/trigger/streams";
+import { Streamdown } from "streamdown";
+
+export function AIStreamViewer({
+  runId,
+  publicAccessToken,
+}: {
+  runId: string;
+  publicAccessToken: string;
+}) {
+  const { parts, error } = useRealtimeStream(aiStream, runId, {
+    accessToken: publicAccessToken,
+    timeoutInSeconds: 300,
+  });
+
+  if (error) return <div>Error: {error.message}</div>;
+  if (!parts) return <div>Loading stream...</div>;
+
+  const text = parts.join("");
+
+  return (
+    <div className="prose">
+      <Streamdown isAnimating={true}>{text}</Streamdown>
+    </div>
+  );
+}
+```
+
+### Options
+
+The `useRealtimeStream` hook accepts the following options:
+
+```tsx
+const { parts, error } = useRealtimeStream(streamOrRunId, streamKeyOrOptions, {
+  accessToken: "pk_...", // Required: Public access token
+  baseURL: "https://api.trigger.dev", // Optional: Custom API URL
+  timeoutInSeconds: 60, // Optional: Timeout (default: 60)
+  startIndex: 0, // Optional: Start from specific chunk
+  throttleInMs: 16, // Optional: Throttle updates (default: 16ms)
+  onData: (chunk) => {}, // Optional: Callback for each chunk
+});
+```
+
+### Using Default Stream
+
+You can omit the stream key to use the default stream:
+
+```tsx
+const { parts, error } = useRealtimeStream<string>(runId, {
+  accessToken: publicAccessToken,
+});
+```
+
+For more information on defining and using streams, see the [Streaming data from tasks](/tasks/streams) documentation.
+
+## useInputStreamSend
+
+The `useInputStreamSend` hook lets you send data from your frontend into a running task's [input stream](/tasks/streams#input-streams). Use it for cancel buttons, approval forms, or any UI that needs to push typed data into a running task.
+
+### Basic usage
+
+Pass the input stream's `id` (string), the run ID, and options such as `accessToken`. You typically get `runId` and `accessToken` from the object returned when you trigger the task (e.g. `handle.id`, `handle.publicAccessToken`). The hook returns `send`, `isLoading`, `error`, and `isReady`:
+
+```tsx
+"use client";
+
+import { useInputStreamSend } from "@trigger.dev/react-hooks";
+import { approval } from "@/trigger/streams";
+
+export function ApprovalForm({
+  runId,
+  accessToken,
+}: {
+  runId: string;
+  accessToken: string;
+}) {
+  const { send, isLoading, isReady } = useInputStreamSend(
+    approval.id,
+    runId,
+    { accessToken }
+  );
+
+  return (
+    <button
+      disabled={!isReady || isLoading}
+      onClick={() => send({ approved: true, reviewer: "alice" })}
+    >
+      Approve
+    </button>
+  );
+}
+```
+
+With a generic for type-safe payloads when not using a defined stream:
+
+```tsx
+type ApprovalPayload = { approved: boolean; reviewer: string };
+const { send } = useInputStreamSend<ApprovalPayload>("approval", runId, {
+  accessToken,
+});
+send({ approved: true, reviewer: "alice" });
+```
+
+### Options and return value
+
+- **`streamId`**: The input stream identifier (string). Use the `id` from your defined stream (e.g. `approval.id`) or the same string you used in `streams.input<T>({ id: "approval" })`.
+- **`runId`**: The run to send input to. When `runId` is undefined, `isReady` is false and `send` will not trigger.
+- **`options`**: `accessToken` (required for client usage), `baseURL` (optional). See [Realtime auth](/realtime/auth) for generating a public access token with the right scopes (e.g. input streams write for that run).
+
+Return value:
+
+- **`send(data)`**: Sends typed data to the input stream. Uses SWR mutation under the hood.
+- **`isLoading`**: True while a send is in progress.
+- **`error`**: Set if the last send failed.
+- **`isReady`**: True when both `runId` and access token are available.
+
+For receiving input stream data inside a task (`.wait()`, `.once()`, `.on()`), see [Input Streams](/tasks/streams#input-streams) in the Streams doc.
 
 ## useRealtimeRunWithStreams
 
-The `useRealtimeRunWithStreams` hook allows you to subscribe to a run by its ID and also receive any streams that are emitted by the task.
+<Note>
+  For new projects, we recommend using `useRealtimeStream` instead (available in SDK 4.1.0+). This
+  hook is still supported for backward compatibility and use cases where you need to subscribe to
+  both the run and all its streams at once.
+</Note>
+
+The `useRealtimeRunWithStreams` hook allows you to subscribe to a run by its ID and also receive any streams that are emitted by the task. This is useful when you need to access both the run metadata and multiple streams simultaneously.
 
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
@@ -115,9 +325,9 @@ export function MyComponent({
 }
 ```
 
-## Streaming AI responses
+### Streaming AI responses with useRealtimeRunWithStreams
 
-Here's a more complete example showing how to display streaming OpenAI responses:
+Here's an example showing how to display streaming OpenAI responses using `useRealtimeRunWithStreams`:
 
 ```tsx
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
@@ -143,9 +353,9 @@ function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccess
 }
 ```
 
-## AI SDK with tools
+### AI SDK with tools
 
-When using the AI SDK with tools, you can access tool calls and results:
+When using the AI SDK with tools with `useRealtimeRunWithStreams`, you can access tool calls and results:
 
 ```tsx
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
@@ -186,11 +396,9 @@ function MyComponent({ runId, publicAccessToken }: { runId: string; publicAccess
 }
 ```
 
-## Common options
+### Throttling updates
 
-### experimental_throttleInMs
-
-The `*withStreams` variants of the Realtime hooks accept an `experimental_throttleInMs` option to throttle the updates from the server. This can be useful if you are getting too many updates and want to reduce the number of updates.
+The `useRealtimeRunWithStreams` hook accepts an `experimental_throttleInMs` option to throttle the updates from the server. This can be useful if you are getting too many updates and want to reduce the number of updates.
 
 ```tsx
 import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
@@ -219,3 +427,23 @@ export function MyComponent({
 ```
 
 All other options (accessToken, baseURL, enabled, id) work the same as the other realtime hooks.
+
+For the newer `useRealtimeStream` hook, use the `throttleInMs` option instead (see [options above](#options)).
+
+## Frequently asked questions
+
+### How do I stream AI/LLM responses from a background task to React?
+
+Define a typed stream in your task with `streams.define<string>()`, pipe your AI SDK response to it with `.pipe()`, then consume it in your component with `useRealtimeStream`. See [Streaming data from tasks](/tasks/streams) for the task-side setup.
+
+### What's the difference between streaming and run updates?
+
+[Run updates](/realtime/react-hooks/subscribe) track **run state** (status, metadata, tags). Streaming (this page) pipes **continuous data** your task produces. Use run updates for progress bars and status badges. Use streaming for AI chat output, live logs, or file processing results. You can use both at the same time.
+
+### Can I send data back into a running task from React?
+
+Yes. Use the `useInputStreamSend` hook to send data into a running task's input stream. This is useful for cancel buttons, user approvals, or any interactive flow. See [Input Streams](/tasks/streams#input-streams) for the full guide.
+
+### Do streams work with the Vercel AI SDK?
+
+Yes. You can pipe a Vercel AI SDK `streamText` response directly into a Trigger.dev stream using `.pipe()`. The [Streaming data from tasks](/tasks/streams) page has a complete AI streaming example.

@@ -6,6 +6,7 @@ import {
 import { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
+  RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
   taskRunErrorToString,
@@ -19,7 +20,6 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { createTags } from "~/models/taskRunTag.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
@@ -34,14 +34,13 @@ import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
 import type {
   PayloadProcessor,
   QueueManager,
-  RunNumberIncrementer,
   TraceEventConcern,
   TriggerRacepoints,
   TriggerRacepointSystem,
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
-import { ServiceValidationError } from "~/v3/services/common.server";
+import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -54,7 +53,6 @@ export class RunEngineTriggerTaskService {
   private readonly validator: TriggerTaskValidator;
   private readonly payloadProcessor: PayloadProcessor;
   private readonly idempotencyKeyConcern: IdempotencyKeyConcern;
-  private readonly runNumberIncrementer: RunNumberIncrementer;
   private readonly prisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
   private readonly tracer: Tracer;
@@ -69,7 +67,6 @@ export class RunEngineTriggerTaskService {
     validator: TriggerTaskValidator;
     payloadProcessor: PayloadProcessor;
     idempotencyKeyConcern: IdempotencyKeyConcern;
-    runNumberIncrementer: RunNumberIncrementer;
     traceEventConcern: TraceEventConcern;
     tracer: Tracer;
     metadataMaximumSize: number;
@@ -81,7 +78,6 @@ export class RunEngineTriggerTaskService {
     this.validator = opts.validator;
     this.payloadProcessor = opts.payloadProcessor;
     this.idempotencyKeyConcern = opts.idempotencyKeyConcern;
-    this.runNumberIncrementer = opts.runNumberIncrementer;
     this.tracer = opts.tracer;
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
@@ -164,16 +160,35 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(body.options?.delay));
+      // Parse delay from either explicit delay option or debounce.delay
+      const delaySource = body.options?.delay ?? body.options?.debounce?.delay;
+      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(delaySource));
 
       if (parseDelayError) {
-        throw new ServiceValidationError(`Invalid delay ${body.options?.delay}`);
+        throw new ServiceValidationError(`Invalid delay ${delaySource}`);
       }
 
-      const ttl =
-        typeof body.options?.ttl === "number"
-          ? stringifyDuration(body.options?.ttl)
-          : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      // Validate debounce options
+      if (body.options?.debounce) {
+        if (!delayUntil) {
+          throw new ServiceValidationError(
+            `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+          );
+        }
+
+        // Always validate debounce.delay separately since it's used for rescheduling
+        // This catches the case where options.delay is valid but debounce.delay is invalid
+        const [debounceDelayError, debounceDelayUntil] = await tryCatch(
+          parseDelay(body.options.debounce.delay)
+        );
+
+        if (debounceDelayError || !debounceDelayUntil) {
+          throw new ServiceValidationError(
+            `Invalid debounce delay: ${body.options.debounce.delay}. ` +
+              `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+          );
+        }
+      }
 
       // Get parent run if specified
       const parentRun = body.options?.parentRunId
@@ -214,24 +229,6 @@ export class RunEngineTriggerTaskService {
         });
       }
 
-      if (!options.skipChecks) {
-        const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment);
-
-        if (!queueSizeGuard.ok) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-          );
-        }
-      }
-
-      const metadataPacket = body.options?.metadata
-        ? handleMetadataPacket(
-            body.options?.metadata,
-            body.options?.metadataType ?? "application/json",
-            this.metadataMaximumSize
-          )
-        : undefined;
-
       const lockedToBackgroundWorker = body.options?.lockToVersion
         ? await this.prisma.backgroundWorker.findFirst({
             where: {
@@ -248,118 +245,206 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
-        triggerRequest,
-        lockedToBackgroundWorker ?? undefined
-      );
+      const { queueName, lockedQueueId, taskTtl } =
+        await this.queueConcern.resolveQueueProperties(
+          triggerRequest,
+          lockedToBackgroundWorker ?? undefined
+        );
 
-      //upsert tags
-      const tags = await createTags(
-        {
-          tags: body.options?.tags,
-          projectId: environment.projectId,
-        },
-        this.prisma
-      );
+      // Resolve TTL with precedence: per-trigger > task-level > dev default
+      let ttl: string | undefined;
+
+      if (body.options?.ttl !== undefined) {
+        ttl =
+          typeof body.options.ttl === "number"
+            ? stringifyDuration(body.options.ttl)
+            : body.options.ttl;
+      } else {
+        ttl = taskTtl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      }
+
+      if (!options.skipChecks) {
+        const queueSizeGuard = await this.queueConcern.validateQueueLimits(
+          environment,
+          queueName
+        );
+
+        if (!queueSizeGuard.ok) {
+          throw new QueueSizeLimitExceededError(
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            queueSizeGuard.maximumSize ?? 0,
+            undefined,
+            "warn"
+          );
+        }
+      }
+
+      const metadataPacket = body.options?.metadata
+        ? handleMetadataPacket(
+            body.options?.metadata,
+            body.options?.metadataType ?? "application/json",
+            this.metadataMaximumSize
+          )
+        : undefined;
+
+      const tags = (
+        body.options?.tags
+          ? typeof body.options.tags === "string"
+            ? [body.options.tags]
+            : body.options.tags
+          : []
+      ).filter((tag) => tag.trim().length > 0);
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
+      const workerQueueResult = await this.queueConcern.getWorkerQueue(
+        environment,
+        body.options?.region
+      );
+      const workerQueue = workerQueueResult?.masterQueue;
+      const enableFastPath = workerQueueResult?.enableFastPath ?? false;
+
+      // Build annotations for this run
+      const triggerSource = options.triggerSource ?? "api";
+      const triggerAction = options.triggerAction ?? "trigger";
+      const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
+      const annotations = {
+        triggerSource,
+        triggerAction,
+        rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
+        rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
+      };
 
       try {
         return await this.traceEventConcern.traceRun(
           triggerRequest,
           parentRun?.taskEventStore,
           async (event, store) => {
-            const result = await this.runNumberIncrementer.incrementRunNumber(
-              triggerRequest,
-              async (num) => {
-                event.setAttribute("queueName", queueName);
-                span.setAttribute("queueName", queueName);
-                event.setAttribute("runId", runFriendlyId);
-                span.setAttribute("runId", runFriendlyId);
+            event.setAttribute("queueName", queueName);
+            span.setAttribute("queueName", queueName);
+            event.setAttribute("runId", runFriendlyId);
+            span.setAttribute("runId", runFriendlyId);
 
-                const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+            const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 
-                const taskRun = await this.engine.trigger(
-                  {
-                    number: num,
-                    friendlyId: runFriendlyId,
-                    environment: environment,
-                    idempotencyKey,
-                    idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
-                    taskIdentifier: taskId,
-                    payload: payloadPacket.data ?? "",
-                    payloadType: payloadPacket.dataType,
-                    context: body.context,
-                    traceContext: this.#propagateExternalTraceContext(
-                      event.traceContext,
-                      parentRun?.traceContext,
-                      event.traceparent?.spanId
-                    ),
-                    traceId: event.traceId,
-                    spanId: event.spanId,
-                    parentSpanId:
-                      options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
-                    replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
-                    lockedToVersionId: lockedToBackgroundWorker?.id,
-                    taskVersion: lockedToBackgroundWorker?.version,
-                    sdkVersion: lockedToBackgroundWorker?.sdkVersion,
-                    cliVersion: lockedToBackgroundWorker?.cliVersion,
-                    concurrencyKey: body.options?.concurrencyKey,
-                    queue: queueName,
-                    lockedQueueId,
-                    workerQueue,
-                    isTest: body.options?.test ?? false,
-                    delayUntil,
-                    queuedAt: delayUntil ? undefined : new Date(),
-                    maxAttempts: body.options?.maxAttempts,
-                    taskEventStore: store,
-                    ttl,
-                    tags,
-                    oneTimeUseToken: options.oneTimeUseToken,
-                    parentTaskRunId: parentRun?.id,
-                    rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
-                    batch: options?.batchId
-                      ? {
-                          id: options.batchId,
-                          index: options.batchIndex ?? 0,
-                        }
-                      : undefined,
-                    resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-                    depth,
-                    metadata: metadataPacket?.data,
-                    metadataType: metadataPacket?.dataType,
-                    seedMetadata: metadataPacket?.data,
-                    seedMetadataType: metadataPacket?.dataType,
-                    maxDurationInSeconds: body.options?.maxDuration
-                      ? clampMaxDuration(body.options.maxDuration)
-                      : undefined,
-                    machine: body.options?.machine,
-                    priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
-                    queueTimestamp:
-                      options.queueTimestamp ??
-                      (parentRun && body.options?.resumeParentOnCompletion
-                        ? parentRun.queueTimestamp ?? undefined
-                        : undefined),
-                    scheduleId: options.scheduleId,
-                    scheduleInstanceId: options.scheduleInstanceId,
-                    createdAt: options.overrideCreatedAt,
-                    bulkActionId: body.options?.bulkActionId,
-                    planType,
-                  },
-                  this.prisma
-                );
-
-                const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
-
-                if (error) {
-                  event.failWithError(error);
-                }
-
-                return { run: taskRun, error, isCached: false };
-              }
+            const taskRun = await this.engine.trigger(
+              {
+                friendlyId: runFriendlyId,
+                environment: environment,
+                idempotencyKey,
+                idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
+                idempotencyKeyOptions: body.options?.idempotencyKeyOptions,
+                taskIdentifier: taskId,
+                payload: payloadPacket.data ?? "",
+                payloadType: payloadPacket.dataType,
+                context: body.context,
+                traceContext: this.#propagateExternalTraceContext(
+                  event.traceContext,
+                  parentRun?.traceContext,
+                  event.traceparent?.spanId
+                ),
+                traceId: event.traceId,
+                spanId: event.spanId,
+                parentSpanId:
+                  options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
+                replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
+                lockedToVersionId: lockedToBackgroundWorker?.id,
+                taskVersion: lockedToBackgroundWorker?.version,
+                sdkVersion: lockedToBackgroundWorker?.sdkVersion,
+                cliVersion: lockedToBackgroundWorker?.cliVersion,
+                concurrencyKey: body.options?.concurrencyKey,
+                queue: queueName,
+                lockedQueueId,
+                workerQueue,
+                enableFastPath,
+                isTest: body.options?.test ?? false,
+                delayUntil,
+                queuedAt: delayUntil ? undefined : new Date(),
+                maxAttempts: body.options?.maxAttempts,
+                taskEventStore: store,
+                ttl,
+                tags,
+                oneTimeUseToken: options.oneTimeUseToken,
+                parentTaskRunId: parentRun?.id,
+                rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
+                batch: options?.batchId
+                  ? {
+                      id: options.batchId,
+                      index: options.batchIndex ?? 0,
+                    }
+                  : undefined,
+                resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+                depth,
+                metadata: metadataPacket?.data,
+                metadataType: metadataPacket?.dataType,
+                seedMetadata: metadataPacket?.data,
+                seedMetadataType: metadataPacket?.dataType,
+                maxDurationInSeconds: body.options?.maxDuration
+                  ? clampMaxDuration(body.options.maxDuration)
+                  : undefined,
+                machine: body.options?.machine,
+                priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
+                queueTimestamp:
+                  options.queueTimestamp ??
+                  (parentRun && body.options?.resumeParentOnCompletion
+                    ? parentRun.queueTimestamp ?? undefined
+                    : undefined),
+                scheduleId: options.scheduleId,
+                scheduleInstanceId: options.scheduleInstanceId,
+                createdAt: options.overrideCreatedAt,
+                bulkActionId: body.options?.bulkActionId,
+                planType,
+                realtimeStreamsVersion: options.realtimeStreamsVersion,
+                debounce: body.options?.debounce,
+                annotations,
+                // When debouncing with triggerAndWait, create a span for the debounced trigger
+                onDebounced:
+                  body.options?.debounce && body.options?.resumeParentOnCompletion
+                    ? async ({ existingRun, waitpoint, debounceKey }) => {
+                        return await this.traceEventConcern.traceDebouncedRun(
+                          triggerRequest,
+                          parentRun?.taskEventStore,
+                          {
+                            existingRun,
+                            debounceKey,
+                            incomplete: waitpoint.status === "PENDING",
+                            isError: waitpoint.outputIsError,
+                          },
+                          async (spanEvent) => {
+                            const spanId =
+                              options?.parentAsLinkType === "replay"
+                                ? spanEvent.spanId
+                                : spanEvent.traceparent?.spanId
+                                ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
+                                : spanEvent.spanId;
+                            return spanId;
+                          }
+                        );
+                      }
+                    : undefined,
+              },
+              this.prisma
             );
+
+            // If the returned run has a different friendlyId, it was debounced.
+            // For triggerAndWait: stop the outer span since a replacement debounced span was created via onDebounced.
+            // For regular trigger: let the span complete normally - no replacement span needed since the
+            // original run already has its span from when it was first created.
+            if (
+              taskRun.friendlyId !== runFriendlyId &&
+              body.options?.debounce &&
+              body.options?.resumeParentOnCompletion
+            ) {
+              event.stop();
+            }
+
+            const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
+
+            if (error) {
+              event.failWithError(error);
+            }
+
+            const result = { run: taskRun, error, isCached: false };
 
             if (result?.error) {
               throw new ServiceValidationError(
@@ -373,7 +458,13 @@ export class RunEngineTriggerTaskService {
       } catch (error) {
         if (error instanceof RunDuplicateIdempotencyKeyError) {
           //retry calling this function, because this time it will return the idempotent run
-          return await this.call({ taskId, environment, body, options, attempt: attempt + 1 });
+          return await this.call({
+            taskId,
+            environment,
+            body,
+            options: { ...options, runFriendlyId },
+            attempt: attempt + 1,
+          });
         }
 
         if (error instanceof RunOneTimeUseTokenError) {

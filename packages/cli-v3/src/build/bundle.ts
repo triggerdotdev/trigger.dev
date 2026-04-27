@@ -3,8 +3,8 @@ import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { BuildManifest, BuildTarget, TaskFile } from "@trigger.dev/core/v3/schemas";
 import * as esbuild from "esbuild";
 import { createHash } from "node:crypto";
-import { join, relative, resolve } from "node:path";
-import { createFile } from "../utilities/fileSystem.js";
+import { basename, join, relative, resolve } from "node:path";
+import { createFile, createFileWithStore } from "../utilities/fileSystem.js";
 import { logger } from "../utilities/logger.js";
 import { resolveFileSources } from "../utilities/sourceFiles.js";
 import { VERSION } from "../version.js";
@@ -37,6 +37,8 @@ export interface BundleOptions {
   jsxAutomatic?: boolean;
   watch?: boolean;
   plugins?: esbuild.Plugin[];
+  /** Shared store directory for deduplicating chunk files via hardlinks */
+  storeDir?: string;
 }
 
 export type BundleResult = {
@@ -51,6 +53,8 @@ export type BundleResult = {
   indexControllerEntryPoint: string | undefined;
   initEntryPoint: string | undefined;
   stop: (() => Promise<void>) | undefined;
+  /** Maps output file paths to their content hashes for deduplication */
+  outputHashes: Record<string, string>;
 };
 
 export class BundleError extends Error {
@@ -159,7 +163,8 @@ export async function bundleWorker(options: BundleOptions): Promise<BundleResult
     options.target,
     options.cwd,
     options.resolvedConfig,
-    result
+    result,
+    options.storeDir
   );
 
   if (!bundleResult) {
@@ -233,14 +238,23 @@ export async function getBundleResultFromBuild(
   target: BuildTarget,
   workingDir: string,
   resolvedConfig: ResolvedConfig,
-  result: esbuild.BuildResult<{ metafile: true; write: false }>
+  result: esbuild.BuildResult<{ metafile: true; write: false }>,
+  storeDir?: string
 ): Promise<Omit<BundleResult, "stop"> | undefined> {
   const hasher = createHash("md5");
+  const outputHashes: Record<string, string> = {};
 
   for (const outputFile of result.outputFiles) {
     hasher.update(outputFile.hash);
+    // Store the hash for each output file (keyed by path)
+    outputHashes[outputFile.path] = outputFile.hash;
 
-    await createFile(outputFile.path, outputFile.contents);
+    if (storeDir) {
+      // Use content-addressable store with esbuild's built-in hash for ALL files
+      await createFileWithStore(outputFile.path, outputFile.contents, storeDir, outputFile.hash);
+    } else {
+      await createFile(outputFile.path, outputFile.contents);
+    }
   }
 
   const files: Array<{ entry: string; out: string }> = [];
@@ -308,6 +322,7 @@ export async function getBundleResultFromBuild(
     initEntryPoint,
     contentHash: hasher.digest("hex"),
     metafile: result.metafile,
+    outputHashes,
   };
 }
 
@@ -354,6 +369,7 @@ export async function createBuildManifestFromBundle({
   target,
   envVars,
   sdkVersion,
+  storeDir,
 }: {
   bundle: BundleResult;
   destination: string;
@@ -364,6 +380,7 @@ export async function createBuildManifestFromBundle({
   target: BuildTarget;
   envVars?: Record<string, string>;
   sdkVersion?: string;
+  storeDir?: string;
 }): Promise<BuildManifest> {
   const buildManifest: BuildManifest = {
     contentHash: bundle.contentHash,
@@ -397,11 +414,14 @@ export async function createBuildManifestFromBundle({
     otelImportHook: {
       include: resolvedConfig.instrumentedPackageNames ?? [],
     },
+    // `outputHashes` is only needed for dev builds for the deduplication mechanism during rebuilds.
+    // For deploys builds, we omit it to ensure deterministic builds
+    outputHashes: target === "dev" ? bundle.outputHashes : {},
   };
 
   if (!workerDir) {
     return buildManifest;
   }
 
-  return copyManifestToDir(buildManifest, destination, workerDir);
+  return copyManifestToDir(buildManifest, destination, workerDir, storeDir);
 }

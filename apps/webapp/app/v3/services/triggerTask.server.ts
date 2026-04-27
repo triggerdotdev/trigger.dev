@@ -4,7 +4,6 @@ import { env } from "~/env.server";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultPayloadProcessor } from "~/runEngine/concerns/payloads.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
-import { DefaultRunNumberIncrementer } from "~/runEngine/concerns/runNumbers.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
 import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.server";
 import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskValidator";
@@ -33,6 +32,9 @@ export type TriggerTaskServiceOptions = {
   overrideCreatedAt?: Date;
   replayedFromTaskRunFriendlyId?: string;
   planType?: string;
+  realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 export class OutOfEntitlementError extends Error {
@@ -97,7 +99,7 @@ export class TriggerTaskService extends WithRunEngine {
     const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,
       engine: this._engine,
-      queueConcern: new DefaultQueueManager(this._prisma, this._engine),
+      queueConcern: new DefaultQueueManager(this._prisma, this._engine, this._replica),
       validator: new DefaultTriggerTaskValidator(),
       payloadProcessor: new DefaultPayloadProcessor(),
       idempotencyKeyConcern: new IdempotencyKeyConcern(
@@ -105,7 +107,6 @@ export class TriggerTaskService extends WithRunEngine {
         this._engine,
         traceEventConcern
       ),
-      runNumberIncrementer: new DefaultRunNumberIncrementer(),
       traceEventConcern,
       tracer: tracer,
       metadataMaximumSize: env.TASK_RUN_METADATA_MAXIMUM_SIZE,

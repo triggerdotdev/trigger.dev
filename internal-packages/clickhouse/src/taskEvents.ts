@@ -19,6 +19,7 @@ export const TaskEventV1Input = z.object({
   attributes: z.unknown(),
   metadata: z.string(),
   expires_at: z.string(),
+  machine_id: z.string().optional(),
 });
 
 export type TaskEventV1Input = z.input<typeof TaskEventV1Input>;
@@ -129,5 +130,200 @@ export function getSpanDetailsQueryBuilder(ch: ClickhouseReader, settings?: Clic
       "SELECT span_id, parent_span_id, start_time, duration, status, kind, metadata, message, attributes_text FROM trigger_dev.task_events_v1",
     schema: TaskEventDetailsV1Result,
     settings,
+  });
+}
+
+// ============================================================================
+// V2 Table Functions (partitioned by inserted_at instead of start_time)
+// ============================================================================
+
+export const TaskEventV2Input = z.object({
+  environment_id: z.string(),
+  organization_id: z.string(),
+  project_id: z.string(),
+  task_identifier: z.string(),
+  run_id: z.string(),
+  start_time: z.string(),
+  duration: z.string(),
+  trace_id: z.string(),
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  message: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  attributes: z.unknown(),
+  metadata: z.string(),
+  expires_at: z.string(),
+  machine_id: z.string().optional(),
+  // inserted_at has a default value in the table, so it's optional for inserts
+  inserted_at: z.string().optional(),
+});
+
+export type TaskEventV2Input = z.input<typeof TaskEventV2Input>;
+
+export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
+  return ch.insertUnsafe<TaskEventV2Input>({
+    name: "insertTaskEventsV2",
+    table: "trigger_dev.task_events_v2",
+    settings: {
+      enable_json_type: 1,
+      type_json_skip_duplicated_paths: 1,
+      input_format_json_throw_on_bad_escape_sequence: 0,
+      input_format_json_use_string_type_for_ambiguous_paths_in_named_tuples_inference_from_objects: 1,
+      ...settings,
+    },
+  });
+}
+
+export function getTraceSummaryQueryBuilderV2(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilderFast<TaskEventSummaryV1Result>({
+    name: "getTraceEventsV2",
+    table: "trigger_dev.task_events_v2",
+    columns: [
+      "span_id",
+      "parent_span_id",
+      "run_id",
+      "start_time",
+      "duration",
+      "status",
+      "kind",
+      "metadata",
+      { name: "message", expression: "LEFT(message, 256)" },
+    ],
+    settings,
+  });
+}
+
+export function getTraceDetailedSummaryQueryBuilderV2(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilderFast<TaskEventDetailedSummaryV1Result>({
+    name: "getTaskEventDetailedSummaryV2",
+    table: "trigger_dev.task_events_v2",
+    columns: [
+      "span_id",
+      "parent_span_id",
+      "run_id",
+      "start_time",
+      "duration",
+      "status",
+      "kind",
+      "metadata",
+      { name: "message", expression: "LEFT(message, 256)" },
+      "attributes_text",
+    ],
+    settings,
+  });
+}
+
+export function getSpanDetailsQueryBuilderV2(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getSpanDetailsV2",
+    baseQuery:
+      "SELECT span_id, parent_span_id, start_time, duration, status, kind, metadata, message, attributes_text FROM trigger_dev.task_events_v2",
+    schema: TaskEventDetailsV1Result,
+    settings,
+  });
+}
+
+
+// ============================================================================
+// Search Table Query Builders (for logs page, using task_events_search_v1)
+// ============================================================================
+
+export const LogsSearchListResult = z.object({
+  environment_id: z.string(),
+  organization_id: z.string(),
+  project_id: z.string(),
+  task_identifier: z.string(),
+  run_id: z.string(),
+  start_time: z.string(),
+  trace_id: z.string(),
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  message: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  duration: z.number().or(z.string()),
+  attributes_text: z.string(),
+  triggered_timestamp: z.string(),
+});
+
+export type LogsSearchListResult = z.output<typeof LogsSearchListResult>;
+
+export function getLogsSearchListQueryBuilder(ch: ClickhouseReader) {
+  return ch.queryBuilderFast<LogsSearchListResult>({
+    name: "getLogsSearchList",
+    table: "trigger_dev.task_events_search_v1",
+    columns: [
+      "environment_id",
+      "organization_id",
+      "project_id",
+      "task_identifier",
+      "run_id",
+      "start_time",
+      "trace_id",
+      "span_id",
+      "parent_span_id",
+      { name: "message", expression: "LEFT(message, 512)" },
+      "kind",
+      "status",
+      "duration",
+      "attributes_text",
+      "triggered_timestamp",
+    ],
+    settings: {
+      use_query_condition_cache: 1,
+    },
+  });
+}
+
+// Single log detail query builder (for side panel)
+export const LogDetailV2Result = z.object({
+  environment_id: z.string(),
+  organization_id: z.string(),
+  project_id: z.string(),
+  task_identifier: z.string(),
+  run_id: z.string(),
+  start_time: z.string(),
+  trace_id: z.string(),
+  span_id: z.string(),
+  parent_span_id: z.string(),
+  message: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  duration: z.number().or(z.string()),
+  attributes_text: z.string()
+});
+
+export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;
+
+export function getLogDetailQueryBuilderV2(ch: ClickhouseReader) {
+  return ch.queryBuilderFast<LogDetailV2Result>({
+    name: "getLogDetail",
+    table: "trigger_dev.task_events_v2",
+    columns: [
+      "environment_id",
+      "organization_id",
+      "project_id",
+      "task_identifier",
+      "run_id",
+      "start_time",
+      "trace_id",
+      "span_id",
+      "parent_span_id",
+      "message",
+      "kind",
+      "status",
+      "duration",
+      "attributes_text",
+    ],
   });
 }

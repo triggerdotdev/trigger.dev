@@ -84,8 +84,6 @@ Next, configure the Prisma [build extension](https://trigger.dev/docs/config/ext
 
 This will ensure that the Prisma client is available when the task runs.
 
-For a full list of options available in the Prisma build extension, see the [Prisma build extension documentation](https://trigger.dev/docs/config/extensions/prismaExtension).
-
 ```js /trigger.config.js
 export default defineConfig({
   project: "<project ref>", // Your project reference
@@ -93,14 +91,18 @@ export default defineConfig({
   build: {
     extensions: [
       prismaExtension({
+        mode: "legacy", // required
         version: "5.20.0", // optional, we'll automatically detect the version if not provided
-        // update this to the path of your Prisma schema file
-        schema: "prisma/schema.prisma",
+        schema: "prisma/schema.prisma", // update this to the path of your Prisma schema file
       }),
     ],
   },
 });
 ```
+
+The `prismaExtension` requires a `mode` parameter. For standard Prisma setups, use `"legacy"`
+mode. See the [Prisma extension documentation](/config/extensions/prismaExtension) for other modes
+and full configuration options.
 
 <Note>
   [Build extensions](/config/extensions/overview) allow you to hook into the build system and

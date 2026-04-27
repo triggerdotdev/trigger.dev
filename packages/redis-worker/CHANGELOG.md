@@ -1,5 +1,119 @@
 # @trigger.dev/redis-worker
 
+## 4.4.4
+
+### Patch Changes
+
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+
+## 4.4.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Fix slow batch queue processing by removing spurious cooloff on concurrency blocks and fixing a race condition where retry attempt counts were not atomically updated during message re-queue. ([#3079](https://github.com/triggerdotdev/trigger.dev/pull/3079))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.1`
+
+## 4.4.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+
+## 4.3.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.2`
+
+## 4.3.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.1`
+
+## 4.3.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.0`
+
+## 4.2.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.2.0`
+
+## 4.1.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.2`
+
+## 4.1.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.1`
+
+## 4.1.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.1.0`
+
+## 4.0.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.7`
+
+## 4.0.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.6`
+
+## 4.0.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.0.5`
+
 ## 4.0.4
 
 ### Patch Changes

@@ -1,0 +1,92 @@
+---
+title: "Smart Spreadsheet"
+sidebarTitle: "Smart Spreadsheet"
+description: "An AI-powered company enrichment tool that uses Exa search and Claude to extract verified company data with source attribution."
+---
+
+import RealtimeLearnMore from "/snippets/realtime-learn-more.mdx";
+
+## Overview
+
+Smart Spreadsheet is an AI-powered tool that enriches company data on demand. Input a company name or website URL and get verified information including industry, headcount, and funding details; each with source attribution. Results appear in the frontend in real-time as each task completes.
+
+- A [Next.js](https://nextjs.org/) app with [Trigger.dev](https://trigger.dev/) for background tasks
+- [Exa](https://exa.ai/) – an AI-native search engine that returns clean, structured content ready for LLM extraction
+- [Claude](https://anthropic.com/) via the [Vercel AI SDK](https://sdk.vercel.ai/) for data extraction
+- [Supabase](https://supabase.com/) PostgreSQL database for persistence
+- Trigger.dev [Realtime](/realtime/overview) for live updates to the frontend
+
+## Video
+
+<video
+  controls
+  className="w-full aspect-video"
+  src="https://content.trigger.dev/smart-spreadsheet.mp4"
+></video>
+
+## GitHub repo
+
+<Card
+  title="View the Smart Spreadsheet repo"
+  icon="github"
+  href="https://github.com/triggerdotdev/examples/tree/main/smart-spreadsheet"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## How it works
+
+The enrichment workflow:
+
+1. **Trigger enrichment** – User enters a company name or URL in the spreadsheet UI
+2. **Parallel data gathering** – Four subtasks run concurrently to fetch basic info, industry, employee count, and funding details
+3. **AI extraction** – Each subtask uses Exa search + Claude to extract structured data with source URLs
+4. **Real-time updates** – Results appear in the frontend as each subtask completes
+5. **Persist results** – Enriched data is saved to Supabase with source attribution
+
+## Features
+
+- **Parallel processing** – All four enrichment categories run simultaneously using [batch.triggerByTaskAndWait](/triggering#batch-trigger-by-task-and-wait)
+- **Source attribution** – Every data point includes the URL it was extracted from
+- **Live updates** – Results appear in the UI as each task completes using [Realtime](/realtime/overview)
+- **Structured extraction** – Zod schemas ensure consistent data output from Claude
+
+## Key code patterns
+
+### Parallel task execution
+
+The main task triggers all four enrichment subtasks simultaneously using `batch.triggerByTaskAndWait`:
+
+```ts src/trigger/enrich-company.ts
+const { runs } = await batch.triggerByTaskAndWait([
+  { task: getBasicInfo, payload: { companyName, companyUrl } },
+  { task: getIndustry, payload: { companyName, companyUrl } },
+  { task: getEmployeeCount, payload: { companyName, companyUrl } },
+  { task: getFundingRound, payload: { companyName, companyUrl } },
+]);
+```
+
+### Live updates from child tasks
+
+Each subtask uses `metadata.parent.set()` to update the parent's metadata as soon as data is extracted:
+
+```ts src/trigger/get-basic-info.ts
+// After Claude extracts the data, update the parent task's metadata
+metadata.parent.set("website", object.website);
+metadata.parent.set("description", object.description);
+```
+
+The frontend subscribes to these metadata updates using [Realtime](/realtime/overview), so users see each field populate as it's discovered.
+
+## Relevant code
+
+| File                                                                                                                                           | Description                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [`src/trigger/enrich-company.ts`](https://github.com/triggerdotdev/examples/blob/main/smart-spreadsheet/src/trigger/enrich-company.ts)         | Main orchestrator that triggers parallel subtasks and persists results |
+| [`src/trigger/get-basic-info.ts`](https://github.com/triggerdotdev/examples/blob/main/smart-spreadsheet/src/trigger/get-basic-info.ts)         | Extracts company website and description                               |
+| [`src/trigger/get-industry.ts`](https://github.com/triggerdotdev/examples/blob/main/smart-spreadsheet/src/trigger/get-industry.ts)             | Classifies company industry                                            |
+| [`src/trigger/get-employee-count.ts`](https://github.com/triggerdotdev/examples/blob/main/smart-spreadsheet/src/trigger/get-employee-count.ts) | Finds employee headcount                                               |
+| [`src/trigger/get-funding-round.ts`](https://github.com/triggerdotdev/examples/blob/main/smart-spreadsheet/src/trigger/get-funding-round.ts)   | Discovers latest funding information                                   |
+
+<RealtimeLearnMore />

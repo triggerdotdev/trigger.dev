@@ -21,6 +21,33 @@ export type { ExceptionEventProperties };
 // Event Creation Types
 // ============================================================================
 
+export type LlmMetricsData = {
+  genAiSystem: string;
+  requestModel: string;
+  responseModel: string;
+  baseResponseModel: string;
+  matchedModelId: string;
+  operationId: string;
+  finishReason: string;
+  costSource: string;
+  pricingTierId: string;
+  pricingTierName: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  usageDetails: Record<string, number>;
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+  costDetails: Record<string, number>;
+  providerCost: number;
+  msToFirstChunk: number;
+  tokensPerSecond: number;
+  metadata: Record<string, string>;
+  promptSlug: string;
+  promptVersion: number;
+};
+
 export type CreateEventInput = Omit<
   Prisma.TaskEventCreateInput,
   | "id"
@@ -53,8 +80,13 @@ export type CreateEventInput = Omit<
   | "links"
 > & {
   properties: Attributes;
+  resourceProperties?: Attributes;
   metadata: Attributes | undefined;
   style: Attributes | undefined;
+  machineId?: string;
+  runTags?: string[];
+  /** Side-channel data for LLM cost tracking, populated by enrichCreatableEvents */
+  _llmMetrics?: LlmMetricsData;
 };
 
 export type CreatableEventKind = TaskEventKind;
@@ -209,6 +241,7 @@ export type SpanDetail = {
   events: SpanEvents; // Timeline events, SpanEvents component
   style: TaskEventStyle; // Icons, variants, accessories (RunIcon, SpanTitle)
   properties: Record<string, unknown> | string | number | boolean | null | undefined; // Displayed as JSON in span properties (CodeBlock)
+  resourceProperties?: Record<string, unknown> | string | number | boolean | null | undefined; // Displayed as JSON in span resource properties (CodeBlock)
 
   // ============================================================================
   // Entity & Relationships
@@ -217,6 +250,7 @@ export type SpanDetail = {
     // Used for entity type switching in SpanEntity
     type: string | undefined;
     id: string | undefined;
+    metadata: string | undefined;
   };
 
   metadata: any; // Used by SpanPresenter for entity processing
@@ -389,15 +423,6 @@ export interface IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined>;
-
-  getSpanOriginalRunId(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<string | undefined>;
 
   // Event recording methods
   recordEvent(

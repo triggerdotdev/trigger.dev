@@ -83,6 +83,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 export default function ChoosePlanPage() {
   const {
     plans,
+    addOnPricing,
     v3Subscription,
     organizationSlug,
     periodStart,
@@ -141,6 +142,7 @@ export default function ChoosePlanPage() {
           <div>
             <PricingPlans
               plans={plans}
+              concurrencyAddOnPricing={addOnPricing.concurrency}
               subscription={v3Subscription}
               organizationSlug={organizationSlug}
               hasPromotedPlan={false}

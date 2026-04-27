@@ -44,6 +44,10 @@ This demo is a full stack example that uses the following:
   - The `AnthropicEval` component: [src/components/evals/Anthropic.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/Anthropic.tsx)
   - The `XAIEval` component: [src/components/evals/XAI.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/XAI.tsx)
   - The `OpenAIEval` component: [src/components/evals/OpenAI.tsx](https://github.com/triggerdotdev/examples/blob/main/batch-llm-evaluator/src/components/evals/OpenAI.tsx)
-- Each of these components then uses [useRealtimeRunWithStreams](/realtime/react-hooks/streams) to subscribe to the different LLM responses.
+- Each of these components then uses [useRealtimeRunWithStreams](/realtime/react-hooks/streams#userealtimerunwithstreams) to subscribe to the different LLM responses.
+
+<Note>
+  This example uses the older `useRealtimeRunWithStreams` hook. For new projects, consider using the new [`useRealtimeStream`](/realtime/react-hooks/streams#userealtimestream-recommended) hook (SDK 4.1.0+) for a simpler API and better type safety with defined streams.
+</Note>
 
 <RealtimeLearnMore />

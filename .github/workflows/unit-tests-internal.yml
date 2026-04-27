@@ -53,12 +53,12 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.5
+          version: 10.23.0
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.11.1
+          node-version: 20.20.0
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
@@ -71,6 +71,17 @@ jobs:
       - name: 🐳 Skipping DockerHub login (no secrets available)
         if: ${{ !env.DOCKERHUB_USERNAME }}
         run: echo "DockerHub login skipped because secrets are not available."
+
+      - name: 🐳 Pre-pull testcontainer images
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        run: |
+          echo "Pre-pulling Docker images with authenticated session..."
+          docker pull postgres:14
+          docker pull clickhouse/clickhouse-server:25.4-alpine
+          docker pull redis:7-alpine
+          docker pull testcontainers/ryuk:0.11.0
+          docker pull electricsql/electric:1.2.4
+          echo "Image pre-pull complete"
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
@@ -111,12 +122,12 @@ jobs:
       - name: ⎔ Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8.15.5
+          version: 10.23.0
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
         with:
-          node-version: 20.11.1
+          node-version: 20.20.0
           # no cache enabled, we're not installing deps
 
       - name: Download blob reports from GitHub Actions Artifacts

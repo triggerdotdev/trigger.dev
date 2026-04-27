@@ -5,6 +5,7 @@ import { Highlight, Prism } from "prism-react-renderer";
 import { forwardRef, ReactNode, useCallback, useEffect, useState } from "react";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { cn } from "~/utils/cn";
+import { highlightSearchText } from "~/utils/logUtils";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
@@ -20,6 +21,8 @@ async function setup() {
   await import("prismjs/components/prism-json");
   //@ts-ignore
   await import("prismjs/components/prism-typescript");
+  //@ts-ignore
+  await import("prismjs/components/prism-sql.js");
 }
 setup();
 
@@ -62,6 +65,12 @@ type CodeBlockProps = {
 
   /** Whether to show the open in modal button */
   showOpenInModal?: boolean;
+
+  /** Search term to highlight in the code */
+  searchTerm?: string;
+
+  /** Whether to wrap the code */
+  wrap?: boolean;
 };
 
 const dimAmount = 0.5;
@@ -200,6 +209,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       showChrome = false,
       fileName,
       rowTitle,
+      searchTerm,
+      wrap = false,
       ...props
     }: CodeBlockProps,
     ref
@@ -208,7 +219,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const [copied, setCopied] = useState(false);
     const [modalCopied, setModalCopied] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isWrapped, setIsWrapped] = useState(false);
+    const [isWrapped, setIsWrapped] = useState(wrap);
 
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -236,7 +247,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       [code]
     );
 
-    code = code.trim();
+    code = code?.trim() ?? "";
     const lineCount = code.split("\n").length;
     const maxLineWidth = lineCount.toString().length;
     let maxHeight: string | undefined = undefined;
@@ -254,7 +265,10 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     return (
       <>
         <div
-          className={cn("relative overflow-hidden rounded-md border border-grid-bright", className)}
+          className={cn(
+            "relative flex flex-col overflow-hidden rounded-md border border-grid-bright",
+            className
+          )}
           style={{
             backgroundColor: theme.plain.backgroundColor,
           }}
@@ -338,14 +352,14 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               className="px-2 py-3"
               preClassName="text-xs"
               isWrapped={isWrapped}
+              searchTerm={searchTerm}
             />
           ) : (
             <div
               dir="ltr"
               className={cn(
-                "px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-                !isWrapped && "overflow-x-auto",
-                isWrapped && "overflow-y-auto"
+                "min-h-0 flex-1 px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                "overflow-auto"
               )}
               style={{
                 maxHeight,
@@ -358,7 +372,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 )}
                 dir="ltr"
               >
-                {code}
+                {highlightSearchText(code, searchTerm)}
               </pre>
             </div>
           )}
@@ -400,7 +414,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
                 className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
-                  {code}
+                  {highlightSearchText(code, searchTerm)}
                 </pre>
               </div>
             )}
@@ -449,6 +463,7 @@ type HighlightCodeProps = {
   className?: string;
   preClassName?: string;
   isWrapped: boolean;
+  searchTerm?: string;
 };
 
 function HighlightCode({
@@ -461,6 +476,7 @@ function HighlightCode({
   className,
   preClassName,
   isWrapped,
+  searchTerm,
 }: HighlightCodeProps) {
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -470,13 +486,15 @@ function HighlightCode({
       import("prismjs/components/prism-json"),
       //@ts-ignore
       import("prismjs/components/prism-typescript"),
+      //@ts-ignore
+      import("prismjs/components/prism-sql.js"),
     ]).then(() => setIsLoaded(true));
   }, []);
 
   const containerClasses = cn(
-    "px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-    !isWrapped && "overflow-x-auto",
-    isWrapped && "overflow-y-auto",
+    "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+    !isWrapped && "overflow-auto",
+    isWrapped && "overflow-auto",
     className
   );
 
@@ -552,6 +570,10 @@ function HighlightCode({
                     <div className="flex-1">
                       {line.map((token, key) => {
                         const tokenProps = getTokenProps({ token, key });
+
+                        // Highlight search term matches in token
+                        const content = highlightSearchText(token.content, searchTerm);
+
                         return (
                           <span
                             key={key}
@@ -560,7 +582,9 @@ function HighlightCode({
                               color: tokenProps?.style?.color as string,
                               ...tokenProps.style,
                             }}
-                          />
+                          >
+                            {content}
+                          </span>
                         );
                       })}
                     </div>

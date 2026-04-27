@@ -1,6 +1,7 @@
 import { type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
 import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { getLimit } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -96,7 +97,7 @@ export class ScheduleListPresenter extends BasePresenter {
 
     const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
       prisma: this._replica,
-      environments: project.environments,
+      projectId,
     });
 
     const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
@@ -123,14 +124,10 @@ export class ScheduleListPresenter extends BasePresenter {
     }
 
     //get all possible scheduled tasks
-    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
-      where: {
-        workerId: latestWorker.id,
-        projectId: project.id,
-        runtimeEnvironmentId: environmentId,
-        triggerSource: "SCHEDULED",
-      },
-    });
+    const allIdentifiers = await getTaskIdentifiers(environmentId);
+    const possibleTasks = allIdentifiers
+      .filter((t) => t.triggerSource === "SCHEDULED" && t.isInLatestDeployment)
+      .map((t) => ({ slug: t.slug }));
 
     //do this here to protect against SQL injection
     search = search && search !== "" ? `%${search}%` : undefined;
@@ -285,7 +282,7 @@ export class ScheduleListPresenter extends BasePresenter {
       totalPages: Math.ceil(totalCount / pageSize),
       totalCount: totalCount,
       schedules,
-      possibleTasks: possibleTasks.map((task) => task.slug).sort((a, b) => a.localeCompare(b)),
+      possibleTasks: possibleTasks.map((task) => task.slug),
       hasFilters,
       limits: {
         used: schedulesCount,

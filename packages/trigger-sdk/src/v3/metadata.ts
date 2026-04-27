@@ -7,6 +7,7 @@ import {
   type AsyncIterableStream,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
+import { streams } from "./streams.js";
 
 const parentMetadataUpdater: RunMetadataUpdater = runMetadata.parent;
 const rootMetadataUpdater: RunMetadataUpdater = runMetadata.root;
@@ -228,12 +229,19 @@ async function refreshMetadata(requestOptions?: ApiRequestOptions): Promise<void
   await runMetadata.refresh($requestOptions);
 }
 
+/**
+ * @deprecated Use `streams.pipe()` instead.
+ */
 async function stream<T>(
   key: string,
   value: AsyncIterable<T> | ReadableStream<T>,
   signal?: AbortSignal
 ): Promise<AsyncIterable<T>> {
-  return runMetadata.stream(key, value, signal);
+  const streamInstance = await streams.pipe(key, value, {
+    signal,
+  });
+
+  return streamInstance.stream;
 }
 
 async function fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {

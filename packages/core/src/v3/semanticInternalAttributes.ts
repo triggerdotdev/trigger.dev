@@ -19,6 +19,7 @@ export const SemanticInternalAttributes = {
   TASK_EXPORT_NAME: "ctx.task.exportName",
   QUEUE_NAME: "ctx.queue.name",
   QUEUE_ID: "ctx.queue.id",
+  MACHINE_ID: "ctx.machine.id",
   MACHINE_PRESET_NAME: "ctx.machine.name",
   MACHINE_PRESET_CPU: "ctx.machine.cpu",
   MACHINE_PRESET_MEMORY: "ctx.machine.memory",
@@ -29,6 +30,7 @@ export const SemanticInternalAttributes = {
   SPAN: "$span",
   ENTITY_TYPE: "$entity.type",
   ENTITY_ID: "$entity.id",
+  ENTITY_METADATA: "$entity.metadata",
   OUTPUT: "$output",
   OUTPUT_TYPE: "$mime_type_output",
   STYLE: "$style",
@@ -64,4 +66,5 @@ export const SemanticInternalAttributes = {
   WARM_START: "warm_start",
   ATTEMPT_EXECUTION_COUNT: "$trigger.executionCount",
   TASK_EVENT_STORE: "$trigger.taskEventStore",
+  RUN_TAGS: "ctx.run.tags",
 };

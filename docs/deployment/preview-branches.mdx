@@ -72,7 +72,7 @@ This GitHub Action will:
 
 1. Automatically create a preview branch for your Pull Request (if the branch doesn't already exist).
 2. Deploy the preview branch.
-3. Archive the preview branch when the Pull Request is merged/closed.
+3. Archive the preview branch when the Pull Request is merged/closed. This only works if your workflow runs on **closed** PRs (`types: [opened, synchronize, reopened, closed]`). If you omit `closed`, branches won't be archived automatically.
 
 ```yml .github/workflows/trigger-preview-branches.yml
 name: Deploy to Trigger.dev (preview branches)

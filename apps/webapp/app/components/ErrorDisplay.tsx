@@ -1,11 +1,10 @@
 import { HomeIcon } from "@heroicons/react/20/solid";
 import { isRouteErrorResponse, useRouteError } from "@remix-run/react";
-import { motion } from "framer-motion";
 import { friendlyErrorDisplay } from "~/utils/httpErrors";
 import { LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
-import Spline from "@splinetool/react-spline";
+import { TriggerRotatingLogo } from "./TriggerRotatingLogo";
 import { type ReactNode } from "react";
 
 type ErrorDisplayOptions = {
@@ -57,14 +56,7 @@ export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
           {button ? button.title : "Go to homepage"}
         </LinkButton>
       </div>
-      <motion.div
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5, duration: 2, ease: "easeOut" }}
-      >
-        <Spline scene="https://prod.spline.design/wRly8TZN-e0Twb8W/scene.splinecode" />
-      </motion.div>
+      <TriggerRotatingLogo />
     </div>
   );
 }

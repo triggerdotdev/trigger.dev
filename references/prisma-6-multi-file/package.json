@@ -1,0 +1,22 @@
+{
+  "name": "references-prisma-6-multi-file",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*",
+    "prisma": "6.14.0"
+  },
+  "dependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "@prisma/client": "6.14.0"
+  },
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy",
+    "prisma:generate": "prisma generate --sql"
+  },
+  "prisma": {
+    "schema": "./prisma"
+  }
+}

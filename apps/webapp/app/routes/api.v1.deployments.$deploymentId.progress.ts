@@ -48,6 +48,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       contentHash: body.data.contentHash,
       git: body.data.gitMeta,
       runtime: body.data.runtime,
+      buildServerMetadata: body.data.buildServerMetadata,
     })
     .match(
       () => {
@@ -55,8 +56,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
       (error) => {
         switch (error.type) {
-          case "failed_to_extend_deployment_timeout":
+          case "failed_to_extend_deployment_timeout": {
+            logger.warn("Failed to extend deployment timeout", { error: error.cause });
             return new Response(null, { status: 204 }); // ignore these errors for now
+          }
           case "deployment_not_found":
             return json({ error: "Deployment not found" }, { status: 404 });
           case "deployment_cannot_be_progressed":
@@ -64,8 +67,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
               { error: "Deployment is not in a progressable state (PENDING or INSTALLING)" },
               { status: 409 }
             );
-          case "failed_to_create_remote_build":
+          case "failed_to_create_remote_build": {
+            logger.error("Failed to create remote Depot build", { error: error.cause });
             return json({ error: "Failed to create remote build" }, { status: 500 });
+          }
           case "other":
           default:
             error.type satisfies "other";

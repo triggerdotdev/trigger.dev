@@ -1,10 +1,12 @@
 ---
 title: "Run metadata"
 sidebarTitle: "Metadata"
-description: "Attach a small amount of data to a run and update it as the run progresses."
+description: "Attach structured data to a run and update it as the task progresses. Use metadata for progress tracking, user context, intermediate results, and more."
 ---
 
-You can attach up to 256KB of metadata to a run, which you can then access from inside the run function, via the API, Realtime, and in the dashboard. You can use metadata to store additional, structured information on a run. For example, you could store your user’s full name and corresponding unique identifier from your system on every task that is associated with that user. Or you could store the progress of a long-running task, or intermediate results that you want to access later.
+**Metadata lets you attach up to 256KB of structured data to a run and update it while the task runs.** Subscribers (via [React hooks](/realtime/react-hooks/subscribe) or [backend](/realtime/backend/subscribe)) get those updates in real time, making metadata the simplest way to build progress bars, status indicators, and live dashboards.
+
+You can access metadata from inside the run function, via the API, Realtime, and in the dashboard. Common uses: progress percentage, current step, user context, intermediate results.
 
 ## Usage
 
@@ -264,7 +266,14 @@ export const myTask = task({
 
 ### stream
 
-Capture a stream of values and make the stream available when using Realtime. See our [Realtime streams](/realtime/react-hooks/streams) documentation for more information.
+<Note>
+  As of SDK version **4.1.0**, `metadata.stream()` has been replaced by [Realtime Streams
+  v2](/tasks/streams). We recommend using the new `streams.pipe()` API for better reliability,
+  unlimited stream length, and improved developer experience. The examples below are provided for
+  backward compatibility.
+</Note>
+
+Capture a stream of values and make the stream available when using Realtime. See our [Realtime Streams v2](/tasks/streams) documentation for the recommended approach.
 
 ```ts
 import { task, metadata } from "@trigger.dev/sdk";
@@ -435,14 +444,14 @@ metadata.parent.append("logs", "Step 1 complete");
 metadata.parent.remove("logs", "Step 1 complete");
 metadata.parent.increment("progress", 0.4);
 metadata.parent.decrement("otherProgress", 0.1);
-metadata.parent.stream("llm", readableStream);
+metadata.parent.stream("llm", readableStream); // Use streams.pipe() instead (v4.1+)
 
 metadata.root.set("progress", 0.5);
 metadata.root.append("logs", "Step 1 complete");
 metadata.root.remove("logs", "Step 1 complete");
 metadata.root.increment("progress", 0.4);
 metadata.root.decrement("otherProgress", 0.1);
-metadata.root.stream("llm", readableStream);
+metadata.root.stream("llm", readableStream); // Use streams.pipe() instead (v4.1+)
 ```
 
 You can also chain the update methods together:

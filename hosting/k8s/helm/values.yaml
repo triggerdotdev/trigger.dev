@@ -208,6 +208,15 @@ webapp:
   runReplication:
     logLevel: "info" # one of: log, error, warn, info, debug
 
+  # ServiceAccount configuration
+  serviceAccount:
+    create: true
+    # Name of the ServiceAccount to use. Required when create is false - otherwise
+    # the token-syncer RoleBinding would bind to the namespace's "default" SA.
+    name: ""
+    # Annotations to add to the ServiceAccount (e.g. eks.amazonaws.com/role-arn for IRSA)
+    annotations: {}
+
   # Observability configuration (OTel)
   observability:
     tracing:
@@ -471,7 +480,7 @@ electric:
   image:
     registry: docker.io
     repository: electricsql/electric
-    tag: "1.0.24"
+    tag: "1.2.4"
     pullPolicy: IfNotPresent
   config:
     insecure: true
@@ -553,6 +562,12 @@ clickhouse:
   persistence:
     enabled: true
     size: 10Gi
+
+  ## ClickHouse resource requests and limits
+  ## ref: http://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
+  ## @param resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).
+  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
+  resourcesPreset: "xlarge"
   resources: {}
 
   # External ClickHouse connection (when deploy: false)
@@ -602,6 +617,12 @@ s3:
     repository: bitnamilegacy/minio
     # image: docker.io/bitnamilegacy/minio:2025.6.13-debian-12-r0
 
+  # MinIO Console (Browser UI) configuration
+  console:
+    image:
+      repository: bitnamilegacy/minio-object-browser
+      # image: docker.io/bitnamilegacy/minio-object-browser:2025.1.10-debian-12-r1
+
   # Bitnami MinIO chart configuration (when deploy: true)
   # MinIO provides S3-compatible storage when deployed internally
   auth:
@@ -633,6 +654,18 @@ s3:
     existingSecret: "" # Name of existing secret containing S3 credentials
     existingSecretAccessKeyIdKey: "access-key-id" # Key in existing secret containing access key ID
     existingSecretSecretAccessKeyKey: "secret-access-key" # Key in existing secret containing secret access key
+    #
+    # Multi-provider support (optional)
+    # To use multiple S3-compatible providers (e.g., S3 + R2), set defaultProtocol and configure named providers
+    # via extraEnvVars. For example:
+    #   - OBJECT_STORE_DEFAULT_PROTOCOL=s3  # Protocol to use for new uploads
+    #   - OBJECT_STORE_S3_BASE_URL=https://s3.amazonaws.com
+    #   - OBJECT_STORE_S3_ACCESS_KEY_ID=...
+    #   - OBJECT_STORE_S3_SECRET_ACCESS_KEY=...
+    #   - OBJECT_STORE_R2_BASE_URL=https://...r2.cloudflarestorage.com
+    #   - OBJECT_STORE_R2_ACCESS_KEY_ID=...
+    #   - OBJECT_STORE_R2_SECRET_ACCESS_KEY=...
+    # See documentation for migration guide: https://trigger.dev/docs/self-hosting/env/webapp
 
 # Docker Registry configuration
 registry:

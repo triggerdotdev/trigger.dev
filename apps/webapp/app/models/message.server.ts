@@ -1,7 +1,8 @@
-import { json, Session } from "@remix-run/node";
-import { createCookieSessionStorage } from "@remix-run/node";
+import { json, createCookieSessionStorage, type Session } from "@remix-run/node";
 import { redirect, typedjson } from "remix-typedjson";
+import { ButtonVariant } from "~/components/primitives/Buttons";
 import { env } from "~/env.server";
+import { type FeedbackType } from "~/routes/resources.feedback";
 
 export type ToastMessage = {
   message: string;
@@ -9,9 +10,26 @@ export type ToastMessage = {
   options: Required<ToastMessageOptions>;
 };
 
+export type ToastMessageAction = {
+  label: string;
+  variant?: ButtonVariant;
+  action:
+    | {
+        type: "link";
+        path: string;
+      }
+    | {
+        type: "help";
+        feedbackType: FeedbackType;
+      };
+};
+
 export type ToastMessageOptions = {
+  title?: string;
   /** Ephemeral means it disappears after a delay, defaults to true */
   ephemeral?: boolean;
+  /** This display a button and make it not ephemeral, unless ephemeral is explicitlyset to false */
+  action?: ToastMessageAction;
 };
 
 const ONE_YEAR = 1000 * 60 * 60 * 24 * 365;
@@ -36,6 +54,7 @@ export function setSuccessMessage(
     message,
     type: "success",
     options: {
+      ...options,
       ephemeral: options?.ephemeral ?? true,
     },
   } as ToastMessage);
@@ -46,6 +65,7 @@ export function setErrorMessage(session: Session, message: string, options?: Toa
     message,
     type: "error",
     options: {
+      ...options,
       ephemeral: options?.ephemeral ?? true,
     },
   } as ToastMessage);

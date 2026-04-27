@@ -1,4 +1,4 @@
-import { RuntimeEnvironment, type PrismaClient } from "@trigger.dev/database";
+import type { RuntimeEnvironment, PrismaClient } from "@trigger.dev/database";
 import { redirect } from "remix-typedjson";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -10,6 +10,9 @@ import {
 } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
+import { env } from "~/env.server";
+import { flags } from "~/v3/featureFlags.server";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -111,6 +114,7 @@ export class OrganizationsPresenter {
       organization,
       project: {
         ...fullProject,
+        createdAt: fullProject.createdAt,
         environments: sortEnvironments(
           fullProject.environments.filter((env) => {
             if (env.type !== "DEVELOPMENT") return true;
@@ -132,6 +136,7 @@ export class OrganizationsPresenter {
         slug: true,
         title: true,
         avatar: true,
+        featureFlags: true,
         projects: {
           where: { deletedAt: null, version: "V3" },
           select: {
@@ -139,6 +144,7 @@ export class OrganizationsPresenter {
             slug: true,
             name: true,
             updatedAt: true,
+            externalRef: true,
           },
           orderBy: { name: "asc" },
         },
@@ -150,17 +156,35 @@ export class OrganizationsPresenter {
       },
     });
 
+    // Get global feature flags with env-var-based defaults
+    const globalFlags = await flags({
+      defaultValues: {
+        hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+        hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+      },
+    });
+
     return orgs.map((org) => {
+      const orgFlagsResult = org.featureFlags
+        ? validatePartialFeatureFlags(org.featureFlags as Record<string, unknown>)
+        : ({ success: false } as const);
+      const orgFlags = orgFlagsResult.success ? orgFlagsResult.data : {};
+
+      // Combine global flags with org flags (org flags win)
+      const combinedFlags = { ...globalFlags, ...orgFlags };
+
       return {
         id: org.id,
         slug: org.slug,
         title: org.title,
         avatar: parseAvatar(org.avatar, defaultAvatar),
+        featureFlags: combinedFlags,
         projects: org.projects.map((project) => ({
           id: project.id,
           slug: project.slug,
           name: project.name,
           updatedAt: project.updatedAt,
+          externalRef: project.externalRef,
         })),
         membersCount: org._count.members,
       };
@@ -193,7 +217,11 @@ export class OrganizationsPresenter {
     })[];
   }) {
     if (environmentSlug) {
-      const env = environments.find((e) => e.slug === environmentSlug);
+      const env = environments.find(
+        (e) =>
+          e.slug === environmentSlug &&
+          (e.type !== "DEVELOPMENT" || e.orgMember?.userId === user.id)
+      );
       if (env) {
         return env;
       }

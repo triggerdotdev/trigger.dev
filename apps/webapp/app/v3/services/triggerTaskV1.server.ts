@@ -13,7 +13,7 @@ import {
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { createTag, MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
+import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { logger } from "~/services/logger.server";
@@ -22,11 +22,11 @@ import { parseDelay } from "~/utils/delays";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { handleMetadataPacket } from "~/utils/packets";
 import { marqs } from "~/v3/marqs/index.server";
-import { getEventRepository } from "../eventRepository/index.server";
+import { getV3EventRepository } from "../eventRepository/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { findCurrentWorkerFromEnvironment } from "../models/workerDeployment.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
-import { uploadPacketToObjectStore } from "../r2.server";
+import { uploadPacketToObjectStore } from "../objectStore.server";
 import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
@@ -134,7 +134,9 @@ export class TriggerTaskServiceV1 extends BaseService {
 
         if (!queueSizeGuard.isWithinLimits) {
           throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            undefined,
+            "warn"
           );
         }
       }
@@ -291,8 +293,7 @@ export class TriggerTaskServiceV1 extends BaseService {
           })
         : undefined;
 
-      const { repository, store } = await getEventRepository(
-        environment.organization.featureFlags as Record<string, unknown>,
+      const { repository, store } = await getV3EventRepository(
         dependentAttempt?.taskRun.taskEventStore ??
           parentAttempt?.taskRun.taskEventStore ??
           dependentBatchRun?.dependentTaskAttempt?.taskRun.taskEventStore
@@ -344,21 +345,8 @@ export class TriggerTaskServiceV1 extends BaseService {
 
                 span.setAttribute("queueName", queueName);
 
-                //upsert tags
-                let tagIds: string[] = [];
                 const bodyTags =
                   typeof body.options?.tags === "string" ? [body.options.tags] : body.options?.tags;
-                if (bodyTags && bodyTags.length > 0) {
-                  for (const tag of bodyTags) {
-                    const tagRecord = await createTag({
-                      tag,
-                      projectId: environment.projectId,
-                    });
-                    if (tagRecord) {
-                      tagIds.push(tagRecord.id);
-                    }
-                  }
-                }
 
                 const depth = dependentAttempt
                   ? dependentAttempt.taskRun.depth + 1
@@ -408,12 +396,6 @@ export class TriggerTaskServiceV1 extends BaseService {
                     maxAttempts: body.options?.maxAttempts,
                     taskEventStore: store,
                     ttl,
-                    tags:
-                      tagIds.length === 0
-                        ? undefined
-                        : {
-                            connect: tagIds.map((id) => ({ id })),
-                          },
                     parentTaskRunId:
                       dependentAttempt?.taskRun.id ??
                       parentAttempt?.taskRun.id ??
@@ -477,8 +459,7 @@ export class TriggerTaskServiceV1 extends BaseService {
                       ? Math.max(
                           Math.min(
                             body.options.queue.concurrencyLimit,
-                            environment.maximumConcurrencyLimit,
-                            environment.organization.maximumConcurrencyLimit
+                            environment.maximumConcurrencyLimit
                           ),
                           0
                         )
@@ -756,10 +737,10 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
-        data: filename,
+        data: uploadedFilename,
         dataType: "application/store",
       };
     });

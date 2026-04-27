@@ -521,13 +521,34 @@ http://{{ include "trigger-v4.fullname" . }}-supervisor:{{ .Values.supervisor.se
 {{- end }}
 
 {{/*
-Create the name of the supervisor service account to use
+Create the name of the supervisor service account to use.
+When create is false, name must be set explicitly - falling back to the namespace's
+default ServiceAccount would silently grant it the RoleBinding's permissions.
 */}}
 {{- define "trigger-v4.supervisorServiceAccountName" -}}
 {{- if .Values.supervisor.serviceAccount.create }}
 {{- default (printf "%s-supervisor" (include "trigger-v4.fullname" .)) .Values.supervisor.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.supervisor.serviceAccount.name }}
+{{- if not .Values.supervisor.serviceAccount.name }}
+{{- fail "supervisor.serviceAccount.name must be set when supervisor.serviceAccount.create is false" }}
+{{- end }}
+{{- .Values.supervisor.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the name of the webapp service account to use.
+When create is false, name must be set explicitly - falling back to the namespace's
+default ServiceAccount would silently grant it the token-syncer RoleBinding's permissions.
+*/}}
+{{- define "trigger-v4.webappServiceAccountName" -}}
+{{- if .Values.webapp.serviceAccount.create }}
+{{- default (printf "%s-webapp" (include "trigger-v4.fullname" .)) .Values.webapp.serviceAccount.name }}
+{{- else }}
+{{- if not .Values.webapp.serviceAccount.name }}
+{{- fail "webapp.serviceAccount.name must be set when webapp.serviceAccount.create is false" }}
+{{- end }}
+{{- .Values.webapp.serviceAccount.name }}
 {{- end }}
 {{- end }}
 

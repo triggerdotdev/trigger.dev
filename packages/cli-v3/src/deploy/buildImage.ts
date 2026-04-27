@@ -6,19 +6,28 @@ import { networkInterfaces } from "os";
 import { join } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
 import { readFileSync } from "fs";
+
 import { isLinux } from "std-env";
 import { z } from "zod";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
+import { tryCatch } from "@trigger.dev/core";
+import { CliApiClient } from "../apiClient.js";
 
 export interface BuildImageOptions {
   // Common options
   isLocalBuild: boolean;
+  useRegistryCache?: boolean;
   imagePlatform: string;
   noCache?: boolean;
   load?: boolean;
+  compression?: "zstd" | "gzip";
+  cacheCompression?: "zstd" | "gzip";
+  compressionLevel?: number;
+  forceCompression?: boolean;
 
   // Local build options
   push?: boolean;
+  authenticateToRegistry?: boolean;
   network?: string;
   builder: string;
 
@@ -37,6 +46,7 @@ export interface BuildImageOptions {
   extraCACerts?: string;
   apiUrl: string;
   apiKey: string;
+  apiClient: CliApiClient;
   branchName?: string;
   buildEnvVars?: Record<string, string | undefined>;
   onLog?: (log: string) => void;
@@ -48,9 +58,11 @@ export interface BuildImageOptions {
 export async function buildImage(options: BuildImageOptions): Promise<BuildImageResults> {
   const {
     isLocalBuild,
+    useRegistryCache,
     imagePlatform,
     noCache,
     push,
+    authenticateToRegistry,
     load,
     authAccessToken,
     imageTag,
@@ -66,10 +78,15 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     extraCACerts,
     apiUrl,
     apiKey,
+    apiClient,
     branchName,
     buildEnvVars,
     network,
     builder,
+    compression,
+    cacheCompression,
+    compressionLevel,
+    forceCompression,
     onLog,
   } = options;
 
@@ -84,15 +101,22 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
       contentHash,
       projectRef,
       push,
+      authenticateToRegistry,
       load,
       noCache,
+      useRegistryCache,
       extraCACerts,
       apiUrl,
       apiKey,
+      apiClient,
       branchName,
       buildEnvVars,
       network,
       builder,
+      compression,
+      cacheCompression,
+      compressionLevel,
+      forceCompression,
       onLog,
     });
   }
@@ -122,6 +146,9 @@ export async function buildImage(options: BuildImageOptions): Promise<BuildImage
     apiKey,
     branchName,
     buildEnvVars,
+    compression,
+    compressionLevel,
+    forceCompression,
     onLog,
   });
 }
@@ -145,6 +172,9 @@ export interface DepotBuildImageOptions {
   noCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
+  compression?: "zstd" | "gzip";
+  compressionLevel?: number;
+  forceCompression?: boolean;
   onLog?: (log: string) => void;
 }
 
@@ -168,6 +198,16 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     .filter(([key, value]) => value)
     .flatMap(([key, value]) => ["--build-arg", `${key}=${value}`]);
 
+  const outputOptions = getOutputOptions({
+    imageTag: undefined, // This is already handled via the --save flag
+    push: true, // We always push the image to the registry
+    load: options.load,
+    compression: options.compression,
+    compressionLevel: options.compressionLevel,
+    forceCompression: options.forceCompression,
+    isLocalBuild: false,
+  });
+
   const args = [
     "build",
     "-f",
@@ -175,17 +215,16 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     options.noCache ? "--no-cache" : undefined,
     "--platform",
     options.imagePlatform,
-    options.load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
     "metadata.json",
     "--build-arg",
+    `SOURCE_DATE_EPOCH=0`,
+    "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "--build-arg",
     `TRIGGER_CONTENT_HASH=${options.contentHash}`,
     "--build-arg",
@@ -202,6 +241,8 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     "plain",
     ".",
     "--save",
+    "--output",
+    outputOptions.join(","),
   ].filter(Boolean) as string[];
 
   logger.debug(`depot ${args.join(" ")}`, { cwd: options.cwd });
@@ -292,20 +333,37 @@ interface SelfHostedBuildImageOptions {
   projectRef: string;
   imagePlatform: string;
   push?: boolean;
+  authenticateToRegistry?: boolean;
   apiUrl: string;
   apiKey: string;
+  apiClient: CliApiClient;
   branchName?: string;
   noCache?: boolean;
+  useRegistryCache?: boolean;
   extraCACerts?: string;
   buildEnvVars?: Record<string, string | undefined>;
   network?: string;
   builder: string;
   load?: boolean;
+  compression?: "zstd" | "gzip";
+  cacheCompression?: "zstd" | "gzip";
+  compressionLevel?: number;
+  forceCompression?: boolean;
   onLog?: (log: string) => void;
 }
 
 async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<BuildImageResults> {
-  const { builder, imageTag } = options;
+  const {
+    builder,
+    imageTag,
+    deploymentId,
+    apiClient,
+    useRegistryCache,
+    compression,
+    cacheCompression,
+    compressionLevel,
+    forceCompression,
+  } = options;
 
   // Ensure multi-platform build is supported on the local machine
   let builderExists = false;
@@ -414,6 +472,76 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
 
   await ensureQemuRegistered(options.imagePlatform);
 
+  const errors: string[] = [];
+
+  let cloudRegistryHost: string | undefined;
+  if (push && options.authenticateToRegistry) {
+    cloudRegistryHost =
+      process.env.TRIGGER_DOCKER_REGISTRY ?? extractRegistryHostFromImageTag(imageTag);
+
+    if (!cloudRegistryHost) {
+      return {
+        ok: false as const,
+        error: "Failed to extract registry host from image tag",
+        logs: "",
+      };
+    }
+
+    const [credentialsError, credentials] = await tryCatch(
+      getDockerUsernameAndPassword(apiClient, deploymentId)
+    );
+
+    if (credentialsError) {
+      return {
+        ok: false as const,
+        error: `Failed to get docker credentials: ${credentialsError.message}`,
+        logs: "",
+      };
+    }
+
+    logger.debug(`Logging in to docker registry: ${cloudRegistryHost}`);
+
+    const loginProcess = x(
+      "docker",
+      ["login", "--username", credentials.username, "--password-stdin", cloudRegistryHost],
+      {
+        nodeOptions: {
+          cwd: options.cwd,
+        },
+      }
+    );
+
+    loginProcess.process?.stdin?.write(credentials.password);
+    loginProcess.process?.stdin?.end();
+
+    for await (const line of loginProcess) {
+      errors.push(line);
+      logger.debug(line);
+    }
+
+    if (loginProcess.exitCode !== 0) {
+      return {
+        ok: false as const,
+        error: `Failed to login to registry: ${cloudRegistryHost}`,
+        logs: extractLogs(errors),
+      };
+    }
+
+    options.onLog?.(`Successfully logged in to the remote registry`);
+  }
+
+  const projectCacheRef = getProjectCacheRefFromImageTag(imageTag);
+
+  const outputOptions = getOutputOptions({
+    imageTag,
+    push,
+    load,
+    compression,
+    compressionLevel,
+    forceCompression,
+    isLocalBuild: true,
+  });
+
   const args = [
     "buildx",
     "build",
@@ -422,22 +550,32 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     "-f",
     "Containerfile",
     options.noCache ? "--no-cache" : undefined,
+    ...(useRegistryCache
+      ? [
+          "--cache-to",
+          `type=registry,mode=max,image-manifest=true,oci-mediatypes=true,ref=${projectCacheRef}${
+            cacheCompression === "zstd" ? ",compression=zstd" : ""
+          }`,
+          "--cache-from",
+          `type=registry,ref=${projectCacheRef}`,
+        ]
+      : []),
+    "--output",
+    outputOptions.join(","),
     "--platform",
     options.imagePlatform,
     options.network ? `--network=${options.network}` : undefined,
     addHost ? `--add-host=${addHost}` : undefined,
-    push ? "--push" : undefined,
-    load ? "--load" : undefined,
     "--provenance",
     "false",
     "--metadata-file",
     "metadata.json",
     "--build-arg",
+    `SOURCE_DATE_EPOCH=0`,
+    "--build-arg",
     `TRIGGER_PROJECT_ID=${options.projectId}`,
     "--build-arg",
     `TRIGGER_DEPLOYMENT_ID=${options.deploymentId}`,
-    "--build-arg",
-    `TRIGGER_DEPLOYMENT_VERSION=${options.deploymentVersion}`,
     "--build-arg",
     `TRIGGER_CONTENT_HASH=${options.contentHash}`,
     "--build-arg",
@@ -452,18 +590,15 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     ...(options.extraCACerts ? ["--build-arg", `NODE_EXTRA_CA_CERTS=${options.extraCACerts}`] : []),
     "--progress",
     "plain",
-    "-t",
-    options.imageTag,
     ".", // The build context
   ].filter(Boolean) as string[];
 
   logger.debug(`docker ${args.join(" ")}`, { cwd: options.cwd });
 
-  const errors: string[] = [];
-
-  // Build the image
   const buildProcess = x("docker", args, {
-    nodeOptions: { cwd: options.cwd },
+    nodeOptions: {
+      cwd: options.cwd,
+    },
   });
 
   for await (const line of buildProcess) {
@@ -474,6 +609,11 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
   }
 
   if (buildProcess.exitCode !== 0) {
+    if (cloudRegistryHost) {
+      logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
+      await x("docker", ["logout", cloudRegistryHost]);
+    }
+
     return {
       ok: false as const,
       error: "Error building image",
@@ -519,6 +659,11 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     options.onLog?.(`Image size: ${(imageSizeBytes / (1024 * 1024)).toFixed(2)} MB`);
   }
 
+  if (cloudRegistryHost) {
+    logger.debug(`Logging out from docker registry: ${cloudRegistryHost}`);
+    await x("docker", ["logout", cloudRegistryHost]);
+  }
+
   return {
     ok: true as const,
     imageSizeBytes,
@@ -543,7 +688,7 @@ export type GenerateContainerfileOptions = {
 };
 
 const BASE_IMAGE: Record<BuildRuntime, string> = {
-  bun: "imbios/bun-node:1.2.20-20-slim@sha256:a20d1f90ee079b80dffc0041cf8a73aa05cdb135e3b3aff1ba3eba91608dba22",
+  bun: "imbios/bun-node:1.3.3-20-slim@sha256:59d84856a7e31eec83afedadb542f7306f672343b8b265c70d733404a6e8834b",
   node: "node:21.7.3-bookworm-slim@sha256:dfc05dee209a1d7adf2ef189bd97396daad4e97c6eaa85778d6f75205ba1b0fb",
   "node-22":
     "node:22.16.0-bookworm-slim@sha256:048ed02c5fd52e86fda6fbd2f6a76cf0d4492fd6c6fee9e2c463ed5108da0e34",
@@ -594,6 +739,7 @@ async function generateBunContainerfile(options: GenerateContainerfileOptions) {
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
 ${baseInstructions}
@@ -668,15 +814,11 @@ USER bun
 WORKDIR /app
 
 ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
 ARG TRIGGER_CONTENT_HASH
 ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     UV_USE_IO_URING=0 \
@@ -699,6 +841,7 @@ async function generateNodeContainerfile(options: GenerateContainerfileOptions) 
     parseGenerateOptions(options);
 
   return `# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
 FROM ${baseImage} AS base
 
 ${baseInstructions}
@@ -781,15 +924,11 @@ USER node
 WORKDIR /app
 
 ARG TRIGGER_PROJECT_ID
-ARG TRIGGER_DEPLOYMENT_ID
-ARG TRIGGER_DEPLOYMENT_VERSION
 ARG TRIGGER_CONTENT_HASH
 ARG TRIGGER_PROJECT_REF
 ARG NODE_EXTRA_CA_CERTS
 
 ENV TRIGGER_PROJECT_ID=\${TRIGGER_PROJECT_ID} \
-    TRIGGER_DEPLOYMENT_ID=\${TRIGGER_DEPLOYMENT_ID} \
-    TRIGGER_DEPLOYMENT_VERSION=\${TRIGGER_DEPLOYMENT_VERSION} \
     TRIGGER_CONTENT_HASH=\${TRIGGER_CONTENT_HASH} \
     TRIGGER_PROJECT_REF=\${TRIGGER_PROJECT_REF} \
     UV_USE_IO_URING=0 \
@@ -838,6 +977,48 @@ function getAddHost(apiUrl: string) {
   }
 
   return;
+}
+
+function extractRegistryHostFromImageTag(imageTag: string): string | undefined {
+  const host = imageTag.split("/")[0];
+
+  if (!host || !host.includes(".")) {
+    return undefined;
+  }
+
+  return host;
+}
+
+function getProjectCacheRefFromImageTag(imageTag: string): string {
+  const lastColonIndex = imageTag.lastIndexOf(":");
+  return `${imageTag.substring(0, lastColonIndex)}:cache`;
+}
+
+async function getDockerUsernameAndPassword(
+  apiClient: CliApiClient,
+  deploymentId: string
+): Promise<{ username: string; password: string }> {
+  if (process.env.TRIGGER_DOCKER_USERNAME && process.env.TRIGGER_DOCKER_PASSWORD) {
+    return {
+      username: process.env.TRIGGER_DOCKER_USERNAME,
+      password: process.env.TRIGGER_DOCKER_PASSWORD,
+    };
+  }
+
+  const result = await apiClient.generateRegistryCredentials(deploymentId);
+
+  if (!result.success) {
+    logger.debug("Failed to generate registry credentials", {
+      error: result.error,
+      deploymentId,
+    });
+    throw new Error("Failed to generate registry credentials");
+  }
+
+  return {
+    username: result.data.username,
+    password: result.data.password,
+  };
 }
 
 function isQemuRegistered() {
@@ -935,4 +1116,64 @@ function shouldLoad(load?: boolean, push?: boolean) {
       assertExhaustive(load);
     }
   }
+}
+
+function getOutputOptions({
+  imageTag,
+  push,
+  load,
+  compression,
+  compressionLevel,
+  forceCompression,
+  isLocalBuild,
+}: {
+  imageTag?: string;
+  push?: boolean;
+  load?: boolean;
+  compression?: "zstd" | "gzip";
+  compressionLevel?: number;
+  forceCompression?: boolean;
+  isLocalBuild: boolean;
+}): string[] {
+  // type=docker exports directly into the local Docker daemon (what --load does).
+  // type=image builds a registry-format image that can be pushed.
+  // They're mutually exclusive: type=docker doesn't support push/compression,
+  // and type=image silently ignores "load=true".
+  // Only use type=docker for local builds to avoid affecting remote builds.
+  // Note: type=docker doesn't support compression options or rewrite-timestamp,
+  // so it will use the actual build time and default compression.
+  if (isLocalBuild && load && !push) {
+    const outputOptions: string[] = ["type=docker"];
+
+    if (imageTag) {
+      outputOptions.push(`name=${imageTag}`);
+    }
+
+    return outputOptions;
+  }
+
+  const outputOptions: string[] = ["type=image", "oci-mediatypes=true", "rewrite-timestamp=true"];
+
+  if (imageTag) {
+    outputOptions.push(`name=${imageTag}`);
+  }
+
+  if (push) {
+    outputOptions.push("push=true");
+  }
+
+  // Only add compression args when using zstd (gzip is the default, no args needed)
+  if (compression === "zstd") {
+    outputOptions.push("compression=zstd");
+
+    if (compressionLevel !== undefined) {
+      outputOptions.push(`compression-level=${compressionLevel}`);
+    }
+  }
+
+  if (forceCompression) {
+    outputOptions.push("force-compression=true");
+  }
+
+  return outputOptions;
 }

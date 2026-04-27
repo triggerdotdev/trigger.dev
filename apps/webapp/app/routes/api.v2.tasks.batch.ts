@@ -17,7 +17,10 @@ import {
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BatchProcessingStrategy } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 
 const { action, loader } = createActionApiRoute(
   {
@@ -59,6 +62,8 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
+      "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
       traceparent,
       tracestate,
     } = headers;
@@ -107,6 +112,8 @@ const { action, loader } = createActionApiRoute(
       ? { traceparent, tracestate }
       : { external: { traceparent, tracestate } };
 
+    // Note: SDK v4.3+ uses the 2-phase batch API (POST /api/v3/batches + streaming items)
+    // This endpoint is for backwards compatibility with older SDK versions
     const service = new RunEngineBatchTriggerService(batchProcessingStrategy ?? undefined);
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {
@@ -119,6 +126,11 @@ const { action, loader } = createActionApiRoute(
         traceContext,
         spanParentAsLink: spanParentAsLink === 1,
         oneTimeUseToken,
+        realtimeStreamsVersion: determineRealtimeStreamsVersion(
+          realtimeStreamsVersion ?? undefined
+        ),
+        triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+        triggerAction: "trigger",
       });
 
       const $responseHeaders = await responseHeaders(
@@ -173,7 +185,7 @@ async function responseHeaders(
     };
 
     const jwt = await generateJWT({
-      secretKey: environment.apiKey,
+      secretKey: extractJwtSigningSecretKey(environment),
       payload: claims,
       expirationTime: "1h",
     });

@@ -1,4 +1,5 @@
 import { ScheduleEngine } from "@internal/schedule-engine";
+import type { TriggerScheduledTaskErrorType } from "@internal/schedule-engine";
 import { stringifyIO } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
@@ -8,6 +9,7 @@ import { singleton } from "~/utils/singleton";
 import { TriggerTaskService } from "./services/triggerTask.server";
 import { meter, tracer } from "./tracer.server";
 import { workerQueue } from "~/services/worker.server";
+import { ServiceValidationError } from "./services/common.server";
 
 export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
@@ -106,14 +108,27 @@ function createScheduleEngine() {
             scheduleInstanceId,
             queueTimestamp: exactScheduleTime,
             overrideCreatedAt: exactScheduleTime,
+            triggerSource: "schedule",
+            triggerAction: "trigger",
           }
         );
 
         return { success: !!result };
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        let errorType: TriggerScheduledTaskErrorType = "SYSTEM_ERROR";
+
+        if (
+          error instanceof ServiceValidationError &&
+          errorMessage.includes("queue size limit for this environment has been reached")
+        ) {
+          errorType = "QUEUE_LIMIT";
+        }
+
         return {
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
+          errorType,
         };
       }
     },

@@ -60,17 +60,23 @@ export function runStatusFromError(
     case "TASK_EXECUTION_FAILED":
     case "TASK_PROCESS_SIGTERM":
     case "TASK_DID_CONCURRENT_WAIT":
+    case "BATCH_ITEM_COULD_NOT_TRIGGER":
+    case "PAYLOAD_TOO_LARGE":
+    case "UNSPECIFIED_ERROR":
       return "SYSTEM_FAILURE";
     default:
       assertExhaustive(error.code);
   }
 }
 
+export type ServiceValidationErrorLevel = "error" | "warn" | "info";
+
 export class ServiceValidationError extends Error {
   constructor(
     message: string,
     public status?: number,
-    public metadata?: Record<string, unknown>
+    public metadata?: Record<string, unknown>,
+    public logLevel?: ServiceValidationErrorLevel
   ) {
     super(message);
     this.name = "ServiceValidationError";

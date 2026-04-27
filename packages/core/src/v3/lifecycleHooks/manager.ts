@@ -14,6 +14,7 @@ import {
   AnyOnCleanupHookFunction,
   TaskWait,
   AnyOnCancelHookFunction,
+  AnyOnStartAttemptHookFunction,
 } from "./types.js";
 
 export class StandardLifecycleHooksManager implements LifecycleHooksManager {
@@ -22,6 +23,15 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
   private globalStartHooks: Map<string, RegisteredHookFunction<AnyOnStartHookFunction>> = new Map();
   private taskStartHooks: Map<string, RegisteredHookFunction<AnyOnStartHookFunction>> = new Map();
+
+  private globalStartAttemptHooks: Map<
+    string,
+    RegisteredHookFunction<AnyOnStartAttemptHookFunction>
+  > = new Map();
+  private taskStartAttemptHooks: Map<
+    string,
+    RegisteredHookFunction<AnyOnStartAttemptHookFunction>
+  > = new Map();
 
   private globalFailureHooks: Map<string, RegisteredHookFunction<AnyOnFailureHookFunction>> =
     new Map();
@@ -127,6 +137,37 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 
   getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
     return Array.from(this.globalStartHooks.values());
+  }
+
+  registerGlobalStartAttemptHook(
+    hook: RegisterHookFunctionParams<AnyOnStartAttemptHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+    this.globalStartAttemptHooks.set(id, {
+      id,
+      name: hook.id,
+      fn: hook.fn,
+    });
+  }
+
+  registerTaskStartAttemptHook(
+    taskId: string,
+    hook: RegisterHookFunctionParams<AnyOnStartAttemptHookFunction>
+  ): void {
+    const id = generateHookId(hook);
+    this.taskStartAttemptHooks.set(taskId, {
+      id,
+      name: hook.id,
+      fn: hook.fn,
+    });
+  }
+
+  getTaskStartAttemptHook(taskId: string): AnyOnStartAttemptHookFunction | undefined {
+    return this.taskStartAttemptHooks.get(taskId)?.fn;
+  }
+
+  getGlobalStartAttemptHooks(): RegisteredHookFunction<AnyOnStartAttemptHookFunction>[] {
+    return Array.from(this.globalStartAttemptHooks.values());
   }
 
   registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void {
@@ -524,6 +565,22 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
   }
 
   getGlobalStartHooks(): RegisteredHookFunction<AnyOnStartHookFunction>[] {
+    return [];
+  }
+
+  registerGlobalStartAttemptHook(): void {
+    // Noop
+  }
+
+  registerTaskStartAttemptHook(): void {
+    // Noop
+  }
+
+  getTaskStartAttemptHook(): undefined {
+    return undefined;
+  }
+
+  getGlobalStartAttemptHooks(): RegisteredHookFunction<AnyOnStartAttemptHookFunction>[] {
     return [];
   }
 

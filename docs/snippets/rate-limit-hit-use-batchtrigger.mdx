@@ -1,1 +1,1 @@
-The most common cause of hitting the API rate limit is if you’re calling `trigger()` on a task in a loop, instead of doing this use `batchTrigger()` which will trigger multiple tasks in a single API call. You can have up to 500 tasks in a single batch trigger call.
+The most common cause of hitting the API rate limit is if you're calling `trigger()` on a task in a loop, instead of doing this use `batchTrigger()` which will trigger multiple tasks in a single API call. You can have up to 1,000 tasks in a single batch trigger call with SDK 4.3.1+ (500 in prior versions).

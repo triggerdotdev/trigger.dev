@@ -1,5 +1,5 @@
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { randomUUID } from "crypto";
 import { Redis } from "ioredis";
 import { EnvQueues, MarQSFairDequeueStrategy, MarQSKeyProducer } from "./types";
@@ -99,13 +99,7 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
   constructor(private options: FairDequeuingStrategyOptions) {
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({
-      persistentMap: new Map(),
-      unstableEvictOnSet: {
-        frequency: 0.01,
-        maxItems: 500,
-      },
-    });
+    const memory = createLRUMemoryStore(500);
 
     this._cache = createCache({
       concurrencyLimit: new Namespace<number>(ctx, {

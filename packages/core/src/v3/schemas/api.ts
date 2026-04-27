@@ -149,6 +149,14 @@ export const RunTags = z.union([RunTag, RunTag.array()]);
 
 export type RunTags = z.infer<typeof RunTags>;
 
+/** Stores the original user-provided idempotency key and scope */
+export const IdempotencyKeyOptionsSchema = z.object({
+  key: z.string(),
+  scope: z.enum(["run", "attempt", "global"]),
+});
+
+export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSchema>;
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -191,6 +199,8 @@ export const TriggerTaskRequestBody = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The original user-provided idempotency key and scope */
+      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
       maxDuration: z.number().optional(),
@@ -203,6 +213,14 @@ export const TriggerTaskRequestBody = z.object({
       priority: z.number().optional(),
       bulkActionId: z.string().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string().max(512),
+          delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
+          maxDelay: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -233,6 +251,8 @@ export const BatchTriggerTaskItem = z.object({
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z.string().optional(),
       idempotencyKeyTTL: z.string().optional(),
+      /** The original user-provided idempotency key and scope */
+      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
       lockToVersion: z.string().optional(),
       machine: MachinePresetName.optional(),
       maxAttempts: z.number().int().optional(),
@@ -251,6 +271,14 @@ export const BatchTriggerTaskItem = z.object({
       ttl: z.string().or(z.number().nonnegative().int()).optional(),
       priority: z.number().optional(),
       region: z.string().optional(),
+      debounce: z
+        .object({
+          key: z.string().max(512),
+          delay: z.string(),
+          mode: z.enum(["leading", "trailing"]).optional(),
+          maxDelay: z.string().optional(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -314,6 +342,85 @@ export const BatchTriggerTaskV3Response = z.object({
 
 export type BatchTriggerTaskV3Response = z.infer<typeof BatchTriggerTaskV3Response>;
 
+// ============================================================================
+// 2-Phase Batch API (v3) - Streaming NDJSON Support
+// ============================================================================
+
+/**
+ * Phase 1: Create batch request body
+ * Creates the batch record and optionally blocks parent run for batchTriggerAndWait
+ */
+export const CreateBatchRequestBody = z.object({
+  /** Expected number of items in the batch */
+  runCount: z.number().int().positive(),
+  /** Parent run ID for batchTriggerAndWait (friendly ID) */
+  parentRunId: z.string().optional(),
+  /** Whether to resume parent on completion (true for batchTriggerAndWait) */
+  resumeParentOnCompletion: z.boolean().optional(),
+  /** Idempotency key for the batch */
+  idempotencyKey: z.string().optional(),
+  /** The original user-provided idempotency key and scope */
+  idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
+});
+
+export type CreateBatchRequestBody = z.infer<typeof CreateBatchRequestBody>;
+
+/**
+ * Phase 1: Create batch response
+ */
+export const CreateBatchResponse = z.object({
+  /** The batch ID (friendly ID) */
+  id: z.string(),
+  /** The expected run count */
+  runCount: z.number(),
+  /** Whether this response came from a cached/idempotent batch */
+  isCached: z.boolean(),
+  /** The idempotency key if provided */
+  idempotencyKey: z.string().optional(),
+});
+
+export type CreateBatchResponse = z.infer<typeof CreateBatchResponse>;
+
+/**
+ * Phase 2: Individual item in the NDJSON stream
+ * Each line in the NDJSON body should match this schema
+ */
+export const BatchItemNDJSON = z.object({
+  /** Zero-based index of this item (used for idempotency and ordering) */
+  index: z.number().int().nonnegative(),
+  /** The task identifier to trigger */
+  task: z.string(),
+  /** The payload for this task run */
+  payload: z.unknown().optional(),
+  /** Options for this specific item */
+  options: z.record(z.unknown()).optional(),
+});
+
+export type BatchItemNDJSON = z.infer<typeof BatchItemNDJSON>;
+
+/**
+ * Phase 2: Stream items response
+ * Returned after the NDJSON stream completes
+ */
+export const StreamBatchItemsResponse = z.object({
+  /** The batch ID */
+  id: z.string(),
+  /** Number of items successfully accepted */
+  itemsAccepted: z.number(),
+  /** Number of items that were deduplicated (already enqueued) */
+  itemsDeduplicated: z.number(),
+  /** Whether the batch was sealed and is ready for processing.
+   * If false, the batch needs more items before processing can start.
+   * Clients should check this field and retry with missing items if needed. */
+  sealed: z.boolean(),
+  /** Total items currently enqueued (only present when sealed=false to help with retries) */
+  enqueuedCount: z.number().optional(),
+  /** Expected total item count (only present when sealed=false to help with retries) */
+  expectedCount: z.number().optional(),
+});
+
+export type StreamBatchItemsResponse = z.infer<typeof StreamBatchItemsResponse>;
+
 export const BatchTriggerTaskResponse = z.object({
   batchId: z.string(),
   runs: z.string().array(),
@@ -373,14 +480,27 @@ export type StartDeploymentIndexingResponseBody = z.infer<
 export const FinalizeDeploymentRequestBody = z.object({
   skipPromotion: z.boolean().optional(),
   imageDigest: z.string().optional(),
+  skipPushToRegistry: z.boolean().optional(),
 });
 
 export type FinalizeDeploymentRequestBody = z.infer<typeof FinalizeDeploymentRequestBody>;
+
+export const BuildServerMetadata = z.object({
+  buildId: z.string().optional(),
+  isNativeBuild: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  skipPromotion: z.boolean().optional(),
+  configFilePath: z.string().optional(),
+  skipEnqueue: z.boolean().optional(),
+});
+
+export type BuildServerMetadata = z.infer<typeof BuildServerMetadata>;
 
 export const ProgressDeploymentRequestBody = z.object({
   contentHash: z.string().optional(),
   gitMeta: GitMeta.optional(),
   runtime: z.string().optional(),
+  buildServerMetadata: BuildServerMetadata.optional(),
 });
 
 export type ProgressDeploymentRequestBody = z.infer<typeof ProgressDeploymentRequestBody>;
@@ -399,6 +519,30 @@ export const ExternalBuildData = z.object({
 
 export type ExternalBuildData = z.infer<typeof ExternalBuildData>;
 
+const anyString = z.custom<string & {}>((v) => typeof v === "string");
+
+export const DeploymentTriggeredVia = z
+  .enum([
+    "cli:manual",
+    "cli:ci_other",
+    "cli:github_actions",
+    "cli:gitlab_ci",
+    "cli:circleci",
+    "cli:jenkins",
+    "cli:azure_pipelines",
+    "cli:bitbucket_pipelines",
+    "cli:travis_ci",
+    "cli:buildkite",
+    "git_integration:github",
+    "dashboard",
+  ])
+  .or(anyString);
+
+export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
+
+// TriggerSource, TriggerAction, and RunAnnotations are defined in runEngine.ts
+// They are re-exported through the schemas barrel (index.ts)
+
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
   env: z.enum(["preview"]),
@@ -413,6 +557,23 @@ export const UpsertBranchResponseBody = z.object({
 
 export type UpsertBranchResponseBody = z.infer<typeof UpsertBranchResponseBody>;
 
+export const CreateArtifactRequestBody = z.object({
+  type: z.enum(["deployment_context"]).default("deployment_context"),
+  contentType: z.string().default("application/gzip"),
+  contentLength: z.number().optional(),
+});
+
+export type CreateArtifactRequestBody = z.infer<typeof CreateArtifactRequestBody>;
+
+export const CreateArtifactResponseBody = z.object({
+  artifactKey: z.string(),
+  uploadUrl: z.string(),
+  uploadFields: z.record(z.string()),
+  expiresAt: z.string().datetime(),
+});
+
+export type CreateArtifactResponseBody = z.infer<typeof CreateArtifactResponseBody>;
+
 export const InitializeDeploymentResponseBody = z.object({
   id: z.string(),
   contentHash: z.string(),
@@ -421,11 +582,20 @@ export const InitializeDeploymentResponseBody = z.object({
   imageTag: z.string(),
   imagePlatform: z.string(),
   externalBuildData: ExternalBuildData.optional().nullable(),
+  eventStream: z
+    .object({
+      s2: z.object({
+        basin: z.string(),
+        stream: z.string(),
+        accessToken: z.string(),
+      }),
+    })
+    .optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
 
-export const InitializeDeploymentRequestBody = z.object({
+const InitializeDeploymentRequestBodyBase = z.object({
   contentHash: z.string(),
   userId: z.string().optional(),
   /** @deprecated This is now determined by the webapp. This is only used to warn users with old CLI versions. */
@@ -434,9 +604,67 @@ export const InitializeDeploymentRequestBody = z.object({
   type: z.enum(["MANAGED", "UNMANAGED", "V1"]).optional(),
   runtime: z.string().optional(),
   initialStatus: z.enum(["PENDING", "BUILDING"]).optional(),
+  isLocalBuild: z.boolean().optional(),
+  triggeredVia: DeploymentTriggeredVia.optional(),
+  buildId: z.string().optional(),
+});
+type BaseOutput = z.output<typeof InitializeDeploymentRequestBodyBase>;
+
+type NativeBuildOutput = BaseOutput & {
+  isNativeBuild: true;
+  skipPromotion?: boolean;
+  artifactKey?: string;
+  configFilePath?: string;
+  skipEnqueue?: boolean;
+};
+
+type NonNativeBuildOutput = BaseOutput & {
+  isNativeBuild: false;
+  skipPromotion?: never;
+  artifactKey?: never;
+  configFilePath?: never;
+  skipEnqueue?: never;
+};
+
+const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
+  isNativeBuild: z.boolean().default(false),
+  skipPromotion: z.boolean().optional(),
+  artifactKey: z.string().optional(),
+  configFilePath: z.string().optional(),
+  skipEnqueue: z.boolean().optional().default(false),
 });
 
+export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFull.transform(
+  (data): NativeBuildOutput | NonNativeBuildOutput => {
+    if (data.isNativeBuild) {
+      return { ...data, isNativeBuild: true as const };
+    }
+    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, ...rest } = data;
+    return { ...rest, isNativeBuild: false as const };
+  }
+);
+
 export type InitializeDeploymentRequestBody = z.infer<typeof InitializeDeploymentRequestBody>;
+
+export const RemoteBuildProviderStatusResponseBody = z.object({
+  status: z.enum(["operational", "degraded", "unknown"]),
+  message: z.string(),
+});
+
+export type RemoteBuildProviderStatusResponseBody = z.infer<
+  typeof RemoteBuildProviderStatusResponseBody
+>;
+
+export const GenerateRegistryCredentialsResponseBody = z.object({
+  username: z.string(),
+  password: z.string(),
+  expiresAt: z.string(),
+  repositoryUri: z.string(),
+});
+
+export type GenerateRegistryCredentialsResponseBody = z.infer<
+  typeof GenerateRegistryCredentialsResponseBody
+>;
 
 export const DeploymentErrorData = z.object({
   name: z.string(),
@@ -484,6 +712,7 @@ export const GetDeploymentResponseBody = z.object({
   version: z.string(),
   imageReference: z.string().nullish(),
   imagePlatform: z.string(),
+  commitSHA: z.string().nullish(),
   externalBuildData: ExternalBuildData.optional().nullable(),
   errorData: DeploymentErrorData.nullish(),
   worker: z
@@ -500,6 +729,17 @@ export const GetDeploymentResponseBody = z.object({
       ),
     })
     .optional(),
+  integrationDeployments: z
+    .array(
+      z.object({
+        id: z.string(),
+        integrationName: z.string(),
+        integrationDeploymentId: z.string(),
+        commitSHA: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .nullish(),
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
@@ -509,8 +749,47 @@ export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
 });
 export type GetLatestDeploymentResponseBody = z.infer<typeof GetLatestDeploymentResponseBody>;
 
+export const DeploymentLogEvent = z.object({
+  type: z.literal("log"),
+  data: z.object({
+    level: z.enum(["debug", "info", "warn", "error"]).optional().default("info"),
+    message: z.string(),
+  }),
+});
+
+export const DeploymentFinalizedEvent = z.object({
+  type: z.literal("finalized"),
+  data: z.object({
+    result: z.enum(["succeeded", "failed", "timed_out", "canceled"]).or(anyString),
+    message: z.string().optional(),
+  }),
+});
+
+export const DeploymentEvent = z.discriminatedUnion("type", [
+  DeploymentLogEvent,
+  DeploymentFinalizedEvent,
+]);
+
+export type DeploymentEvent = z.infer<typeof DeploymentEvent>;
+export type DeploymentLogEvent = z.infer<typeof DeploymentLogEvent>;
+export type DeploymentFinalizedEvent = z.infer<typeof DeploymentFinalizedEvent>;
+
+export const DeploymentEventFromString = z
+  .string()
+  .transform((s, ctx) => {
+    try {
+      return JSON.parse(s);
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid JSON" });
+      return z.NEVER;
+    }
+  })
+  .pipe(DeploymentEvent);
+
 export const CreateUploadPayloadUrlResponseBody = z.object({
   presignedUrl: z.string(),
+  /** Present on `/api/v2/packets` PUT (upload handshake); omitted on v1 GET download presign. */
+  storagePath: z.string().optional(),
 });
 
 export const WorkersListResponseBody = z
@@ -564,6 +843,17 @@ export const DevDequeueResponseBody = z.object({
 });
 export type DevDequeueResponseBody = z.infer<typeof DevDequeueResponseBody>;
 
+export const DevDisconnectRequestBody = z.object({
+  runFriendlyIds: z.string().array(),
+});
+export type DevDisconnectRequestBody = z.infer<typeof DevDisconnectRequestBody>;
+
+export const DevDisconnectResponseBody = z.object({
+  cancelled: z.number(),
+  bulkActionId: z.string().optional(),
+});
+export type DevDisconnectResponseBody = z.infer<typeof DevDisconnectResponseBody>;
+
 export type CreateUploadPayloadUrlResponseBody = z.infer<typeof CreateUploadPayloadUrlResponseBody>;
 
 export const ReplayRunResponse = z.object({
@@ -577,6 +867,12 @@ export const CanceledRunResponse = z.object({
 });
 
 export type CanceledRunResponse = z.infer<typeof CanceledRunResponse>;
+
+export const ResetIdempotencyKeyResponse = z.object({
+  id: z.string(),
+});
+
+export type ResetIdempotencyKeyResponse = z.infer<typeof ResetIdempotencyKeyResponse>;
 
 export const ScheduleType = z.union([z.literal("DECLARATIVE"), z.literal("IMPERATIVE")]);
 
@@ -888,6 +1184,12 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   secrets: z.record(z.boolean()).optional(),
   parentSecrets: z.record(z.boolean()).optional(),
   override: z.boolean().optional(),
+  source: z
+    .discriminatedUnion("type", [
+      z.object({ type: z.literal("user"), userId: z.string() }),
+      z.object({ type: z.literal("integration"), integration: z.string() }),
+    ])
+    .optional(),
 });
 
 export type ImportEnvironmentVariablesRequestBody = z.infer<
@@ -977,11 +1279,18 @@ export const SubscribeRunRawShape = z.object({
   outputType: z.string().nullish(),
   runTags: z.array(z.string()).nullish().default([]),
   error: TaskRunError.nullish(),
+  realtimeStreams: z.array(z.string()).nullish().default([]),
 });
 
 export type SubscribeRunRawShape = z.infer<typeof SubscribeRunRawShape>;
 
-export const BatchStatus = z.enum(["PENDING", "COMPLETED"]);
+export const BatchStatus = z.enum([
+  "PENDING",
+  "PROCESSING",
+  "COMPLETED",
+  "PARTIAL_FAILED",
+  "ABORTED",
+]);
 
 export type BatchStatus = z.infer<typeof BatchStatus>;
 
@@ -1005,6 +1314,17 @@ export const RetrieveBatchV2Response = z.object({
   updatedAt: z.coerce.date(),
   runCount: z.number(),
   runs: z.array(z.string()),
+  processing: z.object({
+    completedAt: z.coerce.date().optional(),
+    errors: z.array(
+      z.object({
+        index: z.number(),
+        taskIdentifier: z.string(),
+        error: z.string(),
+        errorCode: z.string().optional(),
+      })
+    ),
+  }),
 });
 
 export type RetrieveBatchV2Response = z.infer<typeof RetrieveBatchV2Response>;
@@ -1067,6 +1387,31 @@ export const CreateWaitpointTokenResponseBody = z.object({
   url: z.string(),
 });
 export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTokenResponseBody>;
+
+export const CreateInputStreamWaitpointRequestBody = z.object({
+  streamId: z.string(),
+  timeout: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  idempotencyKeyTTL: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
+  /**
+   * The last S2 sequence number the client has seen on this input stream.
+   * Used to check for data that arrived before .wait() was called.
+   * If undefined, the server checks from the beginning of the stream.
+   */
+  lastSeqNum: z.number().optional(),
+});
+export type CreateInputStreamWaitpointRequestBody = z.infer<
+  typeof CreateInputStreamWaitpointRequestBody
+>;
+
+export const CreateInputStreamWaitpointResponseBody = z.object({
+  waitpointId: z.string(),
+  isCached: z.boolean(),
+});
+export type CreateInputStreamWaitpointResponseBody = z.infer<
+  typeof CreateInputStreamWaitpointResponseBody
+>;
 
 export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
 export const WaitpointTokenStatus = z.enum(waitpointTokenStatuses);
@@ -1212,8 +1557,8 @@ export const ApiDeploymentListResponseItem = z.object({
   createdAt: z.coerce.date(),
   shortCode: z.string(),
   version: z.string(),
-  runtime: z.string(),
-  runtimeVersion: z.string(),
+  runtime: z.string().nullable(),
+  runtimeVersion: z.string().nullable(),
   status: z.enum([
     "PENDING",
     "BUILDING",
@@ -1248,9 +1593,9 @@ export type ApiBranchListResponseBody = z.infer<typeof ApiBranchListResponseBody
 export const RetrieveRunTraceSpanSchema = z.object({
   id: z.string(),
   parentId: z.string().optional(),
-  message: z.string(),
+  runId: z.string(),
   data: z.object({
-    runId: z.string(),
+    message: z.string(),
     taskSlug: z.string().optional(),
     taskPath: z.string().optional(),
     events: z.array(z.any()).optional(),
@@ -1260,7 +1605,6 @@ export const RetrieveRunTraceSpanSchema = z.object({
     isPartial: z.boolean(),
     isCancelled: z.boolean(),
     level: z.string(),
-    environmentType: z.string(),
     workerVersion: z.string().optional(),
     queueName: z.string().optional(),
     machinePreset: z.string().optional(),
@@ -1286,3 +1630,155 @@ export const RetrieveRunTraceResponseBody = z.object({
 });
 
 export type RetrieveRunTraceResponseBody = z.infer<typeof RetrieveRunTraceResponseBody>;
+
+export const RetrieveSpanDetailResponseBody = z.object({
+  spanId: z.string(),
+  parentId: z.string().nullable(),
+  runId: z.string(),
+  message: z.string(),
+  isError: z.boolean(),
+  isPartial: z.boolean(),
+  isCancelled: z.boolean(),
+  level: z.string(),
+  startTime: z.coerce.date(),
+  durationMs: z.number(),
+  properties: z.record(z.any()).optional(),
+  events: z.array(z.any()).optional(),
+  entityType: z.string().optional(),
+  ai: z
+    .object({
+      model: z.string(),
+      provider: z.string(),
+      operationName: z.string(),
+      inputTokens: z.number(),
+      outputTokens: z.number(),
+      totalTokens: z.number(),
+      cachedTokens: z.number().optional(),
+      reasoningTokens: z.number().optional(),
+      inputCost: z.number().optional(),
+      outputCost: z.number().optional(),
+      totalCost: z.number().optional(),
+      tokensPerSecond: z.number().optional(),
+      msToFirstChunk: z.number().optional(),
+      durationMs: z.number(),
+      finishReason: z.string().optional(),
+      responseText: z.string().optional(),
+    })
+    .optional(),
+  triggeredRuns: z
+    .array(
+      z.object({
+        runId: z.string(),
+        taskIdentifier: z.string(),
+        status: z.string(),
+        createdAt: z.coerce.date(),
+      })
+    )
+    .optional(),
+});
+
+export type RetrieveSpanDetailResponseBody = z.infer<typeof RetrieveSpanDetailResponseBody>;
+
+export const CreateStreamResponseBody = z.object({
+  version: z.string(),
+});
+export type CreateStreamResponseBody = z.infer<typeof CreateStreamResponseBody>;
+
+export const AppendToStreamResponseBody = z.object({
+  ok: z.boolean(),
+  message: z.string().optional(),
+});
+export type AppendToStreamResponseBody = z.infer<typeof AppendToStreamResponseBody>;
+
+export const SendInputStreamResponseBody = z.object({
+  ok: z.boolean(),
+});
+export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+
+export const ResolvePromptRequestBody = z.object({
+  variables: z.record(z.unknown()).default({}),
+  label: z.string().optional(),
+  version: z.number().optional(),
+});
+export type ResolvePromptRequestBody = z.infer<typeof ResolvePromptRequestBody>;
+
+export const ResolvePromptResponseBody = z.object({
+  data: z.object({
+    promptId: z.string(),
+    slug: z.string(),
+    version: z.number(),
+    labels: z.array(z.string()),
+    template: z.string().optional(),
+    text: z.string().optional(),
+    model: z.string().optional().nullable(),
+    config: z.record(z.unknown()).optional().nullable(),
+  }),
+});
+export type ResolvePromptResponseBody = z.infer<typeof ResolvePromptResponseBody>;
+
+export const ListPromptsResponseBody = z.object({
+  data: z.array(
+    z.object({
+      slug: z.string(),
+      friendlyId: z.string(),
+      description: z.string().nullable(),
+      tags: z.array(z.string()),
+      defaultModel: z.string().nullable(),
+      currentVersion: z.number().nullable(),
+      hasOverride: z.boolean(),
+      updatedAt: z.string(),
+    })
+  ),
+});
+export type ListPromptsResponseBody = z.infer<typeof ListPromptsResponseBody>;
+
+export const ListPromptVersionsResponseBody = z.object({
+  data: z.array(
+    z.object({
+      id: z.string(),
+      version: z.number(),
+      labels: z.array(z.string()),
+      source: z.string(),
+      model: z.string().nullable(),
+      textContent: z.string().nullable(),
+      commitMessage: z.string().nullable(),
+      contentHash: z.string(),
+      createdAt: z.string(),
+    })
+  ),
+});
+export type ListPromptVersionsResponseBody = z.infer<typeof ListPromptVersionsResponseBody>;
+
+export const PromotePromptVersionRequestBody = z.object({
+  version: z.number().int().positive(),
+});
+export type PromotePromptVersionRequestBody = z.infer<typeof PromotePromptVersionRequestBody>;
+
+export const CreatePromptOverrideRequestBody = z.object({
+  textContent: z.string(),
+  model: z.string().optional(),
+  commitMessage: z.string().optional(),
+  source: z.string().optional(),
+});
+export type CreatePromptOverrideRequestBody = z.infer<typeof CreatePromptOverrideRequestBody>;
+
+export const UpdatePromptOverrideRequestBody = z.object({
+  textContent: z.string().optional(),
+  model: z.string().optional(),
+  commitMessage: z.string().optional(),
+});
+export type UpdatePromptOverrideRequestBody = z.infer<typeof UpdatePromptOverrideRequestBody>;
+
+export const ReactivatePromptOverrideRequestBody = z.object({
+  version: z.number().int().positive(),
+});
+export type ReactivatePromptOverrideRequestBody = z.infer<typeof ReactivatePromptOverrideRequestBody>;
+
+export const PromptOkResponseBody = z.object({ ok: z.boolean() });
+export type PromptOkResponseBody = z.infer<typeof PromptOkResponseBody>;
+
+export const PromptOverrideCreatedResponseBody = z.object({
+  ok: z.boolean(),
+  version: z.number(),
+});
+export type PromptOverrideCreatedResponseBody = z.infer<typeof PromptOverrideCreatedResponseBody>;

@@ -6,9 +6,18 @@ description: "This example demonstrates how to sync environment variables from y
 
 import VercelDocsCards from "/snippets/vercel-docs-cards.mdx";
 
+<Warning>
+  **Deprecated when using the Vercel integration.** If you are using the [Vercel
+  integration](/vercel-integration), do not use `syncVercelEnvVars` — the integration handles env
+  var syncing natively and using both together can cause env vars to be incorrectly populated.
+
+  If you are **not** using the Vercel integration, `syncVercelEnvVars` is still supported. Continue
+  with the configuration below.
+</Warning>
+
 ## Build configuration
 
-To sync environment variables, you just need to add our build extension to your `trigger.config.ts` file. This extension will then automatically run every time you deploy your Trigger.dev project.
+If you are not using the [Vercel integration](/vercel-integration), you can sync environment variables manually by adding the `syncVercelEnvVars` build extension to your `trigger.config.ts` file. This extension will run automatically every time you deploy your Trigger.dev project.
 
 <Note>
   You need to set the `VERCEL_ACCESS_TOKEN` and `VERCEL_PROJECT_ID` environment variables, or pass
@@ -17,6 +26,14 @@ To sync environment variables, you just need to add our build extension to your 
   team settings. You can find / generate the `VERCEL_ACCESS_TOKEN` in your Vercel
   [dashboard](https://vercel.com/account/settings/tokens). Make sure the scope of the token covers
   the project with the environment variables you want to sync.
+</Note>
+
+<Note>
+  When running the build from a Vercel build environment (e.g., during a Vercel deployment), the
+  environment variable values will be read from `process.env` instead of fetching them from the
+  Vercel API. This is determined by checking if the `VERCEL` environment variable is present. The
+  API is still used to determine which environment variables are configured for your project, but
+  the actual values come from the local environment.
 </Note>
 
 ```ts trigger.config.ts

@@ -30,6 +30,7 @@ import {
   CleanupProcessError,
   internalErrorFromUnexpectedExit,
   GracefulExitTimeoutError,
+  MaxDurationExceededError,
   UnexpectedExitError,
   SuspendedProcessError,
 } from "@trigger.dev/core/v3/errors";
@@ -74,6 +75,8 @@ export class TaskRunProcess {
   private _isBeingKilled: boolean = false;
   private _isBeingCancelled: boolean = false;
   private _isBeingSuspended: boolean = false;
+  private _isMaxDurationExceeded: boolean = false;
+  private _maxDurationInfo?: { maxDurationInSeconds: number; elapsedTimeInSeconds: number };
   private _stderr: Array<string> = [];
 
   public onTaskRunHeartbeat: Evt<string> = new Evt();
@@ -123,7 +126,7 @@ export class TaskRunProcess {
       return;
     }
 
-    await tryCatch(this.#flush());
+    await tryCatch(this.#flush({ disableContext: !kill }));
 
     if (kill) {
       await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
@@ -209,20 +212,38 @@ export class TaskRunProcess {
         SET_SUSPENDABLE: async (message) => {
           this.onSetSuspendable.post(message);
         },
+        MAX_DURATION_EXCEEDED: async (message) => {
+          logger.debug("max duration exceeded, gracefully terminating child process", {
+            maxDurationInSeconds: message.maxDurationInSeconds,
+            elapsedTimeInSeconds: message.elapsedTimeInSeconds,
+            pid: this.pid,
+          });
+
+          // Set flag and store duration info for error reporting in #handleExit
+          this._isMaxDurationExceeded = true;
+          this._maxDurationInfo = {
+            maxDurationInSeconds: message.maxDurationInSeconds,
+            elapsedTimeInSeconds: message.elapsedTimeInSeconds,
+          };
+
+          // Use the same graceful termination approach as cancel
+          await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
+        },
       },
     });
 
     this._child.on("exit", this.#handleExit.bind(this));
+    this._child.on("error", this.#handleError.bind(this));
     this._child.stdout?.on("data", this.#handleLog.bind(this));
     this._child.stderr?.on("data", this.#handleStdErr.bind(this));
 
     return this;
   }
 
-  async #flush(timeoutInMs: number = 5_000) {
+  async #flush({ timeoutInMs = 5_000, disableContext = false } = {}) {
     logger.debug("flushing task run process", { pid: this.pid });
 
-    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
+    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs, disableContext }, timeoutInMs + 1_000);
   }
 
   async #cancel(timeoutInMs: number = 30_000) {
@@ -276,6 +297,19 @@ export class TaskRunProcess {
         env: params.env,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
+    } else {
+      // Child process is dead or disconnected — the IPC send was skipped so the attempt
+      // promise would hang forever. Reject it immediately to let the caller handle it.
+      this._attemptStatuses.set(key, "REJECTED");
+
+      // @ts-expect-error - rejecter is assigned in the promise constructor above
+      rejecter(
+        new UnexpectedExitError(
+          -1,
+          null,
+          "Child process is not connected, cannot execute task run"
+        )
+      );
     }
 
     const result = await promise;
@@ -301,6 +335,10 @@ export class TaskRunProcess {
     this._ipc?.send("RESOLVE_WAITPOINT", { waitpoint });
   }
 
+  #handleError(error: Error) {
+    logger.debug("child process error", { error, pid: this.pid });
+  }
+
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
     logger.debug("handling child exit", { code, signal, pid: this.pid });
 
@@ -319,7 +357,25 @@ export class TaskRunProcess {
 
         const { rejecter } = attemptPromise;
 
-        if (this._isBeingCancelled) {
+        if (this._isMaxDurationExceeded) {
+          if (!this._maxDurationInfo) {
+            rejecter(
+              new UnexpectedExitError(
+                code ?? -1,
+                signal,
+                "MaxDuration flag set but duration info missing"
+              )
+            );
+            continue;
+          }
+
+          rejecter(
+            new MaxDurationExceededError(
+              this._maxDurationInfo.maxDurationInSeconds,
+              this._maxDurationInfo.elapsedTimeInSeconds
+            )
+          );
+        } else if (this._isBeingCancelled) {
           rejecter(new CancelledProcessError());
         } else if (this._gracefulExitTimeoutElapsed) {
           // Order matters, this has to be before the graceful exit timeout
@@ -474,6 +530,14 @@ export class TaskRunProcess {
       return {
         type: "INTERNAL_ERROR",
         code: TaskRunErrorCodes.TASK_RUN_CANCELLED,
+      };
+    }
+
+    if (error instanceof MaxDurationExceededError) {
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
+        message: error.message,
       };
     }
 

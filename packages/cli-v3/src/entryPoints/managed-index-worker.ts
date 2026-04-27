@@ -3,6 +3,7 @@ import {
   type HandleErrorFunction,
   indexerToWorkerMessages,
   resourceCatalog,
+  type PromptManifest,
   type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
@@ -131,6 +132,20 @@ if (typeof config.maxDuration === "number") {
   });
 }
 
+// If the config has a TTL, we need to apply it to all tasks that don't have a TTL
+if (config.ttl !== undefined) {
+  tasks = tasks.map((task) => {
+    if (task.ttl === undefined) {
+      return {
+        ...task,
+        ttl: config.ttl,
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 // If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
 if (typeof config.machine === "string") {
   tasks = tasks.map((task) => {
@@ -155,6 +170,7 @@ await sendMessageInCatalog(
   {
     manifest: {
       tasks,
+      prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
@@ -199,6 +215,23 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
+
+function convertPromptSchemasToJsonSchemas(prompts: PromptManifest[]): PromptManifest[] {
+  return prompts.map((prompt) => {
+    const schema = resourceCatalog.getPromptSchema(prompt.id);
+
+    if (schema) {
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...prompt, variableSchema: result?.jsonSchema };
+      } catch {
+        return prompt;
+      }
+    }
+
+    return prompt;
+  });
+}
 
 async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
   const convertedTasks = tasks.map((task) => {

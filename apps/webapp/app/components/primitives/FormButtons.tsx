@@ -3,10 +3,12 @@ import { cn } from "~/utils/cn";
 export function FormButtons({
   cancelButton,
   confirmButton,
+  defaultAction,
   className,
 }: {
   cancelButton?: React.ReactNode;
-  confirmButton: React.ReactNode;
+  confirmButton?: React.ReactNode;
+  defaultAction?: { name: string; value: string; disabled?: boolean };
   className?: string;
 }) {
   return (
@@ -16,7 +18,18 @@ export function FormButtons({
         className
       )}
     >
-      {cancelButton ? cancelButton : <div />} {confirmButton}
+      {defaultAction && (
+        <button
+          type="submit"
+          name={defaultAction.name}
+          value={defaultAction.value}
+          disabled={defaultAction.disabled}
+          className="hidden"
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      )}
+      {cancelButton ? cancelButton : <div />} {confirmButton ?? null}
     </div>
   );
 }

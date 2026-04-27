@@ -8,6 +8,8 @@ const apiKeyId = customAlphabet(
   12
 );
 
+const REVOKED_API_KEY_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000;
+
 type RegenerateAPIKeyInput = {
   userId: string;
   environmentId: string;
@@ -63,14 +65,26 @@ export async function regenerateApiKey({ userId, environmentId }: RegenerateAPIK
   const newApiKey = createApiKeyForEnv(environment.type);
   const newPkApiKey = createPkApiKeyForEnv(environment.type);
 
-  const updatedEnviroment = await prisma.runtimeEnvironment.update({
-    data: {
-      apiKey: newApiKey,
-      pkApiKey: newPkApiKey,
-    },
-    where: {
-      id: environmentId,
-    },
+  const revokedApiKeyExpiresAt = new Date(Date.now() + REVOKED_API_KEY_GRACE_PERIOD_MS);
+
+  const updatedEnviroment = await prisma.$transaction(async (tx) => {
+    await tx.revokedApiKey.create({
+      data: {
+        apiKey: environment.apiKey,
+        runtimeEnvironmentId: environment.id,
+        expiresAt: revokedApiKeyExpiresAt,
+      },
+    });
+
+    return tx.runtimeEnvironment.update({
+      data: {
+        apiKey: newApiKey,
+        pkApiKey: newPkApiKey,
+      },
+      where: {
+        id: environmentId,
+      },
+    });
   });
 
   return updatedEnviroment;

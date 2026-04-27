@@ -1,12 +1,16 @@
 import { redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { SearchParams } from "~/routes/admin._index";
 import {
   clearImpersonationId,
   commitImpersonationSession,
+  getImpersonationId,
   setImpersonationId,
 } from "~/services/impersonation.server";
+import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 
 const pageSize = 20;
 
@@ -212,6 +216,26 @@ export async function redirectWithImpersonation(request: Request, userId: string
     throw new Error("Unauthorized");
   }
 
+  const xff = request.headers.get("x-forwarded-for");
+  const ipAddress = extractClientIp(xff);
+
+  try {
+    await prisma.impersonationAuditLog.create({
+      data: {
+        action: "START",
+        adminId: user.id,
+        targetId: userId,
+        ipAddress,
+      },
+    });
+  } catch (error) {
+    logger.error("Failed to create impersonation audit log", {
+      error,
+      adminId: user.id,
+      targetId: userId,
+    });
+  }
+
   const session = await setImpersonationId(userId, request);
 
   return redirect(path, {
@@ -220,6 +244,31 @@ export async function redirectWithImpersonation(request: Request, userId: string
 }
 
 export async function clearImpersonation(request: Request, path: string) {
+  const authUser = await authenticator.isAuthenticated(request);
+  const targetId = await getImpersonationId(request);
+
+  if (targetId && authUser?.userId) {
+    const xff = request.headers.get("x-forwarded-for");
+    const ipAddress = extractClientIp(xff);
+
+    try {
+      await prisma.impersonationAuditLog.create({
+        data: {
+          action: "STOP",
+          adminId: authUser.userId,
+          targetId,
+          ipAddress,
+        },
+      });
+    } catch (error) {
+      logger.error("Failed to create impersonation audit log", {
+        error,
+        adminId: authUser.userId,
+        targetId,
+      });
+    }
+  }
+
   const session = await clearImpersonationId(request);
 
   return redirect(path, {

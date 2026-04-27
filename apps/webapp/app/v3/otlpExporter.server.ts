@@ -4,10 +4,13 @@ import {
   AnyValue,
   ExportLogsServiceRequest,
   ExportLogsServiceResponse,
+  ExportMetricsServiceRequest,
+  ExportMetricsServiceResponse,
   ExportTraceServiceRequest,
   ExportTraceServiceResponse,
   KeyValue,
   ResourceLogs,
+  ResourceMetrics,
   ResourceSpans,
   SeverityNumber,
   Span,
@@ -15,9 +18,15 @@ import {
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
+import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
+import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
 import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
-import { clickhouseEventRepository } from "./eventRepository/clickhouseEventRepositoryInstance.server";
+import {
+  clickhouseEventRepository,
+  clickhouseEventRepositoryV2,
+} from "./eventRepository/clickhouseEventRepositoryInstance.server";
 import { generateSpanId } from "./eventRepository/common.server";
 import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
@@ -28,7 +37,10 @@ import type {
 } from "./eventRepository/eventRepository.types";
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
+import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
+import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
+import { singleton } from "~/utils/singleton";
 
 class OTLPExporter {
   private _tracer: Tracer;
@@ -36,6 +48,8 @@ class OTLPExporter {
   constructor(
     private readonly _eventRepository: EventRepository,
     private readonly _clickhouseEventRepository: ClickhouseEventRepository,
+    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
+    private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
     private readonly _verbose: boolean,
     private readonly _spanAttributeValueLengthLimit: number
   ) {
@@ -57,6 +71,29 @@ class OTLPExporter {
       span.setAttribute("event_count", eventCount);
 
       return ExportTraceServiceResponse.create();
+    });
+  }
+
+  async exportMetrics(
+    request: ExportMetricsServiceRequest
+  ): Promise<ExportMetricsServiceResponse> {
+    return await startSpan(this._tracer, "exportMetrics", async (span) => {
+      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
+        (resourceMetrics) => {
+          return convertMetricsToClickhouseRows(
+            resourceMetrics,
+            this._spanAttributeValueLengthLimit
+          );
+        }
+      );
+
+      span.setAttribute("metric_row_count", rows.length);
+
+      if (rows.length > 0) {
+        this._metricsFlushScheduler.addToBatch(rows);
+      }
+
+      return ExportMetricsServiceResponse.create();
     });
   }
 
@@ -92,6 +129,7 @@ class OTLPExporter {
     for (const [store, events] of Object.entries(eventsGroupedByStore)) {
       const eventRepository = this.#getEventRepositoryForStore(store);
 
+      await waitForLlmPricingReady();
       const enrichedEvents = enrichCreatableEvents(events);
 
       this.#logEventsVerbose(enrichedEvents, `exportEvents ${store}`);
@@ -107,6 +145,10 @@ class OTLPExporter {
   #getEventRepositoryForStore(store: string): IEventRepository {
     if (store === "clickhouse") {
       return this._clickhouseEventRepository;
+    }
+
+    if (store === "clickhouse_v2") {
+      return this._clickhouseEventRepositoryV2;
     }
 
     return this._eventRepository;
@@ -192,6 +234,18 @@ class OTLPExporter {
       return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
     });
   }
+
+  #filterResourceMetrics(resourceMetrics: ResourceMetrics[]): ResourceMetrics[] {
+    return resourceMetrics.filter((rm) => {
+      const triggerAttribute = rm.resource?.attributes.find(
+        (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
+      );
+
+      if (!triggerAttribute) return false;
+
+      return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
+    });
+  }
 }
 
 function convertLogsToCreateableEvents(
@@ -201,6 +255,24 @@ function convertLogsToCreateableEvents(
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
+
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
 
   const taskEventStore =
     extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
@@ -221,18 +293,16 @@ function convertLogsToCreateableEvents(
         );
 
         const properties =
-          convertKeyValueItemsToMap(
-            truncateAttributes(log.attributes ?? [], spanAttributeValueLengthLimit),
-            [],
-            undefined,
-            [
+          truncateAttributes(
+            convertKeyValueItemsToMap(log.attributes ?? [], [], undefined, [
               SemanticInternalAttributes.USAGE,
               SemanticInternalAttributes.SPAN,
               SemanticInternalAttributes.METADATA,
               SemanticInternalAttributes.STYLE,
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
-            ]
+            ]),
+            spanAttributeValueLengthLimit
           ) ?? {};
 
         return {
@@ -249,6 +319,7 @@ function convertLogsToCreateableEvents(
           status: logLevelToEventStatus(log.severityNumber),
           startTime: log.timeUnixNano,
           properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
@@ -262,6 +333,7 @@ function convertLogsToCreateableEvents(
           projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
           runId: logProperties.runId ?? resourceProperties.runId ?? "unknown",
           taskSlug: logProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
+          machineId: logProperties.machineId ?? resourceProperties.machineId,
           attemptNumber:
             extractNumberAttribute(
               log.attributes ?? [],
@@ -285,6 +357,24 @@ function convertSpansToCreateableEvents(
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
+  const userDefinedResourceAttributes = truncateAttributes(
+    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
+      SemanticInternalAttributes.USAGE,
+      SemanticInternalAttributes.SPAN,
+      SemanticInternalAttributes.METADATA,
+      SemanticInternalAttributes.STYLE,
+      SemanticInternalAttributes.METRIC_EVENTS,
+      SemanticInternalAttributes.TRIGGER,
+      "process",
+      "sdk",
+      "service",
+      "ctx",
+      "cli",
+      "cloud",
+    ]),
+    spanAttributeValueLengthLimit
+  );
+
   const taskEventStore =
     extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
     env.EVENT_REPOSITORY_DEFAULT_STORE;
@@ -303,19 +393,19 @@ function convertSpansToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
+        const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
+
         const properties =
-          convertKeyValueItemsToMap(
-            truncateAttributes(span.attributes ?? [], spanAttributeValueLengthLimit),
-            [],
-            undefined,
-            [
+          truncateAttributes(
+            convertKeyValueItemsToMap(span.attributes ?? [], [], undefined, [
               SemanticInternalAttributes.USAGE,
               SemanticInternalAttributes.SPAN,
               SemanticInternalAttributes.METADATA,
               SemanticInternalAttributes.STYLE,
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
-            ]
+            ]),
+            spanAttributeValueLengthLimit
           ) ?? {};
 
         return {
@@ -338,6 +428,7 @@ function convertSpansToCreateableEvents(
           events: spanEventsToEventEvents(span.events ?? []),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
           properties,
+          resourceProperties: userDefinedResourceAttributes,
           style: convertKeyValueItemsToMap(
             pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
             []
@@ -351,6 +442,8 @@ function convertSpansToCreateableEvents(
           projectId: spanProperties.projectId ?? resourceProperties.projectId ?? "unknown",
           runId: spanProperties.runId ?? resourceProperties.runId ?? "unknown",
           taskSlug: spanProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
+          machineId: spanProperties.machineId ?? resourceProperties.machineId,
+          runTags,
           attemptNumber:
             extractNumberAttribute(
               span.attributes ?? [],
@@ -364,6 +457,194 @@ function convertSpansToCreateableEvents(
   });
 
   return { events, taskEventStore };
+}
+
+function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
+  const epochMs = Number(BigInt(timeUnixNano) / BigInt(1_000_000));
+  const flooredMs = Math.floor(epochMs / 10_000) * 10_000;
+  const date = new Date(flooredMs);
+  // Format as ClickHouse DateTime: YYYY-MM-DD HH:MM:SS
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+}
+
+function convertMetricsToClickhouseRows(
+  resourceMetrics: ResourceMetrics,
+  spanAttributeValueLengthLimit: number
+): MetricsV1Input[] {
+  const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
+  const resourceProperties = extractEventProperties(resourceAttributes);
+
+  const organizationId = resourceProperties.organizationId ?? "unknown";
+  const projectId = resourceProperties.projectId ?? "unknown";
+  const environmentId = resourceProperties.environmentId ?? "unknown";
+  const resourceCtx = {
+    taskSlug: resourceProperties.taskSlug,
+    runId: resourceProperties.runId,
+    attemptNumber: resourceProperties.attemptNumber,
+    machineId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.MACHINE_ID),
+    workerId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.WORKER_ID),
+    workerVersion: extractStringAttribute(
+      resourceAttributes,
+      SemanticInternalAttributes.WORKER_VERSION
+    ),
+  };
+
+  const rows: MetricsV1Input[] = [];
+
+  for (const scopeMetrics of resourceMetrics.scopeMetrics) {
+    for (const metric of scopeMetrics.metrics) {
+      const metricName = metric.name;
+
+      // Process gauge data points
+      if (metric.gauge) {
+        for (const dp of metric.gauge.dataPoints) {
+          const value: number =
+            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "gauge",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            value,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+
+      // Process sum data points
+      if (metric.sum) {
+        for (const dp of metric.sum.dataPoints) {
+          const value: number =
+            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "sum",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            value,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+
+      // Process histogram data points
+      if (metric.histogram) {
+        for (const dp of metric.histogram.dataPoints) {
+          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
+          const count = Number(dp.count);
+          const sum = dp.sum ?? 0;
+
+          rows.push({
+            organization_id: organizationId,
+            project_id: projectId,
+            environment_id: environmentId,
+            metric_name: metricName,
+            metric_type: "histogram",
+            metric_subject: resolved.machineId ?? "unknown",
+            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
+            value: count > 0 ? sum / count : 0,
+            attributes: resolved.attributes,
+          });
+        }
+      }
+    }
+  }
+
+  return rows;
+}
+
+// Prefixes injected by TaskContextMetricExporter — these are extracted into
+// the nested `trigger` key and should not appear as top-level user attributes.
+const INTERNAL_METRIC_ATTRIBUTE_PREFIXES = ["ctx.", "worker."];
+
+interface ResourceContext {
+  taskSlug: string | undefined;
+  runId: string | undefined;
+  attemptNumber: number | undefined;
+  machineId: string | undefined;
+  workerId: string | undefined;
+  workerVersion: string | undefined;
+}
+
+function resolveDataPointContext(
+  dpAttributes: KeyValue[],
+  resourceCtx: ResourceContext
+): {
+  machineId: string | undefined;
+  attributes: Record<string, unknown>;
+} {
+  const runId =
+    resourceCtx.runId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
+  const taskSlug =
+    resourceCtx.taskSlug ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.TASK_SLUG);
+  const attemptNumber =
+    resourceCtx.attemptNumber ??
+    extractNumberAttribute(dpAttributes, SemanticInternalAttributes.ATTEMPT_NUMBER);
+  const machineId =
+    resourceCtx.machineId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.MACHINE_ID);
+  const workerId =
+    resourceCtx.workerId ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_ID);
+  const workerVersion =
+    resourceCtx.workerVersion ??
+    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_VERSION);
+  const machineName = extractStringAttribute(
+    dpAttributes,
+    SemanticInternalAttributes.MACHINE_PRESET_NAME
+  );
+  const environmentType = extractStringAttribute(
+    dpAttributes,
+    SemanticInternalAttributes.ENVIRONMENT_TYPE
+  );
+
+  // Build the trigger context object with only defined values
+  const trigger: Record<string, string | number> = {};
+  if (runId) trigger.run_id = runId;
+  if (taskSlug) trigger.task_slug = taskSlug;
+  if (attemptNumber !== undefined) trigger.attempt_number = attemptNumber;
+  if (machineId) trigger.machine_id = machineId;
+  if (machineName) trigger.machine_name = machineName;
+  if (workerId) trigger.worker_id = workerId;
+  if (workerVersion) trigger.worker_version = workerVersion;
+  if (environmentType) trigger.environment_type = environmentType;
+
+  // Build user attributes, filtering out internal ctx/worker keys
+  const result: Record<string, unknown> = {};
+
+  if (Object.keys(trigger).length > 0) {
+    result.trigger = trigger;
+  }
+
+  for (const attr of dpAttributes) {
+    if (INTERNAL_METRIC_ATTRIBUTE_PREFIXES.some((prefix) => attr.key.startsWith(prefix))) {
+      continue;
+    }
+
+    if (isStringValue(attr.value)) {
+      result[attr.key] = attr.value.stringValue;
+    } else if (isIntValue(attr.value)) {
+      result[attr.key] = Number(attr.value.intValue);
+    } else if (isDoubleValue(attr.value)) {
+      result[attr.key] = attr.value.doubleValue;
+    } else if (isBoolValue(attr.value)) {
+      result[attr.key] = attr.value.boolValue;
+    }
+  }
+
+  return { machineId, attributes: result };
 }
 
 function extractEventProperties(attributes: KeyValue[], prefix?: string) {
@@ -384,6 +665,7 @@ function extractEventProperties(attributes: KeyValue[], prefix?: string) {
       SemanticInternalAttributes.ATTEMPT_NUMBER,
     ]),
     taskSlug: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_SLUG]),
+    machineId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_ID]),
   };
 }
 
@@ -431,6 +713,8 @@ function convertKeyValueItemsToMap(
         ? attribute.value.boolValue
         : isBytesValue(attribute.value)
         ? binaryToHex(attribute.value.bytesValue)
+        : isArrayValue(attribute.value)
+        ? serializeArrayValue(attribute.value.arrayValue!.values)
         : undefined;
 
       return map;
@@ -467,6 +751,8 @@ function convertSelectedKeyValueItemsToMap(
         ? attribute.value.boolValue
         : isBytesValue(attribute.value)
         ? binaryToHex(attribute.value.bytesValue)
+        : isArrayValue(attribute.value)
+        ? serializeArrayValue(attribute.value.arrayValue!.values)
         : undefined;
 
       return map;
@@ -723,6 +1009,21 @@ function extractBooleanAttribute(
   return isBoolValue(attribute?.value) ? attribute.value.boolValue : fallback;
 }
 
+function extractArrayAttribute(
+  attributes: KeyValue[],
+  name: string | Array<string | undefined>
+): string[] | undefined {
+  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
+
+  const attribute = attributes.find((attribute) => attribute.key === key);
+
+  if (!attribute?.value?.arrayValue?.values) return undefined;
+
+  return attribute.value.arrayValue.values
+    .filter((v): v is { stringValue: string } => isStringValue(v))
+    .map((v) => v.stringValue);
+}
+
 function isPartialSpan(span: Span): boolean {
   if (!span.attributes) return false;
 
@@ -765,6 +1066,31 @@ function isBytesValue(value: AnyValue | undefined): value is { bytesValue: Buffe
   return Buffer.isBuffer(value.bytesValue);
 }
 
+function isArrayValue(
+  value: AnyValue | undefined
+): value is { arrayValue: { values: AnyValue[] } } {
+  if (!value) return false;
+
+  return value.arrayValue != null && Array.isArray(value.arrayValue.values);
+}
+
+/**
+ * Serialize an OTEL array value into a JSON string.
+ * For arrays of strings, produces a JSON array: `["item1","item2"]`
+ * For mixed types, extracts primitives and serializes.
+ */
+function serializeArrayValue(values: AnyValue[]): string {
+  const items = values.map((v) => {
+    if (isStringValue(v)) return v.stringValue;
+    if (isIntValue(v)) return Number(v.intValue);
+    if (isDoubleValue(v)) return v.doubleValue;
+    if (isBoolValue(v)) return v.boolValue;
+    return null;
+  });
+
+  return JSON.stringify(items);
+}
+
 function binaryToHex(buffer: Buffer | string): string;
 function binaryToHex(buffer: Buffer | string | undefined): string | undefined;
 function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
@@ -774,24 +1100,98 @@ function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-function truncateAttributes(attributes: KeyValue[], maximumLength: number = 1024): KeyValue[] {
-  return attributes.map((attribute) => {
-    return isStringValue(attribute.value)
-      ? {
-          key: attribute.key,
-          value: {
-            stringValue: attribute.value.stringValue.slice(0, maximumLength),
-          },
-        }
-      : attribute;
-  });
+function truncateAttributes(
+  attributes: Record<string, string | number | boolean | undefined> | undefined,
+  maximumLength: number = 1024
+): Record<string, string | number | boolean | undefined> | undefined {
+  if (!attributes) return undefined;
+
+  const truncatedAttributes: Record<string, string | number | boolean | undefined> = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (!key) continue;
+
+    if (typeof value === "string") {
+      truncatedAttributes[key] = truncateAndDetectUnpairedSurrogate(value, maximumLength);
+    } else {
+      truncatedAttributes[key] = value;
+    }
+  }
+
+  return truncatedAttributes;
 }
 
-export const otlpExporter = new OTLPExporter(
-  eventRepository,
-  clickhouseEventRepository,
-  process.env.OTLP_EXPORTER_VERBOSE === "1",
-  process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
-    ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
-    : 8192
-);
+function truncateAndDetectUnpairedSurrogate(str: string, maximumLength: number): string {
+  const truncatedString = smartTruncateString(str, maximumLength);
+
+  if (hasUnpairedSurrogateAtEnd(truncatedString)) {
+    return smartTruncateString(truncatedString, [...truncatedString].length - 1);
+  }
+
+  return truncatedString;
+}
+
+const ASCII_ONLY_REGEX = /^[\p{ASCII}]*$/u;
+
+function smartTruncateString(str: string, maximumLength: number): string {
+  if (!str) return "";
+  if (str.length <= maximumLength) return str;
+
+  const checkLength = Math.min(str.length, maximumLength * 2 + 2);
+
+  if (ASCII_ONLY_REGEX.test(str.slice(0, checkLength))) {
+    return str.slice(0, maximumLength);
+  }
+
+  return [...str.slice(0, checkLength)].slice(0, maximumLength).join("");
+}
+
+function hasUnpairedSurrogateAtEnd(str: string): boolean {
+  if (str.length === 0) return false;
+
+  const lastCode = str.charCodeAt(str.length - 1);
+
+  // Check if last character is an unpaired high surrogate
+  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
+    return true; // High surrogate at end = unpaired
+  }
+
+  // Check if last character is an unpaired low surrogate
+  if (lastCode >= 0xdc00 && lastCode <= 0xdfff) {
+    // Low surrogate is only valid if preceded by high surrogate
+    if (str.length === 1) return true; // Single low surrogate
+
+    const secondLastCode = str.charCodeAt(str.length - 2);
+    if (secondLastCode < 0xd800 || secondLastCode > 0xdbff) {
+      return true; // Low surrogate not preceded by high surrogate
+    }
+  }
+
+  return false;
+}
+
+export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
+
+function initializeOTLPExporter() {
+  const metricsFlushScheduler = new DynamicFlushScheduler<MetricsV1Input>({
+    batchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
+    flushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
+    callback: async (_flushId, batch) => {
+      await clickhouseClient.metrics.insert(batch);
+    },
+    minConcurrency: 1,
+    maxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
+    loadSheddingEnabled: false,
+  });
+
+  return new OTLPExporter(
+    eventRepository,
+    clickhouseEventRepository,
+    clickhouseEventRepositoryV2,
+    metricsFlushScheduler,
+    process.env.OTLP_EXPORTER_VERBOSE === "1",
+    process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+      ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
+      : 8192
+  );
+}

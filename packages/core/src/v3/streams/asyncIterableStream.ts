@@ -103,3 +103,56 @@ export function createAsyncIterableStreamFromAsyncGenerator<T>(
 ): AsyncIterableStream<T> {
   return createAsyncIterableStreamFromAsyncIterable(asyncGenerator, transformer, signal);
 }
+
+export function ensureAsyncIterable<T>(
+  input: AsyncIterable<T> | ReadableStream<T>
+): AsyncIterable<T> {
+  // If it's already an AsyncIterable, return it as-is
+  if (Symbol.asyncIterator in input) {
+    return input as AsyncIterable<T>;
+  }
+
+  // Convert ReadableStream to AsyncIterable
+  const readableStream = input as ReadableStream<T>;
+  return {
+    async *[Symbol.asyncIterator]() {
+      const reader = readableStream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          if (value !== undefined) {
+            yield value;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    },
+  };
+}
+
+export function ensureReadableStream<T>(
+  input: AsyncIterable<T> | ReadableStream<T>
+): ReadableStream<T> {
+  if ("getReader" in input) {
+    return input as ReadableStream<T>;
+  }
+
+  return new ReadableStream<T>({
+    async start(controller) {
+      const iterator = input[Symbol.asyncIterator]();
+
+      while (true) {
+        const { done, value } = await iterator.next();
+        if (done) {
+          break;
+        }
+        controller.enqueue(value);
+      }
+      controller.close();
+    },
+  });
+}

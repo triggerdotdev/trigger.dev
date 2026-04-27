@@ -372,9 +372,10 @@ export class RunExecution {
 
         return;
       }
-      case "RUN_CREATED": {
+      case "RUN_CREATED":
+      case "DELAYED": {
         this.sendDebugLog(
-          "aborting execution: invalid status change: RUN_CREATED",
+          "aborting execution: invalid status change: RUN_CREATED or DELAYED",
           snapshotMetadata
         );
 

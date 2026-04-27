@@ -22,6 +22,7 @@ export const RunOptionsData = z.object({
   concurrencyKey: z.string().optional(),
   maxAttempts: z.number().min(1).optional(),
   machine: MachinePresetName.optional(),
+  region: z.string().optional(),
   maxDurationSeconds: z
     .number()
     .min(0)
@@ -46,6 +47,11 @@ export const RunOptionsData = z.object({
       message: "Each tag must be at most 128 characters long",
     }),
   version: z.string().optional(),
+  prioritySeconds: z
+    .number()
+    .min(0)
+    .optional()
+    .transform((val) => (val === 0 ? undefined : val)),
 });
 
 export type RunOptionsData = z.infer<typeof RunOptionsData>;

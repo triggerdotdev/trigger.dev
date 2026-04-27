@@ -25,6 +25,7 @@ export class FailedPodHandler {
 
   private readonly informer: Informer<V1Pod>;
   private readonly reconnectIntervalMs: number;
+  private reconnecting = false;
 
   // Metrics
   private readonly register: Registry;
@@ -150,7 +151,7 @@ export class FailedPodHandler {
   }
 
   private async onPodCompleted(pod: V1Pod) {
-    this.logger.info("pod-completed", this.podSummary(pod));
+    this.logger.debug("pod-completed", this.podSummary(pod));
     this.informerEventsTotal.inc({ namespace: this.namespace, verb: "add" });
 
     if (!pod.metadata?.name) {
@@ -164,7 +165,7 @@ export class FailedPodHandler {
     }
 
     if (pod.metadata?.deletionTimestamp) {
-      this.logger.info("pod-completed: pod is being deleted", this.podSummary(pod));
+      this.logger.verbose("pod-completed: pod is being deleted", this.podSummary(pod));
       return;
     }
 
@@ -187,7 +188,7 @@ export class FailedPodHandler {
   }
 
   private async onPodSucceeded(pod: V1Pod) {
-    this.logger.info("pod-succeeded", this.podSummary(pod));
+    this.logger.debug("pod-succeeded", this.podSummary(pod));
     this.processedPodsTotal.inc({
       namespace: this.namespace,
       status: this.podStatus(pod),
@@ -195,7 +196,7 @@ export class FailedPodHandler {
   }
 
   private async onPodFailed(pod: V1Pod) {
-    this.logger.info("pod-failed", this.podSummary(pod));
+    this.logger.debug("pod-failed", this.podSummary(pod));
 
     try {
       await this.processFailedPod(pod);
@@ -207,7 +208,7 @@ export class FailedPodHandler {
   }
 
   private async processFailedPod(pod: V1Pod) {
-    this.logger.info("pod-failed: processing pod", this.podSummary(pod));
+    this.logger.verbose("pod-failed: processing pod", this.podSummary(pod));
 
     const mainContainer = pod.status?.containerStatuses?.find((c) => c.name === "run-controller");
 
@@ -230,7 +231,7 @@ export class FailedPodHandler {
   }
 
   private async deletePod(pod: V1Pod) {
-    this.logger.info("pod-failed: deleting pod", this.podSummary(pod));
+    this.logger.verbose("pod-failed: deleting pod", this.podSummary(pod));
     try {
       await this.k8s.core.deleteNamespacedPod({
         name: pod.metadata!.name!,
@@ -250,21 +251,48 @@ export class FailedPodHandler {
   }
 
   private makeOnError(informerName: string) {
-    return () => this.onError(informerName);
+    return (err?: unknown) => this.onError(informerName, err);
   }
 
-  private async onError(informerName: string) {
+  private async onError(informerName: string, err?: unknown) {
     if (!this.isRunning) {
       this.logger.warn("onError: informer not running");
       return;
     }
 
-    this.logger.error("error event fired", { informerName });
-    this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
+    // Guard against multiple simultaneous reconnections
+    if (this.reconnecting) {
+      this.logger.debug("onError: reconnection already in progress, skipping", {
+        informerName,
+      });
+      return;
+    }
 
-    // Reconnect on errors
-    await setTimeout(this.reconnectIntervalMs);
-    await this.informer.start();
+    this.reconnecting = true;
+
+    try {
+      const error = err instanceof Error ? err : undefined;
+      this.logger.error("error event fired", {
+        informerName,
+        error: error?.message,
+        errorType: error?.name,
+      });
+      this.informerEventsTotal.inc({ namespace: this.namespace, verb: "error" });
+
+      // Reconnect on errors
+      await setTimeout(this.reconnectIntervalMs);
+      await this.informer.start();
+    } catch (handlerError) {
+      const error = handlerError instanceof Error ? handlerError : undefined;
+      this.logger.error("onError: reconnection attempt failed", {
+        informerName,
+        error: error?.message,
+        errorType: error?.name,
+        errorStack: error?.stack,
+      });
+    } finally {
+      this.reconnecting = false;
+    }
   }
 
   private makeOnConnect(informerName: string) {

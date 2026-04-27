@@ -11,6 +11,7 @@ export default defineConfig({
   },
   logLevel: "debug",
   maxDuration: 3600,
+  ttl: "1h",
   retries: {
     enabledInDev: true,
     default: {
@@ -26,7 +27,6 @@ export default defineConfig({
     extensions: [
       lightpanda(),
       syncEnvVars(async (ctx) => {
-        console.log("syncEnvVars", { environment: ctx.environment, branch: ctx.branch });
         return [
           { name: "SYNC_ENV", value: ctx.environment },
           { name: "BRANCH", value: ctx.branch ?? "NO_BRANCH" },

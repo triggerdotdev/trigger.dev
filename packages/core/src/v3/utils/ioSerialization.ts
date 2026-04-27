@@ -13,6 +13,7 @@ import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { TriggerTracer } from "../tracer.js";
 import { zodfetch } from "../zodfetch.js";
 import { flattenAttributes } from "./flattenAttributes.js";
+import superjson from "../imports/superjson.js";
 
 export type IOPacket = {
   data?: string | undefined;
@@ -32,9 +33,7 @@ export async function parsePacket(value: IOPacket, options?: ParsePacketOptions)
     case "application/json":
       return JSON.parse(value.data, makeSafeReviver(options));
     case "application/super+json":
-      const { parse } = await loadSuperJSON();
-
-      return parse(value.data);
+      return superjson.parse(value.data);
     case "text/plain":
       return value.data;
     case "application/store":
@@ -58,11 +57,9 @@ export async function parsePacketAsJson(
     case "application/json":
       return JSON.parse(value.data, makeSafeReviver(options));
     case "application/super+json":
-      const { parse, serialize } = await loadSuperJSON();
+      const superJsonResult = superjson.parse(value.data);
 
-      const superJsonResult = parse(value.data);
-
-      const { json } = serialize(superJsonResult);
+      const { json } = superjson.serialize(superJsonResult);
 
       return json;
     case "text/plain":
@@ -95,8 +92,7 @@ export async function stringifyIO(value: any): Promise<IOPacket> {
   }
 
   try {
-    const { stringify } = await loadSuperJSON();
-    const data = stringify(value);
+    const data = superjson.stringify(value);
 
     return { data, dataType: "application/super+json" };
   } catch {
@@ -173,6 +169,12 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
 
   const presignedResponse = await apiClientManager.client!.createUploadPayloadUrl(filename);
 
+  if (!presignedResponse.storagePath) {
+    throw new Error(
+      "Packet upload presign response missing storagePath; ensure the server supports /api/v2/packets"
+    );
+  }
+
   const uploadResponse = await zodfetch(
     z.any(),
     presignedResponse.presignedUrl,
@@ -195,7 +197,7 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
   }
 
   return {
-    data: filename,
+    data: presignedResponse.storagePath,
     dataType: "application/store",
   };
 }
@@ -302,14 +304,12 @@ export async function createPacketAttributes(
         [dataTypeKey]: packet.dataType,
       };
     case "application/super+json":
-      const { parse } = await loadSuperJSON();
-
       if (typeof packet.data === "undefined" || packet.data === null) {
         return;
       }
 
       try {
-        const parsed = parse(packet.data) as any;
+        const parsed = superjson.parse(packet.data) as any;
         const jsonified = JSON.parse(JSON.stringify(parsed, makeSafeReplacer()));
 
         const result = {
@@ -358,9 +358,7 @@ export async function createPacketAttributesAsJson(
       );
     }
     case "application/super+json": {
-      const { deserialize } = await loadSuperJSON();
-
-      const deserialized = deserialize(data) as any;
+      const deserialized = superjson.deserialize(data) as any;
       const jsonify = safeJsonParse(JSON.stringify(deserialized, makeSafeReplacer()));
 
       return imposeAttributeLimits(
@@ -390,18 +388,16 @@ export async function prettyPrintPacket(
       rawData = safeJsonParse(rawData);
     }
 
-    const { deserialize } = await loadSuperJSON();
-
     const hasCircularReferences = rawData && rawData.meta && hasCircularReference(rawData.meta);
 
     if (hasCircularReferences) {
-      return await prettyPrintPacket(deserialize(rawData), "application/json", {
+      return await prettyPrintPacket(superjson.deserialize(rawData), "application/json", {
         ...options,
         cloneReferences: false,
       });
     }
 
-    return await prettyPrintPacket(deserialize(rawData), "application/json", {
+    return await prettyPrintPacket(superjson.deserialize(rawData), "application/json", {
       ...options,
       cloneReferences: true,
     });
@@ -512,21 +508,6 @@ function getPacketExtension(outputType: string): string {
   }
 }
 
-async function loadSuperJSON() {
-  const superjson = await import("superjson");
-
-  superjson.registerCustom<Buffer, number[]>(
-    {
-      isApplicable: (v): v is Buffer => typeof Buffer === "function" && Buffer.isBuffer(v),
-      serialize: (v) => [...v],
-      deserialize: (v) => Buffer.from(v),
-    },
-    "buffer"
-  );
-
-  return superjson;
-}
-
 function safeJsonParse(value: string): any {
   try {
     return JSON.parse(value);
@@ -554,7 +535,6 @@ function safeJsonParse(value: string): any {
  * @throws {Error} If the newPayload is not valid JSON
  */
 export async function replaceSuperJsonPayload(original: string, newPayload: string) {
-  const superjson = await loadSuperJSON();
   const originalObject = superjson.parse(original);
   const newPayloadObject = JSON.parse(newPayload);
   const { meta } = superjson.serialize(originalObject);

@@ -1,4 +1,5 @@
 import {
+  AdjustmentsHorizontalIcon,
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
@@ -11,9 +12,11 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -23,13 +26,16 @@ import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, type ButtonVariant, LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
+import { Header3 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -48,26 +54,33 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { env } from "~/env.server";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getUserById } from "~/models/user.server";
 import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePresenter.server";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { docsPath, EnvironmentParamSchema, v3BillingPath, v3RunsPath } from "~/utils/pathBuilder";
+import {
+  concurrencyPath,
+  docsPath,
+  EnvironmentParamSchema,
+  v3BillingPath,
+  v3RunsPath,
+} from "~/utils/pathBuilder";
+import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Header3 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { useThrottle } from "~/hooks/useThrottle";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
-import { env } from "~/env.server";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { QueueName } from "~/components/runs/v3/QueueName";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -208,6 +221,75 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         `Queue ${action === "queue-pause" ? "paused" : "resumed"}`
       );
     }
+    case "queue-override": {
+      const friendlyId = formData.get("friendlyId");
+      const concurrencyLimit = formData.get("concurrencyLimit");
+
+      if (!friendlyId) {
+        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
+      }
+
+      if (!concurrencyLimit) {
+        return redirectWithErrorMessage(redirectPath, request, "Concurrency limit is required");
+      }
+
+      const limitNumber = parseInt(concurrencyLimit.toString(), 10);
+      if (isNaN(limitNumber) || limitNumber < 0) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Concurrency limit must be a valid number"
+        );
+      }
+
+      const user = await getUserById(userId);
+      if (!user) {
+        return redirectWithErrorMessage(redirectPath, request, "User not found");
+      }
+
+      const result = await concurrencySystem.queues.overrideQueueConcurrencyLimit(
+        environment,
+        friendlyId.toString(),
+        limitNumber,
+        user
+      );
+
+      if (!result.isOk()) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Failed to override queue concurrency limit"
+        );
+      }
+
+      return redirectWithSuccessMessage(
+        redirectPath,
+        request,
+        "Queue concurrency limit overridden"
+      );
+    }
+    case "queue-remove-override": {
+      const friendlyId = formData.get("friendlyId");
+
+      if (!friendlyId) {
+        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
+      }
+
+      const result = await concurrencySystem.queues.resetConcurrencyLimit(
+        environment,
+        friendlyId.toString()
+      );
+
+      if (!result.isOk()) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          "Failed to reset queue concurrency limit"
+        );
+      }
+
+      return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");
+    }
     default:
       return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
   }
@@ -263,31 +345,33 @@ export default function Page() {
             <BigNumber
               title="Queued"
               value={environment.queued}
-              suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
+              suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
               animate
               accessory={
                 <div className="flex items-start gap-1">
+                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
                   <LinkButton
-                    variant="tertiary/small"
+                    variant="secondary/small"
+                    LeadingIcon={RunsIcon}
+                    leadingIconClassName="text-runs"
+                    className="px-2"
                     to={v3RunsPath(organization, project, env, {
                       statuses: ["PENDING"],
                       period: "30d",
                       rootOnly: false,
                     })}
-                  >
-                    View runs
-                  </LinkButton>
-                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
+                    tooltip="View queued runs"
+                  />
                 </div>
               }
-              valueClassName={env.paused ? "text-warning" : undefined}
+              valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
               compactThreshold={1000000}
             />
             <BigNumber
               title="Running"
               value={environment.running}
               animate
-              valueClassName={limitClassName}
+              valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
                   <span className={cn(limitClassName, "flex items-center gap-1")}>
@@ -300,15 +384,17 @@ export default function Page() {
               }
               accessory={
                 <LinkButton
-                  variant="tertiary/small"
+                  variant="secondary/small"
+                  LeadingIcon={RunsIcon}
+                  leadingIconClassName="text-runs"
+                  className="px-2"
                   to={v3RunsPath(organization, project, env, {
                     statuses: ["DEQUEUED", "EXECUTING"],
                     period: "30d",
                     rootOnly: false,
                   })}
-                >
-                  View runs
-                </LinkButton>
+                  tooltip="View running runs"
+                />
               }
               compactThreshold={1000000}
             />
@@ -328,18 +414,14 @@ export default function Page() {
               accessory={
                 plan ? (
                   plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-                    <Feedback
-                      button={
-                        <Button
-                          variant="tertiary/small"
-                          LeadingIcon={ChatBubbleLeftEllipsisIcon}
-                          leadingIconClassName="text-indigo-500"
-                        >
-                          Increase limit…
-                        </Button>
-                      }
-                      defaultValue="concurrency"
-                    />
+                    <LinkButton
+                      to={concurrencyPath(organization, project, env)}
+                      variant="tertiary/small"
+                      LeadingIcon={ConcurrencyIcon}
+                      leadingIconClassName="text-amber-500"
+                    >
+                      Increase limit
+                    </LinkButton>
                   ) : (
                     <LinkButton
                       to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
@@ -375,7 +457,8 @@ export default function Page() {
                   <TableRow>
                     <TableHeaderCell>Name</TableHeaderCell>
                     <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Running/limit</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                     <TableHeaderCell
                       alignment="right"
                       tooltip={
@@ -401,12 +484,23 @@ export default function Page() {
                               This queue is limited by a concurrency limit set in your code.
                             </Paragraph>
                           </div>
+                          <div className="space-y-0.5">
+                            <Header3>Override</Header3>
+                            <Paragraph
+                              variant="small"
+                              className="!text-wrap text-text-dimmed"
+                              spacing
+                            >
+                              This queue's concurrency limit has been manually overridden from the
+                              dashboard or API.
+                            </Paragraph>
+                          </div>
                         </div>
                       }
                     >
                       Limited by
                     </TableHeaderCell>
-                    <TableHeaderCell className="w-[1%] pl-24">
+                    <TableHeaderCell className="w-[1%] pl-32">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
                   </TableRow>
@@ -415,7 +509,10 @@ export default function Page() {
                   {queues.length > 0 ? (
                     queues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                      const isAtLimit = queue.running === limit;
+                      const isAtConcurrencyLimit = queue.running >= limit;
+                      const isAtQueueLimit =
+                        environment.queueSizeLimit !== null &&
+                        queue.queued >= environment.queueSizeLimit;
                       const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                         queue.name
                       }`;
@@ -423,40 +520,30 @@ export default function Page() {
                         <TableRow key={queue.name}>
                           <TableCell>
                             <span className="flex items-center gap-2">
-                              {queue.type === "task" ? (
+                              <QueueName {...queue} />
+                              {queue.concurrency?.overriddenAt ? (
                                 <SimpleTooltip
                                   button={
-                                    <TaskIconSmall
-                                      className={cn(
-                                        "size-[1.125rem] text-blue-500",
-                                        queue.paused && "opacity-50"
-                                      )}
-                                    />
+                                    <Badge variant="extra-small" className="text-text-bright">
+                                      Concurrency limit overridden
+                                    </Badge>
                                   }
-                                  content={`This queue was automatically created from your "${queue.name}" task`}
+                                  content="This queue's concurrency limit has been manually overridden from the dashboard or API."
+                                  className="max-w-xs"
+                                  disableHoverableContent
                                 />
-                              ) : (
-                                <SimpleTooltip
-                                  button={
-                                    <RectangleStackIcon
-                                      className={cn(
-                                        "size-[1.125rem] text-purple-500",
-                                        queue.paused && "opacity-50"
-                                      )}
-                                    />
-                                  }
-                                  content={`This is a custom queue you added in your code.`}
-                                />
-                              )}
-                              <span className={queue.paused ? "opacity-50" : undefined}>
-                                {queue.name}
-                              </span>
+                              ) : null}
                               {queue.paused ? (
                                 <Badge variant="extra-small" className="text-warning">
                                   Paused
                                 </Badge>
                               ) : null}
-                              {isAtLimit ? (
+                              {isAtQueueLimit ? (
+                                <Badge variant="extra-small" className="text-error">
+                                  At queue limit
+                                </Badge>
+                              ) : null}
+                              {isAtConcurrencyLimit ? (
                                 <Badge variant="extra-small" className="text-warning">
                                   At concurrency limit
                                 </Badge>
@@ -465,31 +552,51 @@ export default function Page() {
                           </TableCell>
                           <TableCell
                             alignment="right"
-                            className={queue.paused ? "opacity-50" : undefined}
+                            className={cn(
+                              "w-[1%] pl-16 tabular-nums",
+                              queue.paused ? "opacity-50" : undefined,
+                              isAtQueueLimit && "text-error"
+                            )}
                           >
                             {queue.queued}
                           </TableCell>
                           <TableCell
                             alignment="right"
                             className={cn(
-                              queue.paused ? "tabular-nums opacity-50" : undefined,
+                              "w-[1%] pl-16 tabular-nums",
+                              queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
-                              isAtLimit && "text-warning"
+                              isAtConcurrencyLimit && "text-warning"
                             )}
                           >
-                            {queue.running}/
-                            <span className={cn("tabular-nums", isAtLimit && "text-warning")}>
-                              {limit}
-                            </span>
+                            {queue.running}
                           </TableCell>
                           <TableCell
                             alignment="right"
                             className={cn(
+                              "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
-                              isAtLimit && "text-warning"
+                              queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
-                            {queue.concurrencyLimit ? "User" : "Environment"}
+                            {limit}
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={cn(
+                              "w-[1%] pl-16",
+                              queue.paused ? "opacity-50" : undefined,
+                              isAtConcurrencyLimit && "text-warning",
+                              queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                            )}
+                          >
+                            {queue.concurrency?.overriddenAt ? (
+                              <span className="text-text-bright">Override</span>
+                            ) : queue.concurrencyLimit ? (
+                              "User"
+                            ) : (
+                              "Environment"
+                            )}
                           </TableCell>
                           <TableCellMenu
                             isSticky
@@ -516,50 +623,43 @@ export default function Page() {
                                     showTooltip={false}
                                   />
                                 )}
-                                <LinkButton
-                                  variant="minimal/small"
+
+                                <PopoverMenuItem
+                                  icon={RunsIcon}
+                                  leadingIconClassName="text-runs"
+                                  title="View all runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     period: "30d",
                                     rootOnly: false,
                                   })}
-                                  fullWidth
-                                  textAlignLeft
-                                  LeadingIcon={RunsIcon}
-                                  leadingIconClassName="text-indigo-500"
-                                >
-                                  View all runs
-                                </LinkButton>
-                                <LinkButton
-                                  variant="minimal/small"
+                                />
+                                <PopoverMenuItem
+                                  icon={RectangleStackIcon}
+                                  leadingIconClassName="text-queues"
+                                  title="View queued runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     statuses: ["PENDING"],
                                     period: "30d",
                                     rootOnly: false,
                                   })}
-                                  fullWidth
-                                  textAlignLeft
-                                  LeadingIcon={RectangleStackIcon}
-                                  leadingIconClassName="text-queues"
-                                >
-                                  View queued runs
-                                </LinkButton>
-                                <LinkButton
-                                  variant="minimal/small"
+                                />
+                                <PopoverMenuItem
+                                  icon={Spinner}
+                                  leadingIconClassName="text-queues animate-none"
+                                  title="View running runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     statuses: ["DEQUEUED", "EXECUTING"],
                                     period: "30d",
                                     rootOnly: false,
                                   })}
-                                  fullWidth
-                                  textAlignLeft
-                                  LeadingIcon={Spinner}
-                                  leadingIconClassName="size-4 animate-none"
-                                >
-                                  View running runs
-                                </LinkButton>
+                                />
+                                <QueueOverrideConcurrencyButton
+                                  queue={queue}
+                                  environmentConcurrencyLimit={environment.concurrencyLimit}
+                                />
                               </>
                             }
                           />
@@ -568,7 +668,7 @@ export default function Page() {
                     })
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <div className="grid place-items-center py-6 text-text-dimmed">
                           <Paragraph>
                             {hasFilters
@@ -725,21 +825,7 @@ function QueuePauseResumeButton({
   fullWidth?: boolean;
   showTooltip?: boolean;
 }) {
-  const navigation = useNavigation();
   const [isOpen, setIsOpen] = useState(false);
-
-  const button = (
-    <Button
-      type="button"
-      variant={variant}
-      LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-      leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
-      fullWidth={fullWidth}
-      textAlignLeft={fullWidth}
-    >
-      {queue.paused ? "Resume..." : "Pause..."}
-    </Button>
-  );
 
   const trigger = showTooltip ? (
     <div>
@@ -747,7 +833,18 @@ function QueuePauseResumeButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <div>
-              <DialogTrigger asChild>{button}</DialogTrigger>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant={variant}
+                  LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
+                  leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
+                  fullWidth={fullWidth}
+                  textAlignLeft={fullWidth}
+                >
+                  {queue.paused ? "Resume..." : "Pause..."}
+                </Button>
+              </DialogTrigger>
             </div>
           </TooltipTrigger>
           <TooltipContent side="right" className={"text-xs"}>
@@ -759,7 +856,13 @@ function QueuePauseResumeButton({
       </TooltipProvider>
     </div>
   ) : (
-    <DialogTrigger asChild>{button}</DialogTrigger>
+    <DialogTrigger asChild>
+      <PopoverMenuItem
+        icon={queue.paused ? PlayIcon : PauseIcon}
+        leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
+        title={queue.paused ? "Resume..." : "Pause..."}
+      />
+    </DialogTrigger>
   );
 
   return (
@@ -797,6 +900,129 @@ function QueuePauseResumeButton({
                     Cancel
                   </Button>
                 </DialogClose>
+              }
+            />
+          </Form>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function QueueOverrideConcurrencyButton({
+  queue,
+  environmentConcurrencyLimit,
+}: {
+  queue: QueueItem;
+  environmentConcurrencyLimit: number;
+}) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+  const [concurrencyLimit, setConcurrencyLimit] = useState<string>(
+    queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
+  );
+
+  const isOverridden = !!queue.concurrency?.overriddenAt;
+  const currentLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
+
+  useEffect(() => {
+    if (navigation.state === "loading" || navigation.state === "idle") {
+      setIsOpen(false);
+    }
+  }, [navigation.state]);
+
+  const isLoading = Boolean(
+    navigation.formData?.get("action") === "queue-override" ||
+      navigation.formData?.get("action") === "queue-remove-override"
+  );
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <PopoverMenuItem
+          icon={AdjustmentsHorizontalIcon}
+          title={isOverridden ? "Edit override…" : "Override limit…"}
+        />
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          {isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
+        </DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          {isOverridden ? (
+            <Paragraph>
+              This queue's concurrency limit is currently overridden to {currentLimit}.
+              {typeof queue.concurrency?.base === "number" &&
+                ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
+              You can update the override or remove it to restore the{" "}
+              {typeof queue.concurrency?.base === "number"
+                ? "limit set in code"
+                : "environment concurrency limit"}
+              .
+            </Paragraph>
+          ) : (
+            <Paragraph>
+              Override this queue's concurrency limit. The current limit is {currentLimit}, which is
+              set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
+            </Paragraph>
+          )}
+          <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
+            <input type="hidden" name="friendlyId" value={queue.id} />
+            <div className="space-y-2">
+              <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
+                Concurrency limit
+              </label>
+              <Input
+                type="number"
+                name="concurrencyLimit"
+                id="concurrencyLimit"
+                min="0"
+                max={environmentConcurrencyLimit}
+                value={concurrencyLimit}
+                onChange={(e) => setConcurrencyLimit(e.target.value)}
+                placeholder={currentLimit.toString()}
+                autoFocus
+              />
+            </div>
+
+            <FormButtons
+              defaultAction={{
+                name: "action",
+                value: "queue-override",
+                disabled: isLoading || !concurrencyLimit,
+              }}
+              confirmButton={
+                <Button
+                  type="submit"
+                  name="action"
+                  value="queue-override"
+                  disabled={isLoading || !concurrencyLimit}
+                  variant="primary/medium"
+                  LeadingIcon={isLoading && <Spinner color="white" />}
+                  shortcut={{ modifiers: ["mod"], key: "enter" }}
+                >
+                  {isOverridden ? "Update override" : "Override limit"}
+                </Button>
+              }
+              cancelButton={
+                <div className="flex items-center justify-between gap-2">
+                  {isOverridden && (
+                    <Button
+                      type="submit"
+                      name="action"
+                      value="queue-remove-override"
+                      disabled={isLoading}
+                      variant="danger/medium"
+                    >
+                      Remove override
+                    </Button>
+                  )}
+                  <DialogClose asChild>
+                    <Button type="button" variant="tertiary/medium">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                </div>
               }
             />
           </Form>

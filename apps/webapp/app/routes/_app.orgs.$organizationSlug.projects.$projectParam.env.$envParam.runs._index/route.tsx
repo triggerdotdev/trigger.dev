@@ -20,9 +20,11 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -55,6 +57,7 @@ import {
   v3CreateBulkActionPath,
   v3ProjectPath,
   v3TestPath,
+  v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
@@ -235,7 +238,13 @@ function RunsList({
               list.possibleTasks.length === 0 ? (
                 <CreateFirstTaskInstructions />
               ) : (
-                <RunTaskInstructions />
+                <RunTaskInstructions
+                  task={
+                    list.filters.tasks.length === 1
+                      ? list.possibleTasks.find((t) => t.slug === list.filters.tasks[0])
+                      : undefined
+                  }
+                />
               )
             ) : (
               <div className={cn("grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden")}>
@@ -291,24 +300,39 @@ function RunsList({
                   runs={list.runs}
                   isLoading={isLoading}
                   allowSelection
+                  rootOnlyDefault={rootOnlyDefault}
                 />
               </div>
             )}
           </>
         </div>
       </ResizablePanel>
-      {isShowingBulkActionInspector && (
-        <>
-          <ResizableHandle id="runs-handle" />
-          <ResizablePanel id="bulk-action-inspector" min="300px" default="400px" max="600px">
+      <ResizableHandle
+        id="runs-handle"
+        className={collapsibleHandleClassName(isShowingBulkActionInspector)}
+      />
+      <ResizablePanel
+        id="bulk-action-inspector"
+        default="400px"
+        min="400px"
+        max="600px"
+        className="overflow-hidden"
+        collapsible
+        collapsed={!isShowingBulkActionInspector}
+        onCollapseChange={() => {}}
+        collapsedSize="0px"
+        collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+      >
+        <div className="h-full" style={{ minWidth: 400 }}>
+          {isShowingBulkActionInspector && (
             <CreateBulkActionInspector
               filters={filters}
               selectedItems={selectedItems}
               hasBulkActions={list.bulkActions.length > 0}
             />
-          </ResizablePanel>
-        </>
-      )}
+          )}
+        </div>
+      </ResizablePanel>
     </ResizablePanelGroup>
   );
 }
@@ -339,7 +363,7 @@ function CreateFirstTaskInstructions() {
   );
 }
 
-function RunTaskInstructions() {
+function RunTaskInstructions({ task }: { task?: { slug: string } }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -352,7 +376,11 @@ function RunTaskInstructions() {
           Perform a test run with a payload directly from the dashboard.
         </Paragraph>
         <LinkButton
-          to={v3TestPath(organization, project, environment)}
+          to={
+            task
+              ? v3TestTaskPath(organization, project, environment, { taskIdentifier: task.slug })
+              : v3TestPath(organization, project, environment)
+          }
           variant="secondary/medium"
           LeadingIcon={BeakerIcon}
           leadingIconClassName="text-lime-500"

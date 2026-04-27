@@ -43,6 +43,7 @@ model User {
   confirmedBasicDetails Boolean @default(false)
 
   referralSource String?
+  onboardingData Json?
 
   orgMemberships OrgMember[]
   sentInvites    OrgMemberInvite[]
@@ -59,6 +60,13 @@ model User {
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
+
+  impersonationsPerformed          ImpersonationAuditLog[]           @relation("ImpersonationAdmin")
+  impersonationsReceived           ImpersonationAuditLog[]           @relation("ImpersonationTarget")
+  customerQueries                  CustomerQuery[]
+  metricsDashboards                MetricsDashboard[]
+  platformNotifications            PlatformNotification[]
+  platformNotificationInteractions PlatformNotificationInteraction[]
 }
 
 model MfaBackupCode {
@@ -91,6 +99,7 @@ model InvitationCode {
 enum AuthenticationMethod {
   GITHUB
   MAGIC_LINK
+  GOOGLE
 }
 
 /// Used to generate PersonalAccessTokens, they're one-time use
@@ -184,6 +193,8 @@ model Organization {
 
   companySize String?
 
+  onboardingData Json?
+
   avatar Json?
 
   runsEnabled Boolean @default(true)
@@ -202,7 +213,12 @@ model Organization {
   apiRateLimiterConfig      Json?
   realtimeRateLimiterConfig Json?
 
+  batchRateLimitConfig        Json?
+  batchQueueConcurrencyConfig Json?
+
   featureFlags Json?
+
+  maximumProjectCount Int @default(25)
 
   projects                 Project[]
   members                  OrgMember[]
@@ -211,8 +227,13 @@ model Organization {
   organizationAccessTokens OrganizationAccessToken[]
   workerGroups             WorkerInstanceGroup[]
   workerInstances          WorkerInstance[]
-  executionSnapshots       TaskRunExecutionSnapshot[]
   githubAppInstallations   GithubAppInstallation[]
+  customerQueries          CustomerQuery[]
+  metricsDashboards        MetricsDashboard[]
+  prompts                  Prompt[]
+
+  platformNotifications PlatformNotification[]
+  errorGroupStates      ErrorGroupState[]
 }
 
 model OrgMember {
@@ -328,15 +349,33 @@ model RuntimeEnvironment {
   taskRunCheckpoints   TaskRunCheckpoint[]
   waitpoints           Waitpoint[]
   workerInstances      WorkerInstance[]
-  executionSnapshots   TaskRunExecutionSnapshot[]
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
+  customerQueries      CustomerQuery[]
+  prompts              Prompt[]
+  errorGroupStates     ErrorGroupState[]
+  taskIdentifiers      TaskIdentifier[]
+  revokedApiKeys       RevokedApiKey[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
   @@index([organizationId])
+}
+
+/// Records of previously-valid API keys that are still accepted for authentication
+/// during a grace window after rotation. Extend or end the grace period by updating `expiresAt`.
+model RevokedApiKey {
+  id                   String             @id @default(cuid())
+  apiKey               String
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+  expiresAt            DateTime
+  createdAt            DateTime           @default(now())
+
+  @@index([apiKey])
+  @@index([runtimeEnvironmentId])
 }
 
 enum RuntimeEnvironmentType {
@@ -374,30 +413,39 @@ model Project {
   /// The master queues they are allowed to use (impacts what they can set as default and trigger runs with)
   allowedWorkerQueues String[] @default([]) @map("allowedMasterQueues")
 
-  environments              RuntimeEnvironment[]
-  backgroundWorkers         BackgroundWorker[]
-  backgroundWorkerTasks     BackgroundWorkerTask[]
-  taskRuns                  TaskRun[]
-  runTags                   TaskRunTag[]
-  taskQueues                TaskQueue[]
-  environmentVariables      EnvironmentVariable[]
-  checkpoints               Checkpoint[]
-  WorkerDeployment          WorkerDeployment[]
-  CheckpointRestoreEvent    CheckpointRestoreEvent[]
-  taskSchedules             TaskSchedule[]
-  alertChannels             ProjectAlertChannel[]
-  alerts                    ProjectAlert[]
-  alertStorages             ProjectAlertStorage[]
-  bulkActionGroups          BulkActionGroup[]
-  BackgroundWorkerFile      BackgroundWorkerFile[]
-  waitpoints                Waitpoint[]
-  taskRunWaitpoints         TaskRunWaitpoint[]
-  taskRunCheckpoints        TaskRunCheckpoint[]
-  executionSnapshots        TaskRunExecutionSnapshot[]
-  waitpointTags             WaitpointTag[]
-  connectedGithubRepository ConnectedGithubRepository?
+  environments                   RuntimeEnvironment[]
+  backgroundWorkers              BackgroundWorker[]
+  backgroundWorkerTasks          BackgroundWorkerTask[]
+  taskRuns                       TaskRun[]
+  runTags                        TaskRunTag[]
+  taskQueues                     TaskQueue[]
+  environmentVariables           EnvironmentVariable[]
+  checkpoints                    Checkpoint[]
+  WorkerDeployment               WorkerDeployment[]
+  CheckpointRestoreEvent         CheckpointRestoreEvent[]
+  taskSchedules                  TaskSchedule[]
+  alertChannels                  ProjectAlertChannel[]
+  alerts                         ProjectAlert[]
+  alertStorages                  ProjectAlertStorage[]
+  bulkActionGroups               BulkActionGroup[]
+  BackgroundWorkerFile           BackgroundWorkerFile[]
+  waitpoints                     Waitpoint[]
+  taskRunWaitpoints              TaskRunWaitpoint[]
+  taskRunCheckpoints             TaskRunCheckpoint[]
+  waitpointTags                  WaitpointTag[]
+  connectedGithubRepository      ConnectedGithubRepository?
+  organizationProjectIntegration OrganizationProjectIntegration[]
+  customerQueries                CustomerQuery[]
 
-  buildSettings Json?
+  buildSettings         Json?
+  onboardingData        Json?
+  taskScheduleInstances TaskScheduleInstance[]
+  metricsDashboards     MetricsDashboard[]
+  llmModels             LlmModel[]
+  prompts               Prompt[]
+  platformNotifications PlatformNotification[]
+  errorGroupStates      ErrorGroupState[]
+  taskIdentifiers       TaskIdentifier[]
 }
 
 enum ProjectVersion {
@@ -472,11 +520,12 @@ model BackgroundWorker {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks      BackgroundWorkerTask[]
-  attempts   TaskRunAttempt[]
-  lockedRuns TaskRun[]
-  files      BackgroundWorkerFile[]
-  queues     TaskQueue[]
+  tasks          BackgroundWorkerTask[]
+  attempts       TaskRunAttempt[]
+  lockedRuns     TaskRun[]
+  files          BackgroundWorkerFile[]
+  queues         TaskQueue[]
+  promptVersions PromptVersion[]
 
   deployment WorkerDeployment?
 
@@ -484,6 +533,8 @@ model BackgroundWorker {
   workerGroupId String?
 
   supportsLazyAttempts Boolean @default(false)
+
+  taskIdentifiers TaskIdentifier[]
 
   @@unique([projectId, runtimeEnvironmentId, version])
   @@index([runtimeEnvironmentId])
@@ -510,6 +561,73 @@ model BackgroundWorkerFile {
   createdAt DateTime @default(now())
 
   @@unique([projectId, contentHash])
+}
+
+model Prompt {
+  id          String  @id @default(cuid())
+  friendlyId  String  @unique @map("friendly_id")
+  slug        String
+  description String?
+  type        String  @default("text") // "text" | "chat"
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  filePath       String?
+  exportName     String?
+  variableSchema Json?
+  defaultModel   String?
+  defaultConfig  Json?
+
+  tags       String[]  @default([])
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions PromptVersion[]
+
+  @@unique([projectId, runtimeEnvironmentId, slug])
+  @@index([projectId])
+  @@index([runtimeEnvironmentId])
+  @@map("prompts")
+}
+
+model PromptVersion {
+  id      String @id @default(cuid())
+  version Int
+
+  prompt   Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  promptId String
+
+  textContent String?
+  chatContent Json?
+
+  model  String?
+  config Json?
+
+  source        String // "deploy" | "dashboard" | "api"
+  commitMessage String?
+  contentHash   String
+
+  labels String[] @default([])
+
+  worker   BackgroundWorker? @relation(fields: [workerId], references: [id])
+  workerId String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([promptId, version])
+  @@index([promptId])
+  @@index([contentHash])
+  @@map("prompt_versions")
 }
 
 model BackgroundWorkerTask {
@@ -550,6 +668,8 @@ model BackgroundWorkerTask {
 
   maxDurationInSeconds Int?
 
+  ttl String?
+
   triggerSource TaskTriggerSource @default(STANDARD)
 
   payloadSchema Json?
@@ -558,6 +678,7 @@ model BackgroundWorkerTask {
   // Quick lookup of task identifiers
   @@index([projectId, slug])
   @@index([runtimeEnvironmentId, projectId])
+  @@index([runtimeEnvironmentId, slug, triggerSource])
 }
 
 enum TaskTriggerSource {
@@ -578,7 +699,13 @@ model TaskRun {
 
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
-  taskIdentifier          String
+  /// Stores the user-provided key and scope: { key: string, scope: "run" | "attempt" | "global" }
+  idempotencyKeyOptions   Json?
+
+  /// Debounce options: { key: string, delay: string, createdAt: Date }
+  debounce Json?
+
+  taskIdentifier String
 
   isTest Boolean @default(false)
 
@@ -740,6 +867,12 @@ model TaskRun {
   metadataType    String  @default("application/json")
   metadataVersion Int     @default(1)
 
+  /// Structured annotations: triggerSource, triggerAction, rootTriggerSource, rootScheduleId
+  annotations Json?
+
+  /// Whether the latest attempt was a warm start. Null until first attempt starts.
+  isWarmStart Boolean?
+
   /// Run output
   output     String?
   outputType String  @default("application/json")
@@ -752,14 +885,15 @@ model TaskRun {
 
   maxDurationInSeconds Int?
 
+  /// The version of the realtime streams implementation used by the run
+  realtimeStreamsVersion String   @default("v1")
+  /// Store the stream keys that are being used by the run
+  realtimeStreams        String[] @default([])
+
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
   // Finding child runs
   @@index([parentTaskRunId])
-  // Finding ancestor runs
-  @@index([rootTaskRunId])
-  //Schedules
-  @@index([scheduleId])
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
@@ -768,8 +902,6 @@ model TaskRun {
   // Finding runs in a batch
   @@index([runTags(ops: ArrayOps)], type: Gin)
   @@index([runtimeEnvironmentId, batchId])
-  // This will include the createdAt index to help speed up the run list page
-  @@index([runtimeEnvironmentId, id(sort: Desc)])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
   @@index([createdAt], type: Brin)
   @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
@@ -900,21 +1032,15 @@ model TaskRunExecutionSnapshot {
 
   // Batch
   batchId String?
-  batch   BatchTaskRun? @relation(fields: [batchId], references: [id])
 
   /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
 
   /// Environment
   environmentId   String
-  environment     RuntimeEnvironment     @relation(fields: [environmentId], references: [id])
   environmentType RuntimeEnvironmentType
-
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id])
-
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  projectId       String
+  organizationId  String
 
   /// Waitpoints that have been completed for this execution
   completedWaitpoints Waitpoint[] @relation("completedWaitpoints")
@@ -928,8 +1054,6 @@ model TaskRunExecutionSnapshot {
 
   /// Worker
   workerId String?
-  worker   WorkerInstance? @relation(fields: [workerId], references: [id])
-
   runnerId String?
 
   createdAt DateTime @default(now())
@@ -947,6 +1071,8 @@ model TaskRunExecutionSnapshot {
 enum TaskRunExecutionStatus {
   /// Run has been created
   RUN_CREATED
+  /// Run is delayed, waiting to be enqueued
+  DELAYED
   /// Run is in the RunQueue
   QUEUED
   /// Run is in the RunQueue, and is also executing. This happens when a run is continued cannot reacquire concurrency
@@ -991,6 +1117,7 @@ model TaskRunCheckpoint {
 enum TaskRunCheckpointType {
   DOCKER
   KUBERNETES
+  COMPUTE
 }
 
 /// A Waitpoint blocks a run from continuing until it's completed
@@ -1134,6 +1261,9 @@ model FeatureFlag {
 
   key   String @unique
   value Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model WorkerInstance {
@@ -1150,8 +1280,6 @@ model WorkerInstance {
 
   workerGroup   WorkerInstanceGroup @relation(fields: [workerGroupId], references: [id])
   workerGroupId String
-
-  TaskRunExecutionSnapshot TaskRunExecutionSnapshot[]
 
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String?
@@ -1177,6 +1305,11 @@ model WorkerInstance {
 enum WorkerInstanceGroupType {
   MANAGED
   UNMANAGED
+}
+
+enum WorkloadType {
+  CONTAINER
+  MICROVM
 }
 
 model WorkerInstanceGroup {
@@ -1212,6 +1345,12 @@ model WorkerInstanceGroup {
   /// "usa", "europe", etc. Used like a pseudo enum for things like flags
   location      String?
   staticIPs     String?
+
+  workloadType WorkloadType @default(CONTAINER)
+
+  /// When true, runs enqueued to this worker queue may skip the intermediate queue
+  /// and be pushed directly to the worker queue when concurrency is available.
+  enableFastPath Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1495,8 +1634,15 @@ model TaskQueue {
   runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runtimeEnvironmentId String
 
-  concurrencyLimit Int?
-  rateLimit        Json?
+  /// Represents the current concurrency limit for the queue
+  concurrencyLimit             Int?
+  /// When the concurrency limit was overridden
+  concurrencyLimitOverriddenAt DateTime?
+  /// Who overrode the concurrency limit (will be null if overridden via the API)
+  concurrencyLimitOverriddenBy String?
+  /// If concurrencyLimit is overridden, this is the overridden value
+  concurrencyLimitBase         Int?
+  rateLimit                    Json?
 
   paused Boolean @default(false)
 
@@ -1543,13 +1689,11 @@ model BatchTaskRun {
   batchVersion String   @default("v1")
 
   //engine v2
-  /// Snapshots that reference this batch
-  executionSnapshots TaskRunExecutionSnapshot[]
   /// Specific run blockers,
-  runsBlocked        TaskRunWaitpoint[]
+  runsBlocked TaskRunWaitpoint[]
   /// Waitpoints that are blocked by this batch.
   /// When a Batch is created it blocks execution of the associated parent run (for andWait)
-  waitpoints         Waitpoint[]
+  waitpoints  Waitpoint[]
 
   // This is for v3 batches
   /// sealed is set to true once no more items can be added to the batch
@@ -1568,6 +1712,18 @@ model BatchTaskRun {
 
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
+
+  // Run Engine v2 batch queue fields
+  /// When processing started (status changed to PROCESSING)
+  processingStartedAt   DateTime?
+  /// When processing completed (all items processed)
+  processingCompletedAt DateTime?
+  /// Count of successfully created runs
+  successfulRunCount    Int?
+  /// Count of failed run creations
+  failedRunCount        Int?
+  /// Detailed failure records
+  errors                BatchTaskRunError[]
 
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
@@ -1588,7 +1744,9 @@ model BatchTaskRun {
 
 enum BatchTaskRunStatus {
   PENDING
+  PROCESSING
   COMPLETED
+  PARTIAL_FAILED
   ABORTED
 }
 
@@ -1623,6 +1781,31 @@ enum BatchTaskRunItemStatus {
   COMPLETED
 }
 
+/// Track individual run creation failures in batch processing (Run Engine v2)
+model BatchTaskRunError {
+  id             String       @id @default(cuid())
+  batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  batchTaskRunId String
+
+  /// Which item in the batch (0-based index)
+  index          Int
+  /// The task identifier that was being triggered
+  taskIdentifier String
+  /// The payload that failed (JSON, may be truncated)
+  payload        String?
+  /// The options that were used
+  options        Json?
+  /// Error message
+  error          String
+  /// Error code if available
+  errorCode      String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([batchTaskRunId, index])
+  @@index([batchTaskRunId])
+}
+
 model EnvironmentVariable {
   id         String                     @id @default(cuid())
   friendlyId String                     @unique
@@ -1650,6 +1833,9 @@ model EnvironmentVariableValue {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  version       Int   @default(1)
+  lastUpdatedBy Json?
 
   @@unique([variableId, environmentId])
 }
@@ -1749,7 +1935,8 @@ model WorkerDeployment {
   imageReference String?
   imagePlatform  String  @default("linux/amd64")
 
-  externalBuildData Json?
+  externalBuildData   Json?
+  buildServerMetadata Json?
 
   status WorkerDeploymentStatus @default(PENDING)
   type   WorkerDeploymentType   @default(V1)
@@ -1765,6 +1952,8 @@ model WorkerDeployment {
 
   triggeredBy   User?   @relation(fields: [triggeredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   triggeredById String?
+  triggeredVia  String?
+  commitSHA     String?
 
   startedAt   DateTime?
   installedAt DateTime?
@@ -1783,12 +1972,14 @@ model WorkerDeployment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  promotions     WorkerDeploymentPromotion[]
-  alerts         ProjectAlert[]
-  workerInstance WorkerInstance[]
+  promotions             WorkerDeploymentPromotion[]
+  alerts                 ProjectAlert[]
+  workerInstance         WorkerInstance[]
+  integrationDeployments IntegrationDeployment[]
 
   @@unique([projectId, shortCode])
   @@unique([environmentId, version])
+  @@index([commitSHA])
 }
 
 enum WorkerDeploymentStatus {
@@ -1888,6 +2079,9 @@ model TaskScheduleInstance {
   environment   RuntimeEnvironment @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String
 
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1898,6 +2092,8 @@ model TaskScheduleInstance {
 
   //you can only have a schedule attached to each environment once
   @@unique([taskScheduleId, environmentId])
+  @@index([environmentId])
+  @@index([projectId, active])
 }
 
 model RuntimeEnvironmentSession {
@@ -1934,6 +2130,8 @@ model ProjectAlertChannel {
   properties       Json
   alertTypes       ProjectAlertType[]
   environmentTypes RuntimeEnvironmentType[] @default([STAGING, PRODUCTION])
+
+  errorAlertConfig Json?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
@@ -1989,6 +2187,7 @@ enum ProjectAlertType {
   TASK_RUN_ATTEMPT
   DEPLOYMENT_FAILURE
   DEPLOYMENT_SUCCESS
+  ERROR_GROUP
 }
 
 enum ProjectAlertStatus {
@@ -2013,6 +2212,8 @@ model ProjectAlertStorage {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([alertChannelId, alertType, storageId])
 }
 
 model OrganizationIntegration {
@@ -2020,7 +2221,8 @@ model OrganizationIntegration {
 
   friendlyId String @unique
 
-  service IntegrationService
+  service                IntegrationService
+  externalOrganizationId String? /// Identifier for external, integration's organization (e.g. Vercel's team)
 
   integrationData Json
 
@@ -2030,14 +2232,41 @@ model OrganizationIntegration {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
-  alertChannels ProjectAlertChannel[]
+  alertChannels                  ProjectAlertChannel[]
+  organizationProjectIntegration OrganizationProjectIntegration[]
+
+  @@index([externalOrganizationId])
+}
+
+model OrganizationProjectIntegration {
+  id String @id @default(cuid())
+
+  organizationIntegration   OrganizationIntegration @relation(fields: [organizationIntegrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationIntegrationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  externalEntityId String /// Identifier for webhooks, for example Vercel's projectId
+  integrationData  Json /// Save useful data like config or external entity name
+  installedBy      String? /// UserId who installed the integration
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([projectId])
+  @@index([projectId, organizationIntegrationId])
+  @@index([externalEntityId])
 }
 
 enum IntegrationService {
   SLACK
+  VERCEL
 }
 
 /// Bulk actions, like canceling and replaying runs
@@ -2332,4 +2561,405 @@ model ConnectedGithubRepository {
   // A project can only be connected to one repository
   @@unique([projectId])
   @@index([repositoryId])
+}
+
+enum ImpersonationAuditLogAction {
+  START
+  STOP
+}
+
+model ImpersonationAuditLog {
+  id String @id @default(cuid())
+
+  action ImpersonationAuditLogAction
+
+  /// The admin user who initiated/ended the impersonation
+  admin   User   @relation("ImpersonationAdmin", fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  adminId String
+
+  /// The user being impersonated
+  target   User   @relation("ImpersonationTarget", fields: [targetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  targetId String
+
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+enum CustomerQuerySource {
+  DASHBOARD
+  API
+}
+
+enum CustomerQueryScope {
+  ORGANIZATION
+  PROJECT
+  ENVIRONMENT
+}
+
+model CustomerQuery {
+  id String @id @default(cuid())
+
+  /// The TSQL query text that was executed
+  query String
+
+  /// The scope of the query (determines which tenant IDs were used)
+  scope CustomerQueryScope
+
+  /// Query execution statistics from ClickHouse
+  stats Json
+
+  /// AI-generated title summarizing the query
+  title String?
+
+  /// Where the query originated from
+  source CustomerQuerySource @default(DASHBOARD)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  /// Optional user who executed the query (null for API calls)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  userId String?
+
+  /// Time filter settings used when the query was executed
+  /// Period like "7d", "24h", etc.
+  filterPeriod String?
+  /// Custom start date (ISO 8601)
+  filterFrom   DateTime?
+  /// Custom end date (ISO 8601)
+  filterTo     DateTime?
+
+  createdAt DateTime @default(now())
+
+  /// Fast lookup for history menu (most recent 20 per org)
+  @@index([organizationId, createdAt(sort: Desc)])
+  /// For Stripe metering job - find unprocessed queries
+  @@index([createdAt])
+}
+
+model IntegrationDeployment {
+  id String @id @default(cuid())
+
+  integrationName         String /// For example Vercel
+  integrationDeploymentId String /// External ID
+  commitSHA               String
+  deploymentId            String?
+  status                  String? /// External deployment status
+
+  workerDeployment WorkerDeployment? @relation(fields: [deploymentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([commitSHA])
+  @@index([deploymentId])
+}
+
+/// A user-defined metrics dashboard
+model MetricsDashboard {
+  id String @id @default(cuid())
+
+  friendlyId String @unique
+
+  title       String
+  description String @default("")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  /// Who created the dashboard
+  owner   User?   @relation(fields: [ownerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ownerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// JSON that defines the config, queries, layout and config of all widgets. 
+  /// There will be a version field for the format.
+  layout String
+
+  /// Fast lookup for the list
+  @@index([projectId, createdAt(sort: Desc)])
+}
+
+// ====================================================
+// LLM Pricing Models
+// ====================================================
+
+/// A known LLM model or model pattern for cost tracking
+model LlmModel {
+  id           String    @id @default(cuid())
+  friendlyId   String    @unique @map("friendly_id")
+  projectId    String?   @map("project_id")
+  project      Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  modelName    String    @map("model_name")
+  matchPattern String    @map("match_pattern")
+  startDate    DateTime? @map("start_date")
+  source       String    @default("default") // "default", "admin", "project"
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Catalog metadata for model registry
+  provider        String?  @map("provider")
+  description     String?  @map("description")
+  contextWindow   Int?     @map("context_window")
+  maxOutputTokens Int?     @map("max_output_tokens")
+  capabilities    String[] @default([]) @map("capabilities")
+  isHidden        Boolean  @default(false) @map("is_hidden")
+  baseModelName   String?  @map("base_model_name")
+
+  pricingTiers LlmPricingTier[]
+  prices       LlmPrice[]
+
+  @@unique([projectId, modelName, startDate])
+  @@index([projectId])
+  @@map("llm_models")
+}
+
+/// A pricing tier for a model (supports volume-based or conditional pricing)
+model LlmPricingTier {
+  id         String   @id @default(cuid())
+  modelId    String   @map("model_id")
+  model      LlmModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  name       String
+  isDefault  Boolean  @default(true) @map("is_default")
+  priority   Int      @default(0)
+  conditions Json     @default("[]") @db.JsonB
+
+  prices LlmPrice[]
+
+  @@unique([modelId, priority])
+  @@unique([modelId, name])
+  @@map("llm_pricing_tiers")
+}
+
+/// A price point for a usage type within a pricing tier
+model LlmPrice {
+  id            String         @id @default(cuid())
+  modelId       String         @map("model_id")
+  model         LlmModel       @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  pricingTierId String         @map("pricing_tier_id")
+  pricingTier   LlmPricingTier @relation(fields: [pricingTierId], references: [id], onDelete: Cascade)
+  usageType     String         @map("usage_type")
+  price         Decimal        @db.Decimal(20, 12)
+
+  @@unique([modelId, usageType, pricingTierId])
+  @@map("llm_prices")
+}
+
+enum PlatformNotificationSurface {
+  WEBAPP
+  CLI
+}
+
+enum PlatformNotificationScope {
+  USER
+  PROJECT
+  ORGANIZATION
+  GLOBAL
+}
+
+/// Admin-created notification definitions
+model PlatformNotification {
+  id String @id @default(cuid())
+
+  friendlyId String @unique @default(cuid())
+
+  /// Admin-facing title for identification in admin tools
+  title String
+
+  /// Versioned JSON rendering content (see payload schema in spec)
+  payload Json
+
+  surface PlatformNotificationSurface
+  scope   PlatformNotificationScope
+
+  /// Set when scope = USER
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String?
+
+  /// Set when scope = ORGANIZATION
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String?
+
+  /// Set when scope = PROJECT
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String?
+
+  /// When notification becomes active
+  startsAt DateTime
+
+  /// When notification expires
+  endsAt DateTime
+
+  /// CLI: auto-expire N days after user first saw it
+  cliMaxDaysAfterFirstSeen Int?
+
+  /// CLI: auto-expire after shown N times to user
+  cliMaxShowCount Int?
+
+  /// CLI: only show every N-th request (e.g. cliShowEvery=3 means show on 3rd, 6th, 9th…)
+  cliShowEvery Int?
+
+  /// Ordering within same scope level (higher = more important)
+  priority Int @default(0)
+
+  /// Soft delete
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interactions PlatformNotificationInteraction[]
+
+  @@index([surface, scope, startsAt])
+}
+
+/// Per-user tracking of notification views and dismissals
+model PlatformNotificationInteraction {
+  id String @id @default(cuid())
+
+  notification   PlatformNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  notificationId String
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId String
+
+  /// Set by beacon/CLI GET on first impression
+  firstSeenAt DateTime @default(now())
+
+  /// Times shown (incremented per beacon/CLI view)
+  showCount Int @default(1)
+
+  /// User dismissed in webapp
+  webappDismissedAt DateTime?
+
+  /// User clicked a link in webapp
+  webappClickedAt DateTime?
+
+  /// Auto-dismissed or expired in CLI
+  cliDismissedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([notificationId, userId])
+}
+
+enum ErrorGroupStatus {
+  UNRESOLVED
+  RESOLVED
+  IGNORED
+}
+
+/**
+ * Error group state is used to track when a user has interacted with an error (ignored/resolved)
+ * The actual error data is in ClickHouse.
+ */
+model ErrorGroupState {
+  id String @id @default(cuid())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  organizationId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  /**
+   * You can ignore/resolve an error across all environments, or specific ones
+   */
+  environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  environmentId String?
+
+  taskIdentifier   String
+  errorFingerprint String
+
+  status ErrorGroupStatus @default(UNRESOLVED)
+
+  /**
+   * Error is ignored until this date
+   */
+  ignoredUntil                 DateTime?
+  /**
+   * Error is ignored until this occurrence rate
+   */
+  ignoredUntilOccurrenceRate   Int?
+  /**
+   * Error is ignored until this total occurrences
+   */
+  ignoredUntilTotalOccurrences Int?
+
+  /// Total occurrence count at the time the error was ignored (from ClickHouse).
+  /// Used with ignoredUntilTotalOccurrences to compute occurrences since ignoring.
+  ignoredAtOccurrenceCount BigInt?
+
+  /**
+   * Error was ignored at this date
+   */
+  ignoredAt       DateTime?
+  /**
+   * Reason for ignoring the error
+   */
+  ignoredReason   String?
+  /**
+   * User who ignored the error
+   */
+  ignoredByUserId String?
+
+  /**
+   * Error was resolved at this date
+   */
+  resolvedAt        DateTime?
+  /**
+   * Error was resolved in this version
+   */
+  resolvedInVersion String?
+  /**
+   * User who resolved the error
+   */
+  resolvedBy        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([environmentId, taskIdentifier, errorFingerprint])
+  @@index([environmentId, status])
+}
+
+model TaskIdentifier {
+  id String @id @default(cuid())
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  slug String
+
+  currentTriggerSource TaskTriggerSource @default(STANDARD)
+
+  currentWorker   BackgroundWorker? @relation(fields: [currentWorkerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentWorkerId String?
+
+  firstSeenAt          DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  isInLatestDeployment Boolean  @default(true)
+
+  @@unique([runtimeEnvironmentId, slug])
+  @@index([runtimeEnvironmentId, isInLatestDeployment])
 }

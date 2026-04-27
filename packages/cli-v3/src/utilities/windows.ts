@@ -98,6 +98,19 @@ const ballmerSpinner = () => ({
   },
 });
 
+const plainSpinner = () => ({
+  start: (msg?: string): void => {
+    console.log(msg ?? "");
+  },
+  stop: (msg?: string, code?: number): void => {
+    if (msg) console.log(msg ?? "");
+  },
+  message: (msg?: string): void => {
+    if (msg) console.log(msg ?? "");
+  },
+});
+
 // This will become unecessary with the next clack release, the bug was fixed here:
 // https://github.com/natemoo-re/clack/pull/182
-export const spinner = () => (isWindows ? ballmerSpinner() : wrappedClackSpinner());
+export const spinner = (options: { plain?: boolean } = { plain: false }) =>
+  options.plain ? plainSpinner() : isWindows ? ballmerSpinner() : wrappedClackSpinner();

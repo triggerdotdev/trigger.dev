@@ -12,6 +12,7 @@ module.exports = {
     /^@internal\//, // Bundle all internal packages
     /^@trigger\.dev\//, // Bundle all trigger packages
     "marked",
+    "agentcrumbs",
     "axios",
     "p-limit",
     "p-map",
@@ -22,10 +23,23 @@ module.exports = {
     "highlight.run",
     "random-words",
     "superjson",
+    "copy-anything",
+    "is-what",
     "prismjs/components/prism-json",
     "prismjs/components/prism-typescript",
     "redlock",
     "parse-duration",
+    "uncrypto",
+    "std-env",
   ],
-  browserNodeBuiltinsPolyfill: { modules: { path: true, os: true, crypto: true } },
+  browserNodeBuiltinsPolyfill: {
+    modules: {
+      path: true,
+      os: true,
+      crypto: true,
+      http2: true,
+      assert: true,
+      util: true,
+    },
+  },
 };

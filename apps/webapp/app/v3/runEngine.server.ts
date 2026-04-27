@@ -1,6 +1,8 @@
 import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { createBatchGlobalRateLimiter } from "~/runEngine/concerns/batchGlobalRateLimiter.server";
+import { logger } from "~/services/logger.server";
 import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
@@ -17,6 +19,8 @@ function createRunEngine() {
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     treatProductionExecutionStallsAsOOM:
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
+    readReplicaSnapshotsSinceEnabled:
+      env.RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED === "1",
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
@@ -78,6 +82,16 @@ function createRunEngine() {
         scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
         processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
       },
+      ttlSystem: {
+        disabled: env.RUN_ENGINE_TTL_SYSTEM_DISABLED,
+        consumersDisabled: env.RUN_ENGINE_TTL_CONSUMERS_DISABLED,
+        shardCount: env.RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT,
+        pollIntervalMs: env.RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS,
+        batchSize: env.RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE,
+        workerConcurrency: env.RUN_ENGINE_TTL_WORKER_CONCURRENCY,
+        batchMaxSize: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE,
+        batchMaxWaitMs: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS,
+      },
     },
     runLock: {
       redis: {
@@ -102,6 +116,7 @@ function createRunEngine() {
     },
     tracer,
     meter,
+    defaultMaxTtl: env.RUN_ENGINE_DEFAULT_MAX_TTL,
     heartbeatTimeoutsMs: {
       PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
       PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,
@@ -120,25 +135,85 @@ function createRunEngine() {
       getCurrentPlan: async (orgId: string) => {
         const plan = await getCurrentPlan(orgId);
 
+        // This only happens when there's no billing service running or on errors
         if (!plan) {
+          logger.warn("engine.getCurrentPlan: no plan", { orgId });
           return {
-            isPaying: false,
-            type: "free",
+            isPaying: true,
+            type: "paid", // default to paid
           };
         }
 
+        // This shouldn't happen
         if (!plan.v3Subscription) {
+          logger.warn("engine.getCurrentPlan: no v3 subscription", { orgId });
           return {
             isPaying: false,
             type: "free",
           };
         }
 
+        // Neither should this
+        if (!plan.v3Subscription.plan) {
+          logger.warn("engine.getCurrentPlan: no v3 subscription plan", { orgId });
+          return {
+            isPaying: plan.v3Subscription.isPaying,
+            type: plan.v3Subscription.isPaying ? "paid" : "free",
+          };
+        }
+
+        // This is the normal case when the billing service is running
         return {
           isPaying: plan.v3Subscription.isPaying,
-          type: plan.v3Subscription.plan?.type ?? "free",
+          type: plan.v3Subscription.plan.type,
+          hasPrivateLink: plan.v3Subscription.plan.limits.hasPrivateNetworking ?? false,
         };
       },
+    },
+    // BatchQueue with DRR scheduling for fair batch processing
+    // Consumers are controlled by options.worker.disabled (same as main worker)
+    batchQueue: {
+      redis: {
+        keyPrefix: "engine:",
+        port: env.BATCH_TRIGGER_WORKER_REDIS_PORT ?? undefined,
+        host: env.BATCH_TRIGGER_WORKER_REDIS_HOST ?? undefined,
+        username: env.BATCH_TRIGGER_WORKER_REDIS_USERNAME ?? undefined,
+        password: env.BATCH_TRIGGER_WORKER_REDIS_PASSWORD ?? undefined,
+        enableAutoPipelining: true,
+        ...(env.BATCH_TRIGGER_WORKER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
+      },
+      drr: {
+        quantum: env.BATCH_QUEUE_DRR_QUANTUM,
+        maxDeficit: env.BATCH_QUEUE_MAX_DEFICIT,
+        masterQueueLimit: env.BATCH_QUEUE_MASTER_QUEUE_LIMIT,
+      },
+      shardCount: env.BATCH_QUEUE_SHARD_COUNT,
+      workerQueueBlockingTimeoutSeconds: env.BATCH_QUEUE_WORKER_QUEUE_ENABLED
+        ? env.BATCH_QUEUE_WORKER_QUEUE_TIMEOUT_SECONDS
+        : undefined,
+      consumerCount: env.BATCH_QUEUE_CONSUMER_COUNT,
+      consumerIntervalMs: env.BATCH_QUEUE_CONSUMER_INTERVAL_MS,
+      consumerEnabled: env.BATCH_QUEUE_WORKER_ENABLED,
+      // Default processing concurrency when no specific limit is set
+      // This is overridden per-batch based on the plan type at batch creation
+      defaultConcurrency: env.BATCH_CONCURRENCY_LIMIT_DEFAULT,
+      // Optional global rate limiter - limits max items/sec processed across all consumers
+      globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
+        ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
+        : undefined,
+      // Worker queue depth cap - prevents unbounded growth protecting visibility timeouts
+      workerQueueMaxDepth: env.BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH,
+      retry: {
+        maxAttempts: 6,
+        minTimeoutInMs: 1_000,
+        maxTimeoutInMs: 30_000,
+        factor: 2,
+        randomize: true,
+      },
+    },
+    // Debounce configuration
+    debounce: {
+      maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
     },
   });
 

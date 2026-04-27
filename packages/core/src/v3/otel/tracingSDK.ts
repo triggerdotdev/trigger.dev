@@ -4,13 +4,21 @@ import {
   TraceFlags,
   TracerProvider,
   diag,
+  metrics,
 } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { HostMetrics } from "@opentelemetry/host-metrics";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
-import { detectResources, processDetector, resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  detectResources,
+  processDetector,
+  Resource,
+  resourceFromAttributes,
+} from "@opentelemetry/resources";
 import {
   BatchLogRecordProcessor,
   LogRecordExporter,
@@ -19,6 +27,13 @@ import {
   ReadableLogRecord,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
+import {
+  AggregationType,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+  type MetricReader,
+  type PushMetricExporter,
+} from "@opentelemetry/sdk-metrics";
 import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
   BatchSpanProcessor,
@@ -27,7 +42,6 @@ import {
   SimpleSpanProcessor,
   SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
-import { SemanticResourceAttributes, SEMATTRS_HTTP_URL } from "@opentelemetry/semantic-conventions";
 import { VERSION } from "../../version.js";
 import {
   OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT,
@@ -42,11 +56,17 @@ import {
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import {
+  BufferingMetricExporter,
   TaskContextLogProcessor,
+  TaskContextMetricExporter,
   TaskContextSpanProcessor,
 } from "../taskContext/otelProcessors.js";
 import { traceContext } from "../trace-context-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
+import { machineId } from "./machineId.js";
+import { startDiskIoMetrics } from "./diskIoMetrics.js";
+import { startFilesystemMetrics } from "./filesystemMetrics.js";
+import { startNodejsRuntimeMetrics } from "./nodejsRuntimeMetrics.js";
 
 export type TracingDiagnosticLogLevel =
   | "none"
@@ -59,11 +79,26 @@ export type TracingDiagnosticLogLevel =
 
 export type TracingSDKConfig = {
   url: string;
+  metricsUrl?: string;
   forceFlushTimeoutMillis?: number;
   instrumentations?: Instrumentation[];
   exporters?: SpanExporter[];
   logExporters?: LogRecordExporter[];
+  metricExporters?: PushMetricExporter[];
+  metricReaders?: MetricReader[];
   diagLogLevel?: TracingDiagnosticLogLevel;
+  resource?: Resource;
+  hostMetrics?: boolean;
+  /** Limit host metrics collection to specific groups (e.g. ["process.cpu", "process.memory"]) */
+  hostMetricGroups?: string[];
+  /** Enable Node.js runtime metrics (event loop utilization, heap usage, etc.) */
+  nodejsRuntimeMetrics?: boolean;
+  /** Enable filesystem metrics (Linux only, reads /proc/mounts + fs.statfs) */
+  filesystemMetrics?: boolean;
+  /** Enable disk I/O metrics (Linux only, reads /proc/diskstats) */
+  diskIoMetrics?: boolean;
+  /** Metric instrument name patterns to drop (supports wildcards, e.g. "system.cpu.*") */
+  droppedMetrics?: string[];
 };
 
 const idGenerator = new RandomIdGenerator();
@@ -72,6 +107,7 @@ export class TracingSDK {
   private readonly _logProvider: LoggerProvider;
   private readonly _spanExporter: SpanExporter;
   private readonly _traceProvider: NodeTracerProvider;
+  private readonly _meterProvider: MeterProvider;
 
   public readonly getLogger: LoggerProvider["getLogger"];
   public readonly getTracer: TracerProvider["getTracer"];
@@ -84,22 +120,28 @@ export class TracingSDK {
       ? JSON.parse(envResourceAttributesSerialized)
       : {};
 
+    const customEnvResourceAttributes = parseOtelResourceAttributes(
+      getEnvVar("CUSTOM_OTEL_RESOURCE_ATTRIBUTES")
+    );
+
     const commonResources = detectResources({
       detectors: [processDetector],
     })
       .merge(
         resourceFromAttributes({
-          [SemanticResourceAttributes.CLOUD_PROVIDER]: "trigger.dev",
-          [SemanticResourceAttributes.SERVICE_NAME]:
-            getEnvVar("TRIGGER_OTEL_SERVICE_NAME") ?? "trigger.dev",
+          "cloud.provider": "trigger.dev",
+          "service.name": getEnvVar("TRIGGER_OTEL_SERVICE_NAME") ?? "trigger.dev",
           [SemanticInternalAttributes.TRIGGER]: true,
           [SemanticInternalAttributes.CLI_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_VERSION]: VERSION,
           [SemanticInternalAttributes.SDK_LANGUAGE]: "typescript",
+          [SemanticInternalAttributes.MACHINE_ID]: machineId,
         })
       )
       .merge(resourceFromAttributes(envResourceAttributes))
-      .merge(resourceFromAttributes(taskContext.resourceAttributes));
+      .merge(resourceFromAttributes(customEnvResourceAttributes))
+      .merge(resourceFromAttributes(taskContext.resourceAttributes))
+      .merge(config.resource ?? resourceFromAttributes({}));
 
     const spanExporter = new OTLPTraceExporter({
       url: `${config.url}/v1/traces`,
@@ -247,16 +289,99 @@ export class TracingSDK {
 
     logs.setGlobalLoggerProvider(loggerProvider);
 
+    // Metrics setup
+    const metricsUrl =
+      config.metricsUrl ??
+      getEnvVar("TRIGGER_OTEL_METRICS_ENDPOINT") ??
+      `${config.url}/v1/metrics`;
+
+    const rawMetricExporter = new OTLPMetricExporter({
+      url: metricsUrl,
+      timeoutMillis: config.forceFlushTimeoutMillis,
+    });
+
+    const collectionIntervalMs = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_COLLECTION_INTERVAL_MILLIS") ?? "10000"
+    );
+    const exportIntervalMs = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_INTERVAL_MILLIS") ?? "30000"
+    );
+
+    // Chain: PeriodicReader(10s) → TaskContextMetricExporter → BufferingMetricExporter(30s) → OTLP
+    const bufferingExporter = new BufferingMetricExporter(rawMetricExporter, exportIntervalMs);
+    const metricExporter = new TaskContextMetricExporter(bufferingExporter);
+
+    const exportTimeoutMillis = parseInt(
+      getEnvVar("TRIGGER_OTEL_METRICS_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+    );
+
+    const metricReaders: MetricReader[] = [
+      new PeriodicExportingMetricReader({
+        exporter: metricExporter,
+        exportIntervalMillis: collectionIntervalMs,
+        exportTimeoutMillis: Math.min(exportTimeoutMillis, collectionIntervalMs),
+      }),
+      ...(config.metricExporters ?? []).map(
+        (exporter) =>
+          new PeriodicExportingMetricReader({
+            exporter,
+            exportIntervalMillis: collectionIntervalMs,
+            exportTimeoutMillis: Math.min(exportTimeoutMillis, collectionIntervalMs),
+          })
+      ),
+      ...(config.metricReaders ?? []),
+    ];
+
+    const meterProvider = new MeterProvider({
+      resource: commonResources,
+      readers: metricReaders,
+      views: (config.droppedMetrics ?? []).map((pattern) => ({
+        instrumentName: pattern,
+        aggregation: { type: AggregationType.DROP },
+      })),
+    });
+
+    this._meterProvider = meterProvider;
+    metrics.setGlobalMeterProvider(meterProvider);
+
+    if (config.hostMetrics) {
+      const hostMetrics = new HostMetrics({
+        meterProvider,
+        metricGroups: config.hostMetricGroups,
+      });
+      hostMetrics.start();
+    }
+
+    if (config.nodejsRuntimeMetrics) {
+      startNodejsRuntimeMetrics(meterProvider);
+    }
+
+    if (config.filesystemMetrics) {
+      startFilesystemMetrics(meterProvider);
+    }
+
+    if (config.diskIoMetrics) {
+      startDiskIoMetrics(meterProvider);
+    }
+
     this.getLogger = loggerProvider.getLogger.bind(loggerProvider);
     this.getTracer = traceProvider.getTracer.bind(traceProvider);
   }
 
   public async flush() {
-    await Promise.all([this._traceProvider.forceFlush(), this._logProvider.forceFlush()]);
+    await Promise.all([
+      this._traceProvider.forceFlush(),
+      this._logProvider.forceFlush(),
+      this._meterProvider.forceFlush(),
+    ]);
   }
 
   public async shutdown() {
-    await Promise.all([this._traceProvider.shutdown(), this._logProvider.shutdown()]);
+    await Promise.all([
+      this._traceProvider.shutdown(),
+      this._logProvider.shutdown(),
+      this._meterProvider.shutdown(),
+    ]);
   }
 }
 
@@ -302,7 +427,9 @@ class ExternalSpanExporterWrapper {
       | { traceId: string; spanId: string; traceFlags: number; tracestate?: string }
       | undefined
   ) {
-    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+    this._isExternallySampled = externalTraceContext
+      ? isTraceFlagSampled(externalTraceContext.traceFlags)
+      : !!externalTraceId;
   }
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
@@ -384,7 +511,9 @@ class ExternalLogRecordExporterWrapper {
       | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
       | undefined
   ) {
-    this._isExternallySampled = isTraceFlagSampled(externalTraceContext?.traceFlags);
+    this._isExternallySampled = externalTraceContext
+      ? isTraceFlagSampled(externalTraceContext.traceFlags)
+      : !!externalTraceId;
   }
 
   export(logs: any[], resultCallback: (result: any) => void): void {
@@ -404,15 +533,16 @@ class ExternalLogRecordExporterWrapper {
   }
 
   transformLogRecord(logRecord: ReadableLogRecord): ReadableLogRecord {
-    // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
-    if (!logRecord.spanContext || !this.externalTraceId || !this.externalTraceContext) {
-      return logRecord;
-    }
-
     // Capture externalTraceId for use within the proxy's scope.
+    // Use externalTraceContext.traceId if available, otherwise fall back to generated externalTraceId
     const externalTraceId = this.externalTraceContext
       ? this.externalTraceContext.traceId
       : this.externalTraceId;
+
+    // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
+    if (!logRecord.spanContext || !externalTraceId) {
+      return logRecord;
+    }
 
     return new Proxy(logRecord, {
       get(target, prop, receiver) {
@@ -448,7 +578,7 @@ function isSpanInternalOnly(span: ReadableSpan): boolean {
     return true;
   }
 
-  const httpUrl = span.attributes[SEMATTRS_HTTP_URL] ?? span.attributes["url.full"];
+  const httpUrl = span.attributes["http.url"] ?? span.attributes["url.full"];
 
   const url = safeParseUrl(httpUrl);
 
@@ -488,4 +618,75 @@ function isTraceFlagSampled(traceFlags?: number): boolean {
   }
 
   return (traceFlags & TraceFlags.SAMPLED) === TraceFlags.SAMPLED;
+}
+
+function isPrintableAscii(str: string): boolean {
+  // printable ASCII: 0x20 (space) .. 0x7E (~)
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if (code < 0x20 || code > 0x7e) return false;
+  }
+  return true;
+}
+
+function isValid(name: string | undefined): boolean {
+  if (!name) return false;
+  return typeof name === "string" && name.length <= 255 && isPrintableAscii(name);
+}
+
+function isValidAndNotEmpty(name: string | undefined): boolean {
+  if (!name) return false;
+  return isValid(name) && name.length > 0;
+}
+
+export function parseOtelResourceAttributes(
+  rawEnvAttributes: string | undefined | null
+): Record<string, string> {
+  if (!rawEnvAttributes) return {};
+
+  const COMMA = ",";
+  const KV = "=";
+  const attributes: Record<string, string> = {};
+
+  // use negative limit to support trailing empty attribute
+  const rawAttributes = rawEnvAttributes.split(COMMA, -1);
+  for (const rawAttribute of rawAttributes) {
+    const keyValuePair = rawAttribute.split(KV, -1);
+    if (keyValuePair.length !== 2) {
+      // skip invalid pair
+      continue;
+    }
+    let [key, value] = keyValuePair;
+    key = key?.trim();
+    // trim and remove surrounding double quotes
+    value = value?.trim().replace(/^"|"$/g, "");
+
+    if (!value || !key) {
+      continue;
+    }
+
+    if (!isValidAndNotEmpty(key)) {
+      throw new Error(
+        `Attribute key should be a ASCII string with a length greater than 0 and not exceed 255 characters.`
+      );
+    }
+    if (!isValid(value)) {
+      throw new Error(
+        `Attribute value should be a ASCII string with a length not exceed 255 characters.`
+      );
+    }
+
+    // decode percent-encoding (deployment%20name -> deployment name)
+    try {
+      attributes[key] = decodeURIComponent(value);
+    } catch (e: unknown) {
+      // decodeURIComponent can throw for malformed sequences; rethrow or handle
+      if (e instanceof Error) {
+        throw new Error(`Failed to decode attribute value for key ${key}: ${e.message}`);
+      }
+      throw new Error(`Failed to decode attribute value for key ${key}`);
+    }
+  }
+
+  return attributes;
 }

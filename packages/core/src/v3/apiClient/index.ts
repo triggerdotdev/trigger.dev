@@ -6,14 +6,21 @@ import {
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
   ApiDeploymentListSearchParams,
+  AppendToStreamResponseBody,
+  BatchItemNDJSON,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
   CompleteWaitpointTokenRequestBody,
   CompleteWaitpointTokenResponseBody,
+  CreateBatchRequestBody,
+  CreateBatchResponse,
   CreateEnvironmentVariableRequestBody,
+  CreateInputStreamWaitpointRequestBody,
+  CreateInputStreamWaitpointResponseBody,
   CreateScheduleOptions,
+  CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
   CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
@@ -25,13 +32,32 @@ import {
   ListScheduleOptions,
   QueueItem,
   QueueTypeName,
+  QueryExecuteRequestBody,
+  QueryExecuteResponseBody,
+  QueryExecuteCSVResponseBody,
+  QuerySchemaResponseBody,
+  ListDashboardsResponseBody,
   ReplayRunResponse,
   RescheduleRunRequestBody,
+  ResetIdempotencyKeyResponse,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
+  ResolvePromptRequestBody,
+  ResolvePromptResponseBody,
+  ListPromptsResponseBody,
+  ListPromptVersionsResponseBody,
+  PromotePromptVersionRequestBody,
+  CreatePromptOverrideRequestBody,
+  UpdatePromptOverrideRequestBody,
+  ReactivatePromptOverrideRequestBody,
+  PromptOkResponseBody,
+  PromptOverrideCreatedResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveSpanDetailResponseBody,
   ScheduleObject,
+  SendInputStreamResponseBody,
+  StreamBatchItemsResponse,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
@@ -60,7 +86,9 @@ import {
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
 } from "./core.js";
-import { ApiError } from "./errors.js";
+import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
+import { RetryOptions } from "../schemas/index.js";
 import {
   AnyRealtimeRun,
   AnyRunShape,
@@ -69,9 +97,11 @@ import {
   RunStreamCallback,
   RunSubscription,
   SSEStreamSubscriptionFactory,
+  SSEStreamSubscription,
   TaskRunShape,
   runShapeStream,
   RealtimeRunSkipColumns,
+  type SSEStreamPart,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -83,9 +113,17 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
+import { ApiClientConfiguration } from "../apiClientManager-api.js";
+import { getEnvVar } from "../utils/getEnv.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
+    publicAccessToken: string;
+  }
+>;
+
+export type CreateBatchApiResponse = Prettify<
+  CreateBatchResponse & {
     publicAccessToken: string;
   }
 >;
@@ -112,6 +150,7 @@ export type TriggerRequestOptions = ZodFetchOptions & {
 
 export type TriggerApiRequestOptions = ApiRequestOptions & {
   publicAccessToken?: TriggerJwtOptions;
+  clientConfig?: ApiClientConfiguration;
 };
 
 const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
@@ -124,7 +163,11 @@ const DEFAULT_ZOD_FETCH_OPTIONS: ZodFetchOptions = {
   },
 };
 
-export { isRequestOptions };
+export type ApiClientFutureFlags = {
+  v2RealtimeStreams?: boolean;
+};
+
+export { isRequestOptions, SSEStreamSubscription };
 export type {
   AnyRealtimeRun,
   AnyRunShape,
@@ -134,6 +177,7 @@ export type {
   RunStreamCallback,
   RunSubscription,
   TaskRunShape,
+  SSEStreamPart,
 };
 
 export * from "./getBranch.js";
@@ -145,18 +189,24 @@ export class ApiClient {
   public readonly baseUrl: string;
   public readonly accessToken: string;
   public readonly previewBranch?: string;
+  public readonly futureFlags: ApiClientFutureFlags;
+  private readonly additionalHeaders?: Record<string, string>;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
     baseUrl: string,
     accessToken: string,
     previewBranch?: string,
-    requestOptions: ApiRequestOptions = {}
+    requestOptions: ApiRequestOptions = {},
+    futureFlags: ApiClientFutureFlags = {}
   ) {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
-    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+    const { additionalHeaders, ...restRequestOptions } = requestOptions;
+    this.additionalHeaders = additionalHeaders;
+    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, restRequestOptions);
+    this.futureFlags = futureFlags;
   }
 
   get fetchClient(): typeof fetch {
@@ -307,10 +357,212 @@ export class ApiClient {
       });
   }
 
+  /**
+   * Phase 1 of 2-phase batch API: Create a batch
+   *
+   * Creates a new batch and returns its ID. For batchTriggerAndWait,
+   * the parent run is blocked immediately on batch creation.
+   *
+   * @param body - The batch creation parameters
+   * @param clientOptions - Options for trace context handling
+   * @param clientOptions.spanParentAsLink - If true, child runs will have separate trace IDs with a link to parent
+   * @param requestOptions - Optional request options
+   * @returns The created batch with ID and metadata
+   */
+  createBatch(
+    body: CreateBatchRequestBody,
+    clientOptions?: ClientTriggerOptions,
+    requestOptions?: TriggerRequestOptions
+  ) {
+    return zodfetch(
+      CreateBatchResponse,
+      `${this.baseUrl}/api/v3/batches`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(clientOptions?.spanParentAsLink ?? false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ data, response }) => {
+        const claimsHeader = response.headers.get("x-trigger-jwt-claims");
+        const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
+
+        const jwt = await generateJWT({
+          secretKey: this.accessToken,
+          payload: {
+            ...claims,
+            scopes: [`read:batch:${data.id}`],
+          },
+          expirationTime: requestOptions?.publicAccessToken?.expirationTime ?? "1h",
+        });
+
+        return {
+          ...data,
+          publicAccessToken: jwt,
+        };
+      });
+  }
+
+  /**
+   * Phase 2 of 2-phase batch API: Stream batch items
+   *
+   * Streams batch items as NDJSON to the server. Each item is enqueued
+   * as it arrives. The batch is automatically sealed when the stream completes.
+   *
+   * Includes automatic retry with exponential backoff. Since items are deduplicated
+   * by index on the server, retrying the entire stream is safe.
+   *
+   * Uses ReadableStream.tee() for retry capability without buffering all items
+   * upfront - only items consumed before a failure are buffered for retry.
+   *
+   * @param batchId - The batch ID from createBatch
+   * @param items - Array or async iterable of batch items
+   * @param requestOptions - Optional request options
+   * @returns Summary of items accepted and deduplicated
+   */
+  async streamBatchItems(
+    batchId: string,
+    items: BatchItemNDJSON[] | AsyncIterable<BatchItemNDJSON>,
+    requestOptions?: ApiRequestOptions
+  ): Promise<StreamBatchItemsResponse> {
+    // Convert input to ReadableStream for uniform handling and tee() support
+    const stream = createNdjsonStream(items);
+
+    const retryOptions = {
+      ...DEFAULT_STREAM_BATCH_RETRY_OPTIONS,
+      ...requestOptions?.retry,
+    };
+
+    return this.#streamBatchItemsWithRetry(batchId, stream, retryOptions);
+  }
+
+  async #streamBatchItemsWithRetry(
+    batchId: string,
+    stream: ReadableStream<Uint8Array>,
+    retryOptions: RetryOptions,
+    attempt: number = 1
+  ): Promise<StreamBatchItemsResponse> {
+    const headers = this.#getHeaders(false);
+    headers["Content-Type"] = "application/x-ndjson";
+
+    // Tee the stream: one branch for this attempt, one for potential retry
+    // tee() internally buffers data consumed from one branch for the other,
+    // so we only buffer what's been sent before a failure occurs
+    const [forRequest, forRetry] = stream.tee();
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/v3/batches/${batchId}/items`, {
+        method: "POST",
+        headers,
+        body: forRequest,
+        // @ts-expect-error - duplex is required for streaming body but not in types
+        duplex: "half",
+      });
+
+      if (!response.ok) {
+        const retryResult = shouldRetryStreamBatchItems(response, attempt, retryOptions);
+
+        if (retryResult.retry) {
+          // Cancel the request stream before retry to prevent tee() from buffering
+          await safeStreamCancel(forRequest);
+          await sleep(retryResult.delay);
+          // Use the backup stream for retry
+          return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+        }
+
+        // Not retrying - cancel the backup stream
+        await safeStreamCancel(forRetry);
+
+        const errText = await response.text().catch((e) => (e as Error).message);
+        let errJSON: Object | undefined;
+        try {
+          errJSON = JSON.parse(errText) as Object;
+        } catch {
+          // ignore
+        }
+        const errMessage = errJSON ? undefined : errText;
+        const responseHeaders = Object.fromEntries(response.headers.entries());
+
+        throw ApiError.generate(response.status, errJSON, errMessage, responseHeaders);
+      }
+
+      const result = await response.json();
+      const parsed = StreamBatchItemsResponse.safeParse(result);
+
+      if (!parsed.success) {
+        // Cancel backup stream since we're throwing
+        await safeStreamCancel(forRetry);
+        throw new Error(
+          `Invalid response from server for batch ${batchId}: ${parsed.error.message}`
+        );
+      }
+
+      // Check if the batch was sealed
+      if (!parsed.data.sealed) {
+        // Not all items were received - treat as retryable condition
+        const delay = calculateNextRetryDelay(retryOptions, attempt);
+
+        if (delay) {
+          // Cancel the request stream before retry to prevent tee() from buffering
+          await safeStreamCancel(forRequest);
+          // Retry with the backup stream
+          await sleep(delay);
+          return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+        }
+
+        // No more retries - cancel backup stream and throw descriptive error
+        await safeStreamCancel(forRetry);
+        throw new BatchNotSealedError({
+          batchId,
+          enqueuedCount: parsed.data.enqueuedCount ?? 0,
+          expectedCount: parsed.data.expectedCount ?? 0,
+          itemsAccepted: parsed.data.itemsAccepted,
+          itemsDeduplicated: parsed.data.itemsDeduplicated,
+        });
+      }
+
+      // Success - cancel the backup stream to release resources
+      await safeStreamCancel(forRetry);
+
+      return parsed.data;
+    } catch (error) {
+      // Don't retry BatchNotSealedError (retries already exhausted)
+      if (error instanceof BatchNotSealedError) {
+        throw error;
+      }
+      // Don't retry ApiErrors (already handled above with backup stream cancelled)
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      // Retry connection errors using the backup stream
+      const delay = calculateNextRetryDelay(retryOptions, attempt);
+      if (delay) {
+        // Cancel the request stream before retry to prevent tee() from buffering
+        await safeStreamCancel(forRequest);
+        await sleep(delay);
+        return this.#streamBatchItemsWithRetry(batchId, forRetry, retryOptions, attempt + 1);
+      }
+
+      // No more retries - cancel the backup stream
+      await safeStreamCancel(forRetry);
+
+      // Wrap in a more descriptive error
+      const cause = error instanceof Error ? error : new Error(String(error));
+      throw new ApiConnectionError({
+        cause,
+        message: `Failed to stream batch items for batch ${batchId}: ${cause.message}`,
+      });
+    }
+  }
+
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v2/packets/${encoded}`,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -320,9 +572,10 @@ export class ApiClient {
   }
 
   getPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v1/packets/${encoded}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -347,6 +600,18 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunTraceResponseBody,
       `${this.baseUrl}/api/v1/runs/${runId}/trace`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveSpan(runId: string, spanId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveSpanDetailResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/spans/${spanId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -428,6 +693,23 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  resetIdempotencyKey(
+    taskIdentifier: string,
+    idempotencyKey: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ResetIdempotencyKeyResponse,
+      `${this.baseUrl}/api/v1/idempotencyKeys/${encodeURIComponent(idempotencyKey)}/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({ taskIdentifier }),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
@@ -899,6 +1181,53 @@ export class ApiClient {
     );
   }
 
+  overrideQueueConcurrencyLimit(
+    queue: RetrieveQueueParam,
+    concurrencyLimit: number,
+    requestOptions?: ZodFetchOptions
+  ) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/override`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          type,
+          concurrencyLimit,
+        }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  resetQueueConcurrencyLimit(queue: RetrieveQueueParam, requestOptions?: ZodFetchOptions) {
+    const type = typeof queue === "string" ? "id" : queue.type;
+    const value = typeof queue === "string" ? queue : queue.name;
+
+    // Explicitly encode slashes before encoding the rest of the string
+    const encodedValue = encodeURIComponent(value.replace(/\//g, "%2F"));
+
+    return zodfetch(
+      QueueItem,
+      `${this.baseUrl}/api/v1/queues/${encodedValue}/concurrency/reset`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({
+          type,
+        }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   subscribeToRun<TRunTypes extends AnyRunTypes>(
     runId: string,
     options?: {
@@ -1014,18 +1343,120 @@ export class ApiClient {
   async fetchStream<T>(
     runId: string,
     streamKey: string,
-    options?: { signal?: AbortSignal; baseUrl?: string }
+    options?: {
+      signal?: AbortSignal;
+      baseUrl?: string;
+      timeoutInSeconds?: number;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      lastEventId?: string;
+      /** Called for each SSE event with the full event metadata (id, timestamp). */
+      onPart?: (part: SSEStreamPart<T>) => void;
+    }
   ): Promise<AsyncIterableStream<T>> {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
       headers: this.getHeaders(),
       signal: options?.signal,
     });
 
-    const subscription = streamFactory.createSubscription(runId, streamKey);
+    const subscription = streamFactory.createSubscription(runId, streamKey, {
+      onComplete: options?.onComplete,
+      onError: options?.onError,
+      timeoutInSeconds: options?.timeoutInSeconds,
+      lastEventId: options?.lastEventId,
+    });
 
     const stream = await subscription.subscribe();
 
-    return stream as AsyncIterableStream<T>;
+    const onPart = options?.onPart;
+
+    return stream.pipeThrough(
+      new TransformStream<SSEStreamPart, T>({
+        transform(chunk, controller) {
+          const data = chunk.chunk as T;
+          onPart?.(chunk as SSEStreamPart<T>);
+          controller.enqueue(data);
+        },
+      })
+    );
+  }
+
+  async createStream(
+    runId: string,
+    target: string,
+    streamId: string,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/${target}/${streamId}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(async ({ data, response }) => {
+        return {
+          ...data,
+          headers: Object.fromEntries(response.headers.entries()),
+        };
+      });
+  }
+
+  async appendToStream<TBody extends BodyInit>(
+    runId: string,
+    target: string,
+    streamId: string,
+    part: TBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      AppendToStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/${target}/${streamId}/append`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: part,
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async sendInputStream(
+    runId: string,
+    streamId: string,
+    data: unknown,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      SendInputStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/input/${streamId}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({ data }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async createInputStreamWaitpoint(
+    runFriendlyId: string,
+    body: CreateInputStreamWaitpointRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateInputStreamWaitpointResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/input-streams/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
@@ -1052,6 +1483,64 @@ export class ApiClient {
     );
   }
 
+  async executeQuery(
+    query: string,
+    options?: {
+      scope?: "environment" | "project" | "organization";
+      period?: string;
+      from?: string;
+      to?: string;
+      format?: "json" | "csv";
+    },
+    requestOptions?: ZodFetchOptions
+  ): Promise<QueryExecuteResponseBody> {
+    const body = {
+      query,
+      scope: options?.scope ?? "environment",
+      period: options?.period,
+      from: options?.from,
+      to: options?.to,
+      format: options?.format ?? "json",
+    };
+
+    return zodfetch(
+      QueryExecuteResponseBody,
+      `${this.baseUrl}/api/v1/query`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async getQuerySchema(requestOptions?: ZodFetchOptions): Promise<QuerySchemaResponseBody> {
+    return zodfetch(
+      QuerySchemaResponseBody,
+      `${this.baseUrl}/api/v1/query/schema`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async listDashboards(
+    requestOptions?: ZodFetchOptions
+  ): Promise<ListDashboardsResponseBody> {
+    return zodfetch(
+      ListDashboardsResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -1068,6 +1557,18 @@ export class ApiClient {
         {} as Record<string, string>
       ),
     };
+
+    if (this.additionalHeaders) {
+      for (const [key, value] of Object.entries(this.additionalHeaders)) {
+        if (!(key in headers)) {
+          headers[key] = value;
+        }
+      }
+    }
+
+    if (!headers["x-trigger-source"]) {
+      headers["x-trigger-source"] = "sdk";
+    }
 
     if (this.previewBranch) {
       headers["x-trigger-branch"] = this.previewBranch;
@@ -1090,7 +1591,101 @@ export class ApiClient {
 
     headers[API_VERSION_HEADER_NAME] = API_VERSION;
 
+    const streamFlag = this.futureFlags.v2RealtimeStreams ?? true;
+
+    if (
+      streamFlag === false ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "0" ||
+      getEnvVar("TRIGGER_V2_REALTIME_STREAMS") === "false" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "0" ||
+      getEnvVar("TRIGGER_REALTIME_STREAMS_V2") === "false"
+    ) {
+      headers["x-trigger-realtime-streams-version"] = "v1";
+    } else {
+      headers["x-trigger-realtime-streams-version"] = "v2";
+    }
+
     return headers;
+  }
+
+  resolvePrompt(
+    slug: string,
+    body: ResolvePromptRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ResolvePromptResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPrompts(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptsResponseBody,
+      `${this.baseUrl}/api/v1/prompts`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPromptVersions(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptVersionsResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/versions`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  promotePromptVersion(slug: string, body: PromotePromptVersionRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/promote`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createPromptOverride(slug: string, body: CreatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOverrideCreatedResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updatePromptOverride(slug: string, body: UpdatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "PUT", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  removePromptOverride(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "DELETE", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  reactivatePromptOverride(slug: string, body: ReactivatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override/reactivate`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   #getRealtimeHeaders() {
@@ -1272,6 +1867,166 @@ function createSearchQueryForListWaitpointTokens(
   }
 
   return searchParams;
+}
+
+// ============================================================================
+// Stream Batch Items Retry Helpers
+// ============================================================================
+
+/**
+ * Default retry options for streaming batch items.
+ * Uses higher values than the default zodfetch retry since batch operations
+ * are more expensive to repeat from scratch.
+ */
+const DEFAULT_STREAM_BATCH_RETRY_OPTIONS: RetryOptions = {
+  maxAttempts: 5,
+  factor: 2,
+  minTimeoutInMs: 1000,
+  maxTimeoutInMs: 30_000,
+  randomize: true,
+};
+
+type ShouldRetryResult = { retry: false } | { retry: true; delay: number };
+
+/**
+ * Determines if a failed stream batch items request should be retried.
+ * Follows similar logic to zodfetch's shouldRetry but specific to batch streaming.
+ */
+function shouldRetryStreamBatchItems(
+  response: Response,
+  attempt: number,
+  retryOptions: RetryOptions
+): ShouldRetryResult {
+  function shouldRetryForOptions(): ShouldRetryResult {
+    const delay = calculateNextRetryDelay(retryOptions, attempt);
+    if (delay) {
+      return { retry: true, delay };
+    }
+    return { retry: false };
+  }
+
+  // Check x-should-retry header - server can explicitly control retry behavior
+  const shouldRetryHeader = response.headers.get("x-should-retry");
+  if (shouldRetryHeader === "true") return shouldRetryForOptions();
+  if (shouldRetryHeader === "false") return { retry: false };
+
+  // Retry on request timeouts
+  if (response.status === 408) return shouldRetryForOptions();
+
+  // Retry on lock timeouts
+  if (response.status === 409) return shouldRetryForOptions();
+
+  // Retry on rate limits with special handling for Retry-After
+  if (response.status === 429) {
+    if (attempt >= retryOptions.maxAttempts!) {
+      return { retry: false };
+    }
+
+    // x-ratelimit-reset is the unix timestamp in milliseconds when the rate limit will reset
+    const resetAtUnixEpochMs = response.headers.get("x-ratelimit-reset");
+    if (resetAtUnixEpochMs) {
+      const resetAtUnixEpoch = parseInt(resetAtUnixEpochMs, 10);
+      const delay = resetAtUnixEpoch - Date.now() + Math.floor(Math.random() * 1000);
+      if (delay > 0) {
+        return { retry: true, delay };
+      }
+    }
+
+    // Fall back to Retry-After header (seconds)
+    const retryAfter = response.headers.get("retry-after");
+    if (retryAfter) {
+      const retryAfterSeconds = parseInt(retryAfter, 10);
+      if (!isNaN(retryAfterSeconds)) {
+        return { retry: true, delay: retryAfterSeconds * 1000 };
+      }
+    }
+
+    return shouldRetryForOptions();
+  }
+
+  // Retry on server errors (5xx)
+  if (response.status >= 500) return shouldRetryForOptions();
+
+  // Don't retry client errors (4xx) except those handled above
+  return { retry: false };
+}
+
+/**
+ * Simple sleep utility for retry delays.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Safely cancels a ReadableStream, handling the case where it might be locked.
+ *
+ * When fetch uses a ReadableStream as a request body and an error occurs mid-transfer
+ * (connection reset, timeout, etc.), the stream may remain locked by fetch's internal reader.
+ * Attempting to cancel a locked stream throws "Invalid state: ReadableStream is locked".
+ *
+ * This function gracefully handles that case by catching the error and doing nothing -
+ * the stream will be cleaned up by garbage collection when the reader is released.
+ */
+async function safeStreamCancel(stream: ReadableStream<unknown>): Promise<void> {
+  try {
+    await stream.cancel();
+  } catch (error) {
+    // Ignore "locked" errors - the stream will be cleaned up when the reader is released.
+    // This happens when fetch crashes mid-read and doesn't release the reader lock.
+    if (error instanceof TypeError && String(error).includes("locked")) {
+      return;
+    }
+    // Re-throw unexpected errors
+    throw error;
+  }
+}
+
+// ============================================================================
+// NDJSON Stream Helpers
+// ============================================================================
+
+/**
+ * Creates a ReadableStream that emits NDJSON (newline-delimited JSON) from items.
+ * Handles both arrays and async iterables for streaming large batches.
+ */
+function createNdjsonStream(
+  items: BatchItemNDJSON[] | AsyncIterable<BatchItemNDJSON>
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+
+  // Check if items is an array
+  if (Array.isArray(items)) {
+    let index = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (index >= items.length) {
+          controller.close();
+          return;
+        }
+
+        const item = items[index++];
+        const line = JSON.stringify(item) + "\n";
+        controller.enqueue(encoder.encode(line));
+      },
+    });
+  }
+
+  // Handle async iterable
+  const iterator = items[Symbol.asyncIterator]();
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await iterator.next();
+
+      if (done) {
+        controller.close();
+        return;
+      }
+
+      const line = JSON.stringify(value) + "\n";
+      controller.enqueue(encoder.encode(line));
+    },
+  });
 }
 
 export function mergeRequestOptions(

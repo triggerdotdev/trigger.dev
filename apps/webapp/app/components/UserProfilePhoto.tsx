@@ -22,6 +22,7 @@ export function UserAvatar({
         className={cn("aspect-square rounded-full p-[7%]")}
         src={avatarUrl}
         alt={name ?? "User"}
+        referrerPolicy="no-referrer"
       />
     </div>
   ) : (

@@ -1,13 +1,20 @@
+import { tryCatch } from "@trigger.dev/core/v3";
+import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import { WorkerDeployment } from "@trigger.dev/database";
+import { logger } from "~/services/logger.server";
+import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
-import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
 
 export class ChangeCurrentDeploymentService extends BaseService {
-  public async call(deployment: WorkerDeployment, direction: ChangeCurrentDeploymentDirection) {
+  public async call(
+    deployment: WorkerDeployment,
+    direction: ChangeCurrentDeploymentDirection,
+    disableVersionCheck?: boolean
+  ) {
     if (!deployment.workerId) {
       throw new ServiceValidationError(
         direction === "promote"
@@ -42,26 +49,34 @@ export class ChangeCurrentDeploymentService extends BaseService {
       }
 
       // if there is a current promotion, we have to validate we are moving in the right direction based on the deployment versions
-      switch (direction) {
-        case "promote": {
-          if (
-            compareDeploymentVersions(currentPromotion.deployment.version, deployment.version) >= 0
-          ) {
-            throw new ServiceValidationError(
-              "Cannot promote a deployment that is older than the current deployment."
-            );
+      if (!disableVersionCheck) {
+        switch (direction) {
+          case "promote": {
+            if (
+              compareDeploymentVersions(
+                currentPromotion.deployment.version,
+                deployment.version
+              ) >= 0
+            ) {
+              throw new ServiceValidationError(
+                "Cannot promote a deployment that is older than the current deployment."
+              );
+            }
+            break;
           }
-          break;
-        }
-        case "rollback": {
-          if (
-            compareDeploymentVersions(currentPromotion.deployment.version, deployment.version) <= 0
-          ) {
-            throw new ServiceValidationError(
-              "Cannot rollback to a deployment that is newer than the current deployment."
-            );
+          case "rollback": {
+            if (
+              compareDeploymentVersions(
+                currentPromotion.deployment.version,
+                deployment.version
+              ) <= 0
+            ) {
+              throw new ServiceValidationError(
+                "Cannot rollback to a deployment that is newer than the current deployment."
+              );
+            }
+            break;
           }
-          break;
         }
       }
     }
@@ -83,6 +98,25 @@ export class ChangeCurrentDeploymentService extends BaseService {
         deploymentId: deployment.id,
       },
     });
+
+    const [syncError] = await tryCatch(
+      (async () => {
+        const tasks = await this._prisma.backgroundWorkerTask.findMany({
+          where: { workerId: deployment.workerId! },
+          select: { slug: true, triggerSource: true },
+        });
+        await syncTaskIdentifiers(
+          deployment.environmentId,
+          deployment.projectId,
+          deployment.workerId!,
+          tasks.map((t) => ({ id: t.slug, triggerSource: t.triggerSource }))
+        );
+      })()
+    );
+
+    if (syncError) {
+      logger.error("Error syncing task identifiers on deployment change", { error: syncError });
+    }
 
     await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
   }

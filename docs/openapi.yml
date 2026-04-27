@@ -43,6 +43,159 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v3/batches:
+    post:
+      operationId: createBatch
+      externalDocs:
+        description: Find more info here
+        url: "https://trigger.dev/docs/triggering"
+      tags:
+        - Batches
+      summary: Create a batch (Phase 1)
+      description: |
+        Phase 1 of 2-phase batch API. Creates a batch record and optionally blocks the parent run for batchTriggerAndWait.
+        After creating a batch, stream items via POST /api/v3/batches/{batchId}/items.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBatchRequest"
+      responses:
+        "202":
+          description: Batch successfully created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateBatchResponse"
+          headers:
+            x-trigger-jwt-claims:
+              description: JWT claims for the batch
+              schema:
+                type: string
+            x-trigger-jwt:
+              description: JWT token for browser clients
+              schema:
+                type: string
+        "400":
+          description: Invalid request (e.g., runCount <= 0 or exceeds maximum)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - API key is missing or invalid
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          headers:
+            X-RateLimit-Limit:
+              description: Maximum number of requests allowed
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Number of requests remaining
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              description: Unix timestamp when the rate limit resets
+              schema:
+                type: integer
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v3/batches/{batchId}/items:
+    post:
+      operationId: streamBatchItems
+      externalDocs:
+        description: Find more info here
+        url: "https://trigger.dev/docs/triggering"
+      tags:
+        - Batches
+      summary: Stream batch items (Phase 2)
+      description: |
+        Phase 2 of 2-phase batch API. Accepts an NDJSON stream of batch items and enqueues them.
+        Each line in the body should be a valid BatchItemNDJSON object.
+        The stream is processed with backpressure - items are enqueued as they arrive.
+        The batch is sealed when the stream completes successfully.
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          description: The batch ID returned from POST /api/v3/batches
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/x-ndjson:
+            schema:
+              type: string
+              description: |
+                NDJSON (newline-delimited JSON) stream where each line is a BatchItemNDJSON object.
+                Example:
+                {"index":0,"task":"my-task","payload":{"key":"value1"}}
+                {"index":1,"task":"my-task","payload":{"key":"value2"}}
+          application/ndjson:
+            schema:
+              type: string
+              description: |
+                NDJSON (newline-delimited JSON) stream where each line is a BatchItemNDJSON object.
+      responses:
+        "200":
+          description: Items successfully processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StreamBatchItemsResponse"
+        "400":
+          description: Invalid request (e.g., invalid JSON, item exceeds maximum size)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized - API key is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "415":
+          description: Unsupported Media Type - Content-Type must be application/x-ndjson or application/ndjson
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   schemas:
     Error:
@@ -130,6 +283,91 @@ components:
       type: object
       additionalProperties: true
       description: A JSON object that represents the deserialized payload or context.
+    CreateBatchRequest:
+      type: object
+      required:
+        - runCount
+      properties:
+        runCount:
+          type: integer
+          minimum: 1
+          description: Expected number of items in the batch. Must be a positive integer.
+        parentRunId:
+          type: string
+          description: Parent run ID (friendly ID) for batchTriggerAndWait.
+        resumeParentOnCompletion:
+          type: boolean
+          description: Whether to resume parent on completion. Set to true for batchTriggerAndWait.
+        idempotencyKey:
+          type: string
+          description: Idempotency key for the batch. If provided and a batch with this key already exists, the existing batch will be returned.
+    CreateBatchResponse:
+      type: object
+      required:
+        - id
+        - runCount
+        - isCached
+      properties:
+        id:
+          type: string
+          description: The batch ID (friendly ID). Use this to stream items via POST /api/v3/batches/{batchId}/items.
+        runCount:
+          type: integer
+          description: The expected run count.
+        isCached:
+          type: boolean
+          description: Whether this response came from a cached/idempotent batch.
+        idempotencyKey:
+          type: string
+          description: The idempotency key if provided.
+    BatchItemNDJSON:
+      type: object
+      required:
+        - index
+        - task
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: Zero-based index of this item. Used for idempotency and ordering.
+        task:
+          type: string
+          description: The task identifier to trigger.
+        payload:
+          description: The payload for this task run. Can be any JSON value.
+        options:
+          type: object
+          additionalProperties: true
+          description: Options for this specific item.
+    StreamBatchItemsResponse:
+      type: object
+      required:
+        - id
+        - itemsAccepted
+        - itemsDeduplicated
+        - sealed
+      properties:
+        id:
+          type: string
+          description: The batch ID.
+        itemsAccepted:
+          type: integer
+          description: Number of items successfully accepted.
+        itemsDeduplicated:
+          type: integer
+          description: Number of items that were deduplicated (already enqueued).
+        sealed:
+          type: boolean
+          description: |
+            Whether the batch was sealed and is ready for processing.
+            If false, the batch needs more items before processing can start.
+            Clients should check this field and retry with missing items if needed.
+        enqueuedCount:
+          type: integer
+          description: Total items currently enqueued. Only present when sealed=false to help with retries.
+        expectedCount:
+          type: integer
+          description: Expected total item count. Only present when sealed=false to help with retries.
   securitySchemes:
     BearerAuth:
       type: http

@@ -15,12 +15,62 @@ import type { RunEngine } from "~/v3/runEngine.server";
 import { env } from "~/env.server";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { createCache, createLRUMemoryStore, DefaultStatefulContext, Namespace } from "@internal/cache";
+import { singleton } from "~/utils/singleton";
+
+// LRU cache for environment queue sizes to reduce Redis calls
+const queueSizeCache = singleton("queueSizeCache", () => {
+  const ctx = new DefaultStatefulContext();
+  const memory = createLRUMemoryStore(env.QUEUE_SIZE_CACHE_MAX_SIZE, "queue-size-cache");
+
+  return createCache({
+    queueSize: new Namespace<number>(ctx, {
+      stores: [memory],
+      fresh: env.QUEUE_SIZE_CACHE_TTL_MS,
+      stale: env.QUEUE_SIZE_CACHE_TTL_MS + 1000,
+    }),
+  });
+});
+
+/**
+ * Extract the queue name from a queue option that may be:
+ * - An object with a string `name` property: { name: "queue-name" }
+ * - A double-wrapped object (bug case): { name: { name: "queue-name", ... } }
+ *
+ * This handles the case where the SDK accidentally double-wraps the queue
+ * option when it's already an object with a name property.
+ */
+function extractQueueName(queue: { name?: unknown } | undefined): string | undefined {
+  if (!queue?.name) {
+    return undefined;
+  }
+
+  // Normal case: queue.name is a string
+  if (typeof queue.name === "string") {
+    return queue.name;
+  }
+
+  // Double-wrapped case: queue.name is an object with its own name property
+  if (typeof queue.name === "object" && queue.name !== null && "name" in queue.name) {
+    const innerName = (queue.name as { name: unknown }).name;
+    if (typeof innerName === "string") {
+      return innerName;
+    }
+  }
+
+  return undefined;
+}
 
 export class DefaultQueueManager implements QueueManager {
+  private readonly replicaPrisma: PrismaClientOrTransaction;
+
   constructor(
     private readonly prisma: PrismaClientOrTransaction,
-    private readonly engine: RunEngine
-  ) {}
+    private readonly engine: RunEngine,
+    replicaPrisma?: PrismaClientOrTransaction
+  ) {
+    this.replicaPrisma = replicaPrisma ?? prisma;
+  }
 
   async resolveQueueProperties(
     request: TriggerTaskRequest,
@@ -28,35 +78,50 @@ export class DefaultQueueManager implements QueueManager {
   ): Promise<QueueProperties> {
     let queueName: string;
     let lockedQueueId: string | undefined;
+    let taskTtl: string | null | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
       // Task is locked to a specific worker version
-      if (request.body.options?.queue?.name) {
-        const specifiedQueueName = request.body.options.queue.name;
-        // A specific queue name is provided
+      const specifiedQueueName = extractQueueName(request.body.options?.queue);
+
+      if (specifiedQueueName) {
+        // A specific queue name is provided, validate it exists for the locked worker
         const specifiedQueue = await this.prisma.taskQueue.findFirst({
-          // Validate it exists for the locked worker
           where: {
             name: specifiedQueueName,
             runtimeEnvironmentId: request.environment.id,
-            workers: { some: { id: lockedBackgroundWorker.id } }, // Ensure the queue is associated with any task of the locked worker
+            workers: { some: { id: lockedBackgroundWorker.id } },
           },
         });
 
         if (!specifiedQueue) {
           throw new ServiceValidationError(
-            `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${
-              lockedBackgroundWorker.version ?? "<unknown>"
+            `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
+
         // Use the validated queue name directly
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
+
+        // Only fetch task for TTL if caller didn't provide a per-trigger TTL
+        if (request.body.options?.ttl === undefined) {
+          const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
+            where: {
+              workerId: lockedBackgroundWorker.id,
+              runtimeEnvironmentId: request.environment.id,
+              slug: request.taskId,
+            },
+            select: { ttl: true },
+          });
+
+          taskTtl = lockedTask?.ttl;
+        }
       } else {
-        // No specific queue name provided, use the default queue for the task on the locked worker
-        const lockedTask = await this.prisma.backgroundWorkerTask.findFirst({
+        // No queue override - fetch task with queue to get both default queue and TTL
+        const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
           where: {
             workerId: lockedBackgroundWorker.id,
             runtimeEnvironmentId: request.environment.id,
@@ -69,11 +134,12 @@ export class DefaultQueueManager implements QueueManager {
 
         if (!lockedTask) {
           throw new ServiceValidationError(
-            `Task '${request.taskId}' not found on locked version '${
-              lockedBackgroundWorker.version ?? "<unknown>"
+            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
+
+        taskTtl = lockedTask.ttl;
 
         if (!lockedTask.queue) {
           // This case should ideally be prevented by earlier checks or schema constraints,
@@ -84,11 +150,11 @@ export class DefaultQueueManager implements QueueManager {
             version: lockedBackgroundWorker.version,
           });
           throw new ServiceValidationError(
-            `Default queue configuration for task '${request.taskId}' missing on locked version '${
-              lockedBackgroundWorker.version ?? "<unknown>"
+            `Default queue configuration for task '${request.taskId}' missing on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
+
         // Use the task's default queue name
         queueName = lockedTask.queue.name;
         lockedQueueId = lockedTask.queue.id;
@@ -103,7 +169,9 @@ export class DefaultQueueManager implements QueueManager {
       }
 
       // Get queue name using the helper for non-locked case (handles provided name or finds default)
-      queueName = await this.getQueueName(request);
+      const taskInfo = await this.getTaskQueueInfo(request);
+      queueName = taskInfo.queueName;
+      taskTtl = taskInfo.taskTtl;
     }
 
     // Sanitize the final determined queue name once
@@ -119,18 +187,26 @@ export class DefaultQueueManager implements QueueManager {
     return {
       queueName,
       lockedQueueId,
+      taskTtl,
     };
   }
 
-  async getQueueName(request: TriggerTaskRequest): Promise<string> {
+  private async getTaskQueueInfo(
+    request: TriggerTaskRequest
+  ): Promise<{ queueName: string; taskTtl?: string | null }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
 
-    if (queue?.name) {
-      return queue.name;
-    }
+    // Use extractQueueName to handle double-wrapped queue objects
+    const overriddenQueueName = extractQueueName(queue);
 
     const defaultQueueName = `task/${taskId}`;
+
+    // When caller provides both a queue override and a per-trigger TTL,
+    // we don't need any DB queries - the per-trigger TTL takes precedence
+    if (overriddenQueueName && body.options?.ttl !== undefined) {
+      return { queueName: overriddenQueueName, taskTtl: undefined };
+    }
 
     // Find the current worker for the environment
     const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
@@ -141,10 +217,24 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return defaultQueueName;
+      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: undefined };
     }
 
-    const task = await this.prisma.backgroundWorkerTask.findFirst({
+    // When queue is overridden, we only need TTL from the task (no queue join needed)
+    if (overriddenQueueName) {
+      const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
+        where: {
+          workerId: worker.id,
+          runtimeEnvironmentId: environment.id,
+          slug: taskId,
+        },
+        select: { ttl: true },
+      });
+
+      return { queueName: overriddenQueueName, taskTtl: task?.ttl };
+    }
+
+    const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
       where: {
         workerId: worker.id,
         runtimeEnvironmentId: environment.id,
@@ -161,7 +251,7 @@ export class DefaultQueueManager implements QueueManager {
         environmentId: environment.id,
       });
 
-      return defaultQueueName;
+      return { queueName: defaultQueueName, taskTtl: undefined };
     }
 
     if (!task.queue) {
@@ -171,20 +261,27 @@ export class DefaultQueueManager implements QueueManager {
         queueConfig: task.queueConfig,
       });
 
-      return defaultQueueName;
+      return { queueName: defaultQueueName, taskTtl: task.ttl };
     }
 
-    return task.queue.name ?? defaultQueueName;
+    return { queueName: task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
   }
 
   async validateQueueLimits(
     environment: AuthenticatedEnvironment,
+    queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult> {
-    const queueSizeGuard = await guardQueueSizeLimitsForEnv(this.engine, environment, itemsToAdd);
+    const queueSizeGuard = await guardQueueSizeLimitsForQueue(
+      this.engine,
+      environment,
+      queueName,
+      itemsToAdd
+    );
 
     logger.debug("Queue size guard result", {
       queueSizeGuard,
+      queueName,
       environment: {
         id: environment.id,
         type: environment.type,
@@ -203,9 +300,9 @@ export class DefaultQueueManager implements QueueManager {
   async getWorkerQueue(
     environment: AuthenticatedEnvironment,
     regionOverride?: string
-  ): Promise<string | undefined> {
+  ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined> {
     if (environment.type === "DEVELOPMENT") {
-      return environment.id;
+      return { masterQueue: environment.id, enableFastPath: true };
     }
 
     const workerGroupService = new WorkerGroupService({
@@ -228,11 +325,14 @@ export class DefaultQueueManager implements QueueManager {
       throw new ServiceValidationError("No worker group found");
     }
 
-    return workerGroup.masterQueue;
+    return {
+      masterQueue: workerGroup.masterQueue,
+      enableFastPath: workerGroup.enableFastPath,
+    };
   }
 }
 
-function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
+export function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
   if (environment.type === "DEVELOPMENT") {
     return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
   } else {
@@ -240,9 +340,10 @@ function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): nu
   }
 }
 
-async function guardQueueSizeLimitsForEnv(
+async function guardQueueSizeLimitsForQueue(
   engine: RunEngine,
   environment: AuthenticatedEnvironment,
+  queueName: string,
   itemsToAdd: number = 1
 ) {
   const maximumSize = getMaximumSizeForEnvironment(environment);
@@ -251,7 +352,7 @@ async function guardQueueSizeLimitsForEnv(
     return { isWithinLimits: true };
   }
 
-  const queueSize = await engine.lengthOfEnvQueue(environment);
+  const queueSize = await getCachedQueueSize(engine, environment, queueName);
   const projectedSize = queueSize + itemsToAdd;
 
   return {
@@ -259,4 +360,21 @@ async function guardQueueSizeLimitsForEnv(
     maximumSize,
     queueSize,
   };
+}
+
+async function getCachedQueueSize(
+  engine: RunEngine,
+  environment: AuthenticatedEnvironment,
+  queueName: string
+): Promise<number> {
+  if (!env.QUEUE_SIZE_CACHE_ENABLED) {
+    return engine.lengthOfQueue(environment, queueName);
+  }
+
+  const cacheKey = `${environment.id}:${queueName}`;
+  const result = await queueSizeCache.queueSize.swr(cacheKey, async () => {
+    return engine.lengthOfQueue(environment, queueName);
+  });
+
+  return result.val ?? 0;
 }

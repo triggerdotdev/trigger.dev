@@ -2,11 +2,10 @@ import { openai } from "@ai-sdk/openai";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { RunTagListPresenter } from "~/presenters/v3/RunTagListPresenter.server";
 import { VersionListPresenter } from "~/presenters/v3/VersionListPresenter.server";
@@ -65,13 +64,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
     query: async (search) => {
       const tagPresenter = new RunTagListPresenter();
       const tags = await tagPresenter.call({
+        organizationId: environment.organizationId,
         projectId: environment.projectId,
+        environmentId: environment.id,
         name: search,
         page: 1,
         pageSize: 50,
+        period: "30d",
       });
       return {
-        tags: tags.tags.map((t) => t.name),
+        tags: tags.tags,
       };
     },
   };
@@ -123,7 +125,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const queryTasks: QueryTasks = {
     query: async () => {
-      const tasks = await getAllTaskIdentifiers($replica, environment.id);
+      const tasks = await getTaskIdentifiers(environment.id);
       return {
         tasks,
       };

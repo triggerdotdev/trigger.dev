@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
+import { logger } from "../logger.server";
 
 export type ValidatePublicJwtKeySuccess = {
   ok: true;
@@ -87,6 +88,12 @@ export function isPublicJWT(token: string): boolean {
     // If there's any error in decoding or parsing, it's not a valid JWT
     return false;
   }
+}
+
+export function extractJwtSigningSecretKey(
+  environment: AuthenticatedEnvironment & { parentEnvironment?: { apiKey: string } }
+) {
+  return environment.parentEnvironment?.apiKey ?? environment.apiKey;
 }
 
 function extractJWTSub(token: string): string | undefined {

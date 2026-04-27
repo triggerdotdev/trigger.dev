@@ -48,6 +48,7 @@ export type QueueValidationResult =
 export type QueueProperties = {
   queueName: string;
   lockedQueueId?: string;
+  taskTtl?: string | null;
 };
 
 export type LockedBackgroundWorker = Pick<
@@ -61,26 +62,19 @@ export interface QueueManager {
     request: TriggerTaskRequest,
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
-  getQueueName(request: TriggerTaskRequest): Promise<string>;
   validateQueueLimits(
     env: AuthenticatedEnvironment,
+    queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult>;
   getWorkerQueue(
     env: AuthenticatedEnvironment,
     regionOverride?: string
-  ): Promise<string | undefined>;
+  ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined>;
 }
 
 export interface PayloadProcessor {
   process(request: TriggerTaskRequest): Promise<IOPacket>;
-}
-
-export interface RunNumberIncrementer {
-  incrementRunNumber<T>(
-    request: TriggerTaskRequest,
-    callback: (num: number) => Promise<T>
-  ): Promise<T | undefined>;
 }
 
 export interface TagValidationParams {
@@ -138,6 +132,12 @@ export type TracedEventSpan = {
   };
   setAttribute: (key: string, value: string) => void;
   failWithError: (error: TaskRunError) => void;
+  /**
+   * Stop the span without writing any event.
+   * Used when a debounced run is returned - the span for the debounced
+   * trigger is created separately via traceDebouncedRun.
+   */
+  stop: () => void;
 };
 
 export interface TraceEventConcern {
@@ -152,6 +152,17 @@ export interface TraceEventConcern {
     options: {
       existingRun: TaskRun;
       idempotencyKey: string;
+      incomplete: boolean;
+      isError: boolean;
+    },
+    callback: (span: TracedEventSpan, store: string) => Promise<T>
+  ): Promise<T>;
+  traceDebouncedRun<T>(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    options: {
+      existingRun: TaskRun;
+      debounceKey: string;
       incomplete: boolean;
       isError: boolean;
     },

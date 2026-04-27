@@ -9,5 +9,6 @@
       "@/*": ["./*"]
     },
     "customConditions": []
-  }
+  },
+  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
 }

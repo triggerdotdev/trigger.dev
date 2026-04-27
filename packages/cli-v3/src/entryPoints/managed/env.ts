@@ -12,8 +12,6 @@ const DateEnv = z
 const Env = z.object({
   // Set at build time
   TRIGGER_CONTENT_HASH: z.string(),
-  TRIGGER_DEPLOYMENT_ID: z.string(),
-  TRIGGER_DEPLOYMENT_VERSION: z.string(),
   TRIGGER_PROJECT_ID: z.string(),
   TRIGGER_PROJECT_REF: z.string(),
   NODE_ENV: z.string().default("production"),
@@ -21,6 +19,8 @@ const Env = z.object({
   UV_USE_IO_URING: z.string().optional(),
 
   // Set at runtime
+  TRIGGER_DEPLOYMENT_ID: z.string(),
+  TRIGGER_DEPLOYMENT_VERSION: z.string(),
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(),

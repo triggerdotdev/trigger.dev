@@ -109,6 +109,7 @@ export class UpsertTaskScheduleService extends BaseService {
         data: {
           taskScheduleId: scheduleRecord.id,
           environmentId,
+          projectId,
         },
         include: {
           environment: {
@@ -183,6 +184,7 @@ export class UpsertTaskScheduleService extends BaseService {
           data: {
             taskScheduleId: scheduleRecord.id,
             environmentId,
+            projectId: existingSchedule.projectId,
           },
           include: {
             environment: {

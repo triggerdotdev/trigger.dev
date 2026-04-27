@@ -1,10 +1,16 @@
+{{- if .Values.webapp.serviceAccount.create }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "trigger-v4.fullname" . }}-webapp
+  name: {{ include "trigger-v4.webappServiceAccountName" . }}
   labels:
     {{- $component := "webapp" }}
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
+  {{- with .Values.webapp.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -27,7 +33,7 @@ metadata:
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "trigger-v4.fullname" . }}-webapp
+    name: {{ include "trigger-v4.webappServiceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: Role
@@ -56,7 +62,7 @@ spec:
       labels:
         {{- include "trigger-v4.componentSelectorLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "trigger-v4.fullname" . }}-webapp
+      serviceAccountName: {{ include "trigger-v4.webappServiceAccountName" . }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -263,7 +269,7 @@ spec:
             - name: DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT
               value: {{ .Values.webapp.limits.defaultOrgExecutionConcurrencyLimit | quote }}
             {{- end }}
-            {{- if .Values.secrets.enabled }}
+            {{- if or .Values.secrets.enabled .Values.secrets.existingSecret }}
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:

@@ -2,7 +2,13 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { env } from "std-env";
 
-const ENVVAR_FILES = [".env", ".env.development", ".env.local", ".env.development.local", "dev.vars"];
+const ENVVAR_FILES = [
+  ".env",
+  ".env.development",
+  ".env.local",
+  ".env.development.local",
+  "dev.vars",
+];
 
 export function resolveDotEnvVars(cwd?: string, envFile?: string) {
   const result: { [key: string]: string } = {};
@@ -22,6 +28,11 @@ export function resolveDotEnvVars(cwd?: string, envFile?: string) {
   delete result.TRIGGER_API_URL;
   delete result.TRIGGER_SECRET_KEY;
   delete result.OTEL_EXPORTER_OTLP_ENDPOINT;
+
+  if (result.OTEL_RESOURCE_ATTRIBUTES) {
+    result.CUSTOM_OTEL_RESOURCE_ATTRIBUTES = result.OTEL_RESOURCE_ATTRIBUTES;
+    delete result.OTEL_RESOURCE_ATTRIBUTES;
+  }
 
   return result;
 }

@@ -1,4 +1,4 @@
-import { type PersonalAccessToken } from "@trigger.dev/database";
+import { type PersonalAccessToken, type User } from "@trigger.dev/database";
 import { customAlphabet, nanoid } from "nanoid";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -116,6 +116,59 @@ export async function authenticateApiRequestWithPersonalAccessToken(
   }
 
   return authenticatePersonalAccessToken(token);
+}
+
+export type AdminAuthenticationResult =
+  | { ok: true; user: User }
+  | { ok: false; status: 401 | 403; message: string };
+
+/**
+ * Authenticates a request via personal access token and checks the user is
+ * an admin. Returns a discriminated result so callers can shape the failure
+ * (throw a Response, wrap in neverthrow, return JSON, etc.) to fit their
+ * context. See `requireAdminApiRequest` for the Remix loader/action wrapper.
+ */
+export async function authenticateAdminRequest(
+  request: Request
+): Promise<AdminAuthenticationResult> {
+  const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
+
+  if (!authResult) {
+    return { ok: false, status: 401, message: "Invalid or Missing API key" };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: authResult.userId },
+  });
+
+  if (!user) {
+    return { ok: false, status: 401, message: "Invalid or Missing API key" };
+  }
+
+  if (!user.admin) {
+    return { ok: false, status: 403, message: "You must be an admin to perform this action" };
+  }
+
+  return { ok: true, user };
+}
+
+/**
+ * Remix loader/action wrapper around `authenticateAdminRequest` that throws
+ * a Response on failure so routes can `await` without handling the error
+ * branch. Uses `new Response` directly to avoid coupling this module to
+ * `@remix-run/server-runtime`.
+ */
+export async function requireAdminApiRequest(request: Request): Promise<User> {
+  const result = await authenticateAdminRequest(request);
+
+  if (!result.ok) {
+    throw new Response(JSON.stringify({ error: result.message }), {
+      status: result.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return result.user;
 }
 
 function getPersonalAccessTokenFromRequest(request: Request) {

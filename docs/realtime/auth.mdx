@@ -141,6 +141,10 @@ By default, auto-generated tokens expire after 15 minutes and have a read scope 
 
 See our [triggering documentation](/triggering) for detailed examples of how to trigger tasks and get auto-generated tokens.
 
+<Note>
+**Where should I create tokens?** The standard pattern is to create tokens in your backend code (API route, server action) after triggering a task, then pass the token to your frontend. The `handle.publicAccessToken` returned by `tasks.trigger()` already does this for you. You rarely need to create tokens inside a task itself.
+</Note>
+
 ### Subscribing to runs with Public Access Tokens
 
 Once you have a Public Access Token, you can use it to authenticate requests to the Realtime API in both backend and frontend applications.

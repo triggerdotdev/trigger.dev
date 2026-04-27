@@ -199,8 +199,6 @@ export const todoChat = schemaTask({
   run: async ({ input, userId }, { signal }) => {
     metadata.set("user_id", userId);
 
-    logger.info("todoChat: starting", { input, userId });
-
     const system = `
       You are a SQL (postgres) expert who can turn natural language descriptions for a todo app 
       into a SQL query which can then be executed against a SQL database. Here is the schema:

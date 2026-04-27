@@ -122,14 +122,8 @@ export class DevRunController {
         logger.debug("[DevRunController] Failed to poll for snapshot", { error });
       },
     });
-
-    process.on("SIGTERM", this.sigterm.bind(this));
   }
 
-  private async sigterm() {
-    logger.debug("[DevRunController] Received SIGTERM, stopping worker");
-    await this.stop();
-  }
 
   // This should only be used when we're already executing a run. Attempt number changes are not allowed.
   private updateRunPhase(run: Run, snapshot: Snapshot) {
@@ -434,7 +428,8 @@ export class DevRunController {
         }
         case "RUN_CREATED":
         case "QUEUED_EXECUTING":
-        case "QUEUED": {
+        case "QUEUED":
+        case "DELAYED": {
           logger.debug("Status change not handled", { status: snapshot.executionStatus });
           return;
         }
@@ -601,7 +596,7 @@ export class DevRunController {
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
       {
-        id: "unmanaged",
+        id: this.opts.worker.serverWorker.id,
         contentHash: this.opts.worker.build.contentHash,
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",
@@ -855,8 +850,6 @@ export class DevRunController {
 
   async stop() {
     logger.debug("[DevRunController] Shutting down");
-
-    process.off("SIGTERM", this.sigterm);
 
     if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
       try {

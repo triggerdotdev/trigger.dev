@@ -1,8 +1,11 @@
 import { ApiClientConfiguration } from "../apiClientManager/types.js";
 import { Clock } from "../clock/clock.js";
 import { HeartbeatsManager } from "../heartbeats/types.js";
+import type { IdempotencyKeyCatalog } from "../idempotency-key-catalog/catalog.js";
+import { InputStreamManager } from "../inputStreams/types.js";
 import { LifecycleHooksManager } from "../lifecycleHooks/types.js";
 import { LocalsManager } from "../locals/types.js";
+import { RealtimeStreamsManager } from "../realtimeStreams/types.js";
 import { ResourceCatalog } from "../resource-catalog/catalog.js";
 import { RunMetadataManager } from "../runMetadata/types.js";
 import type { RuntimeManager } from "../runtime/manager.js";
@@ -60,6 +63,7 @@ type TriggerDotDevGlobalAPI = {
   clock?: Clock;
   usage?: UsageManager;
   ["resource-catalog"]?: ResourceCatalog;
+  ["idempotency-key-catalog"]?: IdempotencyKeyCatalog;
   ["task-context"]?: TaskContext;
   ["api-client"]?: ApiClientConfiguration;
   ["run-metadata"]?: RunMetadataManager;
@@ -70,4 +74,6 @@ type TriggerDotDevGlobalAPI = {
   ["locals"]?: LocalsManager;
   ["trace-context"]?: TraceContextManager;
   ["heartbeats"]?: HeartbeatsManager;
+  ["realtime-streams"]?: RealtimeStreamsManager;
+  ["input-streams"]?: InputStreamManager;
 };

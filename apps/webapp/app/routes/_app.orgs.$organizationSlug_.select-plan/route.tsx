@@ -45,7 +45,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 }
 
 export default function ChoosePlanPage() {
-  const { plans, v3Subscription, organizationSlug, periodEnd } =
+  const { plans, v3Subscription, organizationSlug, periodEnd, addOnPricing } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -57,6 +57,7 @@ export default function ChoosePlanPage() {
             <div className="w-full rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
               <PricingPlans
                 plans={plans}
+                concurrencyAddOnPricing={addOnPricing.concurrency}
                 subscription={v3Subscription}
                 organizationSlug={organizationSlug}
                 hasPromotedPlan

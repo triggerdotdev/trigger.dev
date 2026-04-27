@@ -12,10 +12,12 @@ import {
   type AnyOnCatchErrorHookFunction,
   type AnyOnMiddlewareHookFunction,
   type AnyOnCancelHookFunction,
+  type AnyOnStartAttemptHookFunction,
 } from "@trigger.dev/core/v3";
 
 export type {
   AnyOnStartHookFunction,
+  AnyOnStartAttemptHookFunction,
   TaskStartHookParams,
   OnStartHookFunction,
   AnyOnFailureHookFunction,
@@ -36,6 +38,18 @@ export function onStart(
   fn?: AnyOnStartHookFunction
 ): void {
   lifecycleHooks.registerGlobalStartHook({
+    id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
+    fn: typeof fnOrName === "function" ? fnOrName : fn!,
+  });
+}
+
+export function onStartAttempt(name: string, fn: AnyOnStartAttemptHookFunction): void;
+export function onStartAttempt(fn: AnyOnStartAttemptHookFunction): void;
+export function onStartAttempt(
+  fnOrName: string | AnyOnStartAttemptHookFunction,
+  fn?: AnyOnStartAttemptHookFunction
+): void {
+  lifecycleHooks.registerGlobalStartAttemptHook({
     id: typeof fnOrName === "string" ? fnOrName : fnOrName.name ? fnOrName.name : undefined,
     fn: typeof fnOrName === "function" ? fnOrName : fn!,
   });

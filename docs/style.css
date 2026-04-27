@@ -1,0 +1,31 @@
+button~.absolute.peer-hover\:opacity-100 {
+    color: #000
+}
+
+:root {
+    /* Code block colors - Trigger.dark theme */
+    --mint-color-background: #121317;
+    --mint-color-text: #D4D4D4;
+    --mint-token-constant: #9B99FF;
+    --mint-token-string: #AFEC73;
+    --mint-token-comment: #5F6570;
+    --mint-token-keyword: #E888F8;
+    --mint-token-parameter: #CCCBFF;
+    --mint-token-function: #D9F07C;
+    --mint-token-string-expression: #AFEC73;
+    --mint-token-punctuation: #878C99;
+    --mint-token-link: #826DFF;
+
+    /* Shiki css-variables fallbacks */
+    --shiki-foreground: #D4D4D4;
+    --shiki-background: #121317;
+    --shiki-token-constant: #9B99FF;
+    --shiki-token-string: #AFEC73;
+    --shiki-token-comment: #5F6570;
+    --shiki-token-keyword: #E888F8;
+    --shiki-token-parameter: #CCCBFF;
+    --shiki-token-function: #D9F07C;
+    --shiki-token-string-expression: #AFEC73;
+    --shiki-token-punctuation: #878C99;
+    --shiki-token-link: #826DFF;
+}

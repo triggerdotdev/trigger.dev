@@ -41,11 +41,14 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const result = await repository.create(environment.project.id, {
     override: typeof body.override === "boolean" ? body.override : false,
     environmentIds: [environment.id],
+    // Pass parent environment ID so new variables can inherit isSecret from parent
+    parentEnvironmentId: environment.parentEnvironmentId ?? undefined,
     variables: Object.entries(body.variables).map(([key, value]) => ({
       key,
       value,
       isSecret: body.secrets?.[key] ?? false,
     })),
+    lastUpdatedBy: body.source,
   });
 
   // Only sync parent variables if this is a branch environment
@@ -58,6 +61,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
         value,
         isSecret: body.parentSecrets?.[key] ?? false,
       })),
+      lastUpdatedBy: body.source,
     });
 
     let childFailure = !result.success ? result : undefined;

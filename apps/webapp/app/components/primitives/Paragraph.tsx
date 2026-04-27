@@ -17,12 +17,24 @@ const paragraphVariants = {
     text: "font-sans text-sm font-normal text-text-bright",
     spacing: "mb-2",
   },
+  "small/dimmed": {
+    text: "font-sans text-sm font-normal text-text-dimmed",
+    spacing: "mb-2",
+  },
   "extra-small": {
     text: "font-sans text-xs font-normal text-text-dimmed",
     spacing: "mb-1.5",
   },
   "extra-small/bright": {
     text: "font-sans text-xs font-normal text-text-bright",
+    spacing: "mb-1.5",
+  },
+  "extra-small/dimmed": {
+    text: "font-sans text-xs font-normal text-text-dimmed",
+    spacing: "mb-1.5",
+  },
+  "extra-small/dimmed/mono": {
+    text: "font-mono text-xs font-normal text-text-dimmed",
     spacing: "mb-1.5",
   },
   "extra-small/mono": {

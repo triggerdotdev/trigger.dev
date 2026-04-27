@@ -1,5 +1,5 @@
 export async function performSearch(query: string, signal: AbortSignal) {
-  const body = callToolBody("SearchTriggerDev", { query });
+  const body = callToolBody("search_trigger_dev", { query });
 
   const response = await fetch("https://trigger.dev/docs/mcp", {
     method: "POST",

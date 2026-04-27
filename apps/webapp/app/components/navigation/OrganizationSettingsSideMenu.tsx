@@ -3,18 +3,25 @@ import {
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
+  LockClosedIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { SlackIcon } from "@trigger.dev/companyicons";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
   organizationSettingsPath,
+  organizationSlackIntegrationPath,
   organizationTeamPath,
+  organizationVercelIntegrationPath,
   rootPath,
   v3BillingAlertsPath,
   v3BillingPath,
+  v3PrivateConnectionsPath,
   v3UsagePath,
 } from "~/utils/pathBuilder";
 import { LinkButton } from "../primitives/Buttons";
@@ -25,6 +32,7 @@ import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { AskAI } from "../AskAI";
 
 export type BuildInfo = {
   appVersion: string | undefined;
@@ -42,6 +50,7 @@ export function OrganizationSettingsSideMenu({
   buildInfo: BuildInfo;
 }) {
   const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
   const currentPlan = useCurrentPlan();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
@@ -74,6 +83,7 @@ export function OrganizationSettingsSideMenu({
                 name="Usage"
                 icon={ChartBarIcon}
                 activeIconColor="text-indigo-500"
+                inactiveIconColor="text-indigo-500"
                 to={v3UsagePath(organization)}
                 data-action="usage"
               />
@@ -81,6 +91,7 @@ export function OrganizationSettingsSideMenu({
                 name="Billing"
                 icon={CreditCardIcon}
                 activeIconColor="text-emerald-500"
+                inactiveIconColor="text-emerald-500"
                 to={v3BillingPath(organization)}
                 data-action="billing"
                 badge={
@@ -93,15 +104,27 @@ export function OrganizationSettingsSideMenu({
                 name="Billing alerts"
                 icon={BellAlertIcon}
                 activeIconColor="text-rose-500"
+                inactiveIconColor="text-rose-500"
                 to={v3BillingAlertsPath(organization)}
                 data-action="billing-alerts"
               />
             </>
           )}
+          {featureFlags.hasPrivateConnections && (
+            <SideMenuItem
+              name="Private Connections"
+              icon={LockClosedIcon}
+              activeIconColor="text-purple-500"
+              inactiveIconColor="text-purple-500"
+              to={v3PrivateConnectionsPath(organization)}
+              data-action="private-connections"
+            />
+          )}
           <SideMenuItem
             name="Team"
             icon={UserGroupIcon}
             activeIconColor="text-amber-500"
+            inactiveIconColor="text-amber-500"
             to={organizationTeamPath(organization)}
             data-action="team"
           />
@@ -109,8 +132,31 @@ export function OrganizationSettingsSideMenu({
             name="Settings"
             icon={Cog8ToothIcon}
             activeIconColor="text-orgSettings"
+            inactiveIconColor="text-orgSettings"
             to={organizationSettingsPath(organization)}
             data-action="settings"
+          />
+        </div>
+        <div className="flex flex-col">
+          <div className="mb-1">
+            <SideMenuHeader title="Integrations" />
+          </div>
+          <SideMenuItem
+            name="Vercel"
+            icon={VercelLogo}
+            activeIconColor="text-white"
+            inactiveIconColor="text-white"
+            iconClassName="size-4 ml-0.5"
+            to={organizationVercelIntegrationPath(organization)}
+            data-action="integrations"
+          />
+          <SideMenuItem
+            name="Slack"
+            icon={SlackIcon}
+            activeIconColor="text-white"
+            inactiveIconColor="text-white"
+            to={organizationSlackIntegrationPath(organization)}
+            data-action="integrations"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -131,7 +177,14 @@ export function OrganizationSettingsSideMenu({
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git ref" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {buildInfo.gitRefName}
+              <a
+                href={`https://github.com/triggerdotdev/trigger.dev/tree/${buildInfo.gitRefName}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition hover:text-text-bright"
+              >
+                {buildInfo.gitRefName}
+              </a>
             </Paragraph>
           </div>
         )}
@@ -139,13 +192,21 @@ export function OrganizationSettingsSideMenu({
           <div className="flex flex-col gap-1">
             <SideMenuHeader title="Git sha" />
             <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              {buildInfo.gitSha.slice(0, 9)}
+              <a
+                href={`https://github.com/triggerdotdev/trigger.dev/commit/${buildInfo.gitSha}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition hover:text-text-bright"
+              >
+                {buildInfo.gitSha.slice(0, 9)}
+              </a>
             </Paragraph>
           </div>
         )}
       </div>
-      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-        <HelpAndFeedback />
+      <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
+        <HelpAndFeedback organizationId={organization.id} />
+        <AskAI />
       </div>
     </div>
   );

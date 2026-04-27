@@ -3,7 +3,6 @@ import { promiseWithResolvers } from "../../utils.js";
 import { ApiError, RateLimitError } from "../apiClient/errors.js";
 import { ConsoleInterceptor } from "../consoleInterceptor.js";
 import {
-  InternalError,
   isCompleteTaskWithOutput,
   isInternalError,
   parseError,
@@ -14,6 +13,7 @@ import {
   accessoryAttributes,
   attemptKey,
   flattenAttributes,
+  inputStreams,
   lifecycleHooks,
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   runMetadata,
@@ -182,6 +182,8 @@ export class TaskExecutor {
                 if (execution.attempt.number === 1) {
                   await this.#callOnStartFunctions(payload, ctx, initOutput, signal);
                 }
+
+                await this.#callOnStartAttemptFunctions(payload, ctx, signal);
 
                 try {
                   return await this.#callRun(payload, ctx, initOutput, signal);
@@ -419,29 +421,13 @@ export class TaskExecutor {
       throw new Error("Task does not have a run function");
     }
 
-    // Create a promise that rejects when the signal aborts
-    const abortPromise = new Promise((_, reject) => {
-      signal.addEventListener("abort", () => {
-        if (typeof signal.reason === "string" && signal.reason.includes("cancel")) {
-          return;
-        }
-
-        const maxDuration = ctx.run.maxDuration;
-        reject(
-          new InternalError({
-            code: TaskRunErrorCodes.MAX_DURATION_EXCEEDED,
-            message: `Run exceeded maximum compute time (maxDuration) of ${maxDuration} seconds`,
-          })
-        );
-      });
-    });
-
     return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
       return await this._tracer.startActiveSpan(
         "run()",
         async (span) => {
-          // Race between the run function and the abort promise
-          return await Promise.race([runFn(payload, { ctx, init, signal }), abortPromise]);
+          // maxDuration is now enforced by killing the process, not by Promise.race
+          // The signal is still passed to runFn for cancellation and other abort conditions
+          return await runFn(payload, { ctx, init, signal });
         },
         {
           attributes: { [SemanticInternalAttributes.STYLE_ICON]: "task-fn-run" },
@@ -794,7 +780,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "success", async () => {
       for (const hook of globalSuccessHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
             async (span) => {
@@ -816,14 +802,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskSuccessHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
             async (span) => {
@@ -845,10 +827,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }
@@ -869,7 +847,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "failure", async () => {
       for (const hook of globalFailureHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
             async (span) => {
@@ -891,14 +869,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskFailureHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
             async (span) => {
@@ -920,10 +894,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }
@@ -1006,6 +976,70 @@ export class TaskExecutor {
     });
   }
 
+  async #callOnStartAttemptFunctions(payload: unknown, ctx: TaskRunContext, signal: AbortSignal) {
+    const globalStartHooks = lifecycleHooks.getGlobalStartAttemptHooks();
+    const taskStartHook = lifecycleHooks.getTaskStartAttemptHook(this.task.id);
+
+    if (globalStartHooks.length === 0 && !taskStartHook) {
+      return;
+    }
+
+    return await runTimelineMetrics.measureMetric(
+      "trigger.dev/execution",
+      "startAttempt",
+      async () => {
+        for (const hook of globalStartHooks) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onStartAttempt()",
+              async (span) => {
+                await hook.fn({ payload, ctx, signal, task: this.task.id });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStartAttempt",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes(hook.name),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+
+        if (taskStartHook) {
+          const [hookError] = await tryCatch(
+            this._tracer.startActiveSpan(
+              "onStartAttempt()",
+              async (span) => {
+                await taskStartHook({
+                  payload,
+                  ctx,
+                  signal,
+                  task: this.task.id,
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStartAttempt",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  ...this.#lifecycleHookAccessoryAttributes("task"),
+                },
+              }
+            )
+          );
+
+          if (hookError) {
+            throw hookError;
+          }
+        }
+      }
+    );
+  }
+
   async #cleanupAndWaitUntil(
     payload: unknown,
     ctx: TaskRunContext,
@@ -1013,6 +1047,7 @@ export class TaskExecutor {
     signal: AbortSignal
   ) {
     await this.#callCleanupFunctions(payload, ctx, initOutput, signal);
+    inputStreams.clearHandlers();
     await this.#blockForWaitUntil();
   }
 
@@ -1096,7 +1131,7 @@ export class TaskExecutor {
     return this._tracer.startActiveSpan(
       "waitUntil",
       async (span) => {
-        return await waitUntil.blockUntilSettled(60_000);
+        return await waitUntil.blockUntilSettled();
       },
       {
         attributes: {
@@ -1314,7 +1349,7 @@ export class TaskExecutor {
 
     return await runTimelineMetrics.measureMetric("trigger.dev/execution", "complete", async () => {
       for (const hook of globalCompleteHooks) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
             async (span) => {
@@ -1336,14 +1371,10 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
 
       if (taskCompleteHook) {
-        const [hookError] = await tryCatch(
+        await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
             async (span) => {
@@ -1365,10 +1396,6 @@ export class TaskExecutor {
             }
           )
         );
-
-        if (hookError) {
-          throw hookError;
-        }
       }
     });
   }

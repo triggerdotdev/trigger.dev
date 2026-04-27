@@ -32,6 +32,8 @@ import {
   WorkerToExecutorMessageCatalog,
   traceContext,
   heartbeats,
+  realtimeStreams,
+  inputStreams,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -57,6 +59,8 @@ import {
   UsageTimeoutManager,
   StandardTraceContextManager,
   StandardHeartbeatsManager,
+  StandardRealtimeStreamsManager,
+  StandardInputStreamManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -128,6 +132,17 @@ usage.setGlobalUsageManager(devUsageManager);
 const usageTimeoutManager = new UsageTimeoutManager(devUsageManager);
 timeout.setGlobalManager(usageTimeoutManager);
 
+// Register listener to send IPC message when max duration is exceeded
+timeout.registerListener(async (maxDurationInSeconds, elapsedTimeInSeconds) => {
+  log(
+    `[${new Date().toISOString()}] Max duration exceeded: ${maxDurationInSeconds}s, elapsed: ${elapsedTimeInSeconds}s`
+  );
+  await zodIpc.send("MAX_DURATION_EXCEEDED", {
+    maxDurationInSeconds,
+    elapsedTimeInSeconds,
+  });
+});
+
 const standardResourceCatalog = new StandardResourceCatalog();
 resourceCatalog.setGlobalResourceCatalog(standardResourceCatalog);
 
@@ -136,12 +151,27 @@ traceContext.setGlobalManager(standardTraceContextManager);
 
 const durableClock = new DurableClock();
 clock.setGlobalClock(durableClock);
-const runMetadataManager = new StandardMetadataManager(
-  apiClientManager.clientOrThrow(),
-  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev"
-);
+const runMetadataManager = new StandardMetadataManager(apiClientManager.clientOrThrow());
 runMetadata.setGlobalManager(runMetadataManager);
-const waitUntilManager = new StandardWaitUntilManager();
+
+const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
+
+const standardInputStreamManager = new StandardInputStreamManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+inputStreams.setGlobalManager(standardInputStreamManager);
+
+const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
+const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
 waitUntil.setGlobalManager(waitUntilManager);
 
 const triggerLogLevel = getEnvVar("TRIGGER_LOG_LEVEL");
@@ -184,11 +214,18 @@ async function doBootstrap() {
 
     const tracingSDK = new TracingSDK({
       url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      metricsUrl: env.TRIGGER_OTEL_METRICS_ENDPOINT,
       instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      metricExporters: config.telemetry?.metricExporters ?? [],
+      metricReaders: config.telemetry?.metricReaders ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
+      resource: config.telemetry?.resource,
+      hostMetrics: true,
+      hostMetricGroups: ["process.cpu", "process.memory"],
+      nodejsRuntimeMetrics: true,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -305,6 +342,8 @@ function resetExecutionEnvironment() {
   devUsageManager.reset();
   usageTimeoutManager.reset();
   runMetadataManager.reset();
+  standardRealtimeStreamsManager.reset();
+  standardInputStreamManager.reset();
   waitUntilManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
@@ -314,8 +353,8 @@ function resetExecutionEnvironment() {
 
   // Wait for all streams to finish before completing the run
   waitUntil.register({
-    requiresResolving: () => runMetadataManager.hasActiveStreams(),
-    promise: () => runMetadataManager.waitForAllStreams(),
+    requiresResolving: () => standardRealtimeStreamsManager.hasActiveStreams(),
+    promise: (timeoutInMs) => standardRealtimeStreamsManager.waitForAllStreams(timeoutInMs),
   });
 
   log(`[${new Date().toISOString()}] Reset execution environment`);
@@ -352,6 +391,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       resetExecutionEnvironment();
+      standardInputStreamManager.setRunId(execution.run.id, execution.run.realtimeStreamsVersion);
 
       standardTraceContextManager.traceContext = traceContext;
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
@@ -597,8 +637,11 @@ const zodIpc = new ZodIpcConnection({
       }
       await flushAll(timeoutInMs);
     },
-    FLUSH: async ({ timeoutInMs }) => {
+    FLUSH: async ({ timeoutInMs, disableContext }) => {
       await flushAll(timeoutInMs);
+      if (disableContext) {
+        taskContext.disable();
+      }
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);

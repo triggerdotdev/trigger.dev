@@ -64,7 +64,6 @@ import type {
   TraceEventOptions,
   TraceSummary,
 } from "./eventRepository.types";
-import { originalRunIdCache } from "./originalRunIdCache.server";
 
 const MAX_FLUSH_DEPTH = 5;
 
@@ -783,6 +782,7 @@ export class EventRepository implements IEventRepository {
           SemanticInternalAttributes.ENTITY_TYPE
         ),
         id: rehydrateAttribute<string>(spanEvent.properties, SemanticInternalAttributes.ENTITY_ID),
+        metadata: undefined,
       };
 
       return {
@@ -813,40 +813,6 @@ export class EventRepository implements IEventRepository {
         // Additional properties
         metadata: spanEvent.metadata,
       };
-    });
-  }
-
-  async getSpanOriginalRunId(
-    storeTable: TaskEventStoreTable,
-    environmentId: string,
-    spanId: string,
-    traceId: string,
-    startCreatedAt: Date,
-    endCreatedAt?: Date
-  ): Promise<string | undefined> {
-    return await startActiveSpan("getSpanOriginalRunId", async (s) => {
-      return await originalRunIdCache.swr(traceId, spanId, async () => {
-        const spanEvent = await this.#getSpanEvent({
-          storeTable,
-          spanId,
-          environmentId,
-          startCreatedAt,
-          endCreatedAt,
-          options: { includeDebugLogs: false },
-        });
-
-        if (!spanEvent) {
-          return;
-        }
-        // This is used when the span is a cached run (because of idempotency key)
-        // so this span isn't the actual run span, but points to the original run
-        const originalRun = rehydrateAttribute<string>(
-          spanEvent.properties,
-          SemanticInternalAttributes.ORIGINAL_RUN_ID
-        );
-
-        return originalRun;
-      });
     });
   }
 

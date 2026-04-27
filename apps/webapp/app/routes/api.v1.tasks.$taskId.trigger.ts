@@ -11,12 +11,15 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { ApiAuthenticationResultSuccess, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -33,6 +36,8 @@ export const HeadersSchema = z.object({
   "x-trigger-client": z.string().nullish(),
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
   "x-trigger-request-idempotency-key": z.string().nullish(),
+  "x-trigger-realtime-streams-version": z.string().nullish(),
+  "x-trigger-source": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -63,6 +68,8 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-client": triggerClient,
       "x-trigger-engine-version": engineVersion,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
+      "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
     } = headers;
 
     const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
@@ -82,7 +89,7 @@ const { action, loader } = createActionApiRoute(
         isCached: false,
       }),
       buildResponseHeaders: async (responseBody, cachedEntity) => {
-        return await responseHeaders(cachedEntity, authentication, triggerClient);
+        return await responseHeaders(cachedEntity, authentication);
       },
     });
 
@@ -99,25 +106,6 @@ const { action, loader } = createActionApiRoute(
 
       const oneTimeUseToken = await getOneTimeUseToken(authentication);
 
-      logger.debug("Triggering task", {
-        taskId: params.taskId,
-        idempotencyKey,
-        idempotencyKeyTTL,
-        triggerVersion,
-        headers,
-        options: body.options,
-        isFromWorker,
-        traceContext,
-      });
-
-      logger.debug("[otelContext]", {
-        taskId: params.taskId,
-        headers,
-        options: body.options,
-        isFromWorker,
-        traceContext,
-      });
-
       const idempotencyKeyExpiresAt = resolveIdempotencyKeyTTL(idempotencyKeyTTL);
 
       const result = await service.call(
@@ -131,6 +119,11 @@ const { action, loader } = createActionApiRoute(
           traceContext,
           spanParentAsLink: spanParentAsLink === 1,
           oneTimeUseToken,
+          realtimeStreamsVersion: determineRealtimeStreamsVersion(
+            realtimeStreamsVersion ?? undefined
+          ),
+          triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+          triggerAction: "trigger",
         },
         engineVersion ?? undefined
       );
@@ -141,7 +134,7 @@ const { action, loader } = createActionApiRoute(
 
       await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
 
-      const $responseHeaders = await responseHeaders(result.run, authentication, triggerClient);
+      const $responseHeaders = await responseHeaders(result.run, authentication);
 
       return json(
         {
@@ -171,39 +164,26 @@ const { action, loader } = createActionApiRoute(
 
 async function responseHeaders(
   run: Pick<TaskRun, "friendlyId">,
-  authentication: ApiAuthenticationResultSuccess,
-  triggerClient?: string | null
+  authentication: ApiAuthenticationResultSuccess
 ): Promise<Record<string, string>> {
   const { environment, realtime } = authentication;
 
-  const claimsHeader = JSON.stringify({
+  const claims = {
     sub: environment.id,
     pub: true,
+    scopes: [`read:runs:${run.friendlyId}`, `write:inputStreams:${run.friendlyId}`],
     realtime,
+  };
+
+  const jwt = await internal_generateJWT({
+    secretKey: extractJwtSigningSecretKey(environment),
+    payload: claims,
+    expirationTime: "1h",
   });
 
-  if (triggerClient === "browser") {
-    const claims = {
-      sub: environment.id,
-      pub: true,
-      scopes: [`read:runs:${run.friendlyId}`],
-      realtime,
-    };
-
-    const jwt = await internal_generateJWT({
-      secretKey: environment.apiKey,
-      payload: claims,
-      expirationTime: "1h",
-    });
-
-    return {
-      "x-trigger-jwt-claims": claimsHeader,
-      "x-trigger-jwt": jwt,
-    };
-  }
-
   return {
-    "x-trigger-jwt-claims": claimsHeader,
+    "x-trigger-jwt-claims": JSON.stringify(claims),
+    "x-trigger-jwt": jwt,
   };
 }
 

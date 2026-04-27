@@ -1,4 +1,8 @@
-import { type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import {
+  BuildServerMetadata,
+  type InitializeDeploymentRequestBody,
+  type ExternalBuildData,
+} from "@trigger.dev/core/v3";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -11,6 +15,8 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
+import { DeploymentService } from "./deployment.server";
+import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
 
@@ -53,6 +59,28 @@ export class InitializeDeploymentService extends BaseService {
         };
       }
 
+      // v4 CLI versions always send `payload.type` ("MANAGED" or "V1"). v3 CLI
+      // versions never do, so the absence of `type` is a reliable signal that
+      // the request came from a 3.x CLI. Detection always runs (so we can
+      // observe how many deploys are still using v3), enforcement is gated
+      // behind DEPRECATE_V3_CLI_DEPLOYS_ENABLED so it can be rolled out safely.
+      if (!payload.type) {
+        const enforced = env.DEPRECATE_V3_CLI_DEPLOYS_ENABLED === "1";
+
+        logger.warn("Detected deploy from deprecated v3 CLI", {
+          environmentId: environment.id,
+          projectId: environment.projectId,
+          organizationId: environment.project.organizationId,
+          enforced,
+        });
+
+        if (enforced) {
+          throw new ServiceValidationError(
+            "The trigger.dev CLI v3 is no longer supported for deployments. Please upgrade your project to v4: https://trigger.dev/docs/migrating-from-v3"
+          );
+        }
+      }
+
       if (payload.type === "UNMANAGED") {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
       }
@@ -87,12 +115,18 @@ export class InitializeDeploymentService extends BaseService {
         );
       }
 
-      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started.
-      // This helps avoid Depot token expiration issues.
-      const externalBuildData =
-        payload.initialStatus === "PENDING"
-          ? undefined
-          : await createRemoteImageBuild(environment.project);
+      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started to avoid token expiration issues.
+      // For local and native builds we don't need to generate the Depot tokens. We still need to create an empty object sadly due to a bug in older CLI versions.
+      const generateExternalBuildToken =
+        payload.initialStatus === "PENDING" || payload.isNativeBuild || payload.isLocalBuild;
+
+      const externalBuildData = generateExternalBuildToken
+        ? ({
+            projectId: "-",
+            buildToken: "-",
+            buildId: "-",
+          } satisfies ExternalBuildData)
+        : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findFirst({
@@ -136,9 +170,43 @@ export class InitializeDeploymentService extends BaseService {
 
       const { imageRef, isEcr, repoCreated } = imageRefResult;
 
-      // we keep using `BUILDING` as the initial status if not explicitly set
-      // to avoid changing the behavior for deployments not created in the build server
-      const initialStatus = payload.initialStatus ?? "BUILDING";
+      // We keep using `BUILDING` as the initial status if not explicitly set
+      // to avoid changing the behavior for deployments not created in the build server.
+      // Native builds always start in the `PENDING` status.
+      const initialStatus =
+        payload.initialStatus ?? (payload.isNativeBuild ? "PENDING" : "BUILDING");
+
+      const deploymentService = new DeploymentService();
+      const s2StreamOrFail = await deploymentService
+        .createEventStream(environment.project, { shortCode: deploymentShortCode })
+        .andThen(({ basin, stream }) =>
+          deploymentService.getEventStreamAccessToken(environment.project).map((accessToken) => ({
+            basin,
+            stream,
+            accessToken,
+          }))
+        );
+
+      if (s2StreamOrFail.isErr()) {
+        logger.error(
+          "Failed to create S2 event stream on deployment initialization, continuing without logs stream",
+          {
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            error: s2StreamOrFail.error,
+          }
+        );
+      }
+
+      const eventStream = s2StreamOrFail.isOk()
+        ? {
+            s2: {
+              basin: s2StreamOrFail.value.basin,
+              stream: s2StreamOrFail.value.stream,
+              accessToken: s2StreamOrFail.value.accessToken,
+            },
+          }
+        : undefined;
 
       logger.debug("Creating deployment", {
         environmentId: environment.id,
@@ -150,7 +218,25 @@ export class InitializeDeploymentService extends BaseService {
         isEcr,
         repoCreated,
         initialStatus,
+        artifactKey: payload.isNativeBuild ? payload.artifactKey : undefined,
+        isNativeBuild: payload.isNativeBuild,
       });
+
+      const buildServerMetadata: BuildServerMetadata | undefined =
+        payload.isNativeBuild || payload.buildId
+          ? {
+              buildId: payload.buildId,
+              ...(payload.isNativeBuild
+                ? {
+                    isNativeBuild: payload.isNativeBuild,
+                    artifactKey: payload.artifactKey,
+                    skipPromotion: payload.skipPromotion,
+                    configFilePath: payload.configFilePath,
+                    skipEnqueue: payload.skipEnqueue,
+                  }
+                : {}),
+            }
+          : undefined;
 
       const deployment = await this._prisma.workerDeployment.create({
         data: {
@@ -162,12 +248,15 @@ export class InitializeDeploymentService extends BaseService {
           environmentId: environment.id,
           projectId: environment.projectId,
           externalBuildData,
+          buildServerMetadata,
           triggeredById: triggeredBy?.id,
           type: payload.type,
           imageReference: imageRef,
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
+          commitSHA: payload.gitMeta?.commitSha ?? undefined,
           runtime: payload.runtime ?? undefined,
+          triggeredVia: payload.triggeredVia ?? undefined,
           startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
         },
       });
@@ -182,9 +271,46 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + timeoutMs)
       );
 
+      // For github integration there is no artifactKey, hence we skip it here
+      if (payload.isNativeBuild && payload.artifactKey && !payload.skipEnqueue) {
+        const result = await deploymentService
+          .enqueueBuild(environment, deployment, payload.artifactKey, {
+            skipPromotion: payload.skipPromotion,
+            configFilePath: payload.configFilePath,
+          })
+          .orElse((error) => {
+            logger.error("Failed to enqueue build", {
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              deploymentId: deployment.id,
+              error: error.cause,
+            });
+
+            return deploymentService
+              .cancelDeployment(environment, deployment.friendlyId, {
+                canceledReason: "Failed to enqueue build, please try again shortly.",
+              })
+              .orTee((cancelError) =>
+                logger.error("Failed to cancel deployment after failed build enqueue", {
+                  environmentId: environment.id,
+                  projectId: environment.projectId,
+                  deploymentId: deployment.id,
+                  error: cancelError,
+                })
+              )
+              .andThen(() => errAsync(error))
+              .orElse(() => errAsync(error));
+          });
+
+        if (result.isErr()) {
+          throw Error("Failed to enqueue build");
+        }
+      }
+
       return {
         deployment,
         imageRef,
+        eventStream,
       };
     });
   }

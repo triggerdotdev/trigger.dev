@@ -1,0 +1,66 @@
+---
+description: Guidelines for creating OpenTelemetry metrics to avoid cardinality issues
+globs:
+  - "**/*.ts"
+---
+
+# OpenTelemetry Metrics Guidelines
+
+When creating or editing OTEL metrics (counters, histograms, gauges), always ensure metric attributes have **low cardinality**.
+
+## What is Cardinality?
+
+Cardinality refers to the number of unique values an attribute can have. Each unique combination of attribute values creates a new time series, which consumes memory and storage in your metrics backend.
+
+## Rules
+
+### DO use low-cardinality attributes:
+- **Enums**: `environment_type` (PRODUCTION, STAGING, DEVELOPMENT, PREVIEW)
+- **Booleans**: `hasFailures`, `streaming`, `success`
+- **Bounded error codes**: A finite, controlled set of error types
+- **Shard IDs**: When sharding is bounded (e.g., 0-15)
+
+### DO NOT use high-cardinality attributes:
+- **UUIDs/IDs**: `envId`, `userId`, `runId`, `projectId`, `organizationId`
+- **Unbounded integers**: `itemCount`, `batchSize`, `retryCount`
+- **Timestamps**: `createdAt`, `startTime`
+- **Free-form strings**: `errorMessage`, `taskName`, `queueName`
+
+## Example
+
+```typescript
+// BAD - High cardinality
+this.counter.add(1, {
+  envId: options.environmentId,        // UUID - unbounded
+  itemCount: options.runCount,         // Integer - unbounded
+});
+
+// GOOD - Low cardinality
+this.counter.add(1, {
+  environment_type: options.environmentType,  // Enum - 4 values
+  streaming: true,                            // Boolean - 2 values
+});
+```
+
+## Prometheus Metric Naming
+
+When metrics are exported via OTLP to Prometheus, the exporter automatically adds unit suffixes to metric names:
+
+| OTel Metric Name | Unit | Prometheus Name |
+|------------------|------|-----------------|
+| `my_duration_ms` | `ms` | `my_duration_ms_milliseconds` |
+| `my_counter` | counter | `my_counter_total` |
+| `items_inserted` | counter | `items_inserted_inserts_total` |
+| `batch_size` | histogram | `batch_size_items_bucket` |
+
+Keep this in mind when writing Grafana dashboards or Prometheus queries—the metric names in Prometheus will differ from the names defined in code.
+
+## Reference
+
+See the schedule engine (`internal-packages/schedule-engine/src/engine/index.ts`) for a good example of low-cardinality metric attributes.
+
+High cardinality metrics can cause:
+- Memory bloat in metrics backends (Axiom, Prometheus, etc.)
+- Slow queries and dashboard timeouts
+- Increased costs (many backends charge per time series)
+- Potential data loss or crashes at scale

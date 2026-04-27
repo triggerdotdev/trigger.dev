@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - "docs/**"
       - ".changeset/**"
+      - "hosting/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -28,4 +29,8 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     with:
       package: cli-v3
+    secrets: inherit
+
+  sdk-compat:
+    uses: ./.github/workflows/sdk-compat.yml
     secrets: inherit
