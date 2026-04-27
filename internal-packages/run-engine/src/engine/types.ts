@@ -129,6 +129,28 @@ export type RunEngineOptions = {
     redis?: RedisOptions;
     /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
     maxDebounceDurationMs?: number;
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
+     * Quantization collapses many concurrent triggers on the same hot debounce key
+     * into the same target time, so that the unlocked fast-path skip becomes
+     * effective and the redlock on `handleDebounce` is not contended.
+     *
+     * A run might fire up to `quantizeNewDelayUntilMs` earlier than the strict
+     * `now + delay` spec.
+     *
+     * Set to 0 to disable quantization.
+     *
+     * Default: 1000 (1s).
+     */
+    quantizeNewDelayUntilMs?: number;
+    /**
+     * Whether to read the existing run's `delayUntil` outside of the redlock and
+     * short-circuit when the new (quantized) `delayUntil` is not later than the
+     * current one. Drops `updateData` when triggered for trailing mode.
+     *
+     * Default: true.
+     */
+    fastPathSkipEnabled?: boolean;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

@@ -15,6 +15,7 @@ import { nanoid } from "nanoid";
 import { SystemResources } from "./systems.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { DelayedRunSystem } from "./delayedRunSystem.js";
+import { LockAcquisitionTimeoutError } from "../locking.js";
 
 export type DebounceOptions = {
   key: string;
@@ -45,6 +46,17 @@ export type DebounceSystemOptions = {
   executionSnapshotSystem: ExecutionSnapshotSystem;
   delayedRunSystem: DelayedRunSystem;
   maxDebounceDurationMs: number;
+  /**
+   * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
+   * Set to 0 to disable quantization.
+   */
+  quantizeNewDelayUntilMs?: number;
+  /**
+   * When true, read the existing run's `delayUntil` outside the redlock and
+   * short-circuit if the new (quantized) `delayUntil` is not later than the
+   * current one.
+   */
+  fastPathSkipEnabled?: boolean;
 };
 
 export type DebounceResult =
@@ -89,6 +101,8 @@ export class DebounceSystem {
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
   private readonly delayedRunSystem: DelayedRunSystem;
   private readonly maxDebounceDurationMs: number;
+  private readonly quantizeNewDelayUntilMs: number;
+  private readonly fastPathSkipEnabled: boolean;
 
   constructor(options: DebounceSystemOptions) {
     this.$ = options.resources;
@@ -106,6 +120,8 @@ export class DebounceSystem {
     this.executionSnapshotSystem = options.executionSnapshotSystem;
     this.delayedRunSystem = options.delayedRunSystem;
     this.maxDebounceDurationMs = options.maxDebounceDurationMs;
+    this.quantizeNewDelayUntilMs = Math.max(0, options.quantizeNewDelayUntilMs ?? 1000);
+    this.fastPathSkipEnabled = options.fastPathSkipEnabled ?? true;
 
     this.#registerCommands();
   }
@@ -450,9 +466,238 @@ return 0
     debounce: DebounceOptions;
     tx?: PrismaClientOrTransaction;
   }): Promise<DebounceResult> {
-    return await this.$.runLock.lock("handleDebounce", [existingRunId], async () => {
-      const prisma = tx ?? this.$.prisma;
+    const prisma = tx ?? this.$.prisma;
 
+    // Compute the (quantized) target delayUntil up-front, before taking any lock.
+    // Quantizing to e.g. 1s buckets collapses many concurrent triggers on the same
+    // hot debounce key onto the same target time, so the unlocked fast-path skip
+    // below becomes effective and the redlock is not contended.
+    const newDelayUntil = this.#computeQuantizedDelayUntil(debounce.delay);
+
+    // Fast-path: read the current delayUntil outside the redlock and short-circuit
+    // if our (quantized) newDelayUntil isn't later than what's already scheduled.
+    // Safe because debounce is monotonic-forward only: a stale read either matches
+    // reality or undershoots, both of which decay correctly (re-checked properly
+    // inside the lock by whoever is actually pushing forward).
+    if (this.fastPathSkipEnabled && newDelayUntil) {
+      const fastPathResult = await this.#tryFastPathSkip({
+        existingRunId,
+        newDelayUntil,
+        debounce,
+        prisma,
+      });
+      if (fastPathResult) {
+        return fastPathResult;
+      }
+    }
+
+    try {
+      return await this.$.runLock.lock("handleDebounce", [existingRunId], async () => {
+        return await this.#handleExistingRunLocked({
+          existingRunId,
+          redisKey,
+          environmentId,
+          taskIdentifier,
+          debounce,
+          newDelayUntil,
+          prisma,
+          tx,
+        });
+      });
+    } catch (error) {
+      // Lock contention safety net: if we couldn't take the lock (redlock quorum
+      // failure or our retry budget exhausted), fall in line with whoever is
+      // actually updating the run instead of bubbling a 5xx to the SDK and
+      // amplifying the herd via SDK retries. Debounce is best-effort - dropping
+      // our contribution to delayUntil here is fine, the herd is updating it for
+      // us.
+      if (this.#isLockContentionError(error)) {
+        return await this.#handleLockContentionFallback({
+          existingRunId,
+          debounce,
+          error,
+          prisma,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Parses the debounce delay and (optionally) quantizes it to a bucket boundary
+   * by flooring the absolute timestamp. Quantization makes concurrent triggers on
+   * the same key share a target time, which is what makes the unlocked fast-path
+   * skip effective.
+   */
+  #computeQuantizedDelayUntil(delay: string): Date | null {
+    const parsed = parseNaturalLanguageDuration(delay);
+    if (!parsed) {
+      return null;
+    }
+    if (this.quantizeNewDelayUntilMs <= 0) {
+      return parsed;
+    }
+    const bucket = this.quantizeNewDelayUntilMs;
+    const quantized = Math.floor(parsed.getTime() / bucket) * bucket;
+    return new Date(quantized);
+  }
+
+  #isLockContentionError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    return (
+      error instanceof LockAcquisitionTimeoutError ||
+      error.name === "LockAcquisitionTimeoutError" ||
+      error.name === "ExecutionError" ||
+      error.name === "ResourceLockedError"
+    );
+  }
+
+  /**
+   * Reads `delayUntil`/`status`/`createdAt` outside the redlock and
+   * short-circuits if the existing scheduled time already covers our target.
+   * Skips trailing-mode triggers that carry `updateData` since those still need
+   * the lock to apply their data update. Also falls through when the run has
+   * already exceeded its max debounce duration so the locked path can return
+   * `max_duration_exceeded` and let the caller create a new run.
+   */
+  async #tryFastPathSkip({
+    existingRunId,
+    newDelayUntil,
+    debounce,
+    prisma,
+  }: {
+    existingRunId: string;
+    newDelayUntil: Date;
+    debounce: DebounceOptions;
+    prisma: PrismaClientOrTransaction;
+  }): Promise<DebounceResult | null> {
+    // Trailing mode with updateData still needs the lock so the data update is
+    // applied; only short-circuit when there's nothing to update.
+    if (debounce.mode === "trailing" && debounce.updateData) {
+      return null;
+    }
+
+    const probe = await prisma.taskRun.findFirst({
+      where: { id: existingRunId },
+      select: { status: true, delayUntil: true, createdAt: true },
+    });
+    if (!probe || probe.status !== "DELAYED" || !probe.delayUntil) {
+      return null;
+    }
+    if (newDelayUntil.getTime() > probe.delayUntil.getTime()) {
+      return null;
+    }
+
+    // Fall through to the lock path when newDelayUntil would exceed the run's
+    // max debounce window so the caller can return max_duration_exceeded and
+    // create a fresh run.
+    let maxDurationMs = this.maxDebounceDurationMs;
+    if (debounce.maxDelay) {
+      const parsedMaxDelay = parseNaturalLanguageDurationInMs(debounce.maxDelay);
+      if (parsedMaxDelay !== undefined) {
+        maxDurationMs = parsedMaxDelay;
+      }
+    }
+    const maxDelayUntilMs = probe.createdAt.getTime() + maxDurationMs;
+    if (newDelayUntil.getTime() > maxDelayUntilMs) {
+      return null;
+    }
+
+    const fullRun = await prisma.taskRun.findFirst({
+      where: { id: existingRunId },
+      include: { associatedWaitpoint: true },
+    });
+    if (!fullRun || fullRun.status !== "DELAYED") {
+      return null;
+    }
+
+    this.$.logger.debug("handleExistingRun: fast-path skip, existing delayUntil already covers", {
+      existingRunId,
+      debounceKey: debounce.key,
+      newDelayUntil,
+      currentDelayUntil: fullRun.delayUntil,
+    });
+
+    return {
+      status: "existing",
+      run: fullRun,
+      waitpoint: fullRun.associatedWaitpoint,
+    };
+  }
+
+  async #handleLockContentionFallback({
+    existingRunId,
+    debounce,
+    error,
+    prisma,
+  }: {
+    existingRunId: string;
+    debounce: DebounceOptions;
+    error: unknown;
+    prisma: PrismaClientOrTransaction;
+  }): Promise<DebounceResult> {
+    const fullRun = await prisma.taskRun.findFirst({
+      where: { id: existingRunId },
+      include: { associatedWaitpoint: true },
+    });
+
+    if (!fullRun || fullRun.status !== "DELAYED") {
+      // The run is no longer in a state we can safely return as "existing" -
+      // re-throw so the caller surfaces the failure rather than silently
+      // succeeding on a stale/terminated run.
+      this.$.logger.warn(
+        "handleExistingRun: lock contention, but existing run no longer DELAYED - rethrowing",
+        {
+          existingRunId,
+          debounceKey: debounce.key,
+          status: fullRun?.status,
+        }
+      );
+      throw error;
+    }
+
+    this.$.logger.warn(
+      "handleExistingRun: lock contention, returning existing run without rescheduling",
+      {
+        existingRunId,
+        debounceKey: debounce.key,
+        currentDelayUntil: fullRun.delayUntil,
+        error: error instanceof Error ? error.message : String(error),
+        errorName: error instanceof Error ? error.name : undefined,
+      }
+    );
+
+    return {
+      status: "existing",
+      run: fullRun,
+      waitpoint: fullRun.associatedWaitpoint,
+    };
+  }
+
+  /**
+   * Body of `handleExistingRun` that runs while holding the redlock on the run.
+   * Receives the (possibly quantized) `newDelayUntil` precomputed by the caller.
+   */
+  async #handleExistingRunLocked({
+    existingRunId,
+    redisKey,
+    environmentId,
+    taskIdentifier,
+    debounce,
+    newDelayUntil,
+    prisma,
+    tx,
+  }: {
+    existingRunId: string;
+    redisKey: string;
+    environmentId: string;
+    taskIdentifier: string;
+    debounce: DebounceOptions;
+    newDelayUntil: Date | null;
+    prisma: PrismaClientOrTransaction;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<DebounceResult> {
+    {
       // Get the latest execution snapshot
       let snapshot;
       try {
@@ -514,8 +759,6 @@ return 0
         });
       }
 
-      // Calculate new delay - parseNaturalLanguageDuration returns a Date (now + duration)
-      const newDelayUntil = parseNaturalLanguageDuration(debounce.delay);
       if (!newDelayUntil) {
         this.$.logger.error("handleExistingRun: invalid delay duration", {
           delay: debounce.delay,
@@ -619,7 +862,7 @@ return 0
         run: updatedRun,
         waitpoint: existingRun.associatedWaitpoint,
       };
-    });
+    }
   }
 
   /**
