@@ -8,7 +8,7 @@ description: "Drive a chat.agent through real turns in unit tests — no network
 
 `@trigger.dev/sdk/ai/test` exports `mockChatAgent`, an offline harness that runs your `chat.agent` definition's `run()` function inside an in-memory task runtime. You send messages, actions, and stop signals through driver methods and assert against the chunks the agent emits.
 
-Under the hood the harness drives the agent's backing [Session](/sessions/overview) channels — `.in` receives the records your `sendMessage` / `sendStop` / `sendAction` produce, `.out` captures the chunks the agent emits. The harness API itself is session-agnostic; you don't need to manage `sessionId` in tests.
+Under the hood the harness drives the agent's backing Session channels — `.in` receives the records your `sendMessage` / `sendStop` / `sendAction` produce, `.out` captures the chunks the agent emits. The harness API itself is session-agnostic; you don't need to manage `sessionId` in tests.
 
 The harness exercises the real turn loop, lifecycle hooks, validation, hydration, and action routing — only the language model and the surrounding Trigger.dev runtime are replaced. Pair it with [`MockLanguageModelV3`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/mock-language-model-v3) and `simulateReadableStream` from `ai` to control LLM responses.
 

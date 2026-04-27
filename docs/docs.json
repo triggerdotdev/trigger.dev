@@ -105,6 +105,7 @@
                 "pages": [
                   "ai-chat/overview",
                   "ai-chat/changelog",
+                  "ai-chat/upgrade-guide",
                   "ai-chat/quick-start",
                   "ai-chat/backend",
                   "ai-chat/frontend",
@@ -131,15 +132,6 @@
                   },
                   "ai-chat/client-protocol",
                   "ai-chat/reference"
-                ]
-              },
-              {
-                "group": "Sessions",
-                "pages": [
-                  "sessions/overview",
-                  "sessions/quick-start",
-                  "sessions/channels",
-                  "sessions/reference"
                 ]
               }
             ]

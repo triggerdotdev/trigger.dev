@@ -13,7 +13,7 @@ The highest-level approach. Handles message accumulation, stop signals, turn lif
 </Tip>
 
 <Info>
-  Every `chat.agent` conversation is backed by a [Session](/sessions/overview) — `externalId` is your `chatId`, `type` is `"chat.agent"`. The session outlives any single run, which is why chats can resume across days or deploys without losing identity. You rarely need to touch the session directly (`chat.stream`, `chat.messages`, `chat.stopSignal` wrap everything), but `payload.sessionId` is available if you want to reach in — e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
+  Every `chat.agent` conversation is backed by a durable Session — `externalId` is your `chatId`, `type` is `"chat.agent"`, `taskIdentifier` is the agent's task ID. The session is the run manager: it owns the chat's runs, persists across run lifecycles, and orchestrates handoffs (idle continuation, `chat.requestUpgrade`). You rarely need to touch the session directly (`chat.stream`, `chat.messages`, `chat.stopSignal` wrap everything), but `payload.sessionId` is available if you want to reach in — e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
 </Info>
 
 ### Simple: return a StreamTextResult
@@ -674,11 +674,18 @@ export const myChat = chat.agent({
 ```ts app/actions.ts
 "use server";
 
+import { auth } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
-import type { myChat } from "@/trigger/chat";
 import { db } from "@/lib/db";
 
-export const getChatToken = () => chat.createAccessToken<typeof myChat>("my-chat");
+export const startChatSession = chat.createStartSessionAction("my-chat");
+
+export async function mintChatAccessToken(chatId: string) {
+  return auth.createPublicToken({
+    scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
+    expirationTime: "1h",
+  });
+}
 
 export async function getChatMessages(chatId: string) {
   const found = await db.chat.findUnique({ where: { id: chatId } });
@@ -690,14 +697,12 @@ export async function getAllSessions() {
   const result: Record<
     string,
     {
-      runId: string;
       publicAccessToken: string;
       lastEventId?: string;
     }
   > = {};
   for (const s of sessions) {
     result[s.id] = {
-      runId: s.runId,
       publicAccessToken: s.publicAccessToken,
       lastEventId: s.lastEventId ?? undefined,
     };
@@ -716,12 +721,14 @@ export async function deleteSession(chatId: string) {
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { myChat } from "@/trigger/chat";
-import { getChatToken, deleteSession } from "@/app/actions";
+import { mintChatAccessToken, startChatSession, deleteSession } from "@/app/actions";
 
 export function Chat({ chatId, initialMessages, initialSessions }) {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
-    accessToken: getChatToken,
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     clientData: { userId: currentUser.id }, // Type-checked against clientDataSchema
     sessions: initialSessions,
     onSessionChange: (id, session) => {

@@ -11,7 +11,7 @@ description: "Read AI/LLM output, file chunks, and other streaming data from you
 </Note>
 
 <Tip>
-  Run-scoped streams are the right primitive for ephemeral I/O that lives inside a single run's lifetime. For durable, long-lived channels that outlive a run — chat agents, cross-run workflows, inbox-style listings — use [Sessions](/sessions/overview) instead. Both share the same underlying realtime transport; Sessions layer durable identity and bidirectional channels on top.
+  Run-scoped streams are the right primitive for ephemeral I/O that lives inside a single run's lifetime. For durable, long-lived channels that outlive a run, see [`chat.agent`](/ai-chat/overview): it's built on a Session row that owns the chat's runs and exposes bidirectional `.in` / `.out` channels addressed by a durable id.
 </Tip>
 
 ## Reading streams
