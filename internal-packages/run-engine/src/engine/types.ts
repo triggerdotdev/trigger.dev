@@ -146,16 +146,19 @@ export type RunEngineOptions = {
     /**
      * Whether to read the existing run's `delayUntil` outside of the redlock and
      * short-circuit when the new (quantized) `delayUntil` is not later than the
-     * current one. Drops `updateData` when triggered for trailing mode.
+     * current one. Trailing-mode triggers carrying `updateData` always bypass
+     * this fast path and take the lock so payload/metadata/tag updates still
+     * land on the run.
      *
      * Default: true.
      */
     fastPathSkipEnabled?: boolean;
     /**
-     * Whether to route the unlocked fast-path read of `delayUntil`/`createdAt`
-     * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
-     * Safe because the read is best-effort and re-checked under the lock by
-     * whichever caller is actually pushing forward; replica lag at worst means
+     * Whether to route the cheap probe of the unlocked fast-path through
+     * `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer. The
+     * full-run read used to construct the returned `existing` result still
+     * goes through the writer, so callers never see a run whose status has
+     * already moved out of DELAYED on the writer. Replica lag at worst means
      * a few extra callers fall through to the lock.
      *
      * Default: false.
