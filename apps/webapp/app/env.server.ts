@@ -666,6 +666,21 @@ const EnvironmentSchema = z
       .int()
       .default(60_000 * 60), // 1 hour
 
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
+     * in the debounce system. Quantization collapses concurrent triggers on the
+     * same hot debounce key onto the same target time so the unlocked fast-path
+     * skip is effective. Set to 0 to disable. Default: 1000ms (1s).
+     */
+    RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS: z.coerce.number().int().min(0).default(1000),
+
+    /**
+     * Whether the unlocked fast-path skip is enabled in the debounce system.
+     * Acts as a kill switch in case the fast-path needs to be disabled in
+     * production without a redeploy. Default: "1" (enabled).
+     */
+    RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED: z.string().default("1"),
+
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
       .optional()
