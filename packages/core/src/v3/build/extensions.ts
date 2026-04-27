@@ -63,6 +63,8 @@ export interface BuildLayer {
   deploy?: {
     env?: Record<string, string | undefined>;
     parentEnv?: Record<string, string | undefined>;
+    secrets?: Record<string, boolean>;
+    parentSecrets?: Record<string, boolean>;
     override?: boolean;
   };
   dependencies?: Record<string, string>;

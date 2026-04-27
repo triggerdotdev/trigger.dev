@@ -165,6 +165,18 @@ function applyLayerToManifest(layer: BuildLayer, manifest: BuildManifest): Build
     }
   }
 
+  if (layer.deploy?.secrets) {
+    $manifest.deploy.sync ??= {};
+    $manifest.deploy.sync.secrets ??= {};
+    Object.assign($manifest.deploy.sync.secrets, layer.deploy.secrets);
+  }
+
+  if (layer.deploy?.parentSecrets) {
+    $manifest.deploy.sync ??= {};
+    $manifest.deploy.sync.parentSecrets ??= {};
+    Object.assign($manifest.deploy.sync.parentSecrets, layer.deploy.parentSecrets);
+  }
+
   if (layer.deploy?.parentEnv) {
     $manifest.deploy.env ??= {};
     $manifest.deploy.sync ??= {};

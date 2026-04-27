@@ -156,10 +156,12 @@ export class EnvironmentVariablesRepository implements Repository {
             prismaClient: tx,
           });
 
-          // If parentEnvironmentId is provided and isSecret is not explicitly set,
-          // look up if the parent has this variable marked as secret
+          // Per-item isSecret takes priority, then top-level options.isSecret
+          const perItemIsSecret = variable.isSecret ?? options.isSecret;
+
+          // If isSecret is not explicitly set, look up if the parent has this variable marked as secret
           let inheritedIsSecret: boolean | undefined = undefined;
-          if (options.isSecret === undefined && options.parentEnvironmentId) {
+          if (perItemIsSecret === undefined && options.parentEnvironmentId) {
             const parentVariableValue = await tx.environmentVariableValue.findFirst({
               where: {
                 variableId: environmentVariable.id,
@@ -174,7 +176,7 @@ export class EnvironmentVariablesRepository implements Repository {
             }
           }
 
-          const effectiveIsSecret = options.isSecret ?? inheritedIsSecret;
+          const effectiveIsSecret = perItemIsSecret ?? inheritedIsSecret;
 
           //set the secret values and references
           for (const environmentId of options.environmentIds) {
@@ -193,8 +195,7 @@ export class EnvironmentVariablesRepository implements Repository {
               existingSecret &&
               existingSecret.secret === variable.value &&
               existingValueRecord &&
-              (options.isSecret === undefined ||
-                existingValueRecord.isSecret === options.isSecret);
+              (perItemIsSecret === undefined || existingValueRecord.isSecret === perItemIsSecret);
             if (canSkip) {
               continue;
             }
@@ -222,9 +223,9 @@ export class EnvironmentVariablesRepository implements Repository {
                   },
                   ...(options.lastUpdatedBy ? { lastUpdatedBy: options.lastUpdatedBy } : {}),
                   valueReferenceId: secretReference.id,
-                  ...(options.isSecret !== undefined
+                  ...(perItemIsSecret !== undefined
                     ? {
-                        isSecret: options.isSecret,
+                        isSecret: perItemIsSecret,
                       }
                     : {}),
                 },

@@ -23,7 +23,9 @@ export const CreateEnvironmentVariables = z.object({
   environmentIds: z.array(z.string()),
   isSecret: z.boolean().optional(),
   parentEnvironmentId: z.string().optional(),
-  variables: z.array(z.object({ key: EnvironmentVariableKey, value: z.string() })),
+  variables: z.array(
+    z.object({ key: EnvironmentVariableKey, value: z.string(), isSecret: z.boolean().optional() })
+  ),
   lastUpdatedBy: EnvironmentVariableUpdaterSchema.optional(),
 });
 

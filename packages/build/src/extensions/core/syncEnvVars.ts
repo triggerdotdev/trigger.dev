@@ -119,6 +119,8 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         deploy: {
           env,
           parentEnv,
+          secrets: result.secrets,
+          parentSecrets: result.parentSecrets,
           override: options?.override ?? true,
         },
       });
@@ -151,12 +153,15 @@ async function callSyncEnvVarsFn(
   environment: string,
   branch: string | undefined,
   context: BuildContext
-): Promise<{
-  env: Record<string, string>;
-  secrets?: Record<string, boolean>;
-  parentEnv?: Record<string, string>;
-  parentSecrets?: Record<string, boolean>;
-} | undefined> {
+): Promise<
+  | {
+      env: Record<string, string>;
+      secrets?: Record<string, boolean>;
+      parentEnv?: Record<string, string>;
+      parentSecrets?: Record<string, boolean>;
+    }
+  | undefined
+> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
     let resolvedEnvVars: {
       env: Record<string, string>;

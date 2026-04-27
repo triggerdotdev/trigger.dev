@@ -10,9 +10,7 @@ const blacklistedVariables: VariableRule[] = [
   { type: "exact", key: "TRIGGER_API_URL" },
 ];
 
-export function removeBlacklistedVariables(
-  variables: EnvironmentVariable[]
-): EnvironmentVariable[] {
+export function removeBlacklistedVariables<T extends EnvironmentVariable>(variables: T[]): T[] {
   return variables.filter((v) => {
     const whitelisted = blacklistedVariables.find(
       (bv) => bv.type === "whitelist" && bv.key === v.key
