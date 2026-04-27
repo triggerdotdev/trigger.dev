@@ -1,6 +1,7 @@
 import {
   accessoryAttributes,
   AnyTask,
+  apiClientManager,
   getSchemaParseFn,
   InputStreamOncePromise,
   type InputStreamOnceOptions,
@@ -75,9 +76,8 @@ import {
   type SessionPipeStreamOptions,
   type SessionSubscribeOptions,
 } from "./sessions.js";
-import { createTask, trigger as triggerTaskInternal } from "./shared.js";
-import { resourceCatalog } from "@trigger.dev/core/v3";
-import type { TriggerChatTaskParams, TriggerChatTaskResult } from "./chat.js";
+import { createTask } from "./shared.js";
+import { resourceCatalog, type SessionTriggerConfig } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
 /** Re-export for typing `ctx` in `chat.agent` hooks without importing `@trigger.dev/core`. */
@@ -3542,11 +3542,15 @@ function chatCustomAgent<
     ) => {
       // Bind the run to its backing Session so module-level helpers
       // (chat.messages, chat.stream, chat.createStopSignal, chat.createSession)
-      // resolve to this chat's `.in` / `.out` channels — same setup as
-      // chat.agent. Without this, any helper that calls getChatSession()
-      // throws "session handle is not initialized".
-      const sessionIdForHandle = payload.sessionId ?? payload.chatId;
-      locals.set(chatSessionHandleKey, sessions.open(sessionIdForHandle));
+      // resolve to this chat's `.in` / `.out` channels. Address
+      // everywhere by `payload.chatId` (the session externalId) so the
+      // agent's writes and the transport's reads converge on the same
+      // S2 stream key + waitpoint key.
+      //
+      // The Session row is created server-side by `POST /sessions` (or
+      // `chat.createStartSessionAction`) before this run is triggered.
+      // No client-side upsert needed.
+      locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
       return userRun(payload, runOptions);
     },
@@ -3623,12 +3627,13 @@ function chatAgent<
       // (chat.stream, chat.messages, chat.stopSignal) resolves to this
       // chat's `.in` / `.out` channels.
       //
-      // The transport opens/creates the session with `externalId = chatId`
-      // and threads its friendlyId through `payload.sessionId`. For legacy
-      // transports that predate the migration the field is missing; fall
-      // back to opening by chatId (which the transport uses as externalId).
-      const sessionIdForHandle = payload.sessionId ?? payload.chatId;
-      locals.set(chatSessionHandleKey, sessions.open(sessionIdForHandle));
+      // Address everywhere by `payload.chatId` (the session externalId):
+      // matches what the transport puts in URL paths and waitpoint keys,
+      // and what the server-side trigger flow uses as the session
+      // identity. The Session row is created by `POST /sessions` (via
+      // `chat.createStartSessionAction` or browser-direct) before this
+      // run is triggered — no client-side upsert needed here.
+      locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
 
       // Set gen_ai.conversation.id on the run-level span for dashboard context
       const activeSpan = trace.getActiveSpan();
@@ -3703,11 +3708,11 @@ function chatAgent<
                 scopes: {
                   read: {
                     runs: currentRunId,
-                    ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                    sessions: payload.chatId,
                   },
                   write: {
                     inputStreams: currentRunId,
-                    ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                    sessions: payload.chatId,
                   },
                 },
                 expirationTime: chatAccessTokenTTL,
@@ -4283,11 +4288,11 @@ function chatAgent<
                         scopes: {
                           read: {
                             runs: currentRunId,
-                            ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                            sessions: payload.chatId,
                           },
                           write: {
                             inputStreams: currentRunId,
-                            ...(sessionIdForHandle ? { sessions: sessionIdForHandle } : {}),
+                            sessions: payload.chatId,
                           },
                         },
                         expirationTime: chatAccessTokenTTL,
@@ -6842,19 +6847,58 @@ import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 
 /**
- * Options for {@link createChatTriggerAction}.
+ * Options for {@link createChatStartSessionAction}.
  */
-export type CreateChatTriggerActionOptions = {
-  /** TTL for the run-scoped public access token. @default "1h" */
+export type CreateChatStartSessionActionOptions = {
+  /** TTL for the session-scoped public access token. @default "1h" */
   tokenTTL?: string | number | Date;
+  /**
+   * Default trigger config used when starting a new session for a chat.
+   * Per-call `params.triggerConfig` shallow-merges on top.
+   */
+  triggerConfig?: Partial<SessionTriggerConfig>;
 };
 
 /**
- * Creates a function that triggers a chat task and returns a run-scoped session.
+ * Params for the function returned by {@link createChatStartSessionAction}.
+ */
+export type ChatStartSessionParams = {
+  /** Conversation id (mapped to the Session's `externalId`). */
+  chatId: string;
+  /**
+   * Per-call trigger config. Shallow-merged over the action's default
+   * `triggerConfig`. `basePayload` is the customer's wire payload (for
+   * `chat.agent`: anything beyond `chatId`/`messages`/`trigger`/`metadata`,
+   * which the runtime injects automatically).
+   */
+  triggerConfig?: Partial<SessionTriggerConfig>;
+  /** Pass-through metadata folded into the session row. */
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * Result from {@link createChatStartSessionAction}'s returned function.
+ */
+export type ChatStartSessionResult = {
+  /**
+   * Session-scoped public access token (`read:sessions:{chatId} +
+   * write:sessions:{chatId}`). Pass this to the browser; the transport
+   * uses it to call `.in/append`, `.out`, `end-and-continue`.
+   */
+  publicAccessToken: string;
+  /** Friendly id of the run triggered alongside session create. */
+  runId: string;
+  /** Session friendlyId — informational. */
+  sessionId: string;
+};
+
+/**
+ * Creates a server-side helper that starts (or resumes) a Session for a
+ * given chatId — atomically creating the row, triggering the first run,
+ * and returning a session-scoped PAT for the browser to use.
  *
- * Wrap the returned function in a Next.js server action (or any server-side handler)
- * to keep task triggering on the server. The function calls `tasks.trigger()` with
- * the secret key and mints a run-scoped PAT for stream subscription + input stream writes.
+ * Wrap in a Next.js server action (or any server-side handler) so the
+ * customer's secret key never crosses to the browser.
  *
  * @example
  * ```ts
@@ -6862,71 +6906,107 @@ export type CreateChatTriggerActionOptions = {
  * "use server";
  * import { chat } from "@trigger.dev/sdk/ai";
  *
- * export const triggerChat = chat.createTriggerAction("my-chat");
+ * export const startChatSession = chat.createStartSessionAction("my-chat", {
+ *   triggerConfig: { machine: "small-1x" },
+ * });
  * ```
  *
- * Then pass it to the transport:
+ * Then in the browser:
  * ```tsx
  * const transport = useTriggerChatTransport({
  *   task: "my-chat",
- *   triggerTask: triggerChat,
+ *   accessToken: async ({ chatId }) => {
+ *     const { publicAccessToken } = await startChatSession({ chatId });
+ *     return publicAccessToken;
+ *   },
  * });
  * ```
  */
-function createChatTriggerAction(
+function createChatStartSessionAction(
   taskId: string,
-  options?: CreateChatTriggerActionOptions
-): (params: TriggerChatTaskParams) => Promise<TriggerChatTaskResult> {
-  return async (params: TriggerChatTaskParams): Promise<TriggerChatTaskResult> => {
-    // Create (or upsert) the backing Session first so we can thread its
-    // friendlyId through the run's payload and the PAT's scopes. Using
-    // the server's secret key here means the browser's `accessToken`
-    // doesn't need `write:sessions` — the session lifecycle lives on
-    // the server action side, which is what the `triggerTask` pattern
-    // is for.
-    const chatId = (params.payload as { chatId?: string }).chatId;
-    let sessionId = (params.payload as { sessionId?: string }).sessionId;
-    if (!sessionId) {
-      if (!chatId) {
-        throw new Error(
-          "chat.createTriggerAction: payload.chatId is required so the backing Session can be keyed on externalId."
-        );
-      }
-      const session = await sessions.create({
-        type: "chat.agent",
-        externalId: chatId,
-      });
-      sessionId = session.id;
+  options?: CreateChatStartSessionActionOptions
+): (params: ChatStartSessionParams) => Promise<ChatStartSessionResult> {
+  return async (params: ChatStartSessionParams): Promise<ChatStartSessionResult> => {
+    if (!params.chatId) {
+      throw new Error(
+        "chat.createStartSessionAction: params.chatId is required — used as the session externalId."
+      );
     }
 
-    const payloadWithSession = {
-      ...params.payload,
-      sessionId,
+    // The first run boots before the user's first message lands on
+    // `.in/append`, so it sees an empty `messages` array and `trigger:
+    // "preload"`. This matches the pre-Sessions preload semantics:
+    // `onPreload` fires, the runtime opens its `.in` subscription, the
+    // first user message arrives moments later via `.in/append`.
+    //
+    // `metadata` is the customer's transport-level `clientData`,
+    // threaded through so the agent's `clientDataSchema` validates on
+    // the very first turn (the typical schema requires `userId` etc.).
+    const triggerConfig: SessionTriggerConfig = {
+      basePayload: {
+        messages: [],
+        trigger: "preload",
+        ...(options?.triggerConfig?.basePayload ?? {}),
+        ...(params.triggerConfig?.basePayload ?? {}),
+        chatId: params.chatId,
+      },
+      ...(options?.triggerConfig?.machine || params.triggerConfig?.machine
+        ? { machine: params.triggerConfig?.machine ?? options?.triggerConfig?.machine }
+        : {}),
+      ...(options?.triggerConfig?.queue || params.triggerConfig?.queue
+        ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
+        : {}),
+      ...(options?.triggerConfig?.tags || params.triggerConfig?.tags
+        ? {
+            tags:
+              params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [],
+          }
+        : {}),
+      ...(options?.triggerConfig?.maxAttempts !== undefined ||
+      params.triggerConfig?.maxAttempts !== undefined
+        ? {
+            maxAttempts:
+              params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
+          }
+        : {}),
+      ...(options?.triggerConfig?.idleTimeoutInSeconds !== undefined ||
+      params.triggerConfig?.idleTimeoutInSeconds !== undefined
+        ? {
+            idleTimeoutInSeconds:
+              params.triggerConfig?.idleTimeoutInSeconds ??
+              options?.triggerConfig?.idleTimeoutInSeconds!,
+          }
+        : {}),
     };
 
-    const handle = await triggerTaskInternal(taskId, payloadWithSession, {
-      tags: params.options.tags,
-      queue: params.options.queue,
-      maxAttempts: params.options.maxAttempts,
-      machine: params.options.machine as any,
-      priority: params.options.priority,
+    const created = await sessions.start({
+      type: "chat.agent",
+      externalId: params.chatId,
+      taskIdentifier: taskId,
+      triggerConfig,
+      metadata: params.metadata,
     });
 
-    const publicAccessToken = await auth.createPublicToken({
-      scopes: {
-        read: {
-          runs: handle.id,
-          sessions: sessionId,
-        },
-        write: {
-          inputStreams: handle.id,
-          sessions: sessionId,
-        },
-      },
-      expirationTime: options?.tokenTTL ?? "1h",
-    });
+    // Session create returns a session PAT directly when called with a
+    // start token, but when the SDK call goes via the secret key we still
+    // need to mint our own (the server returns a PAT regardless, but
+    // re-minting here lets the customer override `tokenTTL`).
+    const publicAccessToken =
+      options?.tokenTTL !== undefined
+        ? await auth.createPublicToken({
+            scopes: {
+              read: { sessions: params.chatId },
+              write: { sessions: params.chatId },
+            },
+            expirationTime: options.tokenTTL,
+          })
+        : created.publicAccessToken;
 
-    return { runId: handle.id, publicAccessToken, sessionId };
+    return {
+      publicAccessToken,
+      runId: created.runId,
+      sessionId: created.id,
+    };
   };
 }
 
@@ -6939,8 +7019,8 @@ export const chat = {
   withUIMessage,
   /** Create a chat task with a fixed client data schema. See {@link withClientData}. */
   withClientData,
-  /** Create a server-side trigger action helper. See {@link createChatTriggerAction}. */
-  createTriggerAction: createChatTriggerAction,
+  /** Create a server-side helper for starting (or resuming) a Session for a chatId. See {@link createChatStartSessionAction}. */
+  createStartSessionAction: createChatStartSessionAction,
   /** Pipe a stream to the chat transport. See {@link pipeChat}. */
   pipe: pipeChat,
   /** Create a per-run typed local. See {@link chatLocal}. */
@@ -7091,11 +7171,50 @@ async function writeTurnCompleteChunk(
 }
 
 /**
- * Writes an upgrade-required control chunk to the chat output stream.
- * The transport intercepts this to re-trigger the same message on the latest version.
+ * Hand off the session to a fresh run on the latest version and emit a
+ * telemetry chunk on `.out` so the transport can hide it from the
+ * consumer.
+ *
+ * Server-side flow (in `POST /sessions/:id/end-and-continue`):
+ *   1. Trigger a new run with the session's `triggerConfig`
+ *   2. Atomically swap `Session.currentRunId` to the new run's id
+ *      (via optimistic claim keyed on the calling run's id)
+ *   3. Return the new runId
+ *
+ * The transport keeps its `.out` SSE open across the swap — v1's last
+ * chunks land, v2's new chunks land on the same stream (S2 keys on
+ * the session, not the run). The transport filters
+ * `trigger:upgrade-required` for cleanliness; consumers see no gap.
+ *
+ * If the swap fails (no current run, no env auth, etc.) we still emit
+ * the chunk and exit. The next `.in/append` will trigger a new run via
+ * the probe path; it just won't be quite as seamless.
+ *
  * @internal
  */
 async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
+  const ctx = taskContext.ctx;
+  const chatId = ctx?.run.id ? getChatIdFromContext() : undefined;
+  const callingRunId = ctx?.run.id;
+
+  if (chatId && callingRunId) {
+    const apiClient = apiClientManager.clientOrThrow();
+    try {
+      await apiClient.endAndContinueSession(chatId, {
+        callingRunId,
+        reason: "upgrade",
+      });
+    } catch (error) {
+      // Non-fatal: the next `.in/append` re-triggers via the probe.
+      // Swallow rather than throw so we still emit the chunk + exit.
+      logger.warn("end-and-continue failed; falling back to probe-on-append", {
+        chatId,
+        callingRunId,
+        error,
+      });
+    }
+  }
+
   const { waitUntilComplete } = chatStream.writer({
     spanName: "upgrade required",
     collapsed: true,
@@ -7106,6 +7225,17 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
     },
   });
   return await waitUntilComplete();
+}
+
+/**
+ * Resolves the current chat's `chatId` (used as session externalId) from
+ * the bound session handle. Returns `undefined` if no agent is bound —
+ * shouldn't happen at the call sites that invoke
+ * `writeUpgradeRequiredChunk`, but defensive against misuse.
+ * @internal
+ */
+function getChatIdFromContext(): string | undefined {
+  return locals.get(chatSessionHandleKey)?.id;
 }
 
 /**

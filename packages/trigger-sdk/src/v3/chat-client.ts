@@ -16,13 +16,12 @@
  * ```
  */
 
-import type { Task } from "@trigger.dev/core/v3";
+import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
 import type { UIMessage, UIMessageChunk } from "ai";
 import { readUIMessageStream } from "ai";
 import { ApiClient, SSEStreamSubscription, apiClientManager } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { sessions } from "./sessions.js";
-import { trigger } from "./shared.js";
 
 // ─── Type inference ────────────────────────────────────────────────
 
@@ -44,10 +43,6 @@ export type InferChatUIMessage<T> =
 
 /** Persistable session state — store this to resume across requests. */
 export type ChatSession = {
-  /** Session friendlyId (`session_*`). Durable across runs. */
-  sessionId: string;
-  /** The live run's friendlyId, if any. Optional — sessions outlive runs. */
-  runId?: string;
   /** Last SSE event ID seen on `session.out` — used to resume without replay. */
   lastEventId?: string;
 };
@@ -63,36 +58,31 @@ export type AgentChatOptions<TAgent = unknown> = {
   /** Client data included in every request. Typed from the agent's clientDataSchema. */
   clientData?: InferChatClientData<TAgent>;
   /**
-   * Restore a previous session. Pass the runId (and optionally lastEventId)
-   * from a previous request to resume the same agent run.
+   * Restore a previous session. Pass `lastEventId` from a previous
+   * request to resume the SSE stream without replaying old chunks.
    */
   session?: ChatSession;
   /**
-   * Called when a new run is triggered (first message or preload).
-   * Use this to persist the session for later resumption.
+   * Called when a new run is triggered for this session (initial start).
+   * Useful for telemetry / dashboard linking. The runId is the
+   * friendlyId.
    */
   onTriggered?: (event: { runId: string; chatId: string }) => void | Promise<void>;
   /**
-   * Called when a turn completes (the agent's response stream ends).
-   * Use this to persist the lastEventId for stream resumption.
+   * Called when a turn completes. Persist `lastEventId` for stream
+   * resumption across requests.
    */
   onTurnComplete?: (event: {
-    runId: string;
     chatId: string;
     lastEventId?: string;
   }) => void | Promise<void>;
-  /** Stream key for output stream. @default "chat" */
-  streamKey?: string;
   /** SSE timeout in seconds. @default 120 */
   streamTimeoutSeconds?: number;
-  /** Trigger options (tags, queue, machine, etc.). */
-  triggerOptions?: {
-    tags?: string[];
-    queue?: string;
-    maxAttempts?: number;
-    machine?: string;
-    priority?: number;
-  };
+  /**
+   * Default trigger config used when starting a new session for this
+   * chat. Folded into `sessions.start({...triggerConfig})` body.
+   */
+  triggerConfig?: SessionTriggerConfig;
 };
 
 // ─── ChatStream ────────────────────────────────────────────────────
@@ -237,12 +227,10 @@ export class ChatStream {
 // ─── Internal ──────────────────────────────────────────────────────
 
 type SessionState = {
-  /** Session friendlyId — durable across runs. */
-  sessionId: string;
-  /** The live run's friendlyId, or undefined if no run is active. */
-  runId?: string;
   lastEventId?: string;
   skipToTurnComplete?: boolean;
+  /** True after the session has been started (sessions.start). */
+  started: boolean;
 };
 
 // ─── AgentChat ─────────────────────────────────────────────────────
@@ -261,7 +249,7 @@ type SessionState = {
  * const chat = new AgentChat<typeof myAgent>({
  *   agent: "my-agent",
  *   id: chatId,
- *   session: { runId: savedRunId, lastEventId: savedLastEventId },
+ *   session: { lastEventId: savedLastEventId },
  *   onTriggered: ({ runId }) => db.save(chatId, { runId }),
  *   onTurnComplete: ({ lastEventId }) => db.update(chatId, { lastEventId }),
  * });
@@ -270,37 +258,31 @@ type SessionState = {
 export class AgentChat<TAgent = unknown> {
   private readonly taskId: string;
   private readonly chatId: string;
-  private readonly streamKey: string;
   private readonly streamTimeoutSeconds: number;
   private readonly clientData: Record<string, unknown> | undefined;
-  private readonly triggerOptions: AgentChatOptions["triggerOptions"];
+  private readonly triggerConfigDefault: SessionTriggerConfig | undefined;
   private readonly onTriggered: AgentChatOptions["onTriggered"];
   private readonly onTurnComplete: AgentChatOptions["onTurnComplete"];
 
-  private session: SessionState | undefined;
-  /** Accumulated UIMessages across all turns — used for continuation payloads. */
-  private accumulatedMessages: UIMessage[] = [];
+  private state: SessionState;
 
   constructor(options: AgentChatOptions<TAgent>) {
     this.taskId = options.agent;
     this.chatId = options.id ?? crypto.randomUUID();
-    // streamKey is preserved on the type only for API parity with the
-    // pre-migration shape; session.out subscribers don't key by name.
-    this.streamKey = options.streamKey ?? "chat";
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? 120;
     this.clientData = options.clientData as Record<string, unknown> | undefined;
-    this.triggerOptions = options.triggerOptions;
+    this.triggerConfigDefault = options.triggerConfig;
     this.onTriggered = options.onTriggered;
     this.onTurnComplete = options.onTurnComplete;
 
-    // Restore session if provided
-    if (options.session) {
-      this.session = {
-        sessionId: options.session.sessionId,
-        runId: options.session.runId,
-        lastEventId: options.session.lastEventId,
-      };
-    }
+    // Hydration: a non-empty `session` means the caller knows the
+    // session already exists (started in a previous request). Mark
+    // `started` so we don't re-`sessions.start()` on first message.
+    const hydrated = !!options.session;
+    this.state = {
+      lastEventId: options.session?.lastEventId,
+      started: hydrated,
+    };
   }
 
   /** The conversation ID. */
@@ -308,50 +290,19 @@ export class AgentChat<TAgent = unknown> {
     return this.chatId;
   }
 
-  /** The current session state, if initialised. */
-  get run(): ChatSession | undefined {
-    if (!this.session) return undefined;
-    return {
-      sessionId: this.session.sessionId,
-      runId: this.session.runId,
-      lastEventId: this.session.lastEventId,
-    };
+  /** Persistable session state — pass back via `options.session` to resume. */
+  get session(): ChatSession {
+    return { lastEventId: this.state.lastEventId };
   }
 
   /**
-   * Preload the agent — start the run before the first message.
-   * The agent's `onPreload` hook fires immediately.
-   * No-op if already has a session.
+   * Eagerly start the session — creates the row and triggers the first
+   * run. The agent's `onPreload` hook fires immediately. Idempotent: a
+   * second call is a no-op.
    */
   async preload(options?: { idleTimeoutInSeconds?: number }): Promise<ChatSession> {
-    if (this.session) {
-      return {
-        sessionId: this.session.sessionId,
-        runId: this.session.runId,
-        lastEventId: this.session.lastEventId,
-      };
-    }
-
-    const payload = {
-      messages: [] as never[],
-      chatId: this.chatId,
-      trigger: "preload" as const,
-      metadata: this.clientData,
-      ...(options?.idleTimeoutInSeconds !== undefined
-        ? { idleTimeoutInSeconds: options.idleTimeoutInSeconds }
-        : {}),
-    };
-
-    this.session = await this.triggerNewRun(payload, "preload");
-    await this.onTriggered?.({
-      runId: this.session.runId!,
-      chatId: this.chatId,
-    });
-
-    return {
-      sessionId: this.session.sessionId,
-      runId: this.session.runId,
-    };
+    await this.ensureStarted({ idleTimeoutInSeconds: options?.idleTimeoutInSeconds });
+    return this.session;
   }
 
   /**
@@ -374,16 +325,8 @@ export class AgentChat<TAgent = unknown> {
       parts: [{ type: "text", text }],
     };
 
-    // Track the outgoing user message
-    this.accumulatedMessages.push(message);
-
-    const rawStream = await this.sendRaw([message], {
-      abortSignal: options?.abortSignal,
-    });
-
-    return new ChatStream(rawStream, (assistantMessage) => {
-      this.accumulatedMessages.push(assistantMessage);
-    });
+    const rawStream = await this.sendRaw([message], { abortSignal: options?.abortSignal });
+    return new ChatStream(rawStream);
   }
 
   /** Send raw UIMessage-like objects. Use `sendMessage()` for simple text. */
@@ -401,64 +344,31 @@ export class AgentChat<TAgent = unknown> {
   ): Promise<ReadableStream<UIMessageChunk>> {
     const triggerType = options?.trigger ?? "submit-message";
 
-    const payload: Record<string, unknown> = {
-      messages,
+    // Make sure the session exists (and a run is alive). The .in/append
+    // handler on the server probes currentRunId on every call and
+    // re-triggers if needed — so we don't need to track runId here.
+    await this.ensureStarted();
+
+    const payload: ChatTaskWirePayload = {
+      messages: triggerType === "submit-message" ? messages.slice(-1) : messages,
       chatId: this.chatId,
       trigger: triggerType,
       metadata: this.clientData,
-    };
+    } as unknown as ChatTaskWirePayload;
 
-    let isContinuation = false;
-    let previousRunId: string | undefined;
-
-    // If a run is already live on this session, produce the new message
-    // via `session.in` so the agent's `chat.messages.waitWithIdleTimeout`
-    // picks it up without a fresh run.
-    if (this.session?.runId) {
-      const minimalPayload = {
-        ...payload,
-        messages: triggerType === "submit-message" ? messages.slice(-1) : messages,
-      };
-
-      try {
-        const api = this.createApiClient();
-        await api.appendToSessionStream(
-          this.session.sessionId,
-          "in",
-          serializeInputChunk({
-            kind: "message",
-            payload: minimalPayload as ChatTaskWirePayload,
-          })
-        );
-
-        return this.subscribeToSessionStream(options?.abortSignal);
-      } catch {
-        previousRunId = this.session.runId;
-        this.session.runId = undefined;
-        isContinuation = true;
-      }
-    }
-
-    // First message or run ended — trigger new run (continues on same session).
-    const triggerPayload = {
-      ...payload,
-      ...(isContinuation ? { messages: this.accumulatedMessages } : {}),
-      continuation: isContinuation,
-      ...(previousRunId ? { previousRunId } : {}),
-    };
-
-    this.session = await this.triggerNewRun(triggerPayload, "trigger");
-    await this.onTriggered?.({
-      runId: this.session.runId!,
-      chatId: this.chatId,
-    });
+    const api = this.createApiClient();
+    await api.appendToSessionStream(
+      this.chatId,
+      "in",
+      serializeInputChunk({ kind: "message", payload })
+    );
 
     return this.subscribeToSessionStream(options?.abortSignal);
   }
 
   /** Send a steering message during an active stream. */
   async steer(text: string): Promise<boolean> {
-    if (!this.session?.sessionId || !this.session.runId) return false;
+    if (!this.state.started) return false;
 
     const payload = {
       messages: [
@@ -472,7 +382,7 @@ export class AgentChat<TAgent = unknown> {
     try {
       const api = this.createApiClient();
       await api.appendToSessionStream(
-        this.session.sessionId,
+        this.chatId,
         "in",
         serializeInputChunk({
           kind: "message",
@@ -487,13 +397,13 @@ export class AgentChat<TAgent = unknown> {
 
   /** Stop the current generation (agent stays alive for next turn). */
   async stop(): Promise<void> {
-    if (!this.session?.sessionId) return;
+    if (!this.state.started) return;
 
-    this.session.skipToTurnComplete = true;
+    this.state.skipToTurnComplete = true;
     const api = this.createApiClient();
     await api
       .appendToSessionStream(
-        this.session.sessionId,
+        this.chatId,
         "in",
         serializeInputChunk({ kind: "stop" })
       )
@@ -524,9 +434,7 @@ export class AgentChat<TAgent = unknown> {
     action: unknown,
     options?: { abortSignal?: AbortSignal }
   ): Promise<ChatStream> {
-    if (!this.session?.sessionId || !this.session.runId) {
-      throw new Error("No active session. Send a message first or call preload().");
-    }
+    await this.ensureStarted();
 
     const payload = {
       messages: [] as never[],
@@ -539,7 +447,7 @@ export class AgentChat<TAgent = unknown> {
     try {
       const api = this.createApiClient();
       await api.appendToSessionStream(
-        this.session.sessionId,
+        this.chatId,
         "in",
         serializeInputChunk({
           kind: "message",
@@ -551,19 +459,17 @@ export class AgentChat<TAgent = unknown> {
     }
 
     const rawStream = this.subscribeToSessionStream(options?.abortSignal);
-    return new ChatStream(rawStream, (assistantMessage) => {
-      this.accumulatedMessages.push(assistantMessage);
-    });
+    return new ChatStream(rawStream);
   }
 
   /** Close the conversation — agent exits its loop gracefully. */
   async close(): Promise<boolean> {
-    if (!this.session?.sessionId) return false;
+    if (!this.state.started) return false;
 
     try {
       const api = this.createApiClient();
       await api.appendToSessionStream(
-        this.session.sessionId,
+        this.chatId,
         "in",
         serializeInputChunk({
           kind: "message",
@@ -574,7 +480,7 @@ export class AgentChat<TAgent = unknown> {
           } as unknown as ChatTaskWirePayload,
         })
       );
-      this.session = undefined;
+      this.state = { ...this.state, started: false };
       return true;
     } catch {
       return false;
@@ -585,8 +491,7 @@ export class AgentChat<TAgent = unknown> {
   async reconnect(
     abortSignal?: AbortSignal
   ): Promise<ReadableStream<UIMessageChunk> | null> {
-    if (!this.session) return null;
-
+    if (!this.state.started) return null;
     return this.subscribeToSessionStream(abortSignal, { sendStopOnAbort: false });
   }
 
@@ -598,60 +503,61 @@ export class AgentChat<TAgent = unknown> {
     return new ApiClient(baseURL, accessToken);
   }
 
-  private async triggerNewRun(
-    payload: Record<string, unknown>,
-    purpose: "trigger" | "preload"
-  ): Promise<SessionState> {
-    const autoTags =
-      purpose === "preload"
-        ? [`chat:${this.chatId}`, "preload:true"]
-        : [`chat:${this.chatId}`];
-    const userTags = this.triggerOptions?.tags ?? [];
-    const tags = [...autoTags, ...userTags].slice(0, 5);
+  /**
+   * Idempotent: `sessions.start` upserts on `(env, externalId)`. Two
+   * concurrent AgentChat instances on the same chatId converge to the
+   * same session.
+   */
+  private async ensureStarted(options?: { idleTimeoutInSeconds?: number }): Promise<void> {
+    if (this.state.started) return;
 
-    // Ensure the backing Session exists before triggering so its
-    // friendlyId can ride along in the payload. `sessions.create` is
-    // idempotent on `externalId = chatId` — two AgentChats on the same
-    // chatId converge to one row.
-    const sessionId =
-      this.session?.sessionId ??
-      (
-        await sessions.create({
-          type: "chat.agent",
-          externalId: this.chatId,
-        })
-      ).id;
-
-    const payloadWithSession: Record<string, unknown> = {
-      ...payload,
-      sessionId,
+    const triggerConfig: SessionTriggerConfig = {
+      basePayload: {
+        ...(this.triggerConfigDefault?.basePayload ?? {}),
+        chatId: this.chatId,
+        ...(this.clientData ? { metadata: this.clientData } : {}),
+      },
+      ...(this.triggerConfigDefault?.machine
+        ? { machine: this.triggerConfigDefault.machine }
+        : {}),
+      ...(this.triggerConfigDefault?.queue
+        ? { queue: this.triggerConfigDefault.queue }
+        : {}),
+      ...(this.triggerConfigDefault?.tags
+        ? { tags: this.triggerConfigDefault.tags }
+        : {}),
+      ...(this.triggerConfigDefault?.maxAttempts !== undefined
+        ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
+        : {}),
+      ...(options?.idleTimeoutInSeconds !== undefined ||
+      this.triggerConfigDefault?.idleTimeoutInSeconds !== undefined
+        ? {
+            idleTimeoutInSeconds:
+              options?.idleTimeoutInSeconds ??
+              this.triggerConfigDefault?.idleTimeoutInSeconds!,
+          }
+        : {}),
     };
 
-    const handle = await trigger(this.taskId, payloadWithSession, {
-      tags,
-      queue: this.triggerOptions?.queue,
-      maxAttempts: this.triggerOptions?.maxAttempts,
-      machine: this.triggerOptions?.machine as any,
-      priority: this.triggerOptions?.priority,
+    const created = await sessions.start({
+      type: "chat.agent",
+      externalId: this.chatId,
+      taskIdentifier: this.taskId,
+      triggerConfig,
     });
 
-    return {
-      sessionId,
-      runId: handle.id,
-      lastEventId: this.session?.lastEventId,
-    };
+    this.state.started = true;
+    await this.onTriggered?.({
+      runId: created.runId,
+      chatId: this.chatId,
+    });
   }
 
   private subscribeToSessionStream(
     abortSignal: AbortSignal | undefined,
     options?: { sendStopOnAbort?: boolean }
   ): ReadableStream<UIMessageChunk> {
-    const self = this;
-    const session = this.session;
-    if (!session) {
-      throw new Error("subscribeToSessionStream called without an active session");
-    }
-    const sessionId = session.sessionId;
+    const state = this.state;
     const baseURL = apiClientManager.baseURL ?? "https://api.trigger.dev";
     const accessToken = apiClientManager.accessToken ?? "";
     const onTurnComplete = this.onTurnComplete;
@@ -667,11 +573,11 @@ export class AgentChat<TAgent = unknown> {
         "abort",
         () => {
           if (options?.sendStopOnAbort !== false) {
-            session.skipToTurnComplete = true;
+            state.skipToTurnComplete = true;
             const api = new ApiClient(baseURL, accessToken);
             api
               .appendToSessionStream(
-                sessionId,
+                chatId,
                 "in",
                 serializeInputChunk({ kind: "stop" })
               )
@@ -683,7 +589,7 @@ export class AgentChat<TAgent = unknown> {
       );
     }
 
-    const streamUrl = `${baseURL}/realtime/v1/sessions/${encodeURIComponent(sessionId)}/out`;
+    const streamUrl = `${baseURL}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -694,7 +600,7 @@ export class AgentChat<TAgent = unknown> {
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
-            lastEventId: session.lastEventId,
+            lastEventId: state.lastEventId,
           });
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
@@ -716,10 +622,7 @@ export class AgentChat<TAgent = unknown> {
 
               const value = next.value;
 
-              // Track last event ID for resume
-              if (value.id) {
-                session.lastEventId = value.id;
-              }
+              if (value.id) state.lastEventId = value.id;
 
               // Session records arrive as raw JSON strings (the server
               // wraps `{data, id}` on S2). Parse back into objects so
@@ -740,67 +643,25 @@ export class AgentChat<TAgent = unknown> {
 
               const chunk = chunkObj;
 
-              if (session.skipToTurnComplete) {
+              if (state.skipToTurnComplete) {
                 if (chunk.type === "trigger:turn-complete") {
-                  session.skipToTurnComplete = false;
+                  state.skipToTurnComplete = false;
                 }
                 continue;
               }
 
               if (chunk.type === "trigger:upgrade-required") {
-                // Agent requested a version upgrade — re-trigger with full
-                // history and pipe the new stream through transparently.
-                // Keep the Session (sessions outlive runs); swap runId only.
-                internalAbort.abort();
-                const previousRunId = self.session?.runId;
-                if (self.session) {
-                  self.session.runId = undefined;
-                }
-
-                try {
-                  const triggerPayload: Record<string, unknown> = {
-                    messages: self.accumulatedMessages,
-                    chatId: self.chatId,
-                    trigger: "submit-message",
-                    metadata: self.clientData,
-                    continuation: true,
-                    ...(previousRunId ? { previousRunId } : {}),
-                  };
-
-                  self.session = await self.triggerNewRun(triggerPayload, "trigger");
-                  await self.onTriggered?.({
-                    runId: self.session.runId!,
-                    chatId: self.chatId,
-                  });
-
-                  const newStream = self.subscribeToSessionStream(abortSignal);
-                  const newReader = newStream.getReader();
-                  try {
-                    while (true) {
-                      const nr = await newReader.read();
-                      if (nr.done) break;
-                      controller.enqueue(nr.value);
-                    }
-                  } finally {
-                    newReader.releaseLock();
-                  }
-                } catch (retryError) {
-                  controller.error(retryError);
-                  return;
-                }
-                try {
-                  controller.close();
-                } catch {
-                  // Controller may already be closed
-                }
-                return;
+                // Server has already triggered the new run via
+                // `end-and-continue`; v2's chunks arrive on the same
+                // S2 stream. Filter the marker for cleanliness and
+                // keep reading.
+                continue;
               }
 
               if (chunk.type === "trigger:turn-complete") {
                 onTurnComplete?.({
-                  runId: session.runId ?? "",
                   chatId,
-                  lastEventId: session.lastEventId,
+                  lastEventId: state.lastEventId,
                 });
                 internalAbort.abort();
                 try {

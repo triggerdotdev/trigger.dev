@@ -125,6 +125,7 @@ export function ChatSidebar({
             <option value="ai-chat-hydrated">ai-chat-hydrated (hydrated)</option>
             <option value="ai-chat-raw">ai-chat-raw (raw task)</option>
             <option value="ai-chat-session">ai-chat-session (session)</option>
+            <option value="upgrade-test">upgrade-test (requestUpgrade after 3 turns)</option>
           </select>
         </div>
         <button

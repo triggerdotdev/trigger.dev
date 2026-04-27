@@ -4,20 +4,16 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { ChatUiMessage } from "@/lib/chat-tools";
 import { Chat } from "@/components/chat";
 import { useChatSettings } from "@/components/chat-settings-context";
-import { DEFAULT_MODEL } from "@/lib/models";
 import {
-  triggerChat,
-  getChatList,
+  mintChatAccessToken,
+  startChatSession,
   updateChatTitle,
   deleteSessionAction,
-  renewRunAccessTokenForChat,
 } from "@/app/actions";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type SessionInfo = {
-  sessionId?: string;
-  runId: string;
   publicAccessToken: string;
   lastEventId?: string;
 };
@@ -38,51 +34,40 @@ export function ChatView({
   model,
 }: ChatViewProps) {
   const router = useRouter();
-  const { taskMode, preloadEnabled, idleTimeoutInSeconds } = useChatSettings();
+  const { taskMode } = useChatSettings();
 
   const [currentSession, setCurrentSession] = useState<SessionInfo | null>(initialSession);
 
-  const sessions: Record<string, SessionInfo> = {};
-  if (initialSession) {
-    sessions[chatId] = initialSession;
-  }
-
-  const handleSessionChange = useCallback((_id: string, session: SessionInfo | null) => {
+  const handleSessionChange = useCallback((id: string, session: SessionInfo | null) => {
     if (session) {
       setCurrentSession(session);
     } else {
       setCurrentSession(null);
-      deleteSessionAction(_id);
+      deleteSessionAction(id);
     }
   }, []);
 
   const transport = useTriggerChatTransport({
     task: taskMode,
-    // Server-side trigger action creates the backing Session with the
-    // project's secret key + threads `sessionId` into the run payload.
-    // Returned PAT already has `read:runs` + `read:sessions` +
-    // `write:sessions` scopes (from `chat.createTriggerAction` Phase E),
-    // so the browser never needs `write:sessions` itself — and no CORS
-    // preflight hits `/api/v1/sessions` from the browser.
-    triggerTask: triggerChat,
-    renewRunAccessToken: ({ chatId, runId, sessionId }) =>
-      renewRunAccessTokenForChat(chatId, runId, sessionId),
+    // Pure mint — server action calls `auth.createPublicToken({ scopes:
+    // { sessions: chatId } })` and returns the JWT. Fired on 401/403 to
+    // refresh the session PAT. Never creates a session.
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    // Session create — server action wraps `chat.createStartSessionAction`
+    // (secret-key auth, server-side authorization). Idempotent on
+    // `(env, externalId)`. Transport invokes it on `preload(chatId)`
+    // and lazily on first `sendMessage` for any chatId without a
+    // cached PAT. `clientData` is the transport's typed `clientData`
+    // option, threaded through so the first run's `payload.metadata`
+    // matches per-turn `metadata`.
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
     baseURL: process.env.NEXT_PUBLIC_TRIGGER_API_URL,
-    sessions,
+    sessions: initialSession ? { [chatId]: initialSession } : {},
     onSessionChange: handleSessionChange,
     clientData: { userId: "user_123" },
     multiTab: true,
-    triggerOptions: {
-      tags: ["user:user_123"],
-    },
   });
-
-  // Preload new chats eagerly
-  useEffect(() => {
-    if (isNewChat && preloadEnabled) {
-      transport.preload(chatId, { idleTimeoutInSeconds });
-    }
-  }, [chatId, isNewChat, preloadEnabled, idleTimeoutInSeconds, transport]);
 
   const handleFirstMessage = useCallback(
     async (cId: string, text: string) => {

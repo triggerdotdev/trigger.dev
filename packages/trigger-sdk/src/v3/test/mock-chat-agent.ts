@@ -5,7 +5,10 @@ import {
   runInMockTaskContext,
   type MockTaskContextOptions,
 } from "@trigger.dev/core/v3/test";
-import { __setSessionOpenImplForTests } from "../sessions.js";
+import {
+  __setSessionOpenImplForTests,
+  __setSessionStartImplForTests,
+} from "../sessions.js";
 import {
   createTestSessionHandle,
   type TestSessionOutState,
@@ -222,6 +225,37 @@ export function mockChatAgent(
   // TestSessionStreamManager.
   __setSessionOpenImplForTests((id) => createTestSessionHandle(id, sessionOutState));
 
+  // Install the session start override so any test path that invokes
+  // `sessions.start()` (typically through a server action shim like
+  // `chat.createStartSessionAction`) becomes a no-op fixture instead of
+  // hitting a real API. Most chat.agent tests trigger the run directly
+  // via `sendPayloadAndWait` and never go through this path, but the
+  // stub keeps the API safe to call from inside tested code.
+  __setSessionStartImplForTests((body) => {
+    if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+      console.log("[mockChatAgent] sessions.start override:", body);
+    }
+    const fakeRunId = `run_test_${body.externalId ?? "anon"}`;
+    return {
+      id: `session_test_${body.externalId ?? "anon"}`,
+      externalId: body.externalId ?? null,
+      type: body.type,
+      taskIdentifier: body.taskIdentifier,
+      triggerConfig: body.triggerConfig,
+      currentRunId: fakeRunId,
+      runId: fakeRunId,
+      publicAccessToken: "tr_test_session_pat",
+      tags: body.tags ?? [],
+      metadata: (body.metadata ?? null) as Record<string, unknown> | null,
+      closedAt: null,
+      closedReason: null,
+      expiresAt: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+      isCached: false,
+    };
+  });
+
   taskFinished = runInMockTaskContext(
     async (drivers) => {
       runSignal = new AbortController();
@@ -297,6 +331,7 @@ export function mockChatAgent(
     .finally(() => {
       // Always clear the session open override, even if the task threw.
       __setSessionOpenImplForTests(undefined);
+      __setSessionStartImplForTests(undefined);
     });
 
   const sendPayloadAndWait = async (

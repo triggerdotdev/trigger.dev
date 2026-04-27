@@ -89,19 +89,18 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
     ref.current = new TriggerChatTransport(options as TriggerChatTransportOptions);
   }
 
-  // Keep callbacks up to date without recreating the transport
-  const { onSessionChange, renewRunAccessToken, triggerTask } = options;
+  // Keep callbacks up to date without recreating the transport.
+  const { onSessionChange, clientData } = options;
   useEffect(() => {
     ref.current?.setOnSessionChange(onSessionChange);
   }, [onSessionChange]);
 
+  // Keep `clientData` up to date so the transport's per-turn merge and
+  // `startSession` callback both see the latest value without
+  // reconstructing the transport.
   useEffect(() => {
-    ref.current?.setRenewRunAccessToken(renewRunAccessToken);
-  }, [renewRunAccessToken]);
-
-  useEffect(() => {
-    ref.current?.setTriggerTask(triggerTask);
-  }, [triggerTask]);
+    ref.current?.setClientData(clientData as Record<string, unknown> | undefined);
+  }, [clientData]);
 
   // Note: dispose() is NOT called in effect cleanup because React strict mode
   // runs cleanup+re-setup, but the transport lives in a ref and isn't recreated.

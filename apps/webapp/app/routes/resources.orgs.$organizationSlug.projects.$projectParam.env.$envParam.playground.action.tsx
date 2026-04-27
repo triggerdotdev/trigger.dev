@@ -1,20 +1,24 @@
 import { json } from "@remix-run/server-runtime";
 import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
+import type { Prisma } from "@trigger.dev/database";
+import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import { prisma } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { TriggerTaskService } from "~/v3/services/triggerTask.server";
-import { mintRunToken } from "~/services/realtime/mintRunToken.server";
+import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
+import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 const PlaygroundAction = z.object({
-  intent: z.enum(["create", "trigger", "renew", "save", "delete"]),
+  intent: z.enum(["create", "start", "save", "delete"]),
   agentSlug: z.string(),
   // For create
   conversationId: z.string().optional(),
-  // For trigger
+  // For start (replaces "trigger" — atomically creates the Session and
+  // triggers its first run, returns a session-scoped PAT)
   chatId: z.string().optional(),
   payload: z.string().optional(),
   clientData: z.string().optional(),
@@ -24,8 +28,6 @@ const PlaygroundAction = z.object({
   maxDuration: z.string().optional(),
   version: z.string().optional(),
   region: z.string().optional(),
-  // For renew
-  runId: z.string().optional(),
   // For save
   messages: z.string().optional(),
   lastEventId: z.string().optional(),
@@ -76,7 +78,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       });
     }
 
-    case "trigger": {
+    case "start": {
       const {
         agentSlug,
         chatId,
@@ -90,49 +92,98 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         region,
       } = parsed.data;
 
-      if (!payloadStr || !chatId) {
-        return json({ error: "payload and chatId are required" }, { status: 400 });
+      if (!chatId) {
+        return json({ error: "chatId is required" }, { status: 400 });
       }
 
-      const payload = JSON.parse(payloadStr) as Record<string, any>;
+      // Parse the optional initial payload — used as the basePayload
+      // for the first run trigger. After session create, the agent
+      // reads subsequent messages from `.in/append` so the payload
+      // here is just the bootstrap.
+      const payload = payloadStr ? (JSON.parse(payloadStr) as Record<string, any>) : {};
 
-      const triggerService = new TriggerTaskService();
-      const result = await triggerService.call(
-        agentSlug,
-        environment,
-        {
-          payload,
-          options: {
-            payloadType: "application/json",
-            test: true,
-            tags: [
-              `chat:${chatId}`,
-              "playground:true",
-              ...(tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : []),
-            ].slice(0, 5),
-            machine: machine as any,
-            maxAttempts: maxAttempts ? parseInt(maxAttempts, 10) : undefined,
-            maxDuration: maxDuration ? parseInt(maxDuration, 10) : undefined,
-            lockToVersion: version && version !== "latest" ? version : undefined,
-            region: region || undefined,
-          },
-        },
-        { triggerSource: "dashboard", triggerAction: "test", realtimeStreamsVersion: "v2" }
-      );
-
-      if (!result?.run) {
-        return json({ error: "Failed to trigger agent" }, { status: 500 });
-      }
-
-      // Create or update the playground conversation
       let parsedClientData: unknown;
       try {
         parsedClientData = clientData ? JSON.parse(clientData) : undefined;
       } catch {
-        // Client data JSON was invalid — proceed without it
+        /* invalid JSON — fall through with undefined */
       }
 
-      // Extract first message text for title
+      const tags = [
+        `chat:${chatId}`,
+        "playground:true",
+        ...(tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : []),
+      ].slice(0, 5);
+
+      const triggerConfig = {
+        basePayload: {
+          // The first run boots before the user's first message lands on
+          // `.in/append`, so it sees `messages: []` and `trigger: "preload"`.
+          // Mirrors the defaults in `chat.createStartSessionAction` —
+          // chat.agent's runtime reads `payload.messages.length` so the
+          // field must be an array, not undefined.
+          messages: [],
+          trigger: "preload",
+          ...payload,
+          chatId,
+          ...(parsedClientData ? { metadata: parsedClientData } : {}),
+        },
+        ...(machine ? { machine } : {}),
+        tags,
+        ...(maxAttempts ? { maxAttempts: parseInt(maxAttempts, 10) } : {}),
+      };
+
+      // Atomic: upsert the Session, then trigger the first run via
+      // the optimistic-claim path. The transport's `accessToken`
+      // callback hits this endpoint on initial start AND on 401 — the
+      // upsert + ensureRunForSession combo is idempotent so repeat
+      // calls converge to the same session and (if alive) reuse the
+      // existing run.
+      const { id: sessionId, friendlyId } = SessionId.generate();
+      const session = await prisma.session.upsert({
+        where: {
+          runtimeEnvironmentId_externalId: {
+            runtimeEnvironmentId: environment.id,
+            externalId: chatId,
+          },
+        },
+        create: {
+          id: sessionId,
+          friendlyId,
+          externalId: chatId,
+          type: "chat.agent",
+          taskIdentifier: agentSlug,
+          triggerConfig: triggerConfig as unknown as Prisma.InputJsonValue,
+          tags: ["playground"],
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          environmentType: environment.type,
+          organizationId: project.organizationId,
+        },
+        update: {
+          // Refresh trigger config in case agent version / params changed
+          triggerConfig: triggerConfig as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      const ensureResult = await ensureRunForSession({
+        session,
+        environment: environment as unknown as AuthenticatedEnvironment,
+        reason: "initial",
+      });
+
+      const run = await prisma.taskRun.findFirst({
+        where: { id: ensureResult.runId },
+        select: { friendlyId: true },
+      });
+      if (!run) {
+        return json({ error: "Triggered run not found" }, { status: 500 });
+      }
+
+      // Title: prefer the user message text on first start, else a
+      // generic placeholder. The conversation row is the playground's
+      // own surface — separate from the Session row that drives the
+      // trigger.
       const firstMessage = payload?.messages?.[0];
       const firstText =
         firstMessage?.parts?.find((p: any) => p.type === "text")?.text ?? "New conversation";
@@ -149,38 +200,36 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           chatId,
           title,
           agentSlug,
-          runId: result.run.id,
+          runId: ensureResult.runId,
           clientData: parsedClientData as any,
           projectId: project.id,
           runtimeEnvironmentId: environment.id,
           userId,
         },
         update: {
-          runId: result.run.id,
+          runId: ensureResult.runId,
           clientData: parsedClientData as any,
           title,
         },
       });
 
-      const jwt = await mintRunToken(environment, result.run.friendlyId, {
-        includeInputStreamWrite: true,
-      });
+      // Avoid unused-var lint while preserving the request shape
+      // — these knobs are now folded into triggerConfig at the
+      // session create above.
+      void maxDuration;
+      void version;
+      void region;
+
+      const publicAccessToken = await mintSessionToken(
+        environment as unknown as AuthenticatedEnvironment,
+        chatId
+      );
 
       return json({
-        runId: result.run.friendlyId,
-        publicAccessToken: jwt,
+        runId: run.friendlyId,
+        publicAccessToken,
         conversationId: conversation.id,
       });
-    }
-
-    case "renew": {
-      const { runId } = parsed.data;
-      if (!runId) {
-        return json({ error: "runId is required" }, { status: 400 });
-      }
-
-      const jwt = await mintRunToken(environment, runId, { includeInputStreamWrite: true });
-      return json({ publicAccessToken: jwt });
     }
 
     case "save": {

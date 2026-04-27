@@ -364,11 +364,11 @@ export const upgradeTest = task({
         results.push({
           turn: i,
           text: retryText.slice(0, 200),
-          runId: agentChat.run?.runId,
+          runId: agentChat.id,
         });
         logger.info(`Turn ${i} (retry)`, {
           text: retryText.slice(0, 200),
-          runId: agentChat.run?.runId,
+          runId: agentChat.id,
         });
         continue;
       }
@@ -376,9 +376,9 @@ export const upgradeTest = task({
       results.push({
         turn: i,
         text: text.slice(0, 200),
-        runId: agentChat.run?.runId,
+        runId: agentChat.id,
       });
-      logger.info(`Turn ${i}`, { text: text.slice(0, 200), runId: agentChat.run?.runId });
+      logger.info(`Turn ${i}`, { text: text.slice(0, 200), runId: agentChat.id });
     }
 
     await agentChat.close();

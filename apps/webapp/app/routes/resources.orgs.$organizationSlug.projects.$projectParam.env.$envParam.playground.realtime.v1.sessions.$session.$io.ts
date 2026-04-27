@@ -14,29 +14,22 @@ import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
-  runParam: z.string(),
-  sessionId: z.string(),
+  session: z.string(),
   io: z.enum(["out", "in"]),
 });
 
-// GET: SSE stream subscription for a backing Session's `.out` / `.in`
-// channel. Dashboard-auth counterpart to the public API's
-// `/realtime/v1/sessions/:sessionId/:io` endpoint. Used by the Agent tab
-// in the span inspector to observe assistant chunks (`.out`) and
-// user-side ChatInputChunk payloads (`.in`) for a chat.agent run.
+// HEAD/GET: SSE subscribe to a Session channel from the dashboard
+// playground. Mirrors the public `GET /realtime/v1/sessions/:session/:io`
+// route but authenticates via the dashboard session cookie instead of a
+// session-scoped JWT — the playground transport never holds a PAT.
 //
-// The `:sessionId` segment accepts either the `session_*` friendlyId or
-// the externalId the transport registered for the chat (typically the
-// browser's `chatId`). Runs pre-dating the Sessions migration that have
-// `chatId` but no `sessionId` in the payload take the externalId path.
-//
-// Authenticated by the dashboard session — the user must have access to
-// the project, environment, and run. The run binds this resource
-// hierarchy; the session identity is verified against the environment.
+// `:session` accepts either the `session_*` friendlyId or the externalId
+// the playground assigned (`chatId`). Resolution is environment-scoped
+// so users can't subscribe to sessions from other envs.
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
-  const { runParam, sessionId, io } = ParamsSchema.parse(params);
+  const { session: sessionParam, io } = ParamsSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -48,24 +41,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Environment not found", { status: 404 });
   }
 
-  // Verify the run lives in this environment — keeps callers from
-  // subscribing to arbitrary sessions via `/runs/$runParam/...`.
-  const run = await $replica.taskRun.findFirst({
-    where: {
-      friendlyId: runParam,
-      runtimeEnvironmentId: environment.id,
-    },
-    select: { id: true, friendlyId: true },
-  });
-
-  if (!run) {
-    return new Response("Run not found", { status: 404 });
-  }
-
   const session = await resolveSessionByIdOrExternalId(
     $replica,
     environment.id,
-    sessionId
+    sessionParam
   );
 
   if (!session) {
@@ -80,6 +59,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     });
   }
 
+  if (request.method === "HEAD") {
+    // No last-chunk-index on the S2 backend (clients resume via
+    // Last-Event-ID on the SSE stream directly). Return 200 with a
+    // zero index for compatibility with the run-stream shape.
+    return new Response(null, {
+      status: 200,
+      headers: { "X-Last-Chunk-Index": "0" },
+    });
+  }
+
   const lastEventId = request.headers.get("Last-Event-ID") || undefined;
   const timeoutInSecondsRaw = request.headers.get("Timeout-Seconds") ?? undefined;
   const timeoutInSeconds = timeoutInSecondsRaw ? parseInt(timeoutInSecondsRaw) : undefined;
@@ -91,10 +80,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Invalid timeout", { status: 400 });
   }
 
-  // The agent writes via the canonical addressing key (externalId if
-  // set, else friendlyId). Subscribe with the same key so the read
-  // hits the same S2 stream the agent is writing into.
-  const addressingKey = canonicalSessionAddressingKey(session, sessionId);
+  const addressingKey = canonicalSessionAddressingKey(session, sessionParam);
 
   return realtimeStream.streamResponseFromSessionStream(
     request,
