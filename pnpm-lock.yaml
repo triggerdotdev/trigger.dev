@@ -25,6 +25,9 @@ overrides:
   flatted@<3.4.2: ^3.4.2
   picomatch@>=4.0.0 <4.0.4: ^4.0.4
   minimatch@>=3 <3.1.3: ^3.1.3
+  protobufjs@<7.5.5: ^7.5.5
+  fast-xml-parser@>=4 <4.5.5: ^4.5.5
+  fast-xml-parser@>=5 <5.7.0: ^5.7.0
 
 patchedDependencies:
   '@changesets/assemble-release-plan@5.2.4':
@@ -1180,8 +1183,8 @@ importers:
         specifier: ^5.2.3
         version: 5.2.3
       protobufjs:
-        specifier: ^7.2.6
-        version: 7.3.2
+        specifier: ^7.5.5
+        version: 7.5.5
     devDependencies:
       '@types/node':
         specifier: 20.14.14
@@ -6094,6 +6097,9 @@ packages:
 
   '@nicolo-ribaudo/eslint-scope-5-internals@5.1.1-v1':
     resolution: {integrity: sha512-54/JRvkLIzzDWshCWfuhadfrfZVPiElY8Fcgmg1HroEly/EDSszzhBAsarCux+D/kOslTRquNzuyGSmUSTTHGg==}
+
+  '@nodable/entities@2.1.0':
+    resolution: {integrity: sha512-nyT7T3nbMyBI/lvr6L5TyWbFJAI9FTgVRakNoBqCD+PmID8DzFrrNdLLtHMwMszOtqZa8PAOV24ZqDnQrhQINA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -13790,16 +13796,15 @@ packages:
   fast-url-parser@1.1.3:
     resolution: {integrity: sha512-5jOCVXADYNuRkKFzNJ0dCCewsZiYo0dz8QNYljkOpFC6r2U4OBmKtvm/Tsuh4w1YYdDqDb31a8TVhBJ2OJKdqQ==}
 
-  fast-xml-parser@4.2.5:
-    resolution: {integrity: sha512-B9/wizE4WngqQftFPmdaMYlXoJlJOYxGQOanC77fq9k8+Z0v5dDSVh+3glErdIROP//s/jgb7ZuxKfB8nVyo0g==}
+  fast-xml-builder@1.1.5:
+    resolution: {integrity: sha512-4TJn/8FKLeslLAH3dnohXqE3QSoxkhvaMzepOIZytwJXZO69Bfz0HBdDHzOTOon6G59Zrk6VQ2bEiv1t61rfkA==}
+
+  fast-xml-parser@4.5.6:
+    resolution: {integrity: sha512-Yd4vkROfJf8AuJrDIVMVmYfULKmIJszVsMv7Vo71aocsKgFxpdlpSHXSaInvyYfgw2PRuObQSW2GFpVMUjxu9A==}
     hasBin: true
 
-  fast-xml-parser@4.4.1:
-    resolution: {integrity: sha512-xkjOecfnKGkSsOwtZ5Pz7Us/T6mrbPQrq0nh+aCO5V9nk5NLWmasAHumTKjiPJPWANe+kAZ84Jc8ooJkzZ88Sw==}
-    hasBin: true
-
-  fast-xml-parser@5.2.5:
-    resolution: {integrity: sha512-pfX9uG9Ki0yekDHx2SiuRIyFdyAr1kMIMitPvb0YBo8SUfKvia7w7FIyd/l6av85pFYRhZscS75MwMnbvY+hcQ==}
+  fast-xml-parser@5.7.1:
+    resolution: {integrity: sha512-8Cc3f8GUGUULg34pBch/KGyPLglS+OFs05deyOlY7fL2MTagYPKrVQNmR1fLF/yJ9PH5ZSTd3YDF6pnmeZU+zA==}
     hasBin: true
 
   fastest-stable-stringify@2.0.2:
@@ -16738,6 +16743,10 @@ packages:
     resolution: {integrity: sha512-RjhtfwJOxzcFmNOi6ltcbcu4Iu+FL3zEj83dk4kAS+fVpTxXLO1b38RvJgT/0QwvV/L3aY9TAnyv0EOqW4GoMQ==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
+  path-expression-matcher@1.5.0:
+    resolution: {integrity: sha512-cbrerZV+6rvdQrrD+iGMcZFEiiSrbv9Tfdkvnusy6y0x0GKBXREFg/Y65GhIfm0tnLntThhzCnfKwp1WRjeCyQ==}
+    engines: {node: '>=14.0.0'}
+
   path-is-absolute@1.0.1:
     resolution: {integrity: sha512-AVbw3UJ2e9bq64vSaS9Am0fje1Pa8pbGqTTsmXfaIiMpnr5DlDhfJOuLj9Sf95ZPVDAUerDfEk88MPmPe7UCQg==}
     engines: {node: '>=0.10.0'}
@@ -17404,8 +17413,8 @@ packages:
   proto-list@1.2.4:
     resolution: {integrity: sha512-vtK/94akxsTMhe0/cbfpR+syPuszcuwhqVjJq26CuNDgFGj682oRBXOP5MJpv2r7JtE8MsiepGIqvvOTBwn2vA==}
 
-  protobufjs@7.3.2:
-    resolution: {integrity: sha512-RXyHaACeqXeqAKGLDl68rQKbmObRsTIn4TYVUUug1KfS47YWCo5MacGITEryugIgZqORCvJWEk4l449POg5Txg==}
+  protobufjs@7.5.5:
+    resolution: {integrity: sha512-3wY1AxV+VBNW8Yypfd1yQY9pXnqTAN+KwQxL8iYm3/BjKYMNg4i0owhEe26PWDOMaIrzeeF98Lqd5NGz4omiIg==}
     engines: {node: '>=12.0.0'}
 
   proxy-addr@2.0.7:
@@ -18664,8 +18673,8 @@ packages:
   strnum@1.0.5:
     resolution: {integrity: sha512-J8bbNyKKXl5qYcR36TIO8W3mVGVHrmmxsd5PAItGkmyzwJvybiw2IVq5nqd0i4LSNSkB/sx9VHllbfFdr9k1JA==}
 
-  strnum@2.1.1:
-    resolution: {integrity: sha512-7ZvoFTiCnGxBtDqJ//Cu6fWtZtc7Y3x+QOirG15wztbdngGSkht27o2pyGWrVy0b4WAy3jbKmnoK6g5VlVNUUw==}
+  strnum@2.2.3:
+    resolution: {integrity: sha512-oKx6RUCuHfT3oyVjtnrmn19H1SiCqgJSg+54XqURKp5aCMbrXrhLjRN9TjuwMjiYstZ0MzDrHqkGZ5dFTKd+zg==}
 
   strtok3@9.1.1:
     resolution: {integrity: sha512-FhwotcEqjr241ZbjFzjlIYg6c5/L/s4yBGWSMvJ9UoExiSqL+FnFA/CaeZx17WGaZMS/4SOZp8wH18jSS4R4lw==}
@@ -21047,7 +21056,7 @@ snapshots:
       '@smithy/util-endpoints': 1.0.5
       '@smithy/util-retry': 2.0.7
       '@smithy/util-utf8': 2.3.0
-      fast-xml-parser: 4.2.5
+      fast-xml-parser: 4.5.6
       tslib: 2.8.1
     transitivePeerDependencies:
       - aws-crt
@@ -21116,7 +21125,7 @@ snapshots:
       '@smithy/util-body-length-browser': 4.0.0
       '@smithy/util-middleware': 4.0.4
       '@smithy/util-utf8': 4.0.0
-      fast-xml-parser: 4.4.1
+      fast-xml-parser: 4.5.6
       tslib: 2.8.1
 
   '@aws-sdk/core@3.840.0':
@@ -21134,7 +21143,7 @@ snapshots:
       '@smithy/util-body-length-browser': 4.2.0
       '@smithy/util-middleware': 4.2.5
       '@smithy/util-utf8': 4.2.0
-      fast-xml-parser: 4.4.1
+      fast-xml-parser: 4.5.6
       tslib: 2.8.1
 
   '@aws-sdk/core@3.931.0':
@@ -22347,7 +22356,7 @@ snapshots:
   '@aws-sdk/xml-builder@3.930.0':
     dependencies:
       '@smithy/types': 4.9.0
-      fast-xml-parser: 5.2.5
+      fast-xml-parser: 5.7.1
       tslib: 2.8.1
 
   '@aws/lambda-invoke-store@0.1.1': {}
@@ -23695,7 +23704,7 @@ snapshots:
     dependencies:
       lodash.camelcase: 4.3.0
       long: 5.2.3
-      protobufjs: 7.3.2
+      protobufjs: 7.5.5
       yargs: 17.7.2
 
   '@hapi/boom@10.0.1':
@@ -24414,6 +24423,8 @@ snapshots:
     dependencies:
       eslint-scope: 5.1.1
 
+  '@nodable/entities@2.1.0': {}
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -25095,7 +25106,7 @@ snapshots:
       '@opentelemetry/sdk-logs': 0.203.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-metrics': 2.0.1(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 2.0.1(@opentelemetry/api@1.9.0)
-      protobufjs: 7.3.2
+      protobufjs: 7.5.5
 
   '@opentelemetry/otlp-transformer@0.57.0(@opentelemetry/api@1.9.0)':
     dependencies:
@@ -25106,7 +25117,7 @@ snapshots:
       '@opentelemetry/sdk-logs': 0.57.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-metrics': 1.30.0(@opentelemetry/api@1.9.0)
       '@opentelemetry/sdk-trace-base': 1.30.0(@opentelemetry/api@1.9.0)
-      protobufjs: 7.3.2
+      protobufjs: 7.5.5
 
   '@opentelemetry/propagation-utils@0.31.3(@opentelemetry/api@1.9.0)':
     dependencies:
@@ -33514,7 +33525,7 @@ snapshots:
       '@grpc/grpc-js': 1.12.6
       '@grpc/proto-loader': 0.7.13
       docker-modem: 5.0.6
-      protobufjs: 7.3.2
+      protobufjs: 7.5.5
       tar-fs: 2.1.3
       uuid: 10.0.0
     transitivePeerDependencies:
@@ -34748,17 +34759,20 @@ snapshots:
     dependencies:
       punycode: 1.4.1
 
-  fast-xml-parser@4.2.5:
+  fast-xml-builder@1.1.5:
+    dependencies:
+      path-expression-matcher: 1.5.0
+
+  fast-xml-parser@4.5.6:
     dependencies:
       strnum: 1.0.5
 
-  fast-xml-parser@4.4.1:
+  fast-xml-parser@5.7.1:
     dependencies:
-      strnum: 1.0.5
-
-  fast-xml-parser@5.2.5:
-    dependencies:
-      strnum: 2.1.1
+      '@nodable/entities': 2.1.0
+      fast-xml-builder: 1.1.5
+      path-expression-matcher: 1.5.0
+      strnum: 2.2.3
 
   fastest-stable-stringify@2.0.2: {}
 
@@ -38234,6 +38248,8 @@ snapshots:
 
   path-exists@5.0.0: {}
 
+  path-expression-matcher@1.5.0: {}
+
   path-is-absolute@1.0.1: {}
 
   path-key@2.0.1: {}
@@ -38871,7 +38887,7 @@ snapshots:
 
   proto-list@1.2.4: {}
 
-  protobufjs@7.3.2:
+  protobufjs@7.5.5:
     dependencies:
       '@protobufjs/aspromise': 1.1.2
       '@protobufjs/base64': 1.1.2
@@ -40796,7 +40812,7 @@ snapshots:
 
   strnum@1.0.5: {}
 
-  strnum@2.1.1: {}
+  strnum@2.2.3: {}
 
   strtok3@9.1.1:
     dependencies:
@@ -41390,12 +41406,12 @@ snapshots:
   ts-proto-descriptors@1.15.0:
     dependencies:
       long: 5.2.3
-      protobufjs: 7.3.2
+      protobufjs: 7.5.5
 
   ts-proto@1.167.3:
     dependencies:
       case-anything: 2.1.13
-      protobufjs: 7.3.2
+      protobufjs: 7.5.5
       ts-poet: 6.6.0
       ts-proto-descriptors: 1.15.0
 
