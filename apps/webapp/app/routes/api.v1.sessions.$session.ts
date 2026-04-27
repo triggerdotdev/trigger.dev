@@ -54,7 +54,7 @@ const { action } = createActionApiRoute(
   },
   async ({ authentication, params, body }) => {
     const existing = await resolveSessionByIdOrExternalId(
-      prisma,
+      $replica,
       authentication.environment.id,
       params.session
     );

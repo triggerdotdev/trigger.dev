@@ -707,11 +707,31 @@ model Session {
   environmentType      RuntimeEnvironmentType
   organizationId       String
 
-  /// Informational pointer for task-owned types. Never changes after create.
-  taskIdentifier String?
+  /// Task this session triggers runs against. Required — Sessions are
+  /// task-bound: creating a session also triggers its first run, and
+  /// every subsequent re-trigger uses this same identifier.
+  taskIdentifier String
+
+  /// Trigger config used for every run this session schedules. Shape
+  /// (validated at the route layer, opaque to the DB):
+  ///   { basePayload: object, machine?: string, queue?: string,
+  ///     tags?: string[], maxAttempts?: number,
+  ///     idleTimeoutInSeconds?: number }
+  /// `basePayload` carries the customer's client-data; runtime fields
+  /// (chatId, messages, trigger) are merged at trigger time.
+  triggerConfig Json
 
   tags     String[] @default([])
   metadata Json?
+
+  /// Live run pointer — non-FK so run deletion never cascades. Can lag
+  /// reality; the `.in/append` handler re-checks the snapshot status
+  /// before reusing it.
+  currentRunId      String?
+  /// Monotonic counter used for optimistic locking on `currentRunId`
+  /// swaps. Bumped atomically alongside any update that changes
+  /// `currentRunId`.
+  currentRunVersion Int     @default(0)
 
   /// Terminal markers — written once, never flipped back.
   closedAt     DateTime?
@@ -721,10 +741,35 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  runs SessionRun[]
+
   /// Idempotency: `(env, externalId)` uniquely identifies a session.
   /// PostgreSQL treats NULLs as distinct, so `externalId=NULL` rows never collide.
   @@unique([runtimeEnvironmentId, externalId])
   @@index([expiresAt])
+  @@index([currentRunId])
+}
+
+/// Historical record of every run a Session has owned. Append-only —
+/// rows are inserted on each `ensureRunForSession` claim, never updated.
+/// Lets us reconstruct the run timeline of a chat for debugging /
+/// dashboard surfaces. The relation cascades on Session delete (tied to
+/// the session lifecycle) but `runId` is a plain string column with no
+/// FK to TaskRun so run pruning is independent.
+model SessionRun {
+  id String @id @default(cuid())
+
+  sessionId   String
+  /// TaskRun.id (no FK — runs may be archived independently of session history)
+  runId       String   @unique
+  /// One of: "initial" | "continuation" | "upgrade" | "manual".
+  /// Plain string for forward-compat with future trigger reasons.
+  reason      String
+  triggeredAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
 }
 
 model TaskRun {

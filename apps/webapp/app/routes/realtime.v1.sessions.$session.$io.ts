@@ -3,7 +3,11 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
-import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
+import {
+  canonicalSessionAddressingKey,
+  isSessionFriendlyIdForm,
+  resolveSessionByIdOrExternalId,
+} from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   createActionApiRoute,
@@ -31,17 +35,25 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ params, authentication }) => {
-    const session = await resolveSessionByIdOrExternalId(
+    // Row-optional addressing. The agent calls PUT initialize as part
+    // of `session.out.writer()`, by which time it has already created
+    // the row at bind, so a missing row here is an unusual case
+    // (manual init from outside chat.agent). Require a real row only
+    // for opaque friendlyIds, and treat closedAt as a soft reject only
+    // when a row exists. The S2 stream key is built from the row's
+    // canonical key (externalId if set, else friendlyId) so writers
+    // and readers converge regardless of URL form.
+    const maybeSession = await resolveSessionByIdOrExternalId(
       $replica,
       authentication.environment.id,
       params.session
     );
 
-    if (!session) {
+    if (!maybeSession && isSessionFriendlyIdForm(params.session)) {
       return new Response("Session not found", { status: 404 });
     }
 
-    if (session.closedAt) {
+    if (maybeSession?.closedAt) {
       return new Response("Cannot initialize a channel on a closed session", {
         status: 400,
       });
@@ -55,8 +67,10 @@ const { action } = createActionApiRoute(
       });
     }
 
+    const addressingKey = canonicalSessionAddressingKey(maybeSession, params.session);
+
     const { responseHeaders } = await realtimeStream.initializeSessionStream(
-      session.friendlyId,
+      addressingKey,
       params.io
     );
 
@@ -66,26 +80,48 @@ const { action } = createActionApiRoute(
 
 // GET: SSE subscribe to a session channel. HEAD returns the last chunk index
 // for resume semantics, mirroring the existing run-stream route.
+//
+// Subscribes are row-optional: the chat.agent transport opens the SSE on
+// `chatId` (externalId) before the agent has booted and upserted the
+// Session row. The S2 stream is keyed on the row's *canonical* identity
+// (externalId if set, else friendlyId) so two callers addressing the
+// same row via different URL forms converge on the same stream. We
+// short-circuit to 404 only for opaque `session_*` friendlyIds (those
+// must come from a real mint).
 const loader = createLoaderApiRoute(
   {
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      return resolveSessionByIdOrExternalId($replica, auth.environment.id, params.session);
+      const row = await resolveSessionByIdOrExternalId(
+        $replica,
+        auth.environment.id,
+        params.session
+      );
+      if (!row && isSessionFriendlyIdForm(params.session)) {
+        return undefined; // 404 — opaque friendlyId must reference a real row
+      }
+      // Non-null wrapper so missing row doesn't 404 for externalId form.
+      return {
+        row,
+        addressingKey: canonicalSessionAddressingKey(row, params.session),
+      };
     },
     authorization: {
       action: "read",
-      resource: (session) => {
-        const ids = session.externalId
-          ? [session.friendlyId, session.externalId]
-          : [session.friendlyId];
-        return { sessions: ids };
+      resource: ({ row, addressingKey }) => {
+        const ids = new Set<string>([addressingKey]);
+        if (row) {
+          ids.add(row.friendlyId);
+          if (row.externalId) ids.add(row.externalId);
+        }
+        return { sessions: [...ids] };
       },
       superScopes: ["read:sessions", "read:all", "admin"],
     },
   },
-  async ({ params, request, resource: session, authentication }) => {
+  async ({ params, request, authentication, resource }) => {
     const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
@@ -134,7 +170,7 @@ const loader = createLoaderApiRoute(
 
     return realtimeStream.streamResponseFromSessionStream(
       request,
-      session.friendlyId,
+      resource.addressingKey,
       params.io,
       getRequestAbortSignal(),
       { lastEventId, timeoutInSeconds, peekSettled }

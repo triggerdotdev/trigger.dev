@@ -1482,8 +1482,29 @@ export const CompleteWaitpointTokenRequestBody = z.object({
 export type CompleteWaitpointTokenRequestBody = z.infer<typeof CompleteWaitpointTokenRequestBody>;
 
 /**
- * Request body for `POST /api/v1/sessions`. Creates a Session — the durable,
- * typed, bidirectional I/O primitive that outlives a single run.
+ * Trigger config persisted on a Session. Drives every run the session
+ * schedules — `basePayload` is the customer's wire payload (for
+ * chat.agent: `{ chatId, ...clientData }`), runtime fields like
+ * `trigger: "preload" | "trigger"` are merged on top per-call by the
+ * server's trigger machinery.
+ */
+export const SessionTriggerConfig = z.object({
+  basePayload: z.record(z.unknown()),
+  machine: MachinePresetName.optional(),
+  queue: z.string().max(128).optional(),
+  tags: z.array(z.string().max(128)).max(5).optional(),
+  maxAttempts: z.number().int().positive().max(10).optional(),
+  /** Convenience field surfaced to chat.agent via the wire payload. */
+  idleTimeoutInSeconds: z.number().int().positive().max(3600).optional(),
+});
+export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfig>;
+
+/**
+ * Request body for `POST /api/v1/sessions`. Creates a Session and
+ * triggers its first run. Sessions are task-bound: `taskIdentifier` and
+ * `triggerConfig` are required, and re-runs scheduled by the server
+ * (after run termination, after `end-and-continue`) reuse the same
+ * config.
  */
 export const CreateSessionRequestBody = z.object({
   /** Plain string discriminator — e.g. `"chat.agent"`. Not validated against an enum on the server. */
@@ -1498,8 +1519,10 @@ export const CreateSessionRequestBody = z.object({
       message: "externalId cannot start with 'session_' (reserved prefix for internal friendlyIds)",
     })
     .optional(),
-  /** Optional pointer for task-owned session types. */
-  taskIdentifier: z.string().max(128).optional(),
+  /** Task this session triggers runs against. Required. */
+  taskIdentifier: z.string().min(1).max(128),
+  /** Trigger config used for every run scheduled by this session. */
+  triggerConfig: SessionTriggerConfig,
   /** Up to 10 tags for dashboard filtering. */
   tags: z.array(z.string().max(128)).max(10).optional(),
   /** Arbitrary JSON metadata. */
@@ -1513,7 +1536,20 @@ export const SessionItem = z.object({
   id: z.string(),
   externalId: z.string().nullable(),
   type: z.string(),
-  taskIdentifier: z.string().nullable(),
+  taskIdentifier: z.string(),
+  /**
+   * Optional on the wire because some surfaces (the list endpoint backed
+   * by ClickHouse, list-page rendering) don't carry triggerConfig.
+   * Always populated on `POST /sessions` and `GET /sessions/:id`.
+   */
+  triggerConfig: SessionTriggerConfig.optional(),
+  /**
+   * Friendly id of the live run for this session, if any. Optional on
+   * the wire — list surfaces may not include it. Routes that emit
+   * `SessionItem` are responsible for resolving the friendly form
+   * from the underlying cuid before returning.
+   */
+  currentRunId: z.string().nullable().optional(),
   tags: z.array(z.string()),
   metadata: z.record(z.unknown()).nullable(),
   closedAt: z.coerce.date().nullable(),
@@ -1525,12 +1561,47 @@ export const SessionItem = z.object({
 export type SessionItem = z.infer<typeof SessionItem>;
 
 export const CreatedSessionResponseBody = SessionItem.extend({
+  /** Friendly id of the first run triggered alongside session create. */
+  runId: z.string(),
+  /** Session-scoped public access token: `read:sessions:{ext} + write:sessions:{ext}`. */
+  publicAccessToken: z.string(),
+  /** True if the session existed already (idempotent upsert), false if newly created. */
   isCached: z.boolean(),
 });
 export type CreatedSessionResponseBody = z.infer<typeof CreatedSessionResponseBody>;
 
 export const RetrieveSessionResponseBody = SessionItem;
 export type RetrieveSessionResponseBody = z.infer<typeof RetrieveSessionResponseBody>;
+
+/**
+ * Body for `POST /api/v1/sessions/:session/end-and-continue`. Used by the
+ * running agent to request a clean handoff to a fresh run on the latest
+ * deployed version (typical use case: `chat.requestUpgrade`). The
+ * server triggers a new run, atomically swaps `currentRunId`, and the
+ * caller exits.
+ */
+export const EndAndContinueSessionRequestBody = z.object({
+  /** The friendlyId of the run requesting the handoff. */
+  callingRunId: z.string(),
+  /** Free-form label for the SessionRun audit row. e.g. `"upgrade"`. */
+  reason: z.string().max(64),
+});
+export type EndAndContinueSessionRequestBody = z.infer<typeof EndAndContinueSessionRequestBody>;
+
+export const EndAndContinueSessionResponseBody = z.object({
+  /** friendlyId of the run that has taken over the session. */
+  runId: z.string(),
+  /**
+   * False when the swap was preempted (a different run was already
+   * running by the time we tried to claim). The caller should treat
+   * this as "someone else moved on" — exit cleanly without expecting
+   * to drive the next run.
+   */
+  swapped: z.boolean(),
+});
+export type EndAndContinueSessionResponseBody = z.infer<
+  typeof EndAndContinueSessionResponseBody
+>;
 
 export const UpdateSessionRequestBody = z.object({
   tags: z.array(z.string().max(128)).max(10).optional(),

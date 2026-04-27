@@ -4,6 +4,7 @@ import {
   type CreatedSessionResponseBody,
   ListSessionsQueryParams,
   type ListSessionsResponseBody,
+  type SessionItem,
   type SessionStatus,
 } from "@trigger.dev/core/v3";
 import { SessionId } from "@trigger.dev/core/v3/isomorphic";
@@ -11,6 +12,11 @@ import type { Prisma, Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { logger } from "~/services/logger.server";
+import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
+import {
+  ensureRunForSession,
+  type SessionTriggerConfig,
+} from "~/services/realtime/sessionRunManager.server";
 import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
@@ -67,9 +73,9 @@ export const loader = createLoaderApiRoute(
     });
 
     return json<ListSessionsResponseBody>({
-      data: rows.map((session) =>
+      data: rows.map((row) =>
         serializeSession({
-          ...session,
+          ...row,
           // Columns the list query doesn't select — filled so `serializeSession`
           // can operate on a narrowed payload without type errors.
           projectId: authentication.environment.projectId,
@@ -90,36 +96,44 @@ const { action } = createActionApiRoute(
     body: CreateSessionRequestBody,
     method: "POST",
     maxContentLength: 1024 * 32, // 32KB — metadata is the only thing that grows
-    allowJWT: true,
+    // Secret-key only. Customer's server (typically wrapping
+    // `chat.createStartSessionAction`) owns session creation so any
+    // authorization decision (per-user/plan/quota) sits server-side
+    // alongside whatever DB write the customer pairs with the create.
+    // The session-scoped PAT returned in the response body is what the
+    // browser uses thereafter against `.in/append`, `.out` SSE,
+    // `end-and-continue`, etc.
     corsStrategy: "all",
   },
   async ({ authentication, body }) => {
     try {
+      const { id, friendlyId } = SessionId.generate();
+
+      // Idempotent on (env, externalId): two concurrent POSTs converge
+      // to the same row. We refresh `triggerConfig` on the cached path
+      // so newly-deployed schema changes (e.g. an updated
+      // `clientDataSchema` on the agent) propagate to subsequent runs
+      // — the next `ensureRunForSession` reads back the latest config.
       let session: Session;
       let isCached = false;
 
-      if (body.externalId) {
-        // Atomic upsert — two concurrent POSTs with the same externalId both
-        // converge to the same row without either hitting a 500 from the
-        // unique constraint. Derive isCached from the upsert result: if the
-        // row pre-existed, the returned id won't match the one we just
-        // generated. Saves a round-trip and is race-free.
-        const { id, friendlyId } = SessionId.generate();
-        const externalId = body.externalId;
+      const triggerConfigJson = body.triggerConfig as unknown as Prisma.InputJsonValue;
 
+      if (body.externalId) {
         session = await prisma.session.upsert({
           where: {
             runtimeEnvironmentId_externalId: {
               runtimeEnvironmentId: authentication.environment.id,
-              externalId,
+              externalId: body.externalId,
             },
           },
           create: {
             id,
             friendlyId,
-            externalId,
+            externalId: body.externalId,
             type: body.type,
-            taskIdentifier: body.taskIdentifier ?? null,
+            taskIdentifier: body.taskIdentifier,
+            triggerConfig: triggerConfigJson,
             tags: body.tags ?? [],
             metadata: body.metadata as Prisma.InputJsonValue | undefined,
             expiresAt: body.expiresAt ?? null,
@@ -128,17 +142,17 @@ const { action } = createActionApiRoute(
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
           },
-          update: {},
+          update: { triggerConfig: triggerConfigJson },
         });
         isCached = session.id !== id;
       } else {
-        const { id, friendlyId } = SessionId.generate();
         session = await prisma.session.create({
           data: {
             id,
             friendlyId,
             type: body.type,
-            taskIdentifier: body.taskIdentifier ?? null,
+            taskIdentifier: body.taskIdentifier,
+            triggerConfig: triggerConfigJson,
             tags: body.tags ?? [],
             metadata: body.metadata as Prisma.InputJsonValue | undefined,
             expiresAt: body.expiresAt ?? null,
@@ -150,10 +164,53 @@ const { action } = createActionApiRoute(
         });
       }
 
-      return json<CreatedSessionResponseBody>(
-        { ...serializeSession(session), isCached },
-        { status: isCached ? 200 : 201 }
+      // Session is task-bound — every session has a live run by
+      // construction. `ensureRunForSession` is idempotent: on the
+      // cached path it sees `currentRunId` is alive and returns it
+      // without re-triggering.
+      const ensureResult = await ensureRunForSession({
+        session,
+        environment: authentication.environment,
+        reason: isCached ? "continuation" : "initial",
+      });
+
+      // The newly triggered run's friendlyId, looked up via Prisma — we
+      // need the friendly form for the wire response.
+      const run = await $replica.taskRun.findFirst({
+        where: { id: ensureResult.runId },
+        select: { friendlyId: true },
+      });
+      if (!run) {
+        throw new Error(`Triggered run ${ensureResult.runId} not found`);
+      }
+
+      // Mint a session-scoped PAT keyed on the addressing string the
+      // transport will use everywhere (`.in/append`, `.out` SSE,
+      // `end-and-continue`). For sessions with an externalId, that's
+      // the externalId; otherwise the friendlyId. Mirrors the
+      // canonical addressing key used server-side.
+      const addressingKey = session.externalId ?? session.friendlyId;
+      const publicAccessToken = await mintSessionToken(
+        authentication.environment,
+        addressingKey
       );
+
+      const sessionItem: SessionItem = {
+        ...serializeSession(session),
+        triggerConfig: session.triggerConfig as unknown as SessionTriggerConfig,
+        currentRunId: run.friendlyId,
+      };
+
+      const responseBody: CreatedSessionResponseBody = {
+        ...sessionItem,
+        runId: run.friendlyId,
+        publicAccessToken,
+        isCached,
+      };
+
+      return json<CreatedSessionResponseBody>(responseBody, {
+        status: isCached ? 200 : 201,
+      });
     } catch (error) {
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });

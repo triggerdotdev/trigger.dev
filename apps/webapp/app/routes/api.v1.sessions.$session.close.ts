@@ -4,7 +4,7 @@ import {
   type RetrieveSessionResponseBody,
 } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import {
   resolveSessionByIdOrExternalId,
   serializeSession,
@@ -31,7 +31,7 @@ const { action, loader } = createActionApiRoute(
   },
   async ({ authentication, params, body }) => {
     const existing = await resolveSessionByIdOrExternalId(
-      prisma,
+      $replica,
       authentication.environment.id,
       params.session
     );

@@ -7,7 +7,11 @@ import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { createWaitpointTag, MAX_TAGS_PER_WAITPOINT } from "~/models/waitpointTag.server";
-import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
+import {
+  canonicalSessionAddressingKey,
+  isSessionFriendlyIdForm,
+  resolveSessionByIdOrExternalId,
+} from "~/services/realtime/sessions.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
@@ -50,15 +54,22 @@ const { action, loader } = createActionApiRoute(
         return json({ error: "Run not found" }, { status: 404 });
       }
 
-      const session = await resolveSessionByIdOrExternalId(
+      // Row-optional addressing — see the .out / .in.append handlers.
+      // The waitpoint cache + S2 stream key derive from the row's
+      // canonical identity (externalId if set, else friendlyId), so
+      // the agent's wait registration and the append-side drain
+      // converge regardless of which URL form each side used.
+      const maybeSession = await resolveSessionByIdOrExternalId(
         $replica,
         authentication.environment.id,
         body.session
       );
 
-      if (!session) {
+      if (!maybeSession && isSessionFriendlyIdForm(body.session)) {
         return json({ error: "Session not found" }, { status: 404 });
       }
+
+      const addressingKey = canonicalSessionAddressingKey(maybeSession, body.session);
 
       const idempotencyKeyExpiresAt = body.idempotencyKeyTTL
         ? resolveIdempotencyKeyTTL(body.idempotencyKeyTTL)
@@ -95,11 +106,13 @@ const { action, loader } = createActionApiRoute(
       });
 
       // Step 2: Register the waitpoint on the session channel so the next
-      // append fires it. Keyed by (sessionFriendlyId, io) — both runs on a
-      // multi-tab session wake on the same record.
+      // append fires it. Keyed by (addressingKey, io) — the canonical
+      // string for the row. The append handler drains by the same
+      // canonical key, so writers and readers converge regardless of
+      // which URL form the agent vs. the appending caller used.
       const ttlMs = timeout ? timeout.getTime() - Date.now() : undefined;
       await addSessionStreamWaitpoint(
-        session.friendlyId,
+        addressingKey,
         body.io,
         result.waitpoint.id,
         ttlMs && ttlMs > 0 ? ttlMs : undefined
@@ -117,7 +130,7 @@ const { action, loader } = createActionApiRoute(
 
           if (realtimeStream instanceof S2RealtimeStreams) {
             const records = await realtimeStream.readSessionStreamRecords(
-              session.friendlyId,
+              addressingKey,
               body.io,
               body.lastSeqNum
             );
@@ -135,7 +148,7 @@ const { action, loader } = createActionApiRoute(
               });
 
               await removeSessionStreamWaitpoint(
-                session.friendlyId,
+                addressingKey,
                 body.io,
                 result.waitpoint.id
               );
@@ -146,7 +159,7 @@ const { action, loader } = createActionApiRoute(
           // will complete the waitpoint via the append handler path. Log so
           // a broken race-check doesn't silently degrade to timeout-only.
           logger.warn("session-stream wait race-check failed", {
-            sessionFriendlyId: session.friendlyId,
+            addressingKey,
             io: body.io,
             waitpointId: WaitpointId.toFriendlyId(result.waitpoint.id),
             error,
