@@ -75,7 +75,9 @@ export async function createRedisContainer({
   port?: number;
   network?: StartedNetwork;
 }) {
-  let container = new RedisContainer().withExposedPorts(port ?? 6379).withStartupTimeout(120_000); // 2 minutes
+  let container = new RedisContainer("redis:7.2")
+    .withExposedPorts(port ?? 6379)
+    .withStartupTimeout(120_000); // 2 minutes
 
   if (network) {
     container = container.withNetwork(network).withNetworkAliases("redis");

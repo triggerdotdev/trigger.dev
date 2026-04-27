@@ -292,7 +292,7 @@
     "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.3.0",
     "prop-types": "^15.8.1",
-    "rimraf": "^3.0.2",
+    "rimraf": "^6.0.1",
     "style-loader": "^3.3.4",
     "supertest": "^7.0.0",
     "tailwind-scrollbar": "^3.0.1",
