@@ -151,6 +151,16 @@ export type RunEngineOptions = {
      * Default: true.
      */
     fastPathSkipEnabled?: boolean;
+    /**
+     * Whether to route the unlocked fast-path read of `delayUntil`/`createdAt`
+     * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
+     * Safe because the read is best-effort and re-checked under the lock by
+     * whichever caller is actually pushing forward; replica lag at worst means
+     * a few extra callers fall through to the lock.
+     *
+     * Default: false.
+     */
+    useReplicaForFastPathRead?: boolean;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;

@@ -3012,5 +3012,189 @@ describe("RunEngine debounce", () => {
       }
     }
   );
+
+  // Reproduces the hot-key contention from TRI-8758: fires N concurrent
+  // triggers on the same debounce key after the run is already DELAYED.
+  //
+  // - fixed=true: fast-path skip + 1s quantization on. The herd collapses on
+  //   the unlocked read and onto the same quantized newDelayUntil, so almost
+  //   every call short-circuits and `taskRun.update` is barely written.
+  // - fixed=false: fast-path off and quantization off (closer to the
+  //   pre-fix behaviour). The lock-contention fallback (also part of this
+  //   PR) still catches herd lock failures; this case validates that even
+  //   without the fast-path the system stays correct under stress, just at
+  //   higher Redlock cost.
+  for (const fixed of [true, false]) {
+    containerTest(
+      `Debounce hot-key stress (fixed=${fixed}): N concurrent triggers stay correct`,
+      async ({ prisma, redisOptions }) => {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+        const engine = new RunEngine({
+          prisma,
+          worker: {
+            redis: redisOptions,
+            workers: 1,
+            tasksPerWorker: 10,
+            pollIntervalMs: 100,
+          },
+          queue: {
+            redis: redisOptions,
+          },
+          runLock: {
+            redis: redisOptions,
+          },
+          machines: {
+            defaultMachine: "small-1x",
+            machines: {
+              "small-1x": {
+                name: "small-1x" as const,
+                cpu: 0.5,
+                memory: 0.5,
+                centsPerMs: 0.0001,
+              },
+            },
+            baseCostInCents: 0.0001,
+          },
+          debounce: {
+            maxDebounceDurationMs: 10 * 60_000,
+            fastPathSkipEnabled: fixed,
+            // 1s buckets - same as the real default - or 0 to mimic the
+            // pre-fix behaviour where every concurrent trigger has a slightly
+            // larger newDelayUntil than the last.
+            quantizeNewDelayUntilMs: fixed ? 1000 : 0,
+          },
+          tracer: trace.getTracer("test", "0.0.0"),
+        });
+
+        try {
+          const taskIdentifier = "test-task";
+          await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+          // Seed the debounce key with an initial run, then push delayUntil far
+          // forward so the herd lands well inside the existing window.
+          const seed = await engine.trigger(
+            {
+              number: 0,
+              friendlyId: "run_stress0",
+              environment: authenticatedEnvironment,
+              taskIdentifier,
+              payload: '{"data": "seed"}',
+              payloadType: "application/json",
+              context: {},
+              traceContext: {},
+              traceId: "t_stress_seed",
+              spanId: "s_stress_seed",
+              workerQueue: "main",
+              queue: "task/test-task",
+              isTest: false,
+              tags: [],
+              delayUntil: new Date(Date.now() + 30_000),
+              debounce: {
+                key: "stress-key",
+                delay: "30s",
+              },
+            },
+            prisma
+          );
+
+          // Move delayUntil to a small but safe future offset. The herd's
+          // newDelayUntil (now + 30s) will be meaningfully later than the
+          // current value, so the fast-path-off branch reschedules. The
+          // ~2s buffer keeps the run DELAYED long enough to absorb startup
+          // jitter before the first trigger writes delayUntil = now + 30s.
+          await prisma.taskRun.update({
+            where: { id: seed.id },
+            data: { delayUntil: new Date(Date.now() + 2_000) },
+          });
+
+          // Count taskRun.update calls so we can assert that the fast-path
+          // actually short-circuits the herd's writes. We monkey-patch the
+          // bound method on the prisma instance the engine is holding.
+          let updateCount = 0;
+          const originalUpdate = prisma.taskRun.update.bind(prisma.taskRun);
+          (prisma.taskRun as unknown as { update: typeof originalUpdate }).update = ((
+            ...args: Parameters<typeof originalUpdate>
+          ) => {
+            updateCount++;
+            return originalUpdate(...args);
+          }) as typeof originalUpdate;
+
+          try {
+            const N = 40;
+            const triggers = Array.from({ length: N }, (_, i) =>
+              engine.trigger(
+                {
+                  number: i + 1,
+                  friendlyId: `run_stress${i + 1}`,
+                  environment: authenticatedEnvironment,
+                  taskIdentifier,
+                  payload: `{"data": "stress-${i}"}`,
+                  payloadType: "application/json",
+                  context: {},
+                  traceContext: {},
+                  traceId: `t_stress_${i}`,
+                  spanId: `s_stress_${i}`,
+                  workerQueue: "main",
+                  queue: "task/test-task",
+                  isTest: false,
+                  tags: [],
+                  delayUntil: new Date(Date.now() + 30_000),
+                  debounce: {
+                    key: "stress-key",
+                    delay: "30s",
+                  },
+                },
+                prisma
+              )
+            );
+
+            const start = performance.now();
+            const settled = await Promise.allSettled(triggers);
+            const durationMs = performance.now() - start;
+
+            const fulfilled = settled.filter(
+              (r): r is PromiseFulfilledResult<{ id: string }> => r.status === "fulfilled"
+            );
+            const rejected = settled.filter((r) => r.status === "rejected");
+
+            // No 5xx feedback loop: every concurrent trigger succeeds and
+            // returns the existing run id.
+            expect(rejected).toHaveLength(0);
+            expect(fulfilled).toHaveLength(N);
+            for (const r of fulfilled) {
+              expect(r.value.id).toBe(seed.id);
+            }
+
+            // Only one row, regardless of contention path.
+            const runs = await prisma.taskRun.findMany({
+              where: { taskIdentifier, runtimeEnvironmentId: authenticatedEnvironment.id },
+            });
+            expect(runs.length).toBe(1);
+
+            console.log(
+              `[stress fixed=${fixed}] N=${N} duration=${durationMs.toFixed(
+                0
+              )}ms taskRun.update=${updateCount}`
+            );
+
+            if (fixed) {
+              // With fast-path + quantization: the herd collapses onto the
+              // same quantized newDelayUntil. Trigger #1 takes the lock and
+              // updates delayUntil; every subsequent trigger sees a covering
+              // delayUntil on the unlocked read and short-circuits. So at
+              // most one update lands on the run row.
+              expect(updateCount).toBeLessThanOrEqual(1);
+            }
+          } finally {
+            (prisma.taskRun as unknown as { update: typeof originalUpdate }).update =
+              originalUpdate;
+          }
+        } finally {
+          await engine.quit();
+        }
+      }
+    );
+  }
 });
 

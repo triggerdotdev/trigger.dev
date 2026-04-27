@@ -326,6 +326,7 @@ export class RunEngine {
       maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
       quantizeNewDelayUntilMs: options.debounce?.quantizeNewDelayUntilMs ?? 1000,
       fastPathSkipEnabled: options.debounce?.fastPathSkipEnabled ?? true,
+      useReplicaForFastPathRead: options.debounce?.useReplicaForFastPathRead ?? false,
     });
 
     this.pendingVersionSystem = new PendingVersionSystem({

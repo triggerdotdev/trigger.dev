@@ -10,7 +10,12 @@ import {
   parseNaturalLanguageDuration,
   parseNaturalLanguageDurationInMs,
 } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction, TaskRun, Waitpoint } from "@trigger.dev/database";
+import {
+  PrismaClientOrTransaction,
+  PrismaReplicaClient,
+  TaskRun,
+  Waitpoint,
+} from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { SystemResources } from "./systems.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
@@ -57,6 +62,11 @@ export type DebounceSystemOptions = {
    * current one.
    */
   fastPathSkipEnabled?: boolean;
+  /**
+   * When true, route the unlocked fast-path read through `readOnlyPrisma`
+   * (e.g. an Aurora reader) instead of the writer.
+   */
+  useReplicaForFastPathRead?: boolean;
 };
 
 export type DebounceResult =
@@ -103,6 +113,7 @@ export class DebounceSystem {
   private readonly maxDebounceDurationMs: number;
   private readonly quantizeNewDelayUntilMs: number;
   private readonly fastPathSkipEnabled: boolean;
+  private readonly useReplicaForFastPathRead: boolean;
 
   constructor(options: DebounceSystemOptions) {
     this.$ = options.resources;
@@ -122,6 +133,7 @@ export class DebounceSystem {
     this.maxDebounceDurationMs = options.maxDebounceDurationMs;
     this.quantizeNewDelayUntilMs = Math.max(0, options.quantizeNewDelayUntilMs ?? 1000);
     this.fastPathSkipEnabled = options.fastPathSkipEnabled ?? true;
+    this.useReplicaForFastPathRead = options.useReplicaForFastPathRead ?? false;
 
     this.#registerCommands();
   }
@@ -467,6 +479,13 @@ return 0
     tx?: PrismaClientOrTransaction;
   }): Promise<DebounceResult> {
     const prisma = tx ?? this.$.prisma;
+    // Reads that are explicitly best-effort (the fast-path skip) can run on
+    // `readOnlyPrisma` when configured. Replica lag is fine: the monotonic-
+    // forward invariant means a stale read just falls through to the locked
+    // path. Only divert reads when the caller isn't inside a tx (where the
+    // read needs to see the tx's writes).
+    const fastPathReadPrisma =
+      tx ?? (this.useReplicaForFastPathRead ? this.$.readOnlyPrisma : this.$.prisma);
 
     // Compute the (quantized) target delayUntil up-front, before taking any lock.
     // Quantizing to e.g. 1s buckets collapses many concurrent triggers on the same
@@ -484,7 +503,7 @@ return 0
         existingRunId,
         newDelayUntil,
         debounce,
-        prisma,
+        prisma: fastPathReadPrisma,
       });
       if (fastPathResult) {
         return fastPathResult;
@@ -569,7 +588,7 @@ return 0
     existingRunId: string;
     newDelayUntil: Date;
     debounce: DebounceOptions;
-    prisma: PrismaClientOrTransaction;
+    prisma: PrismaClientOrTransaction | PrismaReplicaClient;
   }): Promise<DebounceResult | null> {
     // Trailing mode with updateData still needs the lock so the data update is
     // applied; only short-circuit when there's nothing to update.
