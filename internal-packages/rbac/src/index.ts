@@ -15,8 +15,7 @@ export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigg
 type RbacHelpers = { getSessionUserId: (request: Request) => Promise<string | null> };
 
 export type RbacCreateOptions = {
-  // When true, skip loading the enterprise plugin and use the OSS fallback directly.
-  // Useful for tests that need deterministic auth behavior without the enterprise plugin.
+  // When true, skip loading the plugin, useful for tests
   forceFallback?: boolean;
 };
 
@@ -25,9 +24,7 @@ export type RbacCreateOptions = {
 // a route with action: "trigger" because "write:tasks" was listed in the route's
 // superScopes array. The new ability model matches scope-action strictly, so we
 // restore the prior semantic here: when the underlying ability denies for action
-// X, retry with each aliased action. The retry covers both OSS fallback
-// (scope-based buildJwtAbility) and enterprise (DB/CASL-based) paths
-// transparently — neither implementation needs to know about aliases.
+// X, retry with each aliased action.
 const ACTION_ALIASES: Record<string, readonly string[]> = {
   trigger: ["write"],
   batchTrigger: ["write"],
@@ -45,7 +42,7 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
   };
 }
 
-// Loads the enterprise plugin lazily; falls back to the OSS implementation if not installed.
+// Loads the plugin lazily; falls back to the fallback implementation if not installed.
 // Synchronous create() avoids top-level await (not supported in the webapp's CJS build).
 class LazyController implements RoleBaseAccessController {
   private readonly _init: Promise<RoleBaseAccessController>;
@@ -66,8 +63,34 @@ class LazyController implements RoleBaseAccessController {
       const moduleName = "@triggerdotdev/plugins/rbac";
       const module = await import(moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
+      console.log("RBAC: using enterprise plugin implementation");
       return plugin.create(helpers);
-    } catch {
+    } catch (err) {
+      // The dynamic import either succeeded (enterprise tier) or failed
+      // for one of two distinct reasons. Distinguishing them is critical
+      // for debugging — silently swallowing the error here is what
+      // produced "why is the fallback being used?" mysteries before.
+      //
+      // 1. Module-not-found — expected for OSS deployments where the
+      //    cloud plugin isn't installed. Logged at info level only when
+      //    RBAC_LOG_FALLBACK=1 so production OSS logs stay quiet.
+      // 2. Anything else (transitive dep missing, init error, syntax
+      //    error in the plugin's dist, etc.) — a real bug. Always
+      //    logged loudly so it surfaces in CI / production logs.
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+      if (!isModuleNotFound) {
+        console.error(
+          "RBAC: enterprise plugin found but failed to load; falling back to OSS implementation",
+          err
+        );
+      } else if (process.env.RBAC_LOG_FALLBACK === "1") {
+        console.log(
+          "RBAC: enterprise plugin not installed (ERR_MODULE_NOT_FOUND); using OSS fallback"
+        );
+      } else {
+        console.log(`RBAC: using fallback implementation. ${err}`);
+      }
       return new RoleBaseAccessFallback(prisma).create(helpers);
     }
   }
@@ -115,7 +138,9 @@ class LazyController implements RoleBaseAccessController {
     return auth;
   }
 
-  async allPermissions(...args: Parameters<RoleBaseAccessController["allPermissions"]>): Promise<Permission[]> {
+  async allPermissions(
+    ...args: Parameters<RoleBaseAccessController["allPermissions"]>
+  ): Promise<Permission[]> {
     return (await this.c()).allPermissions(...args);
   }
 
@@ -141,7 +166,9 @@ class LazyController implements RoleBaseAccessController {
     return (await this.c()).deleteRole(...args);
   }
 
-  async getUserRole(...args: Parameters<RoleBaseAccessController["getUserRole"]>): Promise<Role | null> {
+  async getUserRole(
+    ...args: Parameters<RoleBaseAccessController["getUserRole"]>
+  ): Promise<Role | null> {
     return (await this.c()).getUserRole(...args);
   }
 
@@ -157,7 +184,9 @@ class LazyController implements RoleBaseAccessController {
     return (await this.c()).removeUserRole(...args);
   }
 
-  async getTokenRole(...args: Parameters<RoleBaseAccessController["getTokenRole"]>): Promise<Role | null> {
+  async getTokenRole(
+    ...args: Parameters<RoleBaseAccessController["getTokenRole"]>
+  ): Promise<Role | null> {
     return (await this.c()).getTokenRole(...args);
   }
 

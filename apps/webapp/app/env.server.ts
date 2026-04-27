@@ -1543,9 +1543,7 @@ const EnvironmentSchema = z
     PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
     PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
 
-    // Force the RBAC plugin loader to use the OSS fallback, bypassing the enterprise plugin.
-    // Set to "1"/"true" in tests so auth behavior is deterministic regardless of whether
-    // @triggerdotdev/plugins/rbac is installed in the environment.
+    // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
   })
   .and(GithubAppEnvSchema)
