@@ -607,6 +607,7 @@ export class DequeueSystem {
                   id: lockedTaskRun.id,
                   friendlyId: lockedTaskRun.friendlyId,
                   isTest: lockedTaskRun.isTest,
+                  isReplay: !!lockedTaskRun.replayedFromTaskRunFriendlyId,
                   machine: machinePreset,
                   attemptNumber: nextAttemptNumber,
                   // Keeping this for backwards compatibility, but really this should be called workerQueue

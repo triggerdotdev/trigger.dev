@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'helm-v*'
+  workflow_call:
+    inputs:
+      chart_version:
+        description: 'Chart version to release'
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       chart_version:
@@ -86,8 +92,8 @@ jobs:
       - name: Extract version from tag or input
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.chart_version }}"
+          if [ -n "${{ inputs.chart_version }}" ]; then
+            VERSION="${{ inputs.chart_version }}"
           else
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#helm-v}"
@@ -122,9 +128,8 @@ jobs:
       - name: Create GitHub Release
         id: release
         uses: softprops/action-gh-release@v1
-        if: github.event_name == 'push'
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: helm-v${{ steps.version.outputs.version }}
           name: "Helm Chart ${{ steps.version.outputs.version }}"
           body: |
             ### Installation

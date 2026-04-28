@@ -277,6 +277,7 @@ export const DequeuedMessage = z.object({
     id: z.string(),
     friendlyId: z.string(),
     isTest: z.boolean(),
+    isReplay: z.boolean().default(false),
     machine: MachinePreset,
     attemptNumber: z.number(),
     masterQueue: z.string(),

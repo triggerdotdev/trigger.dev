@@ -71,7 +71,7 @@ branch are tagged into a release periodically.
 
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
-8. Start Docker. This starts the required services like Postgres & Redis. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md)
+8. Start Docker. This starts the required services: Postgres, Redis, Electric, and ClickHouse (the ClickHouse migrator runs once on first start). If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md).
 
    ```
    pnpm run docker
@@ -81,11 +81,15 @@ branch are tagged into a release periodically.
    ```
    pnpm run db:migrate
    ```
-10. Build everything
+10. Build the webapp, CLI, and SDK
     ```
-    pnpm run build --filter webapp && pnpm run build --filter trigger.dev && pnpm run build --filter @trigger.dev/sdk
+    pnpm run build --filter webapp --filter trigger.dev --filter @trigger.dev/sdk
     ```
-11. Run the app. See the section below.
+11. Seed the database. This creates a local user, a `References` org, and the reference projects (including `hello-world`) with stable IDs.
+    ```
+    pnpm run db:seed
+    ```
+12. Run the app. See the section below.
 
 ## Running
 
@@ -105,22 +109,17 @@ We use the `<root>/references/hello-world` subdirectory as a staging ground for 
 
 ### First-time setup
 
-First, make sure you are running the webapp according to the instructions above. Then:
+First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod` — log in at http://localhost:3030 with any email to access it. Then:
 
-1. Visit http://localhost:3030 in your browser and create a new project called "hello-world".
-
-2. In Postgres go to the "Projects" table and for the project you create change the `externalRef` to `proj_rrkpdguyagvsoktglnod`.
-
-3. Build the CLI
+1. Build the CLI (skip if you already ran the build step in setup)
 
 ```sh
-# Build the CLI
 pnpm run build --filter trigger.dev
 # Make it accessible to `pnpm exec`
 pnpm i
 ```
 
-4. Change into the `<root>/references/hello-world` directory and authorize the CLI to the local server:
+2. Change into the `<root>/references/hello-world` directory and authorize the CLI to the local server:
 
 ```sh
 cd references/hello-world
@@ -168,24 +167,24 @@ If you want additional debug logging, you can use the `--log-level debug` flag:
 pnpm exec trigger dev --log-level debug
 ```
 
-6. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `hello-world/src/trigger` dir will automatically be rebuilt by the `dev` command.
+5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `hello-world/src/trigger` dir will automatically be rebuilt by the `dev` command.
 
-7. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
+6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-8. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/hello-world/src/trigger` folder. Many of them accept an empty payload.
+7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/hello-world/src/trigger` folder. Many of them accept an empty payload.
 
-9. Feel free to add additional files in `hello-world/src/trigger` to test out specific aspects of the system, or add in edge cases.
+8. Feel free to add additional files in `hello-world/src/trigger` to test out specific aspects of the system, or add in edge cases.
 
 ## Adding and running migrations
 
-1. Modify internal-packages/database/prisma/schema.prisma file
-2. Change directory to the packages/database folder
+1. Modify `internal-packages/database/prisma/schema.prisma`.
+2. Change directory to the database package:
 
    ```sh
-   cd packages/database
+   cd internal-packages/database
    ```
 
-3. Create a migration
+3. Create a migration:
 
    ```
    pnpm run db:migrate:dev:create
@@ -193,50 +192,17 @@ pnpm exec trigger dev --log-level debug
 
    This creates a migration file. Check the migration file does only what you want. If you're adding any database indexes they must use `CONCURRENTLY`, otherwise they'll lock the table when executed.
 
-4. Run the migration.
+4. Run the migration:
 
-```
-pnpm run db:migrate:deploy
-pnpm run generate
-```
+   ```
+   pnpm run db:migrate:deploy
+   pnpm run generate
+   ```
 
-This executes the migrations against your database and applies changes to the database schema(s), and then regenerates the Prisma client.
+   This executes the migrations against your database and applies changes to the database schema(s), and then regenerates the Prisma client.
 
-4. Commit generated migrations as well as changes to the schema.prisma file
-5. If you're using VSCode you may need to restart the Typescript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
-
-## Add sample jobs
-
-The [references/job-catalog](./references/job-catalog/) project defines simple jobs you can get started with.
-
-1. `cd` into `references/job-catalog`
-2. Create a `.env` file with the following content,
-   replacing `<TRIGGER_DEV_API_KEY>` with an actual key:
-
-```env
-TRIGGER_API_KEY=[TRIGGER_DEV_API_KEY]
-TRIGGER_API_URL=http://localhost:3030
-```
-
-`TRIGGER_API_URL` is used to configure the URL for your Trigger.dev instance,
-where the jobs will be registered.
-
-3. Run one of the the `job-catalog` files:
-
-```sh
-pnpm run events
-```
-
-This will open up a local server using `express` on port 8080. Then in a new terminal window you can run the trigger-cli dev command:
-
-```sh
-pnpm run dev:trigger
-```
-
-See the [Job Catalog](./references/job-catalog/README.md) file for more.
-
-4. Navigate to your trigger.dev instance ([http://localhost:3030](http://localhost:3030/)), to see the jobs.
-   You can use the test feature to trigger them.
+5. Commit the generated migration files as well as the changes to `schema.prisma`.
+6. If you're using VSCode you may need to restart the TypeScript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
 
 ## Making a pull request
 

@@ -31,6 +31,7 @@ module.exports = {
     "parse-duration",
     "uncrypto",
     "std-env",
+    "uuid",
   ],
   browserNodeBuiltinsPolyfill: {
     modules: {
