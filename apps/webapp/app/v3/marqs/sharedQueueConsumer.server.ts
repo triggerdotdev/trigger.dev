@@ -1640,6 +1640,7 @@ export const AttemptForExecutionGetPayload = {
         createdAt: true,
         startedAt: true,
         isTest: true,
+        replayedFromTaskRunFriendlyId: true,
         metadata: true,
         metadataType: true,
         idempotencyKey: true,
@@ -1726,6 +1727,7 @@ class SharedQueueTasks {
         startedAt: taskRun.startedAt ?? taskRun.createdAt,
         tags: taskRun.runTags ?? [],
         isTest: taskRun.isTest,
+        isReplay: !!taskRun.replayedFromTaskRunFriendlyId,
         idempotencyKey: taskRun.idempotencyKey ?? undefined,
         durationMs: taskRun.usageDurationMs,
         costInCents: taskRun.costInCents,
@@ -2045,6 +2047,7 @@ class SharedQueueTasks {
         traceContext: true,
         friendlyId: true,
         isTest: true,
+        replayedFromTaskRunFriendlyId: true,
         lockedBy: {
           select: {
             machineConfig: true,
@@ -2090,6 +2093,7 @@ class SharedQueueTasks {
       runId: run.friendlyId,
       messageId: run.id,
       isTest: run.isTest,
+      isReplay: !!run.replayedFromTaskRunFriendlyId,
       attemptCount,
       metrics: [],
     } satisfies TaskRunExecutionLazyAttemptPayload;
