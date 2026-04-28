@@ -1539,4 +1539,225 @@ describe("API", () => {
       expect(res.status).not.toBe(403);
     });
   });
+
+  // Batch resources (TRI-8737). Per-batch retrieve + realtime
+  // endpoints — single-id resource `{ type: "batch", id: batch.friendlyId }`.
+  // The list endpoint (`GET /api/v1/batches`) is currently absent
+  // from this branch (deleted in s3-switchover), so the list-
+  // section of the matrix is N/A here. If/when the list endpoint
+  // returns, add a list-side describe.
+  //
+  // Notable behaviour: the route's resource is `{ type: "batch" }`,
+  // NOT `{ type: "runs" }`. The legacy literal-match escape that
+  // let `read:runs` JWTs hit batch endpoints no longer applies.
+  // Tests pin this down (a `read:runs` scope on a `{ type: "batch" }`
+  // resource is a type mismatch → 403).
+  describe("Batch retrieve — GET /api/v1/batches/:batchId", () => {
+    const pathFor = (batchId: string) => `/api/v1/batches/${batchId}`;
+
+    async function seedRunWithBatch() {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const seeded = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+        withBatch: true,
+      });
+      // batchFriendlyId is guaranteed when withBatch is set.
+      if (!seeded.batchFriendlyId) {
+        throw new Error("seedTestRun({ withBatch: true }) didn't return a batchFriendlyId");
+      }
+      return { ...seed, batchFriendlyId: seeded.batchFriendlyId };
+    }
+
+    const get = (path: string, headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, { headers });
+
+    it("missing auth: 401", async () => {
+      const res = await get(pathFor("batch_anything"), {});
+      expect(res.status).toBe(401);
+    });
+
+    it("invalid API key: 401", async () => {
+      const res = await get(pathFor("batch_anything"), {
+        Authorization: "Bearer tr_dev_invalid",
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key on real batch: auth passes", async () => {
+      const { batchFriendlyId, apiKey } = await seedRunWithBatch();
+      const res = await get(pathFor(batchFriendlyId), {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:batch:<friendlyId> matching: auth passes", async () => {
+      const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: [`read:batch:${batchFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:batch:<other>: 403", async () => {
+      const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: ["read:batch:batch_someoneelse00000000"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT read:batch (type-level): auth passes", async () => {
+      const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:batch"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:runs: 403 (resource type is 'batch', not 'runs')", async () => {
+      const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      // Pre-TRI-8719 the legacy literal-match escape granted
+      // read:runs access to batch endpoints. Post-migration the
+      // resource type is strictly { type: "batch" } and read:runs
+      // doesn't match. Lock this in — if SDKs were issuing
+      // read:runs:* JWTs for batch lookups, that's a regression to
+      // catch.
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT read:all super-scope: auth passes", async () => {
+      const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:all"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT admin: auth passes", async () => {
+      const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("cross-env: env A's JWT cannot read env B's batch: not 200", async () => {
+      const server = getTestServer();
+      const a = await seedTestEnvironment(server.prisma);
+      const b = await seedRunWithBatch();
+      const jwt = await generateJWT({
+        secretKey: a.apiKey,
+        payload: {
+          pub: true,
+          sub: a.environment.id,
+          scopes: [`read:batch:${b.batchFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(b.batchFriendlyId), { Authorization: `Bearer ${jwt}` });
+      // Critical: env A's JWT can't see env B's batch (env-scoped
+      // findResource returns null). NOT 200.
+      expect(res.status).not.toBe(200);
+    });
+  });
+
+  // Sanity: api.v2 and realtime.v1 share the exact same authorization
+  // config as v1. Don't duplicate the full matrix; just verify the
+  // wiring is alive on each.
+  describe("Batch retrieve — GET /api/v2/batches/:batchId (sanity)", () => {
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch("/api/v2/batches/batch_anything");
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT read:batch (type-level): auth passes on real batch", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const seeded = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+        withBatch: true,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:batch"] },
+        expirationTime: "15m",
+      });
+      const res = await getTestServer().webapp.fetch(
+        `/api/v2/batches/${seeded.batchFriendlyId}`,
+        { headers: { Authorization: `Bearer ${jwt}` } }
+      );
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  describe("Batch retrieve — GET /realtime/v1/batches/:batchId (sanity)", () => {
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch("/realtime/v1/batches/batch_anything");
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT read:batch:<friendlyId>: auth passes on real batch", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const seeded = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+        withBatch: true,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`read:batch:${seeded.batchFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await getTestServer().webapp.fetch(
+        `/realtime/v1/batches/${seeded.batchFriendlyId}`,
+        { headers: { Authorization: `Bearer ${jwt}` } }
+      );
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
