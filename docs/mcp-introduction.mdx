@@ -346,13 +346,27 @@ Some flags apply only to the running MCP server, not to `install-mcp`. Add these
 
 - `--readonly` — Read-only mode. Hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes to your account.
 
-For example, to enable read-only mode together with `--dev-only` and a project ref:
+For example, to enable read-only mode in Claude Code together with `--dev-only` and a project ref, edit `~/.claude.json` (user) or `.mcp.json` (project):
 
 ```json
 {
-  "args": ["trigger.dev@latest", "mcp", "--readonly", "--dev-only", "--project-ref", "proj_abc123"]
+  "mcpServers": {
+    "trigger": {
+      "command": "npx",
+      "args": [
+        "trigger.dev@latest",
+        "mcp",
+        "--readonly",
+        "--dev-only",
+        "--project-ref",
+        "proj_abc123"
+      ]
+    }
+  }
 }
 ```
+
+For other clients, use the config shape shown in the corresponding tab in [Client Configuration](#client-configuration) and append the same flags to that entry's `args` array (or to the `command` array, for opencode).
 
 </Accordion>
 
