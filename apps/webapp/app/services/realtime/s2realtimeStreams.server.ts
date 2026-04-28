@@ -399,12 +399,18 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       };
       const record = json.records?.[0];
       if (!record) return null;
-      // The record body is a JSON string `{data: <chunk>, id: partId}`
-      // where `<chunk>` is the raw UIMessageChunk object (see
-      // `StreamsWriterV2` — the agent-side writer serializes the chunk
-      // object directly, not double-encoded). Unwrap the envelope and
-      // return `data` as-is.
+      // The record body is a JSON string `{data: <chunkAsString>, id: partId}`.
+      // The agent-side writer (`StreamsWriterV2`) hands `appendPart` an
+      // already-JSON-stringified chunk, so `data` round-trips as a string,
+      // not an object. Parse it once more to surface the chunk shape.
       const envelope = JSON.parse(record.body) as { data: unknown; id: string };
+      if (typeof envelope.data === "string") {
+        try {
+          return JSON.parse(envelope.data);
+        } catch {
+          return envelope.data;
+        }
+      }
       return envelope.data;
     } catch (err) {
       this.logger.warn("S2 peek last record: parse failed", { err, stream: s2Stream });
