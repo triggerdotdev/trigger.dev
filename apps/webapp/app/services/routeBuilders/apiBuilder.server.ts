@@ -469,7 +469,13 @@ type ApiKeyActionRouteBuilderOptions<
         : undefined,
       body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TBodySchema>
-        : undefined
+        : undefined,
+      // The resolved resource from `findResource`. `undefined` when the route
+      // doesn't declare `findResource`. Routes that need to expand the auth
+      // scope to alternate identifiers of the same row (e.g. friendlyId +
+      // externalId for sessions) read it here so a JWT minted for either form
+      // authorizes both URL forms.
+      resource: TResource | undefined
     ) => AuthorizationResources;
     superScopes?: string[];
   };
@@ -667,9 +673,33 @@ export function createActionApiRoute<
         parsedBody = body.data;
       }
 
+      // Resolve the resource before authorization so the auth scope check
+      // can expand to alternate identifiers of the same row (e.g. a Session
+      // is addressable by both `friendlyId` and `externalId` and a JWT minted
+      // for either form should authorize both URL forms). Mirrors the
+      // ordering in `createLoaderApiRoute`.
+      const resource = options.findResource
+        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
+        : undefined;
+
+      // Run authorization first — but with the resolved resource available
+      // as the 5th arg so the auth scope check can expand to alternate
+      // identifiers of the same row (e.g. a Session is addressable by both
+      // `friendlyId` and `externalId`). Resource-null is checked AFTER auth
+      // so:
+      //   - underscoped JWT + missing resource → 403 (no info leak)
+      //   - underscoped JWT + existing resource → 403 (existing behavior)
+      //   - PRIVATE key + missing resource → auth passes → 404 (correct)
+      //   - PRIVATE key + existing resource → auth passes → handler runs
       if (authorization) {
-        const { action, resource, superScopes } = authorization;
-        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders, parsedBody);
+        const { action, resource: authResource, superScopes } = authorization;
+        const $resource = authResource(
+          parsedParams,
+          parsedSearchParams,
+          parsedHeaders,
+          parsedBody,
+          resource
+        );
 
         logger.debug("Checking authorization", {
           action,
@@ -701,10 +731,6 @@ export function createActionApiRoute<
           );
         }
       }
-
-      const resource = options.findResource
-        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
-        : undefined;
 
       if (options.findResource && !resource) {
         return await wrapResponse(
