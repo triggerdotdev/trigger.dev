@@ -325,6 +325,16 @@ export function v3RunsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/runs${query}`;
 }
 
+export function v3RunsRefreshPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/runs/refresh`;
+}
+
 export function v3CreateBulkActionPath(
   organization: OrgForPath,
   project: ProjectForPath,

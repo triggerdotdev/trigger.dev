@@ -9,10 +9,12 @@ import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
-import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { type ListedRun, RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
+
+type DisplayableEnvironmentForRow = NonNullable<Awaited<ReturnType<typeof findDisplayableEnvironment>>>;
 
 export type RunListOptions = {
   userId?: string;
@@ -208,50 +210,7 @@ export class NextRunListPresenter {
     }
 
     return {
-      runs: runs.map((run) => {
-        const hasFinished = isFinalRunStatus(run.status);
-
-        const startedAt = run.startedAt ?? run.lockedAt;
-
-        return {
-          id: run.id,
-          number: 1,
-          friendlyId: run.friendlyId,
-          createdAt: run.createdAt.toISOString(),
-          updatedAt: run.updatedAt.toISOString(),
-          startedAt: startedAt ? startedAt.toISOString() : undefined,
-          delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
-          hasFinished,
-          finishedAt: hasFinished
-            ? run.completedAt?.toISOString() ?? run.updatedAt.toISOString()
-            : undefined,
-          isTest: run.isTest,
-          status: run.status,
-          version: run.taskVersion,
-          taskIdentifier: run.taskIdentifier,
-          spanId: run.spanId,
-          isReplayable: true,
-          isCancellable: isCancellableRunStatus(run.status),
-          isPending: isPendingRunStatus(run.status),
-          environment: displayableEnvironment,
-          idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
-          ttl: run.ttl ? run.ttl : undefined,
-          expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
-          costInCents: run.costInCents,
-          baseCostInCents: run.baseCostInCents,
-          usageDurationMs: Number(run.usageDurationMs),
-          tags: run.runTags ? run.runTags.sort((a, b) => a.localeCompare(b)) : [],
-          depth: run.depth,
-          rootTaskRunId: run.rootTaskRunId,
-          metadata: run.metadata,
-          metadataType: run.metadataType,
-          machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
-          queue: {
-            name: run.queue.replace("task/", ""),
-            type: run.queue.startsWith("task/") ? "task" : "custom",
-          },
-        };
-      }),
+      runs: runs.map((run) => NextRunListPresenter.toRunListItem(run, displayableEnvironment)),
       pagination: {
         next: pagination.nextCursor ?? undefined,
         previous: pagination.previousCursor ?? undefined,
@@ -272,6 +231,119 @@ export class NextRunListPresenter {
       },
       hasFilters,
       hasAnyRuns,
+    };
+  }
+
+  /**
+   * Returns the latest data for the given internal run UUIDs, in the same shape
+   * as `call()`'s `runs[]`. Used by the runs.refresh resource route to refresh
+   * non-terminal rows in place. Hits Postgres directly (not ClickHouse) so we
+   * don't read replication-lagged values when polling.
+   */
+  public async callByIds(
+    organizationId: string,
+    environmentId: string,
+    {
+      userId,
+      runIds,
+    }: {
+      userId?: string;
+      runIds: string[];
+    }
+  ) {
+    if (runIds.length === 0) {
+      return { runs: [] };
+    }
+
+    const displayableEnvironment = await findDisplayableEnvironment(environmentId, userId);
+    if (!displayableEnvironment) {
+      throw new ServiceValidationError("No environment found");
+    }
+
+    const rows = await this.replica.taskRun.findMany({
+      where: {
+        id: { in: runIds },
+        runtimeEnvironmentId: environmentId,
+        organizationId,
+      },
+      select: {
+        id: true,
+        friendlyId: true,
+        taskIdentifier: true,
+        taskVersion: true,
+        runtimeEnvironmentId: true,
+        status: true,
+        createdAt: true,
+        startedAt: true,
+        lockedAt: true,
+        delayUntil: true,
+        updatedAt: true,
+        completedAt: true,
+        isTest: true,
+        spanId: true,
+        idempotencyKey: true,
+        ttl: true,
+        expiredAt: true,
+        costInCents: true,
+        baseCostInCents: true,
+        usageDurationMs: true,
+        runTags: true,
+        depth: true,
+        rootTaskRunId: true,
+        batchId: true,
+        metadata: true,
+        metadataType: true,
+        machinePreset: true,
+        queue: true,
+      },
+    });
+
+    return {
+      runs: rows.map((run) => NextRunListPresenter.toRunListItem(run, displayableEnvironment)),
+    };
+  }
+
+  private static toRunListItem(run: ListedRun, displayableEnvironment: DisplayableEnvironmentForRow) {
+    const hasFinished = isFinalRunStatus(run.status);
+    const startedAt = run.startedAt ?? run.lockedAt;
+
+    return {
+      id: run.id,
+      number: 1,
+      friendlyId: run.friendlyId,
+      createdAt: run.createdAt.toISOString(),
+      updatedAt: run.updatedAt.toISOString(),
+      startedAt: startedAt ? startedAt.toISOString() : undefined,
+      delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
+      hasFinished,
+      finishedAt: hasFinished
+        ? run.completedAt?.toISOString() ?? run.updatedAt.toISOString()
+        : undefined,
+      isTest: run.isTest,
+      status: run.status,
+      version: run.taskVersion,
+      taskIdentifier: run.taskIdentifier,
+      spanId: run.spanId,
+      isReplayable: true,
+      isCancellable: isCancellableRunStatus(run.status),
+      isPending: isPendingRunStatus(run.status),
+      environment: displayableEnvironment,
+      idempotencyKey: run.idempotencyKey ? run.idempotencyKey : undefined,
+      ttl: run.ttl ? run.ttl : undefined,
+      expiredAt: run.expiredAt ? run.expiredAt.toISOString() : undefined,
+      costInCents: run.costInCents,
+      baseCostInCents: run.baseCostInCents,
+      usageDurationMs: Number(run.usageDurationMs),
+      tags: run.runTags ? run.runTags.sort((a, b) => a.localeCompare(b)) : [],
+      depth: run.depth,
+      rootTaskRunId: run.rootTaskRunId,
+      metadata: run.metadata,
+      metadataType: run.metadataType,
+      machinePreset: run.machinePreset ? machinePresetFromRun(run)?.name : undefined,
+      queue: {
+        name: run.queue.replace("task/", ""),
+        type: run.queue.startsWith("task/") ? "task" : "custom",
+      },
     };
   }
 }

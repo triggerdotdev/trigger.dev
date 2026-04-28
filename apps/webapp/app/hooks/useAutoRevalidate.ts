@@ -5,10 +5,16 @@ type UseAutoRevalidateOptions = {
   interval?: number; // in milliseconds
   onFocus?: boolean;
   disabled?: boolean;
+  pauseWhenHidden?: boolean;
 };
 
 export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
-  const { interval = 5000, onFocus = true, disabled = false } = options;
+  const {
+    interval = 5000,
+    onFocus = true,
+    disabled = false,
+    pauseWhenHidden = true,
+  } = options;
   const revalidator = useRevalidator();
 
   useEffect(() => {
@@ -18,11 +24,14 @@ export function useAutoRevalidate(options: UseAutoRevalidateOptions = {}) {
       if (revalidator.state === "loading") {
         return;
       }
+      if (pauseWhenHidden && document.visibilityState !== "visible") {
+        return;
+      }
       revalidator.revalidate();
     }, interval);
 
     return () => clearInterval(intervalId);
-  }, [interval, disabled]);
+  }, [interval, disabled, pauseWhenHidden]);
 
   useEffect(() => {
     if (!onFocus || disabled) return;
