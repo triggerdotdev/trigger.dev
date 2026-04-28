@@ -18,7 +18,7 @@ import {
 
 const oneHour = 60 * 60;
 const oneDay = 60 * 60 * 24;
-const oneYear = 60 * 60 * 24 * 365;
+const oneYear = DEFAULT_SESSION_DURATION_SECONDS;
 
 const sessionStorage = createCookieSessionStorage({
   cookie: { name: "__test_session", secrets: ["test"] },

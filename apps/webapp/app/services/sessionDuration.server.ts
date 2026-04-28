@@ -5,7 +5,13 @@ import { commitSession } from "./sessionStorage.server";
 
 export const SESSION_ISSUED_AT_KEY = "session:issuedAt";
 
-export const DEFAULT_SESSION_DURATION_SECONDS = 60 * 60 * 24 * 365;
+// Months and years use standard Gregorian-calendar conversions (365.2425 days/yr,
+// 30.436875 days/month) so values produced by external "X months in seconds"
+// calculators map cleanly to a labeled option.
+const GREGORIAN_YEAR_SECONDS = 31_556_952; // 365.2425 * 86400
+const GREGORIAN_HALF_YEAR_SECONDS = 15_778_476;
+
+export const DEFAULT_SESSION_DURATION_SECONDS = GREGORIAN_YEAR_SECONDS;
 
 export type SessionDurationOption = {
   value: number;
@@ -18,8 +24,8 @@ export const SESSION_DURATION_OPTIONS: SessionDurationOption[] = [
   { value: 60 * 60, label: "1 hour" },
   { value: 60 * 60 * 24, label: "1 day" },
   { value: 60 * 60 * 24 * 30, label: "30 days" },
-  { value: 60 * 60 * 24 * 30 * 6, label: "6 months" },
-  { value: 60 * 60 * 24 * 365, label: "1 year" },
+  { value: GREGORIAN_HALF_YEAR_SECONDS, label: "6 months" },
+  { value: GREGORIAN_YEAR_SECONDS, label: "1 year" },
 ];
 
 export const ALLOWED_SESSION_DURATION_VALUES: ReadonlySet<number> = new Set(

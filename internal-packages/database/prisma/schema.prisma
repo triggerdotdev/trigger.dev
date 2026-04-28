@@ -54,9 +54,9 @@ model User {
   /// Hash of the last used code to prevent replay attacks
   mfaLastUsedCode      String?
 
-  /// Maximum session lifetime in seconds for this user. Default = 1 year.
+  /// Maximum session lifetime in seconds for this user. Default = 1 year (Gregorian).
   /// May be further restricted by Organization.maxSessionDuration on any of the user's orgs.
-  sessionDuration Int @default(31536000)
+  sessionDuration Int @default(31556952)
 
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
