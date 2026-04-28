@@ -130,6 +130,13 @@
             ]
           },
           {
+            "group": "Private networking",
+            "pages": [
+              "private-networking/overview",
+              "private-networking/aws-console-setup"
+            ]
+          },
+          {
             "group": "Realtime",
             "pages": [
               "realtime/overview",

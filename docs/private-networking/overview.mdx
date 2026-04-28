@@ -1,0 +1,154 @@
+---
+title: "Private networking"
+sidebarTitle: "Overview"
+description: "Connect your tasks to private resources in your AWS account using AWS PrivateLink."
+---
+
+Private networking lets your Trigger.dev tasks reach databases, caches, and internal APIs that live inside your own AWS VPC, without exposing them to the public internet. Connectivity is established over [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html), so traffic stays on the AWS backbone.
+
+<Info>
+  Private networking is an enterprise feature. If you'd like access, [get in touch](/community).
+</Info>
+
+## What is AWS PrivateLink
+
+AWS PrivateLink is a managed service that creates a private, one-way connection between two AWS accounts without using the public internet, NAT gateways, internet gateways, or VPN tunnels.
+
+It works by pairing two resources:
+
+- A **VPC Endpoint Service** in the account that owns the resource (yours). This is fronted by a Network Load Balancer (NLB) and exposes whatever ports you choose.
+- A **VPC Endpoint** in the account that wants to consume the resource (Trigger.dev's). The endpoint is a set of Elastic Network Interfaces (ENIs) inside our VPC that your task pods can dial directly by IP or DNS name.
+
+The connection is unidirectional: only the endpoint side can initiate connections. Your VPC cannot reach into ours.
+
+## What you can use it for
+
+Any TCP service running inside your VPC. Common use cases include:
+
+- **Databases**: PostgreSQL (RDS, Aurora), MySQL, MongoDB, ClickHouse, Redshift
+- **Caches**: ElastiCache Redis, Memcached
+- **Internal APIs**: services on EKS, ECS, EC2, or Lambda exposed through an internal NLB
+- **Message brokers**: self-hosted Kafka, RabbitMQ, NATS
+- **Vector databases and ML services** running in private subnets
+
+If your resource is reachable from a Network Load Balancer in the same VPC, it can be exposed to Trigger.dev via PrivateLink.
+
+## How it works with Trigger.dev
+
+When you add a private connection in the dashboard, the following happens:
+
+<Steps>
+  <Step title="You expose your resource">
+    You create an internal NLB in front of your resource and a VPC Endpoint Service that points to it. You add Trigger.dev's AWS account as an allowed principal so we're permitted to connect.
+  </Step>
+  <Step title="We provision a VPC Endpoint">
+    Once you submit the endpoint service name in the Trigger.dev dashboard, we provision a VPC Endpoint in our isolated, customer-PrivateLink AWS account in the region you chose. The endpoint creates ENIs with private IPs that we wire up to reach your service.
+  </Step>
+  <Step title="We inject endpoint info into your tasks">
+    The endpoint's IP addresses are injected as environment variables into the pods that run your tasks. Your task code reads them like any other env var to dial into your resource.
+  </Step>
+</Steps>
+
+### Connecting from your task code
+
+Each connection you create gets a friendly name. We expose its IPs via an environment variable derived from that name:
+
+```text
+TRIGGER_PRIVATE_LINK_<NAME_IN_SCREAMING_SNAKE_CASE>
+```
+
+For example, a connection named `my-postgres` produces:
+
+```text
+TRIGGER_PRIVATE_LINK_MY_POSTGRES=10.200.1.5,10.200.1.6
+```
+
+Use it in your task like any other connection string fragment:
+
+```typescript
+import { task } from "@trigger.dev/sdk";
+import { Client } from "pg";
+
+export const queryDatabase = task({
+  id: "query-database",
+  run: async () => {
+    const host = process.env.TRIGGER_PRIVATE_LINK_MY_POSTGRES?.split(",")[0];
+
+    const client = new Client({
+      host,
+      port: 5432,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: "app",
+    });
+
+    await client.connect();
+    const result = await client.query("SELECT NOW()");
+    await client.end();
+
+    return result.rows;
+  },
+});
+```
+
+<Tip>
+  The variable contains a comma-separated list of IPs (one per Availability Zone). Most database
+  drivers accept the first IP. For higher availability, parse the list and use a driver that
+  supports failover.
+</Tip>
+
+## Isolation between organizations
+
+Private networking is set up so that each organization's connections are completely isolated from every other organization. Three layers enforce that:
+
+### 1. Dedicated AWS account
+
+Customer VPC Endpoints are provisioned in a **dedicated AWS account** that is separate from the account that runs Trigger.dev's task workers. The dedicated account does nothing else — it only hosts customer endpoints. This limits the blast radius of any misconfiguration: even a misbehaving endpoint cannot reach worker infrastructure beyond the routes we explicitly define.
+
+### 2. Per-organization network policy
+
+Inside the Kubernetes cluster that runs your tasks, the default network policy denies all traffic to private IP ranges. When your organization creates a connection, we generate a [CiliumNetworkPolicy](https://docs.cilium.io/en/stable/network/kubernetes/policy/) that:
+
+- Targets **only pods labeled with your organization's ID**
+- Allows egress **only to the specific endpoint IPs we provisioned for you**
+
+A pod from another organization has neither the matching label nor a matching policy — its connection attempts to your endpoint IPs are dropped at the network layer before they ever reach an ENI.
+
+### 3. AWS-level authorization
+
+PrivateLink itself enforces a second layer of authorization. Your VPC Endpoint Service has an explicit list of `allowed_principals` — only AWS accounts you list can even establish a connection. Trigger.dev provides each org with the same Trigger.dev AWS account ID, but the AWS account ID alone is useless without the matching CiliumNetworkPolicy on our side. To reach your endpoint, traffic must:
+
+1. Originate from a pod labeled with your org ID (enforced by us)
+2. Match an egress rule with your endpoint's IPs (enforced by us)
+3. Hit a VPC Endpoint Service that has authorized our account (enforced by you)
+
+All three conditions must be true. No organization can route traffic to another organization's resources.
+
+<Warning>
+  AWS account IDs are not secrets, but the VPC Endpoint Service name is also not enough on its own —
+  you must explicitly add Trigger.dev's account to your endpoint service's allowed principals before
+  any connection works. We'll never see your service unless you authorize us.
+</Warning>
+
+## Limits
+
+- **Two connections per organization.** This is a soft limit — get in touch if you need more.
+- **All ports accepted.** Our security group allows all TCP ports from peered CIDRs. You control which ports are reachable through your NLB and target groups.
+- **Same-region or cross-region.** Connections work within the same region as your tasks or across regions (cross-region adds AWS-level cost and ~10-30ms latency).
+
+## Next steps
+
+<CardGroup>
+  <Card
+    title="Create a Private Link in the AWS Console"
+    icon="aws"
+    href="/private-networking/aws-console-setup"
+  >
+    Step-by-step instructions for creating the NLB, target group, and VPC Endpoint Service in your
+    AWS account.
+  </Card>
+  <Card title="Use Terraform" icon="terminal" href="/private-networking/aws-console-setup">
+    Prefer infrastructure as code? Use the Terraform wizard on the "Add connection" page in the
+    Trigger.dev dashboard to generate a ready-to-apply script.
+  </Card>
+</CardGroup>
