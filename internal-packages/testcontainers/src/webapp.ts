@@ -56,7 +56,12 @@ export async function startWebapp(
     cwd: WEBAPP_ROOT,
     env: {
       ...process.env,
-      NODE_ENV: "test",
+      // Match `pnpm run start` (production-mode boot). NODE_ENV=test
+      // surfaces a circular-init regression in the production bundle
+      // — see TRI-8731 — that production-mode dodges by initialising
+      // modules in a different order. Tests don't depend on test-mode
+      // semantics; they only need an isolated webapp + DB.
+      NODE_ENV: "production",
       DATABASE_URL: databaseUrl,
       DIRECT_URL: databaseUrl,
       PORT: String(port),

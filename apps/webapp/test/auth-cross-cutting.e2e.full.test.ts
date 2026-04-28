@@ -193,6 +193,7 @@ describe("Cross-cutting", () => {
           organizationId: b.organization.id,
           engine: "V2",
           status: "COMPLETED_SUCCESSFULLY",
+          queue: "task/test-task",
         },
       });
 
