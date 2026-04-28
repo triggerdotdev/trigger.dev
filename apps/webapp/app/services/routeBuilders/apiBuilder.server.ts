@@ -26,6 +26,30 @@ import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
 
+// Client aborts and service-level validation errors aren't bugs — they're
+// expected at API boundaries. Log them at `warn` so they stay in stdout
+// without flowing to Sentry via Logger.onError.
+function logBoundaryError(
+  message: "Error in loader" | "Error in action",
+  error: unknown,
+  url: string
+) {
+  const formatted =
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : String(error);
+  const isExpected =
+    error instanceof Error &&
+    (error.name === "AbortError" ||
+      error instanceof ServiceValidationError ||
+      error instanceof EngineServiceValidationError);
+  if (isExpected) {
+    logger.warn(message, { error: formatted, url });
+  } else {
+    logger.error(message, { error: formatted, url });
+  }
+}
+
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
 type ApiKeyRouteBuilderOptions<
@@ -260,17 +284,7 @@ export function createLoaderApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in loader", {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in loader", error, request.url);
 
         return await wrapResponse(
           request,
@@ -756,17 +770,7 @@ export function createActionApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in action", {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in action", error, request.url);
 
         return await wrapResponse(
           request,
@@ -1044,13 +1048,7 @@ export function createMultiMethodApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in action", {
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in action", error, request.url);
 
         return await wrapResponse(
           request,
@@ -1188,17 +1186,7 @@ export function createLoaderWorkerApiRoute<
         return error;
       }
 
-      logger.error("Error in loader", {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-              }
-            : String(error),
-        url: request.url,
-      });
+      logBoundaryError("Error in loader", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -1363,17 +1351,7 @@ export function createActionWorkerApiRoute<
         return json({ error: error.message }, { status: error.status ?? 422 });
       }
 
-      logger.error("Error in action", {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-              }
-            : String(error),
-        url: request.url,
-      });
+      logBoundaryError("Error in action", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }

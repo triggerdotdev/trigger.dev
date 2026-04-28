@@ -1987,7 +1987,9 @@ export class RunAttemptSystem {
       }
 
       if (packetError) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
+        // Customer's flushedMetadata packet failed to parse — system handles
+        // it (we return), so log at warn rather than error.
+        this.$.logger.warn("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
           runId,
           flushedMetadata: completion.flushedMetadata,
           error: packetError,
@@ -1999,11 +2001,16 @@ export class RunAttemptSystem {
       const metadata = FlushedRunMetadata.safeParse(packet);
 
       if (!metadata.success) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: metadata.error,
-        });
+        // Customer's metadata operations don't match the schema (typically
+        // non-JSON values in `operations[].value`). System ignores it.
+        this.$.logger.warn(
+          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
+          {
+            runId,
+            flushedMetadata: completion.flushedMetadata,
+            error: metadata.error,
+          }
+        );
 
         return;
       }

@@ -32,15 +32,16 @@ export class QueryPerformanceMonitor {
 
     const { duration, query, params, target, timestamp } = log;
 
-    // Only log very slow queries as errors
+    // Slow queries are an observability signal (DB load, missing indexes,
+    // etc.), not an application error. Logged at warn so it lands in stdout
+    // without flowing to Sentry — track via metrics/dashboards instead.
     if (duration > this.config.verySlowQueryThreshold) {
-      // Truncate long queries for readability
       const truncatedQuery =
         query.length > this.config.maxQueryLogLength
           ? query.substring(0, this.config.maxQueryLogLength) + "..."
           : query;
 
-      logger.error("Prisma: very slow database query", {
+      logger.warn("Prisma: very slow database query", {
         clientType,
         durationMs: duration,
         query: truncatedQuery,

@@ -929,14 +929,30 @@ export class BatchQueue {
             errorCode: result.errorCode,
           });
 
-          this.logger.error("Batch item processing failed after all attempts", {
-            batchId,
-            itemIndex,
-            error: result.error,
-            processedCount,
-            expectedCount: meta.runCount,
-            attempts: attempt,
-          });
+          // skipRetries=true means the callback knew the failure was
+          // intentional/non-retryable (e.g. customer hit queue size limit).
+          // Don't promote it back to error — the callback already logged
+          // appropriately and a permanent-failure record was written.
+          if (result.skipRetries) {
+            this.logger.warn("Batch item processing failed (non-retryable)", {
+              batchId,
+              itemIndex,
+              error: result.error,
+              errorCode: result.errorCode,
+              processedCount,
+              expectedCount: meta.runCount,
+              attempts: attempt,
+            });
+          } else {
+            this.logger.error("Batch item processing failed after all attempts", {
+              batchId,
+              itemIndex,
+              error: result.error,
+              processedCount,
+              expectedCount: meta.runCount,
+              attempts: attempt,
+            });
+          }
         }
       } catch (error) {
         span?.setAttribute("batch.result", "unexpected_error");
