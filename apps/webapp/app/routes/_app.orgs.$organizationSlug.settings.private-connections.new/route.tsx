@@ -270,7 +270,10 @@ resource "aws_lb_listener" "port_${p.port}" {
 resource "aws_vpc_endpoint_service" "trigger_privatelink" {
   acceptance_required        = false
   network_load_balancer_arns = [aws_lb.trigger_privatelink.arn]
-  supported_regions          = ["us-east-1", "eu-central-1"]
+
+  # Trigger.dev runs in us-east-1 and eu-central-1. Listing both makes this
+  # service consumable from either region so any of your tasks can connect.
+  supported_regions = ["us-east-1", "eu-central-1"]
 
   allowed_principals = [
 ${awsAccountIds.map((id) => `    "arn:aws:iam::${id}:root",`).join("\n")}
@@ -422,7 +425,7 @@ ${validPorts.length > 0 ? validPorts.map((p) => `   - Port ${p.port} (${p.protoc
 3. A VPC Endpoint Service:
    - Acceptance required: no
    - Attach the NLB created above
-   - Supported regions: us-east-1, eu-central-1
+   - Supported regions: us-east-1, eu-central-1 (these are the AWS regions Trigger.dev runs in, so the service must be consumable from both)
    - Allowed principals:
 ${awsAccountIds.map((id) => `     - arn:aws:iam::${id}:root`).join("\n") || "     - <Trigger.dev AWS account ARN>"}
 
