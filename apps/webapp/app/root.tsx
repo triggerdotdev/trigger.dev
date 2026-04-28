@@ -15,6 +15,8 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
+import { commitAuthenticatedSessionLazy } from "./services/sessionDuration.server";
+import { getUserSession } from "./services/sessionStorage.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
@@ -58,9 +60,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     websiteId: env.KAPA_AI_WEBSITE_ID,
   };
 
+  const user = await getUser(request);
+
+  const headers = new Headers();
+  headers.append("Set-Cookie", await commitSession(session));
+
+  // Lazy-backfill the auth session's `issuedAt` for cookies issued before this
+  // feature shipped, and refresh the cookie's Max-Age to track the user's
+  // current effective session duration.
+  if (user) {
+    const authSession = await getUserSession(request);
+    headers.append("Set-Cookie", await commitAuthenticatedSessionLazy(authSession, user.id));
+  }
+
   return typedjson(
     {
-      user: await getUser(request),
+      user,
       toastMessage,
       posthogProjectKey,
       features,
@@ -70,7 +85,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       kapa,
       timezone,
     },
-    { headers: { "Set-Cookie": await commitSession(session) } }
+    { headers }
   );
 };
 

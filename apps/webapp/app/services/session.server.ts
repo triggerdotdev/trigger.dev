@@ -2,6 +2,8 @@ import { redirect } from "@remix-run/node";
 import { getUserById } from "~/models/user.server";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
+import { getEffectiveSessionDuration, isSessionExpired } from "./sessionDuration.server";
+import { getUserSession } from "./sessionStorage.server";
 
 export async function getUserId(request: Request): Promise<string | undefined> {
   const impersonatedUserId = await getImpersonationId(request);
@@ -19,8 +21,19 @@ export async function getUserId(request: Request): Promise<string | undefined> {
     return authUser?.userId;
   }
 
-  let authUser = await authenticator.isAuthenticated(request);
-  return authUser?.userId;
+  const authUser = await authenticator.isAuthenticated(request);
+  if (!authUser?.userId) return undefined;
+
+  // Enforce the user's effective session duration (User.sessionDuration capped
+  // by the most restrictive Organization.maxSessionDuration). If the session
+  // was issued longer ago than the cap allows, force a logout.
+  const session = await getUserSession(request);
+  const { durationSeconds } = await getEffectiveSessionDuration(authUser.userId);
+  if (isSessionExpired(session, durationSeconds)) {
+    throw await logout(request);
+  }
+
+  return authUser.userId;
 }
 
 export async function getUser(request: Request) {

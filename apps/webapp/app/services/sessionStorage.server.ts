@@ -1,15 +1,21 @@
 import { createCookieSessionStorage } from "@remix-run/node";
 import { env } from "~/env.server";
 
+// Hard ceiling for the cookie lifetime. The actual per-session value is set
+// per-commit via commitSession(session, { maxAge }) in the auth/login flows
+// and on every authenticated response, derived from the user's effective
+// session duration (User.sessionDuration capped by Organization.maxSessionDuration).
+export const SESSION_STORAGE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+
 export const sessionStorage = createCookieSessionStorage({
   cookie: {
-    name: "__session", // use any name you want here
-    sameSite: "lax", // this helps with CSRF
-    path: "/", // remember to add this so the cookie will work in all routes
-    httpOnly: true, // for security reasons, make this cookie http only
+    name: "__session",
+    sameSite: "lax",
+    path: "/",
+    httpOnly: true,
     secrets: [env.SESSION_SECRET],
-    secure: env.NODE_ENV === "production", // enable this in prod only
-    maxAge: 60 * 60 * 24 * 365, // 7 days
+    secure: env.NODE_ENV === "production",
+    maxAge: SESSION_STORAGE_MAX_AGE_SECONDS,
   },
 });
 

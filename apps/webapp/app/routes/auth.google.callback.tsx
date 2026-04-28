@@ -5,6 +5,7 @@ import { getSession, redirectWithErrorMessage } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { commitSession } from "~/services/sessionStorage.server";
+import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
 import { redirectCookie } from "./auth.google";
 import { sanitizeRedirectPath } from "~/utils";
@@ -52,7 +53,7 @@ export let loader: LoaderFunction = async ({ request }) => {
   session.set(authenticator.sessionKey, auth);
 
   const headers = new Headers();
-  headers.append("Set-Cookie", await commitSession(session));
+  headers.append("Set-Cookie", await commitAuthenticatedSession(session, auth.userId));
   headers.append("Set-Cookie", await setLastAuthMethodHeader("google"));
 
   await trackAndClearReferralSource(request, auth.userId, headers);
