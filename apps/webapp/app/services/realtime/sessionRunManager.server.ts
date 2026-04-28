@@ -153,7 +153,11 @@ export async function ensureRunForSession(
     });
   });
 
-  const fresh = await $replica.session.findFirst({
+  // Read-after-write: the winner just wrote `currentRunId` /
+  // `currentRunVersion` on the writer. Reading from `$replica` could
+  // return pre-race state and cause us to recurse with the same stale
+  // version, losing the next claim, until we exhaust max attempts.
+  const fresh = await prisma.session.findFirst({
     where: { id: session.id },
     select: {
       id: true,
@@ -327,7 +331,12 @@ export async function swapSessionRun(
     });
   });
 
-  const fresh = await $replica.session.findFirst({
+  // Read-after-write: the winner's swap was just committed on the
+  // writer. A replica read could return the pre-swap `currentRunId`
+  // (often `callingRunId` itself), which would tell the caller it is
+  // still the canonical run when in fact a different run has taken
+  // over.
+  const fresh = await prisma.session.findFirst({
     where: { id: session.id },
     select: { currentRunId: true },
   });
