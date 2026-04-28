@@ -411,15 +411,21 @@ export const aiChat = chat
         toolPartsCount: toolParts.length,
         toolParts: toolParts.map((p: any) => ({ type: p.type, state: p.state, toolCallId: p.toolCallId })),
       });
-      await prisma.chat.update({
-        where: { id: chatId },
-        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
-      });
-      await prisma.chatSession.upsert({
-        where: { id: chatId },
-        create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
-        update: { publicAccessToken: chatAccessToken, lastEventId },
-      });
+      // Atomic so the page-load `Promise.all([getChatMessages, getSessionForChat])`
+      // can't observe a state where messages are post-write but lastEventId is
+      // still pre-write — that race causes resume to replay this turn's chunks
+      // on top of the persisted assistant message and duplicates the render.
+      await prisma.$transaction([
+        prisma.chat.update({
+          where: { id: chatId },
+          data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+        }),
+        prisma.chatSession.upsert({
+          where: { id: chatId },
+          create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
+          update: { publicAccessToken: chatAccessToken, lastEventId },
+        }),
+      ]);
 
       // Background self-review — a cheap model critiques the response and
       // injects coaching into the conversation before the next user message.
@@ -920,15 +926,18 @@ export const aiChatHydrated = chat
     },
 
     onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
-      await prisma.chat.update({
-        where: { id: chatId },
-        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
-      });
-      await prisma.chatSession.upsert({
-        where: { id: chatId },
-        create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
-        update: { publicAccessToken: chatAccessToken, lastEventId },
-      });
+      // See aiChat.onTurnComplete — atomic to avoid the resume-replay race.
+      await prisma.$transaction([
+        prisma.chat.update({
+          where: { id: chatId },
+          data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+        }),
+        prisma.chatSession.upsert({
+          where: { id: chatId },
+          create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
+          update: { publicAccessToken: chatAccessToken, lastEventId },
+        }),
+      ]);
     },
 
     run: async ({ messages, clientData, stopSignal }) => {
