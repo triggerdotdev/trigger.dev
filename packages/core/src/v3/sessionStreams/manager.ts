@@ -297,11 +297,13 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       return;
     }
 
-    const handlers = this.handlers.get(key);
-    if (handlers && handlers.size > 0) {
-      this.#invokeHandlers(key, data);
-      return;
-    }
+    // Persistent handlers (e.g. `stopInput.on(...)`) get a copy of the chunk,
+    // but they don't "consume" it — handlers usually filter by `kind` and
+    // ignore chunks they don't care about. Buffer the chunk regardless so a
+    // subsequent `once()` (e.g. `messagesInput.waitWithIdleTimeout` in
+    // chat.agent's preload) can still pick up the same chunk that arrived
+    // before its waiter was registered.
+    this.#invokeHandlers(key, data);
 
     let buffered = this.buffer.get(key);
     if (!buffered) {
