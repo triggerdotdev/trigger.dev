@@ -37,13 +37,30 @@ export interface WebappInstance {
   fetch(path: string, init?: RequestInit): Promise<Response>;
 }
 
+export interface StartWebappOptions {
+  /**
+   * When true (default), the spawned webapp runs with `RBAC_FORCE_FALLBACK=1`
+   * so the OSS fallback handles all auth checks. The OSS comprehensive suite
+   * (`*.e2e.full.test.ts`) relies on this — it's pinned to fallback so
+   * results don't depend on whether `@triggerdotdev/plugins/rbac` happens
+   * to be installed in the local node_modules.
+   *
+   * The cloud repo's parallel enterprise variant (TRI-8859) overrides this
+   * to `false`, spawning a webapp that loads the linked enterprise plugin
+   * instead. Same harness, different RBAC implementation under test.
+   */
+  forceRbacFallback?: boolean;
+}
+
 export async function startWebapp(
   databaseUrl: string,
-  redis: { host: string; port: number }
+  redis: { host: string; port: number },
+  options: StartWebappOptions = {}
 ): Promise<{
   instance: WebappInstance;
   stop: () => Promise<void>;
 }> {
+  const forceRbacFallback = options.forceRbacFallback ?? true;
   const port = await findFreePort();
 
   // Merge NODE_PATH so transitive pnpm deps (hoisted to .pnpm/node_modules) are resolvable
@@ -86,9 +103,11 @@ export async function startWebapp(
       RUN_ENGINE_TTL_SYSTEM_DISABLED: "true",     // disables TTL expiry system (BoolEnv)
       RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true",  // disables TTL consumers (BoolEnv)
       RUN_REPLICATION_ENABLED: "0",
-      // Force the RBAC plugin to use the OSS fallback in e2e tests so auth behavior is
-      // deterministic regardless of whether the enterprise plugin is installed.
-      RBAC_FORCE_FALLBACK: "1",
+      // Force the RBAC plugin to use the OSS fallback in e2e tests so auth
+      // behavior is deterministic regardless of whether the enterprise
+      // plugin is installed. Cloud's enterprise-variant suite (TRI-8859)
+      // sets this to "0" / undefined to exercise the real CASL controller.
+      ...(forceRbacFallback ? { RBAC_FORCE_FALLBACK: "1" } : {}),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -162,7 +181,9 @@ export interface TestServer {
 }
 
 /** Convenience helper: starts a postgres + redis container + webapp and returns both for testing. */
-export async function startTestServer(): Promise<TestServer> {
+export async function startTestServer(
+  options: StartWebappOptions = {}
+): Promise<TestServer> {
   const network = await new Network().start();
 
   // Track each resource as we acquire it so we can tear it down if a later step fails.
@@ -183,7 +204,11 @@ export async function startTestServer(): Promise<TestServer> {
 
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
     await prisma.$connect(); // pre-warm pool; surface connection failures before tests start
-    const started = await startWebapp(pg.url, { host: rc.getHost(), port: rc.getPort() });
+    const started = await startWebapp(
+      pg.url,
+      { host: rc.getHost(), port: rc.getPort() },
+      options
+    );
     webapp = started.instance;
     stopWebapp = started.stop;
   } catch (err) {
