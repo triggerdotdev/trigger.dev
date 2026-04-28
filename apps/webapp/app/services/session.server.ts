@@ -1,4 +1,5 @@
 import { redirect } from "@remix-run/node";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { authenticator } from "./auth.server";
@@ -31,7 +32,12 @@ export async function getUserId(request: Request): Promise<string | undefined> {
   const session = await getUserSession(request);
   const { durationSeconds } = await getEffectiveSessionDuration(authUser.userId);
   if (isSessionExpired(session, durationSeconds)) {
-    throw await logout(request);
+    throw await redirectWithErrorMessage(
+      "/logout",
+      request,
+      "You were signed out due to inactivity.",
+      { ephemeral: false }
+    );
   }
 
   return authUser.userId;
