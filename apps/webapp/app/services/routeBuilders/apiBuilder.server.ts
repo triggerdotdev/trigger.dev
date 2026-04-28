@@ -682,34 +682,15 @@ export function createActionApiRoute<
         ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
         : undefined;
 
-      if (options.findResource && !resource) {
-        // When the route also declares `authorization`, mask "resource
-        // doesn't exist" as 403 — same shape as the auth-failed branch
-        // below — so an authenticated-but-underscoped caller can't
-        // probe resource existence by observing 404 vs 403. Routes
-        // without an `authorization` block keep returning 404.
-        if (authorization) {
-          return await wrapResponse(
-            request,
-            json(
-              {
-                error: `Unauthorized: missing required scopes`,
-                code: "unauthorized",
-                param: "access_token",
-                type: "authorization",
-              },
-              { status: 403 }
-            ),
-            corsStrategy !== "none"
-          );
-        }
-        return await wrapResponse(
-          request,
-          json({ error: "Resource not found" }, { status: 404 }),
-          corsStrategy !== "none"
-        );
-      }
-
+      // Run authorization first — but with the resolved resource available
+      // as the 5th arg so the auth scope check can expand to alternate
+      // identifiers of the same row (e.g. a Session is addressable by both
+      // `friendlyId` and `externalId`). Resource-null is checked AFTER auth
+      // so:
+      //   - underscoped JWT + missing resource → 403 (no info leak)
+      //   - underscoped JWT + existing resource → 403 (existing behavior)
+      //   - PRIVATE key + missing resource → auth passes → 404 (correct)
+      //   - PRIVATE key + existing resource → auth passes → handler runs
       if (authorization) {
         const { action, resource: authResource, superScopes } = authorization;
         const $resource = authResource(
@@ -749,6 +730,14 @@ export function createActionApiRoute<
             corsStrategy !== "none"
           );
         }
+      }
+
+      if (options.findResource && !resource) {
+        return await wrapResponse(
+          request,
+          json({ error: "Resource not found" }, { status: 404 }),
+          corsStrategy !== "none"
+        );
       }
 
       const result = await handler({
