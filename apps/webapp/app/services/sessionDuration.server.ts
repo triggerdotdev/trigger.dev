@@ -1,17 +1,16 @@
 import type { Session } from "@remix-run/node";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { commitSession } from "./sessionStorage.server";
+import { commitSession, DEFAULT_SESSION_DURATION_SECONDS } from "./sessionStorage.server";
+
+export { DEFAULT_SESSION_DURATION_SECONDS };
 
 export const SESSION_ISSUED_AT_KEY = "session:issuedAt";
 
 // Months and years use standard Gregorian-calendar conversions (365.2425 days/yr,
 // 30.436875 days/month) so values produced by external "X months in seconds"
 // calculators map cleanly to a labeled option.
-const GREGORIAN_YEAR_SECONDS = 31_556_952; // 365.2425 * 86400
 const GREGORIAN_HALF_YEAR_SECONDS = 15_778_476;
-
-export const DEFAULT_SESSION_DURATION_SECONDS = GREGORIAN_YEAR_SECONDS;
 
 export type SessionDurationOption = {
   value: number;
@@ -25,7 +24,7 @@ export const SESSION_DURATION_OPTIONS: SessionDurationOption[] = [
   { value: 60 * 60 * 24, label: "1 day" },
   { value: 60 * 60 * 24 * 30, label: "30 days" },
   { value: GREGORIAN_HALF_YEAR_SECONDS, label: "6 months" },
-  { value: GREGORIAN_YEAR_SECONDS, label: "1 year" },
+  { value: DEFAULT_SESSION_DURATION_SECONDS, label: "1 year" },
 ];
 
 export const ALLOWED_SESSION_DURATION_VALUES: ReadonlySet<number> = new Set(
@@ -156,18 +155,15 @@ export function ensureSessionIssuedAt(session: Session, now: number = Date.now()
 }
 
 /**
- * The auth cookie's `Max-Age` is intentionally long (1 year) so the cookie
- * always reaches the server. Actual session expiry is enforced server-side
- * via `sessionIssuedAt` against the user's effective duration. If we let the
- * cookie expire client-side, the user is silently logged out without the
- * "signed out due to inactivity" toast.
- */
-const AUTH_COOKIE_MAX_AGE_SECONDS = DEFAULT_SESSION_DURATION_SECONDS;
-
-/**
  * Commits the session for an authenticated user, setting `issuedAt = now`.
  * Use this at every login/MFA-completion point so the session window starts
- * fresh. Cookie `Max-Age` is fixed; expiry is enforced server-side.
+ * fresh.
+ *
+ * The auth cookie's `Max-Age` is intentionally long
+ * (`DEFAULT_SESSION_DURATION_SECONDS`, 1 year) so the cookie always reaches
+ * the server. Actual session expiry is enforced server-side via
+ * `sessionIssuedAt` against the user's effective duration. If we let the
+ * cookie expire client-side, the user is silently logged out.
  */
 export async function commitAuthenticatedSession(
   session: Session,
@@ -175,7 +171,7 @@ export async function commitAuthenticatedSession(
   now: number = Date.now()
 ): Promise<string> {
   setSessionIssuedAt(session, now);
-  return commitSession(session, { maxAge: AUTH_COOKIE_MAX_AGE_SECONDS });
+  return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }
 
 /**
@@ -189,5 +185,5 @@ export async function commitAuthenticatedSessionLazy(
   now: number = Date.now()
 ): Promise<string> {
   ensureSessionIssuedAt(session, now);
-  return commitSession(session, { maxAge: AUTH_COOKIE_MAX_AGE_SECONDS });
+  return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }
