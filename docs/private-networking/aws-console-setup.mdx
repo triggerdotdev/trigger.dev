@@ -50,10 +50,15 @@ The target group is how the NLB will know where to forward traffic. AWS requires
     - **Port**: the port your resource listens on (5432 for Postgres, 6379 for Redis, 3306 for MySQL, etc.)
     - **VPC**: the VPC where your resource lives (this must match the VPC you'll use for the NLB)
     - **Health check protocol**: TCP
+
+    ![Target group basic configuration](/images/priv-connections-target-group-basic.png)
+
   </Step>
   <Step title="Register your targets">
     Add the IP addresses of the resource. For RDS, look up the writer endpoint's IPs (`dig <endpoint>` from inside the VPC).
     For ElastiCache, use the primary endpoint IPs.
+
+    ![Register targets in the target group](/images/priv-connections-target-group-register-nlb.png)
 
     <Warning>
       RDS and ElastiCache endpoints' IP addresses can change after failover or maintenance. For long-lived
@@ -80,10 +85,16 @@ The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not
     - **Name**: something descriptive, e.g. `trigger-postgres-nlb`
     - **Scheme**: **Internal**
     - **IP address type**: IPv4
+
+    ![Network Load Balancer basic configuration](/images/priv-connections-network-load-balancer-basic.png)
+
   </Step>
   <Step title="Choose VPC and subnets">
     Pick the same VPC as your target group. Select one private subnet per AZ that should serve traffic.
     Each subnet you select adds an availability zone to the endpoint.
+
+    ![Network Load Balancer VPC and Availability Zones](/images/priv-connections-network-load-balancer-vpc-az.png)
+
   </Step>
   <Step title="Add a TCP listener forwarding to your target group">
     Under **Listeners and routing**, configure:
@@ -91,6 +102,9 @@ The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not
     - **Protocol**: TCP
     - **Port**: same as your target group port (5432 for Postgres, 6379 for Redis, etc.)
     - **Default action**: forward to the target group you created in Step 1
+
+    ![Add the target group to the NLB listener](/images/priv-connections-network-load-balancer-add-target-group.png)
+
   </Step>
   <Step title="Create the load balancer and wait until it's Active">
     Click **Create load balancer**. Provisioning takes 1–2 minutes — wait until the NLB's **State**
@@ -124,6 +138,8 @@ This is the resource that PrivateLink consumers connect to.
     - **Available load balancers**: select the NLB you created
     - **Require acceptance for endpoint**: **No** (recommended)
 
+    ![Create VPC Endpoint Service form](/images/priv-connections-create-endpoint-service.png)
+
     <Note>
       If you set "Require acceptance" to **Yes**, every connection request from Trigger.dev will
       sit in a pending state until you manually approve it. Setting it to **No** lets connections
@@ -132,9 +148,8 @@ This is the resource that PrivateLink consumers connect to.
 
   </Step>
   <Step title="Skip private DNS">
-    Leave the "Private DNS name" option disabled. Trigger.dev tasks dial the endpoint by IP or by
-    its VPC Endpoint DNS name (shown in your dashboard once provisioned), so private DNS isn't
-    needed.
+    Leave the "Private DNS name" option disabled. Trigger.dev tasks dial the endpoint by its
+    private IP, so private DNS isn't needed.
   </Step>
   <Step title="Configure cross-region access (optional)">
     If your Trigger.dev tasks run in a **different AWS region** from your endpoint service, expand
@@ -176,6 +191,8 @@ By default, no one can connect to your endpoint service. You need to explicitly 
     arn:aws:iam::<account-id>:root
     ```
 
+    ![Allow principal dialog](/images/priv-connections-allow-principal.png)
+
     <Warning>
       You will find the correct AWS account ID in the **Add connection** page of the Trigger.dev
       dashboard. Do not assume an account ID — it differs between Trigger.dev environments.
@@ -189,6 +206,9 @@ By default, no one can connect to your endpoint service. You need to explicitly 
     On the endpoint service detail page, copy the **Service name** value — it looks like
     `com.amazonaws.vpce.us-east-1.vpce-svc-0123abcd...`. You'll paste this into the Trigger.dev
     dashboard in the next step.
+
+    ![Copy the endpoint service name](/images/priv-connections-copy-endpoint-name.png)
+
   </Step>
 </Steps>
 
@@ -212,10 +232,10 @@ By default, no one can connect to your endpoint service. You need to explicitly 
     Provisioning typically takes 30–90 seconds.
   </Step>
   <Step title="Verify">
-    Once **Active**, the dashboard shows the assigned IPs and a copyable DNS endpoint name. Plug
-    one of them into the connection-string env var your task already uses (for example,
-    `DATABASE_URL` set on the **Environment Variables** page) and your tasks will reach the
-    resource over PrivateLink.
+    Once **Active**, the dashboard shows the assigned private IP. Plug it into the
+    connection-string environment variable your task already uses (for example, `DATABASE_URL` set
+    on the **Environment Variables** page) and your tasks will reach the resource over
+    PrivateLink.
   </Step>
 </Steps>
 

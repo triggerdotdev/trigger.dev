@@ -17,7 +17,7 @@ AWS PrivateLink is a managed service that creates a private, one-way connection 
 It works by pairing two resources:
 
 - A **VPC Endpoint Service** in the account that owns the resource (yours). This is fronted by a Network Load Balancer (NLB) and exposes whatever ports you choose.
-- A **VPC Endpoint** in the account that wants to consume the resource (Trigger.dev's). The endpoint is a set of Elastic Network Interfaces (ENIs) inside our VPC that your task pods can dial directly by IP or DNS name.
+- A **VPC Endpoint** in the account that wants to consume the resource (Trigger.dev's). The endpoint is an Elastic Network Interface (ENI) inside our VPC with a private IP that your task pods can dial directly.
 
 The connection is unidirectional: only the endpoint side can initiate connections. Your VPC cannot reach into ours.
 
@@ -42,16 +42,16 @@ When you add a private connection in the dashboard, the following happens:
     You create an internal NLB in front of your resource and a VPC Endpoint Service that points to it. You add Trigger.dev's AWS account as an allowed principal so we're permitted to connect.
   </Step>
   <Step title="We provision a VPC Endpoint">
-    Once you submit the endpoint service name in the Trigger.dev dashboard, we provision a VPC Endpoint in our AWS account in the region you chose. The endpoint creates ENIs with private IPs that we wire up to reach your service.
+    Once you submit the endpoint service name in the Trigger.dev dashboard, we provision a VPC Endpoint in our AWS account in the region you chose. The endpoint creates an ENI with a private IP that we wire up to reach your service.
   </Step>
   <Step title="Your tasks can reach the endpoint">
-    Once the connection is **Active**, the dashboard shows the assigned IPs and a copyable DNS endpoint name. Pods running your tasks are network-authorized to connect to those addresses.
+    Once the connection is **Active**, the dashboard shows the assigned IP. Pods running your tasks are network-authorized to connect to it.
   </Step>
 </Steps>
 
 ### Connecting from your task code
 
-When the connection becomes **Active**, the dashboard shows the assigned endpoint IP. Plug it into the connection-string env var your task already reads (for example, `DATABASE_URL` set in the **Environment Variables** page):
+When the connection becomes **Active**, the dashboard shows the assigned endpoint IP. Plug it into the connection-string environment variable your task already reads (for example, `DATABASE_URL` set on the **Environment Variables** page):
 
 ```typescript
 import { task } from "@trigger.dev/sdk";
