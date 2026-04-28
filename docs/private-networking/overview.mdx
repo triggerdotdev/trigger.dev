@@ -53,6 +53,15 @@ When you add a private connection in the dashboard, the following happens:
 
 When the connection becomes **Active**, the dashboard shows the assigned endpoint IP. Plug it into the connection-string environment variable your task already reads (for example, `DATABASE_URL` set on the **Environment Variables** page):
 
+<Note>
+  A private connection is scoped to your **organization**, not to a single environment. The same
+  assigned IP works from any deployed environment your tasks run in — Preview branches, Staging,
+  and Production — so you can set the connection-string env var per environment and point them
+  all at the same private resource. (Local **Development** runs on your own machine, so it can't
+  reach the endpoint IP — use a regular public connection there.)
+</Note>
+
+
 ```typescript
 import { task } from "@trigger.dev/sdk";
 import { Client } from "pg";
