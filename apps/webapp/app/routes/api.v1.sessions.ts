@@ -164,6 +164,19 @@ const { action } = createActionApiRoute(
         });
       }
 
+      // Reject create on a closed session. The upsert path will return
+      // an already-closed row when the caller reuses an externalId, and
+      // without this guard `ensureRunForSession` would trigger a fresh
+      // run that can't receive `.in` input (the append handler 409s on
+      // closed sessions). Force the caller to use a different externalId
+      // — `close` is one-way.
+      if (session.closedAt) {
+        return json(
+          { error: "Session is closed; use a different externalId to create a new session" },
+          { status: 409 }
+        );
+      }
+
       // Session is task-bound — every session has a live run by
       // construction. `ensureRunForSession` is idempotent: on the
       // cached path it sees `currentRunId` is alive and returns it
