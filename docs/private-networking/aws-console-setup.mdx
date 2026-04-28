@@ -92,8 +92,10 @@ The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not
     - **Port**: same as your target group port (5432 for Postgres, 6379 for Redis, etc.)
     - **Default action**: forward to the target group you created in Step 1
   </Step>
-  <Step title="Create the load balancer">
-    Click **Create load balancer**. Provisioning takes 1–2 minutes.
+  <Step title="Create the load balancer and wait until it's Active">
+    Click **Create load balancer**. Provisioning takes 1–2 minutes — wait until the NLB's **State**
+    column shows **Active** before moving on. The endpoint service in the next step won't list the
+    NLB until it's fully active.
   </Step>
 </Steps>
 
@@ -106,6 +108,11 @@ The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not
 ## Step 3: Create a VPC Endpoint Service
 
 This is the resource that PrivateLink consumers connect to.
+
+<Note>
+  Confirm the NLB from Step 2 is in the **Active** state before starting this step. It won't appear
+  in the **Available load balancers** dropdown until it has finished provisioning.
+</Note>
 
 <Steps>
   <Step title="Open the VPC console">
