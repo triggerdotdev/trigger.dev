@@ -683,6 +683,26 @@ export function createActionApiRoute<
         : undefined;
 
       if (options.findResource && !resource) {
+        // When the route also declares `authorization`, mask "resource
+        // doesn't exist" as 403 — same shape as the auth-failed branch
+        // below — so an authenticated-but-underscoped caller can't
+        // probe resource existence by observing 404 vs 403. Routes
+        // without an `authorization` block keep returning 404.
+        if (authorization) {
+          return await wrapResponse(
+            request,
+            json(
+              {
+                error: `Unauthorized: missing required scopes`,
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
         return await wrapResponse(
           request,
           json({ error: "Resource not found" }, { status: 404 }),
