@@ -1019,4 +1019,269 @@ describe("API", () => {
       expect(res.status).toBe(403);
     });
   });
+
+  // Run mutations (TRI-8735). Two routes:
+  //   - POST /api/v2/runs/:runParam/cancel
+  //       action: write, resource: { type: "runs", id: params.runParam }
+  //       — single id-keyed resource, supports id-specific scopes.
+  //   - POST /api/v1/idempotencyKeys/:key/reset
+  //       action: write, resource: { type: "runs" } (collection-level)
+  //       — id-specific scopes don't grant blanket access; only
+  //       type-level write:runs (or super-scopes) work.
+  //
+  // The legacy idempotencyKeys/:key/reset rejected ALL JWTs due to an
+  // empty-resource bug. Post TRI-8719 the empty-resource resolution
+  // lets write:runs JWTs through. Tests here lock in the new behaviour.
+  describe("Run mutations — cancel (api.v2.runs.$runParam.cancel)", () => {
+    const pathFor = (runId: string) => `/api/v2/runs/${runId}/cancel`;
+    const post = (path: string, headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({}),
+      });
+
+    it("missing auth: 401", async () => {
+      const res = await post(pathFor("run_anything"), {});
+      expect(res.status).toBe(401);
+    });
+
+    it("invalid API key: 401", async () => {
+      const res = await post(pathFor("run_anything"), {
+        Authorization: "Bearer tr_dev_definitely_not_real_key",
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key on real run: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${seed.apiKey}`,
+      });
+      // Auth + findResource passed; handler may return any 2xx/4xx
+      // depending on run state. We only care: not 401/403.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:runs (type-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:runs:<exact runId>: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`write:runs:${runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:runs:<other>: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["write:runs:run_someoneelse00000000000"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with read:runs (action mismatch): 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`read:runs:${runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with write:all super-scope: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:all"] },
+        expirationTime: "15m",
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await post(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  describe("Run mutations — idempotencyKeys.reset (api.v1.idempotencyKeys.$key.reset)", () => {
+    // Collection-level resource { type: "runs" } — id-specific
+    // write:runs:<runId> scopes don't help here (no id to match).
+    // The legacy version of this route rejected ALL JWTs due to an
+    // empty-resource bug; the post-TRI-8719 path lets write:runs
+    // through. Tests below pin that down.
+    const path = "/api/v1/idempotencyKeys/some-key/reset";
+    const validBody = JSON.stringify({ taskIdentifier: "test-task" });
+
+    const post = (headers: Record<string, string>, body = validBody) =>
+      getTestServer().webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body,
+      });
+
+    it("missing auth: 401", async () => {
+      const res = await post({});
+      expect(res.status).toBe(401);
+    });
+
+    it("invalid API key: 401", async () => {
+      const res = await post({ Authorization: "Bearer tr_dev_invalid" });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await post({ Authorization: `Bearer ${seed.apiKey}` });
+      // Handler may 404/204 depending on whether the idempotency key
+      // exists. Auth-passed assertion only.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:runs (type-level): auth passes — locks in TRI-8719 fix", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      // PRE-TRI-8719: this returned 403 (legacy empty-resource bug
+      // rejected all JWTs). POST-TRI-8719: write:runs grants access.
+      // Locking in the new behaviour.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with read:runs (action mismatch): 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with write:all: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:all"] },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
