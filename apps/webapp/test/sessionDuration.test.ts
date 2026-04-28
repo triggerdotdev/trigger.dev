@@ -1,6 +1,8 @@
 import { containerTest } from "@internal/testcontainers";
 import { createCookieSessionStorage, type Session } from "@remix-run/node";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 60_000 });
 import {
   DEFAULT_SESSION_DURATION_SECONDS,
   ensureSessionIssuedAt,

@@ -1,4 +1,6 @@
 import { type MetaFunction } from "@remix-run/react";
+import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
@@ -6,17 +8,15 @@ import {
 } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { MfaSetup } from "../resources.account.mfa.setup/route";
-import { SessionDurationSetting } from "../resources.account.session-duration/SessionDurationSetting";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { requireUser } from "~/services/session.server";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { prisma } from "~/db.server";
+import { requireUser } from "~/services/session.server";
 import {
+  DEFAULT_SESSION_DURATION_SECONDS,
   getAllowedSessionOptions,
   getOrganizationSessionCap,
-  DEFAULT_SESSION_DURATION_SECONDS,
 } from "~/services/sessionDuration.server";
+import { MfaSetup } from "../resources.account.mfa.setup/route";
+import { SessionDurationSetting } from "../resources.account.session-duration/SessionDurationSetting";
 
 export const meta: MetaFunction = () => {
   return [
@@ -59,12 +59,14 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <MainHorizontallyCenteredContainer className="grid place-items-center overflow-visible">
-          <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
+        <MainHorizontallyCenteredContainer className="max-w-[600px] overflow-visible">
+          <div className="w-full border-b border-grid-dimmed pb-3">
             <Header2>Security</Header2>
           </div>
-          <MfaSetup isEnabled={!!user.mfaEnabledAt} />
-          <div className="mt-6 w-full border-t border-grid-dimmed pt-6">
+          <div className="w-full border-b border-grid-dimmed py-4">
+            <MfaSetup isEnabled={!!user.mfaEnabledAt} />
+          </div>
+          <div className="w-full border-b border-grid-dimmed py-4">
             <SessionDurationSetting
               currentValue={sessionDuration}
               options={sessionDurationOptions}
