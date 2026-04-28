@@ -39,9 +39,9 @@ The target group is how the NLB will know where to forward traffic. AWS requires
     - **IP addresses** for RDS, ElastiCache, or any resource you can reach by IP
     - **Instances** for EC2 instances you own
     - **Application Load Balancer** if your resource sits behind an ALB
-    - **Lambda** for Lambda-backed services
 
-    For most database use cases, **IP addresses** is correct.
+    For most database use cases, **IP addresses** is correct. NLBs don't support Lambda targets
+    directly — if you need to expose a Lambda, put it behind an ALB and use the ALB target type.
 
   </Step>
   <Step title="Configure the target group">
@@ -223,7 +223,7 @@ By default, no one can connect to your endpoint service. You need to explicitly 
     Then fill in:
 
     - **Friendly name**: a short, human-readable label for this connection.
-    - **VPC Endpoint Service name**: paste the `com.amazonaws.vpce.<region>.vpce-svc-...` value from Step 3.
+    - **VPC Endpoint Service name**: paste the `com.amazonaws.vpce.<region>.vpce-svc-...` value from Step 4.
     - **Target region**: the AWS region your endpoint service lives in.
 
   </Step>
