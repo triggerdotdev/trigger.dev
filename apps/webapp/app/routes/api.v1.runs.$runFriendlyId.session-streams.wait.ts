@@ -123,10 +123,12 @@ const { action, loader } = createActionApiRoute(
       // and remove the pending registration.
       if (!result.isCached) {
         try {
-          const realtimeStream = getRealtimeStreamInstance(
-            authentication.environment,
-            run.realtimeStreamsVersion
-          );
+          // Session streams are always v2 (S2) — the writer in
+          // `appendPartToSessionStream` and the SSE subscribe both
+          // hardcode "v2", so the race-check reader has to match.
+          // Don't fall through to the run's own `realtimeStreamsVersion`,
+          // which only describes the run's run-scoped streams.
+          const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
 
           if (realtimeStream instanceof S2RealtimeStreams) {
             const records = await realtimeStream.readSessionStreamRecords(
