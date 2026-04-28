@@ -12,6 +12,7 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -19,7 +20,7 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
@@ -36,11 +37,14 @@ import {
 } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  docsPath,
   OrganizationParamsSchema,
   organizationPath,
   v3PrivateConnectionsPath,
 } from "~/utils/pathBuilder";
 import {
+  ArrowTopRightOnSquareIcon,
+  BookOpenIcon,
   CommandLineIcon,
   DocumentTextIcon,
   PencilSquareIcon,
@@ -531,7 +535,7 @@ export default function Page() {
   const { availableRegions, activeRegions, awsAccountIds } = useTypedLoaderData<typeof loader>();
   const { organizationSlug } = useParams();
   const lastSubmission = useActionData();
-  const [setupMethod, setSetupMethod] = useState<SetupMethod | null>(null);
+  const [setupMethod, setSetupMethod] = useState<SetupMethod | null>("manual");
 
   const defaultRegion = "us-east-1";
 
@@ -547,6 +551,15 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Add Private Connection" backButton={{ to: v3PrivateConnectionsPath({ slug: organizationSlug! }), text: "Private Connections" }} />
+        <PageAccessories>
+          <LinkButton
+            variant="docs/small"
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("private-networking/overview")}
+          >
+            Private connection docs
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer className="max-w-3xl">
@@ -651,7 +664,7 @@ export default function Page() {
               </div>
             )}
 
-            {/* Docs iframe */}
+            {/* Docs link */}
             {setupMethod === "docs" && (
               <div className="mb-6 rounded-lg border border-grid-dimmed p-4">
                 <Header3 spacing>Setup Guide</Header3>
@@ -659,37 +672,47 @@ export default function Page() {
                   <>
                     <Paragraph variant="small" className="mb-3">
                       When adding allowed principals to your VPC Endpoint Service, use the following
-                      AWS account ID(s):
+                      AWS account ARN(s):
                     </Paragraph>
-                    <div className="mb-4 rounded-md border border-charcoal-700 bg-charcoal-900 p-3">
+                    <div className="mb-4 space-y-2">
                       {awsAccountIds.map((id) => (
-                        <code key={id} className="text-sm text-emerald-400">
-                          {id}
-                        </code>
+                        <ClipboardField
+                          key={id}
+                          value={`arn:aws:iam::${id}:root`}
+                          variant="primary/medium"
+                        />
                       ))}
                     </div>
                   </>
                 )}
-                <iframe
-                  src="https://trigger.dev/docs/network/private-link-setup-guide"
-                  title="Private Link Setup Guide"
-                  className="h-[600px] w-full rounded-md border border-charcoal-700"
-                />
+                <Paragraph variant="small" className="mb-3">
+                  Follow the step-by-step guide in our docs to create a VPC Endpoint Service in the
+                  AWS Console, then come back here to add the connection.
+                </Paragraph>
+                <LinkButton
+                  to={docsPath("private-networking/aws-console-setup")}
+                  variant="primary/medium"
+                  TrailingIcon={ArrowTopRightOnSquareIcon}
+                >
+                  Open setup guide
+                </LinkButton>
               </div>
             )}
 
-            {/* AWS account IDs reference */}
-            {setupMethod === "manual" && (
+            {/* AWS account ARNs reference */}
+            {setupMethod === "manual" && awsAccountIds.length > 0 && (
               <div className="mb-6 rounded-lg border border-grid-dimmed p-4">
-                <Paragraph variant="small" className="mb-2">
-                  Add the following AWS account ID(s) to your VPC Endpoint Service's allowed
+                <Paragraph variant="small" className="mb-3">
+                  Add the following AWS account ARN(s) to your VPC Endpoint Service's allowed
                   principals:
                 </Paragraph>
-                <div className="rounded-md border border-charcoal-700 bg-charcoal-900 p-3">
+                <div className="space-y-2">
                   {awsAccountIds.map((id) => (
-                    <code key={id} className="text-sm text-emerald-400">
-                      {id}
-                    </code>
+                    <ClipboardField
+                      key={id}
+                      value={`arn:aws:iam::${id}:root`}
+                      variant="primary/medium"
+                    />
                   ))}
                 </div>
               </div>
