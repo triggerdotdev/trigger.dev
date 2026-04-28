@@ -58,6 +58,28 @@ If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`**
 
 **`lastEventId`** lets the frontend [resume](/ai-chat/frontend) without replaying SSE events it already applied. Treat it as part of session state, not optional polish, if you care about duplicate chunks after refresh.
 
+<Warning>
+**Write the messages and `lastEventId` in a single transaction.** Both values are read in parallel on the next page load (one fetches the conversation, the other fetches the session). If a refresh races between the two writes, the page can see the assistant message persisted (full history) but a stale `lastEventId` from the previous turn. The transport then resumes from that stale cursor and replays this turn's chunks on top of the already-persisted assistant message, producing a duplicated render.
+
+```ts
+// ✅ Atomic — refresh on the next page load reads both writes consistently.
+await db.$transaction([
+  db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }),
+  db.chatSession.upsert({
+    where: { id: chatId },
+    create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
+    update: { publicAccessToken: chatAccessToken, lastEventId },
+  }),
+]);
+
+// ❌ Two awaits — narrow race window where messages are post-write but
+// lastEventId is still pre-write. A page refresh that lands here will
+// duplicate the assistant message on resume.
+await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+await db.chatSession.upsert({ /* ... */ });
+```
+</Warning>
+
 ## Token renewal (app server)
 
 The persisted PAT has a TTL (see **`chatAccessTokenTTL`** on **`chat.agent`**, default 1h). When the transport gets a **401** on a session-PAT-authed request, it calls your **`accessToken`** callback to mint a fresh PAT — no DB lookup required, since the session is keyed on `chatId` (which the transport already has).
@@ -110,12 +132,12 @@ chat.agent({
   },
 
   onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId }) => {
-    await saveConversationMessages(chatId, uiMessages);
-    await upsertSession({
-      chatId,
-      publicAccessToken: chatAccessToken,
-      lastEventId,
-    });
+    // Atomic: messages + lastEventId must be readable consistently on resume.
+    // See the warning above for why a non-atomic write causes duplicate renders.
+    await db.$transaction([
+      saveConversationMessagesQuery(chatId, uiMessages),
+      upsertSessionQuery({ chatId, publicAccessToken: chatAccessToken, lastEventId }),
+    ]);
   },
 
   run: async ({ messages, signal }) => {
@@ -144,9 +166,18 @@ export const myChat = chat.agent({
 
     return stored;
   },
-  onTurnComplete: async ({ chatId, uiMessages }) => {
-    // Persist the response
-    await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+  onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId }) => {
+    // Persist the response and refresh session state atomically — see the
+    // warning in the previous section for why these two writes have to be
+    // in the same transaction.
+    await db.$transaction([
+      db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }),
+      db.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { publicAccessToken: chatAccessToken, lastEventId },
+      }),
+    ]);
   },
   run: async ({ messages, signal }) => {
     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
