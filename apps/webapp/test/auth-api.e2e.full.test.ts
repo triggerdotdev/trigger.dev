@@ -1729,6 +1729,297 @@ describe("API", () => {
     });
   });
 
+  // Prompts routes (TRI-8738). Resource shapes:
+  //   - List       resource: { type: "prompts", id: "all" }      action: read
+  //   - Retrieve   resource: { type: "prompts", id: params.slug } action: read
+  //   - Override   resource: { type: "prompts", id: params.slug } action: update
+  //                (multi-method: POST/PUT/PATCH/DELETE)
+  //   - Promote    resource: { type: "prompts", id: params.slug } action: update
+  //   - Reactivate resource: { type: "prompts", id: params.slug } action: update
+  //
+  // ACTION_ALIASES: update ← write, so write:prompts also satisfies
+  // the update-action routes.
+  //
+  // Auth happens before any DB lookup, so we test against
+  // non-existent slugs — handler will 404 but we assert "not 401/403"
+  // for pass cases.
+  describe("Prompts list — GET /api/v1/prompts (collection-level)", () => {
+    const path = "/api/v1/prompts";
+    const get = (headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, { headers });
+
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch(path);
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await get({ Authorization: `Bearer ${seed.apiKey}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:prompts (type-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:prompts"] },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:runs: 403 (type mismatch)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  describe("Prompts retrieve — GET /api/v1/prompts/:slug (id-keyed read)", () => {
+    const SLUG = "test-prompt";
+    const path = `/api/v1/prompts/${SLUG}`;
+    const get = (headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, { headers });
+
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch(path);
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await get({ Authorization: `Bearer ${seed.apiKey}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:prompts (type-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:prompts"] },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:prompts:<exact slug>: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`read:prompts:${SLUG}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:prompts:<other>: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["read:prompts:some-other-slug"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT read:runs: 403 (type mismatch)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await get({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  describe("Prompts override — POST /api/v1/prompts/:slug/override (update action)", () => {
+    const SLUG = "test-prompt";
+    const path = `/api/v1/prompts/${SLUG}/override`;
+    const post = (headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ content: "test" }),
+      });
+
+    it("missing auth: 401", async () => {
+      const res = await post({});
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT write:prompts:<slug> matching (ACTION_ALIASES write→update): passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`write:prompts:${SLUG}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT write:prompts (type-level): passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:prompts"] },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:prompts: 403 (action mismatch — read NOT aliased to update)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`read:prompts:${SLUG}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT write:prompts:<other>: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["write:prompts:some-other-slug"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT admin: passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await post({ Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  describe("Prompts promote/reactivate (sanity, update action)", () => {
+    it("promote: JWT write:prompts (type-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:prompts"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch("/api/v1/prompts/some-slug/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("reactivate: JWT read:prompts: 403 (action mismatch)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:prompts"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(
+        "/api/v1/prompts/some-slug/override/reactivate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({}),
+        }
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
   describe("Batch retrieve — GET /realtime/v1/batches/:batchId (sanity)", () => {
     it("missing auth: 401", async () => {
       const res = await getTestServer().webapp.fetch("/realtime/v1/batches/batch_anything");
