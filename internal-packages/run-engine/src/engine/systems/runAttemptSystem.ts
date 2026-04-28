@@ -1980,21 +1980,9 @@ export class RunAttemptSystem {
     }
 
     if (completion.flushedMetadata) {
-      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+      const [, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
 
       if (!packet) {
-        return;
-      }
-
-      if (packetError) {
-        // Customer's flushedMetadata packet failed to parse — system handles
-        // it (we return), so log at warn rather than error.
-        this.$.logger.warn("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: packetError,
-        });
-
         return;
       }
 

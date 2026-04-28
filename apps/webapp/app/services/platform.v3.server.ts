@@ -44,9 +44,10 @@ function initializeClient() {
 }
 
 const client = singleton("billingClient", initializeClient);
-// Failures from @trigger.dev/platform billing client calls. Logged at warn
-// (so they stay in stdout) and counted as a metric — Sentry was the wrong
-// tool for this signal because every task invocation hits these paths.
+// Failures from @trigger.dev/platform billing client calls are tracked via
+// this metric (with low-cardinality {function, kind} labels) rather than
+// logged. Every task invocation hits these paths, so per-call logs were too
+// noisy; dashboard the counter for visibility instead.
 const platformClientMeter = metrics.getMeter("trigger.dev/platform-client");
 const platformClientFailuresCounter = platformClientMeter.createCounter(
   "platform_client.failures_total",
