@@ -1284,4 +1284,259 @@ describe("API", () => {
       expect(res.status).not.toBe(403);
     });
   });
+
+  // Run resource routes (TRI-8734). Every read-side `$runId` route
+  // computes its authorization resource from the loaded TaskRun:
+  //   [
+  //     { type: "runs", id: run.friendlyId },
+  //     { type: "tasks", id: run.taskIdentifier },
+  //     ...run.runTags.map(tag => ({ type: "tags", id: tag })),
+  //     run.batch?.friendlyId && { type: "batch", id: run.batch.friendlyId },
+  //   ]
+  //
+  // A JWT scope matching ANY array element grants access. We test the
+  // full matrix against the canonical route (api.v3.runs.$runId), and
+  // a sanity check on one of the others to confirm the wiring isn't
+  // route-local. If a future route's resource shape diverges, add a
+  // targeted describe.
+  describe("Run resource — GET /api/v3/runs/:runId (multi-key array)", () => {
+    const pathFor = (runId: string) => `/api/v3/runs/${runId}`;
+
+    async function seedRunWithBatchAndTags() {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const seeded = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+        runTags: ["alpha", "beta"],
+        withBatch: true,
+      });
+      return { ...seed, ...seeded };
+    }
+
+    const get = (path: string, headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, { headers });
+
+    it("missing auth: 401", async () => {
+      const res = await get(pathFor("run_anything"), {});
+      expect(res.status).toBe(401);
+    });
+
+    it("invalid API key: 401", async () => {
+      const res = await get(pathFor("run_anything"), {
+        Authorization: "Bearer tr_dev_invalid",
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key on real run: auth passes", async () => {
+      const { runFriendlyId, apiKey } = await seedRunWithBatchAndTags();
+      const res = await get(pathFor(runFriendlyId), {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:runs (type-level): auth passes", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:runs:<exact friendlyId>: auth passes (id match)", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: [`read:runs:${runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:runs:<other>: 403", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: ["read:runs:run_someoneelse00000000000"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT read:tags:<tag the run has>: auth passes (array element match)", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      // run was seeded with runTags=["alpha","beta"]; scope matches "alpha".
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:tags:alpha"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:tags:<tag the run does not have>: 403", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:tags:gamma"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT read:batch:<run's batchFriendlyId>: auth passes", async () => {
+      const { runFriendlyId, batchFriendlyId, apiKey, environment } =
+        await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: [`read:batch:${batchFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:batch:<other>: 403", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: ["read:batch:batch_someoneelse00000000"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT read:tasks:<run's taskIdentifier>: auth passes", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      // seedTestRun uses taskIdentifier "test-task" by default.
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:tasks:test-task"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT read:all: auth passes", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:all"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT admin: auth passes", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT write:runs:<friendlyId>: 403 (action mismatch — read route)", async () => {
+      const { runFriendlyId, apiKey, environment } = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: [`write:runs:${runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("cross-env: env A's JWT cannot read env B's run: not 200", async () => {
+      const server = getTestServer();
+      const a = await seedTestEnvironment(server.prisma);
+      const b = await seedRunWithBatchAndTags();
+      const jwt = await generateJWT({
+        secretKey: a.apiKey,
+        payload: {
+          pub: true,
+          sub: a.environment.id,
+          scopes: [`read:runs:${b.runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(pathFor(b.runFriendlyId), { Authorization: `Bearer ${jwt}` });
+      // Either auth fails or the run lookup misses (env A's view of
+      // the run doesn't include env B's data). Critical: NOT 200.
+      expect(res.status).not.toBe(200);
+    });
+  });
+
+  // Sanity check: same multi-key pattern wired the same way on the
+  // events sub-route. If this drifts in the future the divergence
+  // gets a dedicated describe.
+  describe("Run resource — GET /api/v1/runs/:runId/events (sanity)", () => {
+    const pathFor = (runId: string) => `/api/v1/runs/${runId}/events`;
+
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch(pathFor("run_anything"));
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT read:runs (type-level): auth passes on a real run", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await getTestServer().webapp.fetch(pathFor(runFriendlyId), {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
