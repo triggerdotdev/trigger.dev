@@ -113,6 +113,9 @@ jobs:
           else
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
             REF_SLUG=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr -cd 'a-zA-Z0-9-')
+            if [[ -z "$REF_SLUG" ]]; then
+              REF_SLUG="manual"
+            fi
             PRERELEASE_VERSION="${BASE_VERSION}-${REF_SLUG}.${SHORT_SHA}"
           fi
           echo "version=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
@@ -124,8 +127,10 @@ jobs:
 
       - name: Override appVersion
         if: github.event_name == 'workflow_dispatch' && inputs.app_version != ''
+        env:
+          APP_VERSION: ${{ inputs.app_version }}
         run: |
-          sed -i "s/^appVersion:.*/appVersion: ${{ inputs.app_version }}/" ./hosting/k8s/helm/Chart.yaml
+          yq -i '.appVersion = strenv(APP_VERSION)' ./hosting/k8s/helm/Chart.yaml
 
       - name: Package Helm Chart
         run: |

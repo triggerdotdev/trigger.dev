@@ -7,6 +7,8 @@ on:
       - "docs/**"
       - ".changeset/**"
       - "hosting/**"
+      - ".github/workflows/helm-prerelease.yml"
+      - ".github/workflows/helm-pr-prerelease.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
