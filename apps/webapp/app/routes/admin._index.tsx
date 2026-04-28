@@ -20,6 +20,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
 import { deleteUser as deleteUserOnPlatform } from "~/services/platform.v3.server";
@@ -66,6 +68,13 @@ export async function action({ request }: ActionFunctionArgs) {
       return redirect("/");
     }
 
+    if (admin.isImpersonating) {
+      return typedjson(
+        { error: "Stop impersonating before deleting users." },
+        { status: 400 }
+      );
+    }
+
     const targetId = deleteAttempt.data.id;
 
     if (targetId === admin.id) {
@@ -102,6 +111,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export default function AdminDashboardRoute() {
   const currentUser = useUser();
+  const isImpersonating = useIsImpersonating();
   const { users, filters, page, pageCount, justDeleted } = useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const actionError =
@@ -226,14 +236,29 @@ export default function AdminDashboardRoute() {
                             Impersonate
                           </Button>
                         </Form>
-                        {!isSelf && (
-                          <Button
-                            type="button"
-                            variant="danger/small"
-                            onClick={() => openDeleteDialog({ id: user.id, email: user.email })}
-                          >
-                            Delete
-                          </Button>
+                        {!isSelf && !user.admin && (
+                          isImpersonating ? (
+                            <SimpleTooltip
+                              button={
+                                // Wrap in a span so hover events still fire
+                                // when the underlying button is disabled.
+                                <span tabIndex={0}>
+                                  <Button type="button" variant="danger/small" disabled>
+                                    Delete
+                                  </Button>
+                                </span>
+                              }
+                              content="Stop impersonating to delete users"
+                            />
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="danger/small"
+                              onClick={() => openDeleteDialog({ id: user.id, email: user.email })}
+                            >
+                              Delete
+                            </Button>
+                          )
                         )}
                       </div>
                     </TableCell>
