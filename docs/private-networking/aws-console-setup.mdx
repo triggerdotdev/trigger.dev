@@ -138,8 +138,9 @@ This is the resource that PrivateLink consumers connect to.
 
   </Step>
   <Step title="Skip private DNS">
-    Leave the "Private DNS name" option disabled. Trigger.dev tasks dial the endpoint by IP via
-    injected environment variables, so private DNS isn't needed.
+    Leave the "Private DNS name" option disabled. Trigger.dev tasks dial the endpoint by IP or by
+    its VPC Endpoint DNS name (shown in your dashboard once provisioned), so private DNS isn't
+    needed.
   </Step>
   <Step title="Create the endpoint service">
     Click **Create**. Note the **Service name** — it looks like `com.amazonaws.vpce.us-east-1.vpce-svc-0123abcd...`.
@@ -187,7 +188,7 @@ By default, no one can connect to your endpoint service. You need to explicitly 
   <Step title="Pick the I have my details card">
     Then fill in:
 
-    - **Friendly name**: a short identifier — this becomes the env var name. For `my-postgres` you'll get `TRIGGER_PRIVATE_LINK_MY_POSTGRES`.
+    - **Friendly name**: a short, human-readable label for this connection.
     - **VPC Endpoint Service name**: paste the `com.amazonaws.vpce.<region>.vpce-svc-...` value from Step 4.
     - **Target region**: the AWS region your endpoint service lives in.
 
@@ -197,8 +198,10 @@ By default, no one can connect to your endpoint service. You need to explicitly 
     Provisioning typically takes 30–90 seconds.
   </Step>
   <Step title="Verify">
-    Once **Active**, the dashboard shows the assigned IPs. These are now available in your tasks
-    via `process.env.TRIGGER_PRIVATE_LINK_<NAME>`.
+    Once **Active**, the dashboard shows the assigned IPs and a copyable DNS endpoint name. Plug
+    one of them into the connection-string env var your task already uses (for example,
+    `DATABASE_URL` set on the **Environment Variables** page) and your tasks will reach the
+    resource over PrivateLink.
   </Step>
 </Steps>
 

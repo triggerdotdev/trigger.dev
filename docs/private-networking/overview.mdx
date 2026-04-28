@@ -44,26 +44,16 @@ When you add a private connection in the dashboard, the following happens:
   <Step title="We provision a VPC Endpoint">
     Once you submit the endpoint service name in the Trigger.dev dashboard, we provision a VPC Endpoint in our isolated, customer-PrivateLink AWS account in the region you chose. The endpoint creates ENIs with private IPs that we wire up to reach your service.
   </Step>
-  <Step title="We inject endpoint info into your tasks">
-    The endpoint's IP addresses are injected as environment variables into the pods that run your tasks. Your task code reads them like any other env var to dial into your resource.
+  <Step title="Your tasks can reach the endpoint">
+    Once the connection is **Active**, the dashboard shows the assigned IPs (one per Availability Zone) and a copyable DNS endpoint name. Pods running your tasks are network-authorized to connect to those addresses.
   </Step>
 </Steps>
 
 ### Connecting from your task code
 
-Each connection you create gets a friendly name. We expose its IPs via an environment variable derived from that name:
+When the connection becomes **Active**, the dashboard shows the assigned endpoint IPs and a copyable DNS endpoint name that resolves to those IPs from inside our worker network.
 
-```text
-TRIGGER_PRIVATE_LINK_<NAME_IN_SCREAMING_SNAKE_CASE>
-```
-
-For example, a connection named `my-postgres` produces:
-
-```text
-TRIGGER_PRIVATE_LINK_MY_POSTGRES=10.200.1.5,10.200.1.6
-```
-
-Use it in your task like any other connection string fragment:
+Plug whichever you prefer into the connection-string env var your task already reads (for example, `DATABASE_URL` set in the **Environment Variables** page):
 
 ```typescript
 import { task } from "@trigger.dev/sdk";
@@ -72,14 +62,10 @@ import { Client } from "pg";
 export const queryDatabase = task({
   id: "query-database",
   run: async () => {
-    const host = process.env.TRIGGER_PRIVATE_LINK_MY_POSTGRES?.split(",")[0];
-
+    // DATABASE_URL is set in the Trigger.dev dashboard to the connection's
+    // assigned IP or DNS endpoint name shown in Private Connections.
     const client = new Client({
-      host,
-      port: 5432,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: "app",
+      connectionString: process.env.DATABASE_URL,
     });
 
     await client.connect();
@@ -92,9 +78,9 @@ export const queryDatabase = task({
 ```
 
 <Tip>
-  The variable contains a comma-separated list of IPs (one per Availability Zone). Most database
-  drivers accept the first IP. For higher availability, parse the list and use a driver that
-  supports failover.
+  Connections expose multiple IPs (one per Availability Zone). For higher availability, use a
+  driver that supports failover or use the DNS endpoint name, which AWS resolves to whichever IPs
+  are currently healthy.
 </Tip>
 
 ## Isolation between organizations
