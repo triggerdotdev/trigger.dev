@@ -49,7 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({ ...result, justDeleted });
 };
 
-const ImpersonateSchema = z.object({ id: z.string() });
+const ImpersonateSchema = z.object({ action: z.literal("impersonate"), id: z.string() });
 const DeleteSchema = z.object({ intent: z.literal("delete"), id: z.string() });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -92,14 +92,12 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirect("/admin?deleted=1");
   }
 
-  // Reject any POST that set `intent` to something we don't recognise so
-  // unknown intents don't fall through to the impersonate flow.
-  if (typeof payload.intent === "string") {
-    return typedjson({ error: "Unknown action." }, { status: 400 });
+  const impersonateAttempt = ImpersonateSchema.safeParse(payload);
+  if (impersonateAttempt.success) {
+    return redirectWithImpersonation(request, impersonateAttempt.data.id, "/");
   }
 
-  const { id } = ImpersonateSchema.parse(payload);
-  return redirectWithImpersonation(request, id, "/");
+  return typedjson({ error: "Unknown action." }, { status: 400 });
 }
 
 export default function AdminDashboardRoute() {
