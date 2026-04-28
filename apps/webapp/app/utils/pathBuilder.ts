@@ -335,6 +335,16 @@ export function v3RunsRefreshPath(
   )}/env/${environmentParam(environment)}/runs/refresh`;
 }
 
+export function v3RunsCountNewPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
+    project
+  )}/env/${environmentParam(environment)}/runs/count-new`;
+}
+
 export function v3CreateBulkActionPath(
   organization: OrgForPath,
   project: ProjectForPath,

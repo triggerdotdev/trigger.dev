@@ -1,5 +1,5 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useNavigation } from "@remix-run/react";
+import { type MetaFunction, useLocation, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo } from "react";
 import {
@@ -31,12 +31,11 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
-import { LiveToggleButton } from "~/components/runs/v3/LiveToggleButton";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { RunsLiveControl } from "~/components/runs/v3/RunsLiveControl";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
 import { $replica } from "~/db.server";
-import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -59,6 +58,7 @@ import {
   EnvironmentParamSchema,
   v3CreateBulkActionPath,
   v3ProjectPath,
+  v3RunsCountNewPath,
   v3RunsRefreshPath,
   v3TestPath,
   v3TestTaskPath,
@@ -204,6 +204,7 @@ function RunsList({
   const project = useProject();
   const environment = useEnvironment();
   const { has, replace, value } = useSearchParams();
+  const location = useLocation();
   const isFirstPage = !list.pagination.previous;
 
   // Shortcut keys for bulk actions
@@ -232,8 +233,6 @@ function RunsList({
   const isLive = isLiveAvailable && value("live") === "1";
   const setLive = (next: boolean) => replace({ live: next ? "1" : undefined });
 
-  useAutoRevalidate({ interval: 3000, disabled: !isLive });
-
   const refreshUrl = v3RunsRefreshPath(organization, project, environment);
   const overrides = useRunsRowPolling({
     runs: list.runs,
@@ -244,6 +243,10 @@ function RunsList({
     () => list.runs.map((r) => overrides.get(r.id) ?? r),
     [list.runs, overrides]
   );
+
+  const countNewUrl = `${v3RunsCountNewPath(organization, project, environment)}${
+    location.search
+  }`;
 
   const isShowingBulkActionInspector = has("bulkInspector") && list.hasAnyRuns;
   return (
@@ -278,7 +281,14 @@ function RunsList({
                     rootOnlyDefault={rootOnlyDefault}
                   />
                   <div className="flex items-center justify-end gap-x-2">
-                    {isLiveAvailable && <LiveToggleButton isLive={isLive} onChange={setLive} />}
+                    {isLiveAvailable && (
+                      <RunsLiveControl
+                        isLive={isLive}
+                        onChange={setLive}
+                        topRowId={list.runs[0]?.id}
+                        countNewUrl={countNewUrl}
+                      />
+                    )}
                     {!isShowingBulkActionInspector && (
                       <LinkButton
                         variant="secondary/small"
