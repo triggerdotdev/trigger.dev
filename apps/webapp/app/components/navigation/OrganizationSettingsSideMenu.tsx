@@ -4,6 +4,7 @@ import {
   Cog8ToothIcon,
   CreditCardIcon,
   LockClosedIcon,
+  ShieldCheckIcon,
   UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -14,6 +15,7 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { cn } from "~/utils/cn";
 import {
+  organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
   organizationTeamPath,
@@ -127,6 +129,14 @@ export function OrganizationSettingsSideMenu({
             inactiveIconColor="text-amber-500"
             to={organizationTeamPath(organization)}
             data-action="team"
+          />
+          <SideMenuItem
+            name="Roles"
+            icon={ShieldCheckIcon}
+            activeIconColor="text-sky-500"
+            inactiveIconColor="text-sky-500"
+            to={organizationRolesPath(organization)}
+            data-action="roles"
           />
           <SideMenuItem
             name="Settings"

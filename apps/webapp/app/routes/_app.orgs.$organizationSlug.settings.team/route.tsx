@@ -58,6 +58,7 @@ import {
 } from "~/services/routeBuilders/dashboardBuilder";
 import {
   inviteTeamMemberPath,
+  organizationRolesPath,
   organizationTeamPath,
   resendInvitePath,
   revokeInvitePath,
@@ -384,7 +385,17 @@ export default function Page() {
                   </ul>
                 </>
               )}
-              <Header2>Active team members</Header2>
+              <div className="mt-4 flex items-baseline justify-between">
+                <Header2>Active team members</Header2>
+                {roles.length > 0 ? (
+                  <a
+                    className="text-xs text-text-link hover:underline"
+                    href={organizationRolesPath(organization)}
+                  >
+                    View all role permissions →
+                  </a>
+                ) : null}
+              </div>
               <ul className="divide-ui-border mb-8 mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
                 {members.map((member) => (
                   <li key={member.user.id} className="flex items-center gap-x-4 py-4">
