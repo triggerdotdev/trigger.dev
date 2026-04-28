@@ -167,7 +167,6 @@ export function ensureSessionIssuedAt(session: Session, now: number = Date.now()
  */
 export async function commitAuthenticatedSession(
   session: Session,
-  _userId: string,
   now: number = Date.now()
 ): Promise<string> {
   setSessionIssuedAt(session, now);
@@ -181,7 +180,6 @@ export async function commitAuthenticatedSession(
  */
 export async function commitAuthenticatedSessionLazy(
   session: Session,
-  _userId: string,
   now: number = Date.now()
 ): Promise<string> {
   ensureSessionIssuedAt(session, now);

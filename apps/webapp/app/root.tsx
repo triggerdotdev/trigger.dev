@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // current effective session duration.
   if (user) {
     const authSession = await getUserSession(request);
-    headers.append("Set-Cookie", await commitAuthenticatedSessionLazy(authSession, user.id));
+    headers.append("Set-Cookie", await commitAuthenticatedSessionLazy(authSession));
   }
 
   return typedjson(

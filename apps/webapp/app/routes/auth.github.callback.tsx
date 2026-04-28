@@ -53,7 +53,7 @@ export let loader: LoaderFunction = async ({ request }) => {
   session.set(authenticator.sessionKey, auth);
 
   const headers = new Headers();
-  headers.append("Set-Cookie", await commitAuthenticatedSession(session, auth.userId));
+  headers.append("Set-Cookie", await commitAuthenticatedSession(session));
   headers.append("Set-Cookie", await setLastAuthMethodHeader("github"));
 
   await trackAndClearReferralSource(request, auth.userId, headers);
