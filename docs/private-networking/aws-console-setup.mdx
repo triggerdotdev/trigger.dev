@@ -27,35 +27,9 @@ Before you start you'll need:
   multiple AZs.
 </Note>
 
-## Step 1: Create an internal Network Load Balancer
+## Step 1: Create a target group pointing at your resource
 
-The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not internet-facing).
-
-<Steps>
-  <Step title="Open the EC2 console">
-    Go to **EC2 → Load Balancers → Create load balancer** and choose **Network Load Balancer**.
-  </Step>
-  <Step title="Configure the basics">
-    - **Name**: something descriptive, e.g. `trigger-postgres-nlb`
-    - **Scheme**: **Internal**
-    - **IP address type**: IPv4
-  </Step>
-  <Step title="Choose VPC and subnets">
-    Pick the VPC where your resource lives. Select one private subnet per AZ that should serve traffic.
-    Each subnet you select adds an availability zone to the endpoint.
-  </Step>
-  <Step title="Skip the listener for now">
-    You'll add a listener after creating the target group. You can leave the default placeholder
-    listener and update it later, or remove it.
-  </Step>
-  <Step title="Create the load balancer">
-    Click **Create load balancer**. Provisioning takes 1–2 minutes.
-  </Step>
-</Steps>
-
-## Step 2: Create a target group pointing at your resource
-
-The target group is how the NLB knows where to forward traffic.
+The target group is how the NLB will know where to forward traffic. AWS requires a target group when creating a load balancer, so we'll set this up first.
 
 <Steps>
   <Step title="Open the target groups page">
@@ -74,7 +48,7 @@ The target group is how the NLB knows where to forward traffic.
     - **Name**: e.g. `trigger-postgres-tg`
     - **Protocol**: TCP
     - **Port**: the port your resource listens on (5432 for Postgres, 6379 for Redis, 3306 for MySQL, etc.)
-    - **VPC**: same VPC as the NLB
+    - **VPC**: the VPC where your resource lives (this must match the VPC you'll use for the NLB)
     - **Health check protocol**: TCP
   </Step>
   <Step title="Register your targets">
@@ -94,19 +68,32 @@ The target group is how the NLB knows where to forward traffic.
   </Step>
 </Steps>
 
-## Step 3: Add a listener on the NLB
+## Step 2: Create an internal Network Load Balancer
+
+The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not internet-facing).
 
 <Steps>
-  <Step title="Open the NLB you created">
-    Go to **EC2 → Load Balancers**, select your NLB, and switch to the **Listeners** tab.
+  <Step title="Open the EC2 console">
+    Go to **EC2 → Load Balancers → Create load balancer** and choose **Network Load Balancer**.
   </Step>
-  <Step title="Add a TCP listener">
+  <Step title="Configure the basics">
+    - **Name**: something descriptive, e.g. `trigger-postgres-nlb`
+    - **Scheme**: **Internal**
+    - **IP address type**: IPv4
+  </Step>
+  <Step title="Choose VPC and subnets">
+    Pick the same VPC as your target group. Select one private subnet per AZ that should serve traffic.
+    Each subnet you select adds an availability zone to the endpoint.
+  </Step>
+  <Step title="Add a TCP listener forwarding to your target group">
+    Under **Listeners and routing**, configure:
+
     - **Protocol**: TCP
-    - **Port**: same as your target group port (5432, 6379, etc.)
-    - **Default action**: forward to the target group you just created
+    - **Port**: same as your target group port (5432 for Postgres, 6379 for Redis, etc.)
+    - **Default action**: forward to the target group you created in Step 1
   </Step>
-  <Step title="Save">
-    Click **Add**. The listener becomes active immediately.
+  <Step title="Create the load balancer">
+    Click **Create load balancer**. Provisioning takes 1–2 minutes.
   </Step>
 </Steps>
 
@@ -116,7 +103,7 @@ The target group is how the NLB knows where to forward traffic.
   PrivateLink connection won't either.
 </Tip>
 
-## Step 4: Create a VPC Endpoint Service
+## Step 3: Create a VPC Endpoint Service
 
 This is the resource that PrivateLink consumers connect to.
 
@@ -148,7 +135,7 @@ This is the resource that PrivateLink consumers connect to.
   </Step>
 </Steps>
 
-## Step 5: Authorize the Trigger.dev AWS account
+## Step 4: Authorize the Trigger.dev AWS account
 
 By default, no one can connect to your endpoint service. You need to explicitly allow Trigger.dev's AWS account.
 
@@ -178,7 +165,7 @@ By default, no one can connect to your endpoint service. You need to explicitly 
   </Step>
 </Steps>
 
-## Step 6: Add the connection in Trigger.dev
+## Step 5: Add the connection in Trigger.dev
 
 <Steps>
   <Step title="Open the dashboard">
@@ -189,7 +176,7 @@ By default, no one can connect to your endpoint service. You need to explicitly 
     Then fill in:
 
     - **Friendly name**: a short, human-readable label for this connection.
-    - **VPC Endpoint Service name**: paste the `com.amazonaws.vpce.<region>.vpce-svc-...` value from Step 4.
+    - **VPC Endpoint Service name**: paste the `com.amazonaws.vpce.<region>.vpce-svc-...` value from Step 3.
     - **Target region**: the AWS region your endpoint service lives in.
 
   </Step>
