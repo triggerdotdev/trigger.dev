@@ -196,7 +196,7 @@ export function ConfigureErrorAlerts({
                       name={slackChannel.name}
                       placeholder={<span className="text-text-dimmed">Select a Slack channel</span>}
                       heading="Filter channels…"
-                      defaultValue={selectedSlackChannelValue}
+                      value={selectedSlackChannelValue ?? ""}
                       dropdownIcon
                       variant="tertiary/medium"
                       items={slack.channels}
@@ -243,6 +243,15 @@ export function ConfigureErrorAlerts({
                       </Callout>
                     )}
                     <Hint>
+                      {selectedSlackChannelValue ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSlackChannelValue("")}
+                          className="mr-3 text-indigo-500 transition hover:text-indigo-400 focus-visible:focus-custom"
+                        >
+                          Remove channel
+                        </button>
+                      ) : null}
                       <TextLink to={organizationSlackIntegrationPath(organization)}>
                         Manage Slack connection
                       </TextLink>
