@@ -11,7 +11,7 @@ CREATE TABLE "public"."UserDeletionAuditLog" (
     "adminEmail" TEXT NOT NULL,
     "targetUserId" TEXT NOT NULL,
     "targetEmail" TEXT NOT NULL,
-    "softDeletedOrgIds" TEXT[],
+    "softDeletedOrgIds" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "reason" TEXT,
     "ipAddress" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

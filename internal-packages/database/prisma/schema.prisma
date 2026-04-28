@@ -2602,7 +2602,7 @@ model UserDeletionAuditLog {
 
   /// Organization IDs that were soft-deleted as part of this user delete
   /// (orgs where the deleted user was the sole member).
-  softDeletedOrgIds String[]
+  softDeletedOrgIds String[] @default([])
 
   /// Optional: ticket link / GDPR request id / free-text SE note.
   reason String?

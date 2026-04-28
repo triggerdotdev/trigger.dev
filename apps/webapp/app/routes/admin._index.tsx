@@ -92,6 +92,12 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirect("/admin?deleted=1");
   }
 
+  // Reject any POST that set `intent` to something we don't recognise so
+  // unknown intents don't fall through to the impersonate flow.
+  if (typeof payload.intent === "string") {
+    return typedjson({ error: "Unknown action." }, { status: 400 });
+  }
+
   const { id } = ImpersonateSchema.parse(payload);
   return redirectWithImpersonation(request, id, "/");
 }

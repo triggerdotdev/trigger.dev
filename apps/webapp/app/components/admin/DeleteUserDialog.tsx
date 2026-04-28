@@ -26,6 +26,16 @@ export function DeleteUserDialog({ user, open, onOpenChange }: DeleteUserDialogP
     if (!open) setConfirmText("");
   }, [open]);
 
+  // Close the modal as soon as our own submit starts. Without reloadDocument
+  // the component stays mounted across the post-redirect soft navigation, so
+  // `open` would otherwise stay true after the action redirects to /admin.
+  const isSubmittingDelete =
+    navigation.state === "submitting" &&
+    navigation.formData?.get("intent") === "delete";
+  useEffect(() => {
+    if (isSubmittingDelete) onOpenChange(false);
+  }, [isSubmittingDelete, onOpenChange]);
+
   const expected = user ? `delete ${user.email}` : "";
   const confirmed = !!user && confirmText === expected;
   const isSubmitting = navigation.state !== "idle";
@@ -47,7 +57,7 @@ export function DeleteUserDialog({ user, open, onOpenChange }: DeleteUserDialogP
           </div>
         )}
 
-        <Form method="post" className="flex flex-col gap-3" reloadDocument>
+        <Form method="post" className="flex flex-col gap-3">
           <input type="hidden" name="intent" value="delete" />
           <input type="hidden" name="id" value={user?.id ?? ""} />
 

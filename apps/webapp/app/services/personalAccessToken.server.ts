@@ -205,14 +205,24 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
-  await prisma.personalAccessToken.update({
-    where: {
-      id: personalAccessToken.id,
-    },
-    data: {
-      lastAccessedAt: new Date(),
-    },
-  });
+  // Best-effort touch. The token can vanish between the findFirst above and
+  // this update if a User cascade-delete happens concurrently (admin delete
+  // flow), so swallow not-found errors rather than 500-ing the auth path.
+  try {
+    await prisma.personalAccessToken.update({
+      where: {
+        id: personalAccessToken.id,
+      },
+      data: {
+        lastAccessedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    logger.warn("Failed to touch PersonalAccessToken.lastAccessedAt", {
+      personalAccessTokenId: personalAccessToken.id,
+      error,
+    });
+  }
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 
