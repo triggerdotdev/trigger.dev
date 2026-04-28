@@ -205,23 +205,22 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
-  // Best-effort touch. The token can vanish between the findFirst above and
-  // this update if a User cascade-delete happens concurrently (admin delete
-  // flow), so swallow not-found errors rather than 500-ing the auth path.
-  try {
-    await prisma.personalAccessToken.update({
-      where: {
-        id: personalAccessToken.id,
-      },
-      data: {
-        lastAccessedAt: new Date(),
-      },
-    });
-  } catch (error) {
-    logger.warn("Failed to touch PersonalAccessToken.lastAccessedAt", {
+  // Touch lastAccessedAt with updateMany rather than update so a missing
+  // row (e.g. the PAT was cascade-deleted by a concurrent User delete
+  // between the findFirst above and this call) yields count = 0 instead
+  // of throwing. count = 0 means the token no longer exists — treat that
+  // as an authentication miss rather than handing a userId for a deleted
+  // user back to callers that don't re-verify the user.
+  const touchResult = await prisma.personalAccessToken.updateMany({
+    where: { id: personalAccessToken.id },
+    data: { lastAccessedAt: new Date() },
+  });
+
+  if (touchResult.count === 0) {
+    logger.warn("PersonalAccessToken vanished between findFirst and update", {
       personalAccessTokenId: personalAccessToken.id,
-      error,
     });
+    return;
   }
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
