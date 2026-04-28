@@ -174,9 +174,10 @@ const { action } = createActionApiRoute(
         reason: isCached ? "continuation" : "initial",
       });
 
-      // The newly triggered run's friendlyId, looked up via Prisma — we
-      // need the friendly form for the wire response.
-      const run = await $replica.taskRun.findFirst({
+      // Read-after-write: the run was just triggered in this request,
+      // so go to the writer rather than $replica. Replica lag here
+      // would null this out and turn a successful create into a 500.
+      const run = await prisma.taskRun.findFirst({
         where: { id: ensureResult.runId },
         select: { friendlyId: true },
       });

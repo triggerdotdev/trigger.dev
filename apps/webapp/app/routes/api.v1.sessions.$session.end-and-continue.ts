@@ -4,7 +4,7 @@ import {
   type EndAndContinueSessionResponseBody,
 } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { swapSessionRun } from "~/services/realtime/sessionRunManager.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
@@ -107,9 +107,12 @@ const { action, loader } = createActionApiRoute(
         reason,
       });
 
-      // The swap stored a TaskRun.id (cuid) in `currentRunId`; surface
-      // the friendlyId for parity with the rest of the public API.
-      const run = await $replica.taskRun.findFirst({
+      // Read-after-write: the swap just triggered (or claimed) the
+      // run on the writer, so read it from `prisma` rather than
+      // `$replica`. A replica miss here would silently fall back to
+      // returning the internal cuid, which the public API contract
+      // says is a friendlyId.
+      const run = await prisma.taskRun.findFirst({
         where: { id: result.runId },
         select: { friendlyId: true },
       });
