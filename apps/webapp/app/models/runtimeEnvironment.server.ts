@@ -109,7 +109,10 @@ export async function findEnvironmentByPublicApiKey(
 
 export async function findEnvironmentById(
   id: string
-): Promise<(AuthenticatedEnvironment & { parentEnvironment: { apiKey: string } | null }) | null> {
+): Promise<
+  | (AuthenticatedEnvironment & { parentEnvironment: { id: string; apiKey: string } | null })
+  | null
+> {
   const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       id,
@@ -120,6 +123,7 @@ export async function findEnvironmentById(
       orgMember: true,
       parentEnvironment: {
         select: {
+          id: true,
           apiKey: true,
         },
       },
