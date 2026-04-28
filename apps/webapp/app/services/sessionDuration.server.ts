@@ -156,32 +156,38 @@ export function ensureSessionIssuedAt(session: Session, now: number = Date.now()
 }
 
 /**
- * Commits the session for an authenticated user, setting `issuedAt = now` and
- * the cookie's `Max-Age` to the effective session duration. Use this at every
- * login/MFA-completion point so the session window starts fresh.
+ * The auth cookie's `Max-Age` is intentionally long (1 year) so the cookie
+ * always reaches the server. Actual session expiry is enforced server-side
+ * via `sessionIssuedAt` against the user's effective duration. If we let the
+ * cookie expire client-side, the user is silently logged out without the
+ * "signed out due to inactivity" toast.
+ */
+const AUTH_COOKIE_MAX_AGE_SECONDS = DEFAULT_SESSION_DURATION_SECONDS;
+
+/**
+ * Commits the session for an authenticated user, setting `issuedAt = now`.
+ * Use this at every login/MFA-completion point so the session window starts
+ * fresh. Cookie `Max-Age` is fixed; expiry is enforced server-side.
  */
 export async function commitAuthenticatedSession(
   session: Session,
-  userId: string,
+  _userId: string,
   now: number = Date.now()
 ): Promise<string> {
-  const { durationSeconds } = await getEffectiveSessionDuration(userId);
   setSessionIssuedAt(session, now);
-  return commitSession(session, { maxAge: durationSeconds });
+  return commitSession(session, { maxAge: AUTH_COOKIE_MAX_AGE_SECONDS });
 }
 
 /**
  * Commits the session for an authenticated user, lazily backfilling
  * `issuedAt` if missing. Use on every authenticated response that already
- * commits the cookie (e.g. root.tsx) so legacy cookies migrate forward and
- * the browser's stored Max-Age tracks the latest effective duration.
+ * commits the cookie (e.g. root.tsx).
  */
 export async function commitAuthenticatedSessionLazy(
   session: Session,
-  userId: string,
+  _userId: string,
   now: number = Date.now()
 ): Promise<string> {
-  const { durationSeconds } = await getEffectiveSessionDuration(userId);
   ensureSessionIssuedAt(session, now);
-  return commitSession(session, { maxAge: durationSeconds });
+  return commitSession(session, { maxAge: AUTH_COOKIE_MAX_AGE_SECONDS });
 }
