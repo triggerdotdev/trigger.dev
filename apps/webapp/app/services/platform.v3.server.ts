@@ -1,5 +1,5 @@
 import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
-import type { Organization, Project, RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
   BillingClient,
   defaultMachine as defaultMachineFromPlatform,
@@ -25,7 +25,6 @@ import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { createEnvironment } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
@@ -598,33 +597,6 @@ export async function getEntitlement(
   return result.val;
 }
 
-export async function projectCreated(
-  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">,
-  project: Project
-) {
-  if (!isCloud()) {
-    await createEnvironment({ organization, project, type: "STAGING" });
-    await createEnvironment({
-      organization,
-      project,
-      type: "PREVIEW",
-      isBranchableEnvironment: true,
-    });
-  } else {
-    //staging is only available on certain plans
-    const plan = await getCurrentPlan(organization.id);
-    if (plan?.v3Subscription.plan?.limits.hasStagingEnvironment) {
-      await createEnvironment({ organization, project, type: "STAGING" });
-      await createEnvironment({
-        organization,
-        project,
-        type: "PREVIEW",
-        isBranchableEnvironment: true,
-      });
-    }
-  }
-}
-
 export async function getBillingAlerts(
   organizationId: string
 ): Promise<BillingAlertsResult | undefined> {
@@ -789,7 +761,7 @@ export async function triggerInitialDeployment(
   }
 }
 
-function isCloud(): boolean {
+export function isCloud(): boolean {
   const acceptableHosts = [
     "https://cloud.trigger.dev",
     "https://test-cloud.trigger.dev",

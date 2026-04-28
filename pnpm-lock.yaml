@@ -536,6 +536,9 @@ importers:
       '@trigger.dev/platform':
         specifier: 1.0.27
         version: 1.0.27
+      '@trigger.dev/rbac':
+        specifier: workspace:*
+        version: link:../../internal-packages/rbac
       '@trigger.dev/redis-worker':
         specifier: workspace:*
         version: link:../../packages/redis-worker
@@ -1199,6 +1202,25 @@ importers:
       ts-proto:
         specifier: ^1.167.3
         version: 1.167.3
+
+  internal-packages/rbac:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@trigger.dev/plugins':
+        specifier: workspace:*
+        version: link:../../packages/plugins
+    devDependencies:
+      '@trigger.dev/database':
+        specifier: workspace:*
+        version: link:../database
+      '@types/node':
+        specifier: 20.14.14
+        version: 20.14.14
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
 
   internal-packages/redis:
     dependencies:
@@ -1887,6 +1909,21 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+
+  packages/plugins:
+    devDependencies:
+      '@types/node':
+        specifier: 20.14.14
+        version: 20.14.14
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+      tsup:
+        specifier: ^8.4.0
+        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(typescript@5.5.4)(yaml@2.8.3)
+      typescript:
+        specifier: 5.5.4
+        version: 5.5.4
 
   packages/python:
     dependencies:
@@ -18523,10 +18560,6 @@ packages:
 
   tinyglobby@0.2.10:
     resolution: {integrity: sha512-Zc+8eJlFMvgatPZTl6A9L/yht8QqdmUNtURHaKZLmKBE12hNPSrqNkUp2cs3M/UKmNVVAMFQYSjYIVHDjW5zew==}
-    engines: {node: '>=12.0.0'}
-
-  tinyglobby@0.2.12:
-    resolution: {integrity: sha512-qkf4trmKSIiMTs/E63cxH+ojC2unam7rJ0WrauAzpT3ECNTxGRMlaXxVbfxMUC/w0LaYk6jQ4y/nGR9uBO3tww==}
     engines: {node: '>=12.0.0'}
 
   tinyglobby@0.2.13:
@@ -37161,6 +37194,15 @@ snapshots:
       tsx: 4.17.0
       yaml: 2.8.3
 
+  postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(yaml@2.8.3):
+    dependencies:
+      lilconfig: 3.1.3
+    optionalDependencies:
+      jiti: 2.4.2
+      postcss: 8.5.10
+      tsx: 4.20.6
+      yaml: 2.8.3
+
   postcss-loader@8.1.1(postcss@8.5.10)(typescript@5.5.4)(webpack@5.102.1(@swc/core@1.3.26)(esbuild@0.15.18)):
     dependencies:
       cosmiconfig: 9.0.0(typescript@5.5.4)
@@ -39790,11 +39832,6 @@ snapshots:
       fdir: 6.4.3(picomatch@4.0.4)
       picomatch: 4.0.4
 
-  tinyglobby@0.2.12:
-    dependencies:
-      fdir: 6.4.4(picomatch@4.0.4)
-      picomatch: 4.0.4
-
   tinyglobby@0.2.13:
     dependencies:
       fdir: 6.4.4(picomatch@4.0.4)
@@ -39974,7 +40011,7 @@ snapshots:
       cac: 6.7.14
       chokidar: 4.0.3
       consola: 3.4.2
-      debug: 4.4.0
+      debug: 4.4.3(supports-color@10.0.0)
       esbuild: 0.25.1
       joycon: 3.1.1
       picocolors: 1.1.1
@@ -39984,7 +40021,35 @@ snapshots:
       source-map: 0.8.0-beta.0
       sucrase: 3.35.0
       tinyexec: 0.3.2
-      tinyglobby: 0.2.12
+      tinyglobby: 0.2.13
+      tree-kill: 1.2.2
+    optionalDependencies:
+      '@swc/core': 1.3.101(@swc/helpers@0.5.15)
+      postcss: 8.5.10
+      typescript: 5.5.4
+    transitivePeerDependencies:
+      - jiti
+      - supports-color
+      - tsx
+      - yaml
+
+  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(typescript@5.5.4)(yaml@2.8.3):
+    dependencies:
+      bundle-require: 5.1.0(esbuild@0.25.1)
+      cac: 6.7.14
+      chokidar: 4.0.3
+      consola: 3.4.2
+      debug: 4.4.3(supports-color@10.0.0)
+      esbuild: 0.25.1
+      joycon: 3.1.1
+      picocolors: 1.1.1
+      postcss-load-config: 6.0.1(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(yaml@2.8.3)
+      resolve-from: 5.0.0
+      rollup: 4.60.1
+      source-map: 0.8.0-beta.0
+      sucrase: 3.35.0
+      tinyexec: 0.3.2
+      tinyglobby: 0.2.13
       tree-kill: 1.2.2
     optionalDependencies:
       '@swc/core': 1.3.101(@swc/helpers@0.5.15)
