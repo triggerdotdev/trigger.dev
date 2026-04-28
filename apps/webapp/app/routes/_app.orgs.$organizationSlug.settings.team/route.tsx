@@ -41,6 +41,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
@@ -582,37 +583,33 @@ function RolePicker({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <fetcher.Form method="post">
-        <input type="hidden" name="_formType" value="set-role" />
-        <input type="hidden" name="userId" value={memberUserId} />
-        <select
-          name="roleId"
-          defaultValue={currentRoleId ?? ""}
-          disabled={!canManageMembers || isSubmitting}
-          onChange={(e) => {
-            // Auto-submit on change so users don't need a separate
-            // "Save" button. The fetcher posts to the current route's
-            // action.
-            (e.currentTarget.form as HTMLFormElement).requestSubmit();
-          }}
-          className="rounded-sm border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-sm text-text-bright disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {currentRoleId === null && (
-            <option value="" disabled>
-              No role
-            </option>
-          )}
-          {roles.map((role) => {
+      <Select<string, Role>
+        defaultValue={currentRoleId ?? ""}
+        items={roles}
+        variant="tertiary/small"
+        disabled={!canManageMembers || isSubmitting}
+        dropdownIcon
+        text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
+        setValue={(next) => {
+          if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
+          fetcher.submit(
+            { _formType: "set-role", userId: memberUserId, roleId: next },
+            { method: "post" }
+          );
+        }}
+      >
+        {(items) =>
+          items.map((role) => {
             const isAssignable = assignable.has(role.id);
             return (
-              <option key={role.id} value={role.id} disabled={!isAssignable}>
+              <SelectItem key={role.id} value={role.id} disabled={!isAssignable}>
                 {role.name}
                 {!isAssignable ? " (upgrade)" : ""}
-              </option>
+              </SelectItem>
             );
-          })}
-        </select>
-      </fetcher.Form>
+          })
+        }
+      </Select>
       {error ? (
         <span className="text-xs text-error" role="alert">
           {error}
