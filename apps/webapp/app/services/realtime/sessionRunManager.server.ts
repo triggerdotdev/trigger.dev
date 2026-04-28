@@ -362,10 +362,10 @@ async function cancelLostRaceRun(
   environment: AuthenticatedEnvironment
 ): Promise<void> {
   const service = new CancelTaskRunService();
-  // Resolve to a TaskRun reference — CancelTaskRunService takes the run
-  // object, not the id. Read from the replica; the actual cancellation
-  // write happens inside the service.
-  const run = await $replica.taskRun.findFirst({ where: { id: runId } });
+  // Read-after-write: the run was just triggered on the writer, so go
+  // through `prisma`. A `$replica` miss here would silently no-op the
+  // cancel and leak an orphan run that no session is going to claim.
+  const run = await prisma.taskRun.findFirst({ where: { id: runId } });
   if (!run) return;
   await service.call(run, { reason: "Lost session-run claim race" });
 }
