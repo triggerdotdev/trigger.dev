@@ -795,4 +795,228 @@ describe("API", () => {
       expect(res.status).not.toBe(403);
     });
   });
+
+  // Run lists (TRI-8736). Two routes share the same multi-key
+  // resource pattern — collection-level `{ type: "runs" }` always
+  // present, plus an array of secondary keys derived from search
+  // params:
+  //   - GET /api/v1/runs: filter[taskIdentifier]=A,B → +{ type: "tasks", id: A }, { type: "tasks", id: B }
+  //   - GET /realtime/v1/runs: ?tags=foo,bar       → +{ type: "tags", id: "foo" }, { type: "tags", id: "bar" }
+  //
+  // Multi-key any-match contract from TRI-8719: a JWT with a scope
+  // matching ANY element of the resource array grants access. So:
+  //   - read:runs                   → matches the collection key  → passes
+  //   - read:tasks:A (with A in filter) → matches an array element → passes
+  //   - read:tasks:Z (with A in filter) → no match                → 403
+  describe("Run list — api.v1.runs (multi-key tasks)", () => {
+    const path = "/api/v1/runs";
+
+    async function get(query: string, headers: Record<string, string>) {
+      return getTestServer().webapp.fetch(`${path}${query}`, { headers });
+    }
+
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch(path);
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: 200", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await get("", { Authorization: `Bearer ${seed.apiKey}` });
+      expect(res.status).toBe(200);
+    });
+
+    it("JWT with read:runs (collection-level): 200", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(200);
+    });
+
+    it("JWT with read:all super-scope: 200", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:all"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(200);
+    });
+
+    it("JWT with admin: 200", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(200);
+    });
+
+    it("JWT with empty scopes: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: [] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with write:runs (action mismatch — read route): 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("filter[taskIdentifier]=task_a,task_b + JWT read:tasks:task_a → passes (array match)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["read:tasks:task_a"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(
+        "?filter%5BtaskIdentifier%5D=task_a%2Ctask_b",
+        { Authorization: `Bearer ${jwt}` }
+      );
+      // Resource array is [{type:"runs"}, {type:"tasks",id:"task_a"}, {type:"tasks",id:"task_b"}].
+      // The scope read:tasks:task_a matches the second element → access granted.
+      expect(res.status).toBe(200);
+    });
+
+    it("filter[taskIdentifier]=task_a + JWT read:tasks:task_z → 403 (no array match)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["read:tasks:task_z"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get(
+        "?filter%5BtaskIdentifier%5D=task_a",
+        { Authorization: `Bearer ${jwt}` }
+      );
+      // Resource is [{runs}, {tasks:task_a}]. JWT scope says
+      // read:tasks:task_z which doesn't match the runs collection
+      // (wrong type) or the task_a element (wrong id). 403.
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe("Run list — realtime.v1.runs (multi-key tags)", () => {
+    const path = "/realtime/v1/runs";
+
+    async function get(query: string, headers: Record<string, string>) {
+      return getTestServer().webapp.fetch(`${path}${query}`, { headers });
+    }
+
+    it("missing auth: 401", async () => {
+      const res = await getTestServer().webapp.fetch(path);
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT with read:runs (collection-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      // Realtime endpoints stream — the route may return 200 (streaming
+      // OK) or other status codes depending on streams setup. We only
+      // care that auth passed: NOT 401/403.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with read:tags:foo + ?tags=foo,bar → passes (array match)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["read:tags:foo"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get("?tags=foo,bar", { Authorization: `Bearer ${jwt}` });
+      // Resource array is [{type:"runs"}, {type:"tags",id:"foo"}, {type:"tags",id:"bar"}].
+      // Scope matches the foo element → access granted.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with read:tags:baz + ?tags=foo → 403 (no array match)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["read:tags:baz"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await get("?tags=foo", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:runs (action mismatch): 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await get("", { Authorization: `Bearer ${jwt}` });
+      expect(res.status).toBe(403);
+    });
+  });
 });
