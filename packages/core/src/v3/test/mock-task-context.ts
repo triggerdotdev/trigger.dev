@@ -123,6 +123,7 @@ function defaultTaskRunContext(overrides?: MockTaskRunContextOverrides): TaskRun
       id: "run_test",
       tags: [],
       isTest: false,
+      isReplay: false,
       createdAt: new Date(),
       startedAt: new Date(),
       ...overrides?.run,
