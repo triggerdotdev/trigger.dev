@@ -6942,6 +6942,12 @@ function createChatStartSessionAction(
     // `metadata` is the customer's transport-level `clientData`,
     // threaded through so the agent's `clientDataSchema` validates on
     // the very first turn (the typical schema requires `userId` etc.).
+    // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
+    // run-list filter by chat works without the customer having to wire it
+    // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
+    const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
+    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
         messages: [],
@@ -6956,12 +6962,7 @@ function createChatStartSessionAction(
       ...(options?.triggerConfig?.queue || params.triggerConfig?.queue
         ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
         : {}),
-      ...(options?.triggerConfig?.tags || params.triggerConfig?.tags
-        ? {
-            tags:
-              params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [],
-          }
-        : {}),
+      tags,
       ...(options?.triggerConfig?.maxAttempts !== undefined ||
       params.triggerConfig?.maxAttempts !== undefined
         ? {
