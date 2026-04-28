@@ -136,6 +136,21 @@ This is the resource that PrivateLink consumers connect to.
     its VPC Endpoint DNS name (shown in your dashboard once provisioned), so private DNS isn't
     needed.
   </Step>
+  <Step title="Configure cross-region access (optional)">
+    If your Trigger.dev tasks run in a **different AWS region** from your endpoint service, expand
+    the **Supported Regions** section and add the region(s) where Trigger.dev should be allowed to
+    create the VPC Endpoint from (for example, add `eu-central-1` if your service is in
+    `us-east-1` but tasks run in `eu-central-1`).
+
+    If your tasks and resource are in the same region, you can skip this — same-region access is
+    enabled by default.
+
+    <Note>
+      Cross-region PrivateLink adds AWS data-transfer cost and ~10–30ms of latency depending on the
+      region pair. Prefer same-region when possible.
+    </Note>
+
+  </Step>
   <Step title="Create the endpoint service">
     Click **Create**. Note the **Service name** — it looks like `com.amazonaws.vpce.us-east-1.vpce-svc-0123abcd...`.
     You'll paste this into the Trigger.dev dashboard.
