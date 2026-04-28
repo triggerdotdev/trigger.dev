@@ -17,6 +17,7 @@ import {
   type UsageResult,
   type UsageSeriesParams,
   type CurrentPlan,
+  type DeleteUserResponse,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
@@ -768,6 +769,32 @@ export async function triggerInitialDeployment(
       error: result.error,
     });
   }
+}
+
+export async function deleteUser(
+  userId: string,
+  body: {
+    adminUserId: string;
+    adminEmail: string;
+    reason?: string;
+    ipAddress?: string;
+  }
+): Promise<DeleteUserResponse> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.deleteUser(userId, body));
+
+  if (error) {
+    logger.error("Error deleting user", { userId, error });
+    throw error;
+  }
+
+  if (!result.success) {
+    logger.error("Error deleting user - no success", { userId, error: result.error });
+    throw new Error(result.error ?? "Failed to delete user");
+  }
+
+  return result;
 }
 
 function isCloud(): boolean {

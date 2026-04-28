@@ -2,11 +2,12 @@ import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { useState } from "react";
+import { typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { DeleteUserDialog } from "~/components/admin/DeleteUserDialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { Header1 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -21,8 +22,9 @@ import {
 } from "~/components/primitives/Table";
 import { useUser } from "~/hooks/useUser";
 import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
-import { commitImpersonationSession, setImpersonationId } from "~/services/impersonation.server";
-import { requireUserId } from "~/services/session.server";
+import { deleteUser as deleteUserOnPlatform } from "~/services/platform.v3.server";
+import { requireUser, requireUserId } from "~/services/session.server";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -41,10 +43,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
   const result = await adminGetUsers(userId, searchParams.params.getAll());
 
-  return typedjson(result);
+  const url = new URL(request.url);
+  const justDeleted = url.searchParams.get("deleted") === "1";
+
+  return typedjson({ ...result, justDeleted });
 };
 
-const FormSchema = z.object({ id: z.string() });
+const ImpersonateSchema = z.object({ id: z.string() });
+const DeleteSchema = z.object({ intent: z.literal("delete"), id: z.string() });
 
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method.toLowerCase() !== "post") {
@@ -52,14 +58,60 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const payload = Object.fromEntries(await request.formData());
-  const { id } = FormSchema.parse(payload);
 
+  const deleteAttempt = DeleteSchema.safeParse(payload);
+  if (deleteAttempt.success) {
+    const admin = await requireUser(request);
+    if (!admin.admin) {
+      return redirect("/");
+    }
+
+    const targetId = deleteAttempt.data.id;
+
+    if (targetId === admin.id) {
+      return typedjson(
+        { error: "You can't delete your own account from the admin UI." },
+        { status: 400 }
+      );
+    }
+
+    const xff = request.headers.get("x-forwarded-for");
+    const ipAddress = extractClientIp(xff) ?? undefined;
+
+    try {
+      await deleteUserOnPlatform(targetId, {
+        adminUserId: admin.id,
+        adminEmail: admin.email,
+        ipAddress,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete user.";
+      return typedjson({ error: message }, { status: 500 });
+    }
+
+    return redirect("/admin?deleted=1");
+  }
+
+  const { id } = ImpersonateSchema.parse(payload);
   return redirectWithImpersonation(request, id, "/");
 }
 
 export default function AdminDashboardRoute() {
-  const user = useUser();
-  const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
+  const currentUser = useUser();
+  const { users, filters, page, pageCount, justDeleted } = useTypedLoaderData<typeof loader>();
+  const actionData = useTypedActionData<typeof action>();
+  const actionError =
+    actionData && "error" in actionData && typeof actionData.error === "string"
+      ? actionData.error
+      : null;
+
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; email: string } | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const openDeleteDialog = (user: { id: string; email: string }) => {
+    setDeleteTarget(user);
+    setDeleteOpen(true);
+  };
 
   return (
     <main
@@ -82,6 +134,22 @@ export default function AdminDashboardRoute() {
           </Button>
         </Form>
 
+        {justDeleted && (
+          <div className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2">
+            <Paragraph variant="small" className="text-green-500">
+              User deleted.
+            </Paragraph>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="rounded-md border border-red-600/40 bg-red-600/10 px-3 py-2">
+            <Paragraph variant="small" className="text-red-500">
+              {actionError}
+            </Paragraph>
+          </div>
+        )}
+
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,6 +169,7 @@ export default function AdminDashboardRoute() {
               </TableBlankRow>
             ) : (
               users.map((user) => {
+                const isSelf = user.id === currentUser.id;
                 return (
                   <TableRow key={user.id}>
                     <TableCell>
@@ -136,23 +205,33 @@ export default function AdminDashboardRoute() {
                     </TableCell>
                     <TableCell>{user.admin ? "✅" : ""}</TableCell>
                     <TableCell isSticky={true}>
-                      <Form method="post" reloadDocument>
-                        <input type="hidden" name="id" value={user.id} />
-                        <Button
-                          type="submit"
-                          name="action"
-                          value="impersonate"
-                          className="mr-2"
-                          variant="tertiary/small"
-                          shortcut={
-                            users.length === 1
-                              ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
-                              : undefined
-                          }
-                        >
-                          Impersonate
-                        </Button>
-                      </Form>
+                      <div className="flex items-center gap-2">
+                        <Form method="post" reloadDocument>
+                          <input type="hidden" name="id" value={user.id} />
+                          <Button
+                            type="submit"
+                            name="action"
+                            value="impersonate"
+                            variant="tertiary/small"
+                            shortcut={
+                              users.length === 1
+                                ? { modifiers: ["mod"], key: "enter", enabledOnInputElements: true }
+                                : undefined
+                            }
+                          >
+                            Impersonate
+                          </Button>
+                        </Form>
+                        {!isSelf && (
+                          <Button
+                            type="button"
+                            variant="danger/small"
+                            onClick={() => openDeleteDialog({ id: user.id, email: user.email })}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -163,6 +242,12 @@ export default function AdminDashboardRoute() {
 
         <PaginationControls currentPage={page} totalPages={pageCount} />
       </div>
+
+      <DeleteUserDialog
+        user={deleteTarget}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+      />
     </main>
   );
 }
