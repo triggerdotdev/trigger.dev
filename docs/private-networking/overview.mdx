@@ -7,7 +7,7 @@ description: "Connect your tasks to private resources in your AWS account using 
 Private networking lets your Trigger.dev tasks reach databases, caches, and internal APIs that live inside your own AWS VPC, without exposing them to the public internet. Connectivity is established over [AWS PrivateLink](https://docs.aws.amazon.com/vpc/latest/privatelink/what-is-privatelink.html), so traffic stays on the AWS backbone.
 
 <Info>
-  Private networking is an enterprise feature. If you'd like access, [get in touch](/community).
+  Private networking is a Pro and Enterprise feature. If you'd like access, [get in touch](/community).
 </Info>
 
 ## What is AWS PrivateLink
@@ -42,18 +42,16 @@ When you add a private connection in the dashboard, the following happens:
     You create an internal NLB in front of your resource and a VPC Endpoint Service that points to it. You add Trigger.dev's AWS account as an allowed principal so we're permitted to connect.
   </Step>
   <Step title="We provision a VPC Endpoint">
-    Once you submit the endpoint service name in the Trigger.dev dashboard, we provision a VPC Endpoint in our isolated, customer-PrivateLink AWS account in the region you chose. The endpoint creates ENIs with private IPs that we wire up to reach your service.
+    Once you submit the endpoint service name in the Trigger.dev dashboard, we provision a VPC Endpoint in our AWS account in the region you chose. The endpoint creates ENIs with private IPs that we wire up to reach your service.
   </Step>
   <Step title="Your tasks can reach the endpoint">
-    Once the connection is **Active**, the dashboard shows the assigned IPs (one per Availability Zone) and a copyable DNS endpoint name. Pods running your tasks are network-authorized to connect to those addresses.
+    Once the connection is **Active**, the dashboard shows the assigned IPs and a copyable DNS endpoint name. Pods running your tasks are network-authorized to connect to those addresses.
   </Step>
 </Steps>
 
 ### Connecting from your task code
 
-When the connection becomes **Active**, the dashboard shows the assigned endpoint IPs and a copyable DNS endpoint name that resolves to those IPs from inside our worker network.
-
-Plug whichever you prefer into the connection-string env var your task already reads (for example, `DATABASE_URL` set in the **Environment Variables** page):
+When the connection becomes **Active**, the dashboard shows the assigned endpoint IP. Plug it into the connection-string env var your task already reads (for example, `DATABASE_URL` set in the **Environment Variables** page):
 
 ```typescript
 import { task } from "@trigger.dev/sdk";
@@ -63,7 +61,7 @@ export const queryDatabase = task({
   id: "query-database",
   run: async () => {
     // DATABASE_URL is set in the Trigger.dev dashboard to the connection's
-    // assigned IP or DNS endpoint name shown in Private Connections.
+    // assigned IP shown in Private Connections.
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
     });
@@ -76,12 +74,6 @@ export const queryDatabase = task({
   },
 });
 ```
-
-<Tip>
-  Connections expose multiple IPs (one per Availability Zone). For higher availability, use a
-  driver that supports failover or use the DNS endpoint name, which AWS resolves to whichever IPs
-  are currently healthy.
-</Tip>
 
 ## Isolation between organizations
 
