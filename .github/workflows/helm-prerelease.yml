@@ -1,13 +1,25 @@
-name: 🧭 Helm Chart PR Prerelease
+name: 🧭 Helm Chart Prerelease
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - "hosting/k8s/helm/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "hosting/k8s/helm/**"
+  workflow_dispatch:
+    inputs:
+      app_version:
+        description: "Override appVersion (e.g. 'main', 'v4.4.4'). Leave empty to keep Chart.yaml value."
+        required: false
+        type: string
+        default: ""
 
 concurrency:
-  group: helm-prerelease-${{ github.event.pull_request.number }}
+  group: helm-prerelease-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -54,7 +66,10 @@ jobs:
 
   prerelease:
     needs: lint-and-test
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,15 +103,29 @@ jobs:
         id: version
         run: |
           BASE_VERSION=$(grep '^version:' ./hosting/k8s/helm/Chart.yaml | awk '{print $2}')
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          PRERELEASE_VERSION="${BASE_VERSION}-pr${PR_NUMBER}.${SHORT_SHA}"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PR_NUMBER=${{ github.event.pull_request.number }}
+            SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
+            PRERELEASE_VERSION="${BASE_VERSION}-pr${PR_NUMBER}.${SHORT_SHA}"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            PRERELEASE_VERSION="${BASE_VERSION}-main.${SHORT_SHA}"
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            REF_SLUG=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr -cd 'a-zA-Z0-9-')
+            PRERELEASE_VERSION="${BASE_VERSION}-${REF_SLUG}.${SHORT_SHA}"
+          fi
           echo "version=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
           echo "Prerelease version: $PRERELEASE_VERSION"
 
       - name: Update Chart.yaml with prerelease version
         run: |
           sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ./hosting/k8s/helm/Chart.yaml
+
+      - name: Override appVersion
+        if: github.event_name == 'workflow_dispatch' && inputs.app_version != ''
+        run: |
+          sed -i "s/^appVersion:.*/appVersion: ${{ inputs.app_version }}/" ./hosting/k8s/helm/Chart.yaml
 
       - name: Package Helm Chart
         run: |
@@ -110,7 +139,23 @@ jobs:
           # Push to GHCR OCI registry
           helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
 
+      - name: Write run summary
+        run: |
+          {
+            echo "### 🧭 Helm Chart Prerelease Published"
+            echo ""
+            echo "**Version:** \`${{ steps.version.outputs.version }}\`"
+            echo ""
+            echo "**Install:**"
+            echo '```bash'
+            echo "helm upgrade --install trigger \\"
+            echo "  oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \\"
+            echo "  --version \"${{ steps.version.outputs.version }}\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Find existing comment
+        if: github.event_name == 'pull_request'
         uses: peter-evans/find-comment@v3
         id: find-comment
         with:
@@ -119,6 +164,7 @@ jobs:
           body-includes: "Helm Chart Prerelease Published"
 
       - name: Create or update PR comment
+        if: github.event_name == 'pull_request'
         uses: peter-evans/create-or-update-comment@v4
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
