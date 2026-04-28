@@ -376,4 +376,423 @@ describe("API", () => {
       expect(res.status).not.toBe(200);
     });
   });
+
+  // Trigger task routes (TRI-8733). The single-task route uses
+  // action: "trigger" with a single resource { type: "tasks", id };
+  // batch v1/v2 use action: "batchTrigger" with a body-derived array
+  // [{type:"tasks", id}, ...]; v3 batches use a collection-level
+  // resource { type: "tasks" } (no id — items are validated per-row
+  // when streamed).
+  //
+  // ACTION_ALIASES (from packages/core/src/v3/jwt.ts) maps write→trigger
+  // and write→batchTrigger so write:tasks scopes also satisfy these
+  // routes. The smoke matrix already verifies write:tasks → trigger
+  // alias works; we re-test it here per-route so scope misconfig in
+  // one route doesn't slip past.
+  describe("Trigger task — single (api.v1.tasks.$taskId.trigger)", () => {
+    const TASK_ID = "test-task";
+    const path = `/api/v1/tasks/${TASK_ID}/trigger`;
+
+    async function seedAndRequest(
+      headers: Record<string, string>,
+      body: unknown = { payload: {} }
+    ) {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      });
+      return { res, seed };
+    }
+
+    it("missing auth: 401", async () => {
+      const server = getTestServer();
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: auth passes (handler may 4xx — not 401/403)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${seed.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ payload: {} }),
+      });
+      // Auth passed; the handler may 404 because the task doesn't
+      // actually exist in the BackgroundWorker. Anything not 401/403
+      // is "auth passed" for this test.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:tasks (type-level, ACTION_ALIASES write→trigger): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with trigger:tasks:<exact taskId>: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: [`trigger:tasks:${TASK_ID}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with trigger:tasks:<other>: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["trigger:tasks:some-other-task"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with read:tasks: 403 (read NOT aliased to trigger)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with empty scopes: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: [] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT signed with wrong key: 401", async () => {
+      const server = getTestServer();
+      const a = await seedTestEnvironment(server.prisma);
+      const b = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: b.apiKey, // wrong key for env A's sub
+        payload: {
+          pub: true,
+          sub: a.environment.id,
+          scopes: [`trigger:tasks:${TASK_ID}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT with admin super-scope: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  describe("Trigger task — batch v1 (api.v1.tasks.batch)", () => {
+    const path = "/api/v1/tasks/batch";
+    const buildBody = (taskIds: string[]) => ({
+      items: taskIds.map((task) => ({ task, payload: {} })),
+    });
+
+    it("missing auth: 401", async () => {
+      const server = getTestServer();
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${seed.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with write:tasks (type-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA", "taskB"])),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + body has [taskA, taskB]: auth passes (any-match)", async () => {
+      // Multi-key resource semantics: when the route's resource is an
+      // array, ANY scope matching ANY array element grants access.
+      // Locks in the legacy contract from TRI-8719.
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA", "taskB"])),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:<unrelated> + body has only taskA: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:not-in-body"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with read:tasks: 403 (action mismatch)", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  // v2 batch shares the exact same authorization config as v1 — same
+  // body-derived array resource, same batchTrigger action. We don't
+  // duplicate the full matrix here; the v1 tests cover the wrapper
+  // behaviour. If v2's authorization config ever diverges from v1's,
+  // add a targeted test here. For now just sanity-check that the v2
+  // route's wiring is alive.
+  describe("Trigger task — batch v2 (api.v2.tasks.batch) sanity", () => {
+    const path = "/api/v2/tasks/batch";
+
+    it("missing auth: 401", async () => {
+      const server = getTestServer();
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [{ task: "t", payload: {} }] }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT with write:tasks: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [{ task: "t", payload: {} }] }),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
+
+  // v3 batches use a collection-level resource { type: "tasks" } with
+  // no id — items are validated per-row when streamed. So id-specific
+  // scopes (write:tasks:foo) shouldn't grant blanket access; only
+  // type-level write:tasks (or admin/write:all) should.
+  describe("Trigger task — batch v3 (api.v3.batches) collection-level", () => {
+    const path = "/api/v3/batches";
+    const buildBody = () => ({ runCount: 1 });
+
+    it("missing auth: 401", async () => {
+      const server = getTestServer();
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("JWT with write:tasks (type-level): auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["write:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with read:tasks: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:tasks"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with admin: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
