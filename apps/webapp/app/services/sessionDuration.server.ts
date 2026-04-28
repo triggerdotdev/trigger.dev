@@ -119,7 +119,7 @@ export function getAllowedSessionOptions(
   return allowed;
 }
 
-function readSessionIssuedAt(session: Session): number | null {
+export function getSessionIssuedAt(session: Session): number | null {
   const raw = session.get(SESSION_ISSUED_AT_KEY);
   if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
   return raw;
@@ -135,7 +135,7 @@ export function isSessionExpired(
   effectiveDurationSeconds: number,
   now: number = Date.now()
 ): boolean {
-  const issuedAt = readSessionIssuedAt(session);
+  const issuedAt = getSessionIssuedAt(session);
   if (issuedAt === null) return false;
   return now - issuedAt > effectiveDurationSeconds * 1000;
 }
@@ -150,7 +150,7 @@ export function setSessionIssuedAt(session: Session, now: number = Date.now()): 
  * caller knows to commit the cookie. Returns false when nothing changed.
  */
 export function ensureSessionIssuedAt(session: Session, now: number = Date.now()): boolean {
-  if (readSessionIssuedAt(session) !== null) return false;
+  if (getSessionIssuedAt(session) !== null) return false;
   setSessionIssuedAt(session, now);
   return true;
 }

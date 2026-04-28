@@ -3,7 +3,12 @@ import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
-import { getEffectiveSessionDuration, isSessionExpired } from "./sessionDuration.server";
+import { logger } from "./logger.server";
+import {
+  getEffectiveSessionDuration,
+  getSessionIssuedAt,
+  isSessionExpired,
+} from "./sessionDuration.server";
 import { getUserSession } from "./sessionStorage.server";
 
 export async function getUserId(request: Request): Promise<string | undefined> {
@@ -29,8 +34,22 @@ export async function getUserId(request: Request): Promise<string | undefined> {
   // by the most restrictive Organization.maxSessionDuration). If the session
   // was issued longer ago than the cap allows, force a logout.
   const session = await getUserSession(request);
-  const { durationSeconds } = await getEffectiveSessionDuration(authUser.userId);
+  const { durationSeconds, orgCapSeconds, userSettingSeconds } = await getEffectiveSessionDuration(
+    authUser.userId
+  );
   if (isSessionExpired(session, durationSeconds)) {
+    const issuedAt = getSessionIssuedAt(session);
+    // HIPAA audit trail: structured log lands in CloudWatch via stdout. Use
+    // the stable `event` field to filter/aggregate auto-logout events.
+    logger.info("Auto-logout: session exceeded effective duration", {
+      event: "session.auto_logout",
+      userId: authUser.userId,
+      effectiveDurationSeconds: durationSeconds,
+      userSettingSeconds,
+      orgCapSeconds,
+      sessionAgeMs: issuedAt === null ? null : Date.now() - issuedAt,
+      requestPath: new URL(request.url).pathname,
+    });
     throw redirect("/logout");
   }
 
