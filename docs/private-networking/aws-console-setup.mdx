@@ -152,8 +152,8 @@ This is the resource that PrivateLink consumers connect to.
 
   </Step>
   <Step title="Create the endpoint service">
-    Click **Create**. Note the **Service name** — it looks like `com.amazonaws.vpce.us-east-1.vpce-svc-0123abcd...`.
-    You'll paste this into the Trigger.dev dashboard.
+    Click **Create**. The service is created immediately — you'll come back to copy its **Service
+    name** once you've authorized Trigger.dev in the next step.
   </Step>
 </Steps>
 
@@ -184,6 +184,11 @@ By default, no one can connect to your endpoint service. You need to explicitly 
   </Step>
   <Step title="Click Allow principals">
     The principal is now authorized to create a VPC Endpoint targeting your service.
+  </Step>
+  <Step title="Copy the endpoint service name">
+    On the endpoint service detail page, copy the **Service name** value — it looks like
+    `com.amazonaws.vpce.us-east-1.vpce-svc-0123abcd...`. You'll paste this into the Trigger.dev
+    dashboard in the next step.
   </Step>
 </Steps>
 
