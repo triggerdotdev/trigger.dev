@@ -300,6 +300,7 @@ const EnvironmentSchema = z
     DEPLOY_REGISTRY_ECR_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
     DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z.string().optional(),
     DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z.string().optional(),
+    DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY: z.string().optional(), // raw IAM policy JSON applied to every repo created by the webapp
 
     // Deployment registry (v4) - falls back to v3 registry if not specified
     V4_DEPLOY_REGISTRY_HOST: z
@@ -332,6 +333,10 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
+    V4_DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
 
     // Compute gateway (template creation during deploy finalize)
     COMPUTE_GATEWAY_URL: z.string().optional(),

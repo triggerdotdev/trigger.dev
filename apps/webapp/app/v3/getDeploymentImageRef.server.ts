@@ -8,6 +8,7 @@ import {
   GetAuthorizationTokenCommand,
   PutLifecyclePolicyCommand,
   PutImageTagMutabilityCommand,
+  SetRepositoryPolicyCommand,
 } from "@aws-sdk/client-ecr";
 import { STSClient, AssumeRoleCommand } from "@aws-sdk/client-sts";
 import { tryCatch } from "@trigger.dev/core";
@@ -138,6 +139,7 @@ export async function getDeploymentImageRef({
         roleArn: registry.ecrAssumeRoleArn,
         externalId: registry.ecrAssumeRoleExternalId,
       },
+      defaultRepositoryPolicy: registry.ecrDefaultRepositoryPolicy,
     })
   );
 
@@ -219,12 +221,14 @@ async function createEcrRepository({
   accountId,
   registryTags,
   assumeRole,
+  defaultRepositoryPolicy,
 }: {
   repositoryName: string;
   region: string;
   accountId?: string;
   registryTags?: string;
   assumeRole?: AssumeRoleConfig;
+  defaultRepositoryPolicy?: string;
 }): Promise<Repository> {
   const ecr = await createEcrClient({ region, assumeRole });
 
@@ -261,6 +265,20 @@ async function createEcrRepository({
       lifecyclePolicyText: untaggedImageExpirationPolicy,
     })
   );
+
+  // Apply an operator-provided IAM policy to the new repository. Useful for
+  // self-hosters whose ECR account is separate from the account running the
+  // EKS workers — without this the workers get 403 Forbidden when pulling the
+  // task image (default ECR policy only grants access to the registry owner).
+  if (defaultRepositoryPolicy) {
+    await ecr.send(
+      new SetRepositoryPolicyCommand({
+        repositoryName: result.repository.repositoryName,
+        registryId: result.repository.registryId,
+        policyText: defaultRepositoryPolicy,
+      })
+    );
+  }
 
   return result.repository;
 }
@@ -386,11 +404,13 @@ async function ensureEcrRepositoryExists({
   registryHost,
   registryTags,
   assumeRole,
+  defaultRepositoryPolicy,
 }: {
   repositoryName: string;
   registryHost: string;
   registryTags?: string;
   assumeRole?: AssumeRoleConfig;
+  defaultRepositoryPolicy?: string;
 }): Promise<{ repo: Repository; repoCreated: boolean }> {
   const { region, accountId } = parseEcrRegistryDomain(registryHost);
 
@@ -428,7 +448,14 @@ async function ensureEcrRepositoryExists({
   }
 
   const [createRepoError, newRepo] = await tryCatch(
-    createEcrRepository({ repositoryName, region, accountId, registryTags, assumeRole })
+    createEcrRepository({
+      repositoryName,
+      region,
+      accountId,
+      registryTags,
+      assumeRole,
+      defaultRepositoryPolicy,
+    })
   );
 
   if (createRepoError) {
