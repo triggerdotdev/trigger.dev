@@ -685,28 +685,21 @@ return 0
       throw error;
     }
 
-    if (debounce.mode === "trailing" && debounce.updateData) {
-      // Trailing-mode triggers carrying updateData are user-visible: dropping
-      // them silently would mean the eventual run executes against stale
-      // payload/metadata/tags. Surface the lock failure instead so the SDK can
-      // retry and (with the fast-path + quantization in place) the herd
-      // collapses on its own without us hiding data loss.
-      this.$.logger.warn(
-        "handleExistingRun: lock contention with trailing updateData - rethrowing to avoid silently dropping update",
-        {
-          existingRunId,
-          debounceKey: debounce.key,
-        }
-      );
-      throw error;
-    }
-
+    // Trailing-mode triggers carrying updateData fall through to the same
+    // "return existing" path as everything else. Under lock contention some
+    // other concurrent caller is winning the lock right now and applying
+    // *its* updateData (which is, by wall-clock, ms-different from ours and
+    // indistinguishable to the user). Re-throwing here would just produce a
+    // 5xx that the SDK retries with our now-older payload - more likely to
+    // result in stale data landing than letting the herd's winner stand.
     this.$.logger.warn(
       "handleExistingRun: lock contention, returning existing run without rescheduling",
       {
         existingRunId,
         debounceKey: debounce.key,
         currentDelayUntil: fullRun.delayUntil,
+        mode: debounce.mode,
+        hasUpdateData: !!debounce.updateData,
         error: error instanceof Error ? error.message : String(error),
         errorName: error instanceof Error ? error.name : undefined,
       }
