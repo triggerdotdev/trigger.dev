@@ -1,5 +1,6 @@
 import { redirect } from "@remix-run/node";
 import { getUserById } from "~/models/user.server";
+import { sanitizeRedirectPath } from "~/utils";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
 import { getEffectiveSessionDuration, isSessionExpired } from "./sessionDuration.server";
@@ -50,9 +51,11 @@ export async function requireUserId(request: Request, redirectTo?: string) {
   const userId = await getUserId(request);
   if (!userId) {
     const url = new URL(request.url);
-    const searchParams = new URLSearchParams([
-      ["redirectTo", redirectTo ?? `${url.pathname}${url.search}`],
-    ]);
+    // Only propagate the originating URL when it's a real user-navigable page.
+    // Fetcher endpoints (e.g. /resources/*) and auth callbacks would render
+    // blank or loop if used as a post-login destination.
+    const finalRedirectTo = sanitizeRedirectPath(redirectTo ?? `${url.pathname}${url.search}`);
+    const searchParams = new URLSearchParams([["redirectTo", finalRedirectTo]]);
     throw redirect(`/login?${searchParams}`);
   }
   return userId;
