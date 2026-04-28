@@ -88,9 +88,42 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return `${this.streamPrefix}/runs/${runId}/${streamId}`;
   }
 
+  /**
+   * Build an S2 stream name for a `Session`-primitive channel, addressed by
+   * the session's `friendlyId` and the I/O direction. Used by the session
+   * realtime routes to route traffic to `sessions/{friendlyId}/{out|in}`.
+   */
+  public toSessionStreamName(friendlyId: string, io: "out" | "in"): string {
+    return `${this.streamPrefix}/sessions/${friendlyId}/${io}`;
+  }
+
   async initializeStream(
     runId: string,
     streamId: string
+  ): Promise<{ responseHeaders?: Record<string, string> }> {
+    return this.#initializeStreamByName(
+      this.toStreamName(runId, streamId),
+      `/runs/${runId}/${streamId}`
+    );
+  }
+
+  /**
+   * Initialize an S2 stream by `(sessionFriendlyId, io)` — mirrors
+   * {@link initializeStream} but addresses the new `sessions/*` key format.
+   */
+  async initializeSessionStream(
+    friendlyId: string,
+    io: "out" | "in"
+  ): Promise<{ responseHeaders?: Record<string, string> }> {
+    return this.#initializeStreamByName(
+      this.toSessionStreamName(friendlyId, io),
+      `/sessions/${friendlyId}/${io}`
+    );
+  }
+
+  async #initializeStreamByName(
+    prefixedName: string,
+    relativeName: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     const accessToken = this.skipAccessTokens
       ? this.token
@@ -99,9 +132,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     return {
       responseHeaders: {
         "X-S2-Access-Token": accessToken,
-        "X-S2-Stream-Name": this.skipAccessTokens
-          ? this.toStreamName(runId, streamId)
-          : `/runs/${runId}/${streamId}`,
+        "X-S2-Stream-Name": this.skipAccessTokens ? prefixedName : relativeName,
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
@@ -121,8 +152,22 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   async appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void> {
-    const s2Stream = this.toStreamName(runId, streamId);
+    return this.#appendPartByName(part, partId, this.toStreamName(runId, streamId));
+  }
 
+  /**
+   * Append a single record to a `Session`-primitive channel.
+   */
+  async appendPartToSessionStream(
+    part: string,
+    partId: string,
+    friendlyId: string,
+    io: "out" | "in"
+  ): Promise<void> {
+    return this.#appendPartByName(part, partId, this.toSessionStreamName(friendlyId, io));
+  }
+
+  async #appendPartByName(part: string, partId: string, s2Stream: string): Promise<void> {
     this.logger.debug(`S2 appending to stream`, { part, stream: s2Stream });
 
     const result = await this.s2Append(s2Stream, {
@@ -141,7 +186,22 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     streamId: string,
     afterSeqNum?: number
   ): Promise<StreamRecord[]> {
-    const s2Stream = this.toStreamName(runId, streamId);
+    return this.#readRecordsByName(this.toStreamName(runId, streamId), afterSeqNum);
+  }
+
+  /**
+   * Read records from a `Session`-primitive channel starting after the
+   * given sequence number. Used by the `.wait()` race-check path.
+   */
+  async readSessionStreamRecords(
+    friendlyId: string,
+    io: "out" | "in",
+    afterSeqNum?: number
+  ): Promise<StreamRecord[]> {
+    return this.#readRecordsByName(this.toSessionStreamName(friendlyId, io), afterSeqNum);
+  }
+
+  async #readRecordsByName(s2Stream: string, afterSeqNum?: number): Promise<StreamRecord[]> {
     const startSeq = afterSeqNum != null ? afterSeqNum + 1 : 0;
 
     const qs = new URLSearchParams();
@@ -227,7 +287,142 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     signal: AbortSignal,
     options?: StreamResponseOptions
   ): Promise<Response> {
-    const s2Stream = this.toStreamName(runId, streamId);
+    return this.#streamResponseByName(this.toStreamName(runId, streamId), signal, options);
+  }
+
+  /**
+   * Serve SSE from a `Session`-primitive channel addressed by
+   * `(friendlyId, io)`.
+   *
+   * For `io=out`, peek the tail record first. If it's
+   * `trigger:turn-complete`, the agent has finished a turn and is
+   * either idle-waiting on `.in` or has exited — either way, no more
+   * chunks will arrive without further user action. We switch the
+   * downstream S2 read to `wait=0` (drain whatever's left, close fast)
+   * and set `X-Session-Settled: true` so the client knows this SSE
+   * close is terminal instead of the normal 60s long-poll cycle.
+   *
+   * Mid-turn tail (streaming UIMessageChunk) falls through to the
+   * long-poll path; a crashed-mid-turn stream is indistinguishable
+   * here and behaves like today (client sees wait=60 close, retries).
+   */
+  async streamResponseFromSessionStream(
+    request: Request,
+    friendlyId: string,
+    io: "out" | "in",
+    signal: AbortSignal,
+    options?: StreamResponseOptions
+  ): Promise<Response> {
+    const s2Stream = this.toSessionStreamName(friendlyId, io);
+
+    let waitSeconds = options?.timeoutInSeconds ?? this.s2WaitSeconds;
+    let settled = false;
+
+    // Only peek + settle when the client opts in via `options.peekSettled`.
+    // Reconnect-on-reload paths (`TriggerChatTransport.reconnectToStream`)
+    // set it; active send-a-message paths don't — otherwise the peek
+    // races the newly-triggered turn's first chunk and the SSE closes
+    // before records land.
+    if (io === "out" && options?.peekSettled) {
+      const lastChunk = await this.#peekLastChunkBody(s2Stream);
+      const lastChunkType =
+        lastChunk != null && typeof lastChunk === "object"
+          ? (lastChunk as { type?: unknown }).type
+          : null;
+      if (lastChunkType === "trigger:turn-complete") {
+        settled = true;
+        waitSeconds = 0;
+      }
+    }
+
+    const s2Response = await this.#streamResponseByName(s2Stream, signal, {
+      ...options,
+      timeoutInSeconds: waitSeconds,
+    });
+
+    if (!settled) return s2Response;
+
+    const headers = new Headers(s2Response.headers);
+    headers.set("X-Session-Settled", "true");
+    return new Response(s2Response.body, {
+      status: s2Response.status,
+      statusText: s2Response.statusText,
+      headers,
+    });
+  }
+
+  async #peekLastChunkBody(s2Stream: string): Promise<unknown | null> {
+    const qs = new URLSearchParams();
+    // `tail_offset=1` reads one record before the next seq — i.e. the
+    // most recently appended record. `count=1` caps it to just that
+    // record. `wait=0` returns immediately with no long-poll.
+    qs.set("tail_offset", "1");
+    qs.set("count", "1");
+    qs.set("wait", "0");
+
+    let res: Response;
+    try {
+      res = await fetch(
+        `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?${qs}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            Accept: "application/json",
+            "S2-Format": "raw",
+            "S2-Basin": this.basin,
+          },
+        }
+      );
+    } catch (err) {
+      this.logger.warn("S2 peek last record: fetch failed", { err, stream: s2Stream });
+      return null;
+    }
+
+    if (!res.ok) {
+      // 404: stream has never been written to. 416: range not
+      // satisfiable (empty stream). Both mean "nothing to peek."
+      if (res.status === 404 || res.status === 416) return null;
+      const text = await res.text().catch(() => "");
+      this.logger.warn("S2 peek last record failed", {
+        status: res.status,
+        statusText: res.statusText,
+        text,
+        stream: s2Stream,
+      });
+      return null;
+    }
+
+    try {
+      const json = (await res.json()) as {
+        records?: Array<{ body: string; seq_num: number; timestamp: number }>;
+      };
+      const record = json.records?.[0];
+      if (!record) return null;
+      // The record body is a JSON string `{data: <chunkAsString>, id: partId}`.
+      // The agent-side writer (`StreamsWriterV2`) hands `appendPart` an
+      // already-JSON-stringified chunk, so `data` round-trips as a string,
+      // not an object. Parse it once more to surface the chunk shape.
+      const envelope = JSON.parse(record.body) as { data: unknown; id: string };
+      if (typeof envelope.data === "string") {
+        try {
+          return JSON.parse(envelope.data);
+        } catch {
+          return envelope.data;
+        }
+      }
+      return envelope.data;
+    } catch (err) {
+      this.logger.warn("S2 peek last record: parse failed", { err, stream: s2Stream });
+      return null;
+    }
+  }
+
+  async #streamResponseByName(
+    s2Stream: string,
+    signal: AbortSignal,
+    options?: StreamResponseOptions
+  ): Promise<Response> {
     const startSeq = this.parseLastEventId(options?.lastEventId);
 
     this.logger.info(`S2 streaming records from stream`, { stream: s2Stream, startSeq });

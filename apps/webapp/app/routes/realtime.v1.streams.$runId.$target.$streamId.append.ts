@@ -13,9 +13,17 @@ const ParamsSchema = z.object({
   streamId: z.string(),
 });
 
+// S2 enforces a 1 MiB per-record limit (metered as
+// `8 + 2*H + Σ(header name+value) + body`). Cap the raw HTTP body at
+// 512 KiB so the JSON wrapper, string escaping, and any future per-record
+// header additions all stay well under S2's ceiling.
+// See https://s2.dev/docs/limits.
+const MAX_APPEND_BODY_BYTES = 1024 * 512;
+
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
+    maxContentLength: MAX_APPEND_BODY_BYTES,
   },
   async ({ request, params, authentication }) => {
     const run = await $replica.taskRun.findFirst({

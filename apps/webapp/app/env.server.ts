@@ -666,6 +666,21 @@ const EnvironmentSchema = z
       .int()
       .default(60_000 * 60), // 1 hour
 
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
+     * in the debounce system. Quantization collapses concurrent triggers on the
+     * same hot debounce key onto the same target time so the unlocked fast-path
+     * skip is effective. Set to 0 to disable. Default: 1000ms (1s).
+     */
+    RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS: z.coerce.number().int().min(0).default(1000),
+
+    /**
+     * Whether the unlocked fast-path skip is enabled in the debounce system.
+     * Acts as a kill switch in case the fast-path needs to be disabled in
+     * production without a redeploy. Default: "1" (enabled).
+     */
+    RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED: z.string().default("1"),
+
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
       .optional()
@@ -837,6 +852,7 @@ const EnvironmentSchema = z
       .default("info"),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
     RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
+    RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ: z.string().default("0"),
 
     /** How long should the presence ttl last */
     DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -1220,6 +1236,38 @@ const EnvironmentSchema = z
     RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
     RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
+
+    // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
+    // with the runs replicator for leader locking but has its own slot and
+    // publication so the two consume independently.
+    SESSION_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+    SESSION_REPLICATION_ENABLED: z.string().default("0"),
+    SESSION_REPLICATION_SLOT_NAME: z.string().default("sessions_to_clickhouse_v1"),
+    SESSION_REPLICATION_PUBLICATION_NAME: z
+      .string()
+      .default("sessions_to_clickhouse_v1_publication"),
+    SESSION_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
+    SESSION_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    SESSION_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    SESSION_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    SESSION_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
+    SESSION_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
+    SESSION_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
+    SESSION_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+    SESSION_REPLICATION_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    SESSION_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    SESSION_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("0"),
+    SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    SESSION_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    SESSION_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
+    SESSION_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+    SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+    SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
