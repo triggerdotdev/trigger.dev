@@ -15,7 +15,9 @@ import { describe, expect, it } from "vitest";
 import { getTestServer } from "./helpers/sharedTestServer";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
+import { seedTestRun } from "./helpers/seedTestRun";
 import { seedTestUserProject } from "./helpers/seedTestUserProject";
+import { seedTestWaitpoint } from "./helpers/seedTestWaitpoint";
 
 describe("API", () => {
   // Placeholder until family subtasks add their describes (TRI-8733+).
@@ -131,6 +133,247 @@ describe("API", () => {
         headers: { Authorization: `Bearer ${pat.token}` },
       });
       expect(res.status).toBe(200);
+    });
+  });
+
+  // Resource-scoped writes (TRI-8740). Two routes:
+  //   - POST /api/v1/waitpoints/tokens/:friendlyId/complete
+  //     resource: { type: "waitpoints", id: friendlyId }
+  //   - POST /realtime/v1/streams/:runId/input/:streamId
+  //     resource: { type: "inputStreams", id: runId }
+  //
+  // The smoke matrix (api-auth.e2e.test.ts "JWT bearer auth — resource-
+  // scoped scopes") already covers waitpoints comprehensively for JWT
+  // resource-id matching, type-level scopes, action mismatches, admin
+  // super-scope, etc. This block fills the gaps:
+  //   - Private API key (not JWT) on the route.
+  //   - JWT with `write:all` super-scope.
+  //   - Cross-env (env A's JWT trying env B's resource).
+  // Plus the equivalent full matrix for input-streams which the smoke
+  // matrix doesn't touch.
+  describe("Resource-scoped writes — waitpoints (gap-fill)", () => {
+    const pathFor = (friendlyId: string) =>
+      `/api/v1/waitpoints/tokens/${friendlyId}/complete`;
+    const completeRequest = (path: string, headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({}),
+      });
+
+    async function seedEnvAndWaitpoint() {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const waitpoint = await seedTestWaitpoint(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      return { ...seed, waitpoint };
+    }
+
+    it("private API key (tr_dev_*): auth passes (200)", async () => {
+      const { apiKey, waitpoint } = await seedEnvAndWaitpoint();
+      const res = await completeRequest(pathFor(waitpoint.friendlyId), {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      // Waitpoint is COMPLETED, so the handler short-circuits with 200
+      // once auth passes. Auth-passed assertion: NOT 401 / 403.
+      expect(res.status).toBe(200);
+    });
+
+    it("JWT with write:all super-scope: auth passes (200)", async () => {
+      const { environment, waitpoint } = await seedEnvAndWaitpoint();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["write:all"] },
+        expirationTime: "15m",
+      });
+      const res = await completeRequest(pathFor(waitpoint.friendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("cross-env: env A's JWT cannot complete env B's waitpoint: not 200", async () => {
+      const server = getTestServer();
+      const a = await seedTestEnvironment(server.prisma);
+      const b = await seedEnvAndWaitpoint();
+      const jwt = await generateJWT({
+        secretKey: a.apiKey,
+        payload: {
+          pub: true,
+          sub: a.environment.id,
+          scopes: [`write:waitpoints:${b.waitpoint.friendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      // The JWT is signed by env A and its sub claim says env A. The
+      // route resolves env from the sub claim and the waitpoint is
+      // env B's, so the lookup misses. The exact code depends on
+      // whether auth or the resource lookup fires first — both
+      // outcomes are correct, just NOT 200.
+      const res = await completeRequest(pathFor(b.waitpoint.friendlyId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(200);
+    });
+  });
+
+  describe("Resource-scoped writes — input streams (full matrix)", () => {
+    const pathFor = (runId: string, streamId: string) =>
+      `/realtime/v1/streams/${runId}/input/${streamId}`;
+    const postRequest = (path: string, headers: Record<string, string>) =>
+      getTestServer().webapp.fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ data: { hello: "world" } }),
+      });
+
+    async function seedEnvAndRun() {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const { runFriendlyId } = await seedTestRun(server.prisma, {
+        environmentId: seed.environment.id,
+        projectId: seed.project.id,
+      });
+      return { ...seed, runFriendlyId, streamId: "test-stream" };
+    }
+
+    it("missing auth: 401", async () => {
+      const server = getTestServer();
+      const res = await server.webapp.fetch(pathFor("run_doesnotexist", "stream-x"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: {} }),
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("private API key: auth passes (not 401/403)", async () => {
+      const { apiKey, runFriendlyId, streamId } = await seedEnvAndRun();
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${apiKey}`,
+      });
+      // Route may return any 2xx/4xx based on stream state — we only
+      // care that auth passed (NOT 401/403).
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with exact-id scope: auth passes", async () => {
+      const { environment, runFriendlyId, streamId } = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: [`write:inputStreams:${runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with type-level scope: auth passes", async () => {
+      const { environment, runFriendlyId, streamId } = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["write:inputStreams"] },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with wrong resource id: 403", async () => {
+      const { environment, runFriendlyId, streamId } = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: ["write:inputStreams:run_someoneelse00000000000000"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with read action on write route: 403", async () => {
+      const { environment, runFriendlyId, streamId } = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: {
+          pub: true,
+          sub: environment.id,
+          scopes: [`read:inputStreams:${runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with write:all super-scope: auth passes", async () => {
+      const { environment, runFriendlyId, streamId } = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["write:all"] },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with admin super-scope: auth passes", async () => {
+      const { environment, runFriendlyId, streamId } = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["admin"] },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(runFriendlyId, streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("cross-env: env A's JWT cannot write to env B's run: not 200", async () => {
+      const server = getTestServer();
+      const a = await seedTestEnvironment(server.prisma);
+      const b = await seedEnvAndRun();
+      const jwt = await generateJWT({
+        secretKey: a.apiKey,
+        payload: {
+          pub: true,
+          sub: a.environment.id,
+          scopes: [`write:inputStreams:${b.runFriendlyId}`],
+        },
+        expirationTime: "15m",
+      });
+      const res = await postRequest(pathFor(b.runFriendlyId, b.streamId), {
+        Authorization: `Bearer ${jwt}`,
+      });
+      // Either auth fails outright or the run lookup misses (env A's
+      // view of the run doesn't include env B's data). Critical
+      // security property: NOT 200.
+      expect(res.status).not.toBe(200);
     });
   });
 });
