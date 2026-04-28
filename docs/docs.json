@@ -133,7 +133,8 @@
             "group": "Private networking",
             "pages": [
               "private-networking/overview",
-              "private-networking/aws-console-setup"
+              "private-networking/aws-console-setup",
+              "private-networking/troubleshooting"
             ]
           },
           {
