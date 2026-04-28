@@ -44,7 +44,7 @@ export function RunsLiveControl({
           tooltip="Load new runs. Click the Live button to enable auto-refresh."
         >
           <span className="text-text-bright">
-            {label} new {noun}, click to update
+            {label} new {noun}
           </span>
         </Button>
       )}
