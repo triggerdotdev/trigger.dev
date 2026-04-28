@@ -59,7 +59,7 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <MainHorizontallyCenteredContainer className="max-w-[600px] overflow-visible">
+        <MainHorizontallyCenteredContainer className="max-w-[37.5rem] overflow-visible">
           <div className="w-full border-b border-grid-dimmed pb-3">
             <Header2>Security</Header2>
           </div>
