@@ -74,7 +74,7 @@ model MfaBackupCode {
   /// Hash of the actual code
   code String
 
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   userId String
 
   usedAt DateTime?
@@ -131,7 +131,7 @@ model PersonalAccessToken {
   /// This is used to find the token in the database
   hashedToken String @unique
 
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   userId String
 
   revokedAt      DateTime?
@@ -2587,6 +2587,32 @@ model ImpersonationAuditLog {
 
   @@index([adminId])
   @@index([targetId])
+  @@index([createdAt])
+}
+
+model UserDeletionAuditLog {
+  id String @id @default(cuid())
+
+  /// Denormalized — audit row must survive after the target user is deleted.
+  /// No FKs to User; store IDs and emails as plain text.
+  adminUserId  String
+  adminEmail   String
+  targetUserId String
+  targetEmail  String
+
+  /// Organization IDs that were soft-deleted as part of this user delete
+  /// (orgs where the deleted user was the sole member).
+  softDeletedOrgIds String[]
+
+  /// Optional: ticket link / GDPR request id / free-text SE note.
+  reason String?
+
+  ipAddress String?
+
+  createdAt DateTime @default(now())
+
+  @@index([adminUserId])
+  @@index([targetUserId])
   @@index([createdAt])
 }
 
