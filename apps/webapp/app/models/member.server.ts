@@ -2,7 +2,6 @@ import { type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
-import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
 
 const tokenValueLength = 40;
 const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
@@ -216,32 +215,12 @@ export async function acceptInvite({
     };
   });
 
-  // 5. Assign the corresponding RBAC role for the new member. Done
-  // outside the transaction because rbac runs against a separate
-  // postgres-js connection (Drizzle, not Prisma) — calling it inside
-  // the tx would mix transaction boundaries. The legacy OrgMember.role
-  // → RBAC mapping matches the backfill migration (TRI-8854):
-  //   ADMIN  → Owner
-  //   MEMBER → Member
-  // In practice every invite is created with role=MEMBER (see
-  // inviteMembers above — there's no UI to invite someone as ADMIN),
-  // so the ADMIN branch is defensive cover for direct DB writes.
-  // OSS fallback returns ok=false; we log + continue (legacy
-  // OrgMember.role is the source of truth for OSS auth).
-  const roleId =
-    result.inviteRole === "ADMIN" ? SYSTEM_ROLE_IDS.owner : SYSTEM_ROLE_IDS.member;
-  const roleResult = await rbac.setUserRole({
-    userId: user.id,
-    organizationId: result.organization.id,
-    roleId,
-  });
-  if (!roleResult.ok) {
-    logger.debug("acceptInvite: skipped RBAC role assignment", {
-      organizationId: result.organization.id,
-      userId: user.id,
-      reason: roleResult.error,
-    });
-  }
+  // No upfront RBAC UserRole insert — the enterprise plugin's
+  // getUserRole derives the new member's role from the legacy
+  // OrgMember.role write inside the transaction above (ADMIN → Owner,
+  // MEMBER → Admin) until an Owner explicitly changes their role on
+  // the Teams page. Keeps the invite path tight and consistent with
+  // the create-org path's behaviour.
 
   return { remainingInvites: result.remainingInvites, organization: result.organization };
 }

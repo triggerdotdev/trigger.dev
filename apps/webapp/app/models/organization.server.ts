@@ -12,8 +12,6 @@ import slug from "slug";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
-import { logger } from "~/services/logger.server";
-import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 export type { Organization };
@@ -84,26 +82,12 @@ export async function createOrganization(
     },
   });
 
-  // Assign the creator the Owner system role so the new Teams page UI
-  // shows them as an Owner from the moment the org exists. Mirrors the
-  // legacy `OrgMember.role = "ADMIN"` write above (TRI-8854: legacy
-  // ADMIN maps to new Owner, not new Admin — the new Admin role
-  // excludes billing + member management). On the OSS deployment the
-  // fallback's setUserRole returns ok=false and we just log; the legacy
-  // OrgMember.role write is the source of truth for OSS auth.
-  const roleResult = await rbac.setUserRole({
-    userId,
-    organizationId: organization.id,
-    roleId: SYSTEM_ROLE_IDS.owner,
-  });
-  if (!roleResult.ok) {
-    logger.debug("createOrganization: skipped RBAC role assignment", {
-      organizationId: organization.id,
-      userId,
-      reason: roleResult.error,
-    });
-  }
-
+  // No upfront RBAC UserRole insert — the enterprise plugin's
+  // getUserRole derives the creator's role from the legacy
+  // OrgMember.role = "ADMIN" write above (which maps to Owner) until an
+  // Owner explicitly changes someone's role on the Teams page. Keeps
+  // the create-org path tight and lets the fallback path stay the
+  // single source of truth for "who has what role" by default.
   return { ...organization };
 }
 
