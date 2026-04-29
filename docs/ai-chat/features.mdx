@@ -162,14 +162,14 @@ onTurnComplete: async ({ chatId }) => {
 
 Use `chat.defer()` to run background work in parallel with streaming. The deferred promise runs alongside the LLM response and is awaited (with a 5s timeout) before `onTurnComplete` fires.
 
-This moves non-blocking work (DB writes, analytics, etc.) out of the critical path:
+This moves non-blocking work (analytics, audit logs, search-index writes, cache warming) out of the critical path:
 
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
-  onTurnStart: async ({ chatId, uiMessages }) => {
-    // Persist messages without blocking the LLM call
-    chat.defer(db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }));
+  onTurnStart: async ({ chatId, runId }) => {
+    // Analytics — fire-and-forget, irrelevant to resume.
+    chat.defer(analytics.track("turn_started", { chatId, runId }));
   },
   run: async ({ messages, signal }) => {
     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
@@ -178,6 +178,10 @@ export const myChat = chat.agent({
 ```
 
 `chat.defer()` can be called from anywhere during a turn — hooks, `run()`, or nested helpers. All deferred promises are collected and awaited together before `onTurnComplete`.
+
+<Warning>
+**Don't use `chat.defer()` for the message-history write in `onTurnStart`.** That write must land *before* the model starts streaming, otherwise a mid-stream page refresh will read `[]` from your DB and lose the user's message from the rendered conversation. See [Database persistence — `onTurnStart`](/ai-chat/patterns/database-persistence#onturnstart). Reserve `chat.defer` for writes whose timing has no resume implication.
+</Warning>
 
 ---
 

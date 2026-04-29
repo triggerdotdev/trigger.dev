@@ -48,8 +48,25 @@ If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`**
 
 ### `onTurnStart`
 
-- Persist **`uiMessages`** (full accumulated history including the new user turn) **before** streaming starts — so a mid-stream refresh still shows the user’s message.
-- Optionally use [`chat.defer()`](/ai-chat/features#chat-defer) so the write does not block the model if your driver is slow.
+- **`await`** persist **`uiMessages`** (full accumulated history including the new user turn) **before** the hook returns — `chat.agent` does not begin streaming until `onTurnStart` resolves, so this is what bounds "user message is durable before the stream".
+
+<Warning>
+**Don't use [`chat.defer()`](/ai-chat/features#chat-defer) for the message write here.** `chat.defer` is fire-and-forget — the hook resolves before the write lands and the stream starts immediately. If the user refreshes mid-stream, the next page load reads `[]` from your DB, the resumed SSE stream pushes the assistant into an empty array, and the user's message disappears from the rendered conversation forever.
+
+```ts
+// ❌ Bad — non-blocking write, mid-stream refresh drops the user message.
+onTurnStart: async ({ chatId, uiMessages }) => {
+  chat.defer(db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }));
+},
+
+// ✅ Good — awaited, durable before the model starts.
+onTurnStart: async ({ chatId, uiMessages }) => {
+  await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+},
+```
+
+`chat.defer` is for writes whose timing doesn't matter for resume — analytics, audit logs, search-index updates, etc. Anything the next page load reads needs to land before the stream begins.
+</Warning>
 
 ### `onTurnComplete`
 
@@ -128,7 +145,8 @@ chat.agent({
   },
 
   onTurnStart: async ({ chatId, uiMessages }) => {
-    chat.defer(saveConversationMessages(chatId, uiMessages));
+    // Awaited, not chat.defer — see the warning in `onTurnStart` above.
+    await saveConversationMessages(chatId, uiMessages);
   },
 
   onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId }) => {
