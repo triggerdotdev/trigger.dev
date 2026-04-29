@@ -368,12 +368,15 @@ export const aiChat = chat
     onTurnStart: async ({ chatId, uiMessages, writer, runId }) => {
       warmCodeSandbox(runId);
       writer.write({ type: "data-turn-status", data: { status: "preparing" }, transient: true });
-      chat.defer(
-        prisma.chat.update({
-          where: { id: chatId },
-          data: { messages: uiMessages as unknown as ChatMessagesForWrite },
-        })
-      );
+      // Awaited (not chat.defer) so the user message is durable before
+      // streaming begins. A mid-stream page refresh reads from DB; if the
+      // write is still in flight, getChatMessages returns [] and the
+      // resumed SSE stream rebuilds an assistant-only conversation,
+      // dropping the user message from the UI.
+      await prisma.chat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+      });
     },
     // #endregion
 
