@@ -115,9 +115,17 @@ export const startAgentChatTool = {
 
     // Create (or upsert) the backing Session. Idempotent via externalId —
     // two MCP clients targeting the same chatId converge to the same row.
+    // Sessions are now task-bound: taskIdentifier + triggerConfig are
+    // required, and the server reuses them for every run scheduled by
+    // this session (initial + continuations after run termination).
     const session = await apiClient.createSession({
       type: "chat.agent",
       externalId: chatId,
+      taskIdentifier: input.agentId,
+      triggerConfig: {
+        basePayload: { chatId, ...(input.clientData ?? {}) },
+        tags: [`chat:${chatId}`],
+      },
     });
 
     if (input.preload) {
