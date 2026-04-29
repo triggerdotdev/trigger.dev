@@ -31,9 +31,14 @@ Practical impact: `TriggerChatTransport.reconnectToStream` no longer needs a cli
 
 ## Migration
 
-Nothing to do for users of `chat.agent()` + `TriggerChatTransport` + `AgentChat`. Your existing code keeps working; you pick up the new durability guarantees for free.
+See the [Sessions Upgrade Guide](/ai-chat/upgrade-guide) for the full step-by-step — auth callback split, persisted `ChatSession` shape, server-side helpers (`chat.createStartSessionAction`, `chat.createAccessToken` for renewal), and the `clientData` validation pivot.
 
-If you built a custom transport against the old `/realtime/v1/streams/{runId}/...` endpoints, see the rewritten [Client Protocol](/ai-chat/client-protocol) for the new session-based wire format. The old constants (`CHAT_STREAM_KEY`, `CHAT_MESSAGES_STREAM_ID`, `CHAT_STOP_STREAM_ID`) are removed from `@trigger.dev/core/v3/chat-client` — migrate to `sessions.open(sessionId).out` / `.in`.
+## Docs
+
+- Rewritten [Client Protocol](/ai-chat/client-protocol) — full wire format for the new `/realtime/v1/sessions/{sessionId}/...` endpoints, JWT scopes, S2 direct-write credentials, and `Last-Event-ID` resume.
+- [Database persistence pattern](/ai-chat/patterns/database-persistence) — new `chatId`-keyed `ChatSession` shape (no more `runId`) and a warning on the `onTurnComplete` race that requires a single atomic write of `messages` + `lastEventId`.
+- [Reference](/ai-chat/reference) — added `chat.createStartSessionAction`, `chat.createAccessToken`, `ChatInputChunk`, `TriggerChatTaskResult.sessionId`, `ChatTaskRunPayload.sessionId`. The old run-scoped stream-ID constants are gone.
+- Refreshed [Backend](/ai-chat/backend), [Frontend](/ai-chat/frontend), [Server Chat](/ai-chat/server-chat), [Quick start](/ai-chat/quick-start), [Overview](/ai-chat/overview), [Features](/ai-chat/features), [Types](/ai-chat/types), [Error handling](/ai-chat/error-handling), and [Testing](/ai-chat/testing) for the session-based wiring.
 
 </Update>
 
