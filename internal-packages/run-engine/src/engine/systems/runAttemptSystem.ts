@@ -1980,30 +1980,25 @@ export class RunAttemptSystem {
     }
 
     if (completion.flushedMetadata) {
-      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+      const [, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
 
       if (!packet) {
-        return;
-      }
-
-      if (packetError) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: packetError,
-        });
-
         return;
       }
 
       const metadata = FlushedRunMetadata.safeParse(packet);
 
       if (!metadata.success) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: metadata.error,
-        });
+        // Customer's metadata operations don't match the schema (typically
+        // non-JSON values in `operations[].value`). System ignores it.
+        this.$.logger.warn(
+          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
+          {
+            runId,
+            flushedMetadata: completion.flushedMetadata,
+            error: metadata.error,
+          }
+        );
 
         return;
       }
