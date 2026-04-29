@@ -156,7 +156,12 @@ export default function BackOfficeOrgPage() {
       : null;
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const savedSection = searchParams.get(SAVED_QUERY_KEY);
+  const savedSectionRaw = searchParams.get(SAVED_QUERY_KEY);
+  // If the action just returned errors for the same section, hide the
+  // "Saved." banner so it doesn't render alongside field errors. Suppressing
+  // here propagates to every read site (auto-dismiss + JSX comparisons).
+  const savedSection =
+    errors && errorSection === savedSectionRaw ? null : savedSectionRaw;
 
   // Auto-dismiss the "saved" banner after a few seconds.
   useEffect(() => {
