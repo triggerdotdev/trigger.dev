@@ -331,7 +331,7 @@ export default function Page() {
             LeadingIcon={BellAlertIcon}
             leadingIconClassName="text-alerts"
           >
-            Configure alerts
+            Configure alerts…
           </LinkButton>
         </PageAccessories>
       </NavBar>
@@ -339,8 +339,8 @@ export default function Page() {
       <PageBody scrollable={false}>
         <Suspense
           fallback={
-            <div className="my-2 flex items-center justify-center">
-              <div className="mx-auto flex items-center gap-2">
+            <div className="flex h-full items-center justify-center">
+              <div className="flex items-center gap-2">
                 <Spinner />
                 <Paragraph variant="small">Loading error details…</Paragraph>
               </div>

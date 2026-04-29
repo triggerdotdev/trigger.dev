@@ -464,7 +464,7 @@ function FiltersBar({
           LeadingIcon={BellAlertIcon}
           leadingIconClassName="text-alerts"
         >
-          Configure alerts
+          Configure alerts…
         </LinkButton>
         {list && <ListPagination list={list} />}
       </div>
