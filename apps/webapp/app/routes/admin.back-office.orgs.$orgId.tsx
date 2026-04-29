@@ -140,7 +140,13 @@ export default function BackOfficeOrgPage() {
     useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
-  const isSubmitting = navigation.state !== "idle";
+  const submittingIntent = navigation.formData?.get("intent");
+  const isSubmittingApi =
+    navigation.state !== "idle" && submittingIntent === API_RATE_LIMIT_INTENT;
+  const isSubmittingBatch =
+    navigation.state !== "idle" && submittingIntent === BATCH_RATE_LIMIT_INTENT;
+  const isSubmittingMaxProjects =
+    navigation.state !== "idle" && submittingIntent === MAX_PROJECTS_INTENT;
 
   const errorSection =
     actionData && "section" in actionData ? actionData.section : null;
@@ -185,21 +191,21 @@ export default function BackOfficeOrgPage() {
         effective={apiEffective}
         errors={errorSection === API_RATE_LIMIT_SAVED_VALUE ? errors : null}
         savedJustNow={savedSection === API_RATE_LIMIT_SAVED_VALUE}
-        isSubmitting={isSubmitting}
+        isSubmitting={isSubmittingApi}
       />
 
       <BatchRateLimitSection
         effective={batchEffective}
         errors={errorSection === BATCH_RATE_LIMIT_SAVED_VALUE ? errors : null}
         savedJustNow={savedSection === BATCH_RATE_LIMIT_SAVED_VALUE}
-        isSubmitting={isSubmitting}
+        isSubmitting={isSubmittingBatch}
       />
 
       <MaxProjectsSection
         maximumProjectCount={org.maximumProjectCount}
         errors={errorSection === MAX_PROJECTS_SAVED_VALUE ? errors : null}
         savedJustNow={savedSection === MAX_PROJECTS_SAVED_VALUE}
-        isSubmitting={isSubmitting}
+        isSubmitting={isSubmittingMaxProjects}
       />
     </div>
   );

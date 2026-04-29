@@ -30,7 +30,7 @@ export function MaxProjectsSection({
   const fieldError = (field: string) =>
     errors && field in errors ? errors[field]?.[0] : undefined;
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(hasFieldErrors);
   const [value, setValue] = useState(String(maximumProjectCount));
 
   useEffect(() => {
@@ -38,8 +38,8 @@ export function MaxProjectsSection({
   }, [hasFieldErrors]);
 
   useEffect(() => {
-    if (savedJustNow) setIsEditing(false);
-  }, [savedJustNow]);
+    if (savedJustNow && !hasFieldErrors) setIsEditing(false);
+  }, [savedJustNow, hasFieldErrors]);
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">

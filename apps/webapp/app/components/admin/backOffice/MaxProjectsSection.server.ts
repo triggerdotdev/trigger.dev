@@ -5,7 +5,9 @@ import { MAX_PROJECTS_INTENT } from "./MaxProjectsSection";
 
 const SetMaxProjectsSchema = z.object({
   intent: z.literal(MAX_PROJECTS_INTENT),
-  maximumProjectCount: z.coerce.number().int().min(1),
+  // Capped at PostgreSQL INTEGER max (Prisma Int) so oversized input fails
+  // validation cleanly instead of crashing the update.
+  maximumProjectCount: z.coerce.number().int().min(1).max(2_147_483_647),
 });
 
 export type MaxProjectsActionResult =

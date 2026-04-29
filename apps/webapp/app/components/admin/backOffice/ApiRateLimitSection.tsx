@@ -1,21 +1,12 @@
 import {
   RateLimitSection,
-  type EffectiveRateLimit,
+  type RateLimitWrapperProps,
 } from "./RateLimitSection";
 
 export const API_RATE_LIMIT_INTENT = "set-rate-limit";
 export const API_RATE_LIMIT_SAVED_VALUE = "rate-limit";
 
-type FieldErrors = Record<string, string[] | undefined> | null;
-
-type Props = {
-  effective: EffectiveRateLimit;
-  errors: FieldErrors;
-  savedJustNow: boolean;
-  isSubmitting: boolean;
-};
-
-export function ApiRateLimitSection(props: Props) {
+export function ApiRateLimitSection(props: RateLimitWrapperProps) {
   return (
     <RateLimitSection
       title="API rate limit"

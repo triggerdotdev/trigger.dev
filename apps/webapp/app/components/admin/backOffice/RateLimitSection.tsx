@@ -28,15 +28,19 @@ export type EffectiveRateLimit = {
   config: RateLimitConfig;
 };
 
-type FieldErrors = Record<string, string[] | undefined> | null;
+export type FieldErrors = Record<string, string[] | undefined> | null;
 
-type Props = {
-  title: string;
-  intent: string;
+// Props shared by every per-domain wrapper (Api / Batch / future ones).
+export type RateLimitWrapperProps = {
   effective: EffectiveRateLimit;
   errors: FieldErrors;
   savedJustNow: boolean;
   isSubmitting: boolean;
+};
+
+type Props = RateLimitWrapperProps & {
+  title: string;
+  intent: string;
 };
 
 export function RateLimitSection({
@@ -54,7 +58,7 @@ export function RateLimitSection({
   const current =
     effective.config.type === "tokenBucket" ? effective.config : null;
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(hasFieldErrors);
   const [refillRate, setRefillRate] = useState(
     current ? String(current.refillRate) : ""
   );
@@ -70,8 +74,8 @@ export function RateLimitSection({
   }, [hasFieldErrors]);
 
   useEffect(() => {
-    if (savedJustNow) setIsEditing(false);
-  }, [savedJustNow]);
+    if (savedJustNow && !hasFieldErrors) setIsEditing(false);
+  }, [savedJustNow, hasFieldErrors]);
 
   const currentDescription = current
     ? describeRateLimit(
