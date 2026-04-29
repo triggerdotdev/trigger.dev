@@ -248,13 +248,9 @@ const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
   "read:members": "Organisation",
   "manage:members": "Organisation",
   "manage:billing": "Organisation",
-  "read:all": "Wildcards",
-  "write:all": "Wildcards",
-  admin: "Wildcards",
 };
 
 const GROUP_ORDER = [
-  "Wildcards",
   "Runs",
   "Tasks",
   "Waitpoints",
