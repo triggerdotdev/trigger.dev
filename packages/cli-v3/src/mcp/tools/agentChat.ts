@@ -118,67 +118,35 @@ export const startAgentChatTool = {
     // Sessions are now task-bound: taskIdentifier + triggerConfig are
     // required, and the server reuses them for every run scheduled by
     // this session (initial + continuations after run termination).
+    //
+    // basePayload mirrors the browser-mediated `chat.createStartSessionAction`
+    // shape so the auto-triggered first run hits `onPreload` (not
+    // `onChatStart` with `preloaded: true`). Without `trigger: "preload"`
+    // + `messages: []`, the agent runtime bypasses both lifecycle hooks
+    // and `onTurnStart`'s DB write fails with "No record found".
+    //
+    // POST /api/v1/sessions auto-triggers the first run and returns its
+    // runId, so we don't need a separate triggerTask call. The `preload`
+    // flag on this MCP tool is kept as a no-op signal (true=default) for
+    // backwards compat — a Session is always created with a live run now.
     const session = await apiClient.createSession({
       type: "chat.agent",
       externalId: chatId,
       taskIdentifier: input.agentId,
       triggerConfig: {
-        basePayload: { chatId, ...(input.clientData ?? {}) },
+        basePayload: {
+          messages: [],
+          trigger: "preload",
+          chatId,
+          ...(input.clientData ? { metadata: input.clientData } : {}),
+        },
         tags: [`chat:${chatId}`],
       },
     });
 
-    if (input.preload) {
-      // Trigger a preload run. The agent opens the session via
-      // `sessions.open(payload.sessionId)` on startup.
-      const payload = {
-        messages: [],
-        chatId,
-        sessionId: session.id,
-        trigger: "preload",
-        metadata: input.clientData,
-      };
-
-      const result = await apiClient.triggerTask(input.agentId, {
-        payload,
-        options: {
-          payloadType: "application/json",
-          tags: [`chat:${chatId}`, "preload:true"],
-        },
-      });
-
-      activeSessions.set(chatId, {
-        sessionId: session.id,
-        runId: result.id,
-        chatId,
-        agentId: input.agentId,
-        apiClient,
-        clientData: input.clientData,
-        messages: [],
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: [
-              `Agent chat started and preloaded.`,
-              `- Chat ID: ${chatId}`,
-              `- Session ID: ${session.id}`,
-              `- Agent: ${input.agentId}`,
-              `- Run ID: ${result.id}`,
-              ``,
-              `Use send_agent_message with chatId "${chatId}" to send messages.`,
-            ].join("\n"),
-          },
-        ],
-      };
-    }
-
-    // No preload — register the session, first sendMessage will trigger.
     activeSessions.set(chatId, {
       sessionId: session.id,
-      runId: "",
+      runId: session.runId,
       chatId,
       agentId: input.agentId,
       apiClient,
@@ -191,12 +159,13 @@ export const startAgentChatTool = {
         {
           type: "text",
           text: [
-            `Agent chat created (not yet preloaded).`,
+            `Agent chat started${input.preload ? " and preloaded" : ""}.`,
             `- Chat ID: ${chatId}`,
             `- Session ID: ${session.id}`,
             `- Agent: ${input.agentId}`,
+            `- Run ID: ${session.runId}`,
             ``,
-            `Use send_agent_message with chatId "${chatId}" to send the first message (this will trigger the run).`,
+            `Use send_agent_message with chatId "${chatId}" to send messages.`,
           ].join("\n"),
         },
       ],

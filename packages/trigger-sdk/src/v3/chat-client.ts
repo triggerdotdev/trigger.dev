@@ -513,6 +513,13 @@ export class AgentChat<TAgent = unknown> {
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
+        // `trigger: "preload"` + empty `messages` mirror the browser-mediated
+        // `chat.createStartSessionAction` shape so the agent runtime fires
+        // `onPreload` (not `onChatStart` with `preloaded: true`). Without
+        // this, AgentChat's first run skips both preload and start hooks,
+        // which is where customer apps typically upsert their Chat row.
+        messages: [],
+        trigger: "preload",
         ...(this.triggerConfigDefault?.basePayload ?? {}),
         chatId: this.chatId,
         ...(this.clientData ? { metadata: this.clientData } : {}),
