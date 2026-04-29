@@ -96,13 +96,31 @@ const { action } = createActionApiRoute(
     body: CreateSessionRequestBody,
     method: "POST",
     maxContentLength: 1024 * 32, // 32KB — metadata is the only thing that grows
-    // Secret-key only. Customer's server (typically wrapping
+    // Customer's server (typically wrapping
     // `chat.createStartSessionAction`) owns session creation so any
     // authorization decision (per-user/plan/quota) sits server-side
     // alongside whatever DB write the customer pairs with the create.
     // The session-scoped PAT returned in the response body is what the
     // browser uses thereafter against `.in/append`, `.out` SSE,
     // `end-and-continue`, etc.
+    //
+    // JWT is allowed when the caller holds an explicit `write:sessions` /
+    // `admin` super-scope plus a `tasks:<taskIdentifier>` scope — gates
+    // server-side surfaces like the cli-v3 MCP from creating sessions on
+    // behalf of the developer without weakening the browser model.
+    allowJWT: true,
+    authorization: {
+      // Resource scoping by `taskIdentifier` isn't possible at auth-resolve
+      // time — action routes don't pass `body` to the resource callback,
+      // and the task name only lives in the body. We require a `sessions`
+      // resource scope (wildcard) and rely on `write:sessions` / `admin`
+      // super-scopes to gate access. Per-task narrowing happens implicitly
+      // because the JWT-issuer (e.g. cli-v3 MCP) decides which scopes to
+      // request when minting the token.
+      action: "write",
+      resource: () => ({ sessions: "*" }),
+      superScopes: ["write:sessions", "admin"],
+    },
     corsStrategy: "all",
   },
   async ({ authentication, body }) => {
