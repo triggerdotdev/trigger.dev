@@ -46,8 +46,8 @@ export async function action({ request }: ActionFunctionArgs) {
     return redirectWithError(request, "Invalid session duration value.");
   }
 
-  const { orgCapSeconds, userSettingSeconds } = await getEffectiveSessionDuration(userId);
-  const allowed = getAllowedSessionOptions(orgCapSeconds, userSettingSeconds);
+  const { orgCapSeconds, durationSeconds } = await getEffectiveSessionDuration(userId);
+  const allowed = getAllowedSessionOptions(orgCapSeconds, durationSeconds);
   if (!allowed.some((o) => o.value === sessionDuration)) {
     return redirectWithError(
       request,

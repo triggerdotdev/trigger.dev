@@ -1,5 +1,5 @@
 import { type MetaFunction } from "@remix-run/react";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   MainHorizontallyCenteredContainer,
@@ -8,12 +8,10 @@ import {
 } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import {
-  DEFAULT_SESSION_DURATION_SECONDS,
   getAllowedSessionOptions,
-  getOrganizationSessionCap,
+  getEffectiveSessionDuration,
 } from "~/services/sessionDuration.server";
 import { MfaSetup } from "../resources.account.mfa.setup/route";
 import { SessionDurationSetting } from "../resources.account.session-duration/SessionDurationSetting";
@@ -29,20 +27,12 @@ export const meta: MetaFunction = () => {
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
 
-  const [userRecord, orgCapSeconds] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: user.id },
-      select: { sessionDuration: true },
-    }),
-    getOrganizationSessionCap(user.id),
-  ]);
-
-  const sessionDuration = userRecord?.sessionDuration ?? DEFAULT_SESSION_DURATION_SECONDS;
-  const sessionDurationOptions = getAllowedSessionOptions(orgCapSeconds, sessionDuration);
+  const { durationSeconds, orgCapSeconds } = await getEffectiveSessionDuration(user.id);
+  const sessionDurationOptions = getAllowedSessionOptions(orgCapSeconds, durationSeconds);
 
   return typedjson({
     user,
-    sessionDuration,
+    sessionDuration: durationSeconds,
     sessionDurationOptions,
     orgCapSeconds,
   });
