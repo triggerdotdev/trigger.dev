@@ -270,17 +270,44 @@ async function createEcrRepository({
   // self-hosters whose ECR account is separate from the account running the
   // EKS workers — without this the workers get 403 Forbidden when pulling the
   // task image (default ECR policy only grants access to the registry owner).
+  // The existing-repo branch of `ensureEcrRepositoryExists` reconciles this
+  // same policy on every call, so a partial-create that fails here is
+  // self-healing on the next deploy.
   if (defaultRepositoryPolicy) {
-    await ecr.send(
-      new SetRepositoryPolicyCommand({
-        repositoryName: result.repository.repositoryName,
-        registryId: result.repository.registryId,
-        policyText: defaultRepositoryPolicy,
-      })
-    );
+    await applyEcrRepositoryPolicy({
+      repositoryName: result.repository.repositoryName!,
+      region,
+      accountId: result.repository.registryId ?? accountId,
+      assumeRole,
+      defaultRepositoryPolicy,
+    });
   }
 
   return result.repository;
+}
+
+async function applyEcrRepositoryPolicy({
+  repositoryName,
+  region,
+  accountId,
+  assumeRole,
+  defaultRepositoryPolicy,
+}: {
+  repositoryName: string;
+  region: string;
+  accountId?: string;
+  assumeRole?: AssumeRoleConfig;
+  defaultRepositoryPolicy: string;
+}): Promise<void> {
+  const ecr = await createEcrClient({ region, assumeRole });
+
+  await ecr.send(
+    new SetRepositoryPolicyCommand({
+      repositoryName,
+      registryId: accountId,
+      policyText: defaultRepositoryPolicy,
+    })
+  );
 }
 
 async function updateEcrRepositoryCacheSettings({
@@ -437,6 +464,31 @@ async function ensureEcrRepositoryExists({
           repositoryName,
           region,
           updateError,
+        });
+      }
+    }
+
+    // Reconcile the default repository policy on every call. Idempotent, and
+    // covers two recovery cases: (1) a previous create succeeded but the
+    // SetRepositoryPolicy call failed mid-flight, leaving the repo without a
+    // policy; (2) the operator updated DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY
+    // and existing repos need to pick up the new value.
+    if (defaultRepositoryPolicy) {
+      const [policyError] = await tryCatch(
+        applyEcrRepositoryPolicy({
+          repositoryName,
+          region,
+          accountId,
+          assumeRole,
+          defaultRepositoryPolicy,
+        })
+      );
+
+      if (policyError) {
+        logger.error("Failed to reconcile ECR repository policy on existing repo", {
+          repositoryName,
+          region,
+          policyError,
         });
       }
     }
