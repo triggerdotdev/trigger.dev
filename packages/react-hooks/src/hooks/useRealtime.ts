@@ -14,6 +14,40 @@ import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
 import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
 import { createThrottledQueue } from "../utils/throttle.js";
 
+// Returns a number that increments when the tab becomes visible after being
+// hidden, or when the network comes back online. Hooks include this value in
+// their effect deps so they tear down and re-establish their subscriptions
+// after a mobile background-suspend or a network outage — both cases where the
+// underlying socket can silently die without firing a close event the SSE
+// retry loop can detect.
+function useRealtimeReconnectKey(enabled: boolean, isComplete: boolean): number {
+  const [key, setKey] = useState(0);
+
+  useEffect(() => {
+    if (!enabled || isComplete) return;
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        setKey((k) => k + 1);
+      }
+    };
+    const onOnline = () => {
+      setKey((k) => k + 1);
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [enabled, isComplete]);
+
+  return key;
+}
+
 export type UseRealtimeRunOptions = UseApiClientOptions & {
   id?: string;
   enabled?: boolean;
@@ -158,6 +192,8 @@ export function useRealtimeRun<TTask extends AnyTask>(
     }
   }, [isComplete, run, error, options?.onComplete]);
 
+  const reconnectKey = useRealtimeReconnectKey(options?.enabled !== false, !!run?.finishedAt);
+
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
@@ -172,7 +208,7 @@ export function useRealtimeRun<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, reconnectKey]);
 
   useEffect(() => {
     if (run?.finishedAt) {
@@ -324,6 +360,8 @@ export function useRealtimeRunWithStreams<
     }
   }, [isComplete, run, error, options?.onComplete]);
 
+  const reconnectKey = useRealtimeReconnectKey(options?.enabled !== false, !!run?.finishedAt);
+
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
@@ -338,7 +376,7 @@ export function useRealtimeRunWithStreams<
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, reconnectKey]);
 
   useEffect(() => {
     if (run?.finishedAt) {
@@ -474,6 +512,8 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     }
   }, [normalizedTag, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
 
+  const reconnectKey = useRealtimeReconnectKey(options?.enabled !== false, false);
+
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
@@ -484,7 +524,7 @@ export function useRealtimeRunsWithTag<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [normalizedTag, stop, options?.enabled]);
+  }, [normalizedTag, stop, options?.enabled, reconnectKey]);
 
   return { runs: runs ?? [], error, stop };
 }
@@ -571,6 +611,8 @@ export function useRealtimeBatch<TTask extends AnyTask>(
     }
   }, [batchId, mutateRuns, runsRef, abortControllerRef, apiClient, setError]);
 
+  const reconnectKey = useRealtimeReconnectKey(options?.enabled !== false, false);
+
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
@@ -581,7 +623,7 @@ export function useRealtimeBatch<TTask extends AnyTask>(
     return () => {
       stop();
     };
-  }, [batchId, stop, options?.enabled]);
+  }, [batchId, stop, options?.enabled, reconnectKey]);
 
   return { runs: runs ?? [], error, stop };
 }
@@ -874,6 +916,8 @@ function useRealtimeStreamImplementation<TPart>(
     }
   }, [runId, streamKey, mutateParts, partsRef, abortControllerRef, apiClient, setError]);
 
+  const reconnectKey = useRealtimeReconnectKey(options?.enabled !== false, isComplete);
+
   useEffect(() => {
     if (typeof options?.enabled === "boolean" && !options.enabled) {
       return;
@@ -888,7 +932,7 @@ function useRealtimeStreamImplementation<TPart>(
     return () => {
       stop();
     };
-  }, [runId, stop, options?.enabled]);
+  }, [runId, stop, options?.enabled, reconnectKey]);
 
   return { parts: parts ?? initialPartsFallback, error, stop };
 }

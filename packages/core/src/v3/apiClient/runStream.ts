@@ -14,6 +14,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiError } from "./errors.js";
 import { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
@@ -178,12 +179,22 @@ export type SSEStreamPart<TChunk = unknown> = {
   timestamp: number;
 };
 
+// Reconnection tuned for flaky / mobile networks: sub-second first retry with
+// jitter, exponential growth, capped at 30s, no attempt cap. Connections drop
+// constantly when devices background or transit between cells; the previous
+// 5-attempt cap meant a brief outage permanently killed the subscription.
+const SSE_RETRY_OPTIONS = {
+  maxAttempts: Number.POSITIVE_INFINITY,
+  factor: 2,
+  minTimeoutInMs: 250,
+  maxTimeoutInMs: 30_000,
+  randomize: true,
+} as const;
+
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
   private retryCount = 0;
-  private maxRetries = 5;
-  private retryDelayMs = 1000;
 
   constructor(
     private url: string,
@@ -243,7 +254,11 @@ export class SSEStreamSubscription implements StreamSubscription {
           Object.fromEntries(response.headers)
         );
 
-        this.options.onError?.(error);
+        // Only surface terminal errors. Retryable HTTP statuses (5xx, 408, 429)
+        // are handled by retryConnection without firing onError on each attempt.
+        if (!isRetryableStreamError(error)) {
+          this.options.onError?.(error);
+        }
         throw error;
       }
 
@@ -359,17 +374,18 @@ export class SSEStreamSubscription implements StreamSubscription {
       return;
     }
 
-    if (this.retryCount >= this.maxRetries) {
-      const finalError = error || new Error("Max retries reached");
+    if (!isRetryableStreamError(error)) {
+      const finalError = error ?? new Error("Stream subscription failed");
       controller.error(finalError);
       this.options.onError?.(finalError);
       return;
     }
 
     this.retryCount++;
-    const delay = this.retryDelayMs * Math.pow(2, this.retryCount - 1);
+    const delay =
+      calculateNextRetryDelay(SSE_RETRY_OPTIONS, this.retryCount) ??
+      SSE_RETRY_OPTIONS.maxTimeoutInMs;
 
-    // Wait before retrying
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     if (this.options.signal?.aborted) {
@@ -378,9 +394,21 @@ export class SSEStreamSubscription implements StreamSubscription {
       return;
     }
 
-    // Reconnect
     await this.connectStream(controller);
   }
+}
+
+// 4xx (other than 408 timeout / 429 rate limit) means the request is
+// fundamentally bad — auth, not found, etc. Retrying just burns cycles.
+// Everything else (network errors with no status, 5xx, transient timeouts)
+// retries forever with backoff.
+function isRetryableStreamError(error?: Error): boolean {
+  if (!(error instanceof ApiError)) return true;
+  if (typeof error.status !== "number") return true;
+  if (error.status >= 400 && error.status < 500) {
+    return error.status === 408 || error.status === 429;
+  }
+  return true;
 }
 
 export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {
