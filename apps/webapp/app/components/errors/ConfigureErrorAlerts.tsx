@@ -9,7 +9,8 @@ import {
 } from "@heroicons/react/20/solid";
 import { useFetcher, useNavigate } from "@remix-run/react";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import stableStringify from "json-stable-stringify";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
@@ -104,6 +105,35 @@ export function ConfigureErrorAlerts({
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
 
+  const [formChangeTick, setFormChangeTick] = useState(0);
+  const bumpFormChange = () => setFormChangeTick((n) => n + 1);
+
+  const isDirty = useMemo(() => {
+    const initialSlackValue = existingSlackChannel
+      ? `${existingSlackChannel.channelId}/${existingSlackChannel.channelName}`
+      : "";
+    if ((selectedSlackChannelValue ?? "") !== initialSlackValue) return true;
+    const currentEmails = emailFieldValues.current.filter((v) => v !== "");
+    if (
+      stableStringify(currentEmails) !==
+      stableStringify(existingEmails.map((e) => e.email))
+    )
+      return true;
+    const currentWebhooks = webhookFieldValues.current.filter((v) => v !== "");
+    if (
+      stableStringify(currentWebhooks) !==
+      stableStringify(existingWebhooks.map((w) => w.url))
+    )
+      return true;
+    return false;
+  }, [
+    selectedSlackChannelValue,
+    existingSlackChannel,
+    existingEmails,
+    existingWebhooks,
+    formChangeTick,
+  ]);
+
   const [form, { emails, webhooks, slackChannel, slackIntegrationId }] = useForm({
     id: "configure-error-alerts",
     onValidate({ formData }) {
@@ -165,6 +195,7 @@ export function ConfigureErrorAlerts({
                         icon={EnvelopeIcon}
                         onChange={(e) => {
                           emailFieldValues.current[index] = e.target.value;
+                          bumpFormChange();
                           if (
                             emailFields.length === emailFieldValues.current.length &&
                             emailFieldValues.current.every((v) => v !== "")
@@ -218,6 +249,15 @@ export function ConfigureErrorAlerts({
                     >
                       {(matches) => (
                         <>
+                          <SelectItem
+                            value=""
+                            className="border-b border-grid-bright text-text-dimmed"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <XMarkIcon className="size-4" />
+                              <span>No channel</span>
+                            </div>
+                          </SelectItem>
                           {matches?.map((channel) => (
                             <SelectItem
                               key={channel.id}
@@ -243,15 +283,6 @@ export function ConfigureErrorAlerts({
                       </Callout>
                     )}
                     <Hint>
-                      {selectedSlackChannelValue ? (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSlackChannelValue("")}
-                          className="mr-3 text-indigo-500 transition hover:text-indigo-400 focus-visible:focus-custom"
-                        >
-                          Remove channel
-                        </button>
-                      ) : null}
                       <TextLink to={organizationSlackIntegrationPath(organization)}>
                         Manage Slack connection
                       </TextLink>
@@ -327,6 +358,7 @@ export function ConfigureErrorAlerts({
                       icon={GlobeAltIcon}
                       onChange={(e) => {
                         webhookFieldValues.current[index] = e.target.value;
+                        bumpFormChange();
                         if (
                           webhookFields.length === webhookFieldValues.current.length &&
                           webhookFieldValues.current.every((v) => v !== "")
@@ -353,7 +385,7 @@ export function ConfigureErrorAlerts({
           <Button
             variant="primary/medium"
             type="submit"
-            disabled={isSubmitting}
+            disabled={!isDirty || isSubmitting}
             isLoading={isSubmitting}
           >
             {isSubmitting ? "Saving…" : "Save"}
