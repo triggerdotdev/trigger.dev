@@ -1,6 +1,12 @@
 export type Permission = {
+  // `<action>:<subject>` — display name, derived from the ability rule.
   name: string;
   description: string;
+  // Inverted rules (CASL `cannot`) surface as ✗ in the Roles page.
+  inverted?: boolean;
+  // CASL conditions (e.g. `{ envType: "PRODUCTION" }`) — when present,
+  // the Roles page renders a tier badge alongside the permission row.
+  conditions?: Record<string, unknown>;
 };
 
 export type Role = {
@@ -19,6 +25,12 @@ export type RbacSubject =
 export type RbacResource = {
   type: string;
   id?: string;
+  // Extra fields a route may pass for condition-based ability checks —
+  // e.g. `envType` for env-tier-scoped rules ("Member can read envvars
+  // unless envType === 'PRODUCTION'"). The plugin's ability matcher
+  // (CASL) reads these off the resource object; routes that don't use
+  // conditional rules can keep passing `{ type, id? }`.
+  [key: string]: unknown;
 };
 
 export type RbacEnvironment = {

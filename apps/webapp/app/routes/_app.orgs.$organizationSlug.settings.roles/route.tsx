@@ -179,13 +179,14 @@ function RoleCard({
       <Table containerClassName="border-t-0">
         <TableHeader>
           <TableRow>
+            <TableHeaderCell hiddenLabel>Allowed</TableHeaderCell>
             <TableHeaderCell>Permission</TableHeaderCell>
             <TableHeaderCell>Description</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {role.permissions.length === 0 ? (
-            <TableBlankRow colSpan={2}>
+            <TableBlankRow colSpan={3}>
               <Paragraph variant="small" className="text-text-dimmed">
                 This role has no permissions assigned.
               </Paragraph>
@@ -193,16 +194,34 @@ function RoleCard({
           ) : (
             grouped.flatMap(({ group, permissions }) => [
               <TableRow key={`${group}-header`}>
-                <TableCell colSpan={2} className="bg-charcoal-800">
+                <TableCell colSpan={3} className="bg-charcoal-800">
                   <Header3 className="text-xs uppercase tracking-wide text-text-dimmed">
                     {group}
                   </Header3>
                 </TableCell>
               </TableRow>,
-              ...permissions.map((permission) => (
-                <TableRow key={`${role.id}-${permission.name}`}>
+              ...permissions.map((permission, idx) => (
+                <TableRow key={`${role.id}-${permission.name}-${idx}`}>
+                  <TableCell className="w-8 text-center">
+                    {permission.inverted ? (
+                      <span className="text-error" aria-label="Denied">
+                        ✗
+                      </span>
+                    ) : (
+                      <span className="text-success" aria-label="Allowed">
+                        ✓
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
-                    <code className="text-xs">{permission.name}</code>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs">{permission.name}</code>
+                      {permission.conditions ? (
+                        <Badge variant="extra-small">
+                          {formatConditions(permission.conditions)}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Paragraph variant="small">
@@ -234,6 +253,7 @@ const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
   "write:tasks": "Tasks",
   "trigger:tasks": "Tasks",
   "batchTrigger:tasks": "Tasks",
+  "deploy:tasks": "Tasks",
   "read:waitpoints": "Waitpoints",
   "write:waitpoints": "Waitpoints",
   "read:inputStreams": "Realtime",
@@ -245,12 +265,26 @@ const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
   "read:query": "Query",
   "read:tokens": "Tokens",
   "write:tokens": "Tokens",
+  "read:envvars": "Environment",
+  "write:envvars": "Environment",
+  "read:apiKeys": "Environment",
+  "write:apiKeys": "Environment",
   "read:members": "Organisation",
   "manage:members": "Organisation",
   "manage:billing": "Organisation",
+  // System-role meta pairs ("manage:all", "read:all", …) — collapse to
+  // a single "All" group at the top.
+  "manage:all": "All",
+  "read:all": "All",
+  "write:all": "All",
+  "trigger:all": "All",
+  "batchTrigger:all": "All",
+  "update:all": "All",
+  "deploy:all": "All",
 };
 
 const GROUP_ORDER = [
+  "All",
   "Runs",
   "Tasks",
   "Waitpoints",
@@ -259,9 +293,21 @@ const GROUP_ORDER = [
   "Prompts",
   "Query",
   "Tokens",
+  "Environment",
   "Organisation",
   "Other",
 ];
+
+// Render a CASL conditions object into a tier badge label. Only one
+// condition key is recognised today (envType); extending this requires
+// adding a new branch when ALLOWED_CONDITIONS grows.
+function formatConditions(conditions: Record<string, unknown>): string {
+  if (typeof conditions.envType === "string") {
+    const t = conditions.envType.toLowerCase();
+    return `${t} only`;
+  }
+  return JSON.stringify(conditions);
+}
 
 function groupPermissions(
   permissions: LoaderPermission[]
