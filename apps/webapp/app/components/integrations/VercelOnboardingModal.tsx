@@ -146,6 +146,11 @@ export function VercelOnboardingModal({
       }
       return "project-selection";
     }
+    // If onboarding was already completed but GitHub is not connected,
+    // go directly to the github-connection step (e.g., returning from GitHub App installation)
+    if (onboardingData?.isOnboardingComplete && !onboardingData?.isGitHubConnected) {
+      return "github-connection";
+    }
     // For marketplace origin, skip env-mapping step and go directly to env-var-sync
     if (!fromMarketplaceContext) {
       const customEnvs = (onboardingData?.customEnvironments?.length ?? 0) > 0 && hasStagingEnvironment;
@@ -594,6 +599,20 @@ export function VercelOnboardingModal({
       setState("completed");
     }
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
+
+  useEffect(() => {
+    if (state === "github-connection" && isGitHubConnectedForOnboarding) {
+      trackOnboarding("vercel onboarding github completed");
+      if (fromMarketplaceContext && nextUrl) {
+        const validUrl = safeRedirectUrl(nextUrl);
+        if (validUrl) {
+          window.location.href = validUrl;
+          return;
+        }
+      }
+      setState("completed");
+    }
+  }, [state, isGitHubConnectedForOnboarding, fromMarketplaceContext, nextUrl, trackOnboarding]);
 
   useEffect(() => {
     if (state === "completed" && !hasTrackedCompletionRef.current) {
@@ -1109,6 +1128,7 @@ export function VercelOnboardingModal({
                   redirectParams.set("next", nextUrl);
                 }
                 const redirectUrlWithContext = `${baseSettingsPath}?${redirectParams.toString()}`;
+                const nextDirectRedirect = nextUrl ? safeRedirectUrl(nextUrl) : null;
 
                 return gitHubAppInstallations.length === 0 ? (
                   <div className="flex flex-col gap-3">
@@ -1132,7 +1152,10 @@ export function VercelOnboardingModal({
                         organizationSlug={organizationSlug}
                         projectSlug={projectSlug}
                         environmentSlug={environmentSlug}
-                        redirectUrl={redirectUrlWithContext}
+                        redirectUrl={
+                          nextDirectRedirect ??
+                          (fromMarketplaceContext ? redirectUrlWithContext : baseSettingsPath)
+                        }
                         preventDismiss={fromMarketplaceContext}
                       />
                       <span className="flex items-center gap-1 text-xs text-text-dimmed">
@@ -1159,26 +1182,7 @@ export function VercelOnboardingModal({
                     >
                       Complete
                     </Button>
-                  ) : (
-                    <Button
-                      variant="tertiary/medium"
-                      onClick={() => {
-                        trackOnboarding("vercel onboarding github skipped");
-                        setState("completed");
-                        if (fromMarketplaceContext && nextUrl) {
-                          const validUrl = safeRedirectUrl(nextUrl);
-                          if (validUrl) {
-                            window.location.href = validUrl;
-                          }
-                        }
-                      }}
-                    >
-                      Skip for now
-                    </Button>
-                  )
-                }
-                cancelButton={
-                  isGitHubConnectedForOnboarding && fromMarketplaceContext && nextUrl ? (
+                  ) : !fromMarketplaceContext ? (
                     <Button
                       variant="tertiary/medium"
                       onClick={() => {

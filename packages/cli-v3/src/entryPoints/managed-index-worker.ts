@@ -132,6 +132,20 @@ if (typeof config.maxDuration === "number") {
   });
 }
 
+// If the config has a TTL, we need to apply it to all tasks that don't have a TTL
+if (config.ttl !== undefined) {
+  tasks = tasks.map((task) => {
+    if (task.ttl === undefined) {
+      return {
+        ...task,
+        ttl: config.ttl,
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 // If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
 if (typeof config.machine === "string") {
   tasks = tasks.map((task) => {

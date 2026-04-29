@@ -1,7 +1,8 @@
-import { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import { CreateBackgroundWorkerRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import type { BackgroundWorker, Prisma } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
@@ -129,6 +130,19 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
           deploymentId: deployment.id,
         },
       });
+
+      const [syncIdError] = await tryCatch(
+        syncTaskIdentifiers(
+          environment.id,
+          environment.projectId,
+          backgroundWorker.id,
+          body.metadata.tasks.map((t) => ({ id: t.id, triggerSource: t.triggerSource }))
+        )
+      );
+
+      if (syncIdError) {
+        logger.error("Error syncing task identifiers", { error: syncIdError });
+      }
 
       try {
         //send a notification that a new worker has been created

@@ -1,10 +1,11 @@
 import { PodCleaner } from "./podCleaner.js";
-import { K8sApi, createK8sApi } from "../clients/kubernetes.js";
+import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
 import { setTimeout } from "timers/promises";
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { Registry } from "prom-client";
 
-describe("PodCleaner Integration Tests", () => {
+// These tests require live K8s cluster credentials - skip by default
+describe.skipIf(!process.env.K8S_INTEGRATION_TESTS)("PodCleaner Integration Tests", () => {
   const k8s = createK8sApi();
   const namespace = "integration-test";
   const register = new Registry();

@@ -10,11 +10,13 @@ export type SearchInputProps = {
   placeholder?: string;
   /** Additional URL params to reset when searching or clearing (e.g. pagination). Defaults to ["cursor", "direction"]. */
   resetParams?: string[];
+  autoFocus?: boolean;
 };
 
 export function SearchInput({
   placeholder = "Search logs…",
   resetParams = ["cursor", "direction"],
+  autoFocus,
 }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +73,7 @@ export function SearchInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           fullWidth
+          autoFocus={autoFocus}
           className={cn("", isFocused && "placeholder:text-text-dimmed/70")}
           onKeyDown={(e) => {
             if (e.key === "Enter") {

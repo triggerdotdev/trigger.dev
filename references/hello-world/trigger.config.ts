@@ -11,6 +11,7 @@ export default defineConfig({
   },
   logLevel: "debug",
   maxDuration: 3600,
+  ttl: "1h",
   retries: {
     enabledInDev: true,
     default: {

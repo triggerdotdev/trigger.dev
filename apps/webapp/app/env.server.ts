@@ -300,6 +300,7 @@ const EnvironmentSchema = z
     DEPLOY_REGISTRY_ECR_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
     DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z.string().optional(),
     DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z.string().optional(),
+    DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY: z.string().optional(), // raw IAM policy JSON applied to every repo created by the webapp
 
     // Deployment registry (v4) - falls back to v3 registry if not specified
     V4_DEPLOY_REGISTRY_HOST: z
@@ -332,6 +333,15 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
+    V4_DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
+
+    // Compute gateway (template creation during deploy finalize)
+    COMPUTE_GATEWAY_URL: z.string().optional(),
+    COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
+    COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_TIMEOUT_MS: z.coerce
@@ -343,11 +353,24 @@ const EnvironmentSchema = z
       .int()
       .default(60 * 1000 * 15), // 15 minutes
 
+    // When enabled, reject deploys made by v3 CLI versions (i.e. payloads that
+    // omit the `type` field). v4 CLI versions always send `type` ("MANAGED" or "V1"),
+    // so they are unaffected. Defaults to off so detection can run in
+    // log-only mode before enforcement.
+    DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
+
     OBJECT_STORE_BASE_URL: z.string().optional(),
+    OBJECT_STORE_BUCKET: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
     OBJECT_STORE_SECRET_ACCESS_KEY: z.string().optional(),
     OBJECT_STORE_REGION: z.string().optional(),
     OBJECT_STORE_SERVICE: z.string().default("s3"),
+
+    // Protocol to use for new uploads (e.g., "s3", "r2"). Data without protocol uses default provider above.
+    // If specified, you must configure the corresponding provider using OBJECT_STORE_{PROTOCOL}_* env vars.
+    // Example: OBJECT_STORE_DEFAULT_PROTOCOL=s3 requires OBJECT_STORE_S3_BASE_URL, OBJECT_STORE_S3_ACCESS_KEY_ID, etc.
+    // Enables zero-downtime migration between providers (old data keeps working, new data uses new provider).
+    OBJECT_STORE_DEFAULT_PROTOCOL: z.string().regex(/^[a-z0-9]+$/).optional(),
 
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
@@ -420,6 +443,7 @@ const EnvironmentSchema = z
     INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
     INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
     INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
+    DISABLE_HTTP_INSTRUMENTATION: BoolEnv.default(false),
 
     INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
@@ -647,6 +671,21 @@ const EnvironmentSchema = z
       .int()
       .default(60_000 * 60), // 1 hour
 
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
+     * in the debounce system. Quantization collapses concurrent triggers on the
+     * same hot debounce key onto the same target time so the unlocked fast-path
+     * skip is effective. Set to 0 to disable. Default: 1000ms (1s).
+     */
+    RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS: z.coerce.number().int().min(0).default(1000),
+
+    /**
+     * Whether the unlocked fast-path skip is enabled in the debounce system.
+     * Acts as a kill switch in case the fast-path needs to be disabled in
+     * production without a redeploy. Default: "1" (enabled).
+     */
+    RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED: z.string().default("1"),
+
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
       .optional()
@@ -817,6 +856,8 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
+    RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
+    RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ: z.string().default("0"),
 
     /** How long should the presence ttl last */
     DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -1201,6 +1242,38 @@ const EnvironmentSchema = z
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
     RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
+    // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
+    // with the runs replicator for leader locking but has its own slot and
+    // publication so the two consume independently.
+    SESSION_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+    SESSION_REPLICATION_ENABLED: z.string().default("0"),
+    SESSION_REPLICATION_SLOT_NAME: z.string().default("sessions_to_clickhouse_v1"),
+    SESSION_REPLICATION_PUBLICATION_NAME: z
+      .string()
+      .default("sessions_to_clickhouse_v1_publication"),
+    SESSION_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
+    SESSION_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    SESSION_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    SESSION_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    SESSION_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
+    SESSION_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
+    SESSION_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
+    SESSION_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+    SESSION_REPLICATION_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    SESSION_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    SESSION_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("0"),
+    SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    SESSION_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    SESSION_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
+    SESSION_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+    SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+    SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
     CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
@@ -1224,9 +1297,6 @@ const EnvironmentSchema = z
 
     // AI features (Prompts, Models, AI Metrics sidebar section)
     AI_FEATURES_ENABLED: z.string().default("0"),
-
-    // AI Models feature (Models sidebar item within AI section)
-    AI_MODELS_ENABLED: z.string().default("0"),
 
     // Logs page ClickHouse URL (for logs queries)
     LOGS_CLICKHOUSE_URL: z
@@ -1385,6 +1455,10 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
+
+    // Private connections
+    PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
+    PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema);

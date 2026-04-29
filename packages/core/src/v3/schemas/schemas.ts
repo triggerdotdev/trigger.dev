@@ -189,6 +189,7 @@ const taskMetadata = {
   triggerSource: z.string().optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
+  ttl: z.string().or(z.number().nonnegative().int()).optional(),
   payloadSchema: z.unknown().optional(),
 };
 
@@ -291,6 +292,7 @@ export const TaskRunExecutionLazyAttemptPayload = z.object({
   attemptCount: z.number().optional(),
   messageId: z.string(),
   isTest: z.boolean(),
+  isReplay: z.boolean().default(false),
   traceContext: z.record(z.unknown()),
   environment: z.record(z.string()).optional(),
   metrics: TaskRunExecutionMetrics.optional(),

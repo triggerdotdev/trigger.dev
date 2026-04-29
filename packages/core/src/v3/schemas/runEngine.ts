@@ -177,7 +177,8 @@ export type CompleteRunAttemptResult = z.infer<typeof CompleteRunAttemptResult>;
 export const CheckpointTypeEnum = {
   DOCKER: "DOCKER",
   KUBERNETES: "KUBERNETES",
-} satisfies Enum<DB_TYPES.CheckpointType>;
+  COMPUTE: "COMPUTE",
+} satisfies Enum<DB_TYPES.TaskRunCheckpointType>;
 export type CheckpointTypeEnum = (typeof CheckpointTypeEnum)[keyof typeof CheckpointTypeEnum];
 
 export const CheckpointType = z.enum(Object.values(CheckpointTypeEnum) as [CheckpointTypeEnum]);
@@ -276,6 +277,7 @@ export const DequeuedMessage = z.object({
     id: z.string(),
     friendlyId: z.string(),
     isTest: z.boolean(),
+    isReplay: z.boolean().default(false),
     machine: MachinePreset,
     attemptNumber: z.number(),
     masterQueue: z.string(),
@@ -288,6 +290,7 @@ export const DequeuedMessage = z.object({
   }),
   organization: z.object({
     id: z.string(),
+    hasPrivateLink: z.boolean().optional(),
   }),
   project: z.object({
     id: z.string(),

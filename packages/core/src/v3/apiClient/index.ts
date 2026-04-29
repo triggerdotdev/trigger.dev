@@ -559,9 +559,10 @@ export class ApiClient {
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v2/packets/${encoded}`,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -571,9 +572,10 @@ export class ApiClient {
   }
 
   getPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v1/packets/${encoded}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),

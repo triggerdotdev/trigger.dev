@@ -341,7 +341,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
       disabled: isDisabled || !props.shortcut,
     });
 
-    return (
+    const buttonElement = (
       <button
         className={cn("group/button outline-none focus-custom", props.fullWidth ? "w-full" : "")}
         type={type}
@@ -353,9 +353,30 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         form={props.form}
         autoFocus={autoFocus}
       >
-        <ButtonContent {...props} />
+        <ButtonContent {...props} tooltip={undefined} />
       </button>
     );
+
+    if (props.tooltip) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={isDisabled ? "cursor-default" : undefined}>
+                {buttonElement}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs text-text-bright">
+              {props.tooltip} {props.shortcut && !props.hideShortcutKey && (
+                <ShortcutKey shortcut={props.shortcut} variant="medium" className="ml-1" />
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return buttonElement;
   }
 );
 

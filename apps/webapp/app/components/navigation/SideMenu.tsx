@@ -53,6 +53,7 @@ import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
+import { NotificationPanel } from "./NotificationPanel";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -463,10 +464,7 @@ export function SideMenu({
                 title="AI"
                 isSideMenuCollapsed={isCollapsed}
                 itemSpacingClassName="space-y-0"
-                initialCollapsed={getSectionCollapsed(
-                  user.dashboardPreferences.sideMenu,
-                  "ai"
-                )}
+                initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
                 onCollapseToggle={handleSectionToggle("ai")}
               >
                 <SideMenuItem
@@ -479,7 +477,7 @@ export function SideMenu({
                   data-action="prompts"
                   isCollapsed={isCollapsed}
                 />
-                {(user.admin || user.isImpersonating || featureFlags.hasAiModelsAccess) && (
+                {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
                   <SideMenuItem
                     name="Models"
                     icon={CubeIcon}
@@ -530,8 +528,8 @@ export function SideMenu({
                   <SideMenuItem
                     name="Errors"
                     icon={IconBugFilled}
-                    activeIconColor="text-amber-500"
-                    inactiveIconColor="text-amber-500"
+                    activeIconColor="text-errors"
+                    inactiveIconColor="text-errors"
                     to={v3ErrorsPath(organization, project, environment)}
                     data-action="errors"
                     isCollapsed={isCollapsed}
@@ -701,6 +699,12 @@ export function SideMenu({
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
           />
+          <NotificationPanel
+            isCollapsed={isCollapsed}
+            hasIncident={incidentStatus.hasIncident}
+            organizationId={organization.id}
+            projectId={project.id}
+          />
           <motion.div
             layout
             transition={{ duration: 0.2, ease: "easeInOut" }}
@@ -709,7 +713,7 @@ export function SideMenu({
               isCollapsed && "items-center"
             )}
           >
-            <HelpAndAI isCollapsed={isCollapsed} />
+            <HelpAndAI isCollapsed={isCollapsed} organizationId={organization.id} projectId={project.id} />
             {isFreeUser && (
               <CollapsibleHeight isCollapsed={isCollapsed}>
                 <FreePlanUsage
@@ -999,6 +1003,7 @@ function ProjectSelector({
             title="Logout"
             icon={ArrowRightOnRectangleIcon}
             leadingIconClassName="text-text-dimmed"
+            danger
           />
         </div>
       </PopoverContent>
@@ -1158,7 +1163,7 @@ function CollapsibleHeight({
   );
 }
 
-function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
+function HelpAndAI({ isCollapsed, organizationId, projectId }: { isCollapsed: boolean; organizationId: string; projectId: string }) {
   return (
     <LayoutGroup>
       <div
@@ -1168,7 +1173,7 @@ function HelpAndAI({ isCollapsed }: { isCollapsed: boolean }) {
         )}
       >
         <ShortcutsAutoOpen />
-        <HelpAndFeedback isCollapsed={isCollapsed} />
+        <HelpAndFeedback isCollapsed={isCollapsed} organizationId={organizationId} projectId={projectId} />
         <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>

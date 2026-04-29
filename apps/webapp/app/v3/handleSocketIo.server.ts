@@ -489,7 +489,10 @@ function createWorkerNamespace({
 
       next();
     } catch (error) {
-      logger.error("Worker authentication failed", {
+      // System handles auth failure by disconnecting the socket — not an
+      // error. Most volume is V1 /dev-worker reconnect churn from outdated
+      // CLIs anyway.
+      logger.warn("Worker authentication failed", {
         namespace,
         error: error instanceof Error ? error.message : error,
       });

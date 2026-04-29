@@ -1,6 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -46,7 +47,12 @@ export const loader = createLoaderApiRoute(
       run.id,
       apiVersion,
       authentication.realtime,
-      request.headers.get("x-trigger-electric-version") ?? undefined
+      request.headers.get("x-trigger-electric-version") ?? undefined,
+      // Propagate abort on client disconnect so the upstream Electric long-poll
+      // fetch is cancelled too. Without this, undici buffers from the unconsumed
+      // upstream response body accumulate until Electric's poll timeout, causing
+      // steady RSS growth on api (see docs/runbooks for the H1 isolation test).
+      getRequestAbortSignal()
     );
   }
 );

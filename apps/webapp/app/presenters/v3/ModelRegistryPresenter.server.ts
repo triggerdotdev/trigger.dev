@@ -64,14 +64,12 @@ export type ModelCatalogItem = {
   description: string | null;
   contextWindow: number | null;
   maxOutputTokens: number | null;
-  capabilities: string[];
+  /** Combined capabilities (from DB) and boolean feature flags (from catalog) as slug strings. */
+  features: string[];
   inputPrice: number | null;
   outputPrice: number | null;
   /** When the model was publicly released (from startDate on LlmModel). */
   releaseDate: string | null;
-  supportsStructuredOutput: boolean;
-  supportsParallelToolCalls: boolean;
-  supportsStreamingToolCalls: boolean;
   /** Dated variants of this model (only populated on base models). */
   variants: ModelVariant[];
 };
@@ -97,6 +95,17 @@ export type ModelDetail = ModelCatalogItem & {
     prices: Record<string, number>;
   }>;
 };
+
+function buildFeatures(
+  capabilities: string[],
+  catalogEntry: { supportsStructuredOutput: boolean; supportsParallelToolCalls: boolean; supportsStreamingToolCalls: boolean } | undefined
+): string[] {
+  const features = new Set(capabilities);
+  if (catalogEntry?.supportsStructuredOutput) features.add("structured_output");
+  if (catalogEntry?.supportsParallelToolCalls) features.add("parallel_tool_calls");
+  if (catalogEntry?.supportsStreamingToolCalls) features.add("streaming_tool_calls");
+  return Array.from(features);
+}
 
 export type ModelMetricsPoint = {
   minute: string;
@@ -214,13 +223,10 @@ export class ModelRegistryPresenter extends BasePresenter {
         description: m.description,
         contextWindow: m.contextWindow,
         maxOutputTokens: m.maxOutputTokens,
-        capabilities: m.capabilities,
+        features: buildFeatures(m.capabilities, catalogEntry),
         inputPrice: inputPrice ? Number(inputPrice.price) : null,
         outputPrice: outputPrice ? Number(outputPrice.price) : null,
         releaseDate: m.startDate ? m.startDate.toISOString().split("T")[0] : null,
-        supportsStructuredOutput: catalogEntry?.supportsStructuredOutput ?? false,
-        supportsParallelToolCalls: catalogEntry?.supportsParallelToolCalls ?? false,
-        supportsStreamingToolCalls: catalogEntry?.supportsStreamingToolCalls ?? false,
         variants: [],
         _baseModelName: m.baseModelName,
       };
@@ -304,7 +310,7 @@ export class ModelRegistryPresenter extends BasePresenter {
 
   /** Get a single model with full pricing details. */
   async getModelDetail(friendlyId: string): Promise<ModelDetail | null> {
-    const model = await this._replica.llmModel.findUnique({
+    const model = await this._replica.llmModel.findFirst({
       where: { friendlyId },
       include: {
         pricingTiers: {
@@ -331,13 +337,10 @@ export class ModelRegistryPresenter extends BasePresenter {
       description: model.description,
       contextWindow: model.contextWindow,
       maxOutputTokens: model.maxOutputTokens,
-      capabilities: model.capabilities,
+      features: buildFeatures(model.capabilities, catalogEntry),
       inputPrice: inputPrice ? Number(inputPrice.price) : null,
       outputPrice: outputPrice ? Number(outputPrice.price) : null,
       releaseDate: model.startDate ? model.startDate.toISOString().split("T")[0] : null,
-      supportsStructuredOutput: catalogEntry?.supportsStructuredOutput ?? false,
-      supportsParallelToolCalls: catalogEntry?.supportsParallelToolCalls ?? false,
-      supportsStreamingToolCalls: catalogEntry?.supportsStreamingToolCalls ?? false,
       variants: [],
       matchPattern: model.matchPattern,
       source: model.source,

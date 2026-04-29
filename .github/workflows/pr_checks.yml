@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - "docs/**"
       - ".changeset/**"
+      - "hosting/**"
+      - ".github/workflows/helm-prerelease.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

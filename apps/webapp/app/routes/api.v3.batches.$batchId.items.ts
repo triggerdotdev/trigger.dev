@@ -104,10 +104,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return json({ error: error.message }, { status: 400 });
       }
 
-      return json(
-        { error: error.message },
-        { status: 500, headers: { "x-should-retry": "false" } }
-      );
+      return json({ error: error.message }, { status: 500 });
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });

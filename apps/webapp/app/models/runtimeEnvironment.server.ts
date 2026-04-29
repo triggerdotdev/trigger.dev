@@ -11,27 +11,48 @@ export async function findEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
-  const environment = await $replica.runtimeEnvironment.findFirst({
+  const include = {
+    project: true,
+    organization: true,
+    orgMember: true,
+    childEnvironments: branchName
+      ? {
+          where: {
+            branchName: sanitizeBranchName(branchName),
+            archivedAt: null,
+          },
+        }
+      : undefined,
+  } satisfies Prisma.RuntimeEnvironmentInclude;
+
+  let environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       apiKey,
     },
-    include: {
-      project: true,
-      organization: true,
-      orgMember: true,
-      childEnvironments: branchName
-        ? {
-            where: {
-              branchName: sanitizeBranchName(branchName),
-              archivedAt: null,
-            },
-          }
-        : undefined,
-    },
+    include,
   });
 
+  // Fall back to keys that were revoked within the grace window
+  if (!environment) {
+    const revokedApiKey = await $replica.revokedApiKey.findFirst({
+      where: {
+        apiKey,
+        expiresAt: { gt: new Date() },
+      },
+      include: {
+        runtimeEnvironment: { include },
+      },
+    });
+
+    environment = revokedApiKey?.runtimeEnvironment ?? null;
+  }
+
+  if (!environment) {
+    return null;
+  }
+
   //don't return deleted projects
-  if (environment?.project.deletedAt !== null) {
+  if (environment.project.deletedAt !== null) {
     return null;
   }
 
@@ -43,7 +64,7 @@ export async function findEnvironmentByApiKey(
       return null;
     }
 
-    const childEnvironment = environment?.childEnvironments.at(0);
+    const childEnvironment = environment.childEnvironments.at(0);
 
     if (childEnvironment) {
       return {
@@ -88,7 +109,10 @@ export async function findEnvironmentByPublicApiKey(
 
 export async function findEnvironmentById(
   id: string
-): Promise<(AuthenticatedEnvironment & { parentEnvironment: { apiKey: string } | null }) | null> {
+): Promise<
+  | (AuthenticatedEnvironment & { parentEnvironment: { id: string; apiKey: string } | null })
+  | null
+> {
   const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       id,
@@ -99,6 +123,7 @@ export async function findEnvironmentById(
       orgMember: true,
       parentEnvironment: {
         select: {
+          id: true,
           apiKey: true,
         },
       },

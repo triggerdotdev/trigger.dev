@@ -1,10 +1,12 @@
 import { Logger } from "@trigger.dev/core/logger";
-import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
+import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
+import { DeliverErrorGroupAlertService } from "./services/alerts/deliverErrorGroupAlert.server";
+import { ErrorAlertEvaluator } from "./services/alerts/errorAlertEvaluator.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 
@@ -55,6 +57,42 @@ function initializeWorker() {
         },
         logErrors: false,
       },
+      "v3.evaluateErrorAlerts": {
+        schema: z.object({
+          projectId: z.string(),
+          scheduledAt: z.number(),
+        }),
+        visibilityTimeoutMs: 60_000 * 5,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
+      "v3.deliverErrorGroupAlert": {
+        schema: z.object({
+          channelId: z.string(),
+          projectId: z.string(),
+          classification: z.enum(["new_issue", "regression", "unignored"]),
+          error: z.object({
+            fingerprint: z.string(),
+            environmentId: z.string(),
+            environmentSlug: z.string(),
+            environmentName: z.string(),
+            taskIdentifier: z.string(),
+            errorType: z.string(),
+            errorMessage: z.string(),
+            sampleStackTrace: z.string(),
+            firstSeen: z.string(),
+            lastSeen: z.string(),
+            occurrenceCount: z.number(),
+          }),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
     },
     concurrency: {
       workers: env.ALERTS_WORKER_CONCURRENCY_WORKERS,
@@ -79,6 +117,14 @@ function initializeWorker() {
       "v3.performTaskRunAlerts": async ({ payload }) => {
         const service = new PerformTaskRunAlertsService();
         await service.call(payload.runId);
+      },
+      "v3.evaluateErrorAlerts": async ({ payload }) => {
+        const evaluator = new ErrorAlertEvaluator();
+        await evaluator.evaluate(payload.projectId, payload.scheduledAt);
+      },
+      "v3.deliverErrorGroupAlert": async ({ payload }) => {
+        const service = new DeliverErrorGroupAlertService();
+        await service.call(payload);
       },
     },
   });

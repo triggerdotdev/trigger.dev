@@ -1,6 +1,7 @@
 import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -129,7 +130,7 @@ export const loader = createLoaderApiRoute(
       run.realtimeStreamsVersion
     );
 
-    return realtimeStream.streamResponse(request, run.friendlyId, params.streamId, request.signal, {
+    return realtimeStream.streamResponse(request, run.friendlyId, params.streamId, getRequestAbortSignal(), {
       lastEventId,
       timeoutInSeconds,
     });

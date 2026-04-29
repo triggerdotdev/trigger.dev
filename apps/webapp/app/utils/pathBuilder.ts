@@ -584,6 +584,14 @@ export function v3ErrorsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/errors`;
 }
 
+export function v3ErrorsConnectToSlackPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3ErrorsPath(organization, project, environment)}/connect-to-slack`;
+}
+
 export function v3ErrorPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -661,6 +669,14 @@ export function v3BillingPath(organization: OrgForPath, message?: string) {
 
 export function v3BillingAlertsPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/billing-alerts`;
+}
+
+export function v3PrivateConnectionsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/private-connections`;
+}
+
+export function v3NewPrivateConnectionPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/private-connections/new`;
 }
 
 export function v3StripePortalPath(organization: OrgForPath) {

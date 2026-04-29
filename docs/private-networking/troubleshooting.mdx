@@ -1,0 +1,45 @@
+---
+title: "Troubleshooting private networking"
+sidebarTitle: "Troubleshooting"
+description: "Common problems when setting up an AWS PrivateLink connection to Trigger.dev, and how to resolve them."
+---
+
+This page collects common issues when adding a private connection. If your problem isn't listed here, [get in touch](/community).
+
+## "Private link not found" in the setup wizard
+
+If the setup wizard errors out with **Private link not found** when you submit the VPC Endpoint Service name, it almost always means your endpoint service has not been shared with Trigger.dev's AWS account.
+
+Trigger.dev cannot provision a VPC Endpoint until your endpoint service explicitly authorizes our AWS account as a consumer. Until that happens, the service name is invisible to us — even though the name itself is correct.
+
+### How to fix it
+
+<Steps>
+  <Step title="Open your endpoint service in the AWS console">
+    Go to **VPC → Endpoint services** in the AWS region where you created the service, and select
+    your service.
+  </Step>
+  <Step title="Open the Allow principals tab">
+    Click the **Allow principals** tab and check whether Trigger.dev's AWS account is listed.
+  </Step>
+  <Step title="Add Trigger.dev's account if it's missing">
+    Click **Allow principals** and add an entry in this format, replacing `<account-id>` with the
+    Trigger.dev AWS account ID shown on the **Add connection** page in your dashboard:
+
+    ```text
+    arn:aws:iam::<account-id>:root
+    ```
+
+    <Warning>
+      Always copy the account ID from your Trigger.dev dashboard. The correct value differs between
+      environments — don't reuse an ID from another source.
+    </Warning>
+
+  </Step>
+  <Step title="Retry in the Trigger.dev dashboard">
+    Once the principal is allow-listed, return to the **Add connection** page in Trigger.dev and
+    submit the form again. The wizard should now find your endpoint service and start provisioning.
+  </Step>
+</Steps>
+
+For full setup instructions including this step, see [Setting up PrivateLink in the AWS Console](/private-networking/aws-console-setup).

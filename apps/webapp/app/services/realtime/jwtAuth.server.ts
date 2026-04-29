@@ -1,5 +1,6 @@
 import { json } from "@remix-run/server-runtime";
-import { validateJWT } from "@trigger.dev/core/v3/jwt";
+import { validateJWT, type ValidationResult } from "@trigger.dev/core/v3/jwt";
+import { $replica } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { AuthenticatedEnvironment } from "../apiAuth.server";
 import { logger } from "../logger.server";
@@ -34,10 +35,22 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     return { ok: false, error: "Invalid Public Access Token, environment not found." };
   }
 
-  const result = await validateJWT(
+  let result = await validateJWT(
     token,
     environment.parentEnvironment?.apiKey ?? environment.apiKey
   );
+
+  // PATs are signed with the env's apiKey at mint time. If the env's apiKey
+  // has since been rotated, signature verification fails against the current
+  // key — fall back to any RevokedApiKey rows still in their grace window.
+  // Only run this query on the failure path so the success path is unchanged.
+  if (!result.ok) {
+    result = await validateAgainstRevokedApiKeys(
+      token,
+      environment.parentEnvironment?.id ?? environment.id,
+      result
+    );
+  }
 
   if (!result.ok) {
     switch (result.code) {
@@ -69,6 +82,29 @@ export async function validatePublicJwtKey(token: string): Promise<ValidatePubli
     environment,
     claims: result.payload,
   };
+}
+
+async function validateAgainstRevokedApiKeys(
+  token: string,
+  signingEnvironmentId: string,
+  primaryResult: ValidationResult
+): Promise<ValidationResult> {
+  const revokedApiKeys = await $replica.revokedApiKey.findMany({
+    where: {
+      runtimeEnvironmentId: signingEnvironmentId,
+      expiresAt: { gt: new Date() },
+    },
+    select: { apiKey: true },
+  });
+
+  for (const { apiKey } of revokedApiKeys) {
+    const fallbackResult = await validateJWT(token, apiKey);
+    if (fallbackResult.ok) {
+      return fallbackResult;
+    }
+  }
+
+  return primaryResult;
 }
 
 export function isPublicJWT(token: string): boolean {

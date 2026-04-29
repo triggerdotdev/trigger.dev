@@ -27,7 +27,8 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.author_association != 'MEMBER' &&
       github.event.pull_request.author_association != 'OWNER' &&
-      github.event.pull_request.author_association != 'COLLABORATOR'
+      github.event.pull_request.author_association != 'COLLABORATOR' &&
+      github.event.pull_request.user.login != 'devin-ai-integration[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Close non-draft PR

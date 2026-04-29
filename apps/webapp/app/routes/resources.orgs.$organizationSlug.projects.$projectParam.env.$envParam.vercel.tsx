@@ -98,6 +98,7 @@ const UpdateVercelConfigFormSchema = z.object({
   pullEnvVarsBeforeBuild: envSlugArrayField,
   discoverEnvVars: envSlugArrayField,
   vercelStagingEnvironment: z.string().nullable().optional(),
+  autoPromote: z.string().optional().transform((val) => val !== "false"),
 });
 
 const DisconnectVercelFormSchema = z.object({
@@ -241,6 +242,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         pullEnvVarsBeforeBuild,
         discoverEnvVars,
         vercelStagingEnvironment,
+        autoPromote,
       } = submission.value;
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
@@ -256,6 +258,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         pullEnvVarsBeforeBuild,
         discoverEnvVars,
         vercelStagingEnvironment: parsedStagingEnv,
+        autoPromote,
       });
 
       if (result) {
@@ -293,6 +296,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         syncEnvVarsMapping,
         next,
         skipRedirect,
+        origin,
       } = submission.value;
 
       const parsedStagingEnv = parseVercelStagingEnvironment(vercelStagingEnvironment);
@@ -306,6 +310,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         atomicBuilds,
         discoverEnvVars,
         syncEnvVarsMapping: parsedSyncEnvVarsMapping,
+        origin: origin === "marketplace" ? "marketplace" : "dashboard",
       });
 
       if (result) {
@@ -591,12 +596,14 @@ function ConnectedVercelProjectForm({
     discoverEnvVars: connectedProject.integrationData.config.discoverEnvVars ?? [],
     vercelStagingEnvironment:
       connectedProject.integrationData.config.vercelStagingEnvironment ?? null,
+    autoPromote: connectedProject.integrationData.config.autoPromote ?? true,
   });
 
   const originalAtomicBuilds = connectedProject.integrationData.config.atomicBuilds ?? [];
   const originalPullEnvVars = connectedProject.integrationData.config.pullEnvVarsBeforeBuild ?? [];
   const originalDiscoverEnvVars = connectedProject.integrationData.config.discoverEnvVars ?? [];
   const originalStagingEnv = connectedProject.integrationData.config.vercelStagingEnvironment ?? null;
+  const originalAutoPromote = connectedProject.integrationData.config.autoPromote ?? true;
 
   useEffect(() => {
     const atomicBuildsChanged =
@@ -609,9 +616,23 @@ function ConnectedVercelProjectForm({
       JSON.stringify([...configValues.discoverEnvVars].sort()) !==
       JSON.stringify([...originalDiscoverEnvVars].sort());
     const stagingEnvChanged = configValues.vercelStagingEnvironment?.environmentId !== originalStagingEnv?.environmentId;
+    const autoPromoteChanged = configValues.autoPromote !== originalAutoPromote;
 
-    setHasConfigChanges(atomicBuildsChanged || pullEnvVarsChanged || discoverEnvVarsChanged || stagingEnvChanged);
-  }, [configValues, originalAtomicBuilds, originalPullEnvVars, originalDiscoverEnvVars, originalStagingEnv]);
+    setHasConfigChanges(
+      atomicBuildsChanged ||
+        pullEnvVarsChanged ||
+        discoverEnvVarsChanged ||
+        stagingEnvChanged ||
+        autoPromoteChanged
+    );
+  }, [
+    configValues,
+    originalAtomicBuilds,
+    originalPullEnvVars,
+    originalDiscoverEnvVars,
+    originalStagingEnv,
+    originalAutoPromote,
+  ]);
 
   const [configForm, fields] = useForm({
     id: "update-vercel-config",
@@ -716,6 +737,11 @@ function ConnectedVercelProjectForm({
           name="vercelStagingEnvironment"
           value={configValues.vercelStagingEnvironment ? JSON.stringify(configValues.vercelStagingEnvironment) : ""}
         />
+        <input
+          type="hidden"
+          name="autoPromote"
+          value={String(configValues.autoPromote)}
+        />
 
         <Fieldset>
           <InputGroup fullWidth>
@@ -789,6 +815,11 @@ function ConnectedVercelProjectForm({
                 }
                 envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/environment-variables`}
                 disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
+                autoPromote={configValues.autoPromote}
+                onAutoPromoteChange={(value) =>
+                  setConfigValues((prev) => ({ ...prev, autoPromote: value }))
+                }
+                hideSectionToggles
               />
 
               {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}
@@ -873,12 +904,6 @@ function VercelSettingsPanel({
       setHasFetched(true);
     }
   }, [organizationSlug, projectSlug, environmentSlug, data?.authInvalid, hasError, data, hasFetched]);
-
-  useEffect(() => {
-    if (hasFetched && fetcher.state === "idle" && fetcher.data === undefined && !hasError) {
-      setHasError(true);
-    }
-  }, [fetcher.state, fetcher.data, hasError, hasFetched]);
 
   if (hasError) {
     return (

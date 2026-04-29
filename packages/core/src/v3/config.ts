@@ -177,6 +177,25 @@ export type TriggerConfig = {
   maxDuration: number;
 
   /**
+   * Set a default time-to-live (TTL) for all task runs in the project. If a run is not executed within this time, it will be removed from the queue and never execute.
+   *
+   * This can be a string like "1h" (1 hour), "30m" (30 minutes), "1d" (1 day), or a number of seconds.
+   *
+   * You can override this on a per-task basis by setting the `ttl` option on the task definition, or per-trigger by setting the `ttl` option when triggering.
+   *
+   * @example
+   *
+   * ```ts
+   * export default defineConfig({
+   *   project: "my-project",
+   *   maxDuration: 3600,
+   *   ttl: "1h",
+   * });
+   * ```
+   */
+  ttl?: string | number;
+
+  /**
    * Enable console logging while running the dev CLI. This will print out logs from console.log, console.warn, and console.error. By default all logs are sent to the trigger.dev backend, and not logged to the console.
    */
   enableConsoleLogging?: boolean;

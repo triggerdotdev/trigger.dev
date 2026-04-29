@@ -361,33 +361,35 @@ function formatDateTimeAccurate(
 type RelativeDateTimeProps = {
   date: Date | string;
   timeZone?: string;
+  capitalize?: boolean;
 };
 
-function getRelativeText(date: Date): string {
+function getRelativeText(date: Date, capitalize = true): string {
   const text = formatDistanceToNow(date, { addSuffix: true });
+  if (!capitalize) return text;
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export const RelativeDateTime = ({ date, timeZone }: RelativeDateTimeProps) => {
+export const RelativeDateTime = ({ date, timeZone, capitalize = true }: RelativeDateTimeProps) => {
   const locales = useLocales();
   const userTimeZone = useUserTimeZone();
 
   const realDate = useMemo(() => (typeof date === "string" ? new Date(date) : date), [date]);
 
-  const [relativeText, setRelativeText] = useState(() => getRelativeText(realDate));
+  const [relativeText, setRelativeText] = useState(() => getRelativeText(realDate, capitalize));
 
   // Every 60s refresh
   useEffect(() => {
     const interval = setInterval(() => {
-      setRelativeText(getRelativeText(realDate));
+      setRelativeText(getRelativeText(realDate, capitalize));
     }, 60_000);
     return () => clearInterval(interval);
-  }, [realDate]);
+  }, [realDate, capitalize]);
 
   // On first render
   useEffect(() => {
-    setRelativeText(getRelativeText(realDate));
-  }, [realDate]);
+    setRelativeText(getRelativeText(realDate, capitalize));
+  }, [realDate, capitalize]);
 
   return (
     <SimpleTooltip

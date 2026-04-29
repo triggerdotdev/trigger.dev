@@ -8,7 +8,7 @@ import { matchSorter } from "match-sorter";
  *
  * @param params - The parameters object
  * @param params.items - Array of objects to filter
- * @param params.keys - Array of object keys to perform the fuzzy search on
+ * @param params.keys - Array of object keys to perform the fuzzy search on (supports dot-notation for nested properties)
  * @returns An object containing:
  *   - filterText: The current filter text
  *   - setFilterText: Function to update the filter text
@@ -28,7 +28,7 @@ export function useFuzzyFilter<T extends Object>({
   keys,
 }: {
   items: T[];
-  keys: Extract<keyof T, string>[];
+  keys: (Extract<keyof T, string> | (string & {}))[];
 }) {
   const [filterText, setFilterText] = useState("");
 

@@ -128,6 +128,93 @@ List all preview branches in the project.
 - `"What preview branches exist?"`
 - `"Show me preview deployments"`
 
+## Profile Tools
+
+### whoami
+
+Show the current authenticated user, active CLI profile, email, and API URL.
+
+**Example usage:**
+- `"Who am I logged in as?"`
+- `"What profile am I using?"`
+
+### list_profiles
+
+List all configured CLI profiles and which one is currently active.
+
+**Example usage:**
+- `"What profiles do I have?"`
+- `"Show me my Trigger.dev profiles"`
+
+### switch_profile
+
+Switch the active CLI profile for this MCP session. This changes which Trigger.dev account and API URL are used for all subsequent tool calls.
+
+**Example usage:**
+- `"Switch to my production profile"`
+- `"Use the staging profile"`
+
+## Query and Analytics Tools
+
+### get_query_schema
+
+Get the schema for TRQL queries, including all available tables, their columns, data types, descriptions, and allowed values. Call this before using the query tool to understand what data is available.
+
+**Example usage:**
+- `"What tables and columns can I query?"`
+- `"Show me the query schema"`
+
+### query
+
+Execute a TRQL query against your Trigger.dev data. TRQL is a SQL-style query language for analyzing runs, metrics, and LLM usage.
+
+**Example usage:**
+- `"How many runs failed in the last 7 days?"`
+- `"Show me the top 10 most expensive tasks"`
+- `"Query the average execution duration by task"`
+
+### list_dashboards
+
+List available built-in dashboards with their widgets. Each dashboard contains pre-built queries for common metrics.
+
+**Example usage:**
+- `"What dashboards are available?"`
+- `"Show me the dashboard widgets"`
+
+### run_dashboard_query
+
+Execute a single widget query from a built-in dashboard. Use `list_dashboards` first to see available dashboards and widget IDs.
+
+**Example usage:**
+- `"Run the total runs widget from the overview dashboard"`
+- `"Show me the LLM cost over time from the AI dashboard"`
+
+## Dev Server Tools
+
+### start_dev_server
+
+Start the Trigger.dev dev server (`trigger dev`) in the background. Waits up to 30 seconds for the worker to be ready.
+
+**Example usage:**
+- `"Start the dev server"`
+- `"Run trigger dev"`
+
+### stop_dev_server
+
+Stop the running Trigger.dev dev server.
+
+**Example usage:**
+- `"Stop the dev server"`
+
+### dev_server_status
+
+Check the status of the dev server and view recent output. Shows whether it is stopped, starting, ready, or has errors.
+
+**Example usage:**
+- `"Is the dev server running?"`
+- `"Show me the dev server logs"`
+- `"Are there any build errors?"`
+
 <Callout type="warning">
-  The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag.
+  The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag. The `--readonly` flag hides deploy, trigger_task, and cancel_run.
 </Callout>

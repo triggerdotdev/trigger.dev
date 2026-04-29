@@ -19,6 +19,8 @@ function createRunEngine() {
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     treatProductionExecutionStallsAsOOM:
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
+    readReplicaSnapshotsSinceEnabled:
+      env.RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED === "1",
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
@@ -164,6 +166,7 @@ function createRunEngine() {
         return {
           isPaying: plan.v3Subscription.isPaying,
           type: plan.v3Subscription.plan.type,
+          hasPrivateLink: plan.v3Subscription.plan.limits.hasPrivateNetworking ?? false,
         };
       },
     },
@@ -211,6 +214,9 @@ function createRunEngine() {
     // Debounce configuration
     debounce: {
       maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
+      quantizeNewDelayUntilMs: env.RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS,
+      fastPathSkipEnabled: env.RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED === "1",
+      useReplicaForFastPathRead: env.RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ === "1",
     },
   });
 

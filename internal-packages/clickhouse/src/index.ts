@@ -29,6 +29,12 @@ import {
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
+  getSessionTagsQueryBuilder,
+  getSessionsCountQueryBuilder,
+  getSessionsQueryBuilder,
+  insertSessionsCompactArrays,
+} from "./sessions.js";
+import {
   getGlobalModelMetrics,
   getGlobalModelComparison,
   getPopularModels,
@@ -40,7 +46,11 @@ import {
   getErrorHourlyOccurrences,
   getErrorOccurrencesListQueryBuilder,
   createErrorOccurrencesQueryBuilder,
+  createErrorOccurrencesByVersionQueryBuilder,
   getErrorAffectedVersionsQueryBuilder,
+  getOccurrenceCountSinceQueryBuilder,
+  getActiveErrorsSinceQueryBuilder,
+  getOccurrenceCountsSinceQueryBuilder,
 } from "./errors.js";
 export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
@@ -53,6 +63,7 @@ export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
 export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
+export type * from "./sessions.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -64,6 +75,8 @@ export {
   getTaskRunField,
   getPayloadField,
 } from "./taskRuns.js";
+
+export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";
 
 // TSQL query execution
 export {
@@ -247,6 +260,15 @@ export class ClickHouse {
     };
   }
 
+  get sessions() {
+    return {
+      insertCompactArrays: insertSessionsCompactArrays(this.writer),
+      queryBuilder: getSessionsQueryBuilder(this.reader),
+      countQueryBuilder: getSessionsCountQueryBuilder(this.reader),
+      tagQueryBuilder: getSessionTagsQueryBuilder(this.reader),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
@@ -273,6 +295,11 @@ export class ClickHouse {
       occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
       createOccurrencesQueryBuilder: (intervalExpr: string) =>
         createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
+      createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
+      occurrenceCountSinceQueryBuilder: getOccurrenceCountSinceQueryBuilder(this.reader),
+      activeErrorsSinceQueryBuilder: getActiveErrorsSinceQueryBuilder(this.reader),
+      occurrenceCountsSinceQueryBuilder: getOccurrenceCountsSinceQueryBuilder(this.reader),
     };
   }
 }

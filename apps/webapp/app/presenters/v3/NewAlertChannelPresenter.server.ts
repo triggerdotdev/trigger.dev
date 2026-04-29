@@ -20,6 +20,7 @@ export class NewAlertChannelPresenter extends BasePresenter {
       where: {
         service: "SLACK",
         organizationId: project.organizationId,
+        deletedAt: null,
       },
       orderBy: {
         createdAt: "desc",

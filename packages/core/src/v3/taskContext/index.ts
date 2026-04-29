@@ -94,6 +94,7 @@ export class TaskContextAPI {
         [SemanticInternalAttributes.QUEUE_ID]: this.ctx.queue.id,
         [SemanticInternalAttributes.RUN_ID]: this.ctx.run.id,
         [SemanticInternalAttributes.RUN_IS_TEST]: this.ctx.run.isTest,
+        [SemanticInternalAttributes.RUN_IS_REPLAY]: this.ctx.run.isReplay,
         [SemanticInternalAttributes.BATCH_ID]: this.ctx.batch?.id,
         [SemanticInternalAttributes.IDEMPOTENCY_KEY]: this.ctx.run.idempotencyKey,
       };

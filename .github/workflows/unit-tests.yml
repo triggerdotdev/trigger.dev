@@ -10,6 +10,9 @@ jobs:
   webapp:
     uses: ./.github/workflows/unit-tests-webapp.yml
     secrets: inherit
+  e2e-webapp:
+    uses: ./.github/workflows/e2e-webapp.yml
+    secrets: inherit
   packages:
     uses: ./.github/workflows/unit-tests-packages.yml
     secrets: inherit

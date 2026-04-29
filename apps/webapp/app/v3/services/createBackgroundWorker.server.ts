@@ -6,13 +6,14 @@ import {
   QueueManifest,
   TaskResource,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
+import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
 import { $transaction, Prisma, PrismaClientOrTransaction } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   removeQueueConcurrencyLimits,
@@ -158,6 +159,23 @@ export class CreateBackgroundWorkerService extends BaseService {
         throw new ServiceValidationError("Error syncing declarative schedules");
       }
 
+      const [syncIdentifiersError] = await tryCatch(
+        syncTaskIdentifiers(
+          environment.id,
+          project.id,
+          backgroundWorker.id,
+          body.metadata.tasks.map((t) => ({ id: t.id, triggerSource: t.triggerSource }))
+        )
+      );
+
+      if (syncIdentifiersError) {
+        logger.error("Error syncing task identifiers", {
+          error: syncIdentifiersError,
+          backgroundWorker,
+          environment,
+        });
+      }
+
       const [updateConcurrencyLimitsError] = await tryCatch(
         updateEnvConcurrencyLimits(environment)
       );
@@ -286,6 +304,8 @@ async function createWorkerTask(
         triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
+        ttl:
+          typeof task.ttl === "number" ? stringifyDuration(task.ttl) ?? null : task.ttl ?? null,
         queueId: queue.id,
         payloadSchema: task.payloadSchema as any,
       },

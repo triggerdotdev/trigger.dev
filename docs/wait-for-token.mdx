@@ -8,7 +8,10 @@ Waitpoint tokens pause task runs until you complete the token. They're commonly 
 You can complete a token using the SDK or by making a POST request to the token's URL.
 
 <Note>
-  If you're waiting for data from an [input stream](/tasks/streams#input-streams), use [`inputStream.wait()`](/tasks/streams#wait--suspend-until-data-arrives) instead — it uses waitpoint tokens internally but provides a simpler API with full type safety from your stream definition.
+  If you're waiting for data from an [input stream](/tasks/streams#input-streams), use
+  [`inputStream.wait()`](/tasks/streams#wait--suspend-until-data-arrives) instead — it uses
+  waitpoint tokens internally but provides a simpler API with full type safety from your stream
+  definition.
 </Note>
 
 ## Usage
@@ -53,6 +56,52 @@ await wait.completeToken<ApprovalToken>(tokenId, {
   status: "approved",
 });
 ```
+
+## Completing from the browser
+
+The `publicAccessToken` returned by `wait.createToken()` is scoped to that specific waitpoint and intended for client-side completion. The completion endpoint has CORS enabled, so you can call it directly from client-side code without proxying through your backend.
+
+<Steps>
+  <Step title="Create the token in your backend">
+    ```typescript
+    import { wait } from "@trigger.dev/sdk";
+
+    const token = await wait.createToken({ timeout: "10m" });
+    // Pass token.id and token.publicAccessToken to your frontend
+    ```
+  </Step>
+  <Step title="Complete the token from the browser">
+    ```typescript
+    // tokenId and publicAccessToken passed from your backend
+    const tokenId = token.id;
+    const publicAccessToken = token.publicAccessToken;
+
+    const response = await fetch(
+      `https://api.trigger.dev/api/v1/waitpoints/tokens/${tokenId}/complete`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${publicAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ data: { status: "approved" } }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to complete token: ${response.statusText}`);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Completing via webhook callback
+
+<Warning>
+  The `token.url` webhook callback URL is designed for server-to-server use and does **not** have
+  CORS headers. Don't call it from the browser, use the [Completing from the
+  browser](#completing-from-the-browser) pattern instead.
+</Warning>
 
 Or you can make an HTTP POST request to the `url` it returns. This is an HTTP callback:
 

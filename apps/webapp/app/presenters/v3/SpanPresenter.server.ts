@@ -42,9 +42,7 @@ export type PromptSpanData = {
   config?: string;
 };
 
-function extractPromptSpanData(
-  properties: Record<string, unknown>
-): PromptSpanData | undefined {
+function extractPromptSpanData(properties: Record<string, unknown>): PromptSpanData | undefined {
   // Properties come as an unflattened nested object from ClickHouse,
   // e.g. { prompt: { slug: "...", version: 3, ... } }
   const prompt = properties.prompt;
@@ -592,10 +590,7 @@ export class SpanPresenter extends BasePresenter {
       triggeredRuns,
       aiData:
         span.properties && typeof span.properties === "object"
-          ? extractAISpanData(
-              span.properties as Record<string, unknown>,
-              span.duration / 1_000_000
-            )
+          ? extractAISpanData(span.properties as Record<string, unknown>, span.duration / 1_000_000)
           : undefined,
     };
 
@@ -739,10 +734,7 @@ export class SpanPresenter extends BasePresenter {
           "ai.streamObject",
         ];
 
-        if (
-          typeof span.message === "string" &&
-          AI_SUMMARY_MESSAGES.includes(span.message)
-        ) {
+        if (typeof span.message === "string" && AI_SUMMARY_MESSAGES.includes(span.message)) {
           const aiSummaryData = extractAISummarySpanData(
             span.properties as Record<string, unknown>,
             span.duration / 1_000_000
@@ -899,6 +891,7 @@ export class SpanPresenter extends BasePresenter {
         createdAt: run.createdAt,
         tags: run.runTags,
         isTest: run.isTest,
+        isReplay: !!run.replayedFromTaskRunFriendlyId,
         idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
         durationMs: run.usageDurationMs,

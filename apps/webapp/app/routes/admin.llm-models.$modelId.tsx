@@ -312,7 +312,7 @@ export default function AdminLlmModelDetailRoute() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Capabilities (comma-separated)</label>
+                  <label className="text-xs font-medium text-text-dimmed">Features (comma-separated)</label>
                   <Input
                     name="capabilities"
                     value={capabilities}

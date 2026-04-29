@@ -21,7 +21,12 @@ if (process.env.SENTRY_DSN) {
     serverName: process.env.SERVICE_NAME,
     environment: process.env.APP_ENV,
 
-    ignoreErrors: ["queryRoute() call aborted"],
+    // ServiceValidationError is thrown deliberately for user-facing
+    // validation failures (quota, parent run state, invalid input). Anchored
+    // regex matches the exception type exactly; subclasses
+    // (QueueSizeLimitExceededError, MetadataTooLargeError) override `.name`
+    // and stay visible.
+    ignoreErrors: ["queryRoute() call aborted", /^ServiceValidationError(?::|$)/],
     includeLocalVariables: false,
   });
 }

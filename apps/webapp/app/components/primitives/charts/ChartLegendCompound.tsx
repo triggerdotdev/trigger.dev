@@ -180,7 +180,7 @@ export function ChartLegendCompound({
         )}
       >
         <span className="font-medium">{currentTotalLabel}</span>
-        <span className="font-medium tabular-nums">
+        <span className="shrink-0 font-medium tabular-nums">
           {currentTotal != null ? (
             valueFormatter ? (
               valueFormatter(currentTotal)
@@ -253,7 +253,7 @@ export function ChartLegendCompound({
                 />
                 <span
                   className={cn(
-                    "self-start tabular-nums",
+                    "shrink-0 self-start tabular-nums",
                     isActive ? "text-text-bright" : "text-text-dimmed"
                   )}
                 >
@@ -350,7 +350,7 @@ function HoveredHiddenItemRow({ item, value, remainingCount, valueFormatter }: H
           <span className="text-text-bright">{item.label}</span>
           {remainingCount > 0 && <span className="text-text-dimmed">+{remainingCount} more</span>}
         </div>
-        <span className="tabular-nums text-text-bright">
+        <span className="shrink-0 tabular-nums text-text-bright">
           {value != null ? (
             valueFormatter ? (
               valueFormatter(value)

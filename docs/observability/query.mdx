@@ -7,6 +7,7 @@ description: "Query allows you to write custom queries against your data using T
 
 - `runs`: contains all task run data including status, timing, costs, and task output. Run metadata (key-value set in your task) is not available on the Query page.
 - `metrics`: contains metrics data for your runs including CPU, memory, and your custom metrics
+- `llm_metrics`: contains LLM/AI metrics including token usage, costs, latency, and model performance data from GenAI spans
 
 ### `metrics` table columns
 
@@ -14,7 +15,7 @@ description: "Query allows you to write custom queries against your data using T
 | :--- | :--- | :--- |
 | `metric_name` | string | Metric identifier (e.g., `process.cpu.utilization`) |
 | `metric_type` | string | `gauge`, `sum`, or `histogram` |
-| `value` | number | The observed value |
+| `metric_value` | number | The observed value |
 | `bucket_start` | datetime | 10-second aggregation bucket start time |
 | `run_id` | string | Associated run ID |
 | `task_identifier` | string | Task slug |
@@ -34,7 +35,7 @@ Use `prettyFormat()` to format metric values for display:
 ```sql
 SELECT
   timeBucket(),
-  prettyFormat(avg(value), 'bytes') AS avg_memory
+  prettyFormat(avg(metric_value), 'bytes') AS avg_memory_usage
 FROM metrics
 WHERE metric_name = 'process.memory.usage'
 GROUP BY timeBucket
@@ -225,7 +226,7 @@ Use `GROUP BY` with aggregate functions:
 ```sql
 SELECT
   task_identifier,
-  avg(value) AS avg_memory
+  avg(metric_value) AS avg_memory
 FROM metrics
 WHERE metric_name = 'process.memory.usage'
 GROUP BY task_identifier
@@ -529,7 +530,7 @@ Track process CPU utilization bucketed over time.
 ```sql
 SELECT
   timeBucket(),
-  avg(value) AS avg_cpu
+  avg(metric_value) AS avg_cpu
 FROM metrics
 WHERE metric_name = 'process.cpu.utilization'
 GROUP BY timeBucket
@@ -544,7 +545,7 @@ Average process memory usage per task identifier over the last 7 days.
 ```sql
 SELECT
   task_identifier,
-  avg(value) AS avg_memory
+  avg(metric_value) AS avg_memory
 FROM metrics
 WHERE metric_name = 'process.memory.usage'
 GROUP BY task_identifier

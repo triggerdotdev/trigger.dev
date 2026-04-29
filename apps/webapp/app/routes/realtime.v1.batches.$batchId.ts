@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
@@ -33,7 +34,8 @@ export const loader = createLoaderApiRoute(
       batchRun.id,
       apiVersion,
       authentication.realtime,
-      request.headers.get("x-trigger-electric-version") ?? undefined
+      request.headers.get("x-trigger-electric-version") ?? undefined,
+      getRequestAbortSignal()
     );
   }
 );

@@ -42,9 +42,11 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -255,7 +257,7 @@ export default function Page() {
                           <TableRow key={deployment.id} className="group" isSelected={isSelected}>
                             <TableCell to={path} isTabbableCell isSelected={isSelected}>
                               <div className="flex items-center gap-2">
-                                <Paragraph variant="extra-small">{deployment.shortCode}</Paragraph>
+                                <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{deployment.shortCode}</Paragraph>
                                 {deployment.label && (
                                   <Badge variant="extra-small">{titleCase(deployment.label)}</Badge>
                                 )}
@@ -388,14 +390,26 @@ export default function Page() {
             )}
           </ResizablePanel>
 
-          {deploymentParam && (
-            <>
-              <ResizableHandle id="deployments-handle" />
-              <ResizablePanel id="deployments-inspector" min="500px" max="800px">
-                <Outlet />
-              </ResizablePanel>
-            </>
-          )}
+          <ResizableHandle
+            id="deployments-handle"
+            className={collapsibleHandleClassName(!!deploymentParam)}
+          />
+          <ResizablePanel
+            id="deployments-inspector"
+            default="400px"
+            min="400px"
+            max="800px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!deploymentParam}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 400 }}>
+              <Outlet />
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
@@ -405,8 +419,8 @@ export default function Page() {
 export function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   return (
     <div className="flex items-center gap-1">
-      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4" />
-      <Paragraph variant="extra-small">{name}</Paragraph>
+      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4 group-hover/table-row:text-text-bright" />
+      <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{name}</Paragraph>
     </div>
   );
 }

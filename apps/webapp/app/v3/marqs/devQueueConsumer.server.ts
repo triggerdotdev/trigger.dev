@@ -519,6 +519,7 @@ export class DevQueueConsumer {
         runId: lockedTaskRun.friendlyId,
         messageId: lockedTaskRun.id,
         isTest: lockedTaskRun.isTest,
+        isReplay: !!lockedTaskRun.replayedFromTaskRunFriendlyId,
         metrics: [
           {
             name: "start",

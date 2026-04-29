@@ -5,7 +5,6 @@ import { Form, useNavigation } from "@remix-run/react";
 import { IconChartHistogram, IconEdit, IconTypography } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import { toast } from "sonner";
 import { z } from "zod";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { Feedback } from "~/components/Feedback";
@@ -33,10 +32,10 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
-import { ToastUI } from "~/components/primitives/Toast";
+import { useToast } from "~/components/primitives/Toast";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useDashboardEditor } from "~/hooks/useDashboardEditor";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -45,7 +44,7 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
@@ -94,7 +93,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     queryPresenter.call({
       organizationId: project.organizationId,
     }),
-    getAllTaskIdentifiers($replica, environment.id),
+    getTaskIdentifiers(environment.id),
   ]);
 
   // Admins and impersonating users can use EXPLAIN
@@ -110,9 +109,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     queryHistory: history,
     isAdmin,
     maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
-    possibleTasks: possibleTasks
-      .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
-      .sort((a, b) => a.slug.localeCompare(b.slug)),
+    possibleTasks,
     widgetCount,
   });
 };
@@ -206,7 +203,8 @@ export default function Page() {
   const widgetActionUrl = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboards/${friendlyId}/widgets`;
   const layoutActionUrl = widgetActionUrl;
 
-  // Handle sync errors by showing a toast
+  const toast = useToast();
+
   const handleSyncError = useCallback((error: Error, action: string) => {
     const actionMessages: Record<string, string> = {
       add: "Failed to add widget",
@@ -218,15 +216,8 @@ export default function Page() {
 
     const message = actionMessages[action] || "Failed to save changes";
 
-    toast.custom((t) => (
-      <ToastUI
-        variant="error"
-        message={`${message}. Your changes may not be saved.`}
-        t={t as string}
-        title="Sync Error"
-      />
-    ));
-  }, []);
+    toast.error(`${message}. Your changes may not be saved.`, { title: "Sync Error" });
+  }, [toast]);
 
   // Add title dialog state
   const [showAddTitleDialog, setShowAddTitleDialog] = useState(false);

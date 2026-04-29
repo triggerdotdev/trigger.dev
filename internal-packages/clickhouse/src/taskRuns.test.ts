@@ -82,6 +82,9 @@ describe("Task Runs V2", () => {
       ["bulk_action_group_id_1234", "bulk_action_group_id_1235"], // bulk_action_group_ids
       "", // worker_queue
       null, // max_duration_in_seconds
+      "", // trigger_source
+      "", // root_trigger_source
+      null, // is_warm_start
     ];
 
     const [insertError, insertResult] = await insert([taskRunData]);
@@ -210,6 +213,9 @@ describe("Task Runs V2", () => {
       [], // bulk_action_group_ids
       "", // worker_queue
       null, // max_duration_in_seconds
+      "", // trigger_source
+      "", // root_trigger_source
+      null, // is_warm_start
     ];
 
     const run2: TaskRunInsertArray = [
@@ -261,6 +267,9 @@ describe("Task Runs V2", () => {
       [], // bulk_action_group_ids
       "", // worker_queue
       null, // max_duration_in_seconds
+      "", // trigger_source
+      "", // root_trigger_source
+      null, // is_warm_start
     ];
 
     const [insertError, insertResult] = await insert([run1, run2]);
@@ -359,6 +368,9 @@ describe("Task Runs V2", () => {
         [], // bulk_action_group_ids
         "", // worker_queue
         null, // max_duration_in_seconds
+        "", // trigger_source
+        "", // root_trigger_source
+        null, // is_warm_start
       ];
 
       const [insertError, insertResult] = await insert([taskRun]);

@@ -1229,7 +1229,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined> {
-    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 60_000);
 
     const queryBuilder =
       this._version === "v2"

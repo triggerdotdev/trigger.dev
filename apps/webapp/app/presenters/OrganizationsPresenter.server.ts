@@ -10,7 +10,9 @@ import {
 } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
-import { flags, validatePartialFeatureFlags } from "~/v3/featureFlags.server";
+import { env } from "~/env.server";
+import { flags } from "~/v3/featureFlags.server";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -154,8 +156,13 @@ export class OrganizationsPresenter {
       },
     });
 
-    // Get global feature flags (no overrides or defaults)
-    const globalFlags = await flags();
+    // Get global feature flags with env-var-based defaults
+    const globalFlags = await flags({
+      defaultValues: {
+        hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+        hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
+      },
+    });
 
     return orgs.map((org) => {
       const orgFlagsResult = org.featureFlags
@@ -210,7 +217,11 @@ export class OrganizationsPresenter {
     })[];
   }) {
     if (environmentSlug) {
-      const env = environments.find((e) => e.slug === environmentSlug);
+      const env = environments.find(
+        (e) =>
+          e.slug === environmentSlug &&
+          (e.type !== "DEVELOPMENT" || e.orgMember?.userId === user.id)
+      );
       if (env) {
         return env;
       }

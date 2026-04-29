@@ -385,6 +385,130 @@ describe("StreamBatchItemsService", () => {
   );
 
   containerTest(
+    "should return sealed=true when batch is COMPLETED by BatchQueue before seal attempt",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+          disabled: true,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      // Create a batch in PENDING state
+      const batch = await createBatch(prisma, authenticatedEnvironment.id, {
+        runCount: 2,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      // Initialize the batch in Redis
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: authenticatedEnvironment.id,
+        environmentType: authenticatedEnvironment.type,
+        organizationId: authenticatedEnvironment.organizationId,
+        projectId: authenticatedEnvironment.projectId,
+        runCount: 2,
+        processingConcurrency: 10,
+      });
+
+      // Enqueue items - the enqueued count check passes but the seal updateMany
+      // will race with tryCompleteBatch moving status to COMPLETED.
+      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 0, {
+        task: "test-task",
+        payload: JSON.stringify({ data: "item1" }),
+        payloadType: "application/json",
+      });
+      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 1, {
+        task: "test-task",
+        payload: JSON.stringify({ data: "item2" }),
+        payloadType: "application/json",
+      });
+
+      // Simulate the race where BatchQueue's completionCallback runs
+      // tryCompleteBatch between getEnqueuedCount and the seal updateMany.
+      // tryCompleteBatch sets status=COMPLETED but NOT sealed=true.
+      const racingPrisma = {
+        ...prisma,
+        batchTaskRun: {
+          ...prisma.batchTaskRun,
+          findFirst: prisma.batchTaskRun.findFirst.bind(prisma.batchTaskRun),
+          updateMany: async () => {
+            await prisma.batchTaskRun.update({
+              where: { id: batch.id },
+              data: {
+                status: "COMPLETED",
+              },
+            });
+            // The conditional updateMany(where: status="PENDING") would now fail
+            return { count: 0 };
+          },
+          findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
+        },
+      } as unknown as PrismaClient;
+
+      const service = new StreamBatchItemsService({
+        prisma: racingPrisma,
+        engine,
+      });
+
+      const result = await service.call(
+        authenticatedEnvironment,
+        batch.friendlyId,
+        itemsToAsyncIterable([]),
+        {
+          maxItemBytes: 1024 * 1024,
+        }
+      );
+
+      // The endpoint should accept the COMPLETED state as a success case so the
+      // SDK does not retry a batch whose child runs have already finished.
+      expect(result.sealed).toBe(true);
+      expect(result.id).toBe(batch.friendlyId);
+
+      const updatedBatch = await prisma.batchTaskRun.findUnique({
+        where: { id: batch.id },
+      });
+
+      expect(updatedBatch?.status).toBe("COMPLETED");
+      // sealed stays false because the BatchQueue completion path does not set
+      // it - that's fine, the batch is terminal.
+      expect(updatedBatch?.sealed).toBe(false);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
     "should throw error when race condition leaves batch in unexpected state",
     async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({

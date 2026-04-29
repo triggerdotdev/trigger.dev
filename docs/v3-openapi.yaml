@@ -784,6 +784,145 @@ paths:
 
             await runs.cancel("run_1234");
 
+  "/api/v1/deployments":
+    get:
+      operationId: list_deployments_v1
+      summary: List deployments
+      description: List deployments for the authenticated environment, ordered by most recent first.
+      parameters:
+        - in: query
+          name: "page[after]"
+          schema:
+            type: string
+          description: The deployment ID to start the search from, to get the next page.
+        - in: query
+          name: "page[size]"
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 100
+            default: 20
+          description: The number of deployments to return (default 20, min 5, max 100).
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum:
+              [
+                "PENDING",
+                "BUILDING",
+                "DEPLOYING",
+                "DEPLOYED",
+                "FAILED",
+                "CANCELED",
+                "TIMED_OUT",
+              ]
+          description: Filter deployments by status.
+        - in: query
+          name: period
+          schema:
+            type: string
+          description: Filter deployments created within this period (e.g. 1d, 7d, 3h).
+        - in: query
+          name: from
+          schema:
+            type: string
+          description: Filter deployments created on or after this date (ISO 8601).
+        - in: query
+          name: to
+          schema:
+            type: string
+          description: Filter deployments created on or before this date (ISO 8601). Only applied when `from` is also provided.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          description: The deployment ID
+                        createdAt:
+                          type: string
+                          format: date-time
+                          description: When the deployment was created
+                        shortCode:
+                          type: string
+                          description: The short code for the deployment
+                        version:
+                          type: string
+                          description: The deployment version (e.g., "20250228.1")
+                        runtime:
+                          type: string
+                          nullable: true
+                          description: The runtime used (e.g., "node")
+                        runtimeVersion:
+                          type: string
+                          nullable: true
+                          description: The runtime version
+                        status:
+                          type: string
+                          enum:
+                            [
+                              "PENDING",
+                              "BUILDING",
+                              "DEPLOYING",
+                              "DEPLOYED",
+                              "FAILED",
+                              "CANCELED",
+                              "TIMED_OUT",
+                            ]
+                          description: The current status of the deployment
+                        deployedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                          description: When the deployment was promoted to DEPLOYED
+                        git:
+                          type: object
+                          nullable: true
+                          description: Git metadata associated with the deployment
+                        error:
+                          type: object
+                          nullable: true
+                          description: Error data if the deployment failed
+                  pagination:
+                    type: object
+                    properties:
+                      next:
+                        type: string
+                        description: Cursor for the next page. Pass as `page[after]` to get the next page. Omitted if there are no more results.
+        "401":
+          description: Unauthorized - Access token is missing or invalid
+      tags:
+        - deployments
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            const response = await fetch(
+              "https://api.trigger.dev/api/v1/deployments",
+              {
+                method: "GET",
+                headers: {
+                  "Authorization": `Bearer ${secretKey}`,
+                },
+              }
+            );
+            const { data, pagination } = await response.json();
+        - lang: curl
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/deployments" \
+              -H "Authorization: Bearer tr_dev_1234"
+
   "/api/v1/deployments/{deploymentId}":
     parameters:
       - in: path
@@ -1147,6 +1286,126 @@ paths:
                 "to": "2024-01-31T23:59:59Z",
                 "format": "json"
               }'
+
+  "/api/v1/query/schema":
+    get:
+      operationId: get_query_schema_v1
+      summary: Get query schema
+      description: Get the schema for TRQL queries, including all available tables, their columns, data types, descriptions, and allowed values.
+      responses:
+        "200":
+          description: Schema retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tables:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Table name used in TRQL queries
+                        description:
+                          type: string
+                          description: Description of the table
+                        timeColumn:
+                          type: string
+                          description: The primary time column for this table
+                        columns:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                                description: Column name
+                              type:
+                                type: string
+                                description: ClickHouse data type
+                              description:
+                                type: string
+                                description: Column description
+                              example:
+                                type: string
+                                description: Example value
+                              allowedValues:
+                                type: array
+                                items:
+                                  type: string
+                                description: Allowed values for enum-like columns
+                              coreColumn:
+                                type: boolean
+                                description: Whether this is a core column included in default queries
+        "401":
+          description: Unauthorized - API key is missing or invalid
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |-
+            curl "https://api.trigger.dev/api/v1/query/schema" \
+              -H "Authorization: Bearer tr_dev_1234"
+
+  "/api/v1/query/dashboards":
+    get:
+      operationId: list_dashboards_v1
+      summary: List built-in dashboards
+      description: List available built-in dashboards with their widgets. Each dashboard contains pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.
+      responses:
+        "200":
+          description: Dashboards listed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dashboards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          description: Dashboard identifier (e.g. "overview", "llm")
+                        title:
+                          type: string
+                          description: Dashboard display title
+                        widgets:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                                description: Widget identifier
+                              title:
+                                type: string
+                                description: Widget display title
+                              query:
+                                type: string
+                                description: The TRQL query this widget executes
+                              type:
+                                type: string
+                                enum: [bignumber, chart, table]
+                                description: Widget display type
+        "401":
+          description: Unauthorized - API key is missing or invalid
+      tags:
+        - query
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: cURL
+          source: |-
+            curl "https://api.trigger.dev/api/v1/query/dashboards" \
+              -H "Authorization: Bearer tr_dev_1234"
 
   "/api/v1/runs/{runId}/reschedule":
     parameters:

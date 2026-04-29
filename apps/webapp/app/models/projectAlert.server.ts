@@ -32,3 +32,9 @@ export const ProjectAlertSlackStorage = z.object({
 });
 
 export type ProjectAlertSlackStorage = z.infer<typeof ProjectAlertSlackStorage>;
+
+export const ErrorAlertConfig = z.object({
+  evaluationIntervalMs: z.number().min(60_000).default(300_000),
+});
+
+export type ErrorAlertConfig = z.infer<typeof ErrorAlertConfig>;

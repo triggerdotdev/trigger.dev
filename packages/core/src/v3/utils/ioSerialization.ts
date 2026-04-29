@@ -169,6 +169,12 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
 
   const presignedResponse = await apiClientManager.client!.createUploadPayloadUrl(filename);
 
+  if (!presignedResponse.storagePath) {
+    throw new Error(
+      "Packet upload presign response missing storagePath; ensure the server supports /api/v2/packets"
+    );
+  }
+
   const uploadResponse = await zodfetch(
     z.any(),
     presignedResponse.presignedUrl,
@@ -191,7 +197,7 @@ async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPac
   }
 
   return {
-    data: filename,
+    data: presignedResponse.storagePath,
     dataType: "application/store",
   };
 }

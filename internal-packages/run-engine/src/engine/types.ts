@@ -129,6 +129,42 @@ export type RunEngineOptions = {
     redis?: RedisOptions;
     /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
     maxDebounceDurationMs?: number;
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
+     * Quantization collapses many concurrent triggers on the same hot debounce key
+     * into the same target time, so that the unlocked fast-path skip becomes
+     * effective and the redlock on `handleDebounce` is not contended.
+     *
+     * A run might fire up to `quantizeNewDelayUntilMs` earlier than the strict
+     * `now + delay` spec.
+     *
+     * Set to 0 to disable quantization.
+     *
+     * Default: 1000 (1s).
+     */
+    quantizeNewDelayUntilMs?: number;
+    /**
+     * Whether to read the existing run's `delayUntil` outside of the redlock and
+     * short-circuit when the new (quantized) `delayUntil` is not later than the
+     * current one. Trailing-mode triggers carrying `updateData` always bypass
+     * this fast path and take the lock so payload/metadata/tag updates still
+     * land on the run.
+     *
+     * Default: true.
+     */
+    fastPathSkipEnabled?: boolean;
+    /**
+     * Whether to route the unlocked fast-path reads (probe + full-run fetch)
+     * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
+     * Safe because debounce is best-effort: a stale `delayUntil` falls
+     * through to the locked path (the locked path re-checks under the lock),
+     * and a stale `status` at worst returns the existing run, which is the
+     * same outcome the caller would see if their trigger had landed a few
+     * hundred ms earlier.
+     *
+     * Default: false.
+     */
+    useReplicaForFastPathRead?: boolean;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
@@ -145,6 +181,10 @@ export type RunEngineOptions = {
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;
+  /** When true, `getSnapshotsSince` reads through the read-only replica client instead
+   *  of the primary. Defaults to false. Callers passing an explicit `tx` always use
+   *  that client regardless of this flag. */
+  readReplicaSnapshotsSinceEnabled?: boolean;
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
@@ -181,6 +221,9 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   workerQueue?: string;
+  /** When true, the run queue may push directly to the worker queue if concurrency is available.
+   *  Gated per WorkerInstanceGroup (production) or always true (development). */
+  enableFastPath?: boolean;
   queue: string;
   lockedQueueId?: string;
   isTest: boolean;
@@ -191,7 +234,7 @@ export type TriggerParams = {
   priorityMs?: number;
   queueTimestamp?: Date;
   ttl?: string;
-  tags: { id: string; name: string }[];
+  tags: string[];
   parentTaskRunId?: string;
   rootTaskRunId?: string;
   replayedFromTaskRunFriendlyId?: string;

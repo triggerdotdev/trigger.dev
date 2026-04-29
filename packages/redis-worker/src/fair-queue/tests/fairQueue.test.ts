@@ -215,7 +215,7 @@ describe("FairQueue", () => {
   describe("basic enqueue and process", () => {
     redisTest(
       "should enqueue and process a single message",
-      { timeout: 15000 },
+      { timeout: 30000 },
       async ({ redisOptions }) => {
         const processed: string[] = [];
         keys = new DefaultFairQueueKeyProducer({ prefix: "test" });

@@ -8,7 +8,7 @@ import {
 import { type Direction } from "~/components/ListPagination";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -105,7 +105,7 @@ export class NextRunListPresenter {
       !time.isDefault;
 
     //get all possible tasks
-    const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
+    const possibleTasksAsync = getTaskIdentifiers(environmentId);
 
     //get possible bulk actions
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
@@ -256,11 +256,7 @@ export class NextRunListPresenter {
         next: pagination.nextCursor ?? undefined,
         previous: pagination.previousCursor ?? undefined,
       },
-      possibleTasks: possibleTasks
-        .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
-        .sort((a, b) => {
-          return a.slug.localeCompare(b.slug);
-        }),
+      possibleTasks,
       bulkActions: bulkActions.map((bulkAction) => ({
         id: bulkAction.friendlyId,
         type: bulkAction.type,

@@ -23,11 +23,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       taskIdentifier: true,
       friendlyId: true,
       isTest: true,
-      tags: {
-        select: {
-          name: true,
-        },
-      },
+      runTags: true,
       machinePreset: true,
       lockedToVersion: {
         select: {
@@ -178,7 +174,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     run: {
       id: run.friendlyId,
       createdAt: run.createdAt,
-      tags: run.tags.map((tag) => tag.name),
+      tags: run.runTags ?? [],
       isTest: run.isTest,
       idempotencyKey: run.idempotencyKey ?? undefined,
       startedAt: run.startedAt ?? run.createdAt,
@@ -244,7 +240,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       isCustomQueue: !run.queue.startsWith("task/"),
       concurrencyKey: run.concurrencyKey,
     },
-    tags: run.tags.map((tag) => tag.name),
+    tags: run.runTags ?? [],
     baseCostInCents: run.baseCostInCents,
     costInCents: run.costInCents,
     totalCostInCents: run.costInCents + run.baseCostInCents,
