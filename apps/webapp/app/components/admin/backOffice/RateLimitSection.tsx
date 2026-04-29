@@ -8,9 +8,6 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 
-export const RATE_LIMIT_INTENT = "set-rate-limit";
-export const RATE_LIMIT_SAVED_VALUE = "rate-limit";
-
 // Local shape mirrors the server-side discriminated union just enough for this
 // view. Decoupled from the .server module so the component stays client-safe.
 export type RateLimitConfig =
@@ -34,6 +31,8 @@ export type EffectiveRateLimit = {
 type FieldErrors = Record<string, string[] | undefined> | null;
 
 type Props = {
+  title: string;
+  intent: string;
   effective: EffectiveRateLimit;
   errors: FieldErrors;
   savedJustNow: boolean;
@@ -41,6 +40,8 @@ type Props = {
 };
 
 export function RateLimitSection({
+  title,
+  intent,
   effective,
   errors,
   savedJustNow,
@@ -96,7 +97,7 @@ export function RateLimitSection({
   return (
     <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">
       <div className="flex items-center justify-between">
-        <Header2>API rate limit</Header2>
+        <Header2>{title}</Header2>
         {!isEditing && (
           <Button
             variant="tertiary/small"
@@ -175,7 +176,7 @@ export function RateLimitSection({
         </>
       ) : (
         <Form method="post" className="flex flex-col gap-3 pt-2">
-          <input type="hidden" name="intent" value={RATE_LIMIT_INTENT} />
+          <input type="hidden" name="intent" value={intent} />
 
           <div className="flex flex-col gap-1">
             <Label>Refill rate (tokens per interval)</Label>
