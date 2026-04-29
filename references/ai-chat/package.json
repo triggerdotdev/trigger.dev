@@ -10,6 +10,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:reset:chats": "prisma db execute --file prisma/reset-chats.sql",
     "test": "vitest"
   },
   "dependencies": {
