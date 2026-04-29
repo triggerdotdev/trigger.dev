@@ -10,16 +10,18 @@ import * as Property from "~/components/primitives/PropertyTable";
 
 // Local shape mirrors the server-side discriminated union just enough for this
 // view. Decoupled from the .server module so the component stays client-safe.
+// Duration fields are always suffixed strings — the server's DurationSchema
+// rejects anything else, so non-string overrides fall back to the default.
 export type RateLimitConfig =
   | {
       type: "tokenBucket";
       refillRate: number;
-      interval: string | number;
+      interval: string;
       maxTokens: number;
     }
   | {
       type: "fixedWindow" | "slidingWindow";
-      window: string | number;
+      window: string;
       tokens: number;
     };
 
