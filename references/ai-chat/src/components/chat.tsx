@@ -192,6 +192,7 @@ function DebugPanel({
   status,
   session,
   dashboardUrl,
+  projectDashboardPath,
   messageCount,
   ttfbHistory,
 }: {
@@ -200,9 +201,14 @@ function DebugPanel({
   status: string;
   session?: { publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
   dashboardUrl?: string;
+  projectDashboardPath?: string;
   messageCount: number;
   ttfbHistory: TtfbEntry[];
 }) {
+  const runsUrl =
+    dashboardUrl && projectDashboardPath
+      ? `${dashboardUrl}${projectDashboardPath}/env/dev/runs?tags=${encodeURIComponent(`chat:${chatId}`)}`
+      : undefined;
   const [open, setOpen] = useState(false);
 
   const latestTtfb = ttfbHistory.length > 0 ? ttfbHistory[ttfbHistory.length - 1]! : undefined;
@@ -243,6 +249,7 @@ function DebugPanel({
           <Row label="Model" value={model} />
           <Row label="Status" value={status} />
           <Row label="Messages" value={String(messageCount)} />
+          {runsUrl && <Row label="Runs" value="View in dashboard" link={runsUrl} />}
           {session ? (
             <>
               <Row label="Last Event ID" value={session.lastEventId ?? "—"} mono />
@@ -313,6 +320,7 @@ type ChatProps = {
   onModelChange?: (model: string) => void;
   session?: { publicAccessToken: string; lastEventId?: string; isStreaming?: boolean };
   dashboardUrl?: string;
+  projectDashboardPath?: string;
   onFirstMessage?: (chatId: string, text: string) => void;
   onMessagesChange?: (chatId: string, messages: ChatUiMessage[]) => void;
 };
@@ -327,6 +335,7 @@ export function Chat({
   onModelChange,
   session,
   dashboardUrl,
+  projectDashboardPath,
   onFirstMessage,
   onMessagesChange,
 }: ChatProps) {
@@ -550,6 +559,7 @@ export function Chat({
       promote: (id: string) => actionsRef.current.promote(id),
       send: (text: string) => actionsRef.current.send(text),
       stop: () => actionsRef.current.stop(),
+      sendAction: (action: unknown) => transport.sendAction(chatId, action),
 
       // ── Waiters ───────────────────────────────────────────────────
       waitForStatus: (target: string, timeoutMs = DEFAULT_TIMEOUT_MS) =>
@@ -844,6 +854,7 @@ export function Chat({
         status={status}
         session={session}
         dashboardUrl={dashboardUrl}
+        projectDashboardPath={projectDashboardPath}
         messageCount={messages.length}
         ttfbHistory={ttfbHistory}
       />
@@ -882,6 +893,22 @@ export function Chat({
           >
             Send
           </button>
+          {/* Preload — only visible before the first message lands. After
+              the user sends, the transport creates the session lazily, so
+              session becomes truthy and this button hides itself. The
+              transport tracks an in-flight preload internally; double-clicks
+              are a no-op. */}
+          {messages.length === 0 && !session && (
+            <button
+              type="button"
+              onClick={() => {
+                void transport.preload(chatId);
+              }}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Preload
+            </button>
+          )}
           {status === "streaming" && (
             <button
               type="button"

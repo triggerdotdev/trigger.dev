@@ -55,7 +55,6 @@ export function ChatApp({
 
   // Model for new chats (before first message is sent)
   const [newChatModel, setNewChatModel] = useState(DEFAULT_MODEL);
-  const [preloadEnabled, setPreloadEnabled] = useState(true);
   const [idleTimeoutInSeconds, setIdleTimeoutInSeconds] = useState(60);
 
   const handleSessionChange = useCallback((chatId: string, session: SessionInfo | null) => {
@@ -107,14 +106,7 @@ export function ChatApp({
     setActiveChatId(id);
     setMessages([]);
     setNewChatModel(DEFAULT_MODEL);
-    if (preloadEnabled) {
-      // Eagerly create the session + first run before the user types.
-      // Transport calls `startSession({ chatId: id, taskId: taskMode })`.
-      // `idleTimeoutInSeconds` lives on the agent definition's
-      // `idleTimeoutInSeconds`, not per-call.
-      void transport.preload(id);
-      void idleTimeoutInSeconds;
-    }
+    void idleTimeoutInSeconds;
   }
 
   function handleSelectChat(id: string) {
@@ -173,8 +165,6 @@ export function ChatApp({
         onNewChat={handleNewChat}
         onDeleteChat={handleDeleteChat}
         onWipeAll={handleWipeAll}
-        preloadEnabled={preloadEnabled}
-        onPreloadChange={setPreloadEnabled}
         idleTimeoutInSeconds={idleTimeoutInSeconds}
         onIdleTimeoutChange={setIdleTimeoutInSeconds}
         taskMode={taskMode}
@@ -193,6 +183,7 @@ export function ChatApp({
             onModelChange={isNewChat ? setNewChatModel : undefined}
             session={activeSession}
             dashboardUrl={process.env.NEXT_PUBLIC_TRIGGER_DASHBOARD_URL}
+            projectDashboardPath={process.env.NEXT_PUBLIC_TRIGGER_PROJECT_DASHBOARD_PATH}
             onFirstMessage={handleFirstMessage}
             onMessagesChange={handleMessagesChange}
           />

@@ -26,8 +26,6 @@ export function ChatSidebarWrapper({
   const {
     taskMode,
     setTaskMode,
-    preloadEnabled,
-    setPreloadEnabled,
     idleTimeoutInSeconds,
     setIdleTimeoutInSeconds,
   } = useChatSettings();
@@ -83,8 +81,6 @@ export function ChatSidebarWrapper({
       onNewChat={handleNewChat}
       onDeleteChat={handleDeleteChat}
       onWipeAll={handleWipeAll}
-      preloadEnabled={preloadEnabled}
-      onPreloadChange={setPreloadEnabled}
       idleTimeoutInSeconds={idleTimeoutInSeconds}
       onIdleTimeoutChange={setIdleTimeoutInSeconds}
       taskMode={taskMode}
