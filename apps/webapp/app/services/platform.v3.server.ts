@@ -17,6 +17,10 @@ import {
   type UsageResult,
   type UsageSeriesParams,
   type CurrentPlan,
+  type ApplyCouponDealResponse,
+  type CouponDiagnosticsResponse,
+  type ListCouponDealsResponse,
+  type ResolveCouponCustomerResponse,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
@@ -776,6 +780,103 @@ export async function triggerInitialDeployment(
       error: result.error,
     });
   }
+}
+
+export async function listCouponDeals(): Promise<ListCouponDealsResponse> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.listCouponDeals());
+
+  if (error) {
+    logger.error("Error listing coupon deals", { error });
+    throw error;
+  }
+
+  if (!result.success) {
+    logger.error("Error listing coupon deals - no success", { error: result.error });
+    throw new Error(result.error ?? "Failed to list coupon deals");
+  }
+
+  return result;
+}
+
+export async function refreshCouponDeals(): Promise<ListCouponDealsResponse> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.refreshCouponDeals());
+
+  if (error) {
+    logger.error("Error refreshing coupon deals", { error });
+    throw error;
+  }
+
+  if (!result.success) {
+    logger.error("Error refreshing coupon deals - no success", { error: result.error });
+    throw new Error(result.error ?? "Failed to refresh coupon deals");
+  }
+
+  return result;
+}
+
+export async function resolveCouponCustomer(
+  stripeEmail: string
+): Promise<ResolveCouponCustomerResponse> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.resolveCouponCustomer(stripeEmail));
+
+  if (error) {
+    logger.error("Error resolving coupon customer", { error });
+    throw error;
+  }
+
+  if (!result.success) {
+    logger.error("Error resolving coupon customer - no success", { error: result.error });
+    throw new Error(result.error ?? "Failed to resolve coupon customer");
+  }
+
+  return result;
+}
+
+// Returns the full discriminated result rather than throwing on !success so the
+// admin route can branch on `code` ("already_applied", "no_subscription",
+// "unknown_deal", etc.) and surface precise UI messages.
+export async function applyCouponDeal(input: {
+  orgId: string;
+  dealKey: string;
+}): Promise<ApplyCouponDealResponse> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.applyCouponDeal(input));
+
+  if (error) {
+    logger.error("Error applying coupon deal", { input, error });
+    throw error;
+  }
+
+  if (!result.success) {
+    logger.warn("Coupon deal apply unsuccessful", { input, error: result.error });
+  }
+
+  return result;
+}
+
+export async function getCouponDiagnostics(): Promise<CouponDiagnosticsResponse> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.getCouponDiagnostics());
+
+  if (error) {
+    logger.error("Error getting coupon diagnostics", { error });
+    throw error;
+  }
+
+  if (!result.success) {
+    logger.error("Error getting coupon diagnostics - no success", { error: result.error });
+    throw new Error(result.error ?? "Failed to get coupon diagnostics");
+  }
+
+  return result;
 }
 
 function isCloud(): boolean {
