@@ -25,8 +25,6 @@ type ChatSidebarProps = {
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
   onWipeAll: () => void;
-  preloadEnabled: boolean;
-  onPreloadChange: (enabled: boolean) => void;
   idleTimeoutInSeconds: number;
   onIdleTimeoutChange: (seconds: number) => void;
   taskMode: string;
@@ -40,8 +38,6 @@ export function ChatSidebar({
   onNewChat,
   onDeleteChat,
   onWipeAll,
-  preloadEnabled,
-  onPreloadChange,
   idleTimeoutInSeconds,
   onIdleTimeoutChange,
   taskMode,
@@ -93,15 +89,6 @@ export function ChatSidebar({
       </div>
 
       <div className="shrink-0 border-t border-gray-200 px-3 py-2.5 space-y-2">
-        <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={preloadEnabled}
-            onChange={(e) => onPreloadChange(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          Preload new chats
-        </label>
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span className="shrink-0">Idle timeout</span>
           <input

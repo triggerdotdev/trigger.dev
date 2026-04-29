@@ -98,6 +98,7 @@ export function ChatView({
       isNewChat={isNewChat}
       session={activeSession}
       dashboardUrl={process.env.NEXT_PUBLIC_TRIGGER_DASHBOARD_URL}
+      projectDashboardPath={process.env.NEXT_PUBLIC_TRIGGER_PROJECT_DASHBOARD_PATH}
       onFirstMessage={handleFirstMessage}
       onMessagesChange={handleMessagesChange}
     />
