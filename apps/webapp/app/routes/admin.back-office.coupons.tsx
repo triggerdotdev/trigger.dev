@@ -165,11 +165,23 @@ export async function action({ request }: ActionFunctionArgs) {
     try {
       const result = await applyCouponDeal({ orgId, dealKey });
       if (!result.success) {
+        // Cast to read `code` and `currentDealKey` from the wire body. The
+        // platform's generic ErrorSchema currently strips these to `error`
+        // only, so they arrive as undefined for now; the cast keeps the route
+        // forward-compatible with a future schema loosening that preserves
+        // them, at which point the precise UI messages will start rendering
+        // automatically.
+        const err = result as {
+          success: false;
+          error: string;
+          code?: string;
+          currentDealKey?: string;
+        };
         return typedjson<ActionResponse>(
           {
-            error: result.error ?? "Failed to apply coupon deal.",
-            code: result.code,
-            currentDealKey: result.currentDealKey ?? null,
+            error: err.error,
+            code: err.code,
+            currentDealKey: err.currentDealKey ?? null,
           },
           { status: 400 }
         );

@@ -17,7 +17,7 @@ import {
   type UsageResult,
   type UsageSeriesParams,
   type CurrentPlan,
-  type ApplyCouponDealResponse,
+  type ApplyCouponDealResult,
   type CouponDiagnosticsResponse,
   type ListCouponDealsResponse,
   type ResolveCouponCustomerResponse,
@@ -844,7 +844,7 @@ export async function resolveCouponCustomer(
 export async function applyCouponDeal(input: {
   orgId: string;
   dealKey: string;
-}): Promise<ApplyCouponDealResponse> {
+}): Promise<ApplyCouponDealResult> {
   if (!client) throw new Error("Platform client not configured");
 
   const [error, result] = await tryCatch(client.applyCouponDeal(input));
