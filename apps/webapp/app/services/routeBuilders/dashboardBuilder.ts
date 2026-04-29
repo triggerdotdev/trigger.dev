@@ -47,8 +47,9 @@ export type DashboardLoaderOptions<TParams, TSearchParams> = {
   params?: TParams;
   searchParams?: TSearchParams;
   // Optional: provides organizationId / projectId to rbac.authenticateSession
-  // when the route's ability check needs it (enterprise-only — fallback
-  // currently ignores context).
+  // when the route's ability check needs it. The default fallback
+  // ignores context; an installed plugin may use it to scope the
+  // returned ability.
   context?: (
     params: InferZod<TParams>,
     request: Request

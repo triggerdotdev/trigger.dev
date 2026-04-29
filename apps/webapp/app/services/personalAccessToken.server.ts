@@ -22,7 +22,7 @@ export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 // the PAT is still valid; auth just falls through to legacy permissive
 // behaviour. Any other error is treated as a real failure and triggers
 // the compensating delete below.
-const FALLBACK_NOT_INSTALLED_ERROR = "RBAC plugin not installed";
+const FALLBACK_NOT_INSTALLED_ERROR = "RBAC fallback not installed";
 
 type CreatePersonalAccessTokenOptions = {
   name: string;
@@ -367,25 +367,25 @@ export async function createPersonalAccessToken({
     },
   });
 
-  // Persist the role choice in enterprise.TokenRole. This lives on a
-  // different schema (Drizzle, not Prisma) — co-transactional inserts
-  // across the two ORMs are awkward, so we use a compensating-delete
-  // pattern: if setTokenRole fails, roll back the PAT row by deleting
-  // it. The auth path treats "no role" as permissive (matches OSS
-  // fallback) so a brief orphan window between the two writes is
-  // harmless. The compensating delete narrows that window from "until
-  // manual cleanup" to "until the request returns".
+  // Persist the role choice via the RBAC plugin's setTokenRole. The
+  // plugin may store this in a separate datastore from Prisma (e.g.
+  // Drizzle on a different schema), so co-transactional inserts are
+  // awkward — we use a compensating-delete pattern instead: if
+  // setTokenRole fails, roll back the PAT row by deleting it. The auth
+  // path treats "no role" as permissive (matches the default fallback)
+  // so a brief orphan window between the two writes is harmless. The
+  // compensating delete narrows that window from "until manual cleanup"
+  // to "until the request returns".
   if (roleId) {
     const roleResult = await rbac.setTokenRole({
       tokenId: personalAccessToken.id,
       roleId,
     });
     if (!roleResult.ok) {
-      // The OSS fallback always returns ok=false with this exact
-      // message. That isn't a failure — there's no enterprise plugin
-      // to write to, so the PAT just runs without an explicit role
-      // (matches the pre-RBAC behaviour). Don't compensating-delete
-      // in that case.
+      // The default fallback always returns ok=false with this exact
+      // message. That isn't a failure — there's no plugin to write to,
+      // so the PAT just runs without an explicit role (matches the
+      // pre-RBAC behaviour). Don't compensating-delete in that case.
       if (roleResult.error === FALLBACK_NOT_INSTALLED_ERROR) {
         logger.debug("createPersonalAccessToken: no RBAC plugin, skipping role assignment", {
           patId: personalAccessToken.id,

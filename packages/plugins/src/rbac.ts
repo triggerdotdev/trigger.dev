@@ -94,24 +94,24 @@ export interface RoleBaseAccessController {
     check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult>;
 
-  // Role introspection (enterprise: DB-backed; OSS: returns [])
+  // Role introspection. The fallback returns []; a plugin may return
+  // its own role catalogue.
   allPermissions(organizationId: string): Promise<Permission[]>;
   allRoles(organizationId: string): Promise<Role[]>;
 
   // Of the roles returned by `allRoles(organizationId)`, which IDs may
   // be assigned right now? Used by the Teams page UI to disable
-  // role-dropdown options outside the org's plan tier (system roles
-  // gated by the subscription plan, custom roles only on Enterprise).
-  // OSS fallback returns every role id (permissive — the OSS path
-  // doesn't enforce plan gating). The actual server-side enforcement
-  // lives in setUserRole; this method is purely for UI affordance.
+  // role-dropdown options the org isn't allowed to assign. The default
+  // fallback returns every role id (permissive — it doesn't apply any
+  // gating). Server-side enforcement lives in setUserRole; this method
+  // is purely a UI affordance.
   getAssignableRoleIds(organizationId: string): Promise<string[]>;
 
   // Role management. Mutation methods return a discriminated Result
-  // rather than throwing — the cloud webapp surfaces `error` strings
-  // directly to the user (system role edits, plan-gating, validation
+  // rather than throwing — the dashboard surfaces `error` strings
+  // directly to the user (system role edits, gating, validation
   // conflicts), so a thrown exception is only ever for unexpected
-  // failures (DB outage, bug). The OSS fallback returns
+  // failures (DB outage, bug). The default fallback returns
   // `{ ok: false, error: "RBAC plugin not installed" }` for these.
   createRole(params: {
     organizationId: string;
@@ -130,7 +130,7 @@ export interface RoleBaseAccessController {
   deleteRole(roleId: string): Promise<RoleAssignmentResult>;
 
   // Role assignments. Same Result discipline as the role-management
-  // methods above. The OSS fallback returns
+  // methods above. The default fallback returns
   // `{ ok: false, error: "RBAC plugin not installed" }`.
   getUserRole(params: {
     userId: string;

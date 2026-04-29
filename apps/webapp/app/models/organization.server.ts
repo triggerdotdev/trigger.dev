@@ -82,12 +82,12 @@ export async function createOrganization(
     },
   });
 
-  // No upfront RBAC UserRole insert — the enterprise plugin's
-  // getUserRole derives the creator's role from the legacy
+  // No upfront RBAC UserRole insert — the loaded RBAC plugin (if any)
+  // is responsible for deriving the creator's role from the legacy
   // OrgMember.role = "ADMIN" write above (which maps to Owner) until an
   // Owner explicitly changes someone's role on the Teams page. Keeps
-  // the create-org path tight and lets the fallback path stay the
-  // single source of truth for "who has what role" by default.
+  // the create-org path tight and lets the plugin stay the single
+  // source of truth for "who has what role" by default.
   return { ...organization };
 }
 

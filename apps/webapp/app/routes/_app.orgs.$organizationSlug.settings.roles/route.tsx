@@ -221,10 +221,9 @@ function RoleCard({
   );
 }
 
-// Permission name-prefix → display group. Mirrors PERMISSION_METADATA's
-// groupings server-side (cloud/enterprise/plugins/src/rbac/permissions.ts)
-// but lives client-side because the wire-format Permission only carries
-// `name` and `description`. Keep in lockstep.
+// Permission name-prefix → display group. Lives client-side because
+// the wire-format Permission only carries `name` and `description` —
+// the RBAC plugin doesn't ship grouping metadata over the wire.
 const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
   "read:runs": "Runs",
   "write:runs": "Runs",
@@ -283,9 +282,8 @@ function groupPermissions(
   );
 }
 
-// "Create role" upsell shown to non-Enterprise plans. Enterprise sees
-// nothing here for now — the actual create-role UI is a follow-up
-// (depends on TRI-8747's controller-level CRUD already in place).
+// "Create role" upsell shown to non-Enterprise plans. Enterprise plans
+// don't see this — the actual create-role UI is a follow-up.
 function CreateRoleUpsell() {
   const [open, setOpen] = useState(false);
   return (

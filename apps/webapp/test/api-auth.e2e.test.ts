@@ -123,13 +123,15 @@ describe("JWT bearer auth — baseline behavior", () => {
   });
 });
 
-// Exercises the RBAC plugin loader end-to-end. The test server boots with
-// RBAC_FORCE_FALLBACK=1 (see internal-packages/testcontainers/src/webapp.ts), which makes
-// rbac.server.ts select the OSS fallback over the enterprise plugin. /admin/concurrency uses
-// rbac.authenticateSession internally; an unauthenticated request must flow through
-// LazyController → RoleBaseAccessFallback → redirect("/login").
+// Exercises the RBAC plugin loader end-to-end. The test server boots
+// with RBAC_FORCE_FALLBACK=1 (see internal-packages/testcontainers/src/webapp.ts),
+// which makes rbac.server.ts use the default fallback regardless of
+// whether a plugin is installed in node_modules. /admin/concurrency
+// uses rbac.authenticateSession internally; an unauthenticated request
+// must flow through LazyController → RoleBaseAccessFallback →
+// redirect("/login").
 describe("RBAC plugin — fallback wiring", () => {
-  it("unauthenticated dashboard route redirects to /login via the OSS fallback", async () => {
+  it("unauthenticated dashboard route redirects to /login via the fallback", async () => {
     const res = await server.webapp.fetch("/admin/concurrency", { redirect: "manual" });
     expect(res.status).toBe(302);
     const location = res.headers.get("location") ?? "";

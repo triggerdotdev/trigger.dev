@@ -8,18 +8,18 @@ async function getSessionUserId(request: Request): Promise<string | null> {
   return id ?? null;
 }
 
-// plugin.create() is synchronous — returns a lazy controller that loads the enterprise plugin
-// on first call. Top-level await is not used because CJS output format does not support it.
+// plugin.create() is synchronous — returns a lazy controller that resolves
+// any installed RBAC plugin on first call. Top-level await is not used
+// because CJS output format does not support it.
 export const rbac = plugin.create(
   prisma,
   { getSessionUserId },
   { forceFallback: env.RBAC_FORCE_FALLBACK }
 );
 
-// Stable IDs for the system roles seeded by the enterprise/db migration
-// (cloud/enterprise/db/drizzle/migrations/0000_legal_titanium_man.sql).
-// They never change — anything that needs to set a default role at
-// creation time keys off these. The OSS fallback's setUserRole returns
+// Stable IDs for the four built-in system roles. They never change —
+// anything that needs a default role at creation time keys off these.
+// The default fallback's setUserRole returns
 // `{ ok: false, error: "RBAC plugin not installed" }` and is safe to
 // call with these ids; it just no-ops.
 export const SYSTEM_ROLE_IDS = {

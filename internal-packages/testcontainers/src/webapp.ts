@@ -40,14 +40,13 @@ export interface WebappInstance {
 export interface StartWebappOptions {
   /**
    * When true (default), the spawned webapp runs with `RBAC_FORCE_FALLBACK=1`
-   * so the OSS fallback handles all auth checks. The OSS comprehensive suite
-   * (`*.e2e.full.test.ts`) relies on this — it's pinned to fallback so
-   * results don't depend on whether `@triggerdotdev/plugins/rbac` happens
-   * to be installed in the local node_modules.
+   * so the default fallback handles all auth checks. The comprehensive
+   * suite (`*.e2e.full.test.ts`) relies on this — it's pinned to the
+   * fallback so results don't depend on whether `@triggerdotdev/plugins/rbac`
+   * happens to be installed in the local node_modules.
    *
-   * The cloud repo's parallel enterprise variant (TRI-8859) overrides this
-   * to `false`, spawning a webapp that loads the linked enterprise plugin
-   * instead. Same harness, different RBAC implementation under test.
+   * Set to false to spawn a webapp that loads any installed RBAC
+   * plugin instead, for testing the plugin path.
    */
   forceRbacFallback?: boolean;
 }
@@ -103,10 +102,10 @@ export async function startWebapp(
       RUN_ENGINE_TTL_SYSTEM_DISABLED: "true",     // disables TTL expiry system (BoolEnv)
       RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true",  // disables TTL consumers (BoolEnv)
       RUN_REPLICATION_ENABLED: "0",
-      // Force the RBAC plugin to use the OSS fallback in e2e tests so auth
-      // behavior is deterministic regardless of whether the enterprise
-      // plugin is installed. Cloud's enterprise-variant suite (TRI-8859)
-      // sets this to "0" / undefined to exercise the real CASL controller.
+      // Force the RBAC loader to use the default fallback in e2e tests
+      // so auth behaviour is deterministic regardless of whether a
+      // plugin is installed in the local node_modules. Set to "0" /
+      // undefined to spawn a webapp that loads any installed plugin.
       ...(forceRbacFallback ? { RBAC_FORCE_FALLBACK: "1" } : {}),
       NODE_PATH: nodePath,
     },

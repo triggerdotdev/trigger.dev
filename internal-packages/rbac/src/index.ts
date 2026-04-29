@@ -63,17 +63,17 @@ class LazyController implements RoleBaseAccessController {
       const moduleName = "@triggerdotdev/plugins/rbac";
       const module = await import(moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
-      console.log("RBAC: using enterprise plugin implementation");
+      console.log("RBAC: using plugin implementation");
       return plugin.create(helpers);
     } catch (err) {
-      // The dynamic import either succeeded (enterprise tier) or failed
-      // for one of two distinct reasons. Distinguishing them is critical
-      // for debugging — silently swallowing the error here is what
-      // produced "why is the fallback being used?" mysteries before.
+      // The dynamic import either succeeded or failed for one of two
+      // distinct reasons. Distinguishing them is critical for debugging
+      // — silently swallowing the error here is what produced "why is
+      // the fallback being used?" mysteries before.
       //
-      // 1. Module-not-found — expected for OSS deployments where the
-      //    cloud plugin isn't installed. Logged at info level only when
-      //    RBAC_LOG_FALLBACK=1 so production OSS logs stay quiet.
+      // 1. Module-not-found — expected when no plugin is installed.
+      //    Logged at info level only when RBAC_LOG_FALLBACK=1 so
+      //    production logs stay quiet.
       // 2. Anything else (transitive dep missing, init error, syntax
       //    error in the plugin's dist, etc.) — a real bug. Always
       //    logged loudly so it surfaces in CI / production logs.
@@ -81,12 +81,12 @@ class LazyController implements RoleBaseAccessController {
       const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
       if (!isModuleNotFound) {
         console.error(
-          "RBAC: enterprise plugin found but failed to load; falling back to OSS implementation",
+          "RBAC: plugin found but failed to load; falling back to default implementation",
           err
         );
       } else if (process.env.RBAC_LOG_FALLBACK === "1") {
         console.log(
-          "RBAC: enterprise plugin not installed (ERR_MODULE_NOT_FOUND); using OSS fallback"
+          "RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback"
         );
       } else {
         console.log(`RBAC: using fallback implementation. ${err}`);
@@ -210,7 +210,8 @@ class LazyController implements RoleBaseAccessController {
 }
 
 class RoleBaseAccess {
-  // Synchronous — returns a lazy controller that loads the enterprise plugin on first call.
+  // Synchronous — returns a lazy controller that resolves any installed
+  // plugin on first call.
   create(
     prisma: PrismaClient,
     helpers: RbacHelpers,

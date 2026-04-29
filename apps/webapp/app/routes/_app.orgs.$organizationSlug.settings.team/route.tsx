@@ -581,9 +581,8 @@ function RolePicker({
 }) {
   const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
   const assignable = new Set(assignableRoleIds);
-  // OSS deployments return [] (allRoles also returns []) — when there
-  // are no roles to pick from, render nothing rather than an empty
-  // dropdown.
+  // With no RBAC plugin installed, the loader returns no roles —
+  // render nothing rather than an empty dropdown.
   if (roles.length === 0) return null;
 
   const isSubmitting = fetcher.state === "submitting";

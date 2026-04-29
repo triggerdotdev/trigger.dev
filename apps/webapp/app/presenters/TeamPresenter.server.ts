@@ -19,9 +19,9 @@ export class TeamPresenter extends BasePresenter {
         getLimit(organizationId, "teamMembers", 100_000_000),
         getCurrentPlan(organizationId),
         getPlans(),
-        // RBAC role catalogue (system roles + any org-defined custom roles).
-        // OSS fallback returns []; on cloud the enterprise plugin returns
-        // the seeded system roles plus the org's custom roles.
+        // RBAC role catalogue (system roles + any org-defined custom
+        // roles). The default fallback returns []; an installed plugin
+        // may return the seeded system roles plus any custom roles.
         rbac.allRoles(organizationId),
         // Plan-gated subset — the Teams page disables dropdown options not
         // in this set. Server-side enforcement is independent (setUserRole

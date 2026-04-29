@@ -56,12 +56,13 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-// PATs aren't org-scoped, but role/permission catalogues are seeded
-// per-org in enterprise's allRoles. To get the canonical system roles
-// (Owner/Admin/Member/Viewer — orgId IS NULL on those rows), we hand
-// allRoles any orgId the user belongs to and filter down to system
+// PATs aren't org-scoped, but the RBAC plugin's allRoles is org-keyed
+// (a plugin may also expose org-defined custom roles alongside the
+// global system roles). To get the canonical system roles (Owner /
+// Admin / Member / Viewer), we hand allRoles any orgId the user
+// belongs to and filter down to the rows the plugin marks as system
 // roles. This is a UI-only convenience — the chosen role becomes a
-// global TokenRole row that applies wherever the PAT is used. Custom
+// global TokenRole that applies wherever the PAT is used. Custom
 // (org-defined) roles are out of scope for v1: their org-binding
 // semantics for a multi-org user's PAT need a separate design pass.
 async function loadSystemRolesForUser(userId: string) {
@@ -95,7 +96,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Default the role picker to the user's own role in their primary
     // org so a freshly-created PAT isn't more privileged than the
     // person creating it. Falls back to Member if they don't have one
-    // (new user, OSS path with no role assignments yet).
+    // (new user, or no RBAC plugin installed so no role assignments
+    // exist).
     const defaultRoleId = userRoleId ?? SYSTEM_ROLE_IDS.member;
 
     return typedjson({
@@ -123,10 +125,9 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
       .string({ required_error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
       .max(50),
-    // Optional — when the RBAC plugin isn't installed (OSS), the UI
-    // hides the dropdown and submits no roleId; the action passes that
-    // through and createPersonalAccessToken just doesn't write a
-    // TokenRole row.
+    // Optional — when no RBAC plugin is installed the UI hides the
+    // dropdown and submits no roleId; the action passes that through
+    // and createPersonalAccessToken just doesn't write a TokenRole.
     roleId: z.string().optional(),
   }),
   z.object({
@@ -284,10 +285,11 @@ function CreatePersonalAccessToken({
     ? (lastSubmission?.payload?.token as CreatedPersonalAccessToken)
     : undefined;
 
-  // OSS path: rbac.allRoles returns []; we hide the dropdown entirely
-  // rather than showing an empty Select. createPersonalAccessToken's
-  // roleId is optional, so omitting it produces a working PAT with no
-  // explicit role attached (matches pre-RBAC behaviour).
+  // With no RBAC plugin installed, rbac.allRoles returns []; hide the
+  // dropdown entirely rather than showing an empty Select.
+  // createPersonalAccessToken's roleId is optional, so omitting it
+  // produces a working PAT with no explicit role attached (matches
+  // pre-RBAC behaviour).
   const showRolePicker = roles.length > 0;
   const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
 

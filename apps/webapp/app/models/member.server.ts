@@ -215,8 +215,8 @@ export async function acceptInvite({
     };
   });
 
-  // No upfront RBAC UserRole insert — the enterprise plugin's
-  // getUserRole derives the new member's role from the legacy
+  // No upfront RBAC UserRole insert — the loaded RBAC plugin (if any)
+  // is responsible for deriving the new member's role from the legacy
   // OrgMember.role write inside the transaction above (ADMIN → Owner,
   // MEMBER → Admin) until an Owner explicitly changes their role on
   // the Teams page. Keeps the invite path tight and consistent with
