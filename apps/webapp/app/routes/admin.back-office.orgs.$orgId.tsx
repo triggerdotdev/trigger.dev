@@ -8,20 +8,29 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import {
+  API_RATE_LIMIT_INTENT,
+  API_RATE_LIMIT_SAVED_VALUE,
+  ApiRateLimitSection,
+} from "~/components/admin/backOffice/ApiRateLimitSection";
+import {
+  handleApiRateLimitAction,
+  resolveEffectiveApiRateLimit,
+} from "~/components/admin/backOffice/ApiRateLimitSection.server";
+import {
+  BATCH_RATE_LIMIT_INTENT,
+  BATCH_RATE_LIMIT_SAVED_VALUE,
+  BatchRateLimitSection,
+} from "~/components/admin/backOffice/BatchRateLimitSection";
+import {
+  handleBatchRateLimitAction,
+  resolveEffectiveBatchRateLimit,
+} from "~/components/admin/backOffice/BatchRateLimitSection.server";
+import {
   MAX_PROJECTS_INTENT,
   MAX_PROJECTS_SAVED_VALUE,
   MaxProjectsSection,
 } from "~/components/admin/backOffice/MaxProjectsSection";
 import { handleMaxProjectsAction } from "~/components/admin/backOffice/MaxProjectsSection.server";
-import {
-  RATE_LIMIT_INTENT,
-  RATE_LIMIT_SAVED_VALUE,
-  RateLimitSection,
-} from "~/components/admin/backOffice/RateLimitSection";
-import {
-  handleRateLimitAction,
-  resolveEffectiveRateLimit,
-} from "~/components/admin/backOffice/RateLimitSection.server";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
@@ -50,6 +59,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       title: true,
       createdAt: true,
       apiRateLimiterConfig: true,
+      batchRateLimitConfig: true,
       maximumProjectCount: true,
     },
   });
@@ -58,9 +68,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404 });
   }
 
-  const effective = resolveEffectiveRateLimit(org.apiRateLimiterConfig);
+  const apiEffective = resolveEffectiveApiRateLimit(org.apiRateLimiterConfig);
+  const batchEffective = resolveEffectiveBatchRateLimit(
+    org.batchRateLimitConfig
+  );
 
-  return typedjson({ org, effective });
+  return typedjson({ org, apiEffective, batchEffective });
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -90,16 +103,29 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  if (intent === RATE_LIMIT_INTENT) {
-    const result = await handleRateLimitAction(formData, orgId, user.id);
+  if (intent === API_RATE_LIMIT_INTENT) {
+    const result = await handleApiRateLimitAction(formData, orgId, user.id);
     if (!result.ok) {
       return typedjson(
-        { section: RATE_LIMIT_SAVED_VALUE, errors: result.errors },
+        { section: API_RATE_LIMIT_SAVED_VALUE, errors: result.errors },
         { status: 400 }
       );
     }
     return redirect(
-      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${RATE_LIMIT_SAVED_VALUE}`
+      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${API_RATE_LIMIT_SAVED_VALUE}`
+    );
+  }
+
+  if (intent === BATCH_RATE_LIMIT_INTENT) {
+    const result = await handleBatchRateLimitAction(formData, orgId, user.id);
+    if (!result.ok) {
+      return typedjson(
+        { section: BATCH_RATE_LIMIT_SAVED_VALUE, errors: result.errors },
+        { status: 400 }
+      );
+    }
+    return redirect(
+      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${BATCH_RATE_LIMIT_SAVED_VALUE}`
     );
   }
 
@@ -110,7 +136,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function BackOfficeOrgPage() {
-  const { org, effective } = useTypedLoaderData<typeof loader>();
+  const { org, apiEffective, batchEffective } =
+    useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state !== "idle";
@@ -154,10 +181,17 @@ export default function BackOfficeOrgPage() {
         </LinkButton>
       </div>
 
-      <RateLimitSection
-        effective={effective}
-        errors={errorSection === RATE_LIMIT_SAVED_VALUE ? errors : null}
-        savedJustNow={savedSection === RATE_LIMIT_SAVED_VALUE}
+      <ApiRateLimitSection
+        effective={apiEffective}
+        errors={errorSection === API_RATE_LIMIT_SAVED_VALUE ? errors : null}
+        savedJustNow={savedSection === API_RATE_LIMIT_SAVED_VALUE}
+        isSubmitting={isSubmitting}
+      />
+
+      <BatchRateLimitSection
+        effective={batchEffective}
+        errors={errorSection === BATCH_RATE_LIMIT_SAVED_VALUE ? errors : null}
+        savedJustNow={savedSection === BATCH_RATE_LIMIT_SAVED_VALUE}
         isSubmitting={isSubmitting}
       />
 
