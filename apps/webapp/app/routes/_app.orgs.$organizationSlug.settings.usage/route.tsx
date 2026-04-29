@@ -311,19 +311,21 @@ function UsageChart({ data }: { data: UsageSeriesData }) {
   );
 
   return (
-    <Chart.Root
-      config={chartConfig}
-      data={data}
-      dataKey="date"
-      showLegend={false}
-      enableZoom={false}
-      minHeight="160px"
-    >
-      <Chart.Bar
-        xAxisProps={{ tickFormatter: xAxisTickFormatter }}
-        yAxisProps={{ tickFormatter: yAxisTickFormatter, allowDecimals: true }}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-      />
-    </Chart.Root>
+    <div className="h-80">
+      <Chart.Root
+        config={chartConfig}
+        data={data}
+        dataKey="date"
+        showLegend={false}
+        enableZoom={false}
+        fillContainer
+      >
+        <Chart.Bar
+          xAxisProps={{ tickFormatter: xAxisTickFormatter }}
+          yAxisProps={{ tickFormatter: yAxisTickFormatter, allowDecimals: true }}
+          tooltipLabelFormatter={tooltipLabelFormatter}
+        />
+      </Chart.Root>
+    </div>
   );
 }
