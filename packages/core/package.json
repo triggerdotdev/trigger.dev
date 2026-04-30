@@ -89,6 +89,9 @@
       "v3/errors": [
         "dist/commonjs/v3/errors.d.ts"
       ],
+      "v3/chat-client": [
+        "dist/commonjs/v3/chat-client.d.ts"
+      ],
       "v3/logger-api": [
         "dist/commonjs/v3/logger-api.d.ts"
       ],
