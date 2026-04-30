@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(
@@ -15,7 +15,8 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication }) => {
-    const presenter = new PromptPresenter(clickhouseClient);
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(authentication.environment.organizationId, "standard");
+    const presenter = new PromptPresenter(clickhouse);
     const prompts = await presenter.listPrompts(
       authentication.environment.projectId,
       authentication.environment.id

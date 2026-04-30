@@ -3049,3 +3049,24 @@ model TaskIdentifier {
   @@unique([runtimeEnvironmentId, slug])
   @@index([runtimeEnvironmentId, isInLatestDeployment])
 }
+
+enum DataStoreKind {
+  CLICKHOUSE
+}
+
+/// Defines org-scoped data store overrides (e.g. dedicated ClickHouse for HIPAA orgs).
+/// Multiple organizations can share a single data store row via organizationIds.
+model OrganizationDataStore {
+  id              String        @id @default(cuid())
+  /// Human-readable unique key (e.g. "hipaa-clickhouse-us-east")
+  key             String        @unique
+  /// Organization IDs that use this data store
+  organizationIds String[]
+  kind            DataStoreKind
+  /// Versioned config JSON. Structure is discriminated by the top-level `version` field.
+  config          Json
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([kind])
+}

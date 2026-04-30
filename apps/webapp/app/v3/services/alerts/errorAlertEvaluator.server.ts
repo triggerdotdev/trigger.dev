@@ -7,7 +7,7 @@ import {
 } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { ErrorAlertConfig } from "~/models/projectAlert.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 
@@ -45,8 +45,7 @@ const DEFAULT_INTERVAL_MS = 300_000;
 export class ErrorAlertEvaluator {
   constructor(
     protected readonly _prisma: PrismaClientOrTransaction = prisma,
-    protected readonly _replica: PrismaClientOrTransaction = $replica,
-    protected readonly _clickhouse: ClickHouse = clickhouseClient
+    protected readonly _replica: PrismaClientOrTransaction = $replica
   ) {}
 
   async evaluate(projectId: string, scheduledAt: number): Promise<void> {
@@ -245,10 +244,7 @@ export class ErrorAlertEvaluator {
       }
     }
 
-    if (
-      state.ignoredUntilTotalOccurrences != null &&
-      state.ignoredAtOccurrenceCount != null
-    ) {
+    if (state.ignoredUntilTotalOccurrences != null && state.ignoredAtOccurrenceCount != null) {
       const occurrencesSinceIgnored =
         context.totalOccurrenceCount - Number(state.ignoredAtOccurrenceCount);
       if (occurrencesSinceIgnored >= state.ignoredUntilTotalOccurrences) {
@@ -335,7 +331,11 @@ export class ErrorAlertEvaluator {
     envIds: string[],
     scheduledAt: number
   ): Promise<ActiveErrorsSinceQueryResult[]> {
-    const qb = this._clickhouse.errors.activeErrorsSinceQueryBuilder();
+    const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "query"
+    );
+    const qb = queryClickhouse.errors.activeErrorsSinceQueryBuilder();
     qb.where("organization_id = {organizationId: String}", { organizationId });
     qb.where("project_id = {projectId: String}", { projectId });
     qb.where("environment_id IN {envIds: Array(String)}", { envIds });
@@ -389,7 +389,11 @@ export class ErrorAlertEvaluator {
       occurrences_since: number;
     }>
   > {
-    const qb = this._clickhouse.errors.occurrenceCountsSinceQueryBuilder();
+    const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "query"
+    );
+    const qb = queryClickhouse.errors.occurrenceCountsSinceQueryBuilder();
     qb.where("organization_id = {organizationId: String}", { organizationId });
     qb.where("project_id = {projectId: String}", { projectId });
     qb.where("environment_id IN {envIds: Array(String)}", { envIds });

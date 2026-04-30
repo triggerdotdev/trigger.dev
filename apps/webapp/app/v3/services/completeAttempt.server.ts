@@ -163,7 +163,10 @@ export class CompleteAttemptService extends BaseService {
       env,
     });
 
-    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      taskRunAttempt.taskRun.taskEventStore,
+      taskRunAttempt.taskRun.organizationId ?? ""
+    );
 
     const [completeSuccessfulRunEventError] = await tryCatch(
       eventRepository.completeSuccessfulRunEvent({
@@ -316,7 +319,10 @@ export class CompleteAttemptService extends BaseService {
       exitRun(taskRunAttempt.taskRunId);
     }
 
-    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      taskRunAttempt.taskRun.taskEventStore,
+      taskRunAttempt.taskRun.organizationId ?? ""
+    );
 
     const [completeFailedRunEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
@@ -538,7 +544,10 @@ export class CompleteAttemptService extends BaseService {
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
-    const eventRepository = resolveEventRepositoryForStore(taskRunAttempt.taskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      taskRunAttempt.taskRun.taskEventStore,
+      taskRunAttempt.taskRun.organizationId ?? ""
+    );
 
     // Retry the task run
     await eventRepository.recordEvent(

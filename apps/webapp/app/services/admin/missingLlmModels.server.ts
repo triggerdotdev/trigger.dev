@@ -1,4 +1,4 @@
-import { adminClickhouseClient } from "~/services/clickhouseInstance.server";
+import { getAdminClickhouse } from "~/services/clickhouse/clickhouseFactory.server";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
 export type MissingLlmModel = {
@@ -13,8 +13,10 @@ export async function getMissingLlmModels(opts: {
   const lookbackHours = opts.lookbackHours ?? 24;
   const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
+  const adminClickhouse = getAdminClickhouse();
+
   // queryBuilderFast returns a factory function — call it to get the builder
-  const createBuilder = adminClickhouseClient.reader.queryBuilderFast<{
+  const createBuilder = adminClickhouse.reader.queryBuilderFast<{
     model: string;
     system: string;
     cnt: string;
@@ -93,7 +95,9 @@ export async function getMissingModelSamples(opts: {
   const limit = opts.limit ?? 10;
   const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
-  const createBuilder = adminClickhouseClient.reader.queryBuilderFast<MissingModelSample>({
+  const adminClickhouse = getAdminClickhouse();
+
+  const createBuilder = adminClickhouse.reader.queryBuilderFast<MissingModelSample>({
     name: "missingModelSamples",
     table: "trigger_dev.task_events_v2",
     columns: [

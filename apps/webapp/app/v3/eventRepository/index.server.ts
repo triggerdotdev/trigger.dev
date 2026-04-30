@@ -1,29 +1,12 @@
 import { env } from "~/env.server";
 import { eventRepository } from "./eventRepository.server";
-import {
-  clickhouseEventRepository,
-  clickhouseEventRepositoryV2,
-} from "./clickhouseEventRepositoryInstance.server";
-import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
+import { type IEventRepository, type TraceEventOptions } from "./eventRepository.types";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
-
-export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
-  const taskEventStore = store ?? env.EVENT_REPOSITORY_DEFAULT_STORE;
-
-  if (taskEventStore === "clickhouse_v2") {
-    return clickhouseEventRepositoryV2;
-  }
-
-  if (taskEventStore === "clickhouse") {
-    return clickhouseEventRepository;
-  }
-
-  return eventRepository;
-}
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 export const EVENT_STORE_TYPES = {
   POSTGRES: "postgres",
@@ -32,6 +15,43 @@ export const EVENT_STORE_TYPES = {
 } as const;
 
 export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE_TYPES];
+
+/**
+ * Resolve the event repository for a run's persisted `taskEventStore` value and org.
+ * Postgres-backed runs use the Prisma `eventRepository`; ClickHouse-backed runs use
+ * `clickhouseFactory.getEventRepositoryForOrganizationSync`.
+ */
+export function resolveEventRepositoryForStore(
+  store: string,
+  organizationId: string
+): IEventRepository {
+  if (store === EVENT_STORE_TYPES.CLICKHOUSE || store === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    return clickhouseFactory.getEventRepositoryForOrganizationSync(store, organizationId)
+      .repository;
+  }
+  return eventRepository;
+}
+
+/**
+ * Async variant of {@link resolveEventRepositoryForStore}. Awaits the factory's
+ * registry readiness before returning the ClickHouse event repository; for
+ * non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
+ * runs) it returns the Prisma event repository without ever touching the
+ * factory — so the factory never needs to know about Postgres.
+ */
+export async function getEventRepositoryForStore(
+  store: string,
+  organizationId: string
+): Promise<IEventRepository> {
+  if (store !== EVENT_STORE_TYPES.CLICKHOUSE && store !== EVENT_STORE_TYPES.CLICKHOUSE_V2) {
+    return eventRepository;
+  }
+  const { repository } = await clickhouseFactory.getEventRepositoryForOrganization(
+    store,
+    organizationId
+  );
+  return repository;
+}
 
 export async function getConfiguredEventRepository(
   organizationId: string
@@ -59,62 +79,79 @@ export async function getConfiguredEventRepository(
   );
 
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
-    return { repository: clickhouseEventRepositoryV2, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization(taskEventStore, organizationId);
+    return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
   }
 
   if (taskEventStore === EVENT_STORE_TYPES.CLICKHOUSE) {
-    return { repository: clickhouseEventRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization(taskEventStore, organizationId);
+    return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
   }
 
   return { repository: eventRepository, store: EVENT_STORE_TYPES.POSTGRES };
 }
 
 export async function getEventRepository(
+  organizationId: string,
   featureFlags: Record<string, unknown> | undefined,
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
-  if (typeof parentStore === "string") {
-    if (parentStore === "clickhouse_v2") {
-      return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
+  const taskEventStore = parentStore ?? (await resolveTaskEventRepositoryFlag(featureFlags));
+
+  // Non-ClickHouse stores (e.g. the "taskEvent" DB default for Postgres-backed
+  // runs, or the legacy "postgres" value) resolve to the Prisma event repo.
+  if (
+    taskEventStore !== EVENT_STORE_TYPES.CLICKHOUSE &&
+    taskEventStore !== EVENT_STORE_TYPES.CLICKHOUSE_V2
+  ) {
+    return { repository: eventRepository, store: getTaskEventStore() };
+  }
+
+  const { repository: resolvedRepository } =
+    await clickhouseFactory.getEventRepositoryForOrganization(taskEventStore, organizationId);
+
+  switch (taskEventStore) {
+    case EVENT_STORE_TYPES.CLICKHOUSE_V2: {
+      return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE_V2 };
     }
-    if (parentStore === "clickhouse") {
-      return { repository: clickhouseEventRepository, store: "clickhouse" };
-    } else {
+    case EVENT_STORE_TYPES.CLICKHOUSE: {
+      return { repository: resolvedRepository, store: EVENT_STORE_TYPES.CLICKHOUSE };
+    }
+    default: {
       return { repository: eventRepository, store: getTaskEventStore() };
     }
   }
-
-  const taskEventRepository = await resolveTaskEventRepositoryFlag(featureFlags);
-
-  if (taskEventRepository === "clickhouse_v2") {
-    return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
-  }
-
-  if (taskEventRepository === "clickhouse") {
-    return { repository: clickhouseEventRepository, store: "clickhouse" };
-  }
-
-  return { repository: eventRepository, store: getTaskEventStore() };
 }
 
 export async function getV3EventRepository(
+  organizationId: string,
   parentStore: string | undefined
 ): Promise<{ repository: IEventRepository; store: string }> {
   if (typeof parentStore === "string") {
-    if (parentStore === "clickhouse_v2") {
-      return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
+    // Support legacy Postgres store for self-hosters and runs persisted with a
+    // non-ClickHouse store — fall back to the Prisma-based event repository.
+    if (
+      parentStore !== EVENT_STORE_TYPES.CLICKHOUSE &&
+      parentStore !== EVENT_STORE_TYPES.CLICKHOUSE_V2
+    ) {
+      return { repository: eventRepository, store: parentStore };
     }
-    if (parentStore === "clickhouse") {
-      return { repository: clickhouseEventRepository, store: "clickhouse" };
-    } else {
-      return { repository: eventRepository, store: getTaskEventStore() };
-    }
+
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization(parentStore, organizationId);
+    return { repository: resolvedRepository, store: parentStore };
   }
 
   if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse_v2") {
-    return { repository: clickhouseEventRepositoryV2, store: "clickhouse_v2" };
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization("clickhouse_v2", organizationId);
+    return { repository: resolvedRepository, store: "clickhouse_v2" };
   } else if (env.EVENT_REPOSITORY_DEFAULT_STORE === "clickhouse") {
-    return { repository: clickhouseEventRepository, store: "clickhouse" };
+    const { repository: resolvedRepository } =
+      await clickhouseFactory.getEventRepositoryForOrganization("clickhouse", organizationId);
+    return { repository: resolvedRepository, store: "clickhouse" };
   } else {
     return { repository: eventRepository, store: getTaskEventStore() };
   }
@@ -203,7 +240,10 @@ async function recordRunEvent(
       };
     }
 
-    const $eventRepository = resolveEventRepositoryForStore(foundRun.taskEventStore);
+    const $eventRepository = await getEventRepositoryForStore(
+      foundRun.taskEventStore,
+      foundRun.runtimeEnvironment.organizationId
+    );
 
     const { attributes, startTime, ...optionsRest } = options;
 

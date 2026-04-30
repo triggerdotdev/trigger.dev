@@ -70,7 +70,7 @@ import {
   type ErrorOccurrences,
   type ErrorsList as ErrorsListData,
 } from "~/presenters/v3/ErrorsListPresenter.server";
-import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
@@ -123,6 +123,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
+  const logsClickhouseClient = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "logs"
+  );
   const presenter = new ErrorsListPresenter($replica, logsClickhouseClient);
 
   const listPromise = presenter

@@ -38,7 +38,10 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ params, resource: run, authentication }) => {
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      run.taskEventStore,
+      authentication.environment.organization.id
+    );
     const eventStore = getTaskEventStoreTableForRun(run);
 
     const span = await eventRepository.getSpan(

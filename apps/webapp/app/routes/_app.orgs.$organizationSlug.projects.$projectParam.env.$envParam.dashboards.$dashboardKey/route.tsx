@@ -31,7 +31,7 @@ import {
   MetricDashboardPresenter,
 } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
@@ -74,10 +74,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = dashboard.filters ?? ["tasks", "queues"];
 
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+
   // Load distinct models from ClickHouse if the dashboard has a models filter
   let possibleModels: { model: string; system: string }[] = [];
   if (filters.includes("models")) {
-    const queryFn = clickhouseClient.reader.query({
+    const queryFn = clickhouse.reader.query({
       name: "getDistinctModels",
       query: `SELECT response_model, any(gen_ai_system) AS gen_ai_system FROM trigger_dev.llm_metrics_v1 WHERE organization_id = {organizationId: String} AND project_id = {projectId: String} AND environment_id = {environmentId: String} AND response_model != '' GROUP BY response_model ORDER BY response_model`,
       params: z.object({
@@ -97,7 +99,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
   }
 
-  const promptPresenter = new PromptPresenter(clickhouseClient);
+  const promptPresenter = new PromptPresenter(clickhouse);
   const [possiblePrompts, possibleOperations, possibleProviders] = await Promise.all([
     filters.includes("prompts")
       ? promptPresenter.getDistinctPromptSlugs(project.organizationId, project.id, environment.id)

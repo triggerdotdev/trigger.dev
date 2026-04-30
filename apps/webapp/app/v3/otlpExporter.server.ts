@@ -20,15 +20,10 @@ import {
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
 import { logger } from "~/services/logger.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
-import { DynamicFlushScheduler } from "./dynamicFlushScheduler.server";
-import { ClickhouseEventRepository } from "./eventRepository/clickhouseEventRepository.server";
-import {
-  clickhouseEventRepository,
-  clickhouseEventRepositoryV2,
-} from "./eventRepository/clickhouseEventRepositoryInstance.server";
+import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+
 import { generateSpanId } from "./eventRepository/common.server";
-import { EventRepository, eventRepository } from "./eventRepository/eventRepository.server";
 import type {
   CreatableEventKind,
   CreatableEventStatus,
@@ -39,21 +34,25 @@ import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
 import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
-import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
+
+type OTLPExporterConfig = {
+  clickhouseFactory: ClickhouseFactory;
+  verbose: boolean;
+  spanAttributeValueLengthLimit: number;
+};
 
 class OTLPExporter {
   private _tracer: Tracer;
+  private readonly _clickhouseFactory: ClickhouseFactory;
+  private readonly _verbose: boolean;
+  private readonly _spanAttributeValueLengthLimit: number;
 
-  constructor(
-    private readonly _eventRepository: EventRepository,
-    private readonly _clickhouseEventRepository: ClickhouseEventRepository,
-    private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
-    private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
-    private readonly _verbose: boolean,
-    private readonly _spanAttributeValueLengthLimit: number
-  ) {
+  constructor(config: OTLPExporterConfig) {
     this._tracer = trace.getTracer("otlp-exporter");
+    this._clickhouseFactory = config.clickhouseFactory;
+    this._verbose = config.verbose;
+    this._spanAttributeValueLengthLimit = config.spanAttributeValueLengthLimit;
   }
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
@@ -74,23 +73,16 @@ class OTLPExporter {
     });
   }
 
-  async exportMetrics(
-    request: ExportMetricsServiceRequest
-  ): Promise<ExportMetricsServiceResponse> {
+  async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
-      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
-        (resourceMetrics) => {
-          return convertMetricsToClickhouseRows(
-            resourceMetrics,
-            this._spanAttributeValueLengthLimit
-          );
-        }
+      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap((resourceMetrics) =>
+        convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
       );
 
       span.setAttribute("metric_row_count", rows.length);
 
       if (rows.length > 0) {
-        this._metricsFlushScheduler.addToBatch(rows);
+        await this.#exportMetricRows(rows);
       }
 
       return ExportMetricsServiceResponse.create();
@@ -118,40 +110,73 @@ class OTLPExporter {
   async #exportEvents(
     eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[]
   ) {
-    const eventsGroupedByStore = eventsWithStores.reduce((acc, { events, taskEventStore }) => {
-      acc[taskEventStore] = acc[taskEventStore] || [];
-      acc[taskEventStore].push(...events);
-      return acc;
-    }, {} as Record<string, Array<CreateEventInput>>);
+    await waitForLlmPricingReady();
+
+    // Group by unique event repositories
+    const routeCache = new Map<string, { key: string; repository: IEventRepository }>();
+    const groups = new Map<string, { repository: IEventRepository; events: CreateEventInput[] }>();
+    for (const { events, taskEventStore } of eventsWithStores) {
+      for (const event of events) {
+        const routeKey = `${event.organizationId}\0${taskEventStore}`;
+        let resolved = routeCache.get(routeKey);
+        if (!resolved) {
+          resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
+            taskEventStore,
+            event.organizationId
+          );
+          routeCache.set(routeKey, resolved);
+        }
+
+        let group = groups.get(resolved.key);
+        if (!group) {
+          group = { repository: resolved.repository, events: [] };
+          groups.set(resolved.key, group);
+        }
+        group.events.push(event);
+      }
+    }
 
     let eventCount = 0;
 
-    for (const [store, events] of Object.entries(eventsGroupedByStore)) {
-      const eventRepository = this.#getEventRepositoryForStore(store);
-
-      await waitForLlmPricingReady();
+    for (const [repoKey, { repository, events }] of groups) {
       const enrichedEvents = enrichCreatableEvents(events);
 
-      this.#logEventsVerbose(enrichedEvents, `exportEvents ${store}`);
+      this.#logEventsVerbose(enrichedEvents, `exportEvents ${repoKey}`);
 
       eventCount += enrichedEvents.length;
 
-      await eventRepository.insertMany(enrichedEvents);
+      repository.insertMany(enrichedEvents);
     }
 
     return eventCount;
   }
 
-  #getEventRepositoryForStore(store: string): IEventRepository {
-    if (store === "clickhouse") {
-      return this._clickhouseEventRepository;
+  async #exportMetricRows(rows: MetricsV1Input[]): Promise<void> {
+    const routeCache = new Map<string, { key: string; repository: IEventRepository }>();
+    const groups = new Map<string, { repository: IEventRepository; rows: MetricsV1Input[] }>();
+
+    for (const row of rows) {
+      const routeKey = row.organization_id;
+      let resolved = routeCache.get(routeKey);
+      if (!resolved) {
+        resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
+          "clickhouse_v2",
+          row.organization_id
+        );
+        routeCache.set(routeKey, resolved);
+      }
+
+      let group = groups.get(resolved.key);
+      if (!group) {
+        group = { repository: resolved.repository, rows: [] };
+        groups.set(resolved.key, group);
+      }
+      group.rows.push(row);
     }
 
-    if (store === "clickhouse_v2") {
-      return this._clickhouseEventRepositoryV2;
+    for (const [, { repository, rows: groupedRows }] of groups) {
+      repository.insertManyMetrics(groupedRows);
     }
-
-    return this._eventRepository;
   }
 
   #logEventsVerbose(events: CreateEventInput[], prefix: string) {
@@ -393,7 +418,10 @@ function convertSpansToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
-        const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
+        const runTags = extractArrayAttribute(
+          span.attributes ?? [],
+          SemanticInternalAttributes.RUN_TAGS
+        );
 
         const properties =
           truncateAttributes(
@@ -464,7 +492,10 @@ function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
   const flooredMs = Math.floor(epochMs / 10_000) * 10_000;
   const date = new Date(flooredMs);
   // Format as ClickHouse DateTime: YYYY-MM-DD HH:MM:SS
-  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+  return date
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
 }
 
 function convertMetricsToClickhouseRows(
@@ -584,8 +615,7 @@ function resolveDataPointContext(
   attributes: Record<string, unknown>;
 } {
   const runId =
-    resourceCtx.runId ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
+    resourceCtx.runId ?? extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
   const taskSlug =
     resourceCtx.taskSlug ??
     extractStringAttribute(dpAttributes, SemanticInternalAttributes.TASK_SLUG);
@@ -1172,26 +1202,13 @@ function hasUnpairedSurrogateAtEnd(str: string): boolean {
 
 export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 
-function initializeOTLPExporter() {
-  const metricsFlushScheduler = new DynamicFlushScheduler<MetricsV1Input>({
-    batchSize: env.METRICS_CLICKHOUSE_BATCH_SIZE,
-    flushInterval: env.METRICS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-    callback: async (_flushId, batch) => {
-      await clickhouseClient.metrics.insert(batch);
-    },
-    minConcurrency: 1,
-    maxConcurrency: env.METRICS_CLICKHOUSE_MAX_CONCURRENCY,
-    loadSheddingEnabled: false,
-  });
-
-  return new OTLPExporter(
-    eventRepository,
-    clickhouseEventRepository,
-    clickhouseEventRepositoryV2,
-    metricsFlushScheduler,
-    process.env.OTLP_EXPORTER_VERBOSE === "1",
-    process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+async function initializeOTLPExporter() {
+  await clickhouseFactory.isReady();
+  return new OTLPExporter({
+    clickhouseFactory,
+    verbose: process.env.OTLP_EXPORTER_VERBOSE === "1",
+    spanAttributeValueLengthLimit: process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
       ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
-      : 8192
-  );
+      : 8192,
+  });
 }

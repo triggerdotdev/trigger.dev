@@ -9,7 +9,7 @@ import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trig
 import assertNever from "assert-never";
 import { z } from "zod";
 import { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { CoercedDate } from "~/utils/zod";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -259,7 +259,8 @@ export class ApiRunListPresenter extends BasePresenter {
         options.machines = searchParams["filter[machine]"];
       }
 
-      const presenter = new NextRunListPresenter(this._replica, clickhouseClient);
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+      const presenter = new NextRunListPresenter(this._replica, clickhouse);
 
       logger.debug("Calling RunListPresenter", { options });
 

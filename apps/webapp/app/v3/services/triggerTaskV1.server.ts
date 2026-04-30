@@ -294,6 +294,7 @@ export class TriggerTaskServiceV1 extends BaseService {
         : undefined;
 
       const { repository, store } = await getV3EventRepository(
+        environment.organization.id,
         dependentAttempt?.taskRun.taskEventStore ??
           parentAttempt?.taskRun.taskEventStore ??
           dependentBatchRun?.dependentTaskAttempt?.taskRun.taskEventStore

@@ -14,6 +14,7 @@ import type {
   TaskEventStatus,
   TaskRun,
 } from "@trigger.dev/database";
+import type { MetricsV1Input } from "@internal/clickhouse";
 import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
 export type { ExceptionEventProperties };
 
@@ -345,8 +346,9 @@ export type TraceDetailedSummary = {
 export interface IEventRepository {
   maximumLiveReloadingSetting: number;
   // Event insertion methods
-  insertMany(events: CreateEventInput[]): Promise<void>;
+  insertMany(events: CreateEventInput[]): void;
   insertManyImmediate(events: CreateEventInput[]): Promise<void>;
+  insertManyMetrics(rows: MetricsV1Input[]): void;
 
   // Run event completion methods
   completeSuccessfulRunEvent(params: { run: CompleteableTaskRun; endTime?: Date }): Promise<void>;

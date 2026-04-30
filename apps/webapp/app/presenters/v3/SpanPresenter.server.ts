@@ -21,7 +21,6 @@ import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 import { safeJsonParse } from "~/utils/json";
 import {
@@ -30,6 +29,7 @@ import {
   extractAIToolCallData,
   extractAIEmbedData,
 } from "~/components/runs/v3/ai";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 export type PromptSpanData = {
   slug: string;
@@ -130,14 +130,17 @@ export class SpanPresenter extends BasePresenter {
 
     const { traceId } = parentRun;
 
-    const eventRepository = resolveEventRepositoryForStore(parentRun.taskEventStore);
+    const repository = await getEventRepositoryForStore(
+      parentRun.taskEventStore,
+      project.organizationId
+    );
 
     const eventStore = getTaskEventStoreTableForRun(parentRun);
 
     const run = await this.getRun({
       eventStore,
       traceId,
-      eventRepository,
+      eventRepository: repository,
       spanId,
       linkedRunId,
       createdAt: parentRun.createdAt,
@@ -159,7 +162,7 @@ export class SpanPresenter extends BasePresenter {
       projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
-      eventRepository,
+      eventRepository: repository,
     });
 
     if (!span) {

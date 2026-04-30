@@ -1,6 +1,6 @@
 import { type PrismaClient } from "@trigger.dev/database";
 import { CreateBulkActionSearchParams } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { getRunFiltersFromRequest } from "../RunFilters.server";
 import { BasePresenter } from "./basePresenter.server";
@@ -24,8 +24,9 @@ export class CreateBulkActionPresenter extends BasePresenter {
       Object.fromEntries(new URL(request.url).searchParams)
     );
 
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
     const runsRepository = new RunsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: this._replica as PrismaClient,
     });
 

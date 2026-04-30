@@ -101,7 +101,10 @@ export class CancelTaskRunServiceV1 extends BaseService {
       },
     });
 
-    const eventRepository = resolveEventRepositoryForStore(cancelledTaskRun.taskEventStore);
+    const eventRepository = resolveEventRepositoryForStore(
+      cancelledTaskRun.taskEventStore,
+      cancelledTaskRun.runtimeEnvironment.organizationId
+    );
 
     const [cancelRunEventError] = await tryCatch(
       eventRepository.cancelRunEvent({

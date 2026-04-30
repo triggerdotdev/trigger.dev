@@ -70,7 +70,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.spans.$spanParam/route";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
@@ -242,7 +242,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
 
-  const presenter = new PromptPresenter(clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const presenter = new PromptPresenter(clickhouse);
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};
   try {
@@ -273,7 +274,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Load distinct filter values and resizable snapshots in parallel
   const distinctQuery = (col: string, name: string) =>
-    clickhouseClient.reader.query({
+    clickhouse.reader.query({
       name,
       query: `SELECT DISTINCT ${col} AS val FROM trigger_dev.llm_metrics_v1 WHERE environment_id = {environmentId: String} AND prompt_slug = {promptSlug: String} AND ${col} != '' ORDER BY val`,
       params: z.object({ environmentId: z.string(), promptSlug: z.string() }),
