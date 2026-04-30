@@ -393,10 +393,19 @@ To add retry-like behavior:
 6. **Use `onFailure` for run-level monitoring** (Sentry, monitoring dashboards).
 7. **For known transient errors (rate limits, network)**, consider a fallback model inside `run()` instead of failing the turn.
 
+## `ChatChunkTooLargeError`
+
+A specific run-failing error worth flagging on its own. Anything written through the chat output is one record on the underlying realtime stream, capped at ~1 MiB per record. A single chunk over the cap throws `ChatChunkTooLargeError` (named export from `@trigger.dev/sdk`). The most common trigger is a tool whose result object is large enough to overflow as one `tool-output-available` chunk.
+
+The error carries `chunkType`, `chunkSize`, and `maxSize`. Catch with the `isChatChunkTooLargeError` guard and route oversized values out-of-band.
+
+See [Large payloads in chat.agent](/ai-chat/patterns/large-payloads) for the two patterns that work around the cap (ID-reference + run-scoped `streams.writer()`).
+
 ## See also
 
 - [`uiMessageStreamOptions.onError`](/ai-chat/backend#error-handling-with-onerror) — stream error handler details
 - [Custom actions](/ai-chat/backend#actions) — implement undo/retry actions
 - [`chat.history`](/ai-chat/backend#chat-history) — rollback to a previous message
+- [Large payloads](/ai-chat/patterns/large-payloads) — handling the ~1 MiB per-chunk cap
 - [Database persistence](/ai-chat/patterns/database-persistence) — saving conversation state
 - [Standard task hooks](/tasks/overview) — `onFailure`, `onComplete`, `onWait`, etc.

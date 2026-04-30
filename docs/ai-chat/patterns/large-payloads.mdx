@@ -1,0 +1,188 @@
+---
+title: "Large payloads in chat.agent"
+sidebarTitle: "Large payloads"
+description: "Why a single chunk on the chat stream is capped at ~1 MiB, what error you'll see, and the two patterns that work around it: ID references and out-of-band run streams."
+---
+
+The realtime stream that backs `chat.agent` enforces a **per-record cap of ~1 MiB** (`1048576` bytes minus a small envelope reserve). Anything written through the chat output — auto-piped LLM chunks, `chat.response.write`, custom `writer.write` parts — counts as one record per chunk and is rejected if it crosses the cap.
+
+This is a platform-level limit and cannot be raised per project or per stream.
+
+## What you'll see
+
+When a chunk crosses the cap, the run fails with a typed [`ChatChunkTooLargeError`](/ai-chat/error-handling):
+
+```
+ChatChunkTooLargeError: chat.agent chunk of type "tool-output-available" is 2000126 bytes,
+over the realtime stream's per-record cap of 1047552 bytes. For oversized payloads
+(e.g. large tool outputs), write the value to your own store and emit only an id/url
+through the chat stream — see https://trigger.dev/docs/ai-chat/patterns/large-payloads.
+```
+
+The error includes:
+
+- `chunkType` — discriminant on the chunk that failed (e.g. `tool-output-available`, `data-handover`, `text-delta`).
+- `chunkSize` — UTF-8 byte count of the JSON-serialized record.
+- `maxSize` — the effective cap.
+
+You can catch and re-throw / log it explicitly:
+
+```ts
+import { ChatChunkTooLargeError, isChatChunkTooLargeError } from "@trigger.dev/sdk";
+
+try {
+  await someWrite();
+} catch (err) {
+  if (isChatChunkTooLargeError(err)) {
+    logger.error("Oversized chunk", { type: err.chunkType, size: err.chunkSize });
+  }
+  throw err;
+}
+```
+
+## Most common cause: large tool outputs
+
+If you return a `streamText` result from `run()`, the AI SDK auto-pipes its `UIMessageStream` into the chat output. A tool whose result object is large (a fetched HTML body, a CSV blob, an image as base64, a deep DB row dump) gets emitted as one `tool-output-available` chunk — and that's the chunk that overruns.
+
+**Diagnose first**: log tool sizes during development.
+
+```ts
+const fetchPage = tool({
+  inputSchema: z.object({ url: z.string().url() }),
+  execute: async ({ url }) => {
+    const html = await (await fetch(url)).text();
+    if (html.length > 500_000) {
+      logger.warn("Large tool output", { tool: "fetchPage", bytes: html.length });
+    }
+    return { html };
+  },
+});
+```
+
+If the size is unbounded by input, fix the tool — not the stream.
+
+## Pattern 1: ID-reference (recommended)
+
+Store the large value in your own database (or object store) and emit only an identifier through the chat stream. The frontend fetches the full payload separately on demand.
+
+This keeps the chat stream small, predictable, and resumable, and lets you reuse the value across turns or sessions without re-streaming it.
+
+<CodeGroup>
+
+```ts task.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { tool } from "ai";
+import { z } from "zod";
+
+const fetchPage = tool({
+  description: "Fetch a URL and store the HTML for later inspection.",
+  inputSchema: z.object({ url: z.string().url() }),
+  execute: async ({ url }) => {
+    const html = await (await fetch(url)).text();
+    const docId = await db.documents.create({
+      data: { url, html, byteSize: html.length },
+    });
+
+    // Tool result is small — just an id and metadata.
+    // The model and the UI both work with this lightweight handle.
+    return {
+      docId,
+      url,
+      byteSize: html.length,
+      preview: html.slice(0, 500),
+    };
+  },
+});
+```
+
+```ts api/document/[id]/route.ts
+// Frontend fetches the full document on demand.
+import { auth, currentUser } from "@/lib/auth";
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const user = await currentUser();
+  const doc = await db.documents.findUniqueOrThrow({
+    where: { id: params.id, userId: user.id },
+  });
+  return new Response(doc.html, { headers: { "content-type": "text/html" } });
+}
+```
+
+```tsx component.tsx
+function ToolResultCard({ part }: { part: ToolUIPart<"fetchPage"> }) {
+  const { docId, url, byteSize, preview } = part.output;
+  return (
+    <div>
+      <p>{url} — {(byteSize / 1024).toFixed(0)} KB</p>
+      <pre>{preview}…</pre>
+      <a href={`/api/document/${docId}`}>Open full HTML</a>
+    </div>
+  );
+}
+```
+
+</CodeGroup>
+
+The same pattern works for `chat.response.write` — push the heavy value to your DB, then emit a small data part with the id:
+
+```ts
+const id = await db.attachments.create({ data: { content: hugeReport } });
+chat.response.write({ type: "data-report", data: { id, summary: shortSummary } });
+```
+
+<Tip>
+  Persist the large value **before** you emit the id chunk. If the chunk reaches the UI before the row is written, the frontend gets a 404 on the follow-up fetch.
+</Tip>
+
+## Pattern 2: Out-of-band `streams.writer()`
+
+If the value is **only useful for the lifetime of the run** (a long log tail, a transient progress dump, a per-turn debug trace) and you don't want to persist it, write it to a **separate run-scoped stream** instead. Run-scoped `streams.writer()` is its own channel — chunks go through the same per-record cap, but the chat stream stays untouched, and `useRealtimeRunWithStreams` consumes them independently of the chat UI.
+
+```ts
+import { task, streams } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+const debugLog = streams.define<{ line: string }>("debug-log");
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    // Heavy diagnostic stream lives on its own channel.
+    const log = debugLog.writer();
+    log.write({ line: "starting turn" });
+
+    return streamText({ /* ... */ });
+  },
+});
+```
+
+Frontend:
+
+```tsx
+import { useRealtimeRunWithStreams } from "@trigger.dev/react-hooks";
+
+function DebugPanel({ runId }: { runId: string }) {
+  const { streams } = useRealtimeRunWithStreams<typeof myChat>(runId);
+  return (
+    <pre>{streams?.["debug-log"]?.map((c) => c.line).join("\n")}</pre>
+  );
+}
+```
+
+Same 1 MiB cap applies per record, so split long content across multiple writes (one record per line, per page, per progress tick) rather than one large blob.
+
+## What does **not** trigger the cap
+
+These calls don't go through the realtime stream and have no per-record cap:
+
+- [`chat.history.set` / `slice` / `replace` / `remove`](/ai-chat/features#chathistory) — locals-only mutations on the in-memory message list.
+- [`chat.inject`](/ai-chat/features#chatinject) — appends to the run's pending message queue, not the stream.
+- [`chat.defer`](/ai-chat/features#chatdefer) — promise registry; awaited at turn boundaries, never serialized to the stream.
+
+The control markers `chat.agent` emits internally (`trigger:turn-complete`, `trigger:upgrade-required`) are tiny by construction.
+
+## See also
+
+- [Error handling](/ai-chat/error-handling) — how `ChatChunkTooLargeError` flows through the layers.
+- [Database persistence](/ai-chat/patterns/database-persistence) — your own store as the durable backing for ID references.
+- [Client protocol](/ai-chat/client-protocol) — chunk shapes that travel on the chat stream.
