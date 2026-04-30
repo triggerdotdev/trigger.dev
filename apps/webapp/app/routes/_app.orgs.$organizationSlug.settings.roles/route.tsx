@@ -204,9 +204,14 @@ export default function Page() {
               <Table containerClassName="border-t-0">
                 <TableHeader>
                   <TableRow>
-                    <TableHeaderCell>Permission</TableHeaderCell>
+                    <TableHeaderCell className="w-[1%] whitespace-nowrap">
+                      Permission
+                    </TableHeaderCell>
                     {columns.map(({ role }) => (
-                      <TableHeaderCell key={role.id}>
+                      <TableHeaderCell
+                        key={role.id}
+                        className="w-[1%] whitespace-nowrap"
+                      >
                         <div className="flex items-center gap-1">
                           <span>{role.name}</span>
                           <PlanBadge
