@@ -189,7 +189,7 @@ export class ScheduleEngine {
         const schedulingDelayMs = nextScheduledTimestamp.getTime() - Date.now();
         span.setAttribute("scheduling_delay_ms", schedulingDelayMs);
 
-        this.logger.info("Calculated next schedule timestamp", {
+        this.logger.debug("Calculated next schedule timestamp", {
           instanceId: params.instanceId,
           taskIdentifier: instance.taskSchedule.taskIdentifier,
           nextScheduledTimestamp: nextScheduledTimestamp.toISOString(),
@@ -430,7 +430,7 @@ export class ScheduleEngine {
           span.setAttribute("scheduling_accuracy_ms", schedulingAccuracyMs);
           span.setAttribute("actual_execution_time", actualExecutionTime.toISOString());
 
-          this.logger.info("Triggering scheduled task", {
+          this.logger.debug("Triggering scheduled task", {
             instanceId: params.instanceId,
             taskIdentifier: instance.taskSchedule.taskIdentifier,
             scheduleTimestamp: scheduleTimestamp.toISOString(),
@@ -481,7 +481,7 @@ export class ScheduleEngine {
             );
           } else if (result) {
             if (result.success) {
-              this.logger.info("Successfully triggered scheduled task", {
+              this.logger.debug("Successfully triggered scheduled task", {
                 instanceId: params.instanceId,
                 taskIdentifier: instance.taskSchedule.taskIdentifier,
                 durationMs: triggerDuration,
@@ -742,7 +742,7 @@ export class ScheduleEngine {
       } as { recovered: string[]; skipped: string[] };
 
       for (const { instance, schedule } of instancesWithSchedule) {
-        this.logger.info("Recovering schedule", {
+        this.logger.debug("Recovering schedule", {
           schedule,
           instance,
         });
@@ -791,7 +791,7 @@ export class ScheduleEngine {
     const job = await this.worker.getJob(`scheduled-task-instance:${instance.id}`);
 
     if (job) {
-      this.logger.info("Job already exists for instance", {
+      this.logger.debug("Job already exists for instance", {
         instanceId: instance.id,
         job,
         schedule,
@@ -823,7 +823,7 @@ export class ScheduleEngine {
       lastScheduleTime = undefined;
     }
 
-    this.logger.info("No job found for instance, registering next run", {
+    this.logger.debug("No job found for instance, registering next run", {
       instanceId: instance.id,
       schedule,
       lastScheduleTime: lastScheduleTime?.toISOString(),
