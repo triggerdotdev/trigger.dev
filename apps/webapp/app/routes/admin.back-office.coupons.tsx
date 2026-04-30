@@ -7,12 +7,6 @@ import {
   ApplyCouponDialog,
   type ApplyCouponTarget,
 } from "~/components/admin/ApplyCouponDialog";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "~/components/primitives/Accordion";
 import { Button } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1, Header2 } from "~/components/primitives/Headers";
@@ -29,10 +23,8 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { logger } from "~/services/logger.server";
 import {
   applyCouponDeal,
-  getCouponDiagnostics,
   listCouponDeals,
   refreshCouponDeals,
   resolveCouponCustomer,
@@ -58,17 +50,10 @@ type CouponMatch = {
   primaryUserEmail: string | null;
 };
 
-type CouponDiagnostic = {
-  id: string;
-  name: string | null;
-  metadata: Record<string, string>;
-};
-
 type LoaderData = {
   email: string | null;
   deals: CouponDeal[];
   matches: CouponMatch[] | null;
-  diagnostics: CouponDiagnostic[];
   appliedDealKey: string | null;
 };
 
@@ -83,10 +68,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const email = emailParam && emailParam.trim().length > 0 ? emailParam.trim() : null;
   const appliedDealKey = url.searchParams.get("applied");
 
-  const [dealsResult, diagnostics] = await Promise.all([
-    listCouponDeals(),
-    safeDiagnostics(),
-  ]);
+  const dealsResult = await listCouponDeals();
 
   let matches: CouponMatch[] | null = null;
   if (email) {
@@ -98,25 +80,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     email,
     deals: dealsResult.deals as CouponDeal[],
     matches,
-    diagnostics,
     appliedDealKey,
   };
   return typedjson(data);
-}
-
-// Diagnostics is a nice-to-have panel; if billing has a transient issue with
-// it, the rest of the page should still work. The other calls remain hard
-// failures because the page is useless without them.
-async function safeDiagnostics(): Promise<CouponDiagnostic[]> {
-  try {
-    const result = await getCouponDiagnostics();
-    return result.unregisteredCoupons as CouponDiagnostic[];
-  } catch (error) {
-    logger.warn("Coupon diagnostics fetch failed; rendering page without panel", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return [];
-  }
 }
 
 const ApplySchema = z.object({
@@ -217,7 +183,7 @@ function groupDealsByCategory(deals: CouponDeal[]): Array<[string, CouponDeal[]]
 }
 
 export default function CouponsPage() {
-  const { email, deals, matches, diagnostics, appliedDealKey } =
+  const { email, deals, matches, appliedDealKey } =
     useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
 
@@ -301,40 +267,6 @@ export default function CouponsPage() {
           Find orgs
         </Button>
       </Form>
-
-      {diagnostics.length > 0 && (
-        <Accordion type="single" collapsible>
-          <AccordionItem value="diagnostics">
-            <AccordionTrigger>
-              {diagnostics.length} Stripe coupon{diagnostics.length === 1 ? "" : "s"} aren&apos;t
-              tagged as deals
-            </AccordionTrigger>
-            <AccordionContent>
-              <Paragraph variant="small" className="text-text-dimmed pb-2">
-                These coupons are valid in Stripe but missing the{" "}
-                <code className="rounded bg-charcoal-700 px-1">trigger_deal_key</code>{" "}
-                metadata field, so they don&apos;t appear in the apply controls
-                below. Common causes: typo in the metadata field name, or the
-                coupon was never tagged.
-              </Paragraph>
-              <ul className="flex flex-col gap-1 text-sm">
-                {diagnostics.map((c) => (
-                  <li key={c.id} className="font-mono text-text-dimmed">
-                    {c.id}
-                    {c.name ? ` — ${c.name}` : ""}
-                    {Object.keys(c.metadata).length > 0 ? (
-                      <span className="text-text-dimmed/70">
-                        {" "}
-                        · {JSON.stringify(c.metadata)}
-                      </span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      )}
 
       {matches === null ? (
         <Paragraph variant="small" className="text-text-dimmed">
