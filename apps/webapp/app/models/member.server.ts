@@ -96,13 +96,9 @@ export async function inviteMembers({
   /**
    * Optional RBAC role to attach to the invite. When set, accepted
    * invites trigger `rbac.setUserRole(rbacRoleId)` after the OrgMember
-   * is created. Caller is responsible for verifying this role is
-   * assignable by the inviter (level + plan tier) — the action layer
-   * does that check before reaching here.
+   * is created.
    *
-   * Legacy `OrgMemberInvite.role` is still set for OSS compatibility.
-   * Owner/Admin RBAC ids map to the legacy `ADMIN`; anything else maps
-   * to legacy `MEMBER`.
+   * `OrgMemberInvite.role` is still set if the plugin isn't installed.
    */
   rbacRoleId?: string | null;
 }) {
@@ -114,12 +110,9 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  // The legacy enum is the source of truth for OSS auth — keep it in
-  // sync with the chosen RBAC role so self-hosters who never install
-  // the plugin still get sensible permissions.
+  // The legacy enum is the source of truth without the plugin installed.
   const legacyRole: "ADMIN" | "MEMBER" =
-    rbacRoleId === SYSTEM_ROLE_IDS.owner ||
-    rbacRoleId === SYSTEM_ROLE_IDS.admin
+    rbacRoleId === SYSTEM_ROLE_IDS.owner || rbacRoleId === SYSTEM_ROLE_IDS.admin
       ? "ADMIN"
       : "MEMBER";
 
@@ -240,14 +233,7 @@ export async function acceptInvite({
     };
   });
 
-  // If the invite carried an explicit RBAC role (the inviter picked one
-  // when sending the invite), assign it now. Outside the Prisma
-  // transaction because the RBAC plugin runs against a separate
-  // postgres-js connection. Errors are logged, not fatal: the runtime
-  // fallback derives a role from the legacy OrgMember.role write
-  // above, so the user keeps working.
-  //
-  // No rbacRoleId → legacy behaviour, fallback covers it.
+  // If the invite carried an explicit RBAC role. Errors are logged, not fatal.
   if (result.rbacRoleId) {
     const roleResult = await rbac.setUserRole({
       userId: user.id,
@@ -255,7 +241,7 @@ export async function acceptInvite({
       roleId: result.rbacRoleId,
     });
     if (!roleResult.ok) {
-      logger.debug("acceptInvite: skipped RBAC role assignment", {
+      logger.error("acceptInvite: skipped RBAC role assignment", {
         organizationId: result.organization.id,
         userId: user.id,
         rbacRoleId: result.rbacRoleId,
