@@ -74,8 +74,10 @@ export interface TriggerScheduleParams {
   instanceId: string;
   finalAttempt: boolean;
   exactScheduleTime?: Date;
+  lastScheduleTime?: Date;
 }
 
 export interface RegisterScheduleInstanceParams {
   instanceId: string;
+  fromTimestamp?: Date;
 }

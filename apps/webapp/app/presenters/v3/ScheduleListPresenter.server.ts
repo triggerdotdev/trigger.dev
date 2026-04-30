@@ -6,7 +6,10 @@ import { getLimit } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
-import { calculateNextScheduledTimestampFromNow } from "~/v3/utils/calculateNextSchedule.server";
+import {
+  calculateNextScheduledTimestampFromNow,
+  previousScheduledTimestamp,
+} from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type ScheduleListOptions = {
@@ -193,7 +196,6 @@ export class ScheduleListPresenter extends BasePresenter {
           },
         },
         active: true,
-        lastRunTriggeredAt: true,
         createdAt: true,
       },
       where: {
@@ -244,6 +246,16 @@ export class ScheduleListPresenter extends BasePresenter {
     });
 
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
+      // Approximate "last run" from the cron's previous slot. If that slot
+      // predates the schedule itself, the schedule hasn't fired yet — show
+      // undefined rather than a misleading timestamp. UI is best-effort;
+      // accurate run history is on the schedule's runs page.
+      const cronPrev = previousScheduledTimestamp(
+        schedule.generatorExpression,
+        schedule.timezone
+      );
+      const lastRun = cronPrev.getTime() > schedule.createdAt.getTime() ? cronPrev : undefined;
+
       return {
         id: schedule.id,
         type: schedule.type,
@@ -256,7 +268,7 @@ export class ScheduleListPresenter extends BasePresenter {
         timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
-        lastRun: schedule.lastRunTriggeredAt ?? undefined,
+        lastRun,
         nextRun: calculateNextScheduledTimestampFromNow(
           schedule.generatorExpression,
           schedule.timezone

@@ -171,13 +171,13 @@ export class ScheduleEngine {
           instance.taskSchedule.generatorExpression
         );
 
-        const lastScheduledTimestamp = instance.lastScheduledTimestamp ?? new Date();
-        span.setAttribute("last_scheduled_timestamp", lastScheduledTimestamp.toISOString());
+        const fromTimestamp = params.fromTimestamp ?? new Date();
+        span.setAttribute("from_timestamp", fromTimestamp.toISOString());
 
         const nextScheduledTimestamp = calculateNextScheduledTimestamp(
           instance.taskSchedule.generatorExpression,
           instance.taskSchedule.timezone,
-          lastScheduledTimestamp
+          fromTimestamp
         );
 
         span.setAttribute("next_scheduled_timestamp", nextScheduledTimestamp.toISOString());
@@ -194,17 +194,16 @@ export class ScheduleEngine {
           timezone: instance.taskSchedule.timezone,
         });
 
-        await this.prisma.taskScheduleInstance.update({
-          where: {
-            id: params.instanceId,
-          },
-          data: {
-            nextScheduledTimestamp,
-          },
-        });
-
-        // Enqueue the scheduled task
-        await this.enqueueScheduledTask(params.instanceId, nextScheduledTimestamp);
+        // Enqueue the scheduled task. Pass fromTimestamp through as the next
+        // job's lastScheduleTime so the dequeueing engine can populate
+        // payload.lastTimestamp without re-reading state from the DB. When
+        // fromTimestamp is undefined (first-ever registration / recovery),
+        // lastScheduleTime is also undefined → consumer reports undefined.
+        await this.enqueueScheduledTask(
+          params.instanceId,
+          nextScheduledTimestamp,
+          params.fromTimestamp
+        );
 
         // Record metrics
         this.scheduleRegistrationCounter.add(1, {
@@ -244,6 +243,7 @@ export class ScheduleEngine {
       instanceId: payload.instanceId,
       finalAttempt: false, // TODO: implement retry logic
       exactScheduleTime: payload.exactScheduleTime,
+      lastScheduleTime: payload.lastScheduleTime,
     });
   }
 
@@ -350,14 +350,6 @@ export class ScheduleEngine {
           skipReason = "schedule_inactive";
         }
 
-        if (!instance.nextScheduledTimestamp) {
-          this.logger.debug("No next scheduled timestamp", {
-            instanceId: params.instanceId,
-          });
-          shouldTrigger = false;
-          skipReason = "no_next_timestamp";
-        }
-
         // For development environments, check if there's an active session
         if (instance.environment.type === "DEVELOPMENT") {
           this.devEnvironmentCheckCounter.add(1, {
@@ -396,15 +388,26 @@ export class ScheduleEngine {
         }
 
         // Calculate the schedule timestamp that will be used (regardless of whether we trigger or not)
-        const scheduleTimestamp =
-          params.exactScheduleTime ?? instance.nextScheduledTimestamp ?? new Date();
+        const scheduleTimestamp = params.exactScheduleTime ?? new Date();
 
         if (shouldTrigger) {
+          // payload.lastTimestamp is the actual previous fire time. Sources, in
+          // order:
+          //   1. params.lastScheduleTime — populated by the engine when this
+          //      job was enqueued. Always present for jobs enqueued post-deploy.
+          //   2. instance.lastScheduledTimestamp — backward-compat fallback for
+          //      in-flight Redis jobs enqueued by older engines that didn't
+          //      include lastScheduleTime in the payload. Once those drain
+          //      this fallback never triggers and we can drop the column.
+          //   3. undefined — first-ever fire (no previous fire to point at).
+          const lastTimestamp =
+            params.lastScheduleTime ?? instance.lastScheduledTimestamp ?? undefined;
+
           const payload = {
             scheduleId: instance.taskSchedule.friendlyId,
             type: instance.taskSchedule.type as "DECLARATIVE" | "IMPERATIVE",
             timestamp: scheduleTimestamp,
-            lastTimestamp: instance.lastScheduledTimestamp ?? undefined,
+            lastTimestamp,
             externalId: instance.taskSchedule.externalId ?? undefined,
             timezone: instance.taskSchedule.timezone,
             upcoming: nextScheduledTimestamps(
@@ -428,7 +431,7 @@ export class ScheduleEngine {
             scheduleTimestamp: scheduleTimestamp.toISOString(),
             actualExecutionTime: actualExecutionTime.toISOString(),
             schedulingAccuracyMs,
-            lastTimestamp: instance.lastScheduledTimestamp?.toISOString(),
+            lastTimestamp: lastTimestamp?.toISOString(),
           });
 
           const triggerStartTime = Date.now();
@@ -473,16 +476,6 @@ export class ScheduleEngine {
             );
           } else if (result) {
             if (result.success) {
-              // Update the last run triggered timestamp
-              await this.prisma.taskSchedule.update({
-                where: {
-                  id: instance.taskSchedule.id,
-                },
-                data: {
-                  lastRunTriggeredAt: new Date(),
-                },
-              });
-
               this.logger.info("Successfully triggered scheduled task", {
                 instanceId: params.instanceId,
                 taskIdentifier: instance.taskSchedule.taskIdentifier,
@@ -542,20 +535,14 @@ export class ScheduleEngine {
           });
         }
 
-        // Always update the last scheduled timestamp and register next run
-        await this.prisma.taskScheduleInstance.update({
-          where: {
-            id: params.instanceId,
-          },
-          data: {
-            lastScheduledTimestamp: scheduleTimestamp,
-          },
-        });
-
-        // Register the next run
+        // Register the next run, calculating from the timestamp we just fired (or
+        // skipped) so we don't need to round-trip through DB state.
         // Rewritten try/catch to use tryCatch utility
         const [nextRunError] = await tryCatch(
-          this.registerNextTaskScheduleInstance({ instanceId: params.instanceId })
+          this.registerNextTaskScheduleInstance({
+            instanceId: params.instanceId,
+            fromTimestamp: scheduleTimestamp,
+          })
         );
         if (nextRunError) {
           this.logger.error("Failed to schedule next run after execution", {
@@ -610,10 +597,17 @@ export class ScheduleEngine {
   /**
    * Enqueues a scheduled task with distributed execution timing
    */
-  private async enqueueScheduledTask(instanceId: string, exactScheduleTime: Date) {
+  private async enqueueScheduledTask(
+    instanceId: string,
+    exactScheduleTime: Date,
+    lastScheduleTime?: Date
+  ) {
     return startSpan(this.tracer, "enqueueScheduledTask", async (span) => {
       span.setAttribute("instanceId", instanceId);
       span.setAttribute("exactScheduleTime", exactScheduleTime.toISOString());
+      if (lastScheduleTime) {
+        span.setAttribute("lastScheduleTime", lastScheduleTime.toISOString());
+      }
 
       const distributedExecutionTime = calculateDistributedExecutionTime(
         exactScheduleTime,
@@ -646,6 +640,7 @@ export class ScheduleEngine {
           payload: {
             instanceId,
             exactScheduleTime,
+            lastScheduleTime,
           },
           availableAt: distributedExecutionTime,
         });
@@ -698,8 +693,6 @@ export class ScheduleEngine {
             select: {
               id: true,
               environmentId: true,
-              lastScheduledTimestamp: true,
-              nextScheduledTimestamp: true,
             },
           },
         },
@@ -774,8 +767,6 @@ export class ScheduleEngine {
     instance: {
       id: string;
       environmentId: string;
-      lastScheduledTimestamp: Date | null;
-      nextScheduledTimestamp: Date | null;
     };
     schedule: { id: string; generatorExpression: string };
   }) {

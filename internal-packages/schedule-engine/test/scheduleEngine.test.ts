@@ -111,16 +111,11 @@ describe("ScheduleEngine Integration", () => {
           expectedUpcoming.push(upcoming);
         }
 
-        // Manually enqueue the first scheduled task to kick off the lifecycle
+        // Manually enqueue the first scheduled task to kick off the lifecycle.
+        // Engine no longer persists nextScheduledTimestamp — the same time can be
+        // reproduced from the cron expression alone, so we use expectedExecutionTime
+        // directly downstream.
         await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
-
-        // Get the actual nextScheduledTimestamp that was calculated by the engine
-        const instanceAfterRegistration = await prisma.taskScheduleInstance.findFirst({
-          where: { id: scheduleInstance.id },
-        });
-        const actualNextExecution = instanceAfterRegistration?.nextScheduledTimestamp;
-        expect(actualNextExecution).toBeDefined();
-        expect(actualNextExecution).toEqual(expectedExecutionTime);
 
         // Wait for the first execution
         console.log("Waiting for first execution...");
@@ -201,64 +196,44 @@ describe("ScheduleEngine Integration", () => {
           payload: {
             scheduleId: "sched_abc123",
             type: "DECLARATIVE",
-            timestamp: actualNextExecution,
-            lastTimestamp: undefined, // First run has no lastTimestamp
+            timestamp: expectedExecutionTime,
+            // First-ever fire: cron's previous slot predates instance.createdAt
+            // (which was set ~now), so lastTimestamp is undefined. This preserves
+            // the `if (!payload.lastTimestamp)` first-run sentinel customers rely on.
+            lastTimestamp: undefined,
             externalId: "ext-123",
             timezone: "UTC",
             upcoming: expect.arrayContaining([expect.any(Date)]),
           },
           scheduleInstanceId: scheduleInstance.id,
           scheduleId: taskSchedule.id,
-          exactScheduleTime: actualNextExecution,
+          exactScheduleTime: expectedExecutionTime,
         });
 
         // Verify the second execution parameters
-        if (actualNextExecution) {
-          const expectedSecondExecution = new Date(actualNextExecution);
-          expectedSecondExecution.setMinutes(actualNextExecution.getMinutes() + 1);
+        const expectedSecondExecution = new Date(expectedExecutionTime);
+        expectedSecondExecution.setMinutes(expectedExecutionTime.getMinutes() + 1);
 
-          expect(secondExecution.params).toEqual({
-            taskIdentifier: "test-task",
-            environment: expect.objectContaining({
-              id: environment.id,
-              type: "PRODUCTION",
-            }),
-            payload: {
-              scheduleId: "sched_abc123",
-              type: "DECLARATIVE",
-              timestamp: expectedSecondExecution,
-              lastTimestamp: actualNextExecution, // Second run should have the first execution time as lastTimestamp
-              externalId: "ext-123",
-              timezone: "UTC",
-              upcoming: expect.arrayContaining([expect.any(Date)]),
-            },
-            scheduleInstanceId: scheduleInstance.id,
-            scheduleId: taskSchedule.id,
-            exactScheduleTime: expectedSecondExecution,
-          });
-        }
-
-        // Verify database updates occurred after both executions
-        const updatedSchedule = await prisma.taskSchedule.findFirst({
-          where: { id: taskSchedule.id },
+        expect(secondExecution.params).toEqual({
+          taskIdentifier: "test-task",
+          environment: expect.objectContaining({
+            id: environment.id,
+            type: "PRODUCTION",
+          }),
+          payload: {
+            scheduleId: "sched_abc123",
+            type: "DECLARATIVE",
+            timestamp: expectedSecondExecution,
+            // Previous slot before second execution = first execution time.
+            lastTimestamp: expectedExecutionTime,
+            externalId: "ext-123",
+            timezone: "UTC",
+            upcoming: expect.arrayContaining([expect.any(Date)]),
+          },
+          scheduleInstanceId: scheduleInstance.id,
+          scheduleId: taskSchedule.id,
+          exactScheduleTime: expectedSecondExecution,
         });
-        expect(updatedSchedule?.lastRunTriggeredAt).toBeTruthy();
-        expect(updatedSchedule?.lastRunTriggeredAt).toBeInstanceOf(Date);
-
-        const finalInstance = await prisma.taskScheduleInstance.findFirst({
-          where: { id: scheduleInstance.id },
-        });
-
-        // After two executions, lastScheduledTimestamp should be the second execution time
-        if (actualNextExecution && secondExecution.params.exactScheduleTime) {
-          const secondExecutionTime = secondExecution.params.exactScheduleTime;
-          expect(finalInstance?.lastScheduledTimestamp).toEqual(secondExecutionTime);
-
-          // The next scheduled timestamp should be 1 minute after the second execution
-          const expectedThirdExecution = new Date(secondExecutionTime);
-          expectedThirdExecution.setMinutes(secondExecutionTime.getMinutes() + 1);
-          expect(finalInstance?.nextScheduledTimestamp).toEqual(expectedThirdExecution);
-        }
       } finally {
         // Clean up: stop the worker
         await engine.quit();

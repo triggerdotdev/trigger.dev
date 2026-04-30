@@ -93,18 +93,14 @@ describe("Schedule Recovery", () => {
         // Perform recovery
         await engine.recoverSchedulesInEnvironment(project.id, environment.id);
 
-        // Verify that a job was created
+        // Verify that a job was created. The engine no longer persists
+        // nextScheduledTimestamp; correctness is now determined entirely by the
+        // job sitting in the worker queue.
         const jobAfterRecovery = await engine.getJob(
           `scheduled-task-instance:${scheduleInstance.id}`
         );
         expect(jobAfterRecovery).not.toBeNull();
         expect(jobAfterRecovery?.job).toBe("schedule.triggerScheduledTask");
-
-        // Verify the instance was updated with next scheduled timestamp
-        const updatedInstance = await prisma.taskScheduleInstance.findFirst({
-          where: { id: scheduleInstance.id },
-        });
-        expect(updatedInstance?.nextScheduledTimestamp).toBeDefined();
       } finally {
         await engine.quit();
       }
@@ -313,19 +309,13 @@ describe("Schedule Recovery", () => {
         // Perform recovery
         await engine.recoverSchedulesInEnvironment(project.id, environment.id);
 
-        // Verify that jobs were created for all instances
+        // Verify that jobs were created for all instances. The engine no longer
+        // persists nextScheduledTimestamp — the worker-queue presence is the
+        // source of truth.
         for (const instance of instances) {
           const job = await engine.getJob(`scheduled-task-instance:${instance.id}`);
           expect(job).not.toBeNull();
           expect(job?.job).toBe("schedule.triggerScheduledTask");
-        }
-
-        // Verify all instances were updated
-        for (const instance of instances) {
-          const updatedInstance = await prisma.taskScheduleInstance.findFirst({
-            where: { id: instance.id },
-          });
-          expect(updatedInstance?.nextScheduledTimestamp).toBeDefined();
         }
       } finally {
         await engine.quit();
