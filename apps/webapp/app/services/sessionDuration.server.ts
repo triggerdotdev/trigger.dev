@@ -74,7 +74,7 @@ export async function getEffectiveSessionDuration(
   client: PrismaClientOrTransaction = prisma
 ): Promise<EffectiveSessionDuration> {
   const [user, orgCap] = await Promise.all([
-    client.user.findUnique({
+    client.user.findFirst({
       where: { id: userId },
       select: { sessionDuration: true },
     }),

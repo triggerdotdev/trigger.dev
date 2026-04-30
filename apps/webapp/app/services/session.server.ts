@@ -1,4 +1,5 @@
 import { redirect } from "@remix-run/node";
+import { $replica } from "~/db.server";
 import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { authenticator } from "./auth.server";
@@ -11,6 +12,44 @@ import {
 } from "./sessionDuration.server";
 import { getUserSession } from "./sessionStorage.server";
 
+/**
+ * Enforces the user's effective session duration (User.sessionDuration capped
+ * by the most restrictive Organization.maxSessionDuration). If the session was
+ * issued longer ago than the cap allows, throws a redirect to `/logout` and
+ * emits a HIPAA audit log. `userId` is always the *session owner's* id (i.e.
+ * the real authenticated user), not an impersonated one — because the cap
+ * belongs to the cookie, not the impersonation target.
+ */
+async function enforceSessionExpiry(
+  request: Request,
+  userId: string,
+  impersonatedUserId: string | null = null
+): Promise<void> {
+  const session = await getUserSession(request);
+  // Hot path: every authenticated request runs this. Read from the replica
+  // when one is configured (falls back to primary). Stale-by-replica-lag is
+  // acceptable here because the worst case is a session living a few seconds
+  // past its cap on the very first request after a cap change.
+  const { durationSeconds, orgCapSeconds, userSettingSeconds } =
+    await getEffectiveSessionDuration(userId, $replica);
+  if (!isSessionExpired(session, durationSeconds)) return;
+
+  const issuedAt = getSessionIssuedAt(session);
+  // HIPAA audit trail: structured log lands in CloudWatch via stdout. Use
+  // the stable `event` field to filter/aggregate auto-logout events.
+  logger.info("Auto-logout: session exceeded effective duration", {
+    event: "session.auto_logout",
+    userId,
+    impersonatedUserId,
+    effectiveDurationSeconds: durationSeconds,
+    userSettingSeconds,
+    orgCapSeconds,
+    sessionAgeMs: issuedAt === null ? null : Date.now() - issuedAt,
+    requestPath: new URL(request.url).pathname,
+  });
+  throw redirect("/logout");
+}
+
 export async function getUserId(request: Request): Promise<string | undefined> {
   const impersonatedUserId = await getImpersonationId(request);
 
@@ -20,39 +59,24 @@ export async function getUserId(request: Request): Promise<string | undefined> {
     if (authUser?.userId) {
       const realUser = await getUserById(authUser.userId);
       if (realUser?.admin) {
+        // Enforce expiry against the admin's own session — impersonation must
+        // not be a way to bypass the admin's effective duration cap.
+        await enforceSessionExpiry(request, authUser.userId, impersonatedUserId);
         return impersonatedUserId;
       }
     }
-    // Admin revoked or session invalid — fall through to return the real user's ID
+    // Admin revoked or session invalid — fall through to return the real
+    // user's ID. Same enforcement as the regular auth path below.
+    if (authUser?.userId) {
+      await enforceSessionExpiry(request, authUser.userId);
+    }
     return authUser?.userId;
   }
 
   const authUser = await authenticator.isAuthenticated(request);
   if (!authUser?.userId) return undefined;
 
-  // Enforce the user's effective session duration (User.sessionDuration capped
-  // by the most restrictive Organization.maxSessionDuration). If the session
-  // was issued longer ago than the cap allows, force a logout.
-  const session = await getUserSession(request);
-  const { durationSeconds, orgCapSeconds, userSettingSeconds } = await getEffectiveSessionDuration(
-    authUser.userId
-  );
-  if (isSessionExpired(session, durationSeconds)) {
-    const issuedAt = getSessionIssuedAt(session);
-    // HIPAA audit trail: structured log lands in CloudWatch via stdout. Use
-    // the stable `event` field to filter/aggregate auto-logout events.
-    logger.info("Auto-logout: session exceeded effective duration", {
-      event: "session.auto_logout",
-      userId: authUser.userId,
-      effectiveDurationSeconds: durationSeconds,
-      userSettingSeconds,
-      orgCapSeconds,
-      sessionAgeMs: issuedAt === null ? null : Date.now() - issuedAt,
-      requestPath: new URL(request.url).pathname,
-    });
-    throw redirect("/logout");
-  }
-
+  await enforceSessionExpiry(request, authUser.userId);
   return authUser.userId;
 }
 

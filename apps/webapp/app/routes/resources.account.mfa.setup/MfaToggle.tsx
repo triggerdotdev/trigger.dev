@@ -14,7 +14,7 @@ export function MfaToggle({ isEnabled, onToggle }: MfaToggleProps) {
     <Form method="post" className="w-full">
       <div className="flex w-full items-center justify-between gap-4">
         <InputGroup className="flex-1">
-          <Label>Multi-factor authentication</Label>
+          <Label htmlFor="mfa">Multi-factor authentication</Label>
           <Paragraph variant="small">
             Require a one-time code from your authenticator app (TOTP).
           </Paragraph>

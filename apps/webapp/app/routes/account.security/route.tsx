@@ -8,6 +8,7 @@ import {
 } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { $replica } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import {
   getAllowedSessionOptions,
@@ -27,7 +28,7 @@ export const meta: MetaFunction = () => {
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
 
-  const { durationSeconds, orgCapSeconds } = await getEffectiveSessionDuration(user.id);
+  const { durationSeconds, orgCapSeconds } = await getEffectiveSessionDuration(user.id, $replica);
   const sessionDurationOptions = getAllowedSessionOptions(orgCapSeconds, durationSeconds);
 
   return typedjson({

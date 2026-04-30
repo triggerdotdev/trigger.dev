@@ -1,10 +1,10 @@
 import type { LoaderFunction } from "@remix-run/node";
 import { redirect } from "@remix-run/node";
 import { prisma } from "~/db.server";
-import { getSession, redirectWithErrorMessage } from "~/models/message.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
-import { commitSession } from "~/services/sessionStorage.server";
+import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
 import { redirectCookie } from "./auth.github";
@@ -19,7 +19,7 @@ export let loader: LoaderFunction = async ({ request }) => {
     failureRedirect: "/login", // If auth fails, the failureRedirect will be thrown as a Response
   });
 
-  const session = await getSession(request.headers.get("cookie"));
+  const session = await getUserSession(request);
 
   const userRecord = await prisma.user.findFirst({
     where: {

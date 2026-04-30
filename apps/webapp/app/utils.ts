@@ -5,8 +5,10 @@ const DEFAULT_REDIRECT = "/";
 
 // Pathnames that are NOT user-navigable destinations: fetcher endpoints,
 // OAuth/auth callbacks, JSON APIs, the magic-link redemption route, and the
-// auth flow routes themselves (which would create a redirect loop).
-const NON_NAVIGABLE_PREFIXES = ["/resources/", "/auth/", "/admin/", "/api/", "/engine/"];
+// auth flow routes themselves (which would create a redirect loop). Note
+// `/admin/api/` covers admin JSON endpoints while leaving `/admin`,
+// `/admin/back-office/*`, `/admin/orgs`, etc. navigable.
+const NON_NAVIGABLE_PREFIXES = ["/resources/", "/auth/", "/admin/api/", "/api/", "/engine/"];
 const NON_NAVIGABLE_EXACT = new Set(["/magic", "/logout", "/login", "/login/magic", "/login/mfa"]);
 
 function isNavigablePath(pathname: string): boolean {
