@@ -619,6 +619,10 @@ To build a chat app that survives page refreshes, you need to persist two things
 
 #### Full persistence example
 
+<Warning>
+  The example below trusts raw `chatId` and returns rows without filtering by user. In a real multi-user app, **scope every query by the authenticated user** — read the user from your auth/session in each server action and add `where: { userId }` to all `db.chat.*` and `db.chatSession.*` queries. Without that, one client could read or delete another user's chat state, and `getAllSessions()` would leak other users' `publicAccessToken`s. The snippet keeps auth out of the way to focus on the persistence shape.
+</Warning>
+
 <CodeGroup>
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
@@ -905,7 +909,7 @@ The action payload is validated against `actionSchema` on the backend — invali
   Actions always trigger `run()` — the LLM responds to the modified state. For silent state changes that don't need a response (e.g. injecting background context), use [`chat.inject()`](/ai-chat/background-injection) instead.
 </Note>
 
-### chat.history {#chat-history}
+### Chat history
 
 Imperative API for modifying the accumulated message history. Works from any hook (`onAction`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`) or from `run()` and AI SDK tools.
 
