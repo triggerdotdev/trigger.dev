@@ -271,6 +271,24 @@ export class TaskRunProcessPool {
     }
   }
 
+  getAllPids(): number[] {
+    const pids: number[] = [];
+
+    for (const processes of this.availableProcessesByVersion.values()) {
+      for (const process of processes) {
+        if (process.pid !== undefined) pids.push(process.pid);
+      }
+    }
+
+    for (const processSet of this.busyProcessesByVersion.values()) {
+      for (const process of processSet) {
+        if (process.pid !== undefined) pids.push(process.pid);
+      }
+    }
+
+    return pids;
+  }
+
   async shutdown(): Promise<void> {
     const totalAvailable = Array.from(this.availableProcessesByVersion.values()).reduce(
       (sum, processes) => sum + processes.length,

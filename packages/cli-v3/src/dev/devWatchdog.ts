@@ -71,10 +71,10 @@ writeFileSync(pidFilePath, `${PID_FILE_PREFIX}${process.pid}`);
 function cleanup() {
   try {
     unlinkSync(pidFilePath);
-  } catch {}
+  } catch { }
   try {
     unlinkSync(activeRunsPath);
-  } catch {}
+  } catch { }
 }
 
 function cleanupTmpDir() {
@@ -95,12 +95,39 @@ function isParentAlive(): boolean {
   }
 }
 
-function readActiveRuns(): string[] {
+function readActiveRuns(): { runFriendlyIds: string[]; workerPids: number[] } {
   try {
     const data = JSON.parse(readFileSync(activeRunsPath, "utf8"));
-    return data.runFriendlyIds ?? [];
+    return {
+      runFriendlyIds: data.runFriendlyIds ?? [],
+      workerPids: data.workerPids ?? [],
+    };
   } catch {
-    return [];
+    return { runFriendlyIds: [], workerPids: [] };
+  }
+}
+
+async function killWorkerProcesses(pids: number[]): Promise<void> {
+  for (const pid of pids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Already dead
+    }
+  }
+
+  if (pids.length === 0) return;
+
+  // Give processes a moment to exit cleanly before SIGKILL
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 0); // Check if still alive
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Already dead — good
+    }
   }
 }
 
@@ -124,7 +151,10 @@ const MAX_DISCONNECT_ATTEMPTS = 5;
 const INITIAL_BACKOFF_MS = 500;
 
 async function onParentDied(): Promise<void> {
-  const runFriendlyIds = readActiveRuns();
+  const { runFriendlyIds, workerPids } = readActiveRuns();
+
+  //kill orphaned worker processes first
+  await killWorkerProcesses(workerPids);
 
   if (runFriendlyIds.length > 0) {
     for (let attempt = 0; attempt < MAX_DISCONNECT_ATTEMPTS; attempt++) {

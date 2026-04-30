@@ -80,6 +80,9 @@ class DevSupervisor implements WorkerRuntime {
   private activeRunsPath?: string;
   private watchdogPidPath?: string;
 
+  private activeRunsUpdateInterval?: NodeJS.Timeout;
+
+
   constructor(public readonly options: WorkerRuntimeOptions) { }
 
   async init(): Promise<void> {
@@ -153,6 +156,10 @@ class DevSupervisor implements WorkerRuntime {
 
     // Spawn detached watchdog to cancel runs if CLI is killed (e.g. pnpm SIGKILL)
     this.#spawnWatchdog();
+    // Keep active-runs.json current with latest worker PIDs
+    this.activeRunsUpdateInterval = setInterval(() => {
+      this.#updateActiveRunsFile();
+    }, 2_000);
 
     //start dequeuing
     await this.#dequeueRuns();
@@ -197,6 +204,10 @@ class DevSupervisor implements WorkerRuntime {
           error: shutdownError,
         });
       }
+    }
+
+    if (this.activeRunsUpdateInterval) {
+      clearInterval(this.activeRunsUpdateInterval);
     }
   }
 
@@ -292,6 +303,7 @@ class DevSupervisor implements WorkerRuntime {
       const data = {
         parentPid: process.pid,
         runFriendlyIds: Array.from(this.runControllers.keys()),
+        workerPids: this.taskRunProcessPool?.getAllPids() ?? [],
       };
       // Atomic write: write to temp file then rename to avoid corrupt reads
       const tmpPath = this.activeRunsPath + ".tmp";
