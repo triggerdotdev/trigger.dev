@@ -202,28 +202,15 @@ export default function CouponsPage() {
 
   return (
     <div className="flex flex-col gap-6 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <Header1>Coupon Deals</Header1>
-          <Paragraph variant="small" className="text-text-dimmed max-w-prose">
-            Apply a Stripe-tagged coupon to a customer's subscription. Lookup is
-            by Stripe customer email — often different from the user's
-            Trigger.dev email. Catalog is built from coupons in Stripe whose
-            metadata carries{" "}
-            <code className="rounded bg-charcoal-700 px-1">trigger_deal_key</code>.
-          </Paragraph>
-        </div>
-        <Form method="post" reloadDocument>
-          <input type="hidden" name="intent" value="refresh" />
-          <SimpleTooltip
-            button={
-              <Button type="submit" variant="tertiary/small">
-                Refresh deals
-              </Button>
-            }
-            content="Pull the latest tagged coupons from Stripe."
-          />
-        </Form>
+      <div className="flex flex-col gap-1">
+        <Header1>Coupon Deals</Header1>
+        <Paragraph variant="small" className="text-text-dimmed max-w-prose">
+          Apply a Stripe-tagged coupon to a customer's subscription. Lookup is
+          by Stripe customer email — often different from the user's
+          Trigger.dev email. Catalog is built from coupons in Stripe whose
+          metadata carries{" "}
+          <code className="rounded bg-charcoal-700 px-1">trigger_deal_key</code>.
+        </Paragraph>
       </div>
 
       {appliedDeal && (
@@ -248,24 +235,26 @@ export default function CouponsPage() {
         </div>
       )}
 
-      <Form method="get" className="flex items-end gap-3">
-        <div className="flex flex-1 flex-col gap-1">
-          <Label>Stripe customer email</Label>
-          <Input
-            type="email"
-            name="email"
-            defaultValue={email ?? ""}
-            placeholder="customer@example.com"
-            autoFocus={!email}
-          />
-          <Hint>
-            This is the email on the Stripe customer record, not necessarily the
-            user's Trigger.dev email.
-          </Hint>
+      <Form method="get" className="flex flex-col gap-1">
+        <Label>Stripe customer email</Label>
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <Input
+              type="email"
+              name="email"
+              defaultValue={email ?? ""}
+              placeholder="customer@example.com"
+              autoFocus={!email}
+            />
+          </div>
+          <Button type="submit" variant="primary/medium">
+            Find orgs
+          </Button>
         </div>
-        <Button type="submit" variant="primary/medium">
-          Find orgs
-        </Button>
+        <Hint>
+          This is the email on the Stripe customer record, not necessarily the
+          user's Trigger.dev email.
+        </Hint>
       </Form>
 
       {matches === null ? (
