@@ -249,12 +249,19 @@ export class ScheduleListPresenter extends BasePresenter {
       // Approximate "last run" from the cron's previous slot. If that slot
       // predates the schedule itself, the schedule hasn't fired yet — show
       // undefined rather than a misleading timestamp. UI is best-effort;
-      // accurate run history is on the schedule's runs page.
-      const cronPrev = previousScheduledTimestamp(
-        schedule.generatorExpression,
-        schedule.timezone
-      );
-      const lastRun = cronPrev.getTime() > schedule.createdAt.getTime() ? cronPrev : undefined;
+      // accurate run history is on the schedule's runs page. cron-parser
+      // throws on malformed expressions, so degrade to undefined per-row
+      // rather than failing the whole list.
+      let lastRun: Date | undefined;
+      try {
+        const cronPrev = previousScheduledTimestamp(
+          schedule.generatorExpression,
+          schedule.timezone
+        );
+        lastRun = cronPrev.getTime() > schedule.createdAt.getTime() ? cronPrev : undefined;
+      } catch {
+        lastRun = undefined;
+      }
 
       return {
         id: schedule.id,

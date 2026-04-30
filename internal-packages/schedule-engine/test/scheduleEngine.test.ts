@@ -98,23 +98,11 @@ describe("ScheduleEngine Integration", () => {
           },
         });
 
-        // Calculate the expected next execution time (next minute boundary)
-        const now = new Date();
-        const expectedExecutionTime = new Date(now);
-        expectedExecutionTime.setMinutes(now.getMinutes() + 1, 0, 0); // Next minute, 0 seconds, 0 milliseconds
-
-        // Calculate the expected upcoming execution times (next 10 minutes after the first execution)
-        const expectedUpcoming = [];
-        for (let i = 1; i <= 10; i++) {
-          const upcoming = new Date(expectedExecutionTime);
-          upcoming.setMinutes(expectedExecutionTime.getMinutes() + i);
-          expectedUpcoming.push(upcoming);
-        }
-
         // Manually enqueue the first scheduled task to kick off the lifecycle.
-        // Engine no longer persists nextScheduledTimestamp — the same time can be
-        // reproduced from the cron expression alone, so we use expectedExecutionTime
-        // directly downstream.
+        // Anchor expectations to the first observed `exactScheduleTime` rather
+        // than a precomputed wall-clock value — registration that happens to
+        // straddle a minute boundary used to flake tests asserting against a
+        // pre-baked "next minute".
         await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
 
         // Wait for the first execution
@@ -176,6 +164,17 @@ describe("ScheduleEngine Integration", () => {
           }
         }
 
+        // Anchor all expectations to what the engine actually fired with, so
+        // the test stays deterministic regardless of when within a minute it
+        // started.
+        const firstScheduledTime = firstExecution.params.exactScheduleTime;
+        const secondScheduledTime = secondExecution.params.exactScheduleTime;
+        expect(firstScheduledTime).toBeDefined();
+        expect(secondScheduledTime).toBeDefined();
+
+        // Each cron slot for "* * * * *" is exactly 60s apart.
+        expect(secondScheduledTime!.getTime() - firstScheduledTime!.getTime()).toBe(60_000);
+
         // Verify the first execution parameters
         expect(firstExecution.params).toEqual({
           taskIdentifier: "test-task",
@@ -196,10 +195,12 @@ describe("ScheduleEngine Integration", () => {
           payload: {
             scheduleId: "sched_abc123",
             type: "DECLARATIVE",
-            timestamp: expectedExecutionTime,
-            // First-ever fire: cron's previous slot predates instance.createdAt
-            // (which was set ~now), so lastTimestamp is undefined. This preserves
-            // the `if (!payload.lastTimestamp)` first-run sentinel customers rely on.
+            timestamp: firstScheduledTime,
+            // First-ever fire: no `lastScheduleTime` carried in the worker
+            // payload and `instance.lastScheduledTimestamp` is null on a
+            // fresh instance, so lastTimestamp is undefined. This preserves
+            // the `if (!payload.lastTimestamp)` first-run sentinel customers
+            // rely on.
             lastTimestamp: undefined,
             externalId: "ext-123",
             timezone: "UTC",
@@ -207,13 +208,10 @@ describe("ScheduleEngine Integration", () => {
           },
           scheduleInstanceId: scheduleInstance.id,
           scheduleId: taskSchedule.id,
-          exactScheduleTime: expectedExecutionTime,
+          exactScheduleTime: firstScheduledTime,
         });
 
         // Verify the second execution parameters
-        const expectedSecondExecution = new Date(expectedExecutionTime);
-        expectedSecondExecution.setMinutes(expectedExecutionTime.getMinutes() + 1);
-
         expect(secondExecution.params).toEqual({
           taskIdentifier: "test-task",
           environment: expect.objectContaining({
@@ -223,16 +221,17 @@ describe("ScheduleEngine Integration", () => {
           payload: {
             scheduleId: "sched_abc123",
             type: "DECLARATIVE",
-            timestamp: expectedSecondExecution,
-            // Previous slot before second execution = first execution time.
-            lastTimestamp: expectedExecutionTime,
+            timestamp: secondScheduledTime,
+            // The previous fire's exactScheduleTime is carried through the
+            // worker payload as `lastScheduleTime` and surfaced here.
+            lastTimestamp: firstScheduledTime,
             externalId: "ext-123",
             timezone: "UTC",
             upcoming: expect.arrayContaining([expect.any(Date)]),
           },
           scheduleInstanceId: scheduleInstance.id,
           scheduleId: taskSchedule.id,
-          exactScheduleTime: expectedSecondExecution,
+          exactScheduleTime: secondScheduledTime,
         });
       } finally {
         // Clean up: stop the worker

@@ -194,15 +194,16 @@ export class ScheduleEngine {
           timezone: instance.taskSchedule.timezone,
         });
 
-        // Enqueue the scheduled task. Pass fromTimestamp through as the next
-        // job's lastScheduleTime so the dequeueing engine can populate
-        // payload.lastTimestamp without re-reading state from the DB. When
-        // fromTimestamp is undefined (first-ever registration / recovery),
-        // lastScheduleTime is also undefined → consumer reports undefined.
+        // Enqueue the scheduled task. The next job's `lastScheduleTime`
+        // payload is the *actual* previous fire time (passed in by the
+        // caller), not `fromTimestamp` — `fromTimestamp` advances on every
+        // tick (including skips) so it can't be used as the previous-fire
+        // anchor without leaking skipped slots into customer-visible
+        // payload.lastTimestamp.
         await this.enqueueScheduledTask(
           params.instanceId,
           nextScheduledTimestamp,
-          params.fromTimestamp
+          params.lastScheduleTime
         );
 
         // Record metrics
@@ -535,13 +536,22 @@ export class ScheduleEngine {
           });
         }
 
-        // Register the next run, calculating from the timestamp we just fired (or
-        // skipped) so we don't need to round-trip through DB state.
-        // Rewritten try/catch to use tryCatch utility
+        // Register the next run. `fromTimestamp` advances on every tick so
+        // the next cron slot keeps marching forward even through skips.
+        // `lastScheduleTime` is the actual previous fire time the next job
+        // will report as `payload.lastTimestamp` — only advance it when we
+        // actually triggered, otherwise carry forward the existing value so
+        // a long pause/disconnect doesn't quietly overwrite the real
+        // last-fire timestamp with a series of skipped slots.
+        const carriedLastScheduleTime = shouldTrigger
+          ? scheduleTimestamp
+          : params.lastScheduleTime ?? instance.lastScheduledTimestamp ?? undefined;
+
         const [nextRunError] = await tryCatch(
           this.registerNextTaskScheduleInstance({
             instanceId: params.instanceId,
             fromTimestamp: scheduleTimestamp,
+            lastScheduleTime: carriedLastScheduleTime,
           })
         );
         if (nextRunError) {
