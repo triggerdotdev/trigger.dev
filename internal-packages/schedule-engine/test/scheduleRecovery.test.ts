@@ -386,4 +386,194 @@ describe("Schedule Recovery", () => {
       }
     }
   );
+
+  // External-caller backward-compat. Deploy sync (`syncDeclarativeSchedules`)
+  // and schedule upsert both call `registerNextTaskScheduleInstance` with no
+  // `lastScheduleTime`. They run on every app deploy and on every cron edit.
+  // For an existing-and-firing schedule, the call must NOT clobber the
+  // worker payload's `lastScheduleTime` with `undefined` — otherwise the
+  // next fire would surface a stale frozen DB-column value to the customer
+  // (since this PR stops writing that column). The function must derive a
+  // sensible `lastScheduleTime` from the cron expression's previous slot
+  // when the caller doesn't pass one.
+  containerTest(
+    "should derive lastScheduleTime from cron when external callers omit it",
+    { timeout: 30_000 },
+    async ({ prisma, redisOptions }) => {
+      const engine = new ScheduleEngine({
+        prisma,
+        redis: redisOptions,
+        distributionWindow: { seconds: 10 },
+        worker: { concurrency: 1, disabled: true, pollIntervalMs: 1000 },
+        tracer: trace.getTracer("test", "0.0.0"),
+        onTriggerScheduledTask: async () => ({ success: true }),
+        isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
+      });
+
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "External Caller Org", slug: "external-caller-org" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "External Caller Project",
+            slug: "external-caller-project",
+            externalRef: "external-caller-ref",
+            organizationId: organization.id,
+          },
+        });
+        const environment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "external-caller-env",
+            type: "PRODUCTION",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "tr_external_1234",
+            pkApiKey: "pk_external_1234",
+            shortcode: "external-short",
+          },
+        });
+        const taskSchedule = await prisma.taskSchedule.create({
+          data: {
+            friendlyId: "sched_external_caller",
+            taskIdentifier: "external-caller-task",
+            projectId: project.id,
+            deduplicationKey: "external-caller-dedup",
+            userProvidedDeduplicationKey: false,
+            generatorExpression: "*/5 * * * *",
+            generatorDescription: "Every 5 minutes",
+            timezone: "UTC",
+            type: "DECLARATIVE",
+            active: true,
+          },
+        });
+
+        // Backdate the instance so the cron's previous slot postdates
+        // createdAt — this simulates a long-running schedule, the case
+        // Devin flagged (deploy clobbers lastScheduleTime, post-deploy fire
+        // would otherwise read from a frozen DB column).
+        const longAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const scheduleInstance = await prisma.taskScheduleInstance.create({
+          data: {
+            taskScheduleId: taskSchedule.id,
+            environmentId: environment.id,
+            projectId: project.id,
+            active: true,
+          },
+        });
+        await prisma.taskScheduleInstance.update({
+          where: { id: scheduleInstance.id },
+          data: { createdAt: longAgo },
+        });
+
+        // External-caller pattern — no lastScheduleTime.
+        await engine.registerNextTaskScheduleInstance({
+          instanceId: scheduleInstance.id,
+        });
+
+        const job = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
+        expect(job).not.toBeNull();
+        // The function should have derived lastScheduleTime from cron,
+        // putting a real timestamp into the worker payload rather than
+        // undefined. The Redis worker stores payloads as JSON, so the value
+        // is a string when read back here — Zod re-coerces it to Date on
+        // dequeue (workerCatalog uses `z.coerce.date()`).
+        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: string })
+          .lastScheduleTime;
+        expect(enqueuedLastScheduleTime).toBeDefined();
+        const derived = new Date(enqueuedLastScheduleTime!);
+        // The derived value should match the cron's previous slot — for
+        // `*/5 * * * *`, a 5-minute boundary in the recent past.
+        expect(derived.getTime()).toBeLessThan(Date.now());
+        expect(derived.getUTCSeconds()).toBe(0);
+        expect(derived.getUTCMinutes() % 5).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // Brand-new schedules must NOT receive a cron-derived lastScheduleTime —
+  // the cron's previous slot predates the instance, so it's not a real
+  // previous fire. The first-run sentinel (`if (!payload.lastTimestamp)`)
+  // must keep working.
+  containerTest(
+    "should leave lastScheduleTime undefined for brand-new schedules",
+    { timeout: 30_000 },
+    async ({ prisma, redisOptions }) => {
+      const engine = new ScheduleEngine({
+        prisma,
+        redis: redisOptions,
+        distributionWindow: { seconds: 10 },
+        worker: { concurrency: 1, disabled: true, pollIntervalMs: 1000 },
+        tracer: trace.getTracer("test", "0.0.0"),
+        onTriggerScheduledTask: async () => ({ success: true }),
+        isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
+      });
+
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "Brand New Org", slug: "brand-new-org" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "Brand New Project",
+            slug: "brand-new-project",
+            externalRef: "brand-new-ref",
+            organizationId: organization.id,
+          },
+        });
+        const environment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "brand-new-env",
+            type: "PRODUCTION",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "tr_brandnew_1234",
+            pkApiKey: "pk_brandnew_1234",
+            shortcode: "brandnew-short",
+          },
+        });
+        const taskSchedule = await prisma.taskSchedule.create({
+          data: {
+            friendlyId: "sched_brand_new",
+            taskIdentifier: "brand-new-task",
+            projectId: project.id,
+            deduplicationKey: "brand-new-dedup",
+            userProvidedDeduplicationKey: false,
+            // Hourly cron — the previous slot is plausibly minutes-to-an-hour
+            // ago, comfortably predating an instance just created.
+            generatorExpression: "0 * * * *",
+            generatorDescription: "Hourly",
+            timezone: "UTC",
+            type: "DECLARATIVE",
+            active: true,
+          },
+        });
+        const scheduleInstance = await prisma.taskScheduleInstance.create({
+          data: {
+            taskScheduleId: taskSchedule.id,
+            environmentId: environment.id,
+            projectId: project.id,
+            active: true,
+          },
+        });
+
+        await engine.registerNextTaskScheduleInstance({
+          instanceId: scheduleInstance.id,
+        });
+
+        const job = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
+        expect(job).not.toBeNull();
+        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: Date }).lastScheduleTime;
+        // Brand-new schedule: cron's previous slot predates instance.createdAt,
+        // so the function leaves lastScheduleTime undefined — the first fire
+        // will report `payload.lastTimestamp: undefined` and customer first-run
+        // sentinel patterns keep working.
+        expect(enqueuedLastScheduleTime).toBeUndefined();
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });

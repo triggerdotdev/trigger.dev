@@ -198,16 +198,43 @@ export class ScheduleEngine {
           timezone: instance.taskSchedule.timezone,
         });
 
-        // Enqueue the scheduled task. The next job's `lastScheduleTime`
-        // payload is the *actual* previous fire time (passed in by the
-        // caller), not `fromTimestamp` — `fromTimestamp` advances on every
-        // tick (including skips) so it can't be used as the previous-fire
-        // anchor without leaking skipped slots into customer-visible
-        // payload.lastTimestamp.
+        // Determine the lastScheduleTime to embed in the next worker job's
+        // payload. If the caller passed it explicitly (the after-fire path
+        // does this with the just-fired timestamp, the after-skip path
+        // carries the existing value forward), use that. Otherwise — every
+        // external caller (deploy sync, schedule upsert, recovery) — derive
+        // from the cron expression's previous slot.
+        //
+        // Without this fallback, every deploy / cron edit would clobber the
+        // existing in-flight job's lastScheduleTime with `undefined`, and
+        // the next fire would surface a frozen DB-column value to the
+        // customer (since this PR stops writing that column). Pure cron
+        // math, no DB read on top of the existing instance load — the
+        // recovery loop already pays the cost of loading the instance.
+        let lastScheduleTime = params.lastScheduleTime;
+        if (lastScheduleTime === undefined) {
+          try {
+            const cronPrev = previousScheduledTimestamp(
+              instance.taskSchedule.generatorExpression,
+              instance.taskSchedule.timezone
+            );
+            // Guarded against the cron's previous slot predating the
+            // instance itself — for a brand-new schedule, the slot is from
+            // before the schedule existed, so `undefined` is the honest
+            // answer (preserves the `if (!payload.lastTimestamp)` first-run
+            // sentinel customers rely on).
+            if (cronPrev.getTime() > instance.createdAt.getTime()) {
+              lastScheduleTime = cronPrev;
+            }
+          } catch {
+            // Malformed cron — leave undefined.
+          }
+        }
+
         await this.enqueueScheduledTask(
           params.instanceId,
           nextScheduledTimestamp,
-          params.lastScheduleTime
+          lastScheduleTime
         );
 
         // Record metrics
@@ -800,39 +827,16 @@ export class ScheduleEngine {
       return "skipped";
     }
 
-    // Approximate the previous fire from the cron expression itself rather
-    // than reading state from the DB. For a continuously-running schedule
-    // this equals the actual last fire time. For paused-then-resumed
-    // schedules or recently-edited cron expressions the value will be
-    // approximate — same trade-off the dashboard "Last run" cell accepts.
-    // Guarded against the schedule not having existed long enough to have
-    // fired (cron's previous slot before instance creation), and against
-    // cron-parser throwing on malformed expressions. Pure cron math, no DB
-    // read — recovery fan-outs (Redis crash, restart storms) must not add
-    // load to hot tables.
-    let lastScheduleTime: Date | undefined;
-    try {
-      const cronPrev = previousScheduledTimestamp(
-        schedule.generatorExpression,
-        schedule.timezone
-      );
-      if (cronPrev.getTime() > instance.createdAt.getTime()) {
-        lastScheduleTime = cronPrev;
-      }
-    } catch {
-      lastScheduleTime = undefined;
-    }
-
     this.logger.debug("No job found for instance, registering next run", {
       instanceId: instance.id,
       schedule,
-      lastScheduleTime: lastScheduleTime?.toISOString(),
     });
 
-    await this.registerNextTaskScheduleInstance({
-      instanceId: instance.id,
-      lastScheduleTime,
-    });
+    // No `lastScheduleTime` passed — `registerNextTaskScheduleInstance`
+    // will derive it from the cron's previous slot (with a createdAt
+    // guard) so the post-recovery fire reports an accurate
+    // `payload.lastTimestamp`.
+    await this.registerNextTaskScheduleInstance({ instanceId: instance.id });
 
     return "recovered";
   }
