@@ -48,14 +48,21 @@ Set `USE_COMPUTE_BETA=1` in the staging environment of the app that calls `trigg
 
 Open the **Regions** page in the dashboard and set `us-east-1-next` as the project-wide default. This applies to **all environments in the project**, so only do this on a project that is running staging traffic only.
 
-## Cold start expectations
+<Note>
+  Switching the default region doesn't move runs that are already in the queue - they stay in the previous region until they execute. To make a switch take effect for in-flight work, [cancel those runs](/bulk-actions) and re-trigger them after changing the default. This applies whenever you change regions, not just when moving on or off `us-east-1-next`.
+</Note>
+
+## Machine sizes
 
 A few things to be aware of during the beta:
 
-- **`small-1x` is the default and what we've optimized for.** Boot snapshots are precreated for `small-1x` only. Other machine sizes will have a slower first run after each deploy while we generate the snapshot - subsequent runs use it.
+- **`small-1x` is the default and what we've optimized for.** Boot snapshots are precreated for `small-1x` only - other sizes generate the snapshot lazily on first run after a deploy.
+- **`small-2x`, `medium-1x`, and `medium-2x` work, but the first run after each deploy is slower** while the boot snapshot is generated. Subsequent runs use it.
+- **`large-1x` and `large-2x` aren't supported yet.** Stick to `small-*` or `medium-*` for now.
 - **Avoid `micro` during the beta.** Cold starts on `micro` are noticeably slower than other sizes.
+- **All sizes are capped at 1GB of disk during the beta.** The [machine size table](/machines) lists 10GB as the target, but every preset is currently provisioned with 1GB regardless.
 
-We'll be shipping CLI and SDK changes during the beta to make cold start times more consistent across machine sizes. Compute-specific prereleases will be announced on this page as we go, and we'll also reach out on Slack.
+We'll be shipping CLI and SDK changes during the beta to make cold start times more consistent across machine sizes, lift the disk cap, and unlock the larger presets. Compute-specific prereleases will be announced on this page as we go, and we'll also reach out on Slack.
 
 ## Reporting issues
 
