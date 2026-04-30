@@ -186,14 +186,17 @@ export async function commitAuthenticatedSession(
 }
 
 /**
- * Commits the session for an authenticated user, lazily backfilling
- * `issuedAt` if missing. Use on every authenticated response that already
- * commits the cookie (e.g. root.tsx).
+ * Lazily backfills `issuedAt` on legacy auth sessions that predate the
+ * sessionDuration feature. Returns the cookie string when a backfill happened
+ * (caller must append it to the response's `Set-Cookie` headers), or `null`
+ * when the session already had `issuedAt` set — avoiding an unnecessary
+ * Set-Cookie on every authenticated page load and preventing the cookie's
+ * 1-year Max-Age from rolling forward indefinitely.
  */
 export async function commitAuthenticatedSessionLazy(
   session: Session,
   now: number = Date.now()
-): Promise<string> {
-  ensureSessionIssuedAt(session, now);
+): Promise<string | null> {
+  if (!ensureSessionIssuedAt(session, now)) return null;
   return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }

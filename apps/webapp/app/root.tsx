@@ -66,11 +66,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   headers.append("Set-Cookie", await commitSession(session));
 
   // Lazy-backfill the auth session's `issuedAt` for cookies issued before this
-  // feature shipped, and refresh the cookie's Max-Age to track the user's
-  // current effective session duration.
+  // feature shipped. Returns null (and does not commit) once issuedAt is set,
+  // so the cookie isn't re-written on every page load.
   if (user) {
     const authSession = await getUserSession(request);
-    headers.append("Set-Cookie", await commitAuthenticatedSessionLazy(authSession));
+    const lazyCookie = await commitAuthenticatedSessionLazy(authSession);
+    if (lazyCookie) headers.append("Set-Cookie", lazyCookie);
   }
 
   return typedjson(
