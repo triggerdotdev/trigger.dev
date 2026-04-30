@@ -147,7 +147,10 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
 
-  if (!hasSeenMCPInstallPrompt) {
+  // Skip the MCP-vs-CLI prompt when --yes is set: the user explicitly chose CLI
+  // by running `trigger.dev init` non-interactively, and the prompt would
+  // otherwise hang on a fresh machine where `hasSeenMCPInstallPrompt` is false.
+  if (!hasSeenMCPInstallPrompt && !options.yes) {
     const installChoice = await select({
       message: "Choose how you want to initialize your project:",
       options: [
