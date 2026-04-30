@@ -207,7 +207,7 @@ export default function Page() {
                     <TableHeaderCell>Permission</TableHeaderCell>
                     {columns.map(({ role }) => (
                       <TableHeaderCell key={role.id} alignment="center">
-                        <div className="flex flex-col items-center gap-1">
+                        <div className="flex items-center justify-center gap-1">
                           <span>{role.name}</span>
                           <PlanBadge
                             roleId={role.id}
@@ -344,12 +344,12 @@ function RoleCell({
 
   // At least one allow rule applies. Render ✓ in success green; if
   // there's a conditional cannot rule, render its label as a Badge
-  // beneath the tick so the user sees the restriction.
+  // alongside the tick so the user sees the restriction.
   const conditionalDeny = denied.find((p) => p.conditions);
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex items-center justify-center gap-1">
       <span className="text-success" aria-label="Allowed">
-        <CheckIcon className="mx-auto size-4" />
+        <CheckIcon className="size-4" />
       </span>
       {conditionalDeny?.conditions ? (
         <Badge variant="extra-small">
