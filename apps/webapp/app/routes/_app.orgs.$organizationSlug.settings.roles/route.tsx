@@ -339,21 +339,22 @@ function RoleCell({
     );
   }
 
-  // At least one allow rule applies. Render ✓ in success green; if
-  // there's a conditional cannot rule, render its label as a Badge
-  // alongside the tick so the user sees the restriction.
+  // At least one allow rule applies. If there's a conditional cannot
+  // rule, replace the ✓ with just the condition label so the user sees
+  // the restriction without a misleading tick. Plain unconditional
+  // allow keeps the ✓.
   const conditionalDeny = denied.find((p) => p.conditions);
-  return (
-    <div className="flex items-center gap-1">
-      <span className="text-success" aria-label="Allowed">
-        <CheckIcon className="size-4" />
+  if (conditionalDeny?.conditions) {
+    return (
+      <span className="text-xs text-text-dimmed">
+        {conditionLabel(conditionalDeny.conditions)}
       </span>
-      {conditionalDeny?.conditions ? (
-        <Badge variant="extra-small">
-          {conditionLabel(conditionalDeny.conditions)}
-        </Badge>
-      ) : null}
-    </div>
+    );
+  }
+  return (
+    <span className="text-success" aria-label="Allowed">
+      <CheckIcon className="size-4" />
+    </span>
   );
 }
 
@@ -363,8 +364,8 @@ function RoleCell({
 // grows.
 function conditionLabel(conditions: Record<string, unknown>): string {
   if (typeof conditions.envType === "string") {
-    if (conditions.envType === "PRODUCTION") return "non-prod only";
-    return `non-${conditions.envType.toLowerCase()} only`;
+    if (conditions.envType === "PRODUCTION") return "Non-prod only";
+    return `Non-${conditions.envType.toLowerCase()} only`;
   }
   return JSON.stringify(conditions);
 }
