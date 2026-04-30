@@ -206,8 +206,8 @@ export default function Page() {
                   <TableRow>
                     <TableHeaderCell>Permission</TableHeaderCell>
                     {columns.map(({ role }) => (
-                      <TableHeaderCell key={role.id} alignment="center">
-                        <div className="flex items-center justify-center gap-1">
+                      <TableHeaderCell key={role.id}>
+                        <div className="flex items-center gap-1">
                           <span>{role.name}</span>
                           <PlanBadge
                             roleId={role.id}
@@ -244,10 +244,7 @@ export default function Page() {
                             <code className="text-xs">{permission.name}</code>
                           </TableCell>
                           {columns.map(({ role }) => (
-                            <TableCell
-                              key={role.id}
-                              alignment="center"
-                            >
+                            <TableCell key={role.id}>
                               <RoleCell
                                 permissionName={permission.name}
                                 rolePermissions={role.permissions}
@@ -324,7 +321,7 @@ function RoleCell({
     // No rule matches — the role denies this permission by omission.
     return (
       <span className="text-text-dimmed" aria-label="Not granted">
-        <XMarkIcon className="mx-auto size-4" />
+        <XMarkIcon className="size-4" />
       </span>
     );
   }
@@ -337,7 +334,7 @@ function RoleCell({
   if (allowed.length === 0) {
     return (
       <span className="text-error" aria-label="Denied">
-        <XMarkIcon className="mx-auto size-4" />
+        <XMarkIcon className="size-4" />
       </span>
     );
   }
@@ -347,7 +344,7 @@ function RoleCell({
   // alongside the tick so the user sees the restriction.
   const conditionalDeny = denied.find((p) => p.conditions);
   return (
-    <div className="flex items-center justify-center gap-1">
+    <div className="flex items-center gap-1">
       <span className="text-success" aria-label="Allowed">
         <CheckIcon className="size-4" />
       </span>
