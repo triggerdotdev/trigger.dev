@@ -125,7 +125,7 @@ On page load, fetch both the messages and the session state from your database, 
 
 Because the underlying Session row outlives individual runs, a chat you were in yesterday resumes against the same chat — even if the original run has long since exited. The transport hydrates from the persisted state and uses `lastEventId` to resubscribe; if the client tries to send a new message and no run is alive, the server triggers a fresh continuation run on the same session before the message is appended.
 
-```tsx app/page.tsx
+```tsx app/chat/[chatId]/ChatPage.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -139,6 +139,13 @@ import {
   deleteSession,
 } from "@/app/actions";
 
+// Rendered from `app/chat/[chatId]/page.tsx`, which awaits `params`
+// and forwards `chatId` into this client component:
+//
+//   export default async function Page({ params }: { params: Promise<{ chatId: string }> }) {
+//     const { chatId } = await params;
+//     return <ChatPage chatId={chatId} />;
+//   }
 export default function ChatPage({ chatId }: { chatId: string }) {
   const [initialMessages, setInitialMessages] = useState([]);
   const [initialSession, setInitialSession] = useState(undefined);

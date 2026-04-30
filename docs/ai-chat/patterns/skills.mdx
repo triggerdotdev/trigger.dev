@@ -17,7 +17,7 @@ Compared to regular AI SDK tools:
 
 PDFs are the canonical example: you don't want to ask the LLM to parse PDF bytes inline. You want it to `bash scripts/extract.py report.pdf` using a bundled `pdfplumber` wrapper. A skill ships the script, the instructions, and any reference notes together.
 
-Skills are also [dashboard-editable](/ai-chat/skills/overview) in Phase 2 — a platform team can tighten a skill's description or "when to use" text without a redeploy. Phase 1 (today) is SDK-only.
+Dashboard-editable `SKILL.md` is on the roadmap so a platform team can tighten a skill's description or "when to use" text without a redeploy. Today, skills are SDK-only — defined in your task code and shipped with each deploy.
 
 ## Trust model
 
@@ -197,11 +197,11 @@ If you're running `trigger dev`, the same layout appears in the local dev output
 - `bash` runs with `cwd` set to the skill's root. Inside the script, relative paths resolve against the skill directory.
 - Cross-skill access isn't provided — each skill is isolated by design. If two skills need to share data, either duplicate the shared file or consolidate the skills.
 
-## Limitations in Phase 1
+## Current limitations
 
-- `skill.resolve()` (backend-managed overrides) is not available yet. It throws a "not available in Phase 1, use `.local()`" error. Phase 2 ships dashboard-editable `SKILL.md` text.
+- `skill.resolve()` (backend-managed overrides) is not available yet — use `.local()` for now. Dashboard-editable `SKILL.md` is on the roadmap.
 - No per-skill metrics in the dashboard yet.
-- No Anthropic `/v1/skills` integration — use the portable path today; the Anthropic optimization comes in Phase 4.
+- No Anthropic `/v1/skills` integration — use the portable path today; we're tracking the Anthropic optimization separately.
 
 ## Full example
 

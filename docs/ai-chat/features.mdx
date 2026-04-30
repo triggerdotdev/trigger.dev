@@ -25,6 +25,7 @@ import { db } from "@/lib/db";
 
 // Declare at module level — each local needs a unique id
 const userContext = chat.local<{
+  userId: string;
   name: string;
   plan: "free" | "pro";
   messageCount: number;
@@ -39,6 +40,7 @@ export const myChat = chat.agent({
       where: { id: clientData.userId },
     });
     userContext.init({
+      userId: clientData.userId,
       name: user.name,
       plan: user.plan,
       messageCount: user.messageCount,
@@ -158,7 +160,7 @@ onTurnComplete: async ({ chatId }) => {
 
 ---
 
-## chat.defer() {#chat-defer}
+## Chat defer
 
 Use `chat.defer()` to run background work in parallel with streaming. The deferred promise runs alongside the LLM response and is awaited (with a 5s timeout) before `onTurnComplete` fires.
 
@@ -426,6 +428,7 @@ Preload eagerly triggers a run for a chat before the first message is sent. This
 Call `transport.preload(chatId)` to start a run early:
 
 ```tsx
+import { useEffect } from "react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useChat } from "@ai-sdk/react";
 
