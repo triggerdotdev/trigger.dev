@@ -105,10 +105,22 @@ export async function getEffectiveSessionDuration(
 }
 
 /**
- * Returns the dropdown options the user is allowed to pick. If an org cap
- * exists, options strictly greater than the cap are removed. The user's
- * currently-saved value is always included even if it now exceeds the cap, so
- * the form remains valid until they pick a smaller value.
+ * Returns the dropdown options the user is allowed to pick. Options strictly
+ * greater than the org cap are removed.
+ *
+ * `currentValueSeconds` should be the *effective* (clamped) duration — i.e.
+ * `EffectiveSessionDuration.durationSeconds`, which is guaranteed to be ≤
+ * `orgCapSeconds`. Passing the clamped value makes the dropdown's selected
+ * option reflect what's actually in effect rather than the user's stored
+ * preference, which is the right UX when a stricter org cap supersedes a
+ * larger user setting (the raw user preference stays in the DB and is
+ * restored automatically if the cap is later removed).
+ *
+ * The tag-along branch below — appending `currentValueSeconds` to the option
+ * list when it isn't already present — is now defensive only. It exists so
+ * that any caller passing an out-of-range value (e.g. tests, or future
+ * callers wanting to surface the raw user preference) still gets a renderable
+ * form, rather than a dropdown whose `defaultValue` matches no option.
  */
 export function getAllowedSessionOptions(
   orgCapSeconds: number | null,
