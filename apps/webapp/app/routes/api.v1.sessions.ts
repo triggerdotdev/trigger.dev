@@ -110,15 +110,23 @@ const { action } = createActionApiRoute(
     // behalf of the developer without weakening the browser model.
     allowJWT: true,
     authorization: {
-      // Resource scoping by `taskIdentifier` isn't possible at auth-resolve
-      // time — action routes don't pass `body` to the resource callback,
-      // and the task name only lives in the body. We require a `sessions`
-      // resource scope (wildcard) and rely on `write:sessions` / `admin`
-      // super-scopes to gate access. Per-task narrowing happens implicitly
-      // because the JWT-issuer (e.g. cli-v3 MCP) decides which scopes to
-      // request when minting the token.
+      // Per-task scoping via `body.taskIdentifier` (action-route resource
+      // callbacks receive the parsed body as the 4th arg — see
+      // `apiBuilder.server.ts:710`). A JWT scoped only to `write:tasks:foo`
+      // can only create sessions whose `taskIdentifier` is `"foo"`. Broad
+      // callers (cli-v3 MCP, customer servers wrapping their own auth)
+      // hold the `write:sessions` super-scope and bypass the per-task
+      // check entirely.
+      //
+      // Note: the auth check is OR across resource types, so listing both
+      // `sessions` and `tasks` here would let a `write:sessions`-scoped
+      // JWT pass for *any* task — defeating the per-task narrowing. Keep
+      // it task-only and let the super-scope path handle session-level
+      // wildcard access.
       action: "write",
-      resource: () => ({ sessions: "*" }),
+      resource: (_params, _searchParams, _headers, body) => ({
+        tasks: body.taskIdentifier,
+      }),
       superScopes: ["write:sessions", "admin"],
     },
     corsStrategy: "all",
