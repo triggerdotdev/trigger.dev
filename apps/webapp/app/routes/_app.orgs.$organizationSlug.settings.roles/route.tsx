@@ -1,7 +1,11 @@
-import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { useState } from "react";
-import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  type UseDataFunctionReturn,
+  typedjson,
+  useTypedLoaderData,
+} from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -12,7 +16,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -24,9 +28,10 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { cn } from "~/utils/cn";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { rbac } from "~/services/rbac.server";
+import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
 import {
   dashboardLoader,
 } from "~/services/routeBuilders/dashboardBuilder";
@@ -59,7 +64,6 @@ export const loader = dashboardLoader(
       const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
       return orgId ? { organizationId: orgId } : {};
     },
-    // Read-only page; same gating as the Teams page.
     authorization: { action: "read", resource: { type: "members" } },
   },
   async ({ params }) => {
@@ -68,181 +72,36 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds] = await Promise.all([
+    const [roles, assignableRoleIds, allPermissions] = await Promise.all([
       rbac.allRoles(orgId),
       rbac.getAssignableRoleIds(orgId),
+      rbac.allPermissions(orgId),
     ]);
 
-    return typedjson({ roles, assignableRoleIds });
+    return typedjson({ roles, assignableRoleIds, allPermissions });
   }
 );
 
-export default function Page() {
-  const { roles, assignableRoleIds } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
-  const plan = useCurrentPlan();
-  const planCode = plan?.v3Subscription?.plan?.code;
-  const isEnterprise = planCode === "enterprise";
+type LoaderData = UseDataFunctionReturn<typeof loader>;
+type LoaderRole = LoaderData["roles"][number];
+type LoaderPermission = LoaderData["allPermissions"][number];
+type RolePermission = LoaderRole["permissions"][number];
 
-  const assignable = new Set(assignableRoleIds);
+// Display order for the system roles. Custom roles render afterwards
+// in whatever order rbac.allRoles returns them.
+const SYSTEM_ROLE_ORDER: ReadonlyArray<{ id: string; name: string }> = [
+  { id: SYSTEM_ROLE_IDS.owner, name: "Owner" },
+  { id: SYSTEM_ROLE_IDS.admin, name: "Admin" },
+  { id: SYSTEM_ROLE_IDS.developer, name: "Developer" },
+  { id: SYSTEM_ROLE_IDS.member, name: "Member" },
+];
 
-  return (
-    <PageContainer>
-      <NavBar>
-        <PageTitle title="Roles" />
-        {!isEnterprise ? <CreateRoleUpsell /> : null}
-      </NavBar>
-      <PageBody scrollable={false}>
-        <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-            <div className="mx-auto max-w-3xl px-4 pb-8 pt-20">
-              <Paragraph spacing>
-                Roles control what each team member can do in{" "}
-                <strong>{organization.title}</strong>. Each role bundles a set of
-                permissions; assign a role to a team member from the{" "}
-                <a
-                  className="text-text-link hover:underline"
-                  href={`/orgs/${organization.slug}/settings/team`}
-                >
-                  Team page
-                </a>
-                .
-              </Paragraph>
+const SYSTEM_ROLE_ID_SET: ReadonlySet<string> = new Set(
+  SYSTEM_ROLE_ORDER.map((r) => r.id)
+);
 
-              {roles.length === 0 ? (
-                <EmptyState />
-              ) : (
-                <div className="mt-6 flex flex-col gap-8">
-                  {roles.map((role) => (
-                    <RoleCard
-                      key={role.id}
-                      role={role}
-                      isAssignable={assignable.has(role.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </PageBody>
-    </PageContainer>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="mt-6 flex flex-col items-center gap-2 rounded-md border border-dashed border-grid-bright p-8 text-center">
-      <ShieldCheckIcon className="size-8 text-text-dimmed" />
-      <Header3>No roles available on this plan.</Header3>
-      <Paragraph variant="small" className="text-text-dimmed">
-        Upgrade to Pro to unlock RBAC and additional system roles.
-      </Paragraph>
-    </div>
-  );
-}
-
-type LoaderRole = UseDataFunctionReturn<typeof loader>["roles"][number];
-type LoaderPermission = LoaderRole["permissions"][number];
-
-function RoleCard({
-  role,
-  isAssignable,
-}: {
-  role: LoaderRole;
-  isAssignable: boolean;
-}) {
-  // Group permissions by their description metadata's `group`. The
-  // controller populates `description` from PERMISSION_METADATA at the
-  // boundary, but the wire type doesn't carry the group, so we infer
-  // groups from the permission name's prefix as a fallback.
-  const grouped = groupPermissions(role.permissions);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-baseline gap-3">
-        <Header2>{role.name}</Header2>
-        {role.isSystem ? (
-          <Badge variant="extra-small">System role</Badge>
-        ) : (
-          <Badge variant="extra-small">Custom role</Badge>
-        )}
-        {!isAssignable ? (
-          <Badge variant="extra-small">Not on this plan</Badge>
-        ) : null}
-      </div>
-      {role.description ? (
-        <Paragraph variant="small" className="text-text-dimmed">
-          {role.description}
-        </Paragraph>
-      ) : null}
-      <Table containerClassName="border-t-0">
-        <TableHeader>
-          <TableRow>
-            <TableHeaderCell hiddenLabel>Allowed</TableHeaderCell>
-            <TableHeaderCell>Permission</TableHeaderCell>
-            <TableHeaderCell>Description</TableHeaderCell>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {role.permissions.length === 0 ? (
-            <TableBlankRow colSpan={3}>
-              <Paragraph variant="small" className="text-text-dimmed">
-                This role has no permissions assigned.
-              </Paragraph>
-            </TableBlankRow>
-          ) : (
-            grouped.flatMap(({ group, permissions }) => [
-              <TableRow key={`${group}-header`}>
-                <TableCell colSpan={3} className="bg-charcoal-800">
-                  <Header3 className="text-xs uppercase tracking-wide text-text-dimmed">
-                    {group}
-                  </Header3>
-                </TableCell>
-              </TableRow>,
-              ...permissions.map((permission, idx) => (
-                <TableRow key={`${role.id}-${permission.name}-${idx}`}>
-                  <TableCell className="w-8 text-center">
-                    {permission.inverted ? (
-                      <span className="text-error" aria-label="Denied">
-                        ✗
-                      </span>
-                    ) : (
-                      <span className="text-success" aria-label="Allowed">
-                        ✓
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <code className="text-xs">{permission.name}</code>
-                      {permission.conditions ? (
-                        <Badge variant="extra-small">
-                          {formatConditions(permission.conditions)}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Paragraph variant="small">
-                      {permission.description || (
-                        <span className="text-text-dimmed">—</span>
-                      )}
-                    </Paragraph>
-                  </TableCell>
-                </TableRow>
-              )),
-            ])
-          )}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-// Permission name-prefix → display group. Lives client-side because
-// the wire-format Permission only carries `name` and `description` —
-// the RBAC plugin doesn't ship grouping metadata over the wire.
+// Permission name → display group. The wire-format Permission only
+// carries `name` and `description`, so this lives client-side.
 const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
   "read:runs": "Runs",
   "write:runs": "Runs",
@@ -272,19 +131,9 @@ const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
   "read:members": "Organisation",
   "manage:members": "Organisation",
   "manage:billing": "Organisation",
-  // System-role meta pairs ("manage:all", "read:all", …) — collapse to
-  // a single "All" group at the top.
-  "manage:all": "All",
-  "read:all": "All",
-  "write:all": "All",
-  "trigger:all": "All",
-  "batchTrigger:all": "All",
-  "update:all": "All",
-  "deploy:all": "All",
 };
 
 const GROUP_ORDER = [
-  "All",
   "Runs",
   "Tasks",
   "Waitpoints",
@@ -296,15 +145,229 @@ const GROUP_ORDER = [
   "Environment",
   "Organisation",
   "Other",
-];
+] as const;
 
-// Render a CASL conditions object into a tier badge label. Only one
-// condition key is recognised today (envType); extending this requires
-// adding a new branch when ALLOWED_CONDITIONS grows.
-function formatConditions(conditions: Record<string, unknown>): string {
+export default function Page() {
+  const { roles, assignableRoleIds, allPermissions } =
+    useTypedLoaderData<typeof loader>();
+  const organization = useOrganization();
+  const plan = useCurrentPlan();
+  const planCode = plan?.v3Subscription?.plan?.code;
+  const isEnterprise = planCode === "enterprise";
+
+  // Map role-id → role for fast cell lookup. Each role's permissions are
+  // already the expanded `effectivePermissions` output (system roles
+  // populated server-side; custom roles too) so cells just filter that
+  // list by permission name.
+  const rolesById = new Map<string, LoaderRole>(roles.map((r) => [r.id, r]));
+  const assignable = new Set(assignableRoleIds);
+
+  // Column ordering: Owner / Admin / Developer / Member, then any
+  // custom roles in the order rbac.allRoles returned them.
+  const systemColumns = SYSTEM_ROLE_ORDER.flatMap((meta) => {
+    const role = rolesById.get(meta.id);
+    return role ? [{ role, fallbackName: meta.name }] : [];
+  });
+  const customColumns = roles
+    .filter((r) => !SYSTEM_ROLE_ID_SET.has(r.id))
+    .map((role) => ({ role, fallbackName: role.name }));
+  const columns = [...systemColumns, ...customColumns];
+
+  const grouped = groupPermissions(allPermissions);
+
+  return (
+    <PageContainer>
+      <NavBar>
+        <PageTitle title="Roles" />
+        {!isEnterprise ? <CreateRoleUpsell /> : null}
+      </NavBar>
+      <PageBody scrollable={false}>
+        <div className="grid max-h-full min-h-full grid-rows-[auto_1fr]">
+          <div className="border-b border-grid-bright px-4 py-6">
+            <Paragraph>
+              Roles control what each team member can do in{" "}
+              <strong>{organization.title}</strong>. Compare what each role
+              grants below; assign a role to a team member from the{" "}
+              <a
+                className="text-text-link hover:underline"
+                href={`/orgs/${organization.slug}/settings/team`}
+              >
+                Team page
+              </a>
+              .
+            </Paragraph>
+          </div>
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            {columns.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <Table containerClassName="border-t-0">
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Permission</TableHeaderCell>
+                    {columns.map(({ role }) => (
+                      <TableHeaderCell key={role.id} alignment="center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span>{role.name}</span>
+                          <PlanBadge
+                            roleId={role.id}
+                            assignable={assignable}
+                          />
+                        </div>
+                      </TableHeaderCell>
+                    ))}
+                    <TableHeaderCell>Description</TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {grouped.length === 0 ? (
+                    <TableBlankRow colSpan={columns.length + 2}>
+                      <Paragraph variant="small" className="text-text-dimmed">
+                        No permissions to display.
+                      </Paragraph>
+                    </TableBlankRow>
+                  ) : (
+                    grouped.flatMap(({ group, permissions }) => [
+                      <TableRow key={`${group}-header`}>
+                        <TableCell
+                          colSpan={columns.length + 2}
+                          className="bg-charcoal-800"
+                        >
+                          <Header3 className="text-xs uppercase tracking-wide text-text-dimmed">
+                            {group}
+                          </Header3>
+                        </TableCell>
+                      </TableRow>,
+                      ...permissions.map((permission) => (
+                        <TableRow key={permission.name}>
+                          <TableCell>
+                            <code className="text-xs">{permission.name}</code>
+                          </TableCell>
+                          {columns.map(({ role }) => (
+                            <TableCell
+                              key={role.id}
+                              alignment="center"
+                            >
+                              <RoleCell
+                                permissionName={permission.name}
+                                rolePermissions={role.permissions}
+                              />
+                            </TableCell>
+                          ))}
+                          <TableCell>
+                            <Paragraph variant="small">
+                              {permission.description || (
+                                <span className="text-text-dimmed">—</span>
+                              )}
+                            </Paragraph>
+                          </TableCell>
+                        </TableRow>
+                      )),
+                    ])
+                  )}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </div>
+      </PageBody>
+    </PageContainer>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex flex-col items-center gap-2 p-8 text-center">
+      <Header3>No roles available on this plan.</Header3>
+      <Paragraph variant="small" className="text-text-dimmed">
+        Upgrade to Pro to unlock RBAC.
+      </Paragraph>
+    </div>
+  );
+}
+
+function PlanBadge({
+  roleId,
+  assignable,
+}: {
+  roleId: string;
+  assignable: ReadonlySet<string>;
+}) {
+  // Roles the org's plan doesn't permit get a small upgrade-tier hint
+  // in the column header. The cell rendering is identical regardless
+  // — the comparison value is still useful even on Free/Hobby.
+  if (assignable.has(roleId)) return null;
+  // System role gating: Owner+Admin always available; Member/Developer
+  // only on Pro+; custom roles only on Enterprise.
+  if (
+    roleId === SYSTEM_ROLE_IDS.member ||
+    roleId === SYSTEM_ROLE_IDS.developer
+  ) {
+    return <Badge variant="extra-small">Pro</Badge>;
+  }
+  return <Badge variant="extra-small">Enterprise</Badge>;
+}
+
+// Render a single (role × permission) cell. Filters the role's
+// effectivePermissions list to entries matching this permission name
+// and emits an icon + optional condition badge based on the rules.
+function RoleCell({
+  permissionName,
+  rolePermissions,
+}: {
+  permissionName: string;
+  rolePermissions: RolePermission[];
+}) {
+  const matching = rolePermissions.filter((p) => p.name === permissionName);
+
+  if (matching.length === 0) {
+    // No rule matches — the role denies this permission by omission.
+    return (
+      <span className="text-text-dimmed" aria-label="Not granted">
+        <XMarkIcon className="mx-auto size-4" />
+      </span>
+    );
+  }
+
+  const allowed = matching.filter((p) => !p.inverted);
+  const denied = matching.filter((p) => p.inverted);
+
+  // Only inverted rules apply — the role explicitly denies this
+  // permission. Render as ✗ in error colour.
+  if (allowed.length === 0) {
+    return (
+      <span className="text-error" aria-label="Denied">
+        <XMarkIcon className="mx-auto size-4" />
+      </span>
+    );
+  }
+
+  // At least one allow rule applies. Render ✓ in success green; if
+  // there's a conditional cannot rule, render its label as a Badge
+  // beneath the tick so the user sees the restriction.
+  const conditionalDeny = denied.find((p) => p.conditions);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-success" aria-label="Allowed">
+        <CheckIcon className="mx-auto size-4" />
+      </span>
+      {conditionalDeny?.conditions ? (
+        <Badge variant="extra-small">
+          {conditionLabel(conditionalDeny.conditions)}
+        </Badge>
+      ) : null}
+    </div>
+  );
+}
+
+// Render a CASL conditions object into a tier badge label. Only
+// `envType` is recognised today (the catalogue's only allowed condition);
+// extending this requires adding a new branch when ALLOWED_CONDITIONS
+// grows.
+function conditionLabel(conditions: Record<string, unknown>): string {
   if (typeof conditions.envType === "string") {
-    const t = conditions.envType.toLowerCase();
-    return `${t} only`;
+    if (conditions.envType === "PRODUCTION") return "non-prod only";
+    return `non-${conditions.envType.toLowerCase()} only`;
   }
   return JSON.stringify(conditions);
 }
@@ -324,8 +387,6 @@ function groupPermissions(
   );
 }
 
-// "Create role" upsell shown to non-Enterprise plans. Enterprise plans
-// don't see this — the actual create-role UI is a follow-up.
 function CreateRoleUpsell() {
   const [open, setOpen] = useState(false);
   return (

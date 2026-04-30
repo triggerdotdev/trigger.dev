@@ -25,6 +25,6 @@ export const rbac = plugin.create(
 export const SYSTEM_ROLE_IDS = {
   owner: "sys_role_owner",
   admin: "sys_role_admin",
+  developer: "sys_role_developer",
   member: "sys_role_member",
-  viewer: "sys_role_viewer",
 } as const;
