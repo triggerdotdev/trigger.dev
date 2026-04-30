@@ -102,6 +102,7 @@ import {
   runShapeStream,
   RealtimeRunSkipColumns,
   type SSEStreamPart,
+  type RunStreamCursorStore,
 } from "./runStream.js";
 import {
   CreateEnvironmentVariableParams,
@@ -178,6 +179,7 @@ export type {
   RunSubscription,
   TaskRunShape,
   SSEStreamPart,
+  RunStreamCursorStore,
 };
 
 export * from "./getBranch.js";
@@ -1235,6 +1237,8 @@ export class ApiClient {
       closeOnComplete?: boolean;
       onFetchError?: (error: Error) => void;
       skipColumns?: string[];
+      /** Cursor store used to resume per-stream subscriptions across reconnects. */
+      streamCursors?: RunStreamCursorStore;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -1252,6 +1256,7 @@ export class ApiClient {
         client: this,
         signal: options?.signal,
         onFetchError: options?.onFetchError,
+        streamCursors: options?.streamCursors,
       }
     );
   }
@@ -1350,6 +1355,10 @@ export class ApiClient {
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /** Fired whenever the underlying SSE cursor advances. Use this to persist
+       * the cursor across reconnects.
+       */
+      onLastEventId?: (lastEventId: string) => void;
       /** Called for each SSE event with the full event metadata (id, timestamp). */
       onPart?: (part: SSEStreamPart<T>) => void;
     }
@@ -1364,6 +1373,7 @@ export class ApiClient {
       onError: options?.onError,
       timeoutInSeconds: options?.timeoutInSeconds,
       lastEventId: options?.lastEventId,
+      onLastEventId: options?.onLastEventId,
     });
 
     const stream = await subscription.subscribe();

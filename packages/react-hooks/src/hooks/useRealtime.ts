@@ -8,6 +8,7 @@ import {
   RealtimeDefinedStream,
   RealtimeRun,
   RealtimeRunSkipColumns,
+  RunStreamCursorStore,
 } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
@@ -300,6 +301,20 @@ export function useRealtimeRunWithStreams<
   // Abort controller to cancel the current API call.
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Persist per-stream-key cursors so a reconnect (visibility/online or
+  // internal SSE retry) resumes from where we left off instead of replaying
+  // the whole stream.
+  const streamCursorsMapRef = useRef<Map<string, string>>(new Map());
+  const streamCursorsRef = useRef<RunStreamCursorStore>({
+    get: (key) => streamCursorsMapRef.current.get(key),
+    set: (key, value) => {
+      streamCursorsMapRef.current.set(key, value);
+    },
+  });
+  useEffect(() => {
+    streamCursorsMapRef.current.clear();
+  }, [runId]);
+
   const stop = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -328,7 +343,8 @@ export function useRealtimeRunWithStreams<
         setError,
         abortControllerRef,
         typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
-        options?.throttleInMs ?? 16
+        options?.throttleInMs ?? 16,
+        streamCursorsRef.current
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -858,6 +874,13 @@ function useRealtimeStreamImplementation<TPart>(
   // Abort controller to cancel the current API call.
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Persist the SSE cursor across reconnects (visibility/online or internal
+  // SSE retry). When set, takes precedence over startIndex on resume.
+  const lastEventIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    lastEventIdRef.current = undefined;
+  }, [runId, streamKey]);
+
   const stop = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -896,7 +919,8 @@ function useRealtimeStreamImplementation<TPart>(
         abortControllerRef,
         options?.timeoutInSeconds,
         options?.startIndex,
-        options?.throttleInMs ?? 16
+        options?.throttleInMs ?? 16,
+        lastEventIdRef
       );
     } catch (err) {
       // Ignore abort errors as they are expected.
@@ -1027,13 +1051,15 @@ async function processRealtimeRunWithStreams<
   onError: (e: Error) => void,
   abortControllerRef: React.MutableRefObject<AbortController | null>,
   stopOnCompletion: boolean = true,
-  throttleInMs?: number
+  throttleInMs?: number,
+  streamCursors?: RunStreamCursorStore
 ) {
   const subscription = apiClient.subscribeToRun<InferRunTypes<TTask>>(runId, {
     signal: abortControllerRef.current?.signal,
     closeOnComplete: stopOnCompletion,
     onFetchError: onError,
     skipColumns: filters.skipColumns,
+    streamCursors,
   });
 
   type StreamUpdate = {
@@ -1110,13 +1136,24 @@ async function processRealtimeStream<TPart>(
   abortControllerRef: React.MutableRefObject<AbortController | null>,
   timeoutInSeconds?: number,
   startIndex?: number,
-  throttleInMs?: number
+  throttleInMs?: number,
+  lastEventIdRef?: React.MutableRefObject<string | undefined>
 ) {
   try {
+    // Resume from the persisted cursor if we have one (set by a prior
+    // connection); otherwise fall back to startIndex semantics.
+    const resumeFrom =
+      lastEventIdRef?.current ?? (startIndex ? (startIndex - 1).toString() : undefined);
+
     const stream = await apiClient.fetchStream<TPart>(runId, streamKey, {
       signal: abortControllerRef.current?.signal,
       timeoutInSeconds,
-      lastEventId: startIndex ? (startIndex - 1).toString() : undefined,
+      lastEventId: resumeFrom,
+      onLastEventId: lastEventIdRef
+        ? (id) => {
+            lastEventIdRef.current = id;
+          }
+        : undefined,
     });
 
     // Throttle the stream

@@ -84,6 +84,13 @@ export type RunStreamCallback<TRunTypes extends AnyRunTypes> = (
   run: RunShape<TRunTypes>
 ) => void | Promise<void>;
 
+export type RunStreamCursorStore = {
+  /** Returns the last event id seen for a stream key, if any. */
+  get(streamKey: string): string | undefined;
+  /** Records the latest event id seen for a stream key. */
+  set(streamKey: string, lastEventId: string): void;
+};
+
 export type RunShapeStreamOptions = {
   headers?: Record<string, string>;
   fetchClient?: typeof fetch;
@@ -91,6 +98,15 @@ export type RunShapeStreamOptions = {
   signal?: AbortSignal;
   client?: ApiClient;
   onFetchError?: (e: Error) => void;
+  /**
+   * Optional cursor store used to resume per-stream subscriptions across
+   * reconnects. When provided, each per-stream SSE subscription seeds its
+   * `Last-Event-ID` from `get(streamKey)` and persists incoming event ids via
+   * `set(streamKey, id)` — so a tab returning from background or a network
+   * blip resumes from where the stream left off instead of replaying from
+   * the beginning.
+   */
+  streamCursors?: RunStreamCursorStore;
 };
 
 export type StreamPartResult<TRun, TStreams extends Record<string, any>> = {
@@ -163,6 +179,10 @@ export type CreateStreamSubscriptionOptions = {
   onError?: (error: Error) => void;
   timeoutInSeconds?: number;
   lastEventId?: string;
+  /** Fired whenever the underlying SSE cursor advances. Use this to persist
+   * the cursor across reconnects.
+   */
+  onLastEventId?: (lastEventId: string) => void;
 };
 
 export interface StreamSubscriptionFactory {
@@ -205,6 +225,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       onError?: (error: Error) => void;
       timeoutInSeconds?: number;
       lastEventId?: string;
+      onLastEventId?: (lastEventId: string) => void;
     }
   ) {
     this.lastEventId = options.lastEventId;
@@ -286,6 +307,7 @@ export class SSEStreamSubscription implements StreamSubscription {
                 // Track the last event ID for resume support
                 if (chunk.id) {
                   this.lastEventId = chunk.id;
+                  this.options.onLastEventId?.(chunk.id);
                 }
 
                 const timestamp = parseRedisStreamIdTimestamp(chunk.id);
@@ -302,7 +324,9 @@ export class SSEStreamSubscription implements StreamSubscription {
                   };
 
                   for (const record of data.records) {
-                    this.lastEventId = record.seq_num.toString();
+                    const eventId = record.seq_num.toString();
+                    this.lastEventId = eventId;
+                    this.options.onLastEventId?.(eventId);
 
                     const parsedBody = safeParseJSON(record.body) as { data: unknown; id: string };
                     if (seenIds.has(parsedBody.id)) {
@@ -311,7 +335,7 @@ export class SSEStreamSubscription implements StreamSubscription {
                     seenIds.add(parsedBody.id);
 
                     chunkController.enqueue({
-                      id: record.seq_num.toString(),
+                      id: eventId,
                       chunk: parsedBody.data,
                       timestamp: record.timestamp,
                     });
@@ -525,11 +549,16 @@ export class RunSubscription<TRunTypes extends AnyRunTypes> {
               if (!activeStreams.has(streamKey)) {
                 activeStreams.add(streamKey);
 
+                const cursors = this.options.streamCursors;
                 const subscription = this.options.streamFactory.createSubscription(
                   run.id,
                   streamKey,
                   {
                     baseUrl: this.options.client?.baseUrl,
+                    lastEventId: cursors?.get(streamKey),
+                    onLastEventId: cursors
+                      ? (id) => cursors.set(streamKey, id)
+                      : undefined,
                   }
                 );
 
