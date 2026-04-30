@@ -57,6 +57,7 @@ const InitCommandOptions = CommonCommandOptions.extend({
   gitRef: z.string().default("main"),
   javascript: z.boolean().default(false),
   yes: z.boolean().default(false),
+  browser: z.boolean().default(true),
 });
 
 type InitCommandOptions = z.infer<typeof InitCommandOptions>;
@@ -65,7 +66,23 @@ export function configureInitCommand(program: Command) {
   return commonOptions(
     program
       .command("init")
-      .description("Initialize your existing project for development with Trigger.dev")
+      .summary("Initialize your existing project for development with Trigger.dev")
+      .description(
+        `Initialize your existing project for development with Trigger.dev.
+
+Examples:
+  # Interactive setup
+  $ trigger.dev init
+
+  # Non-interactive (CI / scripts)
+  $ trigger.dev init --yes --project-ref proj_abc123
+
+  # Headless / agent (no browser)
+  $ trigger.dev init --yes --project-ref proj_abc123 --no-browser
+
+  # Use a named profile
+  $ trigger.dev init --profile staging`
+      )
       .argument("[path]", "The path to the project", ".")
       .option(
         "-p, --project-ref <project ref>",
@@ -89,6 +106,7 @@ export function configureInitCommand(program: Command) {
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
       .option("-y, --yes", "Skip all prompts and use defaults (requires --project-ref)")
+      .option("--no-browser", "Don't automatically open the browser during login; print the URL only")
   )
     .addOption(
       new CommandOption(
@@ -116,6 +134,15 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   // Validate --yes flag requirements
   if (options.yes && !options.projectRef) {
     throw new Error("--project-ref is required when using --yes flag");
+  }
+
+  // Refuse to run interactively when stdin isn't a TTY (CI, agent harness, etc).
+  // Previously this silently default-and-exited at the first prompt, leaving the
+  // project half-initialized.
+  if (!options.yes && !process.stdin.isTTY) {
+    throw new Error(
+      "Interactive prompts cannot be used in non-TTY environments. Pass --yes (and --project-ref) to run non-interactively."
+    );
   }
 
   const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
@@ -165,6 +192,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
     embedded: true,
     defaultApiUrl: options.apiUrl,
     profile: options.profile,
+    browser: options.browser,
   });
 
   if (!authorization.ok) {
