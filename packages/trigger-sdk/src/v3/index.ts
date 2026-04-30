@@ -40,6 +40,8 @@ export {
   AbortTaskRunError,
   OutOfMemoryError,
   CompleteTaskWithOutput,
+  ChatChunkTooLargeError,
+  isChatChunkTooLargeError,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";
