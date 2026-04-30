@@ -1,6 +1,15 @@
 import { S2, AppendRecord, BatchTransform } from "@s2-dev/streamstore";
+import { ChatChunkTooLargeError } from "../errors.js";
 import { StreamsWriter, StreamWriteResult } from "./types.js";
 import { nanoid } from "nanoid";
+
+// S2 caps a single record at 1 MiB of metered bytes (body + headers + 8 byte
+// overhead). We give ourselves ~1 KiB of headroom for the JSON envelope and
+// metering bytes so the check fires before the SDK's internal `BatchTransform`
+// rejects the record with an opaque `S2Error`.
+const RECORD_BODY_MAX_BYTES = 1024 * 1024 - 1024;
+
+const utf8Encoder = new TextEncoder();
 
 export type StreamsWriterV2Options<T = any> = {
   basin: string;
@@ -152,8 +161,16 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
                 controller.error(new Error("Stream aborted"));
                 return;
               }
-              // Convert each chunk to JSON string and wrap in AppendRecord
-              controller.enqueue(AppendRecord.string({ body: JSON.stringify({ data: chunk, id: nanoid(7) }) }));
+              const body = JSON.stringify({ data: chunk, id: nanoid(7) });
+              const size = utf8Encoder.encode(body).length;
+              if (size > RECORD_BODY_MAX_BYTES) {
+                const chunkType = extractChunkType(chunk);
+                controller.error(
+                  new ChatChunkTooLargeError(size, RECORD_BODY_MAX_BYTES, chunkType)
+                );
+                return;
+              }
+              controller.enqueue(AppendRecord.string({ body }));
             },
           })
         )
@@ -226,4 +243,18 @@ function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
   } catch (error) {}
+}
+
+// chat.agent emits two chunk shapes through this writer:
+//   - UIMessageChunks + custom data parts: `{ type: "tool-output-available" | "data-..." | ... }`
+//   - ChatInputChunks (mostly seen on `.in`, but reused as the discriminant
+//     elsewhere): `{ kind: "message" | "stop" | "action" }`
+// Surfacing whichever discriminant exists turns "chunk too large" into
+// "tool-output-available chunk too large", which is what users actually need.
+function extractChunkType(chunk: unknown): string | undefined {
+  if (!chunk || typeof chunk !== "object") return undefined;
+  const c = chunk as { type?: unknown; kind?: unknown };
+  if (typeof c.type === "string") return c.type;
+  if (typeof c.kind === "string") return c.kind;
+  return undefined;
 }
