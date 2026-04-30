@@ -42,6 +42,9 @@
       "ai": [
         "dist/commonjs/v3/ai.d.ts"
       ],
+      "ai/skills-runtime": [
+        "dist/commonjs/v3/agentSkillsRuntime.d.ts"
+      ],
       "ai/test": [
         "dist/commonjs/v3/test/index.d.ts"
       ],

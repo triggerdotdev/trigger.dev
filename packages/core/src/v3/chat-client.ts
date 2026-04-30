@@ -49,15 +49,27 @@ export type ChatStoreChunk = ChatStoreSnapshotChunk | ChatStoreDeltaChunk;
 // JSON Pointer paths. Used by `chat.store.patch()` on the agent and
 // the matching client-side `applyStorePatch` on the transport.
 
+// Reject these segments at the parser to prevent prototype pollution: a
+// malicious patch like `{ op: "replace", path: "/__proto__/polluted", value: 1 }`
+// would otherwise mutate Object.prototype. Patches with these keys aren't
+// legitimate for chat.store, so reject the whole patch with a clear error.
+const FORBIDDEN_POINTER_SEGMENTS = new Set(["__proto__", "constructor", "prototype"]);
+
 function parseJsonPointer(path: string): string[] {
   if (path === "") return [];
   if (!path.startsWith("/")) {
     throw new Error(`Invalid JSON Pointer (must start with "/"): ${path}`);
   }
-  return path
+  const tokens = path
     .slice(1)
     .split("/")
     .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+  for (const token of tokens) {
+    if (FORBIDDEN_POINTER_SEGMENTS.has(token)) {
+      throw new Error(`Invalid JSON Pointer segment "${token}" in path "${path}"`);
+    }
+  }
+  return tokens;
 }
 
 function cloneValue<T>(value: T): T {
