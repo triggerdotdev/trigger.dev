@@ -25,6 +25,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -32,6 +33,7 @@ import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/email.server";
+import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
@@ -63,8 +65,51 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return typedjson(result);
+  // Inviter's own role drives the "below their level" filter on the
+  // dropdown. Plus assignable role IDs already encode the org's plan
+  // tier — the intersection is what we offer.
+  const [inviterRole, assignableRoleIds] = await Promise.all([
+    rbac.getUserRole({ userId, organizationId: organization.id }),
+    rbac.getAssignableRoleIds(organization.id),
+  ]);
+
+  return typedjson({ ...result, inviterRoleId: inviterRole?.id ?? null, assignableRoleIds });
 };
+
+// Sentinel for "no RBAC role attached to invite" — the runtime
+// fallback will derive a role from the legacy OrgMember.role write at
+// accept time. Used when the org has no RBAC plugin installed (the
+// dropdown is hidden) or as a defensive default.
+const NO_RBAC_ROLE = "__no_rbac_role__";
+
+// Owner > Admin > Developer > Member. An inviter can only assign a
+// role strictly below their own — Owners can pick any of the four,
+// Admins can pick Developer or Member, Developer/Member can't invite
+// at all. Custom roles are out of scope for this rule (TRI-8747's
+// follow-up will handle them).
+const ROLE_LEVEL: Record<string, number> = {
+  [SYSTEM_ROLE_IDS.owner]: 4,
+  [SYSTEM_ROLE_IDS.admin]: 3,
+  [SYSTEM_ROLE_IDS.developer]: 2,
+  [SYSTEM_ROLE_IDS.member]: 1,
+};
+
+function canInviteAtRole(
+  inviterRoleId: string | null,
+  invitedRoleId: string
+): boolean {
+  // No RBAC role on inviter (e.g. the runtime fallback couldn't derive
+  // one) → fall back to the legacy OrgMember.role check the calling
+  // code already enforces. Allow the invite to proceed; the action
+  // would have already failed earlier if the inviter wasn't allowed
+  // to invite at all.
+  if (!inviterRoleId) return true;
+  const inviter = ROLE_LEVEL[inviterRoleId];
+  const invited = ROLE_LEVEL[invitedRoleId];
+  // Custom roles aren't in the level table — refuse.
+  if (inviter === undefined || invited === undefined) return false;
+  return invited < inviter;
+}
 
 const schema = z.object({
   emails: z.preprocess((i) => {
@@ -80,6 +125,7 @@ const schema = z.object({
 
     return [""];
   }, z.string().email().array().nonempty("At least one email is required")),
+  rbacRoleId: z.string().optional(),
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
@@ -94,11 +140,49 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission);
   }
 
+  // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
+  // role → don't pass one through; the runtime fallback handles it.
+  // Validation: the chosen role must be in the org's assignable set
+  // (which already enforces plan-tier gating + inviter's level).
+  let resolvedRbacRoleId: string | null = null;
+  const submittedRbacRoleId = submission.value.rbacRoleId;
+  if (
+    submittedRbacRoleId &&
+    submittedRbacRoleId !== NO_RBAC_ROLE
+  ) {
+    const org = await $replica.organization.findFirst({
+      where: { slug: organizationSlug },
+      select: { id: true },
+    });
+    if (!org) {
+      return json({ errors: { body: "Organization not found" } }, { status: 404 });
+    }
+    const [inviterRole, assignableRoleIds] = await Promise.all([
+      rbac.getUserRole({ userId, organizationId: org.id }),
+      rbac.getAssignableRoleIds(org.id),
+    ]);
+    const assignable = new Set(assignableRoleIds);
+    if (!assignable.has(submittedRbacRoleId)) {
+      return json(
+        { errors: { body: "You can't invite someone with this role on your current plan" } },
+        { status: 400 }
+      );
+    }
+    if (!canInviteAtRole(inviterRole?.id ?? null, submittedRbacRoleId)) {
+      return json(
+        { errors: { body: "You can only invite members at or below your own role" } },
+        { status: 403 }
+      );
+    }
+    resolvedRbacRoleId = submittedRbacRoleId;
+  }
+
   try {
     const invites = await inviteMembers({
       slug: organizationSlug,
       emails: submission.value.emails,
       userId,
+      rbacRoleId: resolvedRbacRoleId,
     });
 
     for (const invite of invites) {
@@ -128,11 +212,37 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { limits, canPurchaseSeats, seatPricing, extraSeats, maxSeatQuota, planSeatLimit } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    limits,
+    canPurchaseSeats,
+    seatPricing,
+    extraSeats,
+    maxSeatQuota,
+    planSeatLimit,
+    roles,
+    inviterRoleId,
+    assignableRoleIds,
+  } = useTypedLoaderData<typeof loader>();
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
   const lastSubmission = useActionData();
+
+  // Filter the role catalogue down to what THIS inviter can actually
+  // assign — intersection of (assignable on this plan) and (strictly
+  // below inviter's level). With no plugin installed, roles is [] and
+  // we hide the whole picker.
+  const assignable = new Set(assignableRoleIds);
+  const offerable = roles.filter(
+    (r) => assignable.has(r.id) && canInviteAtRole(inviterRoleId, r.id)
+  );
+  const showRolePicker = offerable.length > 0;
+
+  // Default to Member when offered (or the lowest-tier offered role).
+  const defaultRoleId = showRolePicker
+    ? offerable.find((r) => r.id === SYSTEM_ROLE_IDS.member)?.id ??
+      offerable[offerable.length - 1].id
+    : NO_RBAC_ROLE;
+  const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
 
   const [form, { emails }] = useForm({
     id: "invite-members",
@@ -232,6 +342,36 @@ export default function Page() {
                 </Fragment>
               ))}
             </InputGroup>
+            {showRolePicker ? (
+              <InputGroup>
+                <Label htmlFor="rbacRoleId">Role</Label>
+                <input type="hidden" name="rbacRoleId" value={selectedRoleId} />
+                <Select<string, (typeof offerable)[number]>
+                  defaultValue={defaultRoleId}
+                  items={offerable}
+                  variant="tertiary/medium"
+                  dropdownIcon
+                  text={(v) =>
+                    offerable.find((r) => r.id === v)?.name ?? "Pick a role"
+                  }
+                  setValue={(next) => {
+                    if (typeof next === "string") setSelectedRoleId(next);
+                  }}
+                >
+                  {(items) =>
+                    items.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        {role.name}
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  Invitees join with this role. They can be promoted later
+                  from the Team page.
+                </Paragraph>
+              </InputGroup>
+            ) : null}
             <FormButtons
               confirmButton={
                 <Button type="submit" variant={"primary/small"} disabled={total > limits.limit}>

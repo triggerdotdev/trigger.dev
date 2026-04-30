@@ -2,6 +2,7 @@ import { type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
+import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
 
 const tokenValueLength = 40;
 const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
@@ -87,10 +88,23 @@ export async function inviteMembers({
   slug,
   emails,
   userId,
+  rbacRoleId,
 }: {
   slug: string;
   emails: string[];
   userId: string;
+  /**
+   * Optional RBAC role to attach to the invite. When set, accepted
+   * invites trigger `rbac.setUserRole(rbacRoleId)` after the OrgMember
+   * is created. Caller is responsible for verifying this role is
+   * assignable by the inviter (level + plan tier) — the action layer
+   * does that check before reaching here.
+   *
+   * Legacy `OrgMemberInvite.role` is still set for OSS compatibility.
+   * Owner/Admin RBAC ids map to the legacy `ADMIN`; anything else maps
+   * to legacy `MEMBER`.
+   */
+  rbacRoleId?: string | null;
 }) {
   const org = await prisma.organization.findFirst({
     where: { slug, members: { some: { userId } } },
@@ -100,6 +114,15 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
+  // The legacy enum is the source of truth for OSS auth — keep it in
+  // sync with the chosen RBAC role so self-hosters who never install
+  // the plugin still get sensible permissions.
+  const legacyRole: "ADMIN" | "MEMBER" =
+    rbacRoleId === SYSTEM_ROLE_IDS.owner ||
+    rbacRoleId === SYSTEM_ROLE_IDS.admin
+      ? "ADMIN"
+      : "MEMBER";
+
   const invites = [...new Set(emails)].map(
     (email) =>
       ({
@@ -107,7 +130,8 @@ export async function inviteMembers({
         token: tokenGenerator(),
         organizationId: org.id,
         inviterId: userId,
-        role: "MEMBER",
+        role: legacyRole,
+        rbacRoleId: rbacRoleId ?? null,
       } satisfies Prisma.OrgMemberInviteCreateManyInput)
   );
 
@@ -212,15 +236,33 @@ export async function acceptInvite({
       remainingInvites,
       organization: invite.organization,
       inviteRole: invite.role,
+      rbacRoleId: invite.rbacRoleId,
     };
   });
 
-  // No upfront RBAC UserRole insert — the loaded RBAC plugin (if any)
-  // is responsible for deriving the new member's role from the legacy
-  // OrgMember.role write inside the transaction above (ADMIN → Owner,
-  // MEMBER → Admin) until an Owner explicitly changes their role on
-  // the Teams page. Keeps the invite path tight and consistent with
-  // the create-org path's behaviour.
+  // If the invite carried an explicit RBAC role (the inviter picked one
+  // when sending the invite), assign it now. Outside the Prisma
+  // transaction because the RBAC plugin runs against a separate
+  // postgres-js connection. Errors are logged, not fatal: the runtime
+  // fallback derives a role from the legacy OrgMember.role write
+  // above, so the user keeps working.
+  //
+  // No rbacRoleId → legacy behaviour, fallback covers it.
+  if (result.rbacRoleId) {
+    const roleResult = await rbac.setUserRole({
+      userId: user.id,
+      organizationId: result.organization.id,
+      roleId: result.rbacRoleId,
+    });
+    if (!roleResult.ok) {
+      logger.debug("acceptInvite: skipped RBAC role assignment", {
+        organizationId: result.organization.id,
+        userId: user.id,
+        rbacRoleId: result.rbacRoleId,
+        reason: roleResult.error,
+      });
+    }
+  }
 
   return { remainingInvites: result.remainingInvites, organization: result.organization };
 }
