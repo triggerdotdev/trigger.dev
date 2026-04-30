@@ -2,6 +2,10 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import {
+  ALLOWED_SESSION_DURATION_VALUES,
+  isAllowedSessionDuration,
+} from "~/services/sessionDuration.server";
 
 const ParamsSchema = z.object({
   organizationId: z.string(),
@@ -12,15 +16,33 @@ const RequestBodySchema = z.object({
    * Maximum session lifetime (seconds) for members of this organization, or
    * null to remove the cap. When set, this caps each member's
    * `User.sessionDuration` and is enforced on the user's next request.
+   *
+   * Must be one of the values in `SESSION_DURATION_OPTIONS` so the cap always
+   * maps to a labeled dropdown option for users — otherwise users see fallback
+   * labels like "7200 seconds" in the UI. To allow a new value, add it to
+   * `SESSION_DURATION_OPTIONS`.
    */
-  maxSessionDuration: z.number().int().positive().nullable(),
+  maxSessionDuration: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .refine((v) => v === null || isAllowedSessionDuration(v), {
+      message: `maxSessionDuration must be one of: ${[...ALLOWED_SESSION_DURATION_VALUES]
+        .sort((a, b) => a - b)
+        .join(", ")}`,
+    }),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
-  const body = RequestBodySchema.parse(await request.json());
+  const parseResult = RequestBodySchema.safeParse(await request.json());
+  if (!parseResult.success) {
+    return json({ success: false, errors: parseResult.error.flatten() }, { status: 400 });
+  }
+  const body = parseResult.data;
 
   const organization = await prisma.organization.update({
     where: { id: organizationId },

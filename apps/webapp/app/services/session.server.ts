@@ -2,6 +2,7 @@ import { redirect } from "@remix-run/node";
 import { $replica } from "~/db.server";
 import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
+import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
 import { logger } from "./logger.server";
@@ -30,22 +31,26 @@ async function enforceSessionExpiry(
   // when one is configured (falls back to primary). Stale-by-replica-lag is
   // acceptable here because the worst case is a session living a few seconds
   // past its cap on the very first request after a cap change.
-  const { durationSeconds, orgCapSeconds, userSettingSeconds } =
+  const { durationSeconds, orgCapSeconds, cappingOrgId, userSettingSeconds } =
     await getEffectiveSessionDuration(userId, $replica);
   if (!isSessionExpired(session, durationSeconds)) return;
 
   const issuedAt = getSessionIssuedAt(session);
   // HIPAA audit trail: structured log lands in CloudWatch via stdout. Use
   // the stable `event` field to filter/aggregate auto-logout events.
+  // `sourceIp` uses ALB's appended (last) X-Forwarded-For element, not the
+  // first one, since the leading element is client-supplied and spoofable.
   logger.info("Auto-logout: session exceeded effective duration", {
     event: "session.auto_logout",
     userId,
     impersonatedUserId,
+    cappingOrgId,
     effectiveDurationSeconds: durationSeconds,
     userSettingSeconds,
     orgCapSeconds,
     sessionAgeMs: issuedAt === null ? null : Date.now() - issuedAt,
     requestPath: new URL(request.url).pathname,
+    sourceIp: extractClientIp(request.headers.get("x-forwarded-for")),
   });
   throw redirect("/logout");
 }

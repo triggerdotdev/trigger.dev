@@ -35,24 +35,33 @@ export function isAllowedSessionDuration(value: number): boolean {
   return ALLOWED_SESSION_DURATION_VALUES.has(value);
 }
 
+export type OrganizationSessionCap = {
+  /** The org cap in seconds. */
+  orgCapSeconds: number;
+  /** The id of the org whose cap is currently the most restrictive. */
+  cappingOrgId: string;
+};
+
 /**
- * Returns the most restrictive max session duration (in seconds) across all of
- * the user's organizations, ignoring orgs where it's null. Returns null when
- * no org has set a cap.
+ * Returns the most restrictive max session duration across the user's orgs
+ * along with the id of the org that owns it, ignoring orgs where the cap is
+ * null. Returns null when no org has set a cap.
  */
 export async function getOrganizationSessionCap(
   userId: string,
   client: PrismaClientOrTransaction = prisma
-): Promise<number | null> {
-  const result = await client.organization.aggregate({
+): Promise<OrganizationSessionCap | null> {
+  const tightest = await client.organization.findFirst({
     where: {
       members: { some: { userId } },
       maxSessionDuration: { not: null },
       deletedAt: null,
     },
-    _min: { maxSessionDuration: true },
+    orderBy: { maxSessionDuration: "asc" },
+    select: { id: true, maxSessionDuration: true },
   });
-  return result._min.maxSessionDuration ?? null;
+  if (!tightest || tightest.maxSessionDuration === null) return null;
+  return { orgCapSeconds: tightest.maxSessionDuration, cappingOrgId: tightest.id };
 }
 
 export type EffectiveSessionDuration = {
@@ -60,6 +69,8 @@ export type EffectiveSessionDuration = {
   durationSeconds: number;
   /** The org cap in seconds, or null if no org caps the user. */
   orgCapSeconds: number | null;
+  /** The id of the org whose cap is currently in effect, or null. */
+  cappingOrgId: string | null;
   /** The raw user setting in seconds. */
   userSettingSeconds: number;
 };
@@ -83,11 +94,12 @@ export async function getEffectiveSessionDuration(
 
   const userSettingSeconds = user?.sessionDuration ?? DEFAULT_SESSION_DURATION_SECONDS;
   const durationSeconds =
-    orgCap === null ? userSettingSeconds : Math.min(userSettingSeconds, orgCap);
+    orgCap === null ? userSettingSeconds : Math.min(userSettingSeconds, orgCap.orgCapSeconds);
 
   return {
     durationSeconds,
-    orgCapSeconds: orgCap,
+    orgCapSeconds: orgCap?.orgCapSeconds ?? null,
+    cappingOrgId: orgCap?.cappingOrgId ?? null,
     userSettingSeconds,
   };
 }

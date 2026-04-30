@@ -145,18 +145,18 @@ describe("getOrganizationSessionCap", () => {
     async ({ prisma }) => {
       const user = await createUser(prisma, "multi-org@test.com");
       await createOrgWithMember(prisma, "loose-org", user.id, oneDay);
-      await createOrgWithMember(prisma, "tight-org", user.id, oneHour);
+      const tight = await createOrgWithMember(prisma, "tight-org", user.id, oneHour);
       await createOrgWithMember(prisma, "uncapped-org", user.id, null);
 
       const cap = await getOrganizationSessionCap(user.id, prisma);
-      expect(cap).toBe(oneHour);
+      expect(cap).toEqual({ orgCapSeconds: oneHour, cappingOrgId: tight.id });
     }
   );
 
   containerTest("ignores soft-deleted organizations", async ({ prisma }) => {
     const user = await createUser(prisma, "deleted-org-user@test.com");
     const tight = await createOrgWithMember(prisma, "deleted-tight", user.id, oneHour);
-    await createOrgWithMember(prisma, "active-loose", user.id, oneDay);
+    const loose = await createOrgWithMember(prisma, "active-loose", user.id, oneDay);
 
     await prisma.organization.update({
       where: { id: tight.id },
@@ -164,7 +164,7 @@ describe("getOrganizationSessionCap", () => {
     });
 
     const cap = await getOrganizationSessionCap(user.id, prisma);
-    expect(cap).toBe(oneDay);
+    expect(cap).toEqual({ orgCapSeconds: oneDay, cappingOrgId: loose.id });
   });
 });
 
@@ -178,17 +178,19 @@ describe("getEffectiveSessionDuration", () => {
       const result = await getEffectiveSessionDuration(user.id, prisma);
       expect(result.userSettingSeconds).toBe(oneDay);
       expect(result.orgCapSeconds).toBeNull();
+      expect(result.cappingOrgId).toBeNull();
       expect(result.durationSeconds).toBe(oneDay);
     }
   );
 
   containerTest("caps the user setting at the most restrictive org cap", async ({ prisma }) => {
     const user = await createUser(prisma, "effective-capped@test.com", oneYear);
-    await createOrgWithMember(prisma, "effective-capped-org", user.id, oneHour);
+    const org = await createOrgWithMember(prisma, "effective-capped-org", user.id, oneHour);
 
     const result = await getEffectiveSessionDuration(user.id, prisma);
     expect(result.userSettingSeconds).toBe(oneYear);
     expect(result.orgCapSeconds).toBe(oneHour);
+    expect(result.cappingOrgId).toBe(org.id);
     expect(result.durationSeconds).toBe(oneHour);
   });
 
@@ -209,6 +211,7 @@ describe("getEffectiveSessionDuration", () => {
       const result = await getEffectiveSessionDuration("nonexistent-user-id", prisma);
       expect(result.userSettingSeconds).toBe(DEFAULT_SESSION_DURATION_SECONDS);
       expect(result.orgCapSeconds).toBeNull();
+      expect(result.cappingOrgId).toBeNull();
       expect(result.durationSeconds).toBe(DEFAULT_SESSION_DURATION_SECONDS);
     }
   );
