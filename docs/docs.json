@@ -126,6 +126,7 @@
                       "ai-chat/patterns/branching-conversations",
                       "ai-chat/patterns/code-sandbox",
                       "ai-chat/patterns/human-in-the-loop",
+                      "ai-chat/patterns/large-payloads",
                       "ai-chat/patterns/skills"
                     ]
                   },
