@@ -11,7 +11,11 @@ import { Logger } from "@trigger.dev/core/logger";
 import { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
-import { calculateNextScheduledTimestamp, nextScheduledTimestamps } from "./scheduleCalculation.js";
+import {
+  calculateNextScheduledTimestamp,
+  nextScheduledTimestamps,
+  previousScheduledTimestamp,
+} from "./scheduleCalculation.js";
 import {
   RegisterScheduleInstanceParams,
   ScheduleEngineOptions,
@@ -699,10 +703,12 @@ export class ScheduleEngine {
         select: {
           id: true,
           generatorExpression: true,
+          timezone: true,
           instances: {
             select: {
               id: true,
               environmentId: true,
+              createdAt: true,
             },
           },
         },
@@ -777,8 +783,9 @@ export class ScheduleEngine {
     instance: {
       id: string;
       environmentId: string;
+      createdAt: Date;
     };
-    schedule: { id: string; generatorExpression: string };
+    schedule: { id: string; generatorExpression: string; timezone: string | null };
   }) {
     // inspect the schedule worker to see if there is a job for this instance
     const job = await this.worker.getJob(`scheduled-task-instance:${instance.id}`);
@@ -793,13 +800,39 @@ export class ScheduleEngine {
       return "skipped";
     }
 
+    // Approximate the previous fire from the cron expression itself rather
+    // than reading state from the DB. For a continuously-running schedule
+    // this equals the actual last fire time. For paused-then-resumed
+    // schedules or recently-edited cron expressions the value will be
+    // approximate — same trade-off the dashboard "Last run" cell accepts.
+    // Guarded against the schedule not having existed long enough to have
+    // fired (cron's previous slot before instance creation), and against
+    // cron-parser throwing on malformed expressions. Pure cron math, no DB
+    // read — recovery fan-outs (Redis crash, restart storms) must not add
+    // load to hot tables.
+    let lastScheduleTime: Date | undefined;
+    try {
+      const cronPrev = previousScheduledTimestamp(
+        schedule.generatorExpression,
+        schedule.timezone
+      );
+      if (cronPrev.getTime() > instance.createdAt.getTime()) {
+        lastScheduleTime = cronPrev;
+      }
+    } catch {
+      lastScheduleTime = undefined;
+    }
+
     this.logger.info("No job found for instance, registering next run", {
       instanceId: instance.id,
       schedule,
+      lastScheduleTime: lastScheduleTime?.toISOString(),
     });
 
-    // If the job does not exist, register the next run
-    await this.registerNextTaskScheduleInstance({ instanceId: instance.id });
+    await this.registerNextTaskScheduleInstance({
+      instanceId: instance.id,
+      lastScheduleTime,
+    });
 
     return "recovered";
   }
