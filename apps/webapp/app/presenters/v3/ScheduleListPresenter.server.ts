@@ -197,6 +197,7 @@ export class ScheduleListPresenter extends BasePresenter {
         },
         active: true,
         createdAt: true,
+        updatedAt: true,
       },
       where: {
         projectId: project.id,
@@ -249,11 +250,13 @@ export class ScheduleListPresenter extends BasePresenter {
       // Approximate "last run" from the cron's previous slot. Skip inactive
       // schedules — the cron's previous slot reflects what *would* have
       // fired, but a deactivated schedule didn't actually fire there. Skip
-      // schedules whose cron's previous slot predates their creation — the
-      // schedule hasn't existed long enough to have fired. cron-parser
-      // throws on malformed expressions, so degrade to undefined per-row
-      // rather than failing the whole list. UI is best-effort; the runs
-      // page is the source of truth.
+      // when the cron's previous slot predates `updatedAt`: any config
+      // change (cron edited, timezone changed, deactivate/reactivate)
+      // bumps updatedAt, and a slot from before the most recent change
+      // didn't fire under the current configuration. cron-parser throws
+      // on malformed expressions, so degrade to undefined per-row rather
+      // than failing the whole list. UI is best-effort; the runs page is
+      // the source of truth.
       let lastRun: Date | undefined;
       if (schedule.active) {
         try {
@@ -261,7 +264,7 @@ export class ScheduleListPresenter extends BasePresenter {
             schedule.generatorExpression,
             schedule.timezone
           );
-          lastRun = cronPrev.getTime() > schedule.createdAt.getTime() ? cronPrev : undefined;
+          lastRun = cronPrev.getTime() > schedule.updatedAt.getTime() ? cronPrev : undefined;
         } catch {
           lastRun = undefined;
         }
