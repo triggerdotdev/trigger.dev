@@ -73,7 +73,7 @@ export function ApplyCouponDialog({ target, open, onOpenChange }: ApplyCouponDia
               </Property.Item>
             </Property.Table>
 
-            <Form method="post" className="flex flex-col gap-3" reloadDocument>
+            <Form method="post" className="flex flex-col gap-3">
               <input type="hidden" name="intent" value="apply" />
               <input type="hidden" name="orgId" value={target.orgId} />
               <input type="hidden" name="dealKey" value={target.dealKey} />

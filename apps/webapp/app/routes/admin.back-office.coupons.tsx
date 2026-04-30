@@ -1,6 +1,6 @@
 import { Form } from "@remix-run/react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import {
@@ -197,6 +197,13 @@ export default function CouponsPage() {
     setDialogTarget(target);
     setDialogOpen(true);
   };
+
+  // Close the dialog after a successful apply: the action redirects with
+  // ?applied=<dealKey>, the loader echoes that as appliedDealKey, and we
+  // dismiss the modal so the success banner underneath is visible.
+  useEffect(() => {
+    if (appliedDealKey) setDialogOpen(false);
+  }, [appliedDealKey]);
 
   const appliedDeal = appliedDealKey ? dealsByKey.get(appliedDealKey) : null;
 
