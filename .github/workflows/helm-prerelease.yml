@@ -118,7 +118,7 @@ jobs:
             fi
             PRERELEASE_VERSION="${BASE_VERSION}-${REF_SLUG}.${SHORT_SHA}"
           fi
-          echo "version=$PRERELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$PRERELEASE_VERSION" >> "$GITHUB_OUTPUT"
           echo "Prerelease version: $PRERELEASE_VERSION"
 
       - name: Update Chart.yaml with prerelease version
