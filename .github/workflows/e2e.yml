@@ -48,7 +48,7 @@ jobs:
         run: pnpm run build --filter trigger.dev^...
 
       - name: 🔧 Build worker template files
-        run: pnpm --filter trigger.dev run build:workers
+        run: pnpm --filter trigger.dev run --if-present build:workers
 
       - name: Enable corepack
         run: corepack enable
