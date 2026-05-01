@@ -69,7 +69,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.sha }}
-          persist-credentials: false
 
       - name: Verify ref is on main
         if: github.event_name == 'workflow_dispatch'
@@ -156,7 +155,6 @@ jobs:
           set -e
           git tag "helm-v${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
           git push origin "helm-v${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
-
         env:
           STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION: ${{ steps.get_version.outputs.package_version }}
 
@@ -298,5 +296,4 @@ jobs:
         run: pnpm exec changeset publish --no-git-tag --snapshot --tag "${GITHUB_EVENT_INPUTS_PRERELEASE_TAG}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
           GITHUB_EVENT_INPUTS_PRERELEASE_TAG: ${{ github.event.inputs.prerelease_tag }}
