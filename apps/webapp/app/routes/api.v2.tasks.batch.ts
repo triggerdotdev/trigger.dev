@@ -9,7 +9,10 @@ import { env } from "~/env.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  createActionApiRoute,
+  everyResource,
+} from "~/services/routeBuilders/apiBuilder.server";
 import {
   handleRequestIdempotency,
   saveRequestIdempotency,
@@ -32,11 +35,17 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "batchTrigger",
+      // Each item in the batch is a distinct task — every one must be
+      // authorized, not just any one of them. `everyResource` flips
+      // the auth check to AND semantics so a JWT scoped to taskA can't
+      // submit a batch that also includes taskB / taskC.
       resource: (_, __, ___, body) =>
-        Array.from(new Set(body.items.map((i) => i.task))).map((id) => ({
-          type: "tasks",
-          id,
-        })),
+        everyResource(
+          Array.from(new Set(body.items.map((i) => i.task))).map((id) => ({
+            type: "tasks",
+            id,
+          }))
+        ),
     },
     corsStrategy: "all",
   },

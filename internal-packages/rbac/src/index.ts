@@ -59,8 +59,8 @@ class LazyController implements RoleBaseAccessController {
     if (options?.forceFallback) {
       return new RoleBaseAccessFallback(prisma).create(helpers);
     }
+    const moduleName = "@triggerdotdev/plugins/rbac";
     try {
-      const moduleName = "@triggerdotdev/plugins/rbac";
       const module = await import(moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
       console.log("RBAC: using plugin implementation");
@@ -71,15 +71,28 @@ class LazyController implements RoleBaseAccessController {
       // — silently swallowing the error here is what produced "why is
       // the fallback being used?" mysteries before.
       //
-      // 1. Module-not-found — expected when no plugin is installed.
+      // 1. The plugin itself is absent (no install) — expected.
       //    Logged at info level only when RBAC_LOG_FALLBACK=1 so
       //    production logs stay quiet.
       // 2. Anything else (transitive dep missing, init error, syntax
       //    error in the plugin's dist, etc.) — a real bug. Always
       //    logged loudly so it surfaces in CI / production logs.
+      //
+      // Node throws ERR_MODULE_NOT_FOUND for both cases — the *plugin*
+      // module being absent and a *transitive* dep of the plugin
+      // being absent. Disambiguate by checking whether the missing
+      // specifier in the error message is the plugin's own moduleName.
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
-      const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
-      if (!isModuleNotFound) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isModuleNotFound =
+        code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+      const isPluginItselfMissing =
+        isModuleNotFound && message.includes(moduleName);
+
+      if (!isPluginItselfMissing) {
+        // Either the error wasn't a missing-module error at all, or the
+        // plugin was found but a transitive dep failed to resolve.
+        // Either way: a real problem worth surfacing.
         console.error(
           "RBAC: plugin found but failed to load; falling back to default implementation",
           err
@@ -88,8 +101,6 @@ class LazyController implements RoleBaseAccessController {
         console.log(
           "RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback"
         );
-      } else {
-        console.log(`RBAC: using fallback implementation. ${err}`);
       }
       return new RoleBaseAccessFallback(prisma).create(helpers);
     }

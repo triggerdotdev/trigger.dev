@@ -58,13 +58,14 @@ export const meta: MetaFunction = () => {
 
 // PATs aren't org-scoped, but the RBAC plugin's allRoles is org-keyed
 // (a plugin may also expose org-defined custom roles alongside the
-// global system roles). To get the canonical system roles (Owner /
-// Admin / Member / Viewer), we hand allRoles any orgId the user
-// belongs to and filter down to the rows the plugin marks as system
-// roles. This is a UI-only convenience — the chosen role becomes a
-// global TokenRole that applies wherever the PAT is used. Custom
-// (org-defined) roles are out of scope for v1: their org-binding
-// semantics for a multi-org user's PAT need a separate design pass.
+// global system roles). The picker shows the assignable system role
+// catalogue for the user's primary org — joining `allRoles` (for the
+// full Role with permissions) against `systemRoles` (for the per-org
+// `available` flag, which gates roles by plan tier). This is a UI-only
+// convenience — the chosen role becomes a global TokenRole that
+// applies wherever the PAT is used. Custom (org-defined) roles are
+// out of scope for v1: their org-binding semantics for a multi-org
+// user's PAT need a separate design pass.
 async function loadSystemRolesForUser(userId: string) {
   const orgMember = await prisma.orgMember.findFirst({
     where: { userId },
@@ -72,19 +73,30 @@ async function loadSystemRolesForUser(userId: string) {
     orderBy: { createdAt: "asc" },
   });
   if (!orgMember) {
-    return { roles: [], userRoleId: null as string | null, orgId: null as string | null };
+    return {
+      roles: [],
+      userRoleId: null as string | null,
+      orgId: null as string | null,
+    };
   }
 
-  const allRoles = await rbac.allRoles(orgMember.organizationId);
-  const systemRoles = allRoles.filter((r) => r.isSystem);
+  const [allRoles, systemRoles, userRole] = await Promise.all([
+    rbac.allRoles(orgMember.organizationId),
+    rbac.systemRoles(orgMember.organizationId),
+    rbac.getUserRole({ userId, organizationId: orgMember.organizationId }),
+  ]);
 
-  const userRole = await rbac.getUserRole({
-    userId,
-    organizationId: orgMember.organizationId,
-  });
+  // Restrict the picker to system roles the plan permits assigning —
+  // anything else would be a noisy create-time failure (or, with a
+  // permissive fallback, a token bound to a role this org isn't
+  // allowed to issue).
+  const availableIds = new Set(
+    (systemRoles ?? []).filter((r) => r.available).map((r) => r.id)
+  );
+  const roles = allRoles.filter((r) => r.isSystem && availableIds.has(r.id));
 
   return {
-    roles: systemRoles,
+    roles,
     userRoleId: userRole?.id ?? null,
     orgId: orgMember.organizationId,
   };
@@ -158,10 +170,27 @@ export const action: ActionFunction = async ({ request }) => {
   switch (submission.value.action) {
     case "create": {
       try {
+        // Revalidate the submitted roleId against the plan-allowed set
+        // — the loader filters the picker, but a hand-crafted POST can
+        // still submit any string. Empty / undefined is fine: that
+        // means "no role" and createPersonalAccessToken just doesn't
+        // write a TokenRole.
+        const submittedRoleId = submission.value.roleId;
+        if (submittedRoleId) {
+          const { roles } = await loadSystemRolesForUser(userId);
+          const allowed = new Set(roles.map((r) => r.id));
+          if (!allowed.has(submittedRoleId)) {
+            return json(
+              { errors: { body: "Selected role isn't available on this plan" } },
+              { status: 400 }
+            );
+          }
+        }
+
         const tokenResult = await createPersonalAccessToken({
           name: submission.value.tokenName,
           userId,
-          roleId: submission.value.roleId,
+          roleId: submittedRoleId,
         });
 
         return json({ ...submission, payload: { token: tokenResult } });

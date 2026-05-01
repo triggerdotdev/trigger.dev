@@ -83,6 +83,47 @@ async function authenticateRequestForApiBuilder(
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
+// Most route auth checks pass an array of resources to ability.can() with
+// "any-element-passes" semantics — a single record carries multiple
+// identifiers (a run is addressable by friendlyId / batch / tags / task) so a
+// JWT scoped to *any* of them grants access to the row.
+//
+// Batch operations are different: each item in the array is a *distinct*
+// resource and authorization must hold for every one of them. Wrapping the
+// array via `everyResource` flips the auth check from `some` to `every`. The
+// marker is a Symbol so it can't collide with arbitrary RbacResource fields.
+const EVERY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.everyResource");
+
+type EveryResourceAuth = {
+  readonly [EVERY_RESOURCE_MARKER]: true;
+  readonly resources: readonly RbacResource[];
+};
+
+export function everyResource(resources: RbacResource[]): EveryResourceAuth {
+  return { [EVERY_RESOURCE_MARKER]: true, resources };
+}
+
+function isEveryResource(value: unknown): value is EveryResourceAuth {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[EVERY_RESOURCE_MARKER] === true
+  );
+}
+
+type AuthResource = RbacResource | RbacResource[] | EveryResourceAuth;
+
+function checkAuth(
+  ability: RbacAbility,
+  action: string,
+  resource: AuthResource
+): boolean {
+  if (isEveryResource(resource)) {
+    return resource.resources.every((r) => ability.can(action, r));
+  }
+  return ability.can(action, resource);
+}
+
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -121,7 +162,7 @@ type ApiKeyRouteBuilderOptions<
       headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<THeadersSchema>
         : undefined
-    ) => RbacResource | RbacResource[];
+    ) => AuthResource;
   };
 };
 
@@ -257,7 +298,7 @@ export function createLoaderApiRoute<
           parsedHeaders
         );
 
-        if (!ability.can(action, $authResource)) {
+        if (!checkAuth(ability, action, $authResource)) {
           return await wrapResponse(
             request,
             json(
@@ -498,7 +539,7 @@ type ApiKeyActionRouteBuilderOptions<
       // externalId for sessions) read it here so a JWT minted for either form
       // authorizes both URL forms.
       resource: TResource | undefined
-    ) => RbacResource | RbacResource[];
+    ) => AuthResource;
   };
   maxContentLength?: number;
   body?: TBodySchema;
@@ -714,7 +755,7 @@ export function createActionApiRoute<
           resource
         );
 
-        if (!ability.can(action, $resource)) {
+        if (!checkAuth(ability, action, $resource)) {
           return await wrapResponse(
             request,
             json(
@@ -811,7 +852,7 @@ type MultiMethodApiRouteOptions<
   corsStrategy?: "all" | "none";
   authorization?: {
     action: string;
-    resource: (params: InferZod<TParamsSchema>) => RbacResource | RbacResource[];
+    resource: (params: InferZod<TParamsSchema>) => AuthResource;
   };
   maxContentLength?: number;
   methods: Partial<
@@ -942,7 +983,7 @@ export function createMultiMethodApiRoute<
         const { action, resource } = authorization;
         const $resource = resource(parsedParams);
 
-        if (!ability.can(action, $resource)) {
+        if (!checkAuth(ability, action, $resource)) {
           return await wrapResponse(
             request,
             json(

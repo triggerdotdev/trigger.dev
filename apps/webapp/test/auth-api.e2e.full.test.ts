@@ -387,9 +387,11 @@ describe("API", () => {
   // Trigger task routes (TRI-8733). The single-task route uses
   // action: "trigger" with a single resource { type: "tasks", id };
   // batch v1/v2 use action: "batchTrigger" with a body-derived array
-  // [{type:"tasks", id}, ...]; v3 batches use a collection-level
-  // resource { type: "tasks" } (no id — items are validated per-row
-  // when streamed).
+  // [{type:"tasks", id}, ...] under AND semantics — every task in the
+  // batch must be authorized, not just any one (otherwise a JWT scoped
+  // to one task could submit a batch with arbitrary other tasks).
+  // v3 batches use a collection-level resource { type: "tasks" }
+  // (no id — items are validated per-row when streamed).
   //
   // ACTION_ALIASES (from packages/core/src/v3/jwt.ts) maps write→trigger
   // and write→batchTrigger so write:tasks scopes also satisfy these
@@ -619,10 +621,11 @@ describe("API", () => {
       expect(res.status).not.toBe(403);
     });
 
-    it("JWT with batchTrigger:tasks:taskA + body has [taskA, taskB]: auth passes (any-match)", async () => {
-      // Multi-key resource semantics: when the route's resource is an
-      // array, ANY scope matching ANY array element grants access.
-      // Locks in the legacy contract from TRI-8719.
+    it("JWT with batchTrigger:tasks:taskA + body has [taskA, taskB]: 403 (every-task semantics)", async () => {
+      // Batch trigger uses AND semantics — every task in the body must
+      // be authorized, not just any one of them. A JWT scoped to only
+      // taskA cannot submit a batch that also includes taskB, otherwise
+      // the caller would be triggering tasks they have no scope for.
       const server = getTestServer();
       const seed = await seedTestEnvironment(server.prisma);
       const jwt = await generateJWT({
@@ -638,6 +641,28 @@ describe("API", () => {
         method: "POST",
         headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
         body: JSON.stringify(buildBody(["taskA", "taskB"])),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + body has [taskA] only: auth passes", async () => {
+      // Per-task scope grants per-task access — a batch containing
+      // only the authorized task is allowed.
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
       });
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);

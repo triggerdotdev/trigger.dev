@@ -89,7 +89,12 @@ export const loader = createLoaderApiRoute(
           friendlyId: params.runId,
           runtimeEnvironmentId: auth.environment.id,
         },
-        include: {
+        select: {
+          id: true,
+          friendlyId: true,
+          taskIdentifier: true,
+          runTags: true,
+          realtimeStreamsVersion: true,
           batch: {
             select: {
               friendlyId: true,

@@ -22,7 +22,7 @@ export async function projectCreated(
     });
   } else {
     const plan = await getCurrentPlan(organization.id);
-    if (plan?.v3Subscription.plan?.limits.hasStagingEnvironment) {
+    if (plan?.v3Subscription?.plan?.limits?.hasStagingEnvironment) {
       await createEnvironment({ organization, project, type: "STAGING" });
       await createEnvironment({
         organization,
