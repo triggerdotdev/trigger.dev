@@ -547,6 +547,52 @@ describe("flattenAttributes", () => {
     // Should complete without stack overflow
     expect(() => flattenAttributes({ arr: deepArray })).not.toThrow();
   });
+
+  it("handles object keys containing dots (issue #1510)", () => {
+    // Keys with dots must not be treated as path separators during flattening.
+    const obj = { "Key 0.002mm": 31.4 };
+    const flattened = flattenAttributes(obj);
+
+    // The dot inside the key name must be escaped; the flat key should contain
+    // the original key name, not split into sub-paths.
+    expect(flattened).toHaveProperty("Key 0\\.002mm", 31.4);
+    expect(flattened).not.toHaveProperty("Key 0");
+
+    // Round-tripping must restore the original structure.
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
+  it("handles nested objects where parent and child keys both contain dots", () => {
+    const obj = { "a.b": { "c.d": "value" } };
+    const flattened = flattenAttributes(obj);
+
+    expect(flattened).toHaveProperty("a\\.b.c\\.d", "value");
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
+  it("handles object keys containing backslashes", () => {
+    const obj = { "path\\to\\file": "data" };
+    const flattened = flattenAttributes(obj);
+
+    expect(flattened).toHaveProperty("path\\\\to\\\\file", "data");
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
+  it("handles object keys containing both dots and backslashes", () => {
+    const obj = { "v1.2\\3": 42 };
+    const flattened = flattenAttributes(obj);
+
+    expect(flattened).toHaveProperty("v1\\.2\\\\3", 42);
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
+  it("handles Map objects whose keys contain dots", () => {
+    const myMap = new Map([["key.with.dots", "val"]]);
+    const flattened = flattenAttributes({ myMap });
+
+    expect(flattened).toHaveProperty("myMap.key\\.with\\.dots", "val");
+    expect(flattened).not.toHaveProperty("myMap.key");
+  });
 });
 
 describe("unflattenAttributes", () => {
@@ -666,5 +712,21 @@ describe("unflattenAttributes", () => {
       current = current?.x;
     }
     expect(current).toBeUndefined();
+  });
+
+  it("correctly reconstructs keys that contain escaped dots (issue #1510)", () => {
+    // Escaped dot "\." in the flat key must become a literal "." in the
+    // reconstructed object key, not a path separator.
+    const flattened = { "Key 0\\.002mm": 31.4 };
+    const result = unflattenAttributes(flattened);
+
+    expect(result).toEqual({ "Key 0.002mm": 31.4 });
+  });
+
+  it("correctly reconstructs nested paths with escaped dots in key segments", () => {
+    const flattened = { "a\\.b.c\\.d": "value" };
+    const result = unflattenAttributes(flattened);
+
+    expect(result).toEqual({ "a.b": { "c.d": "value" } });
   });
 });

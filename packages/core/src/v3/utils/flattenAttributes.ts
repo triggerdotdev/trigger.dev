@@ -3,6 +3,42 @@ import { Attributes } from "@opentelemetry/api";
 export const NULL_SENTINEL = "$@null((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
 
+// Dots in key names are escaped so they are not mistaken for path delimiters.
+// We use the sequence "\." (backslash + dot).  A literal backslash in a key
+// is itself escaped as "\\" so the encoding is unambiguous.
+function escapeKey(key: string): string {
+  return key.replace(/\\/g, "\\\\").replace(/\./g, "\\.");
+}
+
+function unescapeKey(key: string): string {
+  return key.replace(/\\(.)/g, "$1");
+}
+
+/**
+ * Split a flattened path on unescaped "." separators.
+ * Escaped dots ("\\.") are treated as literal dots within a key segment.
+ */
+function splitPath(path: string): string[] {
+  // Walk the string character by character to correctly handle escape sequences.
+  const parts: string[] = [];
+  let current = "";
+  for (let i = 0; i < path.length; i++) {
+    const ch = path[i];
+    if (ch === "\\" && i + 1 < path.length) {
+      // Escape sequence – consume both characters verbatim.
+      current += ch + path[i + 1];
+      i++;
+    } else if (ch === ".") {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
 const DEFAULT_MAX_DEPTH = 128;
 
 export function flattenAttributes(
@@ -116,7 +152,7 @@ class AttributeFlattener {
       for (const [key, value] of obj) {
         if (!this.canAddMoreAttributes()) break;
         // Use the key directly if it's a string, otherwise convert it
-        const keyStr = typeof key === "string" ? key : String(key);
+        const keyStr = typeof key === "string" ? escapeKey(key) : String(key);
         this.#processValue(value, `${prefix || "map"}.${keyStr}`, depth);
       }
       return;
@@ -200,7 +236,7 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : escapeKey(key)}`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -278,7 +314,7 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = splitPath(key).reduce(
       (acc, part) => {
         if (part.startsWith("[") && part.endsWith("]")) {
           // Handle array indices more precisely
@@ -290,7 +326,7 @@ export function unflattenAttributes(
             acc.push(part.slice(1, -1));
           }
         } else {
-          acc.push(part);
+          acc.push(unescapeKey(part));
         }
         return acc;
       },
