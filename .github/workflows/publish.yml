@@ -8,6 +8,13 @@ on:
         description: The image tag to publish
         required: true
         type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+      SENTRY_AUTH_TOKEN:
+        required: false
   push:
     branches:
       - main
@@ -48,11 +55,12 @@ env:
 jobs:
   typecheck:
     uses: ./.github/workflows/typecheck.yml
-    secrets: inherit
 
   units:
     uses: ./.github/workflows/unit-tests.yml
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   publish-webapp:
     needs: [typecheck]
@@ -61,7 +69,8 @@ jobs:
       packages: write
       id-token: write
     uses: ./.github/workflows/publish-webapp.yml
-    secrets: inherit
+    secrets:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
 
@@ -71,7 +80,9 @@ jobs:
       contents: read
       packages: write
     uses: ./.github/workflows/publish-worker.yml
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
 
@@ -82,6 +93,5 @@ jobs:
       packages: write
       id-token: write
     uses: ./.github/workflows/publish-worker-v4.yml
-    secrets: inherit
     with:
       image_tag: ${{ inputs.image_tag }}

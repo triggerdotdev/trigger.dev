@@ -66,7 +66,7 @@ jobs:
       published_package_version: ${{ steps.get_version.outputs.package_version }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 # zizmor: ignore[artipacked] needs persisted git creds for tag push; no artifact upload here so no leak path
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.sha }}
@@ -170,7 +170,10 @@ jobs:
       packages: write
       id-token: write
     uses: ./.github/workflows/publish.yml
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
 
@@ -185,7 +188,6 @@ jobs:
       contents: write
       packages: write
     uses: ./.github/workflows/release-helm.yml
-    secrets: inherit
     with:
       chart_version: ${{ needs.release.outputs.published_package_version }}
 

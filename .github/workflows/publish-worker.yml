@@ -8,6 +8,11 @@ on:
         type: string
         required: false
         default: ""
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
   push:
     tags:
       - "infra-dev-*"

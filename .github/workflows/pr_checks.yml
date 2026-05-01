@@ -19,18 +19,17 @@ permissions:
 jobs:
   typecheck:
     uses: ./.github/workflows/typecheck.yml
-    secrets: inherit
 
   units:
     uses: ./.github/workflows/unit-tests.yml
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   e2e:
     uses: ./.github/workflows/e2e.yml
     with:
       package: cli-v3
-    secrets: inherit
 
   sdk-compat:
     uses: ./.github/workflows/sdk-compat.yml
-    secrets: inherit

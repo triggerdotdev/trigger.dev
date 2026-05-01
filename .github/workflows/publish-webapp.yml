@@ -13,6 +13,9 @@ on:
         type: string
         required: false
         default: ""
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        required: false
 
 jobs:
   publish:

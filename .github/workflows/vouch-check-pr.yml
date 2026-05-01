@@ -1,7 +1,7 @@
 name: Vouch - Check PR
 
 on:
-  pull_request_target: # zizmor: ignore[dangerous-triggers] vouch needs to comment on fork PRs
+  pull_request_target: # zizmor: ignore[dangerous-triggers] needed to comment/close fork PRs; safe because we never check out PR HEAD ref so no fork-controlled code runs
     types: [opened, reopened]
 
 permissions: {}
