@@ -37,10 +37,10 @@ jobs:
       DOCKER_BUILDKIT: "1"
     steps:
       - name: 🏭 Setup Depot CLI
-        uses: depot/setup-action@v1
+        uses: depot/setup-action@15c09a5f77a0840ad4bce955686522a257853461 # v1.7.1
 
       - name: ⬇️ Checkout git repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: 📦 Get image repo
         id: get_repository
@@ -74,14 +74,14 @@ jobs:
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
 
       - name: 🐙 Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐳 Build image and push to GitHub Container Registry
-        uses: depot/build-push-action@v1
+        uses: depot/build-push-action@5f3b3c2e5a00f0093de47f657aeaefcedff27d18 # v1.17.0
         with:
           file: ./apps/${{ matrix.package }}/Containerfile
           platforms: linux/amd64,linux/arm64
