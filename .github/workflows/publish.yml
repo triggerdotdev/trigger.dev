@@ -37,8 +37,6 @@ on:
       - "tests/**"
 
 permissions:
-  id-token: write
-  packages: write
   contents: read
 
 concurrency:
@@ -58,6 +56,10 @@ jobs:
 
   publish-webapp:
     needs: [typecheck]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     uses: ./.github/workflows/publish-webapp.yml
     secrets: inherit
     with:
@@ -65,6 +67,9 @@ jobs:
 
   publish-worker:
     needs: [typecheck]
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/publish-worker.yml
     secrets: inherit
     with:
@@ -72,6 +77,10 @@ jobs:
 
   publish-worker-v4:
     needs: [typecheck]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     uses: ./.github/workflows/publish-worker-v4.yml
     secrets: inherit
     with:

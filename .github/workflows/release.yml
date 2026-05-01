@@ -33,6 +33,7 @@ jobs:
   show-release-summary:
     name: 📋 Release Summary
     runs-on: ubuntu-latest
+    permissions: {}
     if: |
       github.repository == 'triggerdotdev/trigger.dev' &&
       github.event_name == 'pull_request' &&
@@ -164,6 +165,10 @@ jobs:
     name: 🐳 Publish Docker images
     needs: release
     if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     uses: ./.github/workflows/publish.yml
     secrets: inherit
     with:
@@ -233,6 +238,7 @@ jobs:
     needs: [release, update-release]
     if: needs.release.outputs.published == 'true'
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:

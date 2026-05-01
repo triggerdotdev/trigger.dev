@@ -15,7 +15,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   typecheck:
