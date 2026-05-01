@@ -1,21 +1,12 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { useState } from "react";
-import {
-  type UseDataFunctionReturn,
-  typedjson,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -32,10 +23,9 @@ import { cn } from "~/utils/cn";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
-import {
-  dashboardLoader,
-} from "~/services/routeBuilders/dashboardBuilder";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta: MetaFunction = () => {
   return [
@@ -72,13 +62,12 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions, systemRoleIds] =
-      await Promise.all([
-        rbac.allRoles(orgId),
-        rbac.getAssignableRoleIds(orgId),
-        rbac.allPermissions(orgId),
-        rbac.systemRoleIds(),
-      ]);
+    const [roles, assignableRoleIds, allPermissions, systemRoleIds] = await Promise.all([
+      rbac.allRoles(orgId),
+      rbac.getAssignableRoleIds(orgId),
+      rbac.allPermissions(orgId),
+      rbac.systemRoleIds(),
+    ]);
 
     return typedjson({
       roles,
@@ -160,15 +149,14 @@ export default function Page() {
   // custom roles in the order rbac.allRoles returned them. systemRoleIds
   // is null when no plugin is installed — there are no system roles to
   // pin; fall through to whatever order rbac.allRoles returns.
-  const systemRoleOrder: ReadonlyArray<{ id: string; name: string }> =
-    systemRoleIds
-      ? [
-          { id: systemRoleIds.owner, name: "Owner" },
-          { id: systemRoleIds.admin, name: "Admin" },
-          { id: systemRoleIds.developer, name: "Developer" },
-          { id: systemRoleIds.member, name: "Member" },
-        ]
-      : [];
+  const systemRoleOrder: ReadonlyArray<{ id: string; name: string }> = systemRoleIds
+    ? [
+        { id: systemRoleIds.owner, name: "Owner" },
+        { id: systemRoleIds.admin, name: "Admin" },
+        { id: systemRoleIds.developer, name: "Developer" },
+        { id: systemRoleIds.member, name: "Member" },
+      ]
+    : [];
   const systemRoleIdSet = new Set(systemRoleOrder.map((r) => r.id));
   const systemColumns = systemRoleOrder.flatMap((meta) => {
     const role = rolesById.get(meta.id);
@@ -190,17 +178,10 @@ export default function Page() {
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[auto_1fr]">
           <div className="border-b border-grid-bright px-4 py-6">
-            <Paragraph>
-              Roles control what each team member can do in{" "}
-              <strong>{organization.title}</strong>. Compare what each role
-              grants below; assign a role to a team member from the{" "}
-              <a
-                className="text-text-link hover:underline"
-                href={`/orgs/${organization.slug}/settings/team`}
-              >
-                Team page
-              </a>
-              .
+            <Paragraph variant="small">
+              Roles control what each team member can do in <strong>{organization.title}</strong>.
+              Compare what each role grants below; assign a role to a team member from the{" "}
+              <TextLink to={`/orgs/${organization.slug}/settings/team`}>Team page</TextLink>.
             </Paragraph>
           </div>
           <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -236,10 +217,7 @@ export default function Page() {
                   ) : (
                     grouped.flatMap(({ group, permissions }) => [
                       <TableRow key={`${group}-header`}>
-                        <TableCell
-                          colSpan={columns.length + 2}
-                          className="bg-charcoal-800"
-                        >
+                        <TableCell colSpan={columns.length + 2} className="bg-charcoal-800">
                           <Header3 className="text-xs uppercase tracking-wide text-text-dimmed">
                             {group}
                           </Header3>
@@ -305,10 +283,7 @@ function PlanBadge({
   if (assignable.has(roleId)) return null;
   // System role gating: Owner+Admin always available; Member/Developer
   // only on Pro+; custom roles only on Enterprise.
-  if (
-    systemRoleIds &&
-    (roleId === systemRoleIds.member || roleId === systemRoleIds.developer)
-  ) {
+  if (systemRoleIds && (roleId === systemRoleIds.member || roleId === systemRoleIds.developer)) {
     return <Badge variant="extra-small">Pro</Badge>;
   }
   return <Badge variant="extra-small">Enterprise</Badge>;
@@ -355,9 +330,7 @@ function RoleCell({
   const conditionalDeny = denied.find((p) => p.conditions);
   if (conditionalDeny?.conditions) {
     return (
-      <span className="text-xs text-text-dimmed">
-        {conditionLabel(conditionalDeny.conditions)}
-      </span>
+      <span className="text-xs text-text-dimmed">{conditionLabel(conditionalDeny.conditions)}</span>
     );
   }
   return (
@@ -405,13 +378,12 @@ function CreateRoleUpsell() {
         <DialogHeader>Custom roles are an Enterprise feature</DialogHeader>
         <div className="flex flex-col gap-3 pt-2">
           <Paragraph>
-            Define your own roles with bespoke permission sets — perfect for
-            "Member, but no production deploys" or a vendor/contractor role.
-            Available on the Enterprise plan.
+            Define your own roles with bespoke permission sets — perfect for "Member, but no
+            production deploys" or a vendor/contractor role. Available on the Enterprise plan.
           </Paragraph>
           <Paragraph variant="small" className="text-text-dimmed">
-            Get in touch and we'll walk you through the Enterprise plan and how
-            custom roles fit your team.
+            Get in touch and we'll walk you through the Enterprise plan and how custom roles fit
+            your team.
           </Paragraph>
         </div>
         <div className="mt-6 flex justify-end gap-2">

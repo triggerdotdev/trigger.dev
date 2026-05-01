@@ -44,7 +44,6 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { cn } from "~/utils/cn";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
@@ -53,16 +52,16 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { cn } from "~/utils/cn";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   inviteTeamMemberPath,
   organizationRolesPath,
   organizationTeamPath,
   resendInvitePath,
   revokeInvitePath,
-  selectPlanPath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
-import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
@@ -620,11 +619,7 @@ function RolePicker({
                 {role.name}
               </SelectItem>
             ) : (
-              <SelectLinkItem
-                key={role.id}
-                value={role.id}
-                to={selectPlanPath(organization)}
-              >
+              <SelectLinkItem key={role.id} value={role.id} to={v3BillingPath(organization)}>
                 {role.name} (upgrade)
               </SelectLinkItem>
             );
