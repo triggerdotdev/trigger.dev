@@ -33,7 +33,7 @@ import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/email.server";
-import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
+import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
@@ -68,12 +68,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Inviter's own role drives the "below their level" filter on the
   // dropdown. Plus assignable role IDs already encode the org's plan
   // tier — the intersection is what we offer.
-  const [inviterRole, assignableRoleIds] = await Promise.all([
+  const [inviterRole, assignableRoleIds, systemRoleIds] = await Promise.all([
     rbac.getUserRole({ userId, organizationId: organization.id }),
     rbac.getAssignableRoleIds(organization.id),
+    rbac.systemRoleIds(),
   ]);
 
-  return typedjson({ ...result, inviterRoleId: inviterRole?.id ?? null, assignableRoleIds });
+  // Build the dropdown's offerable set server-side: roles that are
+  // (a) assignable on the current plan AND (b) strictly below the
+  // inviter's own level. The client just renders these — it doesn't
+  // need to know about the system-role ID constants or the ladder.
+  const assignableSet = new Set(assignableRoleIds);
+  const offerableRoleIds = systemRoleIds
+    ? result.roles
+        .filter(
+          (r) =>
+            assignableSet.has(r.id) &&
+            isStrictlyBelow(systemRoleIds, inviterRole?.id ?? null, r.id)
+        )
+        .map((r) => r.id)
+    : [];
+
+  return typedjson({ ...result, offerableRoleIds });
 };
 
 // Sentinel for "no RBAC role attached to invite" — the runtime
@@ -87,14 +103,22 @@ const NO_RBAC_ROLE = "__no_rbac_role__";
 // Admins can pick Developer or Member, Developer/Member can't invite
 // at all. Custom roles are out of scope for this rule (TRI-8747's
 // follow-up will handle them).
-const ROLE_LEVEL: Record<string, number> = {
-  [SYSTEM_ROLE_IDS.owner]: 4,
-  [SYSTEM_ROLE_IDS.admin]: 3,
-  [SYSTEM_ROLE_IDS.developer]: 2,
-  [SYSTEM_ROLE_IDS.member]: 1,
-};
+function buildRoleLevel(ids: {
+  owner: string;
+  admin: string;
+  developer: string;
+  member: string;
+}): Record<string, number> {
+  return {
+    [ids.owner]: 4,
+    [ids.admin]: 3,
+    [ids.developer]: 2,
+    [ids.member]: 1,
+  };
+}
 
-function canInviteAtRole(
+function isStrictlyBelow(
+  ids: { owner: string; admin: string; developer: string; member: string },
   inviterRoleId: string | null,
   invitedRoleId: string
 ): boolean {
@@ -104,8 +128,9 @@ function canInviteAtRole(
   // would have already failed earlier if the inviter wasn't allowed
   // to invite at all.
   if (!inviterRoleId) return true;
-  const inviter = ROLE_LEVEL[inviterRoleId];
-  const invited = ROLE_LEVEL[invitedRoleId];
+  const level = buildRoleLevel(ids);
+  const inviter = level[inviterRoleId];
+  const invited = level[invitedRoleId];
   // Custom roles aren't in the level table — refuse.
   if (inviter === undefined || invited === undefined) return false;
   return invited < inviter;
@@ -143,7 +168,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
   // role → don't pass one through; the runtime fallback handles it.
   // Validation: the chosen role must be in the org's assignable set
-  // (which already enforces plan-tier gating + inviter's level).
+  // (plan-tier) and strictly below the inviter's own level.
   let resolvedRbacRoleId: string | null = null;
   const submittedRbacRoleId = submission.value.rbacRoleId;
   if (
@@ -157,24 +182,37 @@ export const action: ActionFunction = async ({ request, params }) => {
     if (!org) {
       return json({ errors: { body: "Organization not found" } }, { status: 404 });
     }
-    const [inviterRole, assignableRoleIds] = await Promise.all([
+    const [inviterRole, assignableRoleIds, systemRoleIds] = await Promise.all([
       rbac.getUserRole({ userId, organizationId: org.id }),
       rbac.getAssignableRoleIds(org.id),
+      rbac.systemRoleIds(),
     ]);
-    const assignable = new Set(assignableRoleIds);
-    if (!assignable.has(submittedRbacRoleId)) {
-      return json(
-        { errors: { body: "You can't invite someone with this role on your current plan" } },
-        { status: 400 }
-      );
+    if (!systemRoleIds) {
+      // No plugin installed but the form somehow submitted a role id —
+      // ignore it (fall through to legacy behaviour rather than 400).
+      resolvedRbacRoleId = null;
+    } else {
+      const assignable = new Set(assignableRoleIds);
+      if (!assignable.has(submittedRbacRoleId)) {
+        return json(
+          { errors: { body: "You can't invite someone with this role on your current plan" } },
+          { status: 400 }
+        );
+      }
+      if (
+        !isStrictlyBelow(
+          systemRoleIds,
+          inviterRole?.id ?? null,
+          submittedRbacRoleId
+        )
+      ) {
+        return json(
+          { errors: { body: "You can only invite members at or below your own role" } },
+          { status: 403 }
+        );
+      }
+      resolvedRbacRoleId = submittedRbacRoleId;
     }
-    if (!canInviteAtRole(inviterRole?.id ?? null, submittedRbacRoleId)) {
-      return json(
-        { errors: { body: "You can only invite members at or below your own role" } },
-        { status: 403 }
-      );
-    }
-    resolvedRbacRoleId = submittedRbacRoleId;
   }
 
   try {
@@ -220,27 +258,24 @@ export default function Page() {
     maxSeatQuota,
     planSeatLimit,
     roles,
-    inviterRoleId,
-    assignableRoleIds,
+    offerableRoleIds,
   } = useTypedLoaderData<typeof loader>();
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
   const lastSubmission = useActionData();
 
-  // Filter the role catalogue down to what THIS inviter can actually
-  // assign — intersection of (assignable on this plan) and (strictly
-  // below inviter's level). With no plugin installed, roles is [] and
-  // we hide the whole picker.
-  const assignable = new Set(assignableRoleIds);
-  const offerable = roles.filter(
-    (r) => assignable.has(r.id) && canInviteAtRole(inviterRoleId, r.id)
-  );
+  // The loader filtered the catalogue to roles this inviter can
+  // actually assign (plan tier × strict-below-my-level). With no plugin
+  // installed, offerableRoleIds is [] and the picker hides entirely.
+  const offerableSet = new Set(offerableRoleIds);
+  const offerable = roles.filter((r) => offerableSet.has(r.id));
   const showRolePicker = offerable.length > 0;
 
-  // Default to Member when offered (or the lowest-tier offered role).
+  // Default to the lowest-tier offered role (the loader returns roles
+  // in its allRoles order, which the plugin emits Owner→Member; the
+  // last entry is the most restrictive).
   const defaultRoleId = showRolePicker
-    ? offerable.find((r) => r.id === SYSTEM_ROLE_IDS.member)?.id ??
-      offerable[offerable.length - 1].id
+    ? offerable[offerable.length - 1].id
     : NO_RBAC_ROLE;
   const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
 

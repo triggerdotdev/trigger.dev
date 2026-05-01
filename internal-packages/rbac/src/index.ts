@@ -138,6 +138,10 @@ class LazyController implements RoleBaseAccessController {
     return auth;
   }
 
+  async systemRoleIds() {
+    return (await this.c()).systemRoleIds();
+  }
+
   async allPermissions(
     ...args: Parameters<RoleBaseAccessController["allPermissions"]>
   ): Promise<Permission[]> {

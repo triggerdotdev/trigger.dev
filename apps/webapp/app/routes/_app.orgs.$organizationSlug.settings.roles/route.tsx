@@ -31,7 +31,7 @@ import {
 import { cn } from "~/utils/cn";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
+import { rbac } from "~/services/rbac.server";
 import {
   dashboardLoader,
 } from "~/services/routeBuilders/dashboardBuilder";
@@ -72,13 +72,20 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions] = await Promise.all([
-      rbac.allRoles(orgId),
-      rbac.getAssignableRoleIds(orgId),
-      rbac.allPermissions(orgId),
-    ]);
+    const [roles, assignableRoleIds, allPermissions, systemRoleIds] =
+      await Promise.all([
+        rbac.allRoles(orgId),
+        rbac.getAssignableRoleIds(orgId),
+        rbac.allPermissions(orgId),
+        rbac.systemRoleIds(),
+      ]);
 
-    return typedjson({ roles, assignableRoleIds, allPermissions });
+    return typedjson({
+      roles,
+      assignableRoleIds,
+      allPermissions,
+      systemRoleIds,
+    });
   }
 );
 
@@ -86,19 +93,6 @@ type LoaderData = UseDataFunctionReturn<typeof loader>;
 type LoaderRole = LoaderData["roles"][number];
 type LoaderPermission = LoaderData["allPermissions"][number];
 type RolePermission = LoaderRole["permissions"][number];
-
-// Display order for the system roles. Custom roles render afterwards
-// in whatever order rbac.allRoles returns them.
-const SYSTEM_ROLE_ORDER: ReadonlyArray<{ id: string; name: string }> = [
-  { id: SYSTEM_ROLE_IDS.owner, name: "Owner" },
-  { id: SYSTEM_ROLE_IDS.admin, name: "Admin" },
-  { id: SYSTEM_ROLE_IDS.developer, name: "Developer" },
-  { id: SYSTEM_ROLE_IDS.member, name: "Member" },
-];
-
-const SYSTEM_ROLE_ID_SET: ReadonlySet<string> = new Set(
-  SYSTEM_ROLE_ORDER.map((r) => r.id)
-);
 
 // Permission name → display group. The wire-format Permission only
 // carries `name` and `description`, so this lives client-side.
@@ -148,7 +142,7 @@ const GROUP_ORDER = [
 ] as const;
 
 export default function Page() {
-  const { roles, assignableRoleIds, allPermissions } =
+  const { roles, assignableRoleIds, allPermissions, systemRoleIds } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -163,13 +157,25 @@ export default function Page() {
   const assignable = new Set(assignableRoleIds);
 
   // Column ordering: Owner / Admin / Developer / Member, then any
-  // custom roles in the order rbac.allRoles returned them.
-  const systemColumns = SYSTEM_ROLE_ORDER.flatMap((meta) => {
+  // custom roles in the order rbac.allRoles returned them. systemRoleIds
+  // is null when no plugin is installed — there are no system roles to
+  // pin; fall through to whatever order rbac.allRoles returns.
+  const systemRoleOrder: ReadonlyArray<{ id: string; name: string }> =
+    systemRoleIds
+      ? [
+          { id: systemRoleIds.owner, name: "Owner" },
+          { id: systemRoleIds.admin, name: "Admin" },
+          { id: systemRoleIds.developer, name: "Developer" },
+          { id: systemRoleIds.member, name: "Member" },
+        ]
+      : [];
+  const systemRoleIdSet = new Set(systemRoleOrder.map((r) => r.id));
+  const systemColumns = systemRoleOrder.flatMap((meta) => {
     const role = rolesById.get(meta.id);
     return role ? [{ role, fallbackName: meta.name }] : [];
   });
   const customColumns = roles
-    .filter((r) => !SYSTEM_ROLE_ID_SET.has(r.id))
+    .filter((r) => !systemRoleIdSet.has(r.id))
     .map((role) => ({ role, fallbackName: role.name }));
   const columns = [...systemColumns, ...customColumns];
 
@@ -212,6 +218,7 @@ export default function Page() {
                           <PlanBadge
                             roleId={role.id}
                             assignable={assignable}
+                            systemRoleIds={systemRoleIds}
                           />
                         </div>
                       </TableHeaderCell>
@@ -286,9 +293,11 @@ function EmptyState() {
 function PlanBadge({
   roleId,
   assignable,
+  systemRoleIds,
 }: {
   roleId: string;
   assignable: ReadonlySet<string>;
+  systemRoleIds: { developer: string; member: string } | null;
 }) {
   // Roles the org's plan doesn't permit get a small upgrade-tier hint
   // in the column header. The cell rendering is identical regardless
@@ -297,8 +306,8 @@ function PlanBadge({
   // System role gating: Owner+Admin always available; Member/Developer
   // only on Pro+; custom roles only on Enterprise.
   if (
-    roleId === SYSTEM_ROLE_IDS.member ||
-    roleId === SYSTEM_ROLE_IDS.developer
+    systemRoleIds &&
+    (roleId === systemRoleIds.member || roleId === systemRoleIds.developer)
   ) {
     return <Badge variant="extra-small">Pro</Badge>;
   }

@@ -16,15 +16,3 @@ export const rbac = plugin.create(
   { getSessionUserId },
   { forceFallback: env.RBAC_FORCE_FALLBACK }
 );
-
-// Stable IDs for the four built-in system roles. They never change —
-// anything that needs a default role at creation time keys off these.
-// The default fallback's setUserRole returns
-// `{ ok: false, error: "RBAC plugin not installed" }` and is safe to
-// call with these ids; it just no-ops.
-export const SYSTEM_ROLE_IDS = {
-  owner: "sys_role_owner",
-  admin: "sys_role_admin",
-  developer: "sys_role_developer",
-  member: "sys_role_member",
-} as const;

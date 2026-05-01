@@ -1,3 +1,16 @@
+/**
+ * Stable IDs for the four built-in system roles. Values are tied to
+ * the plugin's seed migration; the same map is returned by both the
+ * default fallback and any installed plugin so callers can rely on
+ * the IDs without knowing which implementation is loaded.
+ */
+export type SystemRoleIds = {
+  owner: string;
+  admin: string;
+  developer: string;
+  member: string;
+};
+
 export type Permission = {
   // `<action>:<subject>` — display name, derived from the ability rule.
   name: string;
@@ -105,6 +118,12 @@ export interface RoleBaseAccessController {
     context: { organizationId?: string; projectId?: string },
     check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult>;
+
+  // Stable IDs for the four built-in system roles. Returns null when
+  // no plugin is installed — there are no seeded roles to refer to in
+  // that case (the default fallback's `allRoles` returns []). Plugins
+  // return the constants tied to their seed migration.
+  systemRoleIds(): Promise<SystemRoleIds | null>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.

@@ -2,7 +2,7 @@ import { type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
-import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
+import { rbac } from "~/services/rbac.server";
 
 const tokenValueLength = 40;
 const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
@@ -111,8 +111,12 @@ export async function inviteMembers({
   }
 
   // The legacy enum is the source of truth without the plugin installed.
+  // Owner/Admin RBAC ids → "ADMIN"; everything else → "MEMBER". Pull
+  // the canonical IDs off the plugin so we don't duplicate them here;
+  // null means no plugin → default to "MEMBER" (legacy two-option flow).
+  const ids = await rbac.systemRoleIds();
   const legacyRole: "ADMIN" | "MEMBER" =
-    rbacRoleId === SYSTEM_ROLE_IDS.owner || rbacRoleId === SYSTEM_ROLE_IDS.admin
+    ids && (rbacRoleId === ids.owner || rbacRoleId === ids.admin)
       ? "ADMIN"
       : "MEMBER";
 

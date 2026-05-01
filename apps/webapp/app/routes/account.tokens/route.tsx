@@ -37,7 +37,7 @@ import {
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { prisma } from "~/db.server";
-import { rbac, SYSTEM_ROLE_IDS } from "~/services/rbac.server";
+import { rbac } from "~/services/rbac.server";
 import {
   type CreatedPersonalAccessToken,
   type ObfuscatedPersonalAccessToken,
@@ -96,9 +96,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Default the role picker to the user's own role in their primary
     // org so a freshly-created PAT isn't more privileged than the
     // person creating it. Falls back to Member if they don't have one
-    // (new user, or no RBAC plugin installed so no role assignments
-    // exist).
-    const defaultRoleId = userRoleId ?? SYSTEM_ROLE_IDS.member;
+    // (new user). When no RBAC plugin is installed, systemRoleIds()
+    // returns null and the picker is hidden anyway, so defaultRoleId
+    // is just a placeholder in that branch.
+    const ids = await rbac.systemRoleIds();
+    const defaultRoleId = userRoleId ?? ids?.member ?? "";
 
     return typedjson({
       personalAccessTokens,

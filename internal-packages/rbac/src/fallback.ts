@@ -157,6 +157,12 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return auth;
   }
 
+  async systemRoleIds() {
+    // No plugin installed → no seeded roles. Callers handle null by
+    // hiding role-picker UI / skipping role assignment writes.
+    return null;
+  }
+
   async allPermissions(): Promise<Permission[]> {
     return [];
   }
