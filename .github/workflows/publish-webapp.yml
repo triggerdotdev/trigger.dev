@@ -44,7 +44,7 @@ jobs:
       - name: 🔢 Get the commit hash
         id: get_commit
         run: |
-          echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(echo "${GITHUB_SHA}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: 📛 Set the tags
         id: set_tags
@@ -71,7 +71,7 @@ jobs:
             if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
               echo "BUILD_APP_VERSION=${tag}"
             fi
-            echo "BUILD_GIT_SHA=${{ github.sha }}"
+            echo "BUILD_GIT_SHA=${GITHUB_SHA}"
             echo "BUILD_GIT_REF_NAME=${GITHUB_REF_NAME}"
             echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)"
           } >> "$GITHUB_OUTPUT"

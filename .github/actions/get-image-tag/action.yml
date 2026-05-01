@@ -28,12 +28,12 @@ runs:
         elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
           if [[ "${GITHUB_REF_NAME}" == infra-*-* ]]; then
             env=$(echo ${GITHUB_REF_NAME} | cut -d- -f2)
-            sha=$(echo ${{ github.sha }} | head -c7)
+            sha=$(echo "${GITHUB_SHA}" | head -c7)
             ts=$(date +%s)
             tag=${env}-${sha}-${ts}
           elif [[ "${GITHUB_REF_NAME}" == re2-*-* ]]; then
             env=$(echo ${GITHUB_REF_NAME} | cut -d- -f2)
-            sha=$(echo ${{ github.sha }} | head -c7)
+            sha=$(echo "${GITHUB_SHA}" | head -c7)
             ts=$(date +%s)
             tag=${env}-${sha}-${ts}
           elif [[ "${GITHUB_REF_NAME}" == v.docker.* ]]; then

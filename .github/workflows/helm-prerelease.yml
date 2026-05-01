@@ -112,10 +112,10 @@ jobs:
             SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
             PRERELEASE_VERSION="${BASE_VERSION}-pr${PR_NUMBER}.${SHORT_SHA}"
           elif [[ "${{ github.event_name }}" == "push" ]]; then
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
             PRERELEASE_VERSION="${BASE_VERSION}-main.${SHORT_SHA}"
           else
-            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
             REF_SLUG=$(echo "${GITHUB_REF_NAME}" | tr '/' '-' | tr -cd 'a-zA-Z0-9-')
             if [[ -z "$REF_SLUG" ]]; then
               REF_SLUG="manual"
