@@ -213,10 +213,13 @@ export async function authenticatePersonalAccessToken(
 
   // Conditional updateMany — only writes if the existing lastAccessedAt is
   // null or older than the throttle window. The WHERE runs inside the UPDATE
-  // so concurrent auths don't race into a double-write.
+  // so concurrent auths don't race into a double-write. `revokedAt: null`
+  // matches the findFirst guard above so a token revoked between the read
+  // and write doesn't get a stale lastAccessedAt update.
   await prisma.personalAccessToken.updateMany({
     where: {
       id: personalAccessToken.id,
+      revokedAt: null,
       OR: [
         { lastAccessedAt: null },
         { lastAccessedAt: { lt: new Date(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS) } },

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { findFirstMock, updateManyMock } = vi.hoisted(() => ({
   findFirstMock: vi.fn(),
@@ -29,9 +29,15 @@ import {
 } from "~/services/organizationAccessToken.server";
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   findFirstMock.mockReset();
   updateManyMock.mockReset();
   updateManyMock.mockResolvedValue({ count: 1 });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("authenticateOrganizationAccessToken — lastAccessedAt throttle", () => {
@@ -42,15 +48,14 @@ describe("authenticateOrganizationAccessToken — lastAccessedAt throttle", () =
       hashedToken: "hashed:tr_oat_validtoken",
     });
 
-    const before = Date.now();
     const result = await authenticateOrganizationAccessToken("tr_oat_validtoken");
-    const after = Date.now();
 
     expect(result).toEqual({ organizationId: "org_1" });
     expect(updateManyMock).toHaveBeenCalledTimes(1);
 
     const call = updateManyMock.mock.calls[0][0];
     expect(call.where.id).toBe("oat_123");
+    expect(call.where.revokedAt).toBeNull();
     expect(call.data.lastAccessedAt).toBeInstanceOf(Date);
 
     // The WHERE clause should require the existing lastAccessedAt to be null
@@ -60,9 +65,9 @@ describe("authenticateOrganizationAccessToken — lastAccessedAt throttle", () =
       { lastAccessedAt: { lt: expect.any(Date) } },
     ]);
 
+    // With fake timers, the cutoff lands exactly throttle-ms before "now".
     const cutoff = call.where.OR[1].lastAccessedAt.lt as Date;
-    expect(cutoff.getTime()).toBeGreaterThanOrEqual(before - OAT_LAST_ACCESSED_THROTTLE_MS - 50);
-    expect(cutoff.getTime()).toBeLessThanOrEqual(after - OAT_LAST_ACCESSED_THROTTLE_MS + 50);
+    expect(cutoff.getTime()).toBe(Date.now() - OAT_LAST_ACCESSED_THROTTLE_MS);
   });
 
   test("skips updateMany when token is not found", async () => {

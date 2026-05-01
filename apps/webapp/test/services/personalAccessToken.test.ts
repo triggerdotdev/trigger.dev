@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const { findFirstMock, updateManyMock } = vi.hoisted(() => ({
   findFirstMock: vi.fn(),
@@ -35,9 +35,15 @@ import {
 } from "~/services/personalAccessToken.server";
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   findFirstMock.mockReset();
   updateManyMock.mockReset();
   updateManyMock.mockResolvedValue({ count: 1 });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("authenticatePersonalAccessToken — lastAccessedAt throttle", () => {
@@ -49,15 +55,14 @@ describe("authenticatePersonalAccessToken — lastAccessedAt throttle", () => {
       encryptedToken: { nonce: "n", ciphertext: "c", tag: "t" },
     });
 
-    const before = Date.now();
     const result = await authenticatePersonalAccessToken("tr_pat_validtoken");
-    const after = Date.now();
 
     expect(result).toEqual({ userId: "user_1" });
     expect(updateManyMock).toHaveBeenCalledTimes(1);
 
     const call = updateManyMock.mock.calls[0][0];
     expect(call.where.id).toBe("pat_123");
+    expect(call.where.revokedAt).toBeNull();
     expect(call.data.lastAccessedAt).toBeInstanceOf(Date);
 
     // The WHERE clause should require the existing lastAccessedAt to be null
@@ -67,11 +72,9 @@ describe("authenticatePersonalAccessToken — lastAccessedAt throttle", () => {
       { lastAccessedAt: { lt: expect.any(Date) } },
     ]);
 
+    // With fake timers, the cutoff lands exactly throttle-ms before "now".
     const cutoff = call.where.OR[1].lastAccessedAt.lt as Date;
-    // Cutoff should be exactly throttle-ms before "now" (within the test
-    // window). Confirms the throttle constant is wired through correctly.
-    expect(cutoff.getTime()).toBeGreaterThanOrEqual(before - PAT_LAST_ACCESSED_THROTTLE_MS - 50);
-    expect(cutoff.getTime()).toBeLessThanOrEqual(after - PAT_LAST_ACCESSED_THROTTLE_MS + 50);
+    expect(cutoff.getTime()).toBe(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS);
   });
 
   test("skips updateMany when token is not found", async () => {
