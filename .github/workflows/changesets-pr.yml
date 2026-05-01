@@ -25,15 +25,15 @@ jobs:
     if: github.repository == 'triggerdotdev/trigger.dev'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
 
       - name: Setup node
-        uses: buildjet/setup-node@v4
+        uses: buildjet/setup-node@6131e76b005f1e3f5c721e0ca2d8279eb577c3a8 # v4.0.4
         with:
           node-version: 20.20.0
           cache: "pnpm"
@@ -43,7 +43,7 @@ jobs:
 
       - name: Create release PR
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
           version: pnpm run changeset:version
           commit: "chore: release"
@@ -81,17 +81,17 @@ jobs:
       contents: write
     steps:
       - name: Checkout release branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: changeset-release/main
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
           version: 10.23.0
 
       - name: Setup node
-        uses: buildjet/setup-node@v4
+        uses: buildjet/setup-node@6131e76b005f1e3f5c721e0ca2d8279eb577c3a8 # v4.0.4
         with:
           node-version: 20.20.0
 
@@ -130,7 +130,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout release branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: changeset-release/main
 
