@@ -779,6 +779,60 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
+        // Track the live subscription so browser wake events can act
+        // on it. Three classes of wake:
+        //   - `online`: network came back. Existing connection might
+        //     be silently dead; force a fresh one.
+        //   - `visibilitychange` → visible after long hidden: tab
+        //     was backgrounded long enough that the OS likely killed
+        //     the TCP socket. Force reconnect.
+        //   - `visibilitychange` → visible after short hidden: cheap
+        //     wake of any in-flight backoff.
+        //   - `pageshow` with `event.persisted`: bfcache restore
+        //     (mobile Safari back/forward, app-switcher resume). The
+        //     socket is definitely dead. Force reconnect.
+        let currentSubscription: SSEStreamSubscription | null = null;
+        let hiddenSince: number | null = null;
+        const FORCE_RECONNECT_AFTER_HIDDEN_MS = 30_000;
+
+        const onVisibilityChange = () => {
+          if (typeof document === "undefined") return;
+          if (document.visibilityState === "hidden") {
+            hiddenSince = Date.now();
+            return;
+          }
+          const wasHiddenForMs = hiddenSince ? Date.now() - hiddenSince : 0;
+          hiddenSince = null;
+          if (wasHiddenForMs >= FORCE_RECONNECT_AFTER_HIDDEN_MS) {
+            currentSubscription?.forceReconnect();
+          } else {
+            currentSubscription?.retryNow();
+          }
+        };
+
+        const onPageShow = (event: Event) => {
+          // PageTransitionEvent in browsers; type guard via `persisted`.
+          if ((event as PageTransitionEvent).persisted) {
+            currentSubscription?.forceReconnect();
+          }
+        };
+
+        const onOnline = () => currentSubscription?.forceReconnect();
+
+        const teardownWakeListeners =
+          typeof document !== "undefined" && typeof window !== "undefined"
+            ? (() => {
+                document.addEventListener("visibilitychange", onVisibilityChange);
+                window.addEventListener("online", onOnline);
+                window.addEventListener("pageshow", onPageShow);
+                return () => {
+                  document.removeEventListener("visibilitychange", onVisibilityChange);
+                  window.removeEventListener("online", onOnline);
+                  window.removeEventListener("pageshow", onPageShow);
+                };
+              })()
+            : () => {};
+
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
@@ -789,7 +843,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
             lastEventId: state.lastEventId,
+            // Catch silent-dead-socket: if no chunk (or server
+            // keepalive) arrives in 60s, force reconnect. Sized
+            // generously over typical agent thinking pauses.
+            stallTimeoutMs: 60_000,
           });
+          currentSubscription = subscription;
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
           try {
@@ -929,6 +988,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
           controller.error(error);
         } finally {
+          teardownWakeListeners();
           this.activeStreams.delete(chatId);
           this.coordinator?.release(chatId);
         }
