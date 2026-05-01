@@ -380,9 +380,9 @@ export class TestTaskPresenter {
   }
 }
 
-async function getScheduleTaskRunPayload(payload: string, payloadType: string) {
+export async function getScheduleTaskRunPayload(payload: string, payloadType: string) {
   const packet = await parsePacket({ data: payload, dataType: payloadType });
-  if (!packet.timezone) {
+  if (packet && !packet.timezone) {
     packet.timezone = "UTC";
   }
   const parsed = ScheduledTaskPayload.safeParse(packet);
