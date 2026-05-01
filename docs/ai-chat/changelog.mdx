@@ -4,6 +4,20 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 1, 2026" description="<NEXT-PRERELEASE>" tags={["SDK"]}>
+
+## Resilient SSE reconnection
+
+The chat transport now retries indefinitely on network drops with bounded exponential backoff (100ms initial, 5s cap, 50% jitter) instead of giving up after 5 attempts. Reconnects are immediate on `online`, on tab refocus after a long background, and on Safari bfcache restore (`pageshow` with `event.persisted`).
+
+A 60s stall detector catches silent-dead-socket cases on mobile where the OS killed the TCP socket without the reader noticing. A 30s per-attempt fetch timeout prevents stuck connections from blocking the retry loop.
+
+Resume continues to use `Last-Event-ID`, so no chunks are lost when the connection comes back. No public API change — these are defaults on `TriggerChatTransport`. Customers who built `hasActiveStream` / `isStreaming` flag tracking on their side can drop it: the transport handles the silent-but-stale case internally now.
+
+`SSEStreamSubscription` (used by `TriggerChatTransport` and `AgentChat`) gained `retryNow()` and `forceReconnect()` for callers writing custom transports, plus options to tune `maxRetries` / `retryDelayMs` / `maxRetryDelayMs` / `retryJitter` / `fetchTimeoutMs` / `stallTimeoutMs` / `nonRetryableStatuses`. `404` and `410` short-circuit retry by default (stream gone / session closed).
+
+</Update>
+
 <Update label="April 24, 2026" description="0.0.0-chat-prerelease-20260501122331" tags={["SDK", "Platform"]}>
 
 ## `chat.agent` now runs on Sessions
