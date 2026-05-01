@@ -157,7 +157,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return auth;
   }
 
-  async systemRoleIds() {
+  async systemRoles(_organizationId: string) {
     // No plugin installed → no seeded roles. Callers handle null by
     // hiding role-picker UI / skipping role assignment writes.
     return null;

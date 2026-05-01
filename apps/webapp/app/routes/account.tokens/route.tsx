@@ -71,7 +71,9 @@ async function loadSystemRolesForUser(userId: string) {
     select: { organizationId: true },
     orderBy: { createdAt: "asc" },
   });
-  if (!orgMember) return { roles: [], userRoleId: null as string | null };
+  if (!orgMember) {
+    return { roles: [], userRoleId: null as string | null, orgId: null as string | null };
+  }
 
   const allRoles = await rbac.allRoles(orgMember.organizationId);
   const systemRoles = allRoles.filter((r) => r.isSystem);
@@ -81,26 +83,32 @@ async function loadSystemRolesForUser(userId: string) {
     organizationId: orgMember.organizationId,
   });
 
-  return { roles: systemRoles, userRoleId: userRole?.id ?? null };
+  return {
+    roles: systemRoles,
+    userRoleId: userRole?.id ?? null,
+    orgId: orgMember.organizationId,
+  };
 }
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
   try {
-    const [personalAccessTokens, { roles, userRoleId }] = await Promise.all([
+    const [personalAccessTokens, { roles, userRoleId, orgId }] = await Promise.all([
       getValidPersonalAccessTokens(userId),
       loadSystemRolesForUser(userId),
     ]);
 
     // Default the role picker to the user's own role in their primary
     // org so a freshly-created PAT isn't more privileged than the
-    // person creating it. Falls back to Member if they don't have one
-    // (new user). When no RBAC plugin is installed, systemRoleIds()
-    // returns null and the picker is hidden anyway, so defaultRoleId
-    // is just a placeholder in that branch.
-    const ids = await rbac.systemRoleIds();
-    const defaultRoleId = userRoleId ?? ids?.member ?? "";
+    // person creating it. Falls back to the most-restrictive role
+    // available on the org's plan if they don't have one. When the
+    // user isn't a member of any org or no RBAC plugin is installed,
+    // the picker is hidden anyway, so defaultRoleId is just a
+    // placeholder.
+    const sys = orgId ? await rbac.systemRoles(orgId) : null;
+    const lowestAvailable = (sys ?? []).filter((r) => r.available).at(-1)?.id ?? "";
+    const defaultRoleId = userRoleId ?? lowestAvailable;
 
     return typedjson({
       personalAccessTokens,

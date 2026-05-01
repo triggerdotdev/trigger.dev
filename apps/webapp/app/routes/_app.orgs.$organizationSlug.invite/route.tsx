@@ -68,23 +68,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Inviter's own role drives the "below their level" filter on the
   // dropdown. Plus assignable role IDs already encode the org's plan
   // tier — the intersection is what we offer.
-  const [inviterRole, assignableRoleIds, systemRoleIds] = await Promise.all([
+  const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
     rbac.getUserRole({ userId, organizationId: organization.id }),
     rbac.getAssignableRoleIds(organization.id),
-    rbac.systemRoleIds(),
+    rbac.systemRoles(organization.id),
   ]);
 
   // Build the dropdown's offerable set server-side: roles that are
   // (a) assignable on the current plan AND (b) strictly below the
   // inviter's own level. The client just renders these — it doesn't
-  // need to know about the system-role ID constants or the ladder.
+  // need to know about the system-role catalogue or the ladder.
   const assignableSet = new Set(assignableRoleIds);
-  const offerableRoleIds = systemRoleIds
+  const offerableRoleIds = systemRoles
     ? result.roles
         .filter(
           (r) =>
             assignableSet.has(r.id) &&
-            isStrictlyBelow(systemRoleIds, inviterRole?.id ?? null, r.id)
+            isStrictlyBelow(systemRoles, inviterRole?.id ?? null, r.id)
         )
         .map((r) => r.id)
     : [];
@@ -98,27 +98,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 // dropdown is hidden) or as a defensive default.
 const NO_RBAC_ROLE = "__no_rbac_role__";
 
-// Owner > Admin > Developer > Member. An inviter can only assign a
-// role strictly below their own — Owners can pick any of the four,
-// Admins can pick Developer or Member, Developer/Member can't invite
-// at all. Custom roles are out of scope for this rule (TRI-8747's
-// follow-up will handle them).
-function buildRoleLevel(ids: {
-  owner: string;
-  admin: string;
-  developer: string;
-  member: string;
-}): Record<string, number> {
-  return {
-    [ids.owner]: 4,
-    [ids.admin]: 3,
-    [ids.developer]: 2,
-    [ids.member]: 1,
-  };
+// An inviter can only assign a role strictly below their own. The
+// plugin's systemRoles array is in canonical order (highest authority
+// first), so array index drives the ladder — earlier index = higher
+// rank. Plan-tier filtering happens separately via assignableRoleIds;
+// the ladder is the absolute hierarchy. Custom roles aren't in the
+// table and are refused (TRI-8747's follow-up will handle them).
+type LadderRole = { id: string };
+
+function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number> {
+  const level: Record<string, number> = {};
+  roles.forEach((r, i) => {
+    // Top of the array = highest level. Subtract from length so larger
+    // numbers always mean "more authority" — no off-by-one when a role
+    // is added or removed.
+    level[r.id] = roles.length - i;
+  });
+  return level;
 }
 
 function isStrictlyBelow(
-  ids: { owner: string; admin: string; developer: string; member: string },
+  roles: ReadonlyArray<LadderRole>,
   inviterRoleId: string | null,
   invitedRoleId: string
 ): boolean {
@@ -128,7 +128,7 @@ function isStrictlyBelow(
   // would have already failed earlier if the inviter wasn't allowed
   // to invite at all.
   if (!inviterRoleId) return true;
-  const level = buildRoleLevel(ids);
+  const level = buildRoleLevel(roles);
   const inviter = level[inviterRoleId];
   const invited = level[invitedRoleId];
   // Custom roles aren't in the level table — refuse.
@@ -182,12 +182,12 @@ export const action: ActionFunction = async ({ request, params }) => {
     if (!org) {
       return json({ errors: { body: "Organization not found" } }, { status: 404 });
     }
-    const [inviterRole, assignableRoleIds, systemRoleIds] = await Promise.all([
+    const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
       rbac.getUserRole({ userId, organizationId: org.id }),
       rbac.getAssignableRoleIds(org.id),
-      rbac.systemRoleIds(),
+      rbac.systemRoles(org.id),
     ]);
-    if (!systemRoleIds) {
+    if (!systemRoles) {
       // No plugin installed but the form somehow submitted a role id —
       // ignore it (fall through to legacy behaviour rather than 400).
       resolvedRbacRoleId = null;
@@ -201,7 +201,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
       if (
         !isStrictlyBelow(
-          systemRoleIds,
+          systemRoles,
           inviterRole?.id ?? null,
           submittedRbacRoleId
         )

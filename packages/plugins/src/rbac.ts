@@ -1,14 +1,22 @@
 /**
- * Stable IDs for the four built-in system roles. Values are tied to
- * the plugin's seed migration; the same map is returned by both the
- * default fallback and any installed plugin so callers can rely on
- * the IDs without knowing which implementation is loaded.
+ * Plugin-owned metadata for a built-in system role. The plugin returns
+ * these in canonical order (highest authority first) so the dashboard
+ * can render columns / build a level ladder without knowing role names.
+ *
+ * Roles the plugin doesn't expose at all (e.g. seeded but with the
+ * `is_hidden` flag set in the cloud plugin) are not returned by
+ * `systemRoles()` — there's no "advertised but absent" state.
+ *
+ * `available` indicates whether the role is assignable on the *org's
+ * plan*. v1: Free/Hobby plans get Owner+Admin available; Pro+ adds
+ * Developer. Consumers may render unavailable rows with an upgrade
+ * badge, hide them, or otherwise gate UI on the flag.
  */
-export type SystemRoleIds = {
-  owner: string;
-  admin: string;
-  developer: string;
-  member: string;
+export type SystemRole = {
+  id: string;
+  name: string;
+  description: string;
+  available: boolean;
 };
 
 export type Permission = {
@@ -119,11 +127,16 @@ export interface RoleBaseAccessController {
     check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult>;
 
-  // Stable IDs for the four built-in system roles. Returns null when
-  // no plugin is installed — there are no seeded roles to refer to in
-  // that case (the default fallback's `allRoles` returns []). Plugins
-  // return the constants tied to their seed migration.
-  systemRoleIds(): Promise<SystemRoleIds | null>;
+  // Plugin-owned catalogue of built-in system roles for the given org,
+  // in canonical order (highest authority first). Returns null when no
+  // plugin is installed — there are no seeded roles to refer to in that
+  // case (the default fallback's `allRoles` returns []).
+  //
+  // Hidden roles (e.g. Member in v1) are filtered out entirely. Each
+  // entry's `available` flag reflects whether the org's plan permits
+  // assigning that role; consumers can render unavailable entries with
+  // an upgrade badge or hide them.
+  systemRoles(organizationId: string): Promise<SystemRole[] | null>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.

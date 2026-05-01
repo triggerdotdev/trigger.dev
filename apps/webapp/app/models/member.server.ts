@@ -110,15 +110,23 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  // The legacy enum is the source of truth without the plugin installed.
-  // Owner/Admin RBAC ids → "ADMIN"; everything else → "MEMBER". Pull
-  // the canonical IDs off the plugin so we don't duplicate them here;
-  // null means no plugin → default to "MEMBER" (legacy two-option flow).
-  const ids = await rbac.systemRoleIds();
-  const legacyRole: "ADMIN" | "MEMBER" =
-    ids && (rbacRoleId === ids.owner || rbacRoleId === ids.admin)
-      ? "ADMIN"
-      : "MEMBER";
+  // The legacy OrgMember.role enum (ADMIN | MEMBER) needs a write so
+  // pre-RBAC code paths still see a sensible role on the invite. Map by
+  // role NAME — "Owner" and "Admin" become "ADMIN", everything else
+  // becomes "MEMBER". This is the one place left where the OSS keys off
+  // role names; the plugin owns the systemRoles catalogue and we just
+  // match on the well-known legacy-equivalent labels here.
+  // null means no plugin installed → default to "MEMBER" (legacy two-
+  // option flow).
+  const sys = await rbac.systemRoles(org.id);
+  const adminEquivalent = new Set(
+    (sys ?? [])
+      .filter((r) => r.name === "Owner" || r.name === "Admin")
+      .map((r) => r.id)
+  );
+  const legacyRole: "ADMIN" | "MEMBER" = adminEquivalent.has(rbacRoleId ?? "")
+    ? "ADMIN"
+    : "MEMBER";
 
   const invites = [...new Set(emails)].map(
     (email) =>

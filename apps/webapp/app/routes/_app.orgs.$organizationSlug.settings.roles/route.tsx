@@ -62,18 +62,18 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions, systemRoleIds] = await Promise.all([
+    const [roles, assignableRoleIds, allPermissions, systemRoles] = await Promise.all([
       rbac.allRoles(orgId),
       rbac.getAssignableRoleIds(orgId),
       rbac.allPermissions(orgId),
-      rbac.systemRoleIds(),
+      rbac.systemRoles(orgId),
     ]);
 
     return typedjson({
       roles,
       assignableRoleIds,
       allPermissions,
-      systemRoleIds,
+      systemRoles,
     });
   }
 );
@@ -131,7 +131,7 @@ const GROUP_ORDER = [
 ] as const;
 
 export default function Page() {
-  const { roles, assignableRoleIds, allPermissions, systemRoleIds } =
+  const { roles, assignableRoleIds, allPermissions, systemRoles } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -145,18 +145,14 @@ export default function Page() {
   const rolesById = new Map<string, LoaderRole>(roles.map((r) => [r.id, r]));
   const assignable = new Set(assignableRoleIds);
 
-  // Column ordering: Owner / Admin / Developer / Member, then any
-  // custom roles in the order rbac.allRoles returned them. systemRoleIds
-  // is null when no plugin is installed — there are no system roles to
-  // pin; fall through to whatever order rbac.allRoles returns.
-  const systemRoleOrder: ReadonlyArray<{ id: string; name: string }> = systemRoleIds
-    ? [
-        { id: systemRoleIds.owner, name: "Owner" },
-        { id: systemRoleIds.admin, name: "Admin" },
-        { id: systemRoleIds.developer, name: "Developer" },
-        { id: systemRoleIds.member, name: "Member" },
-      ]
-    : [];
+  // Column ordering follows the plugin's canonical systemRoles order
+  // (highest authority first), then any custom roles in the order
+  // rbac.allRoles returned them. systemRoles is null when no plugin is
+  // installed; fall through to whatever order rbac.allRoles returns.
+  // Each entry's `available` flag reflects plan-tier eligibility — we
+  // render unavailable system roles too, but PlanBadge tags them so
+  // customers see the comparison and know what an upgrade unlocks.
+  const systemRoleOrder = systemRoles ?? [];
   const systemRoleIdSet = new Set(systemRoleOrder.map((r) => r.id));
   const systemColumns = systemRoleOrder.flatMap((meta) => {
     const role = rolesById.get(meta.id);
@@ -199,7 +195,7 @@ export default function Page() {
                           <PlanBadge
                             roleId={role.id}
                             assignable={assignable}
-                            systemRoleIds={systemRoleIds}
+                            systemRoleIdSet={systemRoleIdSet}
                           />
                         </div>
                       </TableHeaderCell>
@@ -271,19 +267,21 @@ function EmptyState() {
 function PlanBadge({
   roleId,
   assignable,
-  systemRoleIds,
+  systemRoleIdSet,
 }: {
   roleId: string;
   assignable: ReadonlySet<string>;
-  systemRoleIds: { developer: string; member: string } | null;
+  systemRoleIdSet: ReadonlySet<string>;
 }) {
   // Roles the org's plan doesn't permit get a small upgrade-tier hint
   // in the column header. The cell rendering is identical regardless
   // — the comparison value is still useful even on Free/Hobby.
   if (assignable.has(roleId)) return null;
-  // System role gating: Owner+Admin always available; Member/Developer
-  // only on Pro+; custom roles only on Enterprise.
-  if (systemRoleIds && (roleId === systemRoleIds.member || roleId === systemRoleIds.developer)) {
+  // System roles render as "Pro" (the gating tier where they unlock —
+  // Free/Hobby see Owner+Admin only, Pro adds the rest). Custom roles
+  // render as "Enterprise" — only Enterprise plans can create or assign
+  // them.
+  if (systemRoleIdSet.has(roleId)) {
     return <Badge variant="extra-small">Pro</Badge>;
   }
   return <Badge variant="extra-small">Enterprise</Badge>;
