@@ -708,6 +708,7 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
         </ResponsiveContainer>
       </div>
       <SimpleTooltip
+        asChild
         button={
           <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
             {formatNumberCompact(maxCount)}
