@@ -218,6 +218,10 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
   will not occur in production builds.
 </Warning>
 
+### Network resilience
+
+You don't need to handle network drops, mobile background-kills, or Safari bfcache restores. The transport retries indefinitely with bounded backoff, reconnects on `online` / tab refocus / `pageshow` with `event.persisted`, and uses `Last-Event-ID` to resume without dropping chunks. See the [changelog entry](/ai-chat/changelog) for the gory details.
+
 ## Client data and metadata
 
 ### Transport-level client data
