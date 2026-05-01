@@ -23,35 +23,37 @@ runs:
       id: get_tag
       shell: bash
       run: |
-        if [[ -n "${{ inputs.tag }}" ]]; then
-          tag="${{ inputs.tag }}"
-        elif [[ "${{ github.ref_type }}" == "tag" ]]; then
-          if [[ "${{ github.ref_name }}" == infra-*-* ]]; then
-            env=$(echo ${{ github.ref_name }} | cut -d- -f2)
+        if [[ -n "${INPUTS_TAG}" ]]; then
+          tag="${INPUTS_TAG}"
+        elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+          if [[ "${GITHUB_REF_NAME}" == infra-*-* ]]; then
+            env=$(echo ${GITHUB_REF_NAME} | cut -d- -f2)
             sha=$(echo ${{ github.sha }} | head -c7)
             ts=$(date +%s)
             tag=${env}-${sha}-${ts}
-          elif [[ "${{ github.ref_name }}" == re2-*-* ]]; then
-            env=$(echo ${{ github.ref_name }} | cut -d- -f2)
+          elif [[ "${GITHUB_REF_NAME}" == re2-*-* ]]; then
+            env=$(echo ${GITHUB_REF_NAME} | cut -d- -f2)
             sha=$(echo ${{ github.sha }} | head -c7)
             ts=$(date +%s)
             tag=${env}-${sha}-${ts}
-          elif [[ "${{ github.ref_name }}" == v.docker.* ]]; then
+          elif [[ "${GITHUB_REF_NAME}" == v.docker.* ]]; then
             version="${GITHUB_REF_NAME#v.docker.}"
             tag="v${version}"
-          elif [[ "${{ github.ref_name }}" == build-* ]]; then
+          elif [[ "${GITHUB_REF_NAME}" == build-* ]]; then
             tag="${GITHUB_REF_NAME#build-}"
           else
-            echo "Invalid git tag: ${{ github.ref_name }}"
+            echo "Invalid git tag: ${GITHUB_REF_NAME}"
             exit 1
           fi
-        elif [[ "${{ github.ref_name }}" == "main" ]]; then
+        elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
           tag="main"
         else
-          echo "Invalid git ref: ${{ github.ref }}"
+          echo "Invalid git ref: ${GITHUB_REF}"
           exit 1
         fi
         echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      env:
+        INPUTS_TAG: ${{ inputs.tag }}
 
     - name: 🔍 Check for validity
       id: check_validity

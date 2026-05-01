@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
@@ -78,6 +80,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
@@ -112,7 +116,7 @@ jobs:
             PRERELEASE_VERSION="${BASE_VERSION}-main.${SHORT_SHA}"
           else
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            REF_SLUG=$(echo "${{ github.ref_name }}" | tr '/' '-' | tr -cd 'a-zA-Z0-9-')
+            REF_SLUG=$(echo "${GITHUB_REF_NAME}" | tr '/' '-' | tr -cd 'a-zA-Z0-9-')
             if [[ -z "$REF_SLUG" ]]; then
               REF_SLUG="manual"
             fi
@@ -123,7 +127,9 @@ jobs:
 
       - name: Update Chart.yaml with prerelease version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.version }}/" ./hosting/k8s/helm/Chart.yaml
+          sed -i "s/^version:.*/version: ${STEPS_VERSION_OUTPUTS_VERSION}/" ./hosting/k8s/helm/Chart.yaml
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Override appVersion
         if: github.event_name == 'workflow_dispatch' && inputs.app_version != ''
@@ -138,26 +144,30 @@ jobs:
 
       - name: Push Helm Chart to GHCR
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${STEPS_VERSION_OUTPUTS_VERSION}"
           CHART_PACKAGE="/tmp/${{ env.CHART_NAME }}-${VERSION}.tgz"
 
           # Push to GHCR OCI registry
           helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Write run summary
         run: |
           {
             echo "### 🧭 Helm Chart Prerelease Published"
             echo ""
-            echo "**Version:** \`${{ steps.version.outputs.version }}\`"
+            echo "**Version:** \`${STEPS_VERSION_OUTPUTS_VERSION}\`"
             echo ""
             echo "**Install:**"
             echo '```bash'
             echo "helm upgrade --install trigger \\"
             echo "  oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \\"
-            echo "  --version \"${{ steps.version.outputs.version }}\""
+            echo "  --version \"${STEPS_VERSION_OUTPUTS_VERSION}\""
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Find existing comment
         if: github.event_name == 'pull_request'
