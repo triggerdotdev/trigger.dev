@@ -2128,6 +2128,7 @@ model TaskSchedule {
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]
 
+  /// @deprecated stop writing 2026-04-30; reads moved out of code (UI now derives from cron's previous slot). Drop in follow-up.
   lastRunTriggeredAt DateTime?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2173,7 +2174,9 @@ model TaskScheduleInstance {
 
   active Boolean @default(true)
 
+  /// @deprecated stop writing 2026-04-30; engine derives from cron + exactScheduleTime. Drop in follow-up.
   lastScheduledTimestamp DateTime?
+  /// @deprecated stop writing 2026-04-30; engine derives from cron + now(). Drop in follow-up.
   nextScheduledTimestamp DateTime?
 
   //you can only have a schedule attached to each environment once

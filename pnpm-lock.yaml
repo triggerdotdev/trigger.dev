@@ -2828,6 +2828,25 @@ importers:
         specifier: 5.5.4
         version: 5.5.4
 
+  references/scheduled-tasks:
+    dependencies:
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+      typescript:
+        specifier: 5.5.4
+        version: 5.5.4
+
   references/seed:
     dependencies:
       '@sinclair/typebox':
