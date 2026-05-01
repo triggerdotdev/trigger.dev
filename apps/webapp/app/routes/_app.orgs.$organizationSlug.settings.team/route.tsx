@@ -41,7 +41,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { Select, SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
@@ -52,16 +52,14 @@ import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { rbac } from "~/services/rbac.server";
-import {
-  dashboardAction,
-  dashboardLoader,
-} from "~/services/routeBuilders/dashboardBuilder";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   inviteTeamMemberPath,
   organizationRolesPath,
   organizationTeamPath,
   resendInvitePath,
   revokeInvitePath,
+  selectPlanPath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
@@ -137,10 +135,7 @@ const PurchaseSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce
-      .number()
-      .int("Must be a whole number")
-      .min(1, "Amount must be greater than 0"),
+    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
   }),
 ]);
 
@@ -339,7 +334,11 @@ export default function Page() {
           ) : requiresUpgrade ? (
             <SimpleTooltip
               button={
-                <ButtonContent variant="primary/small" LeadingIcon={UserPlusIcon} className="cursor-not-allowed opacity-50">
+                <ButtonContent
+                  variant="primary/small"
+                  LeadingIcon={UserPlusIcon}
+                  className="cursor-not-allowed opacity-50"
+                >
                   Invite a team member
                 </ButtonContent>
               }
@@ -579,6 +578,7 @@ function RolePicker({
   assignableRoleIds: string[];
   canManageMembers: boolean;
 }) {
+  const organization = useOrganization();
   const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
   const assignable = new Set(assignableRoleIds);
   // With no RBAC plugin installed, the loader returns no roles —
@@ -587,13 +587,11 @@ function RolePicker({
 
   const isSubmitting = fetcher.state === "submitting";
   const error =
-    fetcher.data && "error" in fetcher.data && fetcher.data.error
-      ? fetcher.data.error
-      : null;
+    fetcher.data && "error" in fetcher.data && fetcher.data.error ? fetcher.data.error : null;
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Select<string, Role>
+      <Select
         defaultValue={currentRoleId ?? ""}
         items={roles}
         variant="tertiary/small"
@@ -602,6 +600,12 @@ function RolePicker({
         text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
         setValue={(next) => {
           if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
+          // Upgrade-link rows have a value too (Ariakit needs one to
+          // make the row interactive — without it the Link inside
+          // doesn't even register the click), but they shouldn't
+          // submit the role-change form. The Link navigates the user
+          // to the plan-selection page; we just bail here.
+          if (!assignable.has(next)) return;
           fetcher.submit(
             { _formType: "set-role", userId: memberUserId, roleId: next },
             { method: "post" }
@@ -611,11 +615,18 @@ function RolePicker({
         {(items) =>
           items.map((role) => {
             const isAssignable = assignable.has(role.id);
-            return (
-              <SelectItem key={role.id} value={role.id} disabled={!isAssignable}>
+            return isAssignable ? (
+              <SelectItem key={role.id} value={role.id}>
                 {role.name}
-                {!isAssignable ? " (upgrade)" : ""}
               </SelectItem>
+            ) : (
+              <SelectLinkItem
+                key={role.id}
+                value={role.id}
+                to={selectPlanPath(organization)}
+              >
+                {role.name} (upgrade)
+              </SelectLinkItem>
             );
           })
         }
