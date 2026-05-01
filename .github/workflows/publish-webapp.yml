@@ -59,13 +59,15 @@ jobs:
       - name: 📝 Set the build info
         id: set_build_info
         run: |
-          tag=${{ steps.get_tag.outputs.tag }}
-          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
-            echo "BUILD_APP_VERSION=${tag}" >> "$GITHUB_OUTPUT"
-          fi
-          echo "BUILD_GIT_SHA=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          echo "BUILD_GIT_REF_NAME=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)" >> "$GITHUB_OUTPUT"
+          {
+            tag="${{ steps.get_tag.outputs.tag }}"
+            if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+              echo "BUILD_APP_VERSION=${tag}"
+            fi
+            echo "BUILD_GIT_SHA=${{ github.sha }}"
+            echo "BUILD_GIT_REF_NAME=${{ github.ref_name }}"
+            echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: 🐙 Login to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0

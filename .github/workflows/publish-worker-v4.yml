@@ -44,12 +44,13 @@ jobs:
 
       - name: 📦 Get image repo
         id: get_repository
+        env:
+          PACKAGE: ${{ matrix.package }}
         run: |
-          if [[ "${{ matrix.package }}" == *-provider ]]; then
-            provider_type=$(echo "${{ matrix.package }}" | cut -d- -f1)
-            repo=provider/${provider_type}
+          if [[ "$PACKAGE" == *-provider ]]; then
+            repo="provider/${PACKAGE%-provider}"
           else
-            repo="${{ matrix.package }}"
+            repo="$PACKAGE"
           fi
           echo "repo=${repo}" >> "$GITHUB_OUTPUT"
 

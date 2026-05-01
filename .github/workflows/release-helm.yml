@@ -98,7 +98,7 @@ jobs:
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#helm-v}"
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing version: $VERSION"
 
       - name: Check Chart.yaml version matches release version

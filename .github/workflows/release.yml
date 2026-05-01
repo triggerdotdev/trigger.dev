@@ -43,7 +43,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          echo "$PR_BODY" | sed -n '/^# Releases/,$p' >> $GITHUB_STEP_SUMMARY
+          echo "$PR_BODY" | sed -n '/^# Releases/,$p' >> "$GITHUB_STEP_SUMMARY"
 
   release:
     name: 🚀 Release npm packages
