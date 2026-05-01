@@ -2,7 +2,14 @@
 "@trigger.dev/sdk": patch
 ---
 
-AI SDK `tool()` helpers for Trigger subtasks:
+Add `ai.toolExecute(task)` so you can wire a Trigger subtask in as the `execute` handler of an AI SDK `tool()` while defining `description` and `inputSchema` yourself — useful when you want full control over the tool surface and just need Trigger's subtask machinery for the body.
 
-- `ai.toolExecute(task)` — pass Trigger's subtask/metadata wiring as the `execute` handler to AI SDK `tool()` while you define `description` and `inputSchema` yourself. `ai.tool()` is now refactored to share the same internal handler.
-- `ai.tool(task)` (`toolFromTask`) aligns with AI SDK `ToolSet`: Zod-backed tasks use static `tool()`; returns are asserted as `Tool & ToolSet[string]`. Minimum `ai` devDependency raised to `^6.0.116` so emitted types resolve the same `ToolSet` as apps on AI SDK 6.0.x — avoids cross-version `ToolSet` mismatches in monorepos.
+```ts
+const myTool = tool({
+  description: "...",
+  inputSchema: z.object({ ... }),
+  execute: ai.toolExecute(mySubtask),
+});
+```
+
+`ai.tool(task)` (`toolFromTask`) keeps doing the all-in-one wrap and now aligns its return type with AI SDK's `ToolSet`. Minimum `ai` peer raised to `^6.0.116` to avoid cross-version `ToolSet` mismatches in monorepos.

@@ -3,20 +3,12 @@
 "@trigger.dev/sdk": patch
 ---
 
-Sessions — durable, task-bound, bidirectional channel pair that outlives any single run. Foundation for `chat.agent` (separate changeset) and any other "one identifier, many runs over time" workflow.
+Add Sessions — a durable, task-bound, bidirectional channel pair that outlives any single run. One identifier (your `externalId`), many runs over time, with a stable `.in` channel clients can write to and a stable `.out` channel they can subscribe to. Powers `chat.agent` (separate changeset), and unblocks anything that needs "resume tomorrow" or "approval loop" workflows.
 
-A `Session` row is keyed on `(env, externalId)` (idempotent upsert), task-bound (`taskIdentifier` + `triggerConfig` are required), and owns its current run via `currentRunId` + `currentRunVersion` (optimistic claim). Three trigger paths: session create, append-time probe (a new run is triggered if the previous one has terminated), and `end-and-continue` for in-task version handoffs.
+```ts
+const session = await sessions.create({ externalId: chatId, taskIdentifier: "my-task" });
+await session.in.send({ kind: "message", payload: "..." });
+for await (const chunk of session.out.read()) { /* ... */ }
+```
 
-## SDK
-
-- `SessionHandle` with two asymmetric channels mirroring run-scoped streams:
-  - `.in` (`SessionInputChannel`) mirrors `streams.input` — `on` / `once` / `peek` / `wait` / `waitWithIdleTimeout` for the task to consume, `send` for external clients to produce. `.wait` / `.waitWithIdleTimeout` suspend the run on a session-stream waitpoint; the run resumes when a record lands on `.in`.
-  - `.out` (`SessionOutputChannel`) mirrors `streams.define` — `append` / `pipe` / `writer` for the task to produce records (all route through direct-to-S2 for uniform parsed-object serialization), plus `read` for external SSE subscribers.
-- `sessionStreams` global + `StandardSessionStreamManager` (SSE-backed tail + buffer keyed on `{sessionId, io}`, registered in dev/managed run workers).
-- `SessionStreamInstance` for direct-to-S2 piping; `ApiClient.createSessionStreamWaitpoint` wiring.
-
-## Core
-
-- `SessionId` friendly-ID generator and Session schemas, exported from `@trigger.dev/core/v3/isomorphic` alongside `RunId`, `BatchId`, etc.
-- `CreateSessionStreamWaitpoint` request/response schemas alongside the main Session CRUD.
-- `SessionTriggerConfig` schema: `basePayload`, `machine`, `queue`, `tags`, `maxAttempts`, `idleTimeoutInSeconds`, plus `maxDuration` (per-run wall-clock cap, seconds), `lockToVersion` (pin every run to a specific worker version), and `region` (geographic scheduling). Each forwards to the matching field on `TaskRunOptions` when the run is triggered.
+Inside the task, `.in.wait()` / `.waitWithIdleTimeout()` suspends the run on a session-stream waitpoint until the next record arrives. `.out.append` / `.pipe` / `.writer` produce records via direct-to-S2 writes.
