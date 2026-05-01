@@ -139,14 +139,26 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       );
 
       if (schedulesError) {
+        if (schedulesError instanceof ServiceValidationError) {
+          // Customer schedule config (typically invalid cron). Surface to
+          // client via the rethrow; system returns gracefully.
+          logger.warn("Error syncing declarative schedules", {
+            error: schedulesError.message,
+          });
+
+          await this.#failBackgroundWorkerDeployment(deployment, schedulesError);
+          throw schedulesError;
+        }
+
+        // Wrapping the underlying error into a ServiceValidationError below
+        // would otherwise hide it once the SDK-level filter drops SVEs; log at
+        // error so the underlying cause stays visible. Mirrors the
+        // waitpointCompletionPacket.server.ts pattern from dac9c83bd.
         logger.error("Error syncing declarative schedules", {
           error: schedulesError,
         });
 
-        const serviceError =
-          schedulesError instanceof ServiceValidationError
-            ? schedulesError
-            : new ServiceValidationError("Error syncing declarative schedules");
+        const serviceError = new ServiceValidationError("Error syncing declarative schedules");
 
         await this.#failBackgroundWorkerDeployment(deployment, serviceError);
 
