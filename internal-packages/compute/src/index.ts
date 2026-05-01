@@ -2,8 +2,10 @@ export { ComputeClient, ComputeClientError } from "./client.js";
 export type { ComputeClientOptions } from "./client.js";
 export { stripImageDigest } from "./imageRef.js";
 export {
+  MachineConfigSchema,
   TemplateCreateRequestSchema,
-  TemplateCallbackPayloadSchema,
+  TemplateCreateResultEntrySchema,
+  TemplateCreateResponseSchema,
   InstanceCreateRequestSchema,
   InstanceCreateResponseSchema,
   InstanceSnapshotRequestSchema,
@@ -11,8 +13,10 @@ export {
   SnapshotCallbackPayloadSchema,
 } from "./types.js";
 export type {
+  MachineConfig,
   TemplateCreateRequest,
-  TemplateCallbackPayload,
+  TemplateCreateResultEntry,
+  TemplateCreateResponse,
   InstanceCreateRequest,
   InstanceCreateResponse,
   InstanceSnapshotRequest,
