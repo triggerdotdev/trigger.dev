@@ -100,7 +100,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       // for the first run trigger. After session create, the agent
       // reads subsequent messages from `.in/append` so the payload
       // here is just the bootstrap.
-      const payload = payloadStr ? (JSON.parse(payloadStr) as Record<string, any>) : {};
+      let payload: Record<string, any> = {};
+      try {
+        payload = payloadStr ? (JSON.parse(payloadStr) as Record<string, any>) : {};
+      } catch {
+        return json({ error: "Invalid payload JSON" }, { status: 400 });
+      }
 
       let parsedClientData: unknown;
       try {

@@ -113,21 +113,17 @@ function readPointer(doc: unknown, tokens: string[]): unknown {
   return cursor;
 }
 
-// Defense-in-depth: parseJsonPointer already rejects these segments, but
-// CodeQL's prototype-pollution analysis doesn't trace through that boundary.
-// The local check at the assignment site keeps the static analysis happy and
-// guards against any future caller that bypasses parseJsonPointer.
-function assertSafeKey(token: string): void {
-  if (FORBIDDEN_POINTER_SEGMENTS.has(token)) {
-    throw new Error(`Refusing to mutate forbidden key "${token}"`);
-  }
-}
-
 function removeAt(parent: any, lastToken: string): void {
   if (Array.isArray(parent)) {
     parent.splice(Number(lastToken), 1);
   } else if (parent && typeof parent === "object") {
-    assertSafeKey(lastToken);
+    if (
+      lastToken === "__proto__" ||
+      lastToken === "constructor" ||
+      lastToken === "prototype"
+    ) {
+      throw new Error(`Refusing to mutate forbidden key "${lastToken}"`);
+    }
     delete parent[lastToken];
   } else {
     throw new Error("Cannot remove: parent is not a container");
@@ -140,7 +136,13 @@ function insertAt(parent: any, lastToken: string, value: unknown, op: "add" | "r
     if (op === "add") parent.splice(idx, 0, value);
     else parent[idx] = value;
   } else if (parent && typeof parent === "object") {
-    assertSafeKey(lastToken);
+    if (
+      lastToken === "__proto__" ||
+      lastToken === "constructor" ||
+      lastToken === "prototype"
+    ) {
+      throw new Error(`Refusing to mutate forbidden key "${lastToken}"`);
+    }
     parent[lastToken] = value;
   } else {
     throw new Error("Cannot insert: parent is not a container");
