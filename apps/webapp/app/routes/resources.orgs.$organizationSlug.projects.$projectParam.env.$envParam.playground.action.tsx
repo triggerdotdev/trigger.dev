@@ -131,6 +131,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         ...(machine ? { machine } : {}),
         tags,
         ...(maxAttempts ? { maxAttempts: parseInt(maxAttempts, 10) } : {}),
+        ...(maxDuration ? { maxDuration: parseInt(maxDuration, 10) } : {}),
+        ...(version ? { lockToVersion: version } : {}),
+        ...(region ? { region } : {}),
       };
 
       // Atomic: upsert the Session, then trigger the first run via
@@ -212,13 +215,6 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           title,
         },
       });
-
-      // Avoid unused-var lint while preserving the request shape
-      // — these knobs are now folded into triggerConfig at the
-      // session create above.
-      void maxDuration;
-      void version;
-      void region;
 
       const publicAccessToken = await mintSessionToken(
         environment as unknown as AuthenticatedEnvironment,

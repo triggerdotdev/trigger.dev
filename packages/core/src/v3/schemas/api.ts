@@ -1495,6 +1495,12 @@ export const SessionTriggerConfig = z.object({
   queue: z.string().max(128).optional(),
   tags: z.array(z.string().max(128)).max(5).optional(),
   maxAttempts: z.number().int().positive().max(10).optional(),
+  /** Per-run wall-clock cap (seconds). Forwarded to `TaskRunOptions.maxDuration`. */
+  maxDuration: z.number().int().positive().optional(),
+  /** Pin every run to a specific worker version. Forwarded to `TaskRunOptions.lockToVersion`. */
+  lockToVersion: z.string().optional(),
+  /** Region to schedule runs in. Forwarded to `TaskRunOptions.region`. */
+  region: z.string().optional(),
   /** Convenience field surfaced to chat.agent via the wire payload. */
   idleTimeoutInSeconds: z.number().int().positive().max(3600).optional(),
 });

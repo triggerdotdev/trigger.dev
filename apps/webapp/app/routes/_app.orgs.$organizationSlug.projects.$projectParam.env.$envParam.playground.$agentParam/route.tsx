@@ -292,6 +292,15 @@ function PlaygroundChat() {
   }
   const transport = transportRef.current;
 
+  // Keep the transport's `defaultMetadata` in sync with the JSON editor.
+  // Without this the transport uses the value captured at construction for
+  // every per-turn metadata merge, even after the user edits the JSON.
+  // `startSession` reads from `clientDataJsonRef.current` directly so session
+  // creation is unaffected — this only fixes the per-turn metadata path.
+  useEffect(() => {
+    transport.setClientData(JSON.parse(clientDataJson || "{}") as Record<string, unknown>);
+  }, [clientDataJson, transport]);
+
   // Initial messages from persisted conversation (for resume)
   const initialMessages = activeConversation?.messages
     ? (activeConversation.messages as UIMessage[])

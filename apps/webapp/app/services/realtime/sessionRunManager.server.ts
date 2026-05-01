@@ -223,6 +223,9 @@ async function triggerSessionRun(params: {
       ...(config.queue ? { queue: { name: config.queue } } : {}),
       ...(config.tags ? { tags: config.tags } : {}),
       ...(config.maxAttempts !== undefined ? { maxAttempts: config.maxAttempts } : {}),
+      ...(config.maxDuration !== undefined ? { maxDuration: config.maxDuration } : {}),
+      ...(config.lockToVersion ? { lockToVersion: config.lockToVersion } : {}),
+      ...(config.region ? { region: config.region } : {}),
     },
   };
 
