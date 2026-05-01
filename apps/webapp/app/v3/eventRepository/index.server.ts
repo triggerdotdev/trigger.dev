@@ -10,6 +10,7 @@ import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
+import { convertDateToNanoseconds } from "./common.server";
 
 export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
   const taskEventStore = store ?? env.EVENT_REPOSITORY_DEFAULT_STORE;
@@ -215,7 +216,7 @@ async function recordRunEvent(
         runId: foundRun.friendlyId,
         ...attributes,
       },
-      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      startTime: convertDateToNanoseconds(startTime ?? new Date()),
       ...optionsRest,
     });
 

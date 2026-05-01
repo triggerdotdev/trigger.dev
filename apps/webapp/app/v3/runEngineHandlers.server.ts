@@ -16,7 +16,10 @@ import { MetadataTooLargeError } from "~/utils/packets";
 import { QueueSizeLimitExceededError } from "~/v3/services/common.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { tracer } from "~/v3/tracer.server";
-import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
+import {
+  convertDateToNanoseconds,
+  createExceptionPropertiesFromError,
+} from "./eventRepository/common.server";
 import {
   recordRunDebugLog,
   resolveEventRepositoryForStore,
@@ -429,7 +432,7 @@ export function registerRunEngineEventBusHandlers() {
       const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
 
       await eventRepository.recordEvent(retryMessage, {
-        startTime: BigInt(time.getTime() * 1000000),
+        startTime: convertDateToNanoseconds(time),
         taskSlug: run.taskIdentifier,
         environment,
         attributes: {
