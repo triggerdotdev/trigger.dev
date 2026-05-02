@@ -41,7 +41,7 @@
     "setup": "turbo run generate db:migrate:force db:seed",
     "env:pull": "turbo run env:pull",
     "changeset:add": "changeset",
-    "changeset:version": "changeset version",
+    "changeset:version": "changeset version && pnpm install --lockfile-only && node scripts/bump-helm-chart.mjs && node scripts/cleanup-server-changes.mjs",
     "changeset:release": "pnpm run build --filter \"@trigger.dev/*\" --filter \"trigger.dev\" && changeset publish",
     "changeset:v4": "changeset pre enter v4",
     "changeset:normal": "changeset pre exit",
