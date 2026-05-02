@@ -74,8 +74,22 @@ export interface TriggerScheduleParams {
   instanceId: string;
   finalAttempt: boolean;
   exactScheduleTime?: Date;
+  lastScheduleTime?: Date;
 }
 
 export interface RegisterScheduleInstanceParams {
   instanceId: string;
+  /**
+   * Anchor for computing the next cron slot. Defaults to now() when omitted.
+   * This advances on every tick (fired or skipped) so the next slot keeps
+   * marching forward regardless of skip reasons.
+   */
+  fromTimestamp?: Date;
+  /**
+   * The actual previous fire time to embed in the next worker job's payload,
+   * which becomes that job's `payload.lastTimestamp` on dequeue. Distinct
+   * from `fromTimestamp` so that skipped ticks (inactive schedule, dev env
+   * disconnected, etc.) do NOT advance this — only real fires do.
+   */
+  lastScheduleTime?: Date;
 }

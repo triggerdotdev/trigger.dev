@@ -30,6 +30,21 @@ description: "A replay is a copy of a run with the same payload but against the 
   </Tab>
 </Tabs>
 
+### Detecting replays in your task
+
+You can check if a run is a replay using the [context](/context) object:
+
+```ts
+export const myTask = task({
+  id: "my-task",
+  run: async (payload, { ctx }) => {
+    if (ctx.run.isReplay) {
+      // This run is a replay of a previous run
+    }
+  },
+});
+```
+
 ### Replaying using the SDK
 
 You can replay a run using the SDK:

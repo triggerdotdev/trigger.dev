@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/rsc",
-  "version": "4.4.4",
+  "version": "4.4.5",
   "description": "trigger.dev rsc",
   "license": "MIT",
   "publishConfig": {
@@ -37,18 +37,18 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^4.4.4",
+    "@trigger.dev/core": "workspace:^4.4.5",
     "mlly": "^1.7.1",
     "react": "19.0.0-rc.1",
     "react-dom": "19.0.0-rc.1"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",
-    "@trigger.dev/build": "workspace:^4.4.4",
+    "@trigger.dev/build": "workspace:^4.4.5",
     "@types/node": "^20.14.14",
     "@types/react": "*",
     "@types/react-dom": "*",
-    "rimraf": "^3.0.2",
+    "rimraf": "^6.0.1",
     "tshy": "^3.0.2",
     "tsx": "4.17.0"
   },

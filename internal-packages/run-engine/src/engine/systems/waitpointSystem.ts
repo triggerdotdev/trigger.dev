@@ -837,6 +837,20 @@ export class WaitpointSystem {
         }
         case "SUSPENDED": {
           if (!snapshot.checkpointId) {
+            // A run canceled mid-suspend has its checkpoint cleared by the
+            // cancel path; reaching here just means cancel won the race.
+            // Skip rather than throw — there's nothing to resume.
+            if (snapshot.runStatus === "CANCELED") {
+              this.$.logger.warn(
+                `continueRunIfUnblocked: run was canceled while suspended, skipping`,
+                { runId, snapshot }
+              );
+              return {
+                status: "skipped",
+                reason: "run was canceled while suspended",
+              };
+            }
+
             this.$.logger.error(`continueRunIfUnblocked: run is suspended, but has no checkpoint`, {
               runId,
               snapshot,

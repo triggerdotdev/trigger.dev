@@ -196,6 +196,7 @@ export class RunAttemptSystem {
         machinePreset: true,
         runTags: true,
         isTest: true,
+        replayedFromTaskRunFriendlyId: true,
         idempotencyKey: true,
         idempotencyKeyOptions: true,
         startedAt: true,
@@ -232,9 +233,9 @@ export class RunAttemptSystem {
       run.lockedById
         ? this.#resolveTaskRunExecutionTask(run.lockedById)
         : Promise.resolve({
-          id: run.taskIdentifier,
-          filePath: "unknown",
-        }),
+            id: run.taskIdentifier,
+            filePath: "unknown",
+          }),
       this.#resolveTaskRunExecutionQueue({
         lockedQueueId: run.lockedQueueId ?? undefined,
         queueName: run.queue,
@@ -245,13 +246,13 @@ export class RunAttemptSystem {
       run.lockedById
         ? this.#resolveTaskRunExecutionMachinePreset(run.lockedById, run.machinePreset)
         : Promise.resolve(
-          getMachinePreset({
-            defaultMachine: this.options.machines.defaultMachine,
-            machines: this.options.machines.machines,
-            config: undefined,
-            run,
-          })
-        ),
+            getMachinePreset({
+              defaultMachine: this.options.machines.defaultMachine,
+              machines: this.options.machines.machines,
+              config: undefined,
+              run,
+            })
+          ),
       run.lockedById
         ? this.#resolveTaskRunExecutionDeployment(run.lockedById)
         : Promise.resolve(undefined),
@@ -262,6 +263,7 @@ export class RunAttemptSystem {
         id: run.friendlyId,
         tags: run.runTags,
         isTest: run.isTest,
+        isReplay: !!run.replayedFromTaskRunFriendlyId,
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
         idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
@@ -426,6 +428,7 @@ export class RunAttemptSystem {
                   payloadType: true,
                   runTags: true,
                   isTest: true,
+                  replayedFromTaskRunFriendlyId: true,
                   idempotencyKey: true,
                   idempotencyKeyOptions: true,
                   startedAt: true,
@@ -459,8 +462,9 @@ export class RunAttemptSystem {
                 run,
                 snapshot: {
                   executionStatus: "EXECUTING",
-                  description: `Attempt created, starting execution${isWarmStart ? " (warm start)" : ""
-                    }`,
+                  description: `Attempt created, starting execution${
+                    isWarmStart ? " (warm start)" : ""
+                  }`,
                 },
                 previousSnapshotId: latestSnapshot.id,
                 environmentId: latestSnapshot.environmentId,
@@ -574,6 +578,7 @@ export class RunAttemptSystem {
               createdAt: updatedRun.createdAt,
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
+              isReplay: !!updatedRun.replayedFromTaskRunFriendlyId,
               idempotencyKey: getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
               idempotencyKeyScope: extractIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
@@ -618,8 +623,8 @@ export class RunAttemptSystem {
             deployment,
             batch: updatedRun.batchId
               ? {
-                id: BatchId.toFriendlyId(updatedRun.batchId),
-              }
+                  id: BatchId.toFriendlyId(updatedRun.batchId),
+                }
               : undefined,
           };
 
@@ -1387,8 +1392,8 @@ export class RunAttemptSystem {
             error,
             bulkActionGroupIds: bulkActionId
               ? {
-                push: bulkActionId,
-              }
+                  push: bulkActionId,
+                }
               : undefined,
             ...(usageUpdate && {
               usageDurationMs: usageUpdate.usageDurationMs,
@@ -1876,26 +1881,26 @@ export class RunAttemptSystem {
     const result = await this.cache.queues.swr(cacheKey, async () => {
       const queue = params.lockedQueueId
         ? await this.$.readOnlyPrisma.taskQueue.findFirst({
-          where: {
-            id: params.lockedQueueId,
-          },
-          select: {
-            id: true,
-            friendlyId: true,
-            name: true,
-          },
-        })
+            where: {
+              id: params.lockedQueueId,
+            },
+            select: {
+              id: true,
+              friendlyId: true,
+              name: true,
+            },
+          })
         : await this.$.readOnlyPrisma.taskQueue.findFirst({
-          where: {
-            runtimeEnvironmentId: params.runtimeEnvironmentId,
-            name: params.queueName,
-          },
-          select: {
-            id: true,
-            friendlyId: true,
-            name: true,
-          },
-        });
+            where: {
+              runtimeEnvironmentId: params.runtimeEnvironmentId,
+              name: params.queueName,
+            },
+            select: {
+              id: true,
+              friendlyId: true,
+              name: true,
+            },
+          });
 
       if (!queue) {
         // Return synthetic queue so run/span view still loads (e.g. createFailedTaskRun with fallback queue)
@@ -1975,30 +1980,25 @@ export class RunAttemptSystem {
     }
 
     if (completion.flushedMetadata) {
-      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+      const [, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
 
       if (!packet) {
-        return;
-      }
-
-      if (packetError) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: packetError,
-        });
-
         return;
       }
 
       const metadata = FlushedRunMetadata.safeParse(packet);
 
       if (!metadata.success) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: metadata.error,
-        });
+        // Customer's metadata operations don't match the schema (typically
+        // non-JSON values in `operations[].value`). System ignores it.
+        this.$.logger.warn(
+          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
+          {
+            runId,
+            flushedMetadata: completion.flushedMetadata,
+            error: metadata.error,
+          }
+        );
 
         return;
       }
@@ -2068,13 +2068,13 @@ export class RunAttemptSystem {
     if (environmentType !== "DEVELOPMENT") {
       const machinePreset = machinePresetName
         ? machinePresetFromName(
-          this.options.machines.machines,
-          machinePresetName as MachinePresetName
-        )
+            this.options.machines.machines,
+            machinePresetName as MachinePresetName
+          )
         : machinePresetFromName(
-          this.options.machines.machines,
-          this.options.machines.defaultMachine
-        );
+            this.options.machines.machines,
+            this.options.machines.defaultMachine
+          );
 
       costInCents = currentCostInCents + attemptDurationMs * machinePreset.centsPerMs;
     }
@@ -2084,7 +2084,6 @@ export class RunAttemptSystem {
       costInCents,
     };
   }
-
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {

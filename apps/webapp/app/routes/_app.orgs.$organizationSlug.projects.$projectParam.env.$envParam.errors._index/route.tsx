@@ -55,6 +55,7 @@ import {
   statusActionToastMessage,
 } from "~/components/errors/ErrorStatusMenu";
 import { useToast } from "~/components/primitives/Toast";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
@@ -477,7 +478,7 @@ function FiltersBar({
           shortcut={alertsShortcut}
           tooltip="Configure alerts"
         >
-          Configure alerts
+          Configure alerts…
         </LinkButton>
         {list && <ListPagination list={list} />}
       </div>
@@ -720,9 +721,15 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
-        {formatNumberCompact(maxCount)}
-      </span>
+      <SimpleTooltip
+        asChild
+        button={
+          <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
+            {formatNumberCompact(maxCount)}
+          </span>
+        }
+        content="Peak occurrences in a single time bucket"
+      />
     </div>
   );
 }

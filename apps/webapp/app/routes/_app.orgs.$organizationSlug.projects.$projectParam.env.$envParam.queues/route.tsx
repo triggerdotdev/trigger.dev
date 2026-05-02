@@ -175,9 +175,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const action = formData.get("action");
 
   const url = new URL(request.url);
-  const { page } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
-
-  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues?page=${page}`;
+  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues${url.search}`;
 
   if (environment.archivedAt) {
     return redirectWithErrorMessage(redirectPath, request, "This branch is archived");

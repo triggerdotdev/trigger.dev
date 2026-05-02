@@ -27,30 +27,39 @@ sourceMapSupport.install({
   hookRequire: false,
 });
 
+function safeSend(message: unknown) {
+  if (!process.connected || !process.send) {
+    return;
+  }
+  try {
+    process.send(message);
+  } catch {
+    // swallow: a throw here would re-enter this handler and busy-loop the worker
+  }
+}
+
 process.on("uncaughtException", function (error, origin) {
   if (error instanceof Error) {
-    process.send &&
-      process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: { name: error.name, message: error.message, stack: error.stack },
-          origin,
-        },
-        version: "v1",
-      });
+    safeSend({
+      type: "UNCAUGHT_EXCEPTION",
+      payload: {
+        error: { name: error.name, message: error.message, stack: error.stack },
+        origin,
+      },
+      version: "v1",
+    });
   } else {
-    process.send &&
-      process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: {
-            name: "Error",
-            message: typeof error === "string" ? error : JSON.stringify(error),
-          },
-          origin,
+    safeSend({
+      type: "UNCAUGHT_EXCEPTION",
+      payload: {
+        error: {
+          name: "Error",
+          message: typeof error === "string" ? error : JSON.stringify(error),
         },
-        version: "v1",
-      });
+        origin,
+      },
+      version: "v1",
+    });
   }
 });
 
@@ -191,7 +200,7 @@ await sendMessageInCatalog(
     importErrors,
   },
   async (msg) => {
-    process.send?.(msg);
+    safeSend(msg);
   }
 ).catch((err) => {
   if (err instanceof ZodSchemaParsedError) {
@@ -200,7 +209,7 @@ await sendMessageInCatalog(
       "TASKS_FAILED_TO_PARSE",
       { zodIssues: err.error.issues, tasks },
       async (msg) => {
-        process.send?.(msg);
+        safeSend(msg);
       }
     );
   } else {
