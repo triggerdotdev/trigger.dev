@@ -14,6 +14,10 @@ This eliminates the need to manually run the `trigger.dev deploy` command or mai
   well, since Trigger.dev builds your tasks from your GitHub repository.
 </Note>
 
+<Note>
+  Make sure you've completed the [Quickstart](/quickstart) first, including creating your `trigger.config.ts` file.
+</Note>
+
 ## Installation
 
 You can connect Vercel from two entry points:
@@ -88,6 +92,18 @@ You can connect Vercel from two entry points:
   options](#build-options)) in your Trigger.dev project configuration. Trigger.dev always builds
   from the repo root.
 </Warning>
+
+## Required Trigger Config
+
+Make sure your project includes a `trigger.config.ts` file in the root of your repository.
+
+Trigger.dev looks for this file by default to configure your triggers. If it's missing, you may see an error like:
+
+```
+Error: The trigger config file was not found. By default, we look for a trigger.config.ts file in the root of your repository.
+```
+
+If your config file is located in a different directory, you can specify its path in your project's build configuration settings.
 
 ## Environment variable sync
 
