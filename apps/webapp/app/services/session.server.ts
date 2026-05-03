@@ -12,12 +12,13 @@ import { logger } from "./logger.server";
  * The deadline is written at login (and any time the effective duration is
  * recomputed — see `commitAuthenticatedSession`) and shortened in bulk when
  * an admin lowers an org cap (see the admin `session-duration` route).
- * Reading here is a free piggyback on the User row that `requireUser`/
- * `getUser` already fetches — there is no per-request DB query added by this
- * check. `requireUserId`/`getUserId` deliberately do NOT enforce: enforcement
- * happens at the next page navigation (root.tsx loader calls `getUser`),
- * which matches HIPAA auto-logoff semantics — terminate sessions at the
- * navigation boundary, not on every polling fetch.
+ * Non-impersonation `requireUserId`/`getUserId` paths do NOT enforce —
+ * enforcement happens at the next page navigation (root.tsx calls `getUser`),
+ * which matches HIPAA auto-logoff semantics: terminate at the navigation
+ * boundary, not on every polling fetch. Impersonation paths DO enforce in
+ * `getUserId` (against the admin's deadline) so a `requireUserId`-only route
+ * can't keep operating as the impersonation target after the admin's session
+ * has expired or their admin role was revoked.
  *
  * `nextSessionEnd === null` means "no enforced deadline" — applies to legacy
  * sessions from before this feature shipped. The default `User.sessionDuration`
@@ -52,41 +53,43 @@ function maybeAutoLogout(
 }
 
 export async function getUserId(request: Request): Promise<string | undefined> {
-  // Cookie-only fast path: zero DB queries. Impersonation admin-verification
-  // and auto-logout enforcement happen in `getUser`/`requireUser`, where we
-  // already pay for a User row fetch.
   const impersonatedUserId = await getImpersonationId(request);
-  if (impersonatedUserId) return impersonatedUserId;
 
+  if (impersonatedUserId) {
+    // Impersonating: verify the real user (the admin) is still an admin and
+    // enforce against their deadline (the cap belongs to the cookie, not the
+    // target). If admin status was revoked, fall through to operate as the
+    // admin themselves — otherwise a `requireUserId`-only route would keep
+    // letting them act as the impersonation target after losing the role.
+    const authUser = await authenticator.isAuthenticated(request);
+    if (!authUser?.userId) return undefined;
+    const realUser = await getUserById(authUser.userId);
+    if (!realUser) return authUser.userId;
+    if (realUser.admin) {
+      maybeAutoLogout(request, realUser, impersonatedUserId);
+      return impersonatedUserId;
+    }
+    maybeAutoLogout(request, realUser);
+    return authUser.userId;
+  }
+
+  // Non-impersonation fast path: zero DB queries. Auto-logout enforcement
+  // for this path happens in `getUser`, where we already pay for the User
+  // row fetch. `requireUserId` callers stay cookie-only.
   const authUser = await authenticator.isAuthenticated(request);
   return authUser?.userId;
 }
 
 export async function getUser(request: Request) {
-  const impersonatedUserId = await getImpersonationId(request);
-  const authUser = await authenticator.isAuthenticated(request);
-
-  if (impersonatedUserId && authUser?.userId) {
-    // Impersonating: verify the real user is still an admin and enforce the
-    // *admin's* deadline (the cap belongs to the cookie, not the
-    // impersonation target). If the admin is no longer admin, fall back to
-    // operating as the admin themselves — same defense-in-depth as before.
-    const realUser = await getUserById(authUser.userId);
-    if (!realUser) throw await logout(request);
-    if (realUser.admin) {
-      maybeAutoLogout(request, realUser, impersonatedUserId);
-      const target = await getUserById(impersonatedUserId);
-      if (!target) throw await logout(request);
-      return target;
-    }
-    maybeAutoLogout(request, realUser);
-    return realUser;
-  }
-
-  if (!authUser?.userId) return null;
-  const user = await getUserById(authUser.userId);
+  const userId = await getUserId(request);
+  if (userId === undefined) return null;
+  const user = await getUserById(userId);
   if (!user) throw await logout(request);
-  maybeAutoLogout(request, user);
+  // Auto-logout for the non-impersonation path. The impersonation path was
+  // already enforced inside `getUserId` against the admin's deadline, so
+  // skip re-checking against the (impersonation target's) row here.
+  const impersonationId = await getImpersonationId(request);
+  if (!impersonationId) maybeAutoLogout(request, user);
   return user;
 }
 
