@@ -1031,6 +1031,11 @@ export function IdFilterDropdown({
   const currentValue = value(paramKey);
 
   const [inputValue, setInputValue] = useState(currentValue);
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setInputValue(currentValue);
+  }
 
   const apply = useCallback(() => {
     clearSearchValue();
