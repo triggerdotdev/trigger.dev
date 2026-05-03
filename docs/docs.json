@@ -111,6 +111,7 @@
                   "ai-chat/server-chat",
                   "ai-chat/types",
                   "ai-chat/features",
+                  "ai-chat/head-start",
                   "ai-chat/compaction",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",

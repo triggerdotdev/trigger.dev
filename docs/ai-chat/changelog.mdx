@@ -4,6 +4,74 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 3, 2026" tags={["SDK"]}>
+
+## `chat.headStart` — fast first-turn for chat.agent
+
+A new opt-in flow that cuts first-turn TTFC roughly in half by running step 1's LLM call in your warm process while the chat.agent run boots in parallel. On the LLM's `tool-calls` boundary, ownership of the durable stream hands over to the agent for tool execution and step 2+. Pure-text first turns finish on the customer side with no LLM call from the trigger run at all.
+
+Measured on `claude-sonnet-4-6` (same model both sides): TTFT 2801ms → 1218ms (−57%), total turn 4180ms → 2345ms (−44%). With Head Start, first-text time is essentially the LLM TTFB floor.
+
+### Setup
+
+```ts app/api/chat/route.ts
+import { chat } from "@trigger.dev/sdk/chat-server";
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { headStartTools } from "@/lib/chat-tools/schemas";
+
+export const POST = chat.headStart({
+  agentId: "my-chat",
+  run: async ({ chat: helper }) =>
+    streamText({
+      ...helper.toStreamTextOptions({ tools: headStartTools }),
+      model: anthropic("claude-sonnet-4-6"),
+      system: "You are a helpful assistant.",
+    }),
+});
+```
+
+```tsx components/chat.tsx
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+  headStart: "/api/chat",
+});
+```
+
+### Bundle isolation
+
+Tool schemas (`description` + `inputSchema`) live in their own module that imports only `ai` and `zod`. The agent task imports those schemas and adds heavy `execute` fns. The route handler imports schemas only — keeping the warm-process bundle light is what makes the win possible. Runtime "strip executes" helpers don't solve this — bundlers resolve imports at build time. See [Head Start → Setup](/ai-chat/head-start#setup) for the full split.
+
+### Compared to Preload
+
+Preload eagerly triggers the run on page load (good when you're confident the user *will* send a message — trades idle compute for fast TTFC). Head Start gates the run on a real first message — no idle compute, customer's process runs step 1 directly. Pick one per chat.
+
+### Works on every runtime
+
+`chat.headStart` returns a standard Web Fetch handler — `(req: Request) => Promise<Response>` — so it slots into Next.js App Router, Hono, SvelteKit, Remix / React Router v7, TanStack Start, Astro, Nitro/Nuxt, Elysia, Cloudflare Workers, Bun, Deno, and any other runtime that speaks Web Fetch. Verified runtimes: Node 18+, Bun, Deno, Workers, Vercel (Node and Edge), Netlify (Functions and Edge).
+
+For Node-only frameworks (Express, Fastify, Koa, raw `node:http`), the SDK ships `chat.toNodeListener(handler)` — converts any Web Fetch handler into a Node `(req, res)` listener with proper streaming, header translation, and client-disconnect propagation.
+
+```ts
+import express from "express";
+import { chat } from "@trigger.dev/sdk/chat-server";
+
+const handler = chat.headStart({ agentId: "my-chat", run: ... });
+
+const app = express();
+app.post("/api/chat", chat.toNodeListener(handler));
+```
+
+## Docs
+
+- New [Head Start guide](/ai-chat/head-start) — bundle isolation, schema/execute split, route handler setup, transport option, lifecycle, limitations.
+- [Reference](/ai-chat/reference#triggerchattransport-options) — `headStart` transport option.
+
+</Update>
+
 <Update label="May 2, 2026" description="0.0.0-chat-prerelease-20260502065709" tags={["SDK"]}>
 
 ## Resilient SSE reconnection
