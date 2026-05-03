@@ -423,6 +423,11 @@ export const mySubtask = schemaTask({
 
 Preload eagerly triggers a run for a chat before the first message is sent. This allows initialization (DB setup, context loading) to happen while the user is still typing, reducing first-response latency.
 
+<Tip>
+  See also [Head Start](/ai-chat/head-start) — solves the same first-turn TTFC problem from the other direction. Preload trades idle compute for fast TTFC (good when the user *will* send a message). Head Start runs step 1's LLM call in your warm process while the agent run boots in parallel — no idle compute, gates the run on a real first message.
+</Tip>
+
+
 ### Frontend
 
 Call `transport.preload(chatId)` to start a run early:

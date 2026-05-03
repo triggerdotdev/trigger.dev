@@ -502,6 +502,7 @@ Options for the frontend transport constructor and `useTriggerChatTransport` hoo
 | `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes. `session` is the full `ChatSession` or `null` when the run ends. |
 | `multiTab`             | `boolean`                                                            | `false`                     | Enable multi-tab claim coordination via `BroadcastChannel`. See [Frontend → multi-tab](/ai-chat/frontend#multi-tab-coordination). |
 | `watch`                | `boolean`                                                            | `false`                     | Read-only watcher mode — keep the SSE subscription open across `trigger:turn-complete` so a viewer sees turns 2, 3, … through one long-lived stream. |
+| `headStart`            | `string`                                                             | —                           | URL of a [`chat.headStart`](/ai-chat/head-start) route handler. When set, the FIRST message of a brand-new chat POSTs to this URL so step 1's LLM call runs in your warm process while the agent run boots in parallel. Subsequent turns bypass it. |
 
 ### `accessToken` callback
 
