@@ -36,6 +36,11 @@ function maybeAutoLogout(
 ): void {
   if (user.nextSessionEnd === null) return;
   if (Date.now() <= user.nextSessionEnd.getTime()) return;
+  // Don't redirect to /logout when we're already on /logout — root.tsx's
+  // loader runs for every route (including /logout itself), so without this
+  // guard an expired session would redirect to /logout in a loop and the
+  // route's own loader (which destroys the session cookie) would never run.
+  if (new URL(request.url).pathname === "/logout") return;
 
   // HIPAA audit trail: structured log lands in CloudWatch via stdout. Use
   // the stable `event` field to filter/aggregate auto-logout events.
@@ -84,7 +89,13 @@ export async function getUser(request: Request) {
   const userId = await getUserId(request);
   if (userId === undefined) return null;
   const user = await getUserById(userId);
-  if (!user) throw await logout(request);
+  if (!user) {
+    // Same loop-guard as in maybeAutoLogout: if /logout's loader is what
+    // matched, let it destroy the cookie itself rather than redirecting in
+    // circles via root.tsx.
+    if (new URL(request.url).pathname === "/logout") return null;
+    throw await logout(request);
+  }
   // Auto-logout for the non-impersonation path. The impersonation path was
   // already enforced inside `getUserId` against the admin's deadline, so
   // skip re-checking against the (impersonation target's) row here.
