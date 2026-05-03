@@ -16,7 +16,7 @@
  */
 
 import type { Task, AnyTask } from "@trigger.dev/core/v3";
-import type { UIMessage } from "ai";
+import type { ModelMessage, UIMessage } from "ai";
 
 /**
  * Message-part `type` value for the pending-message data part the agent
@@ -31,7 +31,21 @@ export const PENDING_MESSAGE_INJECTED_TYPE = "data-pending-message-injected" as 
 export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
   messages: TMessage[];
   chatId: string;
-  trigger: "submit-message" | "regenerate-message" | "preload" | "close" | "action";
+  trigger:
+    | "submit-message"
+    | "regenerate-message"
+    | "preload"
+    | "close"
+    | "action"
+    /**
+     * The customer's `chat.handover` route handler kicked us off in
+     * parallel with the first-turn `streamText` running in the warm
+     * Next.js process. The run sits idle on `session.in` waiting for
+     * a `kind: "handover"` (continue from tool execution) or
+     * `kind: "handover-skip"` (handler finished pure-text, exit
+     * cleanly). See `chat.handover` in `@trigger.dev/sdk/chat-server`.
+     */
+    | "handover-prepare";
   messageId?: string;
   metadata?: TMetadata;
   /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
@@ -83,6 +97,56 @@ export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = u
       kind: "stop";
       /** Optional human-readable reason. Maps to the legacy `chat-stop` record. */
       message?: string;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` when the customer's first-turn
+       * `streamText` finishes. The agent run (currently parked in
+       * `handover-prepare`) wakes, seeds its accumulators with
+       * `partialAssistantMessage`, and runs the normal turn loop
+       * (`onChatStart` → `onTurnStart` → … → `onTurnComplete`).
+       *
+       * What happens after that depends on `isFinal`:
+       *
+       * - `isFinal: false` — step 1 ended with `finishReason:
+       *   "tool-calls"`. The partial carries the assistant's
+       *   tool-call(s) wrapped in AI SDK's tool-approval round. The
+       *   agent's `streamText` runs the approved tools and continues
+       *   from step 2.
+       * - `isFinal: true` — step 1 ended pure-text (no tool calls).
+       *   The partial carries the final assistant text. The agent
+       *   skips the LLM call entirely (the response is already
+       *   complete on the customer side) and runs `onTurnComplete`
+       *   with the partial as `responseMessage` so persistence and
+       *   any post-turn work fire normally.
+       */
+      kind: "handover";
+      /** Customer's step-1 response messages (ModelMessage form). */
+      partialAssistantMessage: ModelMessage[];
+      /**
+       * The UI messageId the customer's handler used for its step-1
+       * assistant message. The agent reuses this so any post-handover
+       * chunks (tool-output-available, step-2 text, data-* parts
+       * written by hooks) merge into the SAME assistant message on
+       * the browser side instead of starting a new one.
+       */
+      messageId?: string;
+      /**
+       * Whether the customer's step 1 is the final response. See
+       * `kind` description above for the two branches.
+       */
+      isFinal: boolean;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` only when the customer's handler
+       * ABORTS before producing a finishReason (e.g., dispatch error,
+       * stream cancelled before any tokens). The agent run exits
+       * cleanly without firing turn hooks. Normal pure-text and
+       * tool-call finishes go through `kind: "handover"` with the
+       * appropriate `isFinal` flag.
+       */
+      kind: "handover-skip";
     };
 
 /**

@@ -893,6 +893,253 @@ describe("TriggerChatTransport", () => {
     });
   });
 
+  describe("endpoint (chat.handover routing)", () => {
+    /**
+     * Encode UIMessageChunks the same way the chat-server.ts handler
+     * does: `data: <JSON>\n\n` per chunk. The transport's
+     * `parseUIMessageSseTransform` parses this back into chunk objects.
+     */
+    function handoverSseBody(chunks: UIMessageChunk[]): ReadableStream<Uint8Array> {
+      const encoder = new TextEncoder();
+      return new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+          }
+          controller.close();
+        },
+      });
+    }
+
+    function handoverResponse(args: {
+      chatId: string;
+      accessToken: string;
+      chunks: UIMessageChunk[];
+    }): Response {
+      return new Response(handoverSseBody(args.chunks), {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "X-Trigger-Chat-Id": args.chatId,
+          "X-Trigger-Chat-Access-Token": args.accessToken,
+        },
+      });
+    }
+
+    it("first-turn POSTs the wire payload to endpoint when no session exists", async () => {
+      const requests: Array<{ url: string; init?: RequestInit }> = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push({ url: urlStr, init });
+        if (urlStr === "https://my-app.example/api/chat") {
+          return handoverResponse({
+            chatId: "chat-handover-1",
+            accessToken: "handover-pat-1",
+            chunks: sampleChunks,
+          });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        headStart: "https://my-app.example/api/chat",
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-handover-1",
+        messageId: "m1",
+        messages: [createUserMessage("hello")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      // Chunks were forwarded from the handler's SSE body unchanged.
+      expect(chunks).toEqual(sampleChunks);
+
+      // Only the endpoint was called — no /api/v1/sessions, no .in/append,
+      // no .out subscribe. The handler owns first-turn end-to-end.
+      const endpointPosts = requests.filter(
+        (r) => r.url === "https://my-app.example/api/chat"
+      );
+      expect(endpointPosts).toHaveLength(1);
+      expect(requests.some((r) => isSessionCreateUrl(r.url))).toBe(false);
+      expect(requests.some((r) => isSessionStreamAppendUrl(r.url))).toBe(false);
+      expect(requests.some((r) => isSessionOutSubscribeUrl(r.url))).toBe(false);
+
+      // Body shape: full wire payload — chatId, trigger, messageId, messages.
+      const body = JSON.parse(endpointPosts[0]!.init!.body as string);
+      expect(body.chatId).toBe("chat-handover-1");
+      expect(body.trigger).toBe("submit-message");
+      expect(body.messageId).toBe("m1");
+      expect(body.messages).toHaveLength(1);
+    });
+
+    it("hydrates session state from response headers so subsequent turns bypass the endpoint", async () => {
+      const requests: Array<{ url: string; init?: RequestInit }> = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push({ url: urlStr, init });
+        if (urlStr === "https://my-app.example/api/chat") {
+          return handoverResponse({
+            chatId: "chat-handover-2",
+            accessToken: "handover-pat-2",
+            chunks: sampleChunks,
+          });
+        }
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const onSessionChange = vi.fn();
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "fallback-pat",
+        headStart: "https://my-app.example/api/chat",
+        onSessionChange,
+      });
+
+      // Turn 1 — POSTs to endpoint, hydrates session.
+      await drainChunks(
+        await transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-handover-2",
+          messageId: "m1",
+          messages: [createUserMessage("first")],
+          abortSignal: undefined,
+        })
+      );
+
+      const hydrated = transport.getSession("chat-handover-2");
+      expect(hydrated).toBeDefined();
+      expect(hydrated!.publicAccessToken).toBe("handover-pat-2");
+      expect(onSessionChange).toHaveBeenCalledWith(
+        "chat-handover-2",
+        expect.objectContaining({ publicAccessToken: "handover-pat-2" })
+      );
+
+      // Turn 2 — bypass endpoint, write directly to .in.
+      requests.length = 0;
+      const turn2Stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-handover-2",
+        messageId: "m2",
+        messages: [createUserMessage("second")],
+        abortSignal: undefined,
+      });
+
+      expect(requests.some((r) => r.url === "https://my-app.example/api/chat")).toBe(false);
+
+      const append = requests.find(
+        (r) => isSessionStreamAppendUrl(r.url) && r.url.endsWith("/in/append")
+      );
+      expect(append).toBeDefined();
+      expect(chatIdFromUrl(append!.url)).toBe("chat-handover-2");
+
+      // Drain after asserting append — `.out` is subscribed lazily when the
+      // returned stream is read.
+      await drainChunks(turn2Stream);
+
+      const subscribe = requests.find((r) => isSessionOutSubscribeUrl(r.url));
+      expect(subscribe).toBeDefined();
+    });
+
+    it("bypasses endpoint when a session is already hydrated (page reload after first turn)", async () => {
+      const requests: Array<{ url: string; init?: RequestInit }> = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push({ url: urlStr, init });
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        headStart: "https://my-app.example/api/chat",
+        sessions: {
+          "chat-resumed": { publicAccessToken: "persisted-pat" },
+        },
+      });
+
+      await drainChunks(
+        await transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-resumed",
+          messageId: undefined,
+          messages: [createUserMessage("hi again")],
+          abortSignal: undefined,
+        })
+      );
+
+      expect(requests.some((r) => r.url === "https://my-app.example/api/chat")).toBe(false);
+      expect(requests.some((r) => isSessionStreamAppendUrl(r.url))).toBe(true);
+    });
+
+    it("propagates a non-2xx response from the endpoint as an error", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (urlStr === "https://my-app.example/api/chat") {
+          return new Response(null, { status: 500, statusText: "Internal Server Error" });
+        }
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        headStart: "https://my-app.example/api/chat",
+      });
+
+      await expect(
+        transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-handover-err",
+          messageId: undefined,
+          messages: [createUserMessage("oops")],
+          abortSignal: undefined,
+        })
+      ).rejects.toThrow(/500/);
+    });
+
+    it("leaves the legacy direct-trigger path unchanged when endpoint is unset", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        // endpoint NOT set
+        sessions: { "chat-legacy": { publicAccessToken: "p" } },
+      });
+
+      await drainChunks(
+        await transport.sendMessages({
+          trigger: "submit-message",
+          chatId: "chat-legacy",
+          messageId: undefined,
+          messages: [createUserMessage("legacy")],
+          abortSignal: undefined,
+        })
+      );
+
+      // No POST to /api/chat anywhere.
+      expect(requests.some((u) => u.endsWith("/api/chat"))).toBe(false);
+      expect(requests.some(isSessionStreamAppendUrl)).toBe(true);
+      expect(requests.some(isSessionOutSubscribeUrl)).toBe(true);
+    });
+  });
+
   describe("watch mode", () => {
     it("keeps the SSE open across trigger:turn-complete (multi-turn watch)", async () => {
       const turn1: (UIMessageChunk | Record<string, unknown>)[] = [

@@ -1084,11 +1084,156 @@ const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = 
 };
 
 /**
+ * Signal received by a `handover-prepare` agent run waiting on
+ * `session.in`. Either the customer's first-turn `streamText` finished
+ * with pending tool calls (`"handover"` — agent picks up from tool
+ * execution), or it finished pure-text (`"handover-skip"` — agent
+ * exits cleanly without making an LLM call).
+ * @internal
+ */
+type HandoverSignal =
+  | {
+      kind: "handover";
+      partialAssistantMessage: ModelMessage[];
+      messageId?: string;
+      /**
+       * Whether the customer's step 1 is the final response. When
+       * true, the agent's turn loop runs hooks but skips the LLM
+       * call (the partial IS the response). When false, the agent
+       * runs `streamText` which executes pending tool-calls via the
+       * approval round and continues from step 2.
+       */
+      isFinal: boolean;
+    }
+  | { kind: "handover-skip" };
+
+/**
+ * Internal facade for waiting on the handover signal. Mirrors
+ * `messagesInput` / `stopInput` so the wait paths and tracing
+ * attributes stay consistent across all input-stream branches.
+ * @internal
+ */
+const handoverInput = {
+  async waitWithIdleTimeout(options: {
+    idleTimeoutInSeconds: number;
+    timeout?: string;
+    spanName?: string;
+    skipSuspend?: boolean;
+  }) {
+    while (true) {
+      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
+      if (!result.ok) return result;
+      if (
+        result.output.kind === "handover" ||
+        result.output.kind === "handover-skip"
+      ) {
+        return { ok: true as const, output: result.output as HandoverSignal };
+      }
+      // Other kinds (message, stop) are not expected during handover-prepare.
+      // Loop back; the message and stop facades have their own listeners
+      // running so signals on those kinds aren't lost.
+    }
+  },
+};
+
+/**
  * Per-turn deferred promises. Registered via `chat.defer()`, awaited
  * before `onTurnComplete` fires. Reset each turn.
  * @internal
  */
 const chatDeferKey = locals.create<Set<Promise<unknown>>>("chat.defer");
+
+/**
+ * Run-scoped slot holding the partial assistant message handed over by
+ * `chat.handover` from a customer's first-turn `streamText`. Appended
+ * to `accumulatedMessages` during turn 0 setup so `streamText` resumes
+ * at tool execution. Cleared (read once) after consumption.
+ * @internal
+ */
+const chatHandoverPartialKey = locals.create<ModelMessage[]>("chat.handoverPartial");
+
+/**
+ * Run-scoped slot holding the assistant `messageId` the customer's
+ * `chat.handover` handler used for its step-1 stream. The agent reuses
+ * it on the agent-side `toUIMessageStream` (and the synthesized
+ * partial UIMessage in `originalMessages`) so all chunks merge into a
+ * single assistant message on the browser side.
+ * @internal
+ */
+const chatHandoverMessageIdKey = locals.create<string>("chat.handoverMessageId");
+
+/**
+ * Run-scoped slot indicating that the customer's step-1 head-start
+ * response is the FINAL turn response. When true, turn 0 runs through
+ * the full turn-loop hooks but SKIPS the `userRun` / `streamText`
+ * call — the customer's partial already IS the response. The agent's
+ * `onTurnComplete` fires with that partial so persistence + any
+ * post-turn work happens normally. Cleared after consumption.
+ * @internal
+ */
+const chatHandoverIsFinalKey = locals.create<boolean>("chat.handoverIsFinal");
+
+/**
+ * Build a UIMessage representation of a `chat.handover` partial so AI
+ * SDK's `processUIMessageStream` can transition `tool-output-available`
+ * chunks (emitted by the initial-tool-execution branch when the
+ * approval round runs) onto the existing tool-call. Without this,
+ * `state.message.parts` is empty when the agent's `streamText`
+ * finishes, and AI SDK throws
+ * `UIMessageStreamError: No tool invocation found`.
+ *
+ * Only the assistant message matters — the synthesized
+ * `tool-approval-response` rows are AI-SDK-internal and don't need a
+ * UIMessage representation. We map:
+ *   - `text` parts → `{ type: "text", text }`
+ *   - `tool-call` parts → `{ type: "tool-${name}", toolCallId,
+ *      state: "input-available", input }`
+ *   - `tool-approval-request` parts → skipped (AI SDK derives the
+ *      approval state from chunks during processing)
+ *
+ * @internal
+ */
+function synthesizeHandoverUIMessage(
+  partial: ModelMessage[],
+  messageId?: string
+): UIMessage | undefined {
+  const assistant = partial.find((m) => m.role === "assistant");
+  if (!assistant || typeof assistant.content === "string") return undefined;
+
+  const parts: UIMessage["parts"] = [];
+  for (const part of assistant.content as Array<{
+    type: string;
+    text?: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+  }>) {
+    if (part.type === "text" && typeof part.text === "string") {
+      parts.push({ type: "text", text: part.text } as UIMessage["parts"][number]);
+    } else if (part.type === "tool-call" && part.toolCallId && part.toolName) {
+      parts.push({
+        type: `tool-${part.toolName}`,
+        toolCallId: part.toolCallId,
+        state: "input-available",
+        input: part.input,
+      } as unknown as UIMessage["parts"][number]);
+    }
+    // tool-approval-request parts intentionally skipped — they're an
+    // AI-SDK protocol detail, not a UI surface.
+  }
+
+  if (parts.length === 0) return undefined;
+
+  // Use the customer's step-1 messageId if provided (so the agent's
+  // post-handover chunks merge into the same assistant message on the
+  // browser). Fall back to a fresh id only if the handover signal
+  // didn't carry one.
+  return {
+    id: messageId ?? generateMessageId(),
+    role: "assistant",
+    parts,
+  } as UIMessage;
+}
 
 /**
  * Per-turn background context queue. Messages added via `chat.backgroundWork.inject()`
@@ -3839,6 +3984,68 @@ function chatAgent<
           }
         }
 
+        // Handle handover-prepare runs — wait on session.in for the
+        // customer's `chat.handover` route handler to either hand off
+        // mid-turn (tool calls) or signal pure-text completion.
+        if (payload.trigger === "handover-prepare") {
+          if (activeSpan) {
+            activeSpan.setAttribute("chat.handoverPreparing", true);
+          }
+
+          const handoverResult = await handoverInput.waitWithIdleTimeout({
+            idleTimeoutInSeconds: idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds ?? 60,
+            spanName: "waiting for handover signal",
+          });
+
+          if (!handoverResult.ok) {
+            // Handler crashed before signaling — exit cleanly.
+            return;
+          }
+
+          if (handoverResult.output.kind === "handover-skip") {
+            // Sent only when the customer's handler aborts before
+            // producing a finishReason. Normal pure-text and
+            // tool-call finishes go through `kind: "handover"` with
+            // `isFinal: true | false`. Exit without firing any turn
+            // hooks.
+            return;
+          }
+
+          // kind === "handover": stash the partial assistant message
+          // so turn-0 setup can append it after loading user
+          // messages. Two branches downstream, switched by `isFinal`:
+          //   - `false`: customer's step 1 ended with `tool-calls`.
+          //     The agent's `streamText` sees pending tool-calls (via
+          //     the approval round in the partial) and executes them,
+          //     then runs step 2's LLM call.
+          //   - `true`: customer's step 1 ended pure-text. The agent
+          //     runs the turn-loop hooks but SKIPS the `streamText`
+          //     call entirely (the response is already complete).
+          //     `onTurnComplete` fires with the partial as
+          //     `responseMessage` so persistence works normally.
+          locals.set(
+            chatHandoverPartialKey,
+            handoverResult.output.partialAssistantMessage
+          );
+          // Stash the customer-side step-1 messageId. Turn-0 setup
+          // uses it to seed the synthesized partial UIMessage with the
+          // SAME id, so the agent's post-handover chunks merge into
+          // the same assistant message on the browser side.
+          if (handoverResult.output.messageId) {
+            locals.set(chatHandoverMessageIdKey, handoverResult.output.messageId);
+          }
+          locals.set(chatHandoverIsFinalKey, handoverResult.output.isFinal);
+
+          // Synthesize a wire payload that the turn loop treats as a
+          // normal first-turn message. The original user-history
+          // messages came in via `payload.messages` at trigger time;
+          // reuse them.
+          currentWirePayload = {
+            ...payload,
+            trigger: "submit-message",
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+        }
+
         for (let turn = 0; turn < maxTurns; turn++) {
           try {
               // Extract turn-level context before entering the span
@@ -4235,6 +4442,41 @@ function chatAgent<
                           incomingModelMessages[incomingModelMessages.length - 1];
                         if (lastModel) turnNewModelMessages.push(lastModel);
                       }
+                      // If a `chat.handover` route handler signalled a
+                      // mid-turn handover, splice its partial assistant
+                      // response (text + pending tool-calls + the
+                      // synthesized tool-approval round) onto the
+                      // accumulator. `streamText` will hit AI SDK's
+                      // initial-tool-execution branch, run the
+                      // agent-side tool executes, and resume from step 2
+                      // — skipping the first model call (already done
+                      // by the handler).
+                      //
+                      // We also synthesize a UIMessage form of the
+                      // partial assistant and push it to
+                      // `accumulatedUIMessages`. AI SDK's
+                      // `processUIMessageStream` (invoked when our
+                      // run-loop calls `runResult.toUIMessageStream({
+                      // onFinish })`) initializes `state.message` from
+                      // the trailing assistant in `originalMessages`.
+                      // Without that, the `tool-output-available`
+                      // chunks emitted by the initial-tool-execution
+                      // branch can't find their matching tool-call in
+                      // state and AI SDK throws
+                      // `UIMessageStreamError: No tool invocation found`.
+                      const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
+                      if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                        accumulatedMessages.push(...pendingHandoverPartial);
+                        const handoverMessageId = locals.get(chatHandoverMessageIdKey);
+                        const partialUI = synthesizeHandoverUIMessage(
+                          pendingHandoverPartial,
+                          handoverMessageId
+                        );
+                        if (partialUI) {
+                          accumulatedUIMessages.push(partialUI as TUIMessage);
+                        }
+                        locals.set(chatHandoverPartialKey, []); // consume once
+                      }
                     } else if (currentWirePayload.trigger === "regenerate-message") {
                       // Regenerate: frontend sent full history with last assistant message
                       // removed. Reset the accumulator to match.
@@ -4410,6 +4652,19 @@ function chatAgent<
                   let onFinishAttached = false;
                   let runResult: unknown;
 
+                  // Pure-text head-start: customer's step 1 IS the
+                  // final response. Skip the user's `run` callback
+                  // (no LLM call) and use the synthesized partial
+                  // UIMessage as `capturedResponseMessage`. The post-
+                  // turn flow (`onBeforeTurnComplete` →
+                  // `onTurnComplete` → trigger:turn-complete) fires
+                  // normally so persistence works.
+                  const headStartIsFinal = locals.get(chatHandoverIsFinalKey);
+                  const isHeadStartFinalTurn = turn === 0 && headStartIsFinal === true;
+                  if (isHeadStartFinalTurn) {
+                    locals.set(chatHandoverIsFinalKey, undefined); // consume once
+                  }
+
                   try {
                     // Drain any messages injected by background work (e.g. self-review from previous turn).
                     // Skip if the last message is a tool message — appending after it would
@@ -4422,20 +4677,34 @@ function chatAgent<
                       accumulatedMessages.push(...bgQueue.splice(0));
                     }
 
-                    runResult = await userRun({
-                      ...restWire,
-                      messages: await applyPrepareMessages(accumulatedMessages, "run"),
-                      clientData,
-                      continuation,
-                      previousRunId,
-                      preloaded,
-                      previousTurnUsage,
-                      totalUsage: cumulativeUsage,
-                      ctx,
-                      signal: combinedSignal,
-                      cancelSignal,
-                      stopSignal,
-                    } as any);
+                    if (isHeadStartFinalTurn) {
+                      // The synthesized partial UIMessage IS the response.
+                      // It was pushed to `accumulatedUIMessages` during the
+                      // submit-message branch's splice; recover it as the
+                      // last assistant.
+                      const lastUI = accumulatedUIMessages[accumulatedUIMessages.length - 1];
+                      if (lastUI && lastUI.role === "assistant") {
+                        capturedResponseMessage = lastUI;
+                        capturedFinishReason = "stop";
+                      }
+                      // Don't call userRun. Don't pipe. Skip directly
+                      // to the post-turn flow below.
+                    } else {
+                      runResult = await userRun({
+                        ...restWire,
+                        messages: await applyPrepareMessages(accumulatedMessages, "run"),
+                        clientData,
+                        continuation,
+                        previousRunId,
+                        preloaded,
+                        previousTurnUsage,
+                        totalUsage: cumulativeUsage,
+                        ctx,
+                        signal: combinedSignal,
+                        cancelSignal,
+                        stopSignal,
+                      } as any);
+                    }
 
                     // Auto-pipe if the run function returned a StreamTextResult or similar,
                     // but only if pipeChat() wasn't already called manually during this turn.

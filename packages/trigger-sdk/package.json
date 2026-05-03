@@ -28,7 +28,8 @@
       "./ai/skills-runtime": "./src/v3/agentSkillsRuntime.ts",
       "./ai/test": "./src/v3/test/index.ts",
       "./chat": "./src/v3/chat.ts",
-      "./chat/react": "./src/v3/chat-react.ts"
+      "./chat/react": "./src/v3/chat-react.ts",
+      "./chat-server": "./src/v3/chat-server.ts"
     },
     "sourceDialects": [
       "@triggerdotdev/source"
@@ -53,6 +54,9 @@
       ],
       "chat/react": [
         "dist/commonjs/v3/chat-react.d.ts"
+      ],
+      "chat-server": [
+        "dist/commonjs/v3/chat-server.d.ts"
       ]
     }
   },
@@ -186,6 +190,17 @@
       "require": {
         "types": "./dist/commonjs/v3/chat-react.d.ts",
         "default": "./dist/commonjs/v3/chat-react.js"
+      }
+    },
+    "./chat-server": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/chat-server.ts",
+        "types": "./dist/esm/v3/chat-server.d.ts",
+        "default": "./dist/esm/v3/chat-server.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/chat-server.d.ts",
+        "default": "./dist/commonjs/v3/chat-server.js"
       }
     }
   },

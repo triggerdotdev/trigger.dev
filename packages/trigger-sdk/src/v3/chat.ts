@@ -42,6 +42,60 @@ function isAuthError(error: unknown): boolean {
 }
 
 /**
+ * Parses an SSE byte/text stream of `data: <UIMessageChunk JSON>\n\n`
+ * frames back into `UIMessageChunk` objects. Used by the handover
+ * first-turn path to convert the customer's route handler response
+ * (which is AI-SDK-shaped SSE text) into the chunk form the AI SDK's
+ * `useChat` consumes from a transport.
+ *
+ * Spec-light parser — assumes well-formed `data:` events from our own
+ * `chat.handover` SSE writer. Lines starting with `:` (comments) and
+ * other event types are ignored.
+ */
+function parseUIMessageSseTransform(): TransformStream<string, UIMessageChunk> {
+  let buffer = "";
+  return new TransformStream<string, UIMessageChunk>({
+    transform(chunk, controller) {
+      buffer += chunk;
+      // Frames are separated by blank lines.
+      let idx = buffer.indexOf("\n\n");
+      while (idx !== -1) {
+        const frame = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (!data) continue;
+            try {
+              controller.enqueue(JSON.parse(data) as UIMessageChunk);
+            } catch {
+              /* drop malformed chunk; the response source is our own writer */
+            }
+          }
+        }
+        idx = buffer.indexOf("\n\n");
+      }
+    },
+    flush(controller) {
+      // Trailing data without a closing blank line — treat as a final frame.
+      if (buffer.trim().length === 0) return;
+      for (const line of buffer.split("\n")) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6).trim();
+          if (!data) continue;
+          try {
+            controller.enqueue(JSON.parse(data) as UIMessageChunk);
+          } catch {
+            /* drop */
+          }
+        }
+      }
+      buffer = "";
+    },
+  });
+}
+
+/**
  * Arguments for the `accessToken` callback. The transport invokes this
  * whenever it needs a fresh session-scoped PAT — initial use, and
  * after a 401 from any session-PAT-authed request.
@@ -217,6 +271,35 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
    * and `reconnectToStream` for the typical viewer flow. @default false
    */
   watch?: boolean;
+
+  /**
+   * Opt-in URL that gives a brand-new chat a head start: instead of
+   * waiting for the trigger.dev agent run to dequeue + boot before
+   * the first LLM call, the transport POSTs the first user message
+   * to a route handler in your warm process (Next.js, etc.) that
+   * exports `chat.handover({ agentId, run })` from
+   * `@trigger.dev/sdk/chat-server`. That handler runs `streamText`
+   * step 1 right away while the agent boots in parallel, then hands
+   * off mid-turn for tool execution (or exits clean for pure-text
+   * turns).
+   *
+   * First turn only. Subsequent turns on the same chat bypass this
+   * URL and write directly to `session.in` — the same direct-trigger
+   * path used when `headStart` is unset. Customers using `headStart`
+   * still need `accessToken` and (optionally) `startSession` for
+   * those subsequent turns.
+   *
+   * NOT a stock `useChat` "endpoint" — this is not the canonical
+   * request URL for every turn, just the warm first-turn shortcut.
+   *
+   * In benchmarks, head-starting drops first-turn TTFC roughly in
+   * half versus the direct-trigger flow (cold-start agent boot +
+   * onTurnStart hook overlap with the LLM TTFB instead of stacking
+   * before it).
+   *
+   * @default undefined (direct-trigger flow on every turn)
+   */
+  headStart?: string;
 };
 
 /**
@@ -267,6 +350,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
   private readonly watchMode: boolean;
+  private readonly headStart: string | undefined;
   private coordinator: ChatTabCoordinator | null = null;
   private _onSessionChange:
     | ((chatId: string, session: ChatSessionPersistedState | null) => void)
@@ -288,6 +372,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.defaultMetadata = options.clientData;
     this._onSessionChange = options.onSessionChange;
     this.watchMode = options.watch ?? false;
+    this.headStart = options.headStart;
 
     if (options.multiTab && !this.watchMode) {
       this.coordinator = new ChatTabCoordinator();
@@ -380,6 +465,26 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         ? { ...(this.defaultMetadata ?? {}), ...((metadata as Record<string, unknown>) ?? {}) }
         : undefined;
 
+    // First-turn handover routing — when `headStart` is set AND no
+    // session state exists yet for this chatId, POST the wire payload
+    // to the customer's `chat.handover` route handler. The handler
+    // creates the session, triggers the agent run with
+    // `handover-prepare`, runs `streamText` step 1 in its warm
+    // process, and tees the output back as the SSE response. We
+    // hydrate session state from the response headers so subsequent
+    // turns bypass the handler and use direct `session.in` writes.
+    if (this.headStart && !this.sessions.has(chatId)) {
+      return this.sendMessagesViaHandover({
+        trigger,
+        chatId,
+        messageId,
+        messages,
+        abortSignal,
+        body,
+        metadata: mergedMetadata,
+      });
+    }
+
     // For "submit-message" we only deliver the latest user message via
     // `.in` — the agent already has the full history from its prior turn
     // (or the persisted store, on a fresh run). For "regenerate-message",
@@ -419,6 +524,132 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     return this.subscribeToSessionStream(state, abortSignal, chatId);
   };
+
+  /**
+   * First-turn-only path used when `headStart` is configured. POSTs the
+   * wire payload to the customer's `chat.handover` route handler and
+   * pipes its SSE response back as a UIMessageChunk stream. Hydrates
+   * session state from response headers so subsequent turns bypass
+   * the endpoint and use the direct `session.in` path.
+   */
+  private async sendMessagesViaHandover(args: {
+    trigger: "submit-message" | "regenerate-message";
+    chatId: string;
+    messageId: string | undefined;
+    messages: UIMessage[];
+    abortSignal: AbortSignal | undefined;
+    body: ChatRequestOptions["body"];
+    metadata: Record<string, unknown> | undefined;
+  }): Promise<ReadableStream<UIMessageChunk>> {
+    if (!this.headStart) {
+      throw new Error("sendMessagesViaHandover called without headStart configured");
+    }
+
+    const wirePayload = {
+      ...((args.body as Record<string, unknown>) ?? {}),
+      messages: args.messages,
+      chatId: args.chatId,
+      trigger: args.trigger,
+      messageId: args.messageId,
+      metadata: args.metadata,
+    };
+
+    const response = await fetch(this.headStart, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.extraHeaders,
+      },
+      body: JSON.stringify(wirePayload),
+      signal: args.abortSignal,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `chat.handover endpoint returned ${response.status} ${response.statusText}`
+      );
+    }
+    if (!response.body) {
+      throw new Error("chat.handover endpoint returned no response body");
+    }
+
+    // Hydrate session state from response headers so subsequent turns
+    // skip the endpoint and write directly to session.in.
+    const accessToken = response.headers.get("X-Trigger-Chat-Access-Token");
+    const chatId = args.chatId;
+    if (accessToken) {
+      const state: ChatSessionState = {
+        publicAccessToken: accessToken,
+        isStreaming: true,
+      };
+      this.sessions.set(chatId, state);
+      this.notifySessionChange(chatId, state);
+    }
+
+    // Filter the parsed UIMessage stream:
+    //   - Drop control chunks (`trigger:turn-complete`,
+    //     `trigger:session-state`) before they reach AI SDK — they
+    //     aren't valid UIMessageChunks and the AI SDK chunk parser
+    //     would reject them.
+    //   - On `trigger:turn-complete`, clear `isStreaming` so the
+    //     useChat resume / reconnectToStream path doesn't open a
+    //     second `session.out` subscription on top of our stitched
+    //     response.
+    //   - On `trigger:session-state`, hydrate `state.lastEventId`
+    //     with the agent's final S2 event id. Without this, turn 2's
+    //     `session.out` subscribe reads from the start and replays
+    //     turn 1's chunks back into the UI.
+    //   - On stream end (handover-skip case — no
+    //     `trigger:turn-complete` arrives, customer's stream just
+    //     ends), also clear `isStreaming` for the same reason.
+    const sessions = this.sessions;
+    const notifyChange = (id: string, state: ChatSessionState) =>
+      this.notifySessionChange(id, state);
+    const TRIGGER_TURN_COMPLETE = "trigger:turn-complete";
+    const TRIGGER_SESSION_STATE = "trigger:session-state";
+    const clearStreaming = () => {
+      const state = sessions.get(chatId);
+      if (state && state.isStreaming) {
+        state.isStreaming = false;
+        notifyChange(chatId, state);
+      }
+    };
+    const setLastEventId = (lastEventId: string) => {
+      const state = sessions.get(chatId);
+      if (state) {
+        state.lastEventId = lastEventId;
+        notifyChange(chatId, state);
+      }
+    };
+
+    return response.body
+      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(parseUIMessageSseTransform())
+      .pipeThrough(
+        new TransformStream<UIMessageChunk, UIMessageChunk>({
+          transform(chunk, controller) {
+            if (chunk && typeof chunk === "object") {
+              const type = (chunk as { type?: unknown }).type;
+              if (type === TRIGGER_TURN_COMPLETE) {
+                clearStreaming();
+                return; // drop — not a real UIMessageChunk
+              }
+              if (type === TRIGGER_SESSION_STATE) {
+                const lastEventId = (chunk as { lastEventId?: unknown }).lastEventId;
+                if (typeof lastEventId === "string") {
+                  setLastEventId(lastEventId);
+                }
+                return; // drop
+              }
+            }
+            controller.enqueue(chunk);
+          },
+          flush() {
+            clearStreaming();
+          },
+        })
+      );
+  }
 
   /**
    * Send a steering message during an active stream without disrupting
