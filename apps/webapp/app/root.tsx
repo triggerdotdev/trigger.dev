@@ -15,8 +15,6 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
-import { commitAuthenticatedSessionLazy } from "./services/sessionDuration.server";
-import { getUserSession } from "./services/sessionStorage.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
@@ -64,15 +62,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
-
-  // Lazy-backfill the auth session's `issuedAt` for cookies issued before this
-  // feature shipped. Returns null (and does not commit) once issuedAt is set,
-  // so the cookie isn't re-written on every page load.
-  if (user) {
-    const authSession = await getUserSession(request);
-    const lazyCookie = await commitAuthenticatedSessionLazy(authSession);
-    if (lazyCookie) headers.append("Set-Cookie", lazyCookie);
-  }
 
   return typedjson(
     {

@@ -163,7 +163,7 @@ async function completeLogin(request: Request, session: Session, userId: string)
   session.unset("pending-mfa-redirect-to");
 
   const headers = new Headers();
-  headers.append("Set-Cookie", await commitAuthenticatedSession(session));
+  headers.append("Set-Cookie", await commitAuthenticatedSession(session, userId));
 
   await trackAndClearReferralSource(request, userId, headers);
 

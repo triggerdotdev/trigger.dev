@@ -1,54 +1,50 @@
 import { redirect } from "@remix-run/node";
-import { $replica } from "~/db.server";
 import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
 import { logger } from "./logger.server";
-import {
-  getEffectiveSessionDuration,
-  getSessionIssuedAt,
-  isSessionExpired,
-} from "./sessionDuration.server";
-import { getUserSession } from "./sessionStorage.server";
 
 /**
- * Enforces the user's effective session duration (User.sessionDuration capped
- * by the most restrictive Organization.maxSessionDuration). If the session was
- * issued longer ago than the cap allows, throws a redirect to `/logout` and
- * emits a HIPAA audit log. `userId` is always the *session owner's* id (i.e.
- * the real authenticated user), not an impersonated one — because the cap
- * belongs to the cookie, not the impersonation target.
+ * Logs the user out when their session has lived past `User.nextSessionEnd`.
+ *
+ * The deadline is written at login (and any time the effective duration is
+ * recomputed — see `commitAuthenticatedSession`) and shortened in bulk when
+ * an admin lowers an org cap (see the admin `session-duration` route).
+ * Reading here is a free piggyback on the User row that `requireUser`/
+ * `getUser` already fetches — there is no per-request DB query added by this
+ * check. `requireUserId`/`getUserId` deliberately do NOT enforce: enforcement
+ * happens at the next page navigation (root.tsx loader calls `getUser`),
+ * which matches HIPAA auto-logoff semantics — terminate sessions at the
+ * navigation boundary, not on every polling fetch.
+ *
+ * `nextSessionEnd === null` means "no enforced deadline" — applies to legacy
+ * sessions from before this feature shipped. The default `User.sessionDuration`
+ * is 1 year (matching the cookie's `Max-Age`), so a null deadline is
+ * functionally identical to "natural cookie expiry" for users with default
+ * settings. Every path that produces a sub-default effective duration —
+ * fresh login, user setting change, admin cap change — also writes
+ * `nextSessionEnd`, so there is no realistic state where an unenforced null
+ * masks a tighter cap.
  */
-async function enforceSessionExpiry(
+function maybeAutoLogout(
   request: Request,
-  userId: string,
+  user: { id: string; nextSessionEnd: Date | null },
   impersonatedUserId: string | null = null
-): Promise<void> {
-  const session = await getUserSession(request);
-  // Hot path: every authenticated request runs this. Read from the replica
-  // when one is configured (falls back to primary). Stale-by-replica-lag is
-  // acceptable here because the worst case is a session living a few seconds
-  // past its cap on the very first request after a cap change.
-  const { durationSeconds, orgCapSeconds, cappingOrgId, userSettingSeconds } =
-    await getEffectiveSessionDuration(userId, $replica);
-  if (!isSessionExpired(session, durationSeconds)) return;
+): void {
+  if (user.nextSessionEnd === null) return;
+  if (Date.now() <= user.nextSessionEnd.getTime()) return;
 
-  const issuedAt = getSessionIssuedAt(session);
   // HIPAA audit trail: structured log lands in CloudWatch via stdout. Use
   // the stable `event` field to filter/aggregate auto-logout events.
   // `sourceIp` uses ALB's appended (last) X-Forwarded-For element, not the
   // first one, since the leading element is client-supplied and spoofable.
   logger.info("Auto-logout: session exceeded effective duration", {
     event: "session.auto_logout",
-    userId,
+    userId: user.id,
     impersonatedUserId,
-    cappingOrgId,
-    effectiveDurationSeconds: durationSeconds,
-    userSettingSeconds,
-    orgCapSeconds,
-    sessionAgeMs: issuedAt === null ? null : Date.now() - issuedAt,
+    nextSessionEnd: user.nextSessionEnd.toISOString(),
     requestPath: new URL(request.url).pathname,
     sourceIp: extractClientIp(request.headers.get("x-forwarded-for")),
   });
@@ -56,43 +52,42 @@ async function enforceSessionExpiry(
 }
 
 export async function getUserId(request: Request): Promise<string | undefined> {
+  // Cookie-only fast path: zero DB queries. Impersonation admin-verification
+  // and auto-logout enforcement happen in `getUser`/`requireUser`, where we
+  // already pay for a User row fetch.
   const impersonatedUserId = await getImpersonationId(request);
-
-  if (impersonatedUserId) {
-    // Verify the real user (from the session cookie) is still an admin
-    const authUser = await authenticator.isAuthenticated(request);
-    if (authUser?.userId) {
-      const realUser = await getUserById(authUser.userId);
-      if (realUser?.admin) {
-        // Enforce expiry against the admin's own session — impersonation must
-        // not be a way to bypass the admin's effective duration cap.
-        await enforceSessionExpiry(request, authUser.userId, impersonatedUserId);
-        return impersonatedUserId;
-      }
-    }
-    // Admin revoked or session invalid — fall through to return the real
-    // user's ID. Same enforcement as the regular auth path below.
-    if (authUser?.userId) {
-      await enforceSessionExpiry(request, authUser.userId);
-    }
-    return authUser?.userId;
-  }
+  if (impersonatedUserId) return impersonatedUserId;
 
   const authUser = await authenticator.isAuthenticated(request);
-  if (!authUser?.userId) return undefined;
-
-  await enforceSessionExpiry(request, authUser.userId);
-  return authUser.userId;
+  return authUser?.userId;
 }
 
 export async function getUser(request: Request) {
-  const userId = await getUserId(request);
-  if (userId === undefined) return null;
+  const impersonatedUserId = await getImpersonationId(request);
+  const authUser = await authenticator.isAuthenticated(request);
 
-  const user = await getUserById(userId);
-  if (user) return user;
+  if (impersonatedUserId && authUser?.userId) {
+    // Impersonating: verify the real user is still an admin and enforce the
+    // *admin's* deadline (the cap belongs to the cookie, not the
+    // impersonation target). If the admin is no longer admin, fall back to
+    // operating as the admin themselves — same defense-in-depth as before.
+    const realUser = await getUserById(authUser.userId);
+    if (!realUser) throw await logout(request);
+    if (realUser.admin) {
+      maybeAutoLogout(request, realUser, impersonatedUserId);
+      const target = await getUserById(impersonatedUserId);
+      if (!target) throw await logout(request);
+      return target;
+    }
+    maybeAutoLogout(request, realUser);
+    return realUser;
+  }
 
-  throw await logout(request);
+  if (!authUser?.userId) return null;
+  const user = await getUserById(authUser.userId);
+  if (!user) throw await logout(request);
+  maybeAutoLogout(request, user);
+  return user;
 }
 
 export async function requireUserId(request: Request, redirectTo?: string) {
@@ -112,28 +107,29 @@ export async function requireUserId(request: Request, redirectTo?: string) {
 export type UserFromSession = Awaited<ReturnType<typeof requireUser>>;
 
 export async function requireUser(request: Request) {
-  const userId = await requireUserId(request);
-
-  const impersonationId = await getImpersonationId(request);
-  const user = await getUserById(userId);
-  if (user) {
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      displayName: user.displayName,
-      avatarUrl: user.avatarUrl,
-      admin: user.admin,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      dashboardPreferences: user.dashboardPreferences,
-      confirmedBasicDetails: user.confirmedBasicDetails,
-      mfaEnabledAt: user.mfaEnabledAt,
-      isImpersonating: !!impersonationId && impersonationId === userId,
-    };
+  const user = await getUser(request);
+  if (!user) {
+    const url = new URL(request.url);
+    const finalRedirectTo = sanitizeRedirectPath(`${url.pathname}${url.search}`);
+    const searchParams = new URLSearchParams([["redirectTo", finalRedirectTo]]);
+    throw redirect(`/login?${searchParams}`);
   }
 
-  throw await logout(request);
+  const impersonationId = await getImpersonationId(request);
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    admin: user.admin,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    dashboardPreferences: user.dashboardPreferences,
+    confirmedBasicDetails: user.confirmedBasicDetails,
+    mfaEnabledAt: user.mfaEnabledAt,
+    isImpersonating: !!impersonationId && impersonationId === user.id,
+  };
 }
 
 export async function logout(request: Request) {

@@ -61,9 +61,10 @@ export async function action({ request }: ActionFunctionArgs) {
   });
 
   // Re-issue the cookie with the new maxAge and reset issuedAt so the user
-  // gets a fresh window matching their new selection right away.
+  // gets a fresh window matching their new selection right away. This also
+  // restamps `User.nextSessionEnd` against the new effective duration.
   const authSession = await getUserSession(request);
-  const authCookie = await commitAuthenticatedSession(authSession);
+  const authCookie = await commitAuthenticatedSession(authSession, userId);
 
   const messageSession = await getMessageSession(request.headers.get("cookie"));
   setSuccessMessage(messageSession, "Session duration updated.");

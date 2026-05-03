@@ -58,6 +58,14 @@ model User {
   /// May be further restricted by Organization.maxSessionDuration on any of the user's orgs.
   sessionDuration Int @default(31556952)
 
+  /// Absolute timestamp at which the user's current session must end. Written
+  /// at login (and any time the effective duration is recomputed) and shortened
+  /// when an admin lowers an org cap. Read on requireUser / getUser; null is
+  /// treated as "no enforced deadline" (legacy sessions from before this
+  /// shipped). Read-on-demand has zero per-request DB cost — the value
+  /// piggybacks on the User fetch that requireUser already does.
+  nextSessionEnd DateTime?
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]

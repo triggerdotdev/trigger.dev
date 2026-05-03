@@ -5,8 +5,6 @@ import { commitSession, DEFAULT_SESSION_DURATION_SECONDS } from "./sessionStorag
 
 export { DEFAULT_SESSION_DURATION_SECONDS };
 
-export const SESSION_ISSUED_AT_KEY = "session:issuedAt";
-
 // Months and years use standard Gregorian-calendar conversions (365.2425 days/yr,
 // 30.436875 days/month) so values produced by external "X months in seconds"
 // calculators map cleanly to a labeled option.
@@ -142,73 +140,31 @@ export function getAllowedSessionOptions(
   return allowed;
 }
 
-export function getSessionIssuedAt(session: Session): number | null {
-  const raw = session.get(SESSION_ISSUED_AT_KEY);
-  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
-  return raw;
-}
-
 /**
- * Returns true when the session has an issuedAt timestamp older than the
- * effective duration. Missing issuedAt is treated as not expired (legacy
- * cookies from before this feature shipped will be lazily backfilled).
- */
-export function isSessionExpired(
-  session: Session,
-  effectiveDurationSeconds: number,
-  now: number = Date.now()
-): boolean {
-  const issuedAt = getSessionIssuedAt(session);
-  if (issuedAt === null) return false;
-  return now - issuedAt > effectiveDurationSeconds * 1000;
-}
-
-/** Sets the session's issuedAt to `now` (epoch ms). */
-export function setSessionIssuedAt(session: Session, now: number = Date.now()): void {
-  session.set(SESSION_ISSUED_AT_KEY, now);
-}
-
-/**
- * If the session has no issuedAt set, sets it to `now` and returns true so the
- * caller knows to commit the cookie. Returns false when nothing changed.
- */
-export function ensureSessionIssuedAt(session: Session, now: number = Date.now()): boolean {
-  if (getSessionIssuedAt(session) !== null) return false;
-  setSessionIssuedAt(session, now);
-  return true;
-}
-
-/**
- * Commits the session for an authenticated user, setting `issuedAt = now`.
- * Use this at every login/MFA-completion point so the session window starts
- * fresh.
+ * Commits the session for an authenticated user and stamps the user's
+ * effective expiry into `User.nextSessionEnd`. Use this at every
+ * login/MFA-completion point so the session window starts fresh, plus any
+ * time the user re-affirms their session duration. The single DB write here
+ * is the canonical "compute effective duration" step — request-time checks
+ * just read `nextSessionEnd` from the row that `requireUser`/`getUser`
+ * already fetches.
  *
  * The auth cookie's `Max-Age` is intentionally long
  * (`DEFAULT_SESSION_DURATION_SECONDS`, 1 year) so the cookie always reaches
- * the server. Actual session expiry is enforced server-side via
- * `sessionIssuedAt` against the user's effective duration. If we let the
- * cookie expire client-side, the user is silently logged out.
+ * the server. Actual session expiry is enforced server-side by reading
+ * `User.nextSessionEnd`. If we let the cookie expire client-side, the user
+ * is silently logged out.
  */
 export async function commitAuthenticatedSession(
   session: Session,
-  now: number = Date.now()
+  userId: string,
+  now: number = Date.now(),
+  client: PrismaClientOrTransaction = prisma
 ): Promise<string> {
-  setSessionIssuedAt(session, now);
-  return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
-}
-
-/**
- * Lazily backfills `issuedAt` on legacy auth sessions that predate the
- * sessionDuration feature. Returns the cookie string when a backfill happened
- * (caller must append it to the response's `Set-Cookie` headers), or `null`
- * when the session already had `issuedAt` set — avoiding an unnecessary
- * Set-Cookie on every authenticated page load and preventing the cookie's
- * 1-year Max-Age from rolling forward indefinitely.
- */
-export async function commitAuthenticatedSessionLazy(
-  session: Session,
-  now: number = Date.now()
-): Promise<string | null> {
-  if (!ensureSessionIssuedAt(session, now)) return null;
+  const { durationSeconds } = await getEffectiveSessionDuration(userId, client);
+  await client.user.update({
+    where: { id: userId },
+    data: { nextSessionEnd: new Date(now + durationSeconds * 1000) },
+  });
   return commitSession(session, { maxAge: DEFAULT_SESSION_DURATION_SECONDS });
 }

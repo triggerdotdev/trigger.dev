@@ -4,16 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
 import {
+  commitAuthenticatedSession,
   DEFAULT_SESSION_DURATION_SECONDS,
-  ensureSessionIssuedAt,
   getAllowedSessionOptions,
   getEffectiveSessionDuration,
   getOrganizationSessionCap,
   isAllowedSessionDuration,
-  isSessionExpired,
   SESSION_DURATION_OPTIONS,
-  SESSION_ISSUED_AT_KEY,
-  setSessionIssuedAt,
 } from "../app/services/sessionDuration.server";
 
 const oneHour = 60 * 60;
@@ -64,44 +61,6 @@ describe("getAllowedSessionOptions", () => {
     const options = getAllowedSessionOptions(oneDay, oneHour);
     const oneHourCount = options.filter((o) => o.value === oneHour).length;
     expect(oneHourCount).toBe(1);
-  });
-});
-
-describe("isSessionExpired", () => {
-  it("returns false when issuedAt is missing (legacy cookie)", async () => {
-    const session = await makeEmptySession();
-    expect(isSessionExpired(session, oneHour)).toBe(false);
-  });
-
-  it("returns false when within the duration window", async () => {
-    const session = await makeEmptySession();
-    const now = 1_000_000_000_000;
-    setSessionIssuedAt(session, now - 60 * 1000);
-    expect(isSessionExpired(session, oneHour, now)).toBe(false);
-  });
-
-  it("returns true when older than the duration window", async () => {
-    const session = await makeEmptySession();
-    const now = 1_000_000_000_000;
-    setSessionIssuedAt(session, now - (oneHour + 1) * 1000);
-    expect(isSessionExpired(session, oneHour, now)).toBe(true);
-  });
-});
-
-describe("ensureSessionIssuedAt", () => {
-  it("sets issuedAt and returns true when missing", async () => {
-    const session = await makeEmptySession();
-    const now = 1_700_000_000_000;
-    expect(ensureSessionIssuedAt(session, now)).toBe(true);
-    expect(session.get(SESSION_ISSUED_AT_KEY)).toBe(now);
-  });
-
-  it("leaves issuedAt unchanged and returns false when already set", async () => {
-    const session = await makeEmptySession();
-    const original = 1_500_000_000_000;
-    setSessionIssuedAt(session, original);
-    expect(ensureSessionIssuedAt(session, 1_700_000_000_000)).toBe(false);
-    expect(session.get(SESSION_ISSUED_AT_KEY)).toBe(original);
   });
 });
 
@@ -215,4 +174,49 @@ describe("getEffectiveSessionDuration", () => {
       expect(result.durationSeconds).toBe(DEFAULT_SESSION_DURATION_SECONDS);
     }
   );
+});
+
+describe("commitAuthenticatedSession", () => {
+  containerTest(
+    "stamps User.nextSessionEnd at now + user setting when no org cap",
+    async ({ prisma }) => {
+      const user = await createUser(prisma, "commit-no-cap@test.com", oneHour);
+      const session = await makeEmptySession();
+      const now = 1_700_000_000_000;
+
+      await commitAuthenticatedSession(session, user.id, now, prisma);
+
+      const updated = await prisma.user.findFirstOrThrow({ where: { id: user.id } });
+      expect(updated.nextSessionEnd?.getTime()).toBe(now + oneHour * 1000);
+    }
+  );
+
+  containerTest(
+    "stamps User.nextSessionEnd against the tightest org cap when smaller than user setting",
+    async ({ prisma }) => {
+      const user = await createUser(prisma, "commit-capped@test.com", oneYear);
+      await createOrgWithMember(prisma, "commit-capped-org", user.id, oneHour);
+      const session = await makeEmptySession();
+      const now = 1_700_000_000_000;
+
+      await commitAuthenticatedSession(session, user.id, now, prisma);
+
+      const updated = await prisma.user.findFirstOrThrow({ where: { id: user.id } });
+      expect(updated.nextSessionEnd?.getTime()).toBe(now + oneHour * 1000);
+    }
+  );
+
+  containerTest("resets nextSessionEnd to a fresh window on each commit", async ({ prisma }) => {
+    const user = await createUser(prisma, "commit-reset@test.com", oneHour);
+    const session = await makeEmptySession();
+
+    await commitAuthenticatedSession(session, user.id, 1_700_000_000_000, prisma);
+    const first = await prisma.user.findFirstOrThrow({ where: { id: user.id } });
+
+    await commitAuthenticatedSession(session, user.id, 1_700_000_060_000, prisma);
+    const second = await prisma.user.findFirstOrThrow({ where: { id: user.id } });
+
+    expect(second.nextSessionEnd?.getTime()).toBeGreaterThan(first.nextSessionEnd!.getTime());
+    expect(second.nextSessionEnd?.getTime()).toBe(1_700_000_060_000 + oneHour * 1000);
+  });
 });

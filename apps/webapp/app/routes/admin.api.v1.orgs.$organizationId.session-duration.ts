@@ -50,5 +50,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     select: { id: true, slug: true, maxSessionDuration: true },
   });
 
+  // Propagate the new cap to currently-logged-in members by shortening their
+  // `nextSessionEnd`. We only ever shorten (`LEAST`): raising or removing the
+  // cap leaves existing sessions alone — the larger window applies on next
+  // login. If a member is in another org with a tighter cap that other cap
+  // remains in effect via their existing `nextSessionEnd` (LEAST keeps it).
+  if (body.maxSessionDuration !== null) {
+    await prisma.$executeRaw`
+      UPDATE "User"
+      SET "nextSessionEnd" = LEAST(
+        COALESCE("nextSessionEnd", 'infinity'::timestamp),
+        NOW() + (LEAST("sessionDuration", ${body.maxSessionDuration}) * INTERVAL '1 second')
+      )
+      WHERE "id" IN (SELECT "userId" FROM "OrgMember" WHERE "organizationId" = ${organizationId})
+    `;
+  }
+
   return json({ success: true, organization });
 }
