@@ -5,7 +5,7 @@ import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
-import type { ChatUiMessage } from "@/lib/chat-tools";
+import type { ChatUiMessage } from "@/lib/chat-tools-schemas";
 import type { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 
 // Structural type mirroring @trigger.dev/sdk/ai's CompactionChunkData.
@@ -323,6 +323,8 @@ type ChatProps = {
   projectDashboardPath?: string;
   onFirstMessage?: (chatId: string, text: string) => void;
   onMessagesChange?: (chatId: string, messages: ChatUiMessage[]) => void;
+  /** Whether the transport is configured to route first-turn through `chat.handover`. */
+  handoverEnabled?: boolean;
 };
 
 export function Chat({
@@ -338,6 +340,7 @@ export function Chat({
   projectDashboardPath,
   onFirstMessage,
   onMessagesChange,
+  handoverEnabled = false,
 }: ChatProps) {
   const [input, setInput] = useState("");
   const hasCalledFirstMessage = useRef(false);
@@ -552,6 +555,8 @@ export function Chat({
         return transport.getSession(chatId)?.lastEventId ?? null;
       },
       chatId,
+      /** True when the transport is configured to route first-turn through `chat.handover`. */
+      handoverEnabled,
 
       // ── Actions ───────────────────────────────────────────────────
       steer: (text: string) => actionsRef.current.steer(text),

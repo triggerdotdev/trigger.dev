@@ -2,7 +2,7 @@
 
 import { generateId } from "ai";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import type { ChatUiMessage } from "@/lib/chat-tools";
+import type { ChatUiMessage } from "@/lib/chat-tools-schemas";
 import { useCallback, useEffect, useState } from "react";
 import { Chat } from "@/components/chat";
 import { ChatSidebar } from "@/components/chat-sidebar";
@@ -169,6 +169,8 @@ export function ChatApp({
         onIdleTimeoutChange={setIdleTimeoutInSeconds}
         taskMode={taskMode}
         onTaskModeChange={onTaskModeChange}
+        useHandover={false}
+        onUseHandoverChange={() => {}}
       />
       <div className="flex-1">
         {activeChatId ? (

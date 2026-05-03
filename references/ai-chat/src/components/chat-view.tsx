@@ -1,7 +1,7 @@
 "use client";
 
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import type { ChatUiMessage } from "@/lib/chat-tools";
+import type { ChatUiMessage } from "@/lib/chat-tools-schemas";
 import { Chat } from "@/components/chat";
 import { useChatSettings } from "@/components/chat-settings-context";
 import {
@@ -34,7 +34,7 @@ export function ChatView({
   model,
 }: ChatViewProps) {
   const router = useRouter();
-  const { taskMode } = useChatSettings();
+  const { taskMode, useHandover } = useChatSettings();
 
   const [currentSession, setCurrentSession] = useState<SessionInfo | null>(initialSession);
 
@@ -67,6 +67,15 @@ export function ChatView({
     onSessionChange: handleSessionChange,
     clientData: { userId: "user_123" },
     multiTab: true,
+    // Head-start URL: opt-in fast-path for the first message of a
+    // brand-new chat. The transport POSTs to `/api/chat` (which
+    // exports `chat.handover({ agentId, run })`) so step 1's LLM
+    // call runs in the warm Next.js process while the trigger agent
+    // run boots in parallel. After turn 1 the transport hydrates
+    // session state from response headers and writes directly to
+    // `session.in` for turn 2 onward — same direct-trigger path as
+    // when `headStart` is unset.
+    headStart: useHandover ? "/api/chat" : undefined,
   });
 
   const handleFirstMessage = useCallback(
@@ -101,6 +110,7 @@ export function ChatView({
       projectDashboardPath={process.env.NEXT_PUBLIC_TRIGGER_PROJECT_DASHBOARD_PATH}
       onFirstMessage={handleFirstMessage}
       onMessagesChange={handleMessagesChange}
+      handoverEnabled={useHandover}
     />
   );
 }
