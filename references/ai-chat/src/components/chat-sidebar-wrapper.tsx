@@ -28,6 +28,8 @@ export function ChatSidebarWrapper({
     setTaskMode,
     idleTimeoutInSeconds,
     setIdleTimeoutInSeconds,
+    useHandover,
+    setUseHandover,
   } = useChatSettings();
 
   // Extract active chatId from URL
@@ -85,6 +87,8 @@ export function ChatSidebarWrapper({
       onIdleTimeoutChange={setIdleTimeoutInSeconds}
       taskMode={taskMode}
       onTaskModeChange={setTaskMode}
+      useHandover={useHandover}
+      onUseHandoverChange={setUseHandover}
     />
   );
 }

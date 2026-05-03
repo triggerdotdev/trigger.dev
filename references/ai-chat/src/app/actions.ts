@@ -9,7 +9,7 @@ import type {
   aiChatSession,
   upgradeTestAgent,
 } from "@/trigger/chat";
-import type { ChatUiMessage } from "@/lib/chat-tools";
+import type { ChatUiMessage } from "@/lib/chat-tools-schemas";
 import { prisma } from "@/lib/prisma";
 
 /** Short-lived PATs for local testing of expiry + renewal (not for production). */

@@ -21,8 +21,8 @@ import {
   deepResearch,
   inspectEnvironment,
   webFetch,
-  type ChatUiMessage,
-} from "@/lib/chat-tools";
+} from "./chat-tools";
+import type { ChatUiMessage } from "@/lib/chat-tools-schemas";
 import { disposeCodeSandboxForRun, warmCodeSandbox } from "@/lib/code-sandbox";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
@@ -232,7 +232,15 @@ export const aiChat = chat
         turn,
         count: messages.length,
       });
-      return validateUIMessages({ messages, tools: chatTools });
+      // Cast: `chatTools` has executes (output types are real), but
+      // `ChatUiMessage` is derived from the schema-only set in
+      // `chat-tools-schemas.ts` so its tools have `output: never`.
+      // `validateUIMessages` only reads `inputSchema` at runtime, so
+      // the type narrowing is safely sidestepped.
+      return validateUIMessages({
+        messages,
+        tools: chatTools as unknown as Parameters<typeof validateUIMessages>[0]["tools"],
+      });
     },
     // #endregion
 

@@ -29,6 +29,8 @@ type ChatSidebarProps = {
   onIdleTimeoutChange: (seconds: number) => void;
   taskMode: string;
   onTaskModeChange: (mode: string) => void;
+  useHandover: boolean;
+  onUseHandoverChange: (on: boolean) => void;
 };
 
 export function ChatSidebar({
@@ -42,6 +44,8 @@ export function ChatSidebar({
   onIdleTimeoutChange,
   taskMode,
   onTaskModeChange,
+  useHandover,
+  onUseHandoverChange,
 }: ChatSidebarProps) {
   const sorted = [...chats].sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -115,6 +119,18 @@ export function ChatSidebar({
             <option value="upgrade-test">upgrade-test (requestUpgrade after 3 turns)</option>
           </select>
         </div>
+        <label
+          className="flex items-center gap-2 text-xs text-gray-500"
+          title="Route first-turn messages through /api/chat (chat.handover) so step 1 streams from the Next.js process while the agent run boots in parallel."
+        >
+          <input
+            type="checkbox"
+            checked={useHandover}
+            onChange={(e) => onUseHandoverChange(e.target.checked)}
+            className="h-3 w-3 rounded border-gray-300"
+          />
+          <span>Use handover (1st turn)</span>
+        </label>
         <button
           type="button"
           onClick={onWipeAll}
