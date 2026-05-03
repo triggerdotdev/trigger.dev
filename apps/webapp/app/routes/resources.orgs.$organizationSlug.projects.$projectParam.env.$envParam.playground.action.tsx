@@ -239,7 +239,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "chatId is required" }, { status: 400 });
       }
 
-      const messagesData = messagesStr ? JSON.parse(messagesStr) : undefined;
+      let messagesData: unknown;
+      try {
+        messagesData = messagesStr ? JSON.parse(messagesStr) : undefined;
+      } catch {
+        return json({ error: "Invalid messages JSON" }, { status: 400 });
+      }
 
       // Extract title from the first user message if the conversation still has the default title.
       // This handles the case where a preloaded conversation gets its first real message
