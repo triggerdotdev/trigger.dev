@@ -59,7 +59,7 @@ export function ScopeFilter({ shortcut, value, onValueChange }: ScopeFilterProps
         <Ariakit.TooltipAnchor
           render={
             <Ariakit.Select
-              ref={triggerRef as any}
+              ref={triggerRef}
               render={<div className="group cursor-pointer focus-custom" />}
             />
           }

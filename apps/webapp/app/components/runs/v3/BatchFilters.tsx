@@ -180,9 +180,8 @@ function PermanentStatusFilter() {
             <Ariakit.TooltipProvider timeout={200}>
               <Ariakit.TooltipAnchor
                 render={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   <Ariakit.Select
-                    ref={triggerRef as any}
+                    ref={triggerRef}
                     render={<div className="group cursor-pointer focus-custom" />}
                   />
                 }
@@ -229,7 +228,7 @@ function PermanentStatusFilter() {
 
 function validateBatchId(value: string): string | undefined {
   if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27/32 characters long";
+  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
 }
 
 function BatchIdDropdown(
@@ -271,9 +270,8 @@ function PermanentBatchIdFilter() {
             <Ariakit.TooltipProvider timeout={200}>
               <Ariakit.TooltipAnchor
                 render={
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   <Ariakit.Select
-                    ref={triggerRef as any}
+                    ref={triggerRef}
                     render={<div className="group cursor-pointer focus-custom" />}
                   />
                 }

@@ -10,8 +10,9 @@ import { matchSorter } from "match-sorter";
  * @param params.items - Array of objects to filter
  * @param params.keys - Array of object keys to perform the fuzzy search on (supports dot-notation for nested properties)
  * @returns An object containing:
- *   - filterText: The current filter text
- *   - setFilterText: Function to update the filter text
+ *   - filterText: The current filter text (the controlled value if provided, otherwise the internal state)
+ *   - setFilterText: Updates the internal filter text. No-op when `filterText` is provided
+ *     (controlled mode) — the parent owns the value in that case.
  *   - filteredItems: The filtered array of items based on the current filter text
  *
  * @example

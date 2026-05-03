@@ -143,10 +143,8 @@ export function AIFilterInput() {
                       button={
                         <button
                           type="button"
-                          onPointerDown={(e) => {
-                            e.preventDefault();
-                            setText("");
-                          }}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => setText("")}
                           className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
                         >
                           <XMarkIcon className="size-3" />

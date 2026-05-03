@@ -69,7 +69,10 @@ export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
     searchParams.has("statuses") ||
     searchParams.has("tags") ||
     searchParams.has("id") ||
-    searchParams.has("idempotencyKey");
+    searchParams.has("idempotencyKey") ||
+    searchParams.has("period") ||
+    searchParams.has("from") ||
+    searchParams.has("to");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1.5">
@@ -300,7 +303,7 @@ function TagsDropdown({
           return true;
         }}
       >
-        {!(filtered.length === 0 && fetcher.state !== "loading") && (
+        {!(filtered.length === 0 && fetcher.state !== "loading" && searchValue === "") && (
           <ComboBox
             value={searchValue}
             render={(props) => (

@@ -1517,6 +1517,8 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
           onCheckedChange={(checked) => {
             replace({
               rootOnly: checked ? "true" : "false",
+              cursor: undefined,
+              direction: undefined,
             });
           }}
         />
@@ -1533,7 +1535,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
 
 function validateRunId(value: string): string | undefined {
   if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
-  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25/30 characters long";
+  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25 or 29 characters long";
 }
 
 function RunIdDropdown(
@@ -1638,7 +1640,7 @@ function AppliedBatchIdFilter() {
 }
 
 function validateScheduleId(value: string): string | undefined {
-  if (!value.startsWith("sched")) return "Schedule IDs start with 'sched_'";
+  if (!value.startsWith("sched_")) return "Schedule IDs start with 'sched_'";
   if (value.length !== 27) return "Schedule IDs are 27 characters long";
 }
 

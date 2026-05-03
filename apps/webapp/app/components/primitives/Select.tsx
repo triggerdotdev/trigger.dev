@@ -357,7 +357,7 @@ export function SelectTrigger({
       </Ariakit.TooltipAnchor>
       {showTooltip && (
         <Ariakit.Tooltip
-          disabled={shortcut === undefined}
+          disabled={!tooltipTitle && !shortcut}
           className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
         >
           <div className="flex items-center gap-2">

@@ -1037,7 +1037,7 @@ export function IdFilterDropdown({
     if (open) setInputValue(currentValue);
   }
 
-  const apply = useCallback(() => {
+  const apply = () => {
     clearSearchValue();
     replace({
       cursor: undefined,
@@ -1046,7 +1046,7 @@ export function IdFilterDropdown({
     });
 
     setOpen(false);
-  }, [inputValue, replace, paramKey]);
+  };
 
   const error = inputValue ? validate?.(inputValue) : undefined;
 

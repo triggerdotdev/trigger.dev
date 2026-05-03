@@ -152,7 +152,7 @@ function ModelsDropdown({
               {m.model}
             </SelectItem>
           ))}
-          {filtered.length === 0 && <SelectItem disabled className="text-text-bright">No models found</SelectItem>}
+          {filtered.length === 0 && <SelectItem disabled>No models found</SelectItem>}
         </SelectList>
       </SelectPopover>
     </SelectProvider>
