@@ -17,7 +17,7 @@
  */
 
 import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
-import type { UIMessage, UIMessageChunk } from "ai";
+import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 import { readUIMessageStream } from "ai";
 import { ApiClient, SSEStreamSubscription, apiClientManager } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
@@ -408,6 +408,61 @@ export class AgentChat<TAgent = unknown> {
         serializeInputChunk({ kind: "stop" })
       )
       .catch(() => {});
+  }
+
+  /**
+   * Hand over from a `chat.handover` route handler to a parked
+   * `handover-prepare` agent run. Wakes the run, which seeds its
+   * accumulators with `partialAssistantMessage` and continues from
+   * tool execution onward — the model call for step 1 is skipped.
+   *
+   * Used internally by `chat.handover`; not part of the customer
+   * surface.
+   */
+  async sendHandover(args: {
+    partialAssistantMessage: ModelMessage[];
+    /**
+     * UI messageId from the customer's step-1 stream — propagated to
+     * the agent so its post-handover chunks merge into the same
+     * assistant message on the browser.
+     */
+    messageId?: string;
+    /**
+     * Whether the customer's step 1 is the final response (pure-text
+     * finish). When true, the agent runs hooks but skips the LLM
+     * call. When false, the agent runs `streamText` which executes
+     * pending tool-calls and continues from step 2.
+     */
+    isFinal: boolean;
+  }): Promise<void> {
+    const api = this.createApiClient();
+    await api.appendToSessionStream(
+      this.chatId,
+      "in",
+      serializeInputChunk({
+        kind: "handover",
+        partialAssistantMessage: args.partialAssistantMessage,
+        messageId: args.messageId,
+        isFinal: args.isFinal,
+      })
+    );
+  }
+
+  /**
+   * Tell a parked `handover-prepare` agent run that the customer's
+   * first turn finished pure-text (no tool calls) — the run exits
+   * cleanly without making an LLM call.
+   *
+   * Used internally by `chat.handover`; not part of the customer
+   * surface.
+   */
+  async sendHandoverSkip(): Promise<void> {
+    const api = this.createApiClient();
+    await api.appendToSessionStream(
+      this.chatId,
+      "in",
+      serializeInputChunk({ kind: "handover-skip" })
+    );
   }
 
   /**

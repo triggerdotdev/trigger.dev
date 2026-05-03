@@ -24,7 +24,13 @@ export type SetupLocals = (locals: {
 type ChatWirePayload = {
   messages: UIMessage[];
   chatId: string;
-  trigger: "submit-message" | "regenerate-message" | "preload" | "close" | "action";
+  trigger:
+    | "submit-message"
+    | "regenerate-message"
+    | "preload"
+    | "close"
+    | "action"
+    | "handover-prepare";
   messageId?: string;
   metadata?: unknown;
   action?: unknown;
@@ -51,8 +57,17 @@ export type MockChatAgentOptions = {
    * Whether to start the task in preload mode. Defaults to `true` so the
    * first `sendMessage()` triggers the first turn via the preload path.
    * Set to `false` to skip preload — the first `sendMessage()` starts turn 0 directly.
+   *
+   * Ignored when `mode: "handover-prepare"` is set.
    */
   preload?: boolean;
+  /**
+   * Initial trigger the agent boots with. Defaults to `"preload"` (or
+   * `"submit-message"` when `preload: false`). Use `"handover-prepare"`
+   * to drive the chat.handover wait branch — call `sendHandover()` /
+   * `sendHandoverSkip()` to dispatch the handover signal.
+   */
+  mode?: "preload" | "submit-message" | "handover-prepare";
   /**
    * Callback that runs **before** the agent's `run()` is invoked, with a
    * `set` function for pre-seeding locals. Use this to inject server-side
@@ -106,6 +121,31 @@ export type MockChatAgentHarness = {
 
   /** Fire a stop signal. Does not wait for the turn — the task keeps running. */
   sendStop(message?: string): Promise<void>;
+
+  /**
+   * Dispatch a `handover` signal — the agent picks up partial assistant
+   * messages and continues the turn. Only meaningful when the harness
+   * was started with `mode: "handover-prepare"`. Waits for turn-complete.
+   *
+   * `isFinal: false` (default) — agent runs `streamText` which executes
+   * any pending tool-calls (via the approval round) and resumes from
+   * step 2.
+   *
+   * `isFinal: true` — agent runs lifecycle hooks but skips `streamText`.
+   * The partial IS the response; `onTurnComplete` fires with it.
+   */
+  sendHandover(args: {
+    partialAssistantMessage: unknown[];
+    isFinal?: boolean;
+    messageId?: string;
+  }): Promise<MockChatAgentTurn>;
+
+  /**
+   * Dispatch a `handover-skip` signal — the agent exits cleanly without
+   * firing turn hooks. Only meaningful when the harness was started
+   * with `mode: "handover-prepare"`. Awaits the run finishing.
+   */
+  sendHandoverSkip(): Promise<void>;
 
   /**
    * Close the chat session cleanly. Sends `trigger: "close"` and awaits the
@@ -174,7 +214,8 @@ export function mockChatAgent(
   // The agent opens the session with `payload.sessionId ?? payload.chatId`.
   // We pass no sessionId, so it falls back to chatId.
   const sessionId = chatId;
-  const preload = options.preload ?? true;
+  const mode: "preload" | "submit-message" | "handover-prepare" =
+    options.mode ?? (options.preload === false ? "submit-message" : "preload");
   const clientData = options.clientData;
 
   const taskEntry = resourceCatalog.getTask(agent.id);
@@ -263,7 +304,7 @@ export function mockChatAgent(
       const initialPayload: ChatWirePayload = {
         messages: [],
         chatId,
-        trigger: preload ? "preload" : "submit-message",
+        trigger: mode,
         metadata: clientData,
       };
 
@@ -384,6 +425,33 @@ export function mockChatAgent(
     async sendStop(message) {
       await harnessReady;
       await sendSessionInput(sessionId, { kind: "stop", message });
+    },
+
+    async sendHandover(args) {
+      await harnessReady;
+      const before = allRawChunks.length;
+      const turnComplete = waitForTurnComplete();
+      await sendSessionInput(sessionId, {
+        kind: "handover",
+        partialAssistantMessage: args.partialAssistantMessage,
+        messageId: args.messageId,
+        isFinal: args.isFinal ?? false,
+      });
+      await turnComplete;
+      const rawChunks = allRawChunks.slice(before);
+      const chunks = rawChunks.filter((c) => !isControlChunk(c)) as UIMessageChunk[];
+      return { chunks, rawChunks };
+    },
+
+    async sendHandoverSkip() {
+      await harnessReady;
+      // No turn-complete on skip — the agent exits without firing hooks.
+      // Send the chunk and wait for the run to finish.
+      await sendSessionInput(sessionId, { kind: "handover-skip" });
+      await Promise.race([
+        taskFinished.catch(() => {}),
+        new Promise<void>((resolve) => setTimeout(resolve, 1000)),
+      ]);
     },
 
     async close() {
