@@ -9,17 +9,21 @@ import {
 import { commonWorker } from "~/v3/commonWorker.server";
 
 /**
- * Admin trigger for `v3.reconfigureStreamBasinForOrg`. The plan-change
- * path in `setPlan` enqueues this automatically when billing is wired;
- * this route exists for ops + e2e testing.
+ * Admin trigger for stream-basin reconfiguration. The plan-change path
+ * in `setPlan` enqueues the same reconcile job automatically when
+ * billing is wired; this route exists for ops + e2e testing.
  *
- * - Default (`{ orgId }`): enqueues the worker job which resolves the
- *   retention from the org's plan and PATCHes the basin to match.
- *   No-op when billing isn't configured (OSS).
- * - With `retention`: bypasses the billing lookup and runs reconfigure
- *   inline against the given duration string (e.g. `"7d"`, `"30d"`,
- *   `"365d"`, `"1y"`). Useful for validating the PATCH wire shape
- *   end-to-end and as a manual override (e.g. enterprise contracts).
+ * - Default (`{ orgId }`): enqueues `v3.reconcileStreamBasinForOrg`,
+ *   the full reconciler. It resolves retention from the org's current
+ *   plan and either provisions, reconfigures, or deprovisions the basin
+ *   to match — including nulling `streamBasinName` if the org is now on
+ *   a free plan. No-op when billing isn't configured (OSS) or when
+ *   `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=false`.
+ * - With `retention`: skips the worker queue and the reconciler entirely.
+ *   Calls `reconfigureBasinForOrg` inline with the given duration string
+ *   (e.g. `"7d"`, `"30d"`, `"365d"`, `"1y"`). Useful for validating the
+ *   PATCH wire shape end-to-end and as a manual override (e.g.
+ *   enterprise contracts) — does NOT touch the column or check the plan.
  */
 const BodySchema = z
   .object({
