@@ -3,8 +3,9 @@
  * `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED`: when off, all orgs share
  * `REALTIME_STREAMS_S2_BASIN` and this module no-ops.
  *
- * Pure retention-string in / S2-call out. No plan or billing
- * vocabulary — that lives in `streamBasinRetentionByPlan.server.ts`.
+ * Pure retention-string in / S2-call out. Plan vocabulary lives in the
+ * cloud billing app, which calls into the admin sync route to drive
+ * provisioning + reconfiguration.
  */
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -110,6 +111,67 @@ export async function reconfigureBasinForOrg(
     basin: org.streamBasinName,
     retention,
   });
+}
+
+type EnsureResult =
+  | { kind: "skipped"; reason: "feature-disabled" | "org-not-found" }
+  | { kind: "provisioned"; basin: string; retention: string }
+  | { kind: "reconfigured"; basin: string; retention: string };
+
+// Idempotent: provisions if the org has no basin, PATCHes retention if
+// it does. The single entrypoint the cloud billing app drives — both
+// for the live plan-change path and the bulk backfill.
+export async function ensureBasinForOrg(
+  orgId: string,
+  retention: string
+): Promise<EnsureResult> {
+  if (!isPerOrgBasinsEnabled()) {
+    return { kind: "skipped", reason: "feature-disabled" };
+  }
+
+  const org = await prisma.organization.findFirst({
+    where: { id: orgId },
+    select: { id: true, streamBasinName: true },
+  });
+  if (!org) return { kind: "skipped", reason: "org-not-found" };
+
+  if (!org.streamBasinName) {
+    const result = await provisionBasinForOrg(
+      { id: org.id, streamBasinName: null, retention }
+    );
+    if (result.kind === "provisioned") {
+      return { kind: "provisioned", basin: result.basin, retention: result.retention };
+    }
+    return { kind: "skipped", reason: "feature-disabled" };
+  }
+
+  await reconfigureBasinForOrg(org.id, retention);
+  return { kind: "reconfigured", basin: org.streamBasinName, retention };
+}
+
+// Inverse of ensureBasinForOrg: nulls the column so future runs/sessions
+// land in the shared global basin. The S2 basin lingers; existing streams
+// age out on their original retention.
+export async function deprovisionBasinForOrg(
+  orgId: string
+): Promise<{ kind: "deprovisioned" } | { kind: "skipped"; reason: "no-basin" }> {
+  const org = await prisma.organization.findFirst({
+    where: { id: orgId },
+    select: { id: true, streamBasinName: true },
+  });
+  if (!org?.streamBasinName) return { kind: "skipped", reason: "no-basin" };
+
+  await prisma.organization.update({
+    where: { id: org.id },
+    data: { streamBasinName: null },
+  });
+
+  logger.info("[streamBasinProvisioner] deprovisioned basin for org", {
+    orgId,
+    previousBasin: org.streamBasinName,
+  });
+
+  return { kind: "deprovisioned" };
 }
 
 // S2 REST: POST /v1/basins to create, PATCH /v1/basins/{name} to

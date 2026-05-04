@@ -1523,11 +1523,6 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_BASIN_NAME_PREFIX: z.string().default("triggerdotdev"),
     REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
     REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: durationString().default("30d"),
-    // Plan-specific retention overrides consulted by the
-    // streamBasinRetentionByPlan shim only.
-    REALTIME_STREAMS_BASIN_RETENTION_FREE: durationString().default("7d"),
-    REALTIME_STREAMS_BASIN_RETENTION_HOBBY: durationString().default("30d"),
-    REALTIME_STREAMS_BASIN_RETENTION_PRO: durationString().default("365d"),
     REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
     REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("1h"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),

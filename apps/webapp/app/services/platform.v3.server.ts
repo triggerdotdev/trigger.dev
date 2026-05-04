@@ -403,7 +403,6 @@ export async function setPlan(
         // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
         platformCache.entitlement.remove(organization.id).catch(() => {});
-        await enqueueStreamBasinReconcile(organization.id);
         return redirect(newProjectPath(organization, "You're on the Free plan."));
       } else {
         return redirectWithErrorMessage(
@@ -421,35 +420,14 @@ export async function setPlan(
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
-      await enqueueStreamBasinReconcile(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
-      await enqueueStreamBasinReconcile(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
-  }
-}
-
-// Best-effort: failures are logged but never block the plan change.
-// The reconciler is idempotent and re-reads the plan when it runs, so
-// concurrent plan changes collapse to one pending job per org.
-async function enqueueStreamBasinReconcile(orgId: string) {
-  try {
-    const { commonWorker } = await import("~/v3/commonWorker.server");
-    await commonWorker.enqueue({
-      job: "v3.reconcileStreamBasinForOrg",
-      payload: { orgId },
-      id: `reconcileStreamBasin:${orgId}`,
-    });
-  } catch (error) {
-    logger.warn("[setPlan] failed to enqueue stream basin reconcile", {
-      orgId,
-      error: error instanceof Error ? error.message : String(error),
-    });
   }
 }
 

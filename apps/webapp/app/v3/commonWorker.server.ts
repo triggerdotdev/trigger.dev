@@ -21,7 +21,6 @@ import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.ser
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
-import { reconcileBasinForOrg } from "~/services/realtime/streamBasinRetentionByPlan.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -200,15 +199,6 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      "v3.reconcileStreamBasinForOrg": {
-        schema: z.object({
-          orgId: z.string(),
-        }),
-        visibilityTimeoutMs: 60_000,
-        retry: {
-          maxAttempts: 5,
-        },
-      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -291,9 +281,6 @@ function initializeWorker() {
       processBulkAction: async ({ payload }) => {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
-      },
-      "v3.reconcileStreamBasinForOrg": async ({ payload }) => {
-        await reconcileBasinForOrg(payload.orgId);
       },
     },
   });
