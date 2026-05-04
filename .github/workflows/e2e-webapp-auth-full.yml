@@ -74,9 +74,9 @@ jobs:
           fetch-depth: 0
 
       - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
-          version: 10.23.0
+          version: 10.33.2
 
       - name: ⎔ Setup node
         uses: buildjet/setup-node@v4
