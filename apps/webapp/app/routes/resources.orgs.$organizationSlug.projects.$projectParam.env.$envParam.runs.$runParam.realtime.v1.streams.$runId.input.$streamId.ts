@@ -55,6 +55,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       id: true,
       friendlyId: true,
       realtimeStreamsVersion: true,
+      streamBasinName: true,
     },
   });
 
@@ -73,7 +74,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Invalid timeout", { status: 400 });
   }
 
-  const realtimeStream = getRealtimeStreamInstance(environment, run.realtimeStreamsVersion);
+  const realtimeStream = getRealtimeStreamInstance(environment, run.realtimeStreamsVersion, {
+    run,
+  });
 
   // `request.signal` is severed by Remix's Request.clone() + Node undici GC bug
   // (see apps/webapp/CLAUDE.md). Use the Express res.on('close')-backed signal.

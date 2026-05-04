@@ -72,7 +72,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Session not found", { status: 404 });
   }
 
-  const realtimeStream = getRealtimeStreamInstance(environment, "v2");
+  const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
 
   if (!(realtimeStream instanceof S2RealtimeStreams)) {
     return new Response("Session channels require the S2 realtime backend", {

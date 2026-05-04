@@ -167,6 +167,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           runtimeEnvironmentId: environment.id,
           environmentType: environment.type,
           organizationId: project.organizationId,
+          // Stamp the org's S2 basin so realtime reads on this
+          // session's `.in/.out` channels resolve without joining
+          // Organization. Null until per-org basins are provisioned.
+          streamBasinName: environment.organization.streamBasinName,
         },
         update: {
           // Refresh trigger config in case agent version / params changed
