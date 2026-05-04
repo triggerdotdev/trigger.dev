@@ -76,7 +76,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const realtimeStream = getRealtimeStreamInstance(environment, "v2");
+  const realtimeStream = getRealtimeStreamInstance(environment, "v2", { session });
 
   if (!(realtimeStream instanceof S2RealtimeStreams)) {
     return json(
