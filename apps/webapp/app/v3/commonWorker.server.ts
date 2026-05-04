@@ -22,11 +22,10 @@ import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
 import {
-  planTierFor,
   provisionBasinForOrg,
   reconfigureBasinForOrg,
 } from "~/services/realtime/streamBasinProvisioner.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { resolveRetentionForOrg } from "~/services/realtime/streamBasinRetentionByPlan.server";
 import { prisma } from "~/db.server";
 
 function initializeWorker() {
@@ -308,11 +307,12 @@ function initializeWorker() {
         await service.process(payload.bulkActionId);
       },
       "v3.provisionStreamBasinForOrg": async ({ payload }) => {
-        // Backfill / retry path. Reads the org row, resolves the
-        // billing tier, hands it to the provisioner. The provisioner
-        // is itself a no-op when per-org basins are disabled or the
-        // basin is already provisioned. Throws on transient S2
-        // failures so redis-worker retries naturally.
+        // Backfill / retry path. Resolves the retention for the org
+        // (cloud installs map plan→retention via the byPlan shim;
+        // others fall back to the default), then hands a plain
+        // retention string to the provisioner. The provisioner itself
+        // has no plan vocabulary. `resolveRetentionForOrg` throws on
+        // transient billing failure so redis-worker retries naturally.
         const org = await prisma.organization.findFirst({
           where: { id: payload.orgId },
           select: {
@@ -323,38 +323,15 @@ function initializeWorker() {
         });
         if (!org) return;
 
-        const plan = await getCurrentPlan(payload.orgId);
-        // `plan === undefined` means the billing API call itself failed
-        // (or the client isn't configured). Throw so redis-worker retries
-        // — silently defaulting to free would risk a paid org getting
-        // provisioned with 7d retention if the backfill happened to land
-        // during a transient billing outage.
-        if (plan === undefined) {
-          throw new Error(
-            `[provisionStreamBasinForOrg] billing plan unavailable for org ${payload.orgId}; will retry`
-          );
-        }
-        // `plan.code` carries the canonical plan id ("free", "v3_hobby_1",
-        // "v3_pro_1", "enterprise"). `plan.type` is just the
-        // billing-shape discriminator ("free" | "paid" | "enterprise")
-        // and would lump hobby + pro into one bucket.
-        const tier = planTierFor(plan?.v3Subscription?.plan?.code);
-
-        await provisionBasinForOrg({ ...org, tier });
+        const retention = await resolveRetentionForOrg(payload.orgId);
+        await provisionBasinForOrg({ ...org, retention });
       },
       "v3.reconfigureStreamBasinForOrg": async ({ payload }) => {
-        const plan = await getCurrentPlan(payload.orgId);
-        // Same guard as provision. A reconfigure that silently resolved
-        // to "free" would clip a pro org's retention from 365d to 7d
-        // and prematurely expire history — never acceptable. Throw and
-        // let the worker retry once billing recovers.
-        if (plan === undefined) {
-          throw new Error(
-            `[reconfigureStreamBasinForOrg] billing plan unavailable for org ${payload.orgId}; will retry`
-          );
-        }
-        const tier = planTierFor(plan?.v3Subscription?.plan?.code);
-        await reconfigureBasinForOrg(payload.orgId, tier);
+        // Same shape as provision: resolve retention up front, hand a
+        // plain string to the provisioner. The shim throws on billing
+        // failure rather than silently downgrading retention.
+        const retention = await resolveRetentionForOrg(payload.orgId);
+        await reconfigureBasinForOrg(payload.orgId, retention);
       },
     },
   });

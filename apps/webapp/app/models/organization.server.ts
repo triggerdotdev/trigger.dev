@@ -85,16 +85,18 @@ export async function createOrganization(
   });
 
   // Provision the org's S2 basin synchronously so the very first run
-  // gets `streamBasinName` stamped via the existing org read. Soft-fail
-  // on S2 errors so a transient outage doesn't block signup — the
+  // gets `streamBasinName` stamped via the existing org read. New orgs
+  // get the default retention; the plan-change path updates retention
+  // later if the operator runs a billing-aware install. Soft-fail on
+  // S2 errors so a transient outage doesn't block signup — the
   // backfill reconciler picks up any org left with `streamBasinName: null`.
   // No-op when `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=false` (OSS mode).
   try {
     await provisionBasinForOrg({
       id: organization.id,
       slug: organization.slug,
-      tier: "free", // new orgs always start on free retention
       streamBasinName: organization.streamBasinName,
+      // No `retention` — provisioner uses `defaultRetention()`.
     });
   } catch (error) {
     logger.warn("[createOrganization] streamBasin provisioning failed; backfill will retry", {

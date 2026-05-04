@@ -8,82 +8,69 @@
  *    basin in `REALTIME_STREAMS_S2_BASIN`. `Organization.streamBasinName`
  *    stays null forever; reads / writes resolve to the global basin.
  *
- *  - **Per-org-basin mode** (cloud):
+ *  - **Per-org-basin mode**:
  *    `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=true`. Each org gets a
- *    dedicated basin with retention tied to its billing plan. The
- *    basin is the unit of cost attribution (S2 exposes per-basin
- *    metrics) and isolation (access tokens scope to one basin).
+ *    dedicated basin with its own retention. The basin is the unit of
+ *    cost attribution (S2 exposes per-basin metrics) and isolation
+ *    (access tokens scope to one basin).
  *
- * Provisioning is one-shot per org: at creation time (or a one-off
- * backfill for existing orgs) we create the basin and stamp
+ * This module is purely retention-string-driven: callers pass a
+ * duration like `"30d"` and the provisioner does the S2 round-trip.
+ * It has no concept of plans / tiers / billing — operators that want
+ * per-tier retention live one layer up (see
+ * `streamBasinRetentionByPlan.server.ts`).
+ *
+ * Provisioning is one-shot per org: at creation time (or via the
+ * backfill worker job for existing orgs) we create the basin and stamp
  * `Organization.streamBasinName`. New `TaskRun` / `Session` rows then
  * piggyback on the existing org read in `triggerTask` / session-create
  * paths and copy the value through. Reads use a precedence chain
  * (`run.streamBasinName ?? session.streamBasinName ?? globalBasin`).
  *
- * Plan changes update retention in-place via `reconfigureBasin`. We do
- * not move data across basins.
+ * Plan / retention changes update retention in-place via
+ * `reconfigureBasin`. We do not move data across basins.
  */
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 
-/**
- * Plan-tier shorthand for retention mapping. Callers translate the
- * org's billing plan (via `getCurrentPlan`) into one of these and pass
- * it to the provisioner. New orgs (no plan yet) and unbilled orgs
- * default to `free` so we don't accidentally grant a year of retention
- * to a freeloader.
- */
-export type StreamBasinTier = "free" | "hobby" | "pro";
-
-export function retentionFor(tier: StreamBasinTier): string {
-  switch (tier) {
-    case "pro":
-      return env.REALTIME_STREAMS_BASIN_RETENTION_PRO;
-    case "hobby":
-      return env.REALTIME_STREAMS_BASIN_RETENTION_HOBBY;
-    case "free":
-    default:
-      return env.REALTIME_STREAMS_BASIN_RETENTION_FREE;
-  }
-}
-
-/**
- * Permissive plan-name → tier mapping. Billing returns various strings
- * over time (`free_connected`, `hobby`, `team_pro`, `enterprise`, etc.)
- * — be forgiving but predictable.
- */
-export function planTierFor(planType: string | null | undefined): StreamBasinTier {
-  if (!planType) return "free";
-  const normalized = planType.toLowerCase();
-  if (normalized.includes("pro") || normalized.includes("team") || normalized.includes("enterprise")) {
-    return "pro";
-  }
-  if (normalized.includes("hobby") || normalized.includes("starter")) {
-    return "hobby";
-  }
-  return "free";
-}
-
 export function isPerOrgBasinsEnabled(): boolean {
   return env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true";
 }
 
 /**
- * Build the basin name for an org. Format: `{prefix}-{env}-org-{slug}`
- * (e.g. `triggerdotdev-prod-org-acme-corp`). The org slug is already
- * lowercase-and-hyphenated by `createOrganization`, so it satisfies S2
- * basin-name rules without further normalization. We truncate
- * defensively to keep total length under 63 chars (a common bucket
- * convention; verify against S2 docs before raising).
+ * Default retention for new orgs and any caller that doesn't specify
+ * a value. Configurable via `REALTIME_STREAMS_BASIN_DEFAULT_RETENTION`.
+ */
+export function defaultRetention(): string {
+  return env.REALTIME_STREAMS_BASIN_DEFAULT_RETENTION;
+}
+
+/**
+ * Build the basin name for an org. Format: `{prefix}-{env}-org-{slug}`.
+ * The org slug is already lowercase-and-hyphenated by
+ * `createOrganization`, so it satisfies S2 basin-name rules without
+ * further normalization. We truncate defensively to keep total length
+ * under 63 chars (a common bucket convention; verify against S2 docs
+ * before raising).
+ *
+ * Throws if `REALTIME_STREAMS_BASIN_NAME_PREFIX` +
+ * `REALTIME_STREAMS_BASIN_NAME_ENV` are configured so long that no
+ * room remains for the slug — without this guard, `slice(0, 0)` would
+ * return an empty string and every org would share the same name,
+ * silently colliding via S2's 409-on-create.
  */
 export function basinNameForOrg(org: { slug: string }): string {
   const prefix = env.REALTIME_STREAMS_BASIN_NAME_PREFIX;
   const envName = env.REALTIME_STREAMS_BASIN_NAME_ENV;
   const head = `${prefix}-${envName}-org-`;
   const budget = 63 - head.length;
+  if (budget <= 0) {
+    throw new Error(
+      `[streamBasinProvisioner] REALTIME_STREAMS_BASIN_NAME_PREFIX + REALTIME_STREAMS_BASIN_NAME_ENV too long: head="${head}" leaves no room for the org slug (budget=${budget}). Shorten the prefix or env-name values.`
+    );
+  }
   const slug = org.slug.slice(0, budget);
   return `${head}${slug}`;
 }
@@ -91,10 +78,10 @@ export function basinNameForOrg(org: { slug: string }): string {
 type ProvisionInput = {
   id: string;
   slug: string;
-  /// Caller decides the tier. Org-create path passes `"free"` for new
-  /// orgs; the backfill worker resolves the tier via `getCurrentPlan`
-  /// before calling. Defaults to `"free"` if omitted.
-  tier?: StreamBasinTier;
+  /// Duration string passed straight to S2. Defaults to
+  /// `defaultRetention()` when omitted. Caller decides; the provisioner
+  /// has no opinion about what retention is appropriate.
+  retention?: string;
   streamBasinName: string | null | undefined;
 };
 
@@ -109,9 +96,9 @@ type ProvisionResult =
  * success) and writes the column.
  *
  * Failure modes:
- *  - S2 unreachable / 5xx: throws. Callers in the org-create path
- *    should swallow + enqueue a retry job so signup never fails on a
- *    transient S2 outage. The backfill worker retries naturally.
+ *  - S2 unreachable / 5xx / timeout: throws. Callers in the org-create
+ *    path swallow + leave the column null so the backfill worker can
+ *    retry, so signup never fails on a transient S2 outage.
  *  - Auth misconfig (no token): throws. Should never happen in
  *    per-org-basins mode but worth surfacing loudly.
  */
@@ -135,7 +122,7 @@ export async function provisionBasinForOrg(
   }
 
   const basin = basinNameForOrg(org);
-  const retention = retentionFor(org.tier ?? "free");
+  const retention = org.retention ?? defaultRetention();
 
   await s2CreateBasin(basin, {
     accessToken,
@@ -159,13 +146,12 @@ export async function provisionBasinForOrg(
 }
 
 /**
- * Update retention after a plan change. Idempotent. No-op when the
- * org has no provisioned basin. Caller resolves the tier and passes
- * it in — keeps the provisioner ignorant of billing.
+ * Update retention in-place. Idempotent. No-op when the org has no
+ * provisioned basin.
  */
 export async function reconfigureBasinForOrg(
   orgId: string,
-  tier: StreamBasinTier
+  retention: string
 ): Promise<void> {
   if (!isPerOrgBasinsEnabled()) return;
 
@@ -178,7 +164,6 @@ export async function reconfigureBasinForOrg(
   });
   if (!org?.streamBasinName) return;
 
-  const retention = retentionFor(tier);
   await s2ReconfigureBasin(org.streamBasinName, { accessToken, retentionPolicy: retention });
 
   logger.info("[streamBasinProvisioner] reconfigured basin retention", {

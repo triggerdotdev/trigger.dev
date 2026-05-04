@@ -1517,9 +1517,15 @@ const EnvironmentSchema = z
     /// — kept short to stay under S2's basin-name length limit.
     REALTIME_STREAMS_BASIN_NAME_PREFIX: z.string().default("triggerdotdev"),
     REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
-    /// Plan-tier retention strings (S2 duration syntax: 7d / 30d / 1y).
-    /// Free / hobby / pro line up with billing tiers; enterprise uses
-    /// the pro default and is reconfigured per-contract via the API.
+    /// Default retention for new basins (S2 duration syntax: 7d / 30d / 1y).
+    /// Used at org-create and as the fallback when no plan-specific
+    /// retention is resolved. Operators that don't run a billing API
+    /// only need this one.
+    REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: z.string().default("30d"),
+    /// Plan-specific retention overrides — only consulted by the
+    /// optional `streamBasinRetentionByPlan` shim. Operators that
+    /// don't map plans to retention (OSS, self-hosted) can ignore
+    /// these and rely on the default above.
     REALTIME_STREAMS_BASIN_RETENTION_FREE: z.string().default("7d"),
     REALTIME_STREAMS_BASIN_RETENTION_HOBBY: z.string().default("30d"),
     REALTIME_STREAMS_BASIN_RETENTION_PRO: z.string().default("365d"),
