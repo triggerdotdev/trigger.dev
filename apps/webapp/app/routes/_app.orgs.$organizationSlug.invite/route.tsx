@@ -75,7 +75,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   ]);
 
   // Build the dropdown's offerable set server-side: roles that are
-  // (a) assignable on the current plan AND (b) strictly below the
+  // (a) assignable on the current plan AND (b) at or below the
   // inviter's own level. The client just renders these — it doesn't
   // need to know about the system-role catalogue or the ladder.
   const assignableSet = new Set(assignableRoleIds);
@@ -84,7 +84,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         .filter(
           (r) =>
             assignableSet.has(r.id) &&
-            isStrictlyBelow(systemRoles, inviterRole?.id ?? null, r.id)
+            isAtOrBelow(systemRoles, inviterRole?.id ?? null, r.id)
         )
         .map((r) => r.id)
     : [];
@@ -98,7 +98,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 // dropdown is hidden) or as a defensive default.
 const NO_RBAC_ROLE = "__no_rbac_role__";
 
-// An inviter can only assign a role strictly below their own. The
+// An inviter can only assign a role at or below their own. The
 // plugin's systemRoles array is in canonical order (highest authority
 // first), so array index drives the ladder — earlier index = higher
 // rank. Plan-tier filtering happens separately via assignableRoleIds;
@@ -117,7 +117,7 @@ function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number
   return level;
 }
 
-function isStrictlyBelow(
+function isAtOrBelow(
   roles: ReadonlyArray<LadderRole>,
   inviterRoleId: string | null,
   invitedRoleId: string
@@ -133,7 +133,7 @@ function isStrictlyBelow(
   const invited = level[invitedRoleId];
   // Custom roles aren't in the level table — refuse.
   if (inviter === undefined || invited === undefined) return false;
-  return invited < inviter;
+  return invited <= inviter;
 }
 
 const schema = z.object({
@@ -168,7 +168,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
   // role → don't pass one through; the runtime fallback handles it.
   // Validation: the chosen role must be in the org's assignable set
-  // (plan-tier) and strictly below the inviter's own level.
+  // (plan-tier) and at or below the inviter's own level.
   let resolvedRbacRoleId: string | null = null;
   const submittedRbacRoleId = submission.value.rbacRoleId;
   if (
@@ -200,7 +200,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         );
       }
       if (
-        !isStrictlyBelow(
+        !isAtOrBelow(
           systemRoles,
           inviterRole?.id ?? null,
           submittedRbacRoleId
