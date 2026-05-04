@@ -99,8 +99,8 @@ export const loader = dashboardLoader(
     },
     authorization: { action: "read", resource: { type: "members" } },
   },
-  async ({ user, ability, params }) => {
-    const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+  async ({ user, ability, context }) => {
+    const orgId = context.organizationId;
     if (!orgId) {
       throw new Response("Not Found", { status: 404 });
     }
@@ -155,7 +155,7 @@ export const action = dashboardAction(
     // gated by the existing model layer; purchase-seats by the
     // SetSeatsAddOnService). Per-intent ability checks happen inside.
   },
-  async ({ user, ability, request, params }) => {
+  async ({ user, ability, request, params, context }) => {
     const userId = user.id;
     const { organizationSlug } = params;
     invariant(organizationSlug, "organizationSlug not found");
@@ -167,7 +167,7 @@ export const action = dashboardAction(
       if (!ability.can("manage", { type: "members" })) {
         return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
       }
-      const orgId = await resolveOrgIdFromSlug(organizationSlug);
+      const orgId = context.organizationId;
       if (!orgId) {
         return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
       }

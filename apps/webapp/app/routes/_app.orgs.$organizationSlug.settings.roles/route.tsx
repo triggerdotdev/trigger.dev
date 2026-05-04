@@ -56,8 +56,8 @@ export const loader = dashboardLoader(
     },
     authorization: { action: "read", resource: { type: "members" } },
   },
-  async ({ params }) => {
-    const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+  async ({ context }) => {
+    const orgId = context.organizationId;
     if (!orgId) {
       throw new Response("Not Found", { status: 404 });
     }

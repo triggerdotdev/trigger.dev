@@ -30,10 +30,16 @@ function isAuthorized(ability: RbacAbility, authorization: AuthorizationOption):
   return ability.can(authorization.action, authorization.resource);
 }
 
-export async function authenticateAndAuthorize<TParams, TSearchParams>(
+type AuthScope = { organizationId?: string; projectId?: string };
+
+export async function authenticateAndAuthorize<
+  TParams,
+  TSearchParams,
+  TContext extends AuthScope
+>(
   request: Request,
   rawParams: unknown,
-  options: DashboardLoaderOptions<TParams, TSearchParams>
+  options: DashboardLoaderOptions<TParams, TSearchParams, TContext>
 ): Promise<
   | { ok: false; response: Response }
   | {
@@ -42,6 +48,7 @@ export async function authenticateAndAuthorize<TParams, TSearchParams>(
       ability: RbacAbility;
       params: unknown;
       searchParams: unknown;
+      context: TContext;
     }
 > {
   let parsedParams: any = undefined;
@@ -75,7 +82,9 @@ export async function authenticateAndAuthorize<TParams, TSearchParams>(
     parsedSearchParams = parsed.data;
   }
 
-  const ctx = options.context ? await options.context(parsedParams, request) : {};
+  const ctx = (options.context
+    ? await options.context(parsedParams, request)
+    : ({} as TContext)) as TContext;
   const auth = await rbac.authenticateSession(request, ctx);
   if (!auth.ok) {
     if (auth.reason === "unauthenticated") {
@@ -94,5 +103,6 @@ export async function authenticateAndAuthorize<TParams, TSearchParams>(
     ability: auth.ability,
     params: parsedParams,
     searchParams: parsedSearchParams,
+    context: ctx,
   };
 }

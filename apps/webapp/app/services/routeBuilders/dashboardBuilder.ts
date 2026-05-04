@@ -43,19 +43,23 @@ export type AuthorizationOption =
       resource: RbacResource | RbacResource[];
     };
 
-export type DashboardLoaderOptions<TParams, TSearchParams> = {
+// Plugin-side scope: whatever the route's `context` returns must include
+// these (or just be `{}` when the route doesn't scope by org/project).
+// rbac.authenticateSession reads them off the value to filter UserRole.
+type AuthScope = { organizationId?: string; projectId?: string };
+
+export type DashboardLoaderOptions<TParams, TSearchParams, TContext extends AuthScope> = {
   params?: TParams;
   searchParams?: TSearchParams;
-  // Optional: provides organizationId / projectId to rbac.authenticateSession
-  // when the route's ability check needs it. The default fallback
-  // ignores context; an installed plugin may use it to scope the
-  // returned ability.
+  // Resolves any per-request data the handler + auth check both need
+  // (typically org/project lookups from URL params). The returned object
+  // is fed to `rbac.authenticateSession` as the auth scope AND passed
+  // through to the handler in `args.context`, so the route does each
+  // lookup once.
   context?: (
     params: InferZod<TParams>,
     request: Request
-  ) =>
-    | { organizationId?: string; projectId?: string }
-    | Promise<{ organizationId?: string; projectId?: string }>;
+  ) => TContext | Promise<TContext>;
   authorization?: AuthorizationOption;
   // Where to send unauthenticated requests. Defaults to /login with a
   // redirectTo back to the original path.
@@ -65,21 +69,25 @@ export type DashboardLoaderOptions<TParams, TSearchParams> = {
   unauthorizedRedirect?: string;
 };
 
-export type DashboardLoaderHandlerArgs<TParams, TSearchParams> = {
+export type DashboardLoaderHandlerArgs<TParams, TSearchParams, TContext> = {
   params: InferZod<TParams>;
   searchParams: InferZod<TSearchParams>;
   user: SessionUser;
   ability: RbacAbility;
+  context: TContext;
   request: Request;
 };
 
 export function dashboardLoader<
   TParams extends AnyZodSchema | undefined = undefined,
   TSearchParams extends AnyZodSchema | undefined = undefined,
+  TContext extends AuthScope = AuthScope,
   TReturn extends Response = Response
 >(
-  options: DashboardLoaderOptions<TParams, TSearchParams>,
-  handler: (args: DashboardLoaderHandlerArgs<TParams, TSearchParams>) => Promise<TReturn>
+  options: DashboardLoaderOptions<TParams, TSearchParams, TContext>,
+  handler: (
+    args: DashboardLoaderHandlerArgs<TParams, TSearchParams, TContext>
+  ) => Promise<TReturn>
 ) {
   return async function loader({ request, params }: LoaderFunctionArgs): Promise<TReturn> {
     // Server-only — see comment at top. Node caches the module after the
@@ -93,30 +101,28 @@ export function dashboardLoader<
       searchParams: result.searchParams as InferZod<TSearchParams>,
       user: result.user,
       ability: result.ability,
+      context: result.context as TContext,
       request,
     });
   };
 }
 
-export type DashboardActionOptions<TParams, TSearchParams> = DashboardLoaderOptions<
-  TParams,
-  TSearchParams
->;
+export type DashboardActionOptions<TParams, TSearchParams, TContext extends AuthScope> =
+  DashboardLoaderOptions<TParams, TSearchParams, TContext>;
 
-export type DashboardActionHandlerArgs<TParams, TSearchParams> = DashboardLoaderHandlerArgs<
-  TParams,
-  TSearchParams
-> & {
-  request: Request;
-};
+export type DashboardActionHandlerArgs<TParams, TSearchParams, TContext> =
+  DashboardLoaderHandlerArgs<TParams, TSearchParams, TContext>;
 
 export function dashboardAction<
   TParams extends AnyZodSchema | undefined = undefined,
   TSearchParams extends AnyZodSchema | undefined = undefined,
+  TContext extends AuthScope = AuthScope,
   TReturn extends Response = Response
 >(
-  options: DashboardActionOptions<TParams, TSearchParams>,
-  handler: (args: DashboardActionHandlerArgs<TParams, TSearchParams>) => Promise<TReturn>
+  options: DashboardActionOptions<TParams, TSearchParams, TContext>,
+  handler: (
+    args: DashboardActionHandlerArgs<TParams, TSearchParams, TContext>
+  ) => Promise<TReturn>
 ) {
   return async function action({ request, params }: ActionFunctionArgs): Promise<TReturn> {
     const { authenticateAndAuthorize } = await import("./dashboardBuilder.server");
@@ -128,6 +134,7 @@ export function dashboardAction<
       searchParams: result.searchParams as InferZod<TSearchParams>,
       user: result.user,
       ability: result.ability,
+      context: result.context as TContext,
       request,
     });
   };
