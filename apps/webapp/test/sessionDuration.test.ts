@@ -1,6 +1,16 @@
+import { describe, expect, it, vi } from "vitest";
+
+// `~/db.server` eagerly calls $connect() on the singleton Prisma client at
+// module load. Without this mock the test process tries to reach DATABASE_URL
+// (defaults to localhost:5432) and emits an unhandled rejection that fails the
+// run. Tests still get a real Prisma client via the testcontainer fixture.
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+}));
+
 import { containerTest } from "@internal/testcontainers";
 import { createCookieSessionStorage, type Session } from "@remix-run/node";
-import { describe, expect, it, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
 import {
