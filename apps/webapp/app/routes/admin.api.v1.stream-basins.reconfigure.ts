@@ -38,8 +38,14 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  const text = await request.text();
-  const parsed = BodySchema.safeParse(JSON.parse(text));
+  let parsed: ReturnType<typeof BodySchema.safeParse>;
+  try {
+    const text = await request.text();
+    const raw = text.length > 0 ? JSON.parse(text) : {};
+    parsed = BodySchema.safeParse(raw);
+  } catch {
+    return json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+  }
   if (!parsed.success) {
     return json({ ok: false, error: parsed.error.flatten() }, { status: 400 });
   }

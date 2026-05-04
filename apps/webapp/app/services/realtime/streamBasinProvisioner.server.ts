@@ -219,6 +219,11 @@ async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<vo
   };
 
   const res = await fetch(url, {
+    // 10s upper bound so the synchronous org-create call site can't
+    // hang signup forever if S2 is slow / unreachable. Soft-fail at the
+    // caller swallows the resulting `TimeoutError`; the backfill worker
+    // retries the unprovisioned org later.
+    signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: {
       Authorization: `Bearer ${opts.accessToken}`,
@@ -250,6 +255,10 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   };
 
   const res = await fetch(url, {
+    // Same 10s ceiling as create. The reconfigure path runs from the
+    // worker, so a timeout here just fails the job and lets redis-worker
+    // retry naturally.
+    signal: AbortSignal.timeout(10_000),
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${opts.accessToken}`,

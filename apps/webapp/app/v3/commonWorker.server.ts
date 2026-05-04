@@ -324,6 +324,16 @@ function initializeWorker() {
         if (!org) return;
 
         const plan = await getCurrentPlan(payload.orgId);
+        // `plan === undefined` means the billing API call itself failed
+        // (or the client isn't configured). Throw so redis-worker retries
+        // — silently defaulting to free would risk a paid org getting
+        // provisioned with 7d retention if the backfill happened to land
+        // during a transient billing outage.
+        if (plan === undefined) {
+          throw new Error(
+            `[provisionStreamBasinForOrg] billing plan unavailable for org ${payload.orgId}; will retry`
+          );
+        }
         // `plan.code` carries the canonical plan id ("free", "v3_hobby_1",
         // "v3_pro_1", "enterprise"). `plan.type` is just the
         // billing-shape discriminator ("free" | "paid" | "enterprise")
@@ -334,10 +344,15 @@ function initializeWorker() {
       },
       "v3.reconfigureStreamBasinForOrg": async ({ payload }) => {
         const plan = await getCurrentPlan(payload.orgId);
-        // `plan.code` carries the canonical plan id ("free", "v3_hobby_1",
-        // "v3_pro_1", "enterprise"). `plan.type` is just the
-        // billing-shape discriminator ("free" | "paid" | "enterprise")
-        // and would lump hobby + pro into one bucket.
+        // Same guard as provision. A reconfigure that silently resolved
+        // to "free" would clip a pro org's retention from 365d to 7d
+        // and prematurely expire history — never acceptable. Throw and
+        // let the worker retry once billing recovers.
+        if (plan === undefined) {
+          throw new Error(
+            `[reconfigureStreamBasinForOrg] billing plan unavailable for org ${payload.orgId}; will retry`
+          );
+        }
         const tier = planTierFor(plan?.v3Subscription?.plan?.code);
         await reconfigureBasinForOrg(payload.orgId, tier);
       },

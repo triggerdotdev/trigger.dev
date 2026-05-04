@@ -47,6 +47,7 @@ const { action, loader } = createActionApiRoute(
           id: true,
           friendlyId: true,
           realtimeStreamsVersion: true,
+          streamBasinName: true,
         },
       });
 
@@ -129,6 +130,7 @@ const { action, loader } = createActionApiRoute(
           // Don't fall through to the run's own `realtimeStreamsVersion`,
           // which only describes the run's run-scoped streams.
           const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+            run,
             session: maybeSession,
           });
 
