@@ -19,8 +19,9 @@ import { logger } from "~/services/logger.server";
  *    so OSS / s2-lite installs can't accidentally trigger basin
  *    operations against a misconfigured backend.
  *  - `dryRun=true` (default false) returns the count without enqueueing.
- *  - `limit` (default 1000, max 10000) caps a single invocation. Run
- *    again with the next batch.
+ *  - `limit` (default 1000, max 10000) caps a single invocation. To
+ *    page through more orgs than `limit`, pass `afterOrgId` from the
+ *    previous response's `nextAfterOrgId`.
  *  - Each job is keyed `reconcileStreamBasin:<orgId>` so concurrent
  *    calls converge to one job per org.
  */
@@ -29,6 +30,7 @@ const BodySchema = z
   .object({
     dryRun: z.boolean().optional().default(false),
     limit: z.number().int().min(1).max(10_000).optional().default(1000),
+    afterOrgId: z.string().optional(),
   })
   .strict();
 
@@ -39,6 +41,7 @@ type BackfillResponse = {
   pending: number;
   remaining: number;
   orgIds: string[];
+  nextAfterOrgId: string | null;
 };
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -68,22 +71,32 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { dryRun, limit } = parsed;
+  const { dryRun, limit, afterOrgId } = parsed;
 
   // Walk every non-deleted org. The reconcile worker is fast for the
   // no-op case (free with null column) so enqueueing for all is fine
   // — saves us from doing per-org billing lookups here just to filter
-  // candidates.
+  // candidates. Cursor on `id` (cuid is sortable) gives stable paging
+  // across calls; `createdAt` ties get broken by the cursor.
   const candidates = await prisma.organization.findMany({
     where: { deletedAt: null },
-    orderBy: { createdAt: "asc" },
+    orderBy: { id: "asc" },
     take: limit,
+    ...(afterOrgId ? { cursor: { id: afterOrgId }, skip: 1 } : {}),
     select: { id: true },
   });
 
-  const totalOrgs = await prisma.organization.count({
-    where: { deletedAt: null },
-  });
+  const lastReturnedId = candidates[candidates.length - 1]?.id;
+  const nextAfterOrgId = candidates.length === limit && lastReturnedId ? lastReturnedId : null;
+
+  // Orgs still beyond the cursor we just returned. On the final page,
+  // `lastReturnedId` is undefined (empty result) or the response is short
+  // of `limit`, so this is 0 — exactly what the caller needs to stop.
+  const remaining = lastReturnedId
+    ? await prisma.organization.count({
+        where: { deletedAt: null, id: { gt: lastReturnedId } },
+      })
+    : 0;
 
   if (dryRun) {
     const response: BackfillResponse = {
@@ -91,8 +104,9 @@ export async function action({ request }: ActionFunctionArgs) {
       dryRun: true,
       enqueued: 0,
       pending: candidates.length,
-      remaining: Math.max(0, totalOrgs - candidates.length),
+      remaining,
       orgIds: candidates.map((o) => o.id),
+      nextAfterOrgId,
     };
     return json(response);
   }
@@ -114,13 +128,18 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
+  // `remaining` counts orgs strictly past the cursor returned to the
+  // caller. Enqueue failures don't change this — re-running with the
+  // same `afterOrgId` would page through the same window and the
+  // per-org idempotency key keeps it safe.
   const response: BackfillResponse = {
     ok: true,
     dryRun: false,
     enqueued,
     pending: candidates.length,
-    remaining: Math.max(0, totalOrgs - enqueued),
+    remaining,
     orgIds: candidates.map((o) => o.id),
+    nextAfterOrgId,
   };
 
   logger.info("[stream-basins-backfill] enqueued reconcile jobs", {

@@ -47,7 +47,6 @@ const { action, loader } = createActionApiRoute(
           id: true,
           friendlyId: true,
           realtimeStreamsVersion: true,
-          streamBasinName: true,
         },
       });
 
@@ -129,8 +128,15 @@ const { action, loader } = createActionApiRoute(
           // hardcode "v2", so the race-check reader has to match.
           // Don't fall through to the run's own `realtimeStreamsVersion`,
           // which only describes the run's run-scoped streams.
+          //
+          // Resolve basin from `session` only (not `run`). The append-side
+          // writer in `realtime.v1.sessions.$session.$io.append.ts` passes
+          // only `{ session }`, and `resolveStreamBasin` prefers `run` over
+          // `session` when both are present. During the per-org-basin
+          // migration window, `run.streamBasinName` and
+          // `session.streamBasinName` can differ — the writes land in the
+          // session's basin, so the race-check has to read from the same.
           const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
-            run,
             session: maybeSession,
           });
 
