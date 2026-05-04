@@ -127,13 +127,14 @@ The NLB is what PrivateLink exposes to Trigger.dev. It must be **internal** (not
     column shows **Active** before moving on. The endpoint service in the next step won't list the
     NLB until it's fully active.
   </Step>
-  <Step title="Disable the inbound rules option on the NLB">
-    Once the NLB is **Active**, open it and go to its **Settings** tab. AWS now enables an
-    **Inbound rules** feature on NLBs by default — leaving it on can cause traffic from the
-    Trigger.dev VPC Endpoint to be silently dropped before reaching your listener. Switch the
-    **Inbound rules** option to **Disabled** and save.
+  <Step title="Disable PrivateLink inbound rules enforcement on the NLB">
+    Once the NLB is **Active**, open it and go to its **Security** tab, then click **Edit**. If a
+    security group is attached, AWS enables **Enforce inbound rules on PrivateLink traffic** by
+    default — leaving it on can cause traffic from the Trigger.dev VPC Endpoint to be silently
+    dropped before reaching your listener. Uncheck **Enforce inbound rules on PrivateLink traffic**
+    and save.
 
-    ![Disable the NLB inbound rules option](/images/priv-connections-nlb-disable-inbound-rules-options.png)
+    ![Uncheck Enforce inbound rules on PrivateLink traffic on the NLB](/images/priv-connections-nlb-disable-inbound-rules-options.png)
 
   </Step>
 </Steps>
