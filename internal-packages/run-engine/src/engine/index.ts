@@ -661,9 +661,6 @@ export class RunEngine {
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               planType,
               realtimeStreamsVersion,
-              // Stamp the org's S2 basin so realtime reads resolve
-              // without joining Organization. Null in OSS / pre-backfill;
-              // read precedence falls back to the global basin env var.
               streamBasinName,
               debounce: debounce
                 ? {

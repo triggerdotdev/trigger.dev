@@ -59,15 +59,9 @@ const { action } = createActionApiRoute(
       });
     }
 
-    // When the row is missing (externalId form, row not yet upserted),
-    // default to the org's current basin instead of falling through to
-    // the legacy global. A fresh session row would be stamped with the
-    // org's basin at creation time, so subsequent appends/subscribes
-    // would resolve to the same place — without this, PUT-returned
-    // headers point at legacy and the actual writes go to per-org once
-    // the row exists. Pre-migration rows (row exists, column null) keep
-    // their existing legacy behaviour because we only fall back to org
-    // when there's no row at all.
+    // No-row form: resolve via the org so the stream initialised here
+    // matches what later appends/subscribes will land on once the row
+    // is created.
     const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
       session: maybeSession,
       organization: maybeSession ? null : authentication.environment.organization,
@@ -134,10 +128,7 @@ const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, authentication, resource }) => {
-    // Same row-optional reasoning as the PUT handler above: if no row
-    // exists yet, resolve via the org's current basin so the SSE
-    // subscribe lands in the same place that subsequent appends will
-    // (once the row gets created and stamped).
+    // Same no-row fallback as PUT above.
     const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
       session: resource.row,
       organization: resource.row ? null : authentication.environment.organization,

@@ -123,19 +123,10 @@ const { action, loader } = createActionApiRoute(
       // and remove the pending registration.
       if (!result.isCached) {
         try {
-          // Session streams are always v2 (S2) — the writer in
-          // `appendPartToSessionStream` and the SSE subscribe both
-          // hardcode "v2", so the race-check reader has to match.
-          // Don't fall through to the run's own `realtimeStreamsVersion`,
-          // which only describes the run's run-scoped streams.
-          //
-          // Resolve basin from `session` only (not `run`). The append-side
-          // writer in `realtime.v1.sessions.$session.$io.append.ts` passes
-          // only `{ session }`, and `resolveStreamBasin` prefers `run` over
-          // `session` when both are present. During the per-org-basin
-          // migration window, `run.streamBasinName` and
-          // `session.streamBasinName` can differ — the writes land in the
-          // session's basin, so the race-check has to read from the same.
+          // Session streams are hardcoded v2 by the append-side writer
+          // and SSE subscribe, so the race-check reader matches. Basin
+          // comes from `session` only — the writer side passes the same
+          // and we have to read from the same basin to find the record.
           const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
             session: maybeSession,
           });

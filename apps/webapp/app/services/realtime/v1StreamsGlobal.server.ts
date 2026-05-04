@@ -30,29 +30,11 @@ function initializeRedisRealtimeStreams() {
 export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
 
 /**
- * Resolve which S2 basin a stream context belongs to. Precedence:
- *
- *  1. `run.streamBasinName` (set at trigger time, immutable per-run)
- *  2. `session.streamBasinName` (set at session create time)
- *  3. `organization.streamBasinName` (current org basin — only useful
- *     when neither a run nor a session row exists yet, e.g. PUT init
- *     against an externalId before the row is created)
- *  4. `REALTIME_STREAMS_S2_BASIN` (the legacy / OSS / pre-backfill global)
- *
- * Old runs / sessions that pre-date the per-org-basins migration carry
- * `null` columns and fall through to the global basin, which is the
- * one their streams were originally created in. Once the legacy basin
- * drains via S2 retention (~30d on prod today), this fallback can be
- * dropped — but it's cheap to keep as a safety net.
- *
- * Callers should only pass `organization` when they know the row-bearing
- * ref is absent (not when its column is null) — otherwise a pre-migration
- * row's null column would short-circuit to the org's *current* basin
- * instead of the legacy one its streams actually live in.
- *
- * OSS / s2-lite installs always hit the global path because the
- * provisioner is gated by `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED`
- * and `streamBasinName` is never written.
+ * Resolve a stream's basin. Precedence: run → session → org → global env.
+ * Pre-migration rows have `streamBasinName: null` and fall through to
+ * the global basin (where their streams actually live), so only pass
+ * `organization` when no run/session row exists at all — otherwise a
+ * null column would short-circuit to the org's *current* basin.
  */
 export type StreamBasinContext = {
   run?: { streamBasinName: string | null } | null;
@@ -102,12 +84,8 @@ export function getRealtimeStreamInstance(
   throw new Error("Realtime streams v2 is required for this run but S2 configuration is missing");
 }
 
-/**
- * Build the in-basin stream prefix. When the basin is the legacy
- * single-basin (OSS / pre-migration), include `org/{orgId}` so streams
- * from different orgs are namespaced within the same basin. When the
- * basin is per-org, drop the org segment — the basin already isolates.
- */
+// Shared basin needs `org/{orgId}` to namespace; per-org basin already
+// isolates so the segment drops.
 function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): string {
   const isPerOrgBasin = basin !== env.REALTIME_STREAMS_S2_BASIN;
   const segments = isPerOrgBasin

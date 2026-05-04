@@ -5,12 +5,8 @@ import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
 import { isValidDuration } from "./services/realtime/duration.server";
 
-/**
- * `z.string()` constrained to a duration string parseable by
- * `parseDuration` (e.g. `7d`, `30d`, `365d`, `1h`). Validated at boot
- * so a typo'd retention env var fails fast at startup rather than
- * lurking until the first basin operation.
- */
+// `z.string()` constrained to a `parseDuration`-parseable string (e.g.
+// `7d`, `1h`). Validated at boot so a typo'd duration fails fast.
 function durationString() {
   return z
     .string()
@@ -1519,33 +1515,20 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
-    /// Per-org basin migration. When "true", the webapp provisions a
-    /// dedicated S2 basin per org with plan-tied retention and stamps
-    /// `streamBasinName` on new TaskRun / Session rows. OSS / s2-lite
-    /// installs leave this off and keep using the single basin defined
-    /// by `REALTIME_STREAMS_S2_BASIN`.
+    // When "true", provision a dedicated S2 basin per org and stamp
+    // `streamBasinName` on new rows. Off keeps everything on the single
+    // basin defined by `REALTIME_STREAMS_S2_BASIN`.
     REALTIME_STREAMS_PER_ORG_BASINS_ENABLED: z.enum(["true", "false"]).default("false"),
-    /// Naming pattern for per-org basins: `{prefix}-{env}-org-{slug}`
-    /// e.g. `triggerdotdev-prod-org-acme-corp`. Cluster + tier shorthand
-    /// — kept short to stay under S2's basin-name length limit.
+    // Per-org basin name = `{prefix}-{env}-org-{orgId}`.
     REALTIME_STREAMS_BASIN_NAME_PREFIX: z.string().default("triggerdotdev"),
     REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
-    /// Default retention for new basins (S2 duration syntax: 7d / 30d / 1y).
-    /// Used at org-create and as the fallback when no plan-specific
-    /// retention is resolved. Operators that don't run a billing API
-    /// only need this one.
     REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: durationString().default("30d"),
-    /// Plan-specific retention overrides — only consulted by the
-    /// optional `streamBasinRetentionByPlan` shim. Operators that
-    /// don't map plans to retention (OSS, self-hosted) can ignore
-    /// these and rely on the default above.
+    // Plan-specific retention overrides consulted by the
+    // streamBasinRetentionByPlan shim only.
     REALTIME_STREAMS_BASIN_RETENTION_FREE: durationString().default("7d"),
     REALTIME_STREAMS_BASIN_RETENTION_HOBBY: durationString().default("30d"),
     REALTIME_STREAMS_BASIN_RETENTION_PRO: durationString().default("365d"),
-    /// Storage class applied to per-org basins at create time.
     REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
-    /// `delete_on_empty_min_age` applied to per-org basins. Streams
-    /// that go empty for this long are reaped automatically.
     REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("1h"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),

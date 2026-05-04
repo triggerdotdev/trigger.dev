@@ -1,34 +1,10 @@
 /**
- * Per-org S2 basin provisioning.
+ * Per-org S2 basin provisioning. Gated by
+ * `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED`: when off, all orgs share
+ * `REALTIME_STREAMS_S2_BASIN` and this module no-ops.
  *
- * The webapp runs in two modes for realtime stream storage:
- *
- *  - **Single-basin mode** (OSS / s2-lite installs):
- *    `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=false`. All orgs share the
- *    basin in `REALTIME_STREAMS_S2_BASIN`. `Organization.streamBasinName`
- *    stays null forever; reads / writes resolve to the global basin.
- *
- *  - **Per-org-basin mode**:
- *    `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=true`. Each org gets a
- *    dedicated basin with its own retention. The basin is the unit of
- *    cost attribution (S2 exposes per-basin metrics) and isolation
- *    (access tokens scope to one basin).
- *
- * This module is purely retention-string-driven: callers pass a
- * duration like `"30d"` and the provisioner does the S2 round-trip.
- * It has no concept of plans / tiers / billing — operators that want
- * per-tier retention live one layer up (see
- * `streamBasinRetentionByPlan.server.ts`).
- *
- * Provisioning is one-shot per org: at creation time (or via the
- * backfill worker job for existing orgs) we create the basin and stamp
- * `Organization.streamBasinName`. New `TaskRun` / `Session` rows then
- * piggyback on the existing org read in `triggerTask` / session-create
- * paths and copy the value through. Reads use a precedence chain
- * (`run.streamBasinName ?? session.streamBasinName ?? globalBasin`).
- *
- * Plan / retention changes update retention in-place via
- * `reconfigureBasin`. We do not move data across basins.
+ * Pure retention-string in / S2-call out. No plan or billing
+ * vocabulary — that lives in `streamBasinRetentionByPlan.server.ts`.
  */
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -40,29 +16,13 @@ export function isPerOrgBasinsEnabled(): boolean {
   return env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true";
 }
 
-/**
- * Default retention for new orgs and any caller that doesn't specify
- * a value. Configurable via `REALTIME_STREAMS_BASIN_DEFAULT_RETENTION`.
- */
 export function defaultRetention(): string {
   return env.REALTIME_STREAMS_BASIN_DEFAULT_RETENTION;
 }
 
-/**
- * Build the basin name for an org. Format: `{prefix}-{env}-org-{id}`.
- *
- * We use the org's `id` (cuid, fixed-length, unique-by-construction)
- * rather than the slug. Slugs are user-influenced, can change, and —
- * critically — could collide across orgs once truncated to fit the
- * S2 basin-name length cap. cuid is short (25 chars) and never
- * collides, so the basin name is stable and tenant-isolated by
- * construction.
- *
- * Format check: `triggerdotdev-prod-org-{25 chars}` is 47 chars total,
- * comfortably under the conventional 63-char cap. If you change the
- * prefix / env-name to something extreme, this still fails fast at
- * S2's validator.
- */
+// Org id is a cuid — fixed-length and stable, so the basin name is
+// collision-free without truncation. Slugs are user-editable and would
+// drift.
 export function basinNameForOrg(org: { id: string }): string {
   const prefix = env.REALTIME_STREAMS_BASIN_NAME_PREFIX;
   const envName = env.REALTIME_STREAMS_BASIN_NAME_ENV;
@@ -71,9 +31,6 @@ export function basinNameForOrg(org: { id: string }): string {
 
 type ProvisionInput = {
   id: string;
-  /// Duration string passed straight to S2. Defaults to
-  /// `defaultRetention()` when omitted. Caller decides; the provisioner
-  /// has no opinion about what retention is appropriate.
   retention?: string;
   streamBasinName: string | null | undefined;
 };
@@ -82,19 +39,8 @@ type ProvisionResult =
   | { kind: "skipped"; reason: "feature-disabled" | "already-provisioned"; basin: string | null }
   | { kind: "provisioned"; basin: string; retention: string };
 
-/**
- * Idempotent: if the org already has `streamBasinName`, returns the
- * existing value without contacting S2. Otherwise creates the basin
- * (S2 returns 409 on race with another caller — we treat that as
- * success) and writes the column.
- *
- * Failure modes:
- *  - S2 unreachable / 5xx / timeout: throws. Callers in the org-create
- *    path swallow + leave the column null so the backfill worker can
- *    retry, so signup never fails on a transient S2 outage.
- *  - Auth misconfig (no token): throws. Should never happen in
- *    per-org-basins mode but worth surfacing loudly.
- */
+// Idempotent. Treats S2 409 as success (race with another caller, or
+// previous run that crashed after S2 ack but before the column write).
 export async function provisionBasinForOrg(
   org: ProvisionInput,
   prismaClient: PrismaClientOrTransaction = prisma
@@ -138,10 +84,6 @@ export async function provisionBasinForOrg(
   return { kind: "provisioned", basin, retention };
 }
 
-/**
- * Update retention in-place. Idempotent. No-op when the org has no
- * provisioned basin.
- */
 export async function reconfigureBasinForOrg(
   orgId: string,
   retention: string
@@ -150,10 +92,6 @@ export async function reconfigureBasinForOrg(
 
   const accessToken = env.REALTIME_STREAMS_S2_ACCESS_TOKEN;
   if (!accessToken) {
-    // Per-org basins are enabled but no token is configured — that's a
-    // misconfiguration, not a no-op condition. Throw so the worker job
-    // surfaces in the queue's failure log instead of silently leaving
-    // retention stale on the basin.
     throw new Error(
       "REALTIME_STREAMS_S2_ACCESS_TOKEN must be set when REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=true"
     );
@@ -174,19 +112,15 @@ export async function reconfigureBasinForOrg(
   });
 }
 
-// ---------- S2 REST ----------
-//
-// Account-level API: `POST /v1/basins` to create, `PATCH /v1/basins/{name}`
-// to reconfigure. The wire shape uses integer seconds for durations
-// (`retention_policy.age`, `delete_on_empty.min_age_secs`) — the human
-// strings (`7d`, `30d`, `1y`) are env-var ergonomics that we parse on
-// the way out.
+// S2 REST: POST /v1/basins to create, PATCH /v1/basins/{name} to
+// reconfigure. Wire shape takes integer seconds; we accept human strings
+// like "7d" / "1y" as env-var ergonomics and parse them here.
 
 type CreateBasinOptions = {
   accessToken: string;
-  retentionPolicy: string; // e.g. "7d", "30d", "365d"
+  retentionPolicy: string;
   storageClass: "express" | "standard";
-  deleteOnEmptyMinAge: string; // e.g. "1h"
+  deleteOnEmptyMinAge: string;
 };
 
 async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<void> {
@@ -205,10 +139,6 @@ async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<vo
   };
 
   const res = await fetch(url, {
-    // 10s upper bound so the synchronous org-create call site can't
-    // hang signup forever if S2 is slow / unreachable. Soft-fail at the
-    // caller swallows the resulting `TimeoutError`; the backfill worker
-    // retries the unprovisioned org later.
     signal: AbortSignal.timeout(10_000),
     method: "POST",
     headers: {
@@ -218,9 +148,7 @@ async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<vo
     body: JSON.stringify(body),
   });
 
-  // 200/201 = created. 409 = basin already exists (race with another
-  // caller, or a previous run that crashed after S2 ack but before our
-  // column write committed) — treat as success.
+  // 409 = basin already exists; treat as success (idempotent).
   if (res.ok || res.status === 409) return;
 
   const text = await res.text().catch(() => "");
@@ -241,9 +169,6 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   };
 
   const res = await fetch(url, {
-    // Same 10s ceiling as create. The reconfigure path runs from the
-    // worker, so a timeout here just fails the job and lets redis-worker
-    // retry naturally.
     signal: AbortSignal.timeout(10_000),
     method: "PATCH",
     headers: {

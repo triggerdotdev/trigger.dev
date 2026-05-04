@@ -293,11 +293,6 @@ function initializeWorker() {
         await service.process(payload.bulkActionId);
       },
       "v3.reconcileStreamBasinForOrg": async ({ payload }) => {
-        // Bring the org's basin state in line with its current plan:
-        // provision on free→paid, reconfigure retention on tier change,
-        // null the column on paid→free (the basin itself lingers; old
-        // streams age out naturally). Idempotent — safe to enqueue
-        // from setPlan branches and the backfill loop.
         await reconcileBasinForOrg(payload.orgId);
       },
     },

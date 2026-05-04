@@ -434,32 +434,15 @@ export async function setPlan(
   }
 }
 
-/**
- * Best-effort enqueue: when an org's plan changes we reconcile its
- * stream-basin state. The reconciler handles every transition:
- *
- *   free → paid:  provision a dedicated basin with the plan's retention.
- *   paid → paid:  reconfigure the existing basin's retention.
- *   paid → free:  null `Organization.streamBasinName`. Future runs/sessions
- *                 flow to the shared global basin; the per-org basin
- *                 lingers until existing streams age out on their original
- *                 retention.
- *   free → free:  no-op.
- *
- * Idempotent and a no-op when per-org basins are disabled or billing
- * isn't configured. Failures are logged but never block the plan
- * change itself — billing has already accepted by the time we reach
- * this code.
- */
+// Best-effort: failures are logged but never block the plan change.
+// The reconciler is idempotent and re-reads the plan when it runs, so
+// concurrent plan changes collapse to one pending job per org.
 async function enqueueStreamBasinReconcile(orgId: string) {
   try {
     const { commonWorker } = await import("~/v3/commonWorker.server");
     await commonWorker.enqueue({
       job: "v3.reconcileStreamBasinForOrg",
       payload: { orgId },
-      // Per-org dedupe key — concurrent plan changes collapse to one
-      // pending reconcile job. The job re-reads the current plan when
-      // it executes, so the latest tier wins.
       id: `reconcileStreamBasin:${orgId}`,
     });
   } catch (error) {
