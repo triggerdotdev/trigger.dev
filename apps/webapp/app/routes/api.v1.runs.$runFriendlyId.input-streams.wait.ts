@@ -40,6 +40,7 @@ const { action, loader } = createActionApiRoute(
           id: true,
           friendlyId: true,
           realtimeStreamsVersion: true,
+          streamBasinName: true,
         },
       });
 
@@ -98,7 +99,8 @@ const { action, loader } = createActionApiRoute(
         try {
           const realtimeStream = getRealtimeStreamInstance(
             authentication.environment,
-            run.realtimeStreamsVersion
+            run.realtimeStreamsVersion,
+            { run }
           );
 
           const records = await realtimeStream.readRecords(

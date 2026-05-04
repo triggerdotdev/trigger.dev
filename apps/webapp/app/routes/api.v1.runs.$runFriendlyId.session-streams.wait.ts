@@ -128,7 +128,9 @@ const { action, loader } = createActionApiRoute(
           // hardcode "v2", so the race-check reader has to match.
           // Don't fall through to the run's own `realtimeStreamsVersion`,
           // which only describes the run's run-scoped streams.
-          const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+          const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+            session: maybeSession,
+          });
 
           if (realtimeStream instanceof S2RealtimeStreams) {
             const records = await realtimeStream.readSessionStreamRecords(

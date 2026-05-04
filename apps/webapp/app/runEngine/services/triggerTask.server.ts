@@ -395,6 +395,11 @@ export class RunEngineTriggerTaskService {
                 bulkActionId: body.options?.bulkActionId,
                 planType,
                 realtimeStreamsVersion: options.realtimeStreamsVersion,
+                // Stamp the org's S2 basin onto the new TaskRun so
+                // realtime read paths can resolve the basin without
+                // joining `Organization`. Null in OSS / pre-backfill;
+                // reads then fall back to the global basin env var.
+                streamBasinName: environment.organization.streamBasinName,
                 debounce: body.options?.debounce,
                 annotations,
                 // When debouncing with triggerAndWait, create a span for the debounced trigger

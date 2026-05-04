@@ -392,6 +392,7 @@ export async function setPlan(
         // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
         platformCache.entitlement.remove(organization.id).catch(() => {});
+        await enqueueStreamBasinReconfigure(organization.id);
         return redirect(newProjectPath(organization, "You're on the Free plan."));
       } else {
         return redirectWithErrorMessage(
@@ -409,14 +410,43 @@ export async function setPlan(
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
+      await enqueueStreamBasinReconfigure(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
+      await enqueueStreamBasinReconfigure(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
+  }
+}
+
+/**
+ * Best-effort enqueue: when an org's plan changes we want the per-org
+ * S2 basin's retention to follow (free=7d, hobby=30d, pro=365d). The
+ * worker job is idempotent and a no-op when per-org basins are disabled
+ * or the org has no basin yet (OSS / pre-backfill). Failures are
+ * logged but never block the plan change itself — billing has already
+ * accepted by the time we reach this code.
+ */
+async function enqueueStreamBasinReconfigure(orgId: string) {
+  try {
+    const { commonWorker } = await import("~/v3/commonWorker.server");
+    await commonWorker.enqueue({
+      job: "v3.reconfigureStreamBasinForOrg",
+      payload: { orgId },
+      // Per-org dedupe key — concurrent plan changes collapse to one
+      // pending reconfigure job. The job re-reads the current plan
+      // when it executes, so the latest tier wins.
+      id: `reconfigureStreamBasin:${orgId}`,
+    });
+  } catch (error) {
+    logger.warn("[setPlan] failed to enqueue stream basin reconfigure", {
+      orgId,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

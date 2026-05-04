@@ -167,6 +167,10 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            // Stamp the org's S2 basin so realtime reads on this
+            // session's `.in/.out` channels resolve without joining
+            // Organization. Null until per-org basins are provisioned.
+            streamBasinName: authentication.environment.organization.streamBasinName,
           },
           update: { triggerConfig: triggerConfigJson },
         });
@@ -186,6 +190,10 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            // Stamp the org's S2 basin so realtime reads on this
+            // session's `.in/.out` channels resolve without joining
+            // Organization. Null until per-org basins are provisioned.
+            streamBasinName: authentication.environment.organization.streamBasinName,
           },
         });
       }

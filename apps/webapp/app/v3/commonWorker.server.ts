@@ -21,6 +21,13 @@ import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.ser
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
+import {
+  planTierFor,
+  provisionBasinForOrg,
+  reconfigureBasinForOrg,
+} from "~/services/realtime/streamBasinProvisioner.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
+import { prisma } from "~/db.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -199,6 +206,24 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      "v3.provisionStreamBasinForOrg": {
+        schema: z.object({
+          orgId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
+      "v3.reconfigureStreamBasinForOrg": {
+        schema: z.object({
+          orgId: z.string(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 5,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -281,6 +306,40 @@ function initializeWorker() {
       processBulkAction: async ({ payload }) => {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
+      },
+      "v3.provisionStreamBasinForOrg": async ({ payload }) => {
+        // Backfill / retry path. Reads the org row, resolves the
+        // billing tier, hands it to the provisioner. The provisioner
+        // is itself a no-op when per-org basins are disabled or the
+        // basin is already provisioned. Throws on transient S2
+        // failures so redis-worker retries naturally.
+        const org = await prisma.organization.findFirst({
+          where: { id: payload.orgId },
+          select: {
+            id: true,
+            slug: true,
+            streamBasinName: true,
+          },
+        });
+        if (!org) return;
+
+        const plan = await getCurrentPlan(payload.orgId);
+        // `plan.code` carries the canonical plan id ("free", "v3_hobby_1",
+        // "v3_pro_1", "enterprise"). `plan.type` is just the
+        // billing-shape discriminator ("free" | "paid" | "enterprise")
+        // and would lump hobby + pro into one bucket.
+        const tier = planTierFor(plan?.v3Subscription?.plan?.code);
+
+        await provisionBasinForOrg({ ...org, tier });
+      },
+      "v3.reconfigureStreamBasinForOrg": async ({ payload }) => {
+        const plan = await getCurrentPlan(payload.orgId);
+        // `plan.code` carries the canonical plan id ("free", "v3_hobby_1",
+        // "v3_pro_1", "enterprise"). `plan.type` is just the
+        // billing-shape discriminator ("free" | "paid" | "enterprise")
+        // and would lump hobby + pro into one bucket.
+        const tier = planTierFor(plan?.v3Subscription?.plan?.code);
+        await reconfigureBasinForOrg(payload.orgId, tier);
       },
     },
   });

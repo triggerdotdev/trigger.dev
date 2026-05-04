@@ -259,6 +259,11 @@ export type TriggerParams = {
   bulkActionId?: string;
   planType?: string;
   realtimeStreamsVersion?: string;
+  /// S2 basin where this run's realtime streams live. Stamped onto
+  /// the new TaskRun row so realtime read paths can resolve the basin
+  /// without joining `Organization`. Null in OSS / pre-backfill —
+  /// reads then fall back to the global basin env var.
+  streamBasinName?: string | null;
   debounce?: {
     key: string;
     delay: string;

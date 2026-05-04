@@ -1506,6 +1506,28 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    /// Per-org basin migration. When "true", the webapp provisions a
+    /// dedicated S2 basin per org with plan-tied retention and stamps
+    /// `streamBasinName` on new TaskRun / Session rows. OSS / s2-lite
+    /// installs leave this off and keep using the single basin defined
+    /// by `REALTIME_STREAMS_S2_BASIN`.
+    REALTIME_STREAMS_PER_ORG_BASINS_ENABLED: z.enum(["true", "false"]).default("false"),
+    /// Naming pattern for per-org basins: `{prefix}-{env}-org-{slug}`
+    /// e.g. `triggerdotdev-prod-org-acme-corp`. Cluster + tier shorthand
+    /// — kept short to stay under S2's basin-name length limit.
+    REALTIME_STREAMS_BASIN_NAME_PREFIX: z.string().default("triggerdotdev"),
+    REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
+    /// Plan-tier retention strings (S2 duration syntax: 7d / 30d / 1y).
+    /// Free / hobby / pro line up with billing tiers; enterprise uses
+    /// the pro default and is reconfigured per-contract via the API.
+    REALTIME_STREAMS_BASIN_RETENTION_FREE: z.string().default("7d"),
+    REALTIME_STREAMS_BASIN_RETENTION_HOBBY: z.string().default("30d"),
+    REALTIME_STREAMS_BASIN_RETENTION_PRO: z.string().default("365d"),
+    /// Storage class applied to per-org basins at create time.
+    REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
+    /// `delete_on_empty_min_age` applied to per-org basins. Streams
+    /// that go empty for this long are reaped automatically.
+    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: z.string().default("1h"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
 

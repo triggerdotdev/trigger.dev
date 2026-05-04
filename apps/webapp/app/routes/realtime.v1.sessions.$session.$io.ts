@@ -59,7 +59,9 @@ const { action } = createActionApiRoute(
       });
     }
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session: maybeSession,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return new Response("Session channels require the S2 realtime backend", {
@@ -122,7 +124,9 @@ const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, authentication, resource }) => {
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session: resource.row,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return new Response("Session channels require the S2 realtime backend", {
