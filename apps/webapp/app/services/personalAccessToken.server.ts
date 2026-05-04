@@ -22,7 +22,11 @@ export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 // the PAT is still valid; auth just falls through to legacy permissive
 // behaviour. Any other error is treated as a real failure and triggers
 // the compensating delete below.
-const FALLBACK_NOT_INSTALLED_ERROR = "RBAC fallback not installed";
+// Must match the OSS fallback's exact error string (see
+// `internal-packages/rbac/src/fallback.ts`'s `setTokenRole`). The
+// match is how we detect "no plugin installed" and skip the
+// compensating delete.
+const FALLBACK_NOT_INSTALLED_ERROR = "RBAC plugin not installed";
 
 type CreatePersonalAccessTokenOptions = {
   name: string;

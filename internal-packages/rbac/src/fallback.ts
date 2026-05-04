@@ -80,14 +80,29 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       };
     }
 
-    const env = await this.prisma.runtimeEnvironment.findFirst({
+    const include = {
+      project: true,
+      organization: true,
+      orgMember: { select: { userId: true } },
+    } as const;
+    let env = await this.prisma.runtimeEnvironment.findFirst({
       where: { apiKey: rawToken },
-      include: {
-        project: true,
-        organization: true,
-        orgMember: { select: { userId: true } },
-      },
+      include,
     });
+
+    // Revoked API key grace window — mirrors `findEnvironmentByApiKey`
+    // in apps/webapp/app/models/runtimeEnvironment.server.ts. Recently
+    // rotated keys keep working until their `expiresAt`; without this
+    // branch a customer who rotates an env API key gets immediate 401s
+    // on the new auth path. The PR's e2e suite covers this in
+    // auth-cross-cutting.e2e.full.test.ts ("revoked key within grace").
+    if (!env) {
+      const revoked = await this.prisma.revokedApiKey.findFirst({
+        where: { apiKey: rawToken, expiresAt: { gt: new Date() } },
+        include: { runtimeEnvironment: { include } },
+      });
+      env = revoked?.runtimeEnvironment ?? null;
+    }
 
     if (!env || env.project.deletedAt !== null) {
       return { ok: false, status: 401, error: "Invalid API key" };

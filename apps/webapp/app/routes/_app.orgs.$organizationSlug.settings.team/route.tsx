@@ -595,7 +595,11 @@ function RolePicker({
 
   const picker = (
     <Select
-      defaultValue={currentRoleId ?? ""}
+      // Controlled — keeps the dropdown in sync with the persisted
+      // role even after a failed set-role fetcher submit (the server
+      // kept the old role; without `value` the UI would show the
+      // attempted change).
+      value={currentRoleId ?? ""}
       items={roles}
       variant="tertiary/small"
       disabled={!canManageMembers || isSubmitting}

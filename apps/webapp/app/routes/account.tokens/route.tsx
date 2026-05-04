@@ -118,9 +118,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // user isn't a member of any org or no RBAC plugin is installed,
     // the picker is hidden anyway, so defaultRoleId is just a
     // placeholder.
-    const sys = orgId ? await rbac.systemRoles(orgId) : null;
-    const lowestAvailable = (sys ?? []).filter((r) => r.available).at(-1)?.id ?? "";
-    const defaultRoleId = userRoleId ?? lowestAvailable;
+    // Clamp to roles the picker actually renders (`roles` already
+    // joins systemRoles ∩ assignableRoleIds). If userRoleId points at
+    // a custom or plan-blocked role, the hidden form value would
+    // otherwise post a roleId the action's revalidation rejects with
+    // 400. Fall through to the most-restrictive assignable role.
+    const assignableIds = new Set(roles.map((r) => r.id));
+    const lowestAssignable = roles.at(-1)?.id ?? "";
+    const defaultRoleId =
+      userRoleId && assignableIds.has(userRoleId) ? userRoleId : lowestAssignable;
 
     return typedjson({
       personalAccessTokens,
