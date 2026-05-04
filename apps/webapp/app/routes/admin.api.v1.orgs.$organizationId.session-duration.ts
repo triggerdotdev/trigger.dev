@@ -38,7 +38,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
-  const parseResult = RequestBodySchema.safeParse(await request.json());
+  let rawBody: unknown;
+  try {
+    rawBody = await request.json();
+  } catch {
+    return json({ success: false, errors: "Invalid JSON body" }, { status: 400 });
+  }
+  const parseResult = RequestBodySchema.safeParse(rawBody);
   if (!parseResult.success) {
     return json({ success: false, errors: parseResult.error.flatten() }, { status: 400 });
   }
