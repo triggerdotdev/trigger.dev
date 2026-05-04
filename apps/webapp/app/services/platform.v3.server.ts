@@ -436,6 +436,48 @@ export async function setConcurrencyAddOn(organizationId: string, amount: number
   }
 }
 
+// Admin-only: raise (or revert) the per-org cap on extra purchasable
+// concurrency. Hits cloud's POST /api/admin/orgs/:orgId/concurrency-quota,
+// which writes billing.Limits.extraConcurrencyQuota. The local cast layers
+// the new method on top of BillingClient until @trigger.dev/platform is
+// bumped to the version that exports it natively.
+type SetExtraConcurrencyQuotaResult =
+  | {
+      success: true;
+      orgId: string;
+      extraConcurrencyQuota: number | null;
+    }
+  | {
+      success: false;
+      error: string;
+      code?: string;
+    };
+
+export async function setExtraConcurrencyQuota(
+  organizationId: string,
+  body: { extraConcurrencyQuota: number | null }
+) {
+  if (!client) return undefined;
+
+  try {
+    const result = await (
+      client as unknown as {
+        setExtraConcurrencyQuota: (
+          orgId: string,
+          body: { extraConcurrencyQuota: number | null }
+        ) => Promise<SetExtraConcurrencyQuotaResult>;
+      }
+    ).setExtraConcurrencyQuota(organizationId, body);
+    if (!result.success) {
+      recordPlatformFailure("setExtraConcurrencyQuota", "no_success");
+    }
+    return result;
+  } catch (e) {
+    recordPlatformFailure("setExtraConcurrencyQuota", "caught");
+    return undefined;
+  }
+}
+
 export async function setSeatsAddOn(organizationId: string, amount: number) {
   if (!client) return undefined;
 

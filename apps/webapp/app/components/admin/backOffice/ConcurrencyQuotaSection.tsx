@@ -1,0 +1,156 @@
+import { Form } from "@remix-run/react";
+import { useEffect, useState } from "react";
+import { Button } from "~/components/primitives/Buttons";
+import { Checkbox } from "~/components/primitives/Checkbox";
+import { FormError } from "~/components/primitives/FormError";
+import { Header2 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { Label } from "~/components/primitives/Label";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import * as Property from "~/components/primitives/PropertyTable";
+
+export const CONCURRENCY_QUOTA_INTENT = "set-concurrency-quota";
+export const CONCURRENCY_QUOTA_SAVED_VALUE = "concurrency-quota";
+
+type FieldErrors = Record<string, string[] | undefined> | null;
+
+type Props = {
+  currentQuota: number;
+  purchased: number;
+  errors: FieldErrors;
+  formError: string | null;
+  savedJustNow: boolean;
+  isSubmitting: boolean;
+};
+
+export function ConcurrencyQuotaSection({
+  currentQuota,
+  purchased,
+  errors,
+  formError,
+  savedJustNow,
+  isSubmitting,
+}: Props) {
+  const hasFieldErrors = !!errors && Object.keys(errors).length > 0;
+  const fieldError = (field: string) =>
+    errors && field in errors ? errors[field]?.[0] : undefined;
+
+  const [isEditing, setIsEditing] = useState(hasFieldErrors || !!formError);
+  const [usePlanDefault, setUsePlanDefault] = useState(false);
+  const [value, setValue] = useState(String(currentQuota));
+
+  useEffect(() => {
+    if (hasFieldErrors || formError) setIsEditing(true);
+  }, [hasFieldErrors, formError]);
+
+  useEffect(() => {
+    if (savedJustNow && !hasFieldErrors && !formError) setIsEditing(false);
+  }, [savedJustNow, hasFieldErrors, formError]);
+
+  const cancelEdit = () => {
+    setValue(String(currentQuota));
+    setUsePlanDefault(false);
+    setIsEditing(false);
+  };
+
+  return (
+    <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">
+      <div className="flex items-center justify-between">
+        <Header2>Concurrency quota</Header2>
+        {!isEditing && (
+          <Button
+            variant="tertiary/small"
+            onClick={() => setIsEditing(true)}
+            disabled={isSubmitting}
+          >
+            Edit
+          </Button>
+        )}
+      </div>
+
+      <Paragraph variant="small">
+        Cap on how much extra concurrency this org can purchase. Increases
+        unlock self-serve purchase up to the new cap; the org still has to
+        complete the purchase from the billing flow.
+      </Paragraph>
+
+      {savedJustNow && (
+        <div className="rounded-md border border-green-600/40 bg-green-600/10 px-3 py-2">
+          <Paragraph variant="small" className="text-green-500">
+            Saved.
+          </Paragraph>
+        </div>
+      )}
+
+      {formError && (
+        <div className="rounded-md border border-red-600/40 bg-red-600/10 px-3 py-2">
+          <Paragraph variant="small" className="text-red-500">
+            {formError}
+          </Paragraph>
+        </div>
+      )}
+
+      {!isEditing ? (
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Max extra concurrency this org can purchase on top of their plan</Property.Label>
+            <Property.Value>{currentQuota.toLocaleString()}</Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Already purchased</Property.Label>
+            <Property.Value>{purchased.toLocaleString()}</Property.Value>
+          </Property.Item>
+        </Property.Table>
+      ) : (
+        <Form method="post" className="flex flex-col gap-3 pt-2">
+          <input type="hidden" name="intent" value={CONCURRENCY_QUOTA_INTENT} />
+
+          <div className="flex flex-col gap-1">
+            <Label>Max extra concurrency this org can purchase on top of their plan</Label>
+            <Input
+              name="extraConcurrencyQuota"
+              type="number"
+              min={0}
+              value={usePlanDefault ? "" : value}
+              onChange={(e) => setValue(e.target.value)}
+              disabled={usePlanDefault}
+              required={!usePlanDefault}
+            />
+            <FormError>{fieldError("extraConcurrencyQuota")}</FormError>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="usePlanDefault"
+              name="usePlanDefault"
+              value="true"
+              checked={usePlanDefault}
+              onChange={(e) => setUsePlanDefault(e.target.checked)}
+            />
+            <Label htmlFor="usePlanDefault">
+              Use plan default (clears any per-org override)
+            </Label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              variant="primary/medium"
+              disabled={isSubmitting || (!usePlanDefault && !value.trim())}
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="tertiary/medium"
+              onClick={cancelEdit}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Form>
+      )}
+    </section>
+  );
+}

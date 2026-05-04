@@ -26,6 +26,12 @@ import {
   resolveEffectiveBatchRateLimit,
 } from "~/components/admin/backOffice/BatchRateLimitSection.server";
 import {
+  CONCURRENCY_QUOTA_INTENT,
+  CONCURRENCY_QUOTA_SAVED_VALUE,
+  ConcurrencyQuotaSection,
+} from "~/components/admin/backOffice/ConcurrencyQuotaSection";
+import { handleConcurrencyQuotaAction } from "~/components/admin/backOffice/ConcurrencyQuotaSection.server";
+import {
   MAX_PROJECTS_INTENT,
   MAX_PROJECTS_SAVED_VALUE,
   MaxProjectsSection,
@@ -36,6 +42,7 @@ import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 
 const SAVED_QUERY_KEY = "saved";
@@ -73,7 +80,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     org.batchRateLimitConfig
   );
 
-  return typedjson({ org, apiEffective, batchEffective });
+  const currentPlan = await getCurrentPlan(org.id);
+  const concurrencyAddOn = currentPlan?.v3Subscription?.addOns?.concurrentRuns;
+  const concurrencyQuota = {
+    currentQuota: concurrencyAddOn?.quota ?? 0,
+    purchased: concurrencyAddOn?.purchased ?? 0,
+  };
+
+  return typedjson({ org, apiEffective, batchEffective, concurrencyQuota });
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -129,6 +143,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
+  if (intent === CONCURRENCY_QUOTA_INTENT) {
+    const result = await handleConcurrencyQuotaAction(formData, orgId, user.id);
+    if (!result.ok) {
+      return typedjson(
+        {
+          section: CONCURRENCY_QUOTA_SAVED_VALUE,
+          errors: result.errors,
+          formError: result.formError ?? null,
+        },
+        { status: 400 }
+      );
+    }
+    return redirect(
+      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${CONCURRENCY_QUOTA_SAVED_VALUE}`
+    );
+  }
+
   return typedjson(
     { section: null, errors: { intent: ["Unknown intent."] } },
     { status: 400 }
@@ -136,7 +167,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function BackOfficeOrgPage() {
-  const { org, apiEffective, batchEffective } =
+  const { org, apiEffective, batchEffective, concurrencyQuota } =
     useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
@@ -147,12 +178,19 @@ export default function BackOfficeOrgPage() {
     navigation.state !== "idle" && submittingIntent === BATCH_RATE_LIMIT_INTENT;
   const isSubmittingMaxProjects =
     navigation.state !== "idle" && submittingIntent === MAX_PROJECTS_INTENT;
+  const isSubmittingConcurrencyQuota =
+    navigation.state !== "idle" &&
+    submittingIntent === CONCURRENCY_QUOTA_INTENT;
 
   const errorSection =
     actionData && "section" in actionData ? actionData.section : null;
   const errors =
     actionData && "errors" in actionData
       ? (actionData.errors as Record<string, string[] | undefined>)
+      : null;
+  const formError =
+    actionData && "formError" in actionData
+      ? ((actionData as { formError?: string | null }).formError ?? null)
       : null;
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -179,7 +217,7 @@ export default function BackOfficeOrgPage() {
   }, [savedSection, setSearchParams]);
 
   return (
-    <div className="flex flex-col gap-6 py-4">
+    <div className="flex shrink-0 flex-col gap-6 pb-12 pt-4">
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
           <Header1>{org.title}</Header1>
@@ -211,6 +249,17 @@ export default function BackOfficeOrgPage() {
         errors={errorSection === MAX_PROJECTS_SAVED_VALUE ? errors : null}
         savedJustNow={savedSection === MAX_PROJECTS_SAVED_VALUE}
         isSubmitting={isSubmittingMaxProjects}
+      />
+
+      <ConcurrencyQuotaSection
+        currentQuota={concurrencyQuota.currentQuota}
+        purchased={concurrencyQuota.purchased}
+        errors={errorSection === CONCURRENCY_QUOTA_SAVED_VALUE ? errors : null}
+        formError={
+          errorSection === CONCURRENCY_QUOTA_SAVED_VALUE ? formError : null
+        }
+        savedJustNow={savedSection === CONCURRENCY_QUOTA_SAVED_VALUE}
+        isSubmitting={isSubmittingConcurrencyQuota}
       />
     </div>
   );

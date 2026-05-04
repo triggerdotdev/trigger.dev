@@ -16,7 +16,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export default function Page() {
   return (
-    <div className="h-full w-full">
+    <div className="flex h-full w-full flex-col">
       <div className="flex items-center justify-between p-4">
         <Tabs
           tabs={[
