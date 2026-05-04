@@ -1,7 +1,6 @@
 import { Form } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { Checkbox } from "~/components/primitives/Checkbox";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
@@ -36,7 +35,6 @@ export function ConcurrencyQuotaSection({
     errors && field in errors ? errors[field]?.[0] : undefined;
 
   const [isEditing, setIsEditing] = useState(hasFieldErrors || !!formError);
-  const [usePlanDefault, setUsePlanDefault] = useState(false);
   const [value, setValue] = useState(String(currentQuota));
 
   useEffect(() => {
@@ -49,9 +47,23 @@ export function ConcurrencyQuotaSection({
 
   const cancelEdit = () => {
     setValue(String(currentQuota));
-    setUsePlanDefault(false);
     setIsEditing(false);
   };
+
+  const trimmedValue = value.trim();
+  const parsed = Number(trimmedValue);
+  const isValidPreview =
+    trimmedValue.length > 0 &&
+    Number.isInteger(parsed) &&
+    parsed >= 0;
+  const delta = isValidPreview ? parsed - currentQuota : 0;
+  const deltaLabel =
+    delta > 0
+      ? `+${delta.toLocaleString()}`
+      : delta < 0
+        ? delta.toLocaleString()
+        : "no change";
+  const headroomAfter = isValidPreview ? parsed - purchased : 0;
 
   return (
     <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">
@@ -111,32 +123,41 @@ export function ConcurrencyQuotaSection({
               name="extraConcurrencyQuota"
               type="number"
               min={0}
-              value={usePlanDefault ? "" : value}
+              value={value}
               onChange={(e) => setValue(e.target.value)}
-              disabled={usePlanDefault}
-              required={!usePlanDefault}
+              required
             />
             <FormError>{fieldError("extraConcurrencyQuota")}</FormError>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="usePlanDefault"
-              name="usePlanDefault"
-              value="true"
-              checked={usePlanDefault}
-              onChange={(e) => setUsePlanDefault(e.target.checked)}
-            />
-            <Label htmlFor="usePlanDefault">
-              Use plan default (clears any per-org override)
-            </Label>
-          </div>
+          {isValidPreview && (
+            <div className="rounded-md border border-charcoal-700 bg-charcoal-900 px-3 py-2">
+              <Paragraph variant="small">
+                Cap: {currentQuota.toLocaleString()} →{" "}
+                {parsed.toLocaleString()} ({deltaLabel})
+              </Paragraph>
+              <Paragraph variant="small" className="text-text-dimmed">
+                Already purchased: {purchased.toLocaleString()}
+              </Paragraph>
+              {headroomAfter >= 0 ? (
+                <Paragraph variant="small" className="text-text-dimmed">
+                  After save: {headroomAfter.toLocaleString()} more buyable.
+                </Paragraph>
+              ) : (
+                <Paragraph variant="small" className="text-amber-500">
+                  Below already-purchased — org would be{" "}
+                  {(-headroomAfter).toLocaleString()} over the new cap. They'd
+                  keep what they have but couldn't buy more until you raise it.
+                </Paragraph>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <Button
               type="submit"
               variant="primary/medium"
-              disabled={isSubmitting || (!usePlanDefault && !value.trim())}
+              disabled={isSubmitting || !value.trim()}
             >
               Save
             </Button>

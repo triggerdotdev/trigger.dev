@@ -3,38 +3,11 @@ import { logger } from "~/services/logger.server";
 import { setExtraConcurrencyQuota } from "~/services/platform.v3.server";
 import { CONCURRENCY_QUOTA_INTENT } from "./ConcurrencyQuotaSection";
 
-const RawSchema = z.object({
+const SetConcurrencyQuotaSchema = z.object({
   intent: z.literal(CONCURRENCY_QUOTA_INTENT),
-  // Checkbox arrives as "on" / "true" when checked, absent when not.
-  usePlanDefault: z.string().optional(),
-  // Empty string when "Use plan default" is checked (the input is disabled).
-  extraConcurrencyQuota: z.string().optional(),
-});
-
-const SetConcurrencyQuotaSchema = RawSchema.transform((raw, ctx) => {
-  const usePlanDefault = !!raw.usePlanDefault;
-  if (usePlanDefault) {
-    return { extraConcurrencyQuota: null as number | null };
-  }
-  const trimmed = (raw.extraConcurrencyQuota ?? "").trim();
-  if (trimmed.length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Enter a non-negative integer or check 'Use plan default'.",
-      path: ["extraConcurrencyQuota"],
-    });
-    return z.NEVER;
-  }
-  const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Quota must be a non-negative integer.",
-      path: ["extraConcurrencyQuota"],
-    });
-    return z.NEVER;
-  }
-  return { extraConcurrencyQuota: parsed as number | null };
+  // Capped at PostgreSQL INTEGER max for safety; cloud will reject anything
+  // unreasonably high on its own (likely with quota_too_high).
+  extraConcurrencyQuota: z.coerce.number().int().min(0).max(2_147_483_647),
 });
 
 export type ConcurrencyQuotaActionResult =
@@ -102,7 +75,7 @@ function mapCodeToMessage(
 ): string {
   switch (code) {
     case "invalid_body":
-      return "Quota must be a non-negative integer (or check 'Use plan default').";
+      return "Quota must be a non-negative integer.";
     case "quota_too_high":
       // Cloud's `error` string embeds the actual ceiling, prefer it verbatim.
       return fallback || "Cap is too high.";
