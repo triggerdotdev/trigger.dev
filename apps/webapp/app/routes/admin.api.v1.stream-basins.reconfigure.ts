@@ -67,9 +67,9 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   await commonWorker.enqueue({
-    job: "v3.reconfigureStreamBasinForOrg",
+    job: "v3.reconcileStreamBasinForOrg",
     payload: { orgId: parsed.data.orgId },
-    id: `reconfigureStreamBasin:${parsed.data.orgId}`,
+    id: `reconcileStreamBasin:${parsed.data.orgId}`,
   });
 
   return json({ ok: true, mode: "queued", enqueued: parsed.data.orgId });

@@ -21,12 +21,7 @@ import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.ser
 import { RetryAttemptService } from "./services/retryAttempt.server";
 import { TimeoutDeploymentService } from "./services/timeoutDeployment.server";
 import { BulkActionService } from "./services/bulk/BulkActionV2.server";
-import {
-  provisionBasinForOrg,
-  reconfigureBasinForOrg,
-} from "~/services/realtime/streamBasinProvisioner.server";
-import { resolveRetentionForOrg } from "~/services/realtime/streamBasinRetentionByPlan.server";
-import { prisma } from "~/db.server";
+import { reconcileBasinForOrg } from "~/services/realtime/streamBasinRetentionByPlan.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -205,16 +200,7 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      "v3.provisionStreamBasinForOrg": {
-        schema: z.object({
-          orgId: z.string(),
-        }),
-        visibilityTimeoutMs: 60_000,
-        retry: {
-          maxAttempts: 5,
-        },
-      },
-      "v3.reconfigureStreamBasinForOrg": {
+      "v3.reconcileStreamBasinForOrg": {
         schema: z.object({
           orgId: z.string(),
         }),
@@ -306,31 +292,13 @@ function initializeWorker() {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
       },
-      "v3.provisionStreamBasinForOrg": async ({ payload }) => {
-        // Backfill / retry path. Resolves the retention for the org
-        // (cloud installs map plan→retention via the byPlan shim;
-        // others fall back to the default), then hands a plain
-        // retention string to the provisioner. The provisioner itself
-        // has no plan vocabulary. `resolveRetentionForOrg` throws on
-        // transient billing failure so redis-worker retries naturally.
-        const org = await prisma.organization.findFirst({
-          where: { id: payload.orgId },
-          select: {
-            id: true,
-            streamBasinName: true,
-          },
-        });
-        if (!org) return;
-
-        const retention = await resolveRetentionForOrg(payload.orgId);
-        await provisionBasinForOrg({ ...org, retention });
-      },
-      "v3.reconfigureStreamBasinForOrg": async ({ payload }) => {
-        // Same shape as provision: resolve retention up front, hand a
-        // plain string to the provisioner. The shim throws on billing
-        // failure rather than silently downgrading retention.
-        const retention = await resolveRetentionForOrg(payload.orgId);
-        await reconfigureBasinForOrg(payload.orgId, retention);
+      "v3.reconcileStreamBasinForOrg": async ({ payload }) => {
+        // Bring the org's basin state in line with its current plan:
+        // provision on free→paid, reconfigure retention on tier change,
+        // null the column on paid→free (the basin itself lingers; old
+        // streams age out naturally). Idempotent — safe to enqueue
+        // from setPlan branches and the backfill loop.
+        await reconcileBasinForOrg(payload.orgId);
       },
     },
   });

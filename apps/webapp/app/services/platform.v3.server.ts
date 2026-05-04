@@ -403,7 +403,7 @@ export async function setPlan(
         // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
         platformCache.entitlement.remove(organization.id).catch(() => {});
-        await enqueueStreamBasinReconfigure(organization.id);
+        await enqueueStreamBasinReconcile(organization.id);
         return redirect(newProjectPath(organization, "You're on the Free plan."));
       } else {
         return redirectWithErrorMessage(
@@ -421,40 +421,49 @@ export async function setPlan(
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
-      await enqueueStreamBasinReconfigure(organization.id);
+      await enqueueStreamBasinReconcile(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
-      await enqueueStreamBasinReconfigure(organization.id);
+      await enqueueStreamBasinReconcile(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
   }
 }
 
 /**
- * Best-effort enqueue: when an org's plan changes we want the per-org
- * S2 basin's retention to follow (free=7d, hobby=30d, pro=365d). The
- * worker job is idempotent and a no-op when per-org basins are disabled
- * or the org has no basin yet (OSS / pre-backfill). Failures are
- * logged but never block the plan change itself — billing has already
- * accepted by the time we reach this code.
+ * Best-effort enqueue: when an org's plan changes we reconcile its
+ * stream-basin state. The reconciler handles every transition:
+ *
+ *   free → paid:  provision a dedicated basin with the plan's retention.
+ *   paid → paid:  reconfigure the existing basin's retention.
+ *   paid → free:  null `Organization.streamBasinName`. Future runs/sessions
+ *                 flow to the shared global basin; the per-org basin
+ *                 lingers until existing streams age out on their original
+ *                 retention.
+ *   free → free:  no-op.
+ *
+ * Idempotent and a no-op when per-org basins are disabled or billing
+ * isn't configured. Failures are logged but never block the plan
+ * change itself — billing has already accepted by the time we reach
+ * this code.
  */
-async function enqueueStreamBasinReconfigure(orgId: string) {
+async function enqueueStreamBasinReconcile(orgId: string) {
   try {
     const { commonWorker } = await import("~/v3/commonWorker.server");
     await commonWorker.enqueue({
-      job: "v3.reconfigureStreamBasinForOrg",
+      job: "v3.reconcileStreamBasinForOrg",
       payload: { orgId },
       // Per-org dedupe key — concurrent plan changes collapse to one
-      // pending reconfigure job. The job re-reads the current plan
-      // when it executes, so the latest tier wins.
-      id: `reconfigureStreamBasin:${orgId}`,
+      // pending reconcile job. The job re-reads the current plan when
+      // it executes, so the latest tier wins.
+      id: `reconcileStreamBasin:${orgId}`,
     });
   } catch (error) {
-    logger.warn("[setPlan] failed to enqueue stream basin reconfigure", {
+    logger.warn("[setPlan] failed to enqueue stream basin reconcile", {
       orgId,
       error: error instanceof Error ? error.message : String(error),
     });

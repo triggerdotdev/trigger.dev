@@ -7,26 +7,22 @@ import { commonWorker } from "~/v3/commonWorker.server";
 import { logger } from "~/services/logger.server";
 
 /**
- * One-shot backfill that enqueues `v3.provisionStreamBasinForOrg` for
- * every org with `streamBasinName: null`. Idempotent — re-running picks
- * up only the orgs that haven't been provisioned yet, and the worker
- * job itself is also idempotent (the provisioner short-circuits if the
- * org column is already set).
+ * One-shot backfill that enqueues `v3.reconcileStreamBasinForOrg` for
+ * every non-deleted org. The reconciler decides per-org what to do:
+ * provision a basin for paid orgs that don't have one, reconfigure
+ * retention for paid orgs whose tier changed, deprovision (null the
+ * column) for free orgs that were mistakenly provisioned. Idempotent
+ * — re-running converges to the desired state.
  *
  *  - Admin auth via `requireAdminApiRequest` (PAT in `Authorization`).
  *  - Refuses to run when `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=false`
  *    so OSS / s2-lite installs can't accidentally trigger basin
- *    creation against a misconfigured backend.
+ *    operations against a misconfigured backend.
  *  - `dryRun=true` (default false) returns the count without enqueueing.
  *  - `limit` (default 1000, max 10000) caps a single invocation. Run
- *    again to process more — the column filter naturally walks the
- *    queue forward each call.
- *  - Each job is keyed `provisionStreamBasin:<orgId>` so concurrent
- *    backfill calls converge to one job per org instead of duplicating.
- *
- * Run from a shell:
- *   curl -X POST -H "Authorization: Bearer $PAT" \
- *     "https://api.trigger.dev/admin/api/v1/stream-basins/backfill?limit=200&dryRun=true"
+ *    again with the next batch.
+ *  - Each job is keyed `reconcileStreamBasin:<orgId>` so concurrent
+ *    calls converge to one job per org.
  */
 
 const BodySchema = z
@@ -59,8 +55,6 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  // `application/json` POST body — empty body falls back to defaults so
-  // a parameterless POST does the right thing for the default backfill.
   let parsed: z.infer<typeof BodySchema>;
   try {
     const text = await request.text();
@@ -76,21 +70,19 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const { dryRun, limit } = parsed;
 
-  // Page candidate orgs. Ordered by createdAt so re-runs walk the queue
-  // forward predictably; deletedAt filter avoids resurrecting orgs.
+  // Walk every non-deleted org. The reconcile worker is fast for the
+  // no-op case (free with null column) so enqueueing for all is fine
+  // — saves us from doing per-org billing lookups here just to filter
+  // candidates.
   const candidates = await prisma.organization.findMany({
-    where: {
-      streamBasinName: null,
-      deletedAt: null,
-    },
+    where: { deletedAt: null },
     orderBy: { createdAt: "asc" },
     take: limit,
     select: { id: true },
   });
 
-  // Total count of remaining nulls (for progress reporting).
-  const remainingTotal = await prisma.organization.count({
-    where: { streamBasinName: null, deletedAt: null },
+  const totalOrgs = await prisma.organization.count({
+    where: { deletedAt: null },
   });
 
   if (dryRun) {
@@ -99,22 +91,19 @@ export async function action({ request }: ActionFunctionArgs) {
       dryRun: true,
       enqueued: 0,
       pending: candidates.length,
-      remaining: Math.max(0, remainingTotal - candidates.length),
+      remaining: Math.max(0, totalOrgs - candidates.length),
       orgIds: candidates.map((o) => o.id),
     };
     return json(response);
   }
 
-  // Enqueue one job per org. Per-org dedupe key collapses concurrent
-  // backfill calls into a single pending job, and a job that's already
-  // run (basin set) is a no-op on the worker side.
   let enqueued = 0;
   for (const org of candidates) {
     try {
       await commonWorker.enqueue({
-        job: "v3.provisionStreamBasinForOrg",
+        job: "v3.reconcileStreamBasinForOrg",
         payload: { orgId: org.id },
-        id: `provisionStreamBasin:${org.id}`,
+        id: `reconcileStreamBasin:${org.id}`,
       });
       enqueued += 1;
     } catch (error) {
@@ -130,11 +119,11 @@ export async function action({ request }: ActionFunctionArgs) {
     dryRun: false,
     enqueued,
     pending: candidates.length,
-    remaining: Math.max(0, remainingTotal - enqueued),
+    remaining: Math.max(0, totalOrgs - enqueued),
     orgIds: candidates.map((o) => o.id),
   };
 
-  logger.info("[stream-basins-backfill] enqueued provisioning jobs", {
+  logger.info("[stream-basins-backfill] enqueued reconcile jobs", {
     enqueued,
     candidates: candidates.length,
     remaining: response.remaining,
@@ -149,17 +138,15 @@ export async function loader({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
 
   const totalOrgs = await prisma.organization.count({ where: { deletedAt: null } });
-  const provisioned = await prisma.organization.count({
+  const withBasin = await prisma.organization.count({
     where: { deletedAt: null, NOT: { streamBasinName: null } },
   });
-  const remaining = totalOrgs - provisioned;
 
   return json({
     ok: true,
     perOrgBasinsEnabled: isPerOrgBasinsEnabled(),
     totalOrgs,
-    provisioned,
-    remaining,
-    completion: totalOrgs === 0 ? 1 : provisioned / totalOrgs,
+    withBasin,
+    withoutBasin: totalOrgs - withBasin,
   });
 }

@@ -1,53 +1,38 @@
 /**
- * Cloud-flavored shim that resolves a stream-basin retention duration
- * from an org's current billing plan.
+ * Cloud-flavored shim that maps an org's billing plan to its
+ * stream-basin state — both whether it should have a dedicated basin
+ * at all, and what retention to apply if so.
  *
  * Kept deliberately separate from `streamBasinProvisioner.server.ts`
  * so the provisioner stays purely retention-string-driven and has no
  * coupling to plan vocabulary. This file is the only place in the
- * webapp that maps "plan code" → "retention duration".
+ * webapp that maps "plan code" → "basin policy".
  *
- * Operators that don't run a billing API just don't call this — the
- * provisioner accepts retention strings directly, and the org-create
- * path falls back to `defaultRetention()`.
+ * Operators that don't run a billing API never call this — orgs stay
+ * on the global shared basin via the existing read-precedence
+ * fallback.
  */
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { logger } from "~/services/logger.server";
 import { getCurrentPlan, isBillingConfigured } from "~/services/platform.v3.server";
-import { defaultRetention } from "./streamBasinProvisioner.server";
+import {
+  defaultRetention,
+  provisionBasinForOrg,
+  reconfigureBasinForOrg,
+} from "./streamBasinProvisioner.server";
 
 /**
- * Resolve the retention duration for an org based on its current plan.
+ * Plan codes that get a dedicated per-org basin. Free orgs (and
+ * unbilled / unknown plan codes) fall through to the shared global
+ * basin via the existing read-precedence fallback.
  *
- *  - When billing is **not configured** (OSS / self-hosted installs),
- *    returns `defaultRetention()` — the worker job converges, the
- *    backfill completes, and operators get a sane default without
- *    having to wire up a billing API.
- *  - When billing **is configured** and the call succeeds, maps the
- *    plan code to a retention duration.
- *  - When billing **is configured** but the call failed (transient
- *    outage / 5xx), **throws** so the redis-worker retry kicks in
- *    and we don't silently downgrade a paid org's retention.
+ * Adding a plan: drop its code in here AND in `retentionForPlanCode`.
  */
-export async function resolveRetentionForOrg(orgId: string): Promise<string> {
-  if (!isBillingConfigured()) {
-    // No billing wired up — operator either runs OSS or hasn't set
-    // BILLING_API_URL / BILLING_API_KEY. Fall back to the default;
-    // the org-create path uses the same default, so this is just the
-    // backfill's catch-up path arriving at the same answer.
-    return defaultRetention();
-  }
+const PAID_PLAN_CODES = new Set(["v3_hobby_1", "v3_pro_1", "enterprise"]);
 
-  const plan = await getCurrentPlan(orgId);
-  if (plan === undefined) {
-    // Billing client exists but the call failed. Throw so redis-worker
-    // retries — silently defaulting to free would clip a paid org's
-    // retention if a backfill landed during a transient billing outage.
-    throw new Error(
-      `[streamBasinRetentionByPlan] billing plan unavailable for org ${orgId}; will retry`
-    );
-  }
-
-  return retentionForPlanCode(plan.v3Subscription?.plan?.code);
+export function isPaidPlanCode(code: string | null | undefined): boolean {
+  return code != null && PAID_PLAN_CODES.has(code);
 }
 
 /**
@@ -72,4 +57,100 @@ export function retentionForPlanCode(code: string | null | undefined): string {
     default:
       return defaultRetention();
   }
+}
+
+type ReconcileResult =
+  | { kind: "skipped"; reason: "billing-not-configured" | "org-not-found" | "free-no-basin" }
+  | { kind: "provisioned"; retention: string }
+  | { kind: "reconfigured"; retention: string }
+  | { kind: "deprovisioned" };
+
+/**
+ * Reconcile an org's basin state with its current plan. Idempotent;
+ * call whenever the plan changes or in a backfill loop.
+ *
+ * Transitions:
+ *
+ *   plan paid + no basin    → provision a new basin, stamp column.
+ *   plan paid + has basin   → reconfigure retention (tier may have
+ *                             changed). S2 retention only applies to
+ *                             *new* streams, but that's fine — old
+ *                             ones live out their original retention.
+ *   plan free + has basin   → null the column. New runs/sessions for
+ *                             this org route through the shared global
+ *                             basin. The per-org basin lingers until
+ *                             its existing streams expire on their
+ *                             original retention; no S2-side cleanup
+ *                             happens here.
+ *   plan free + no basin    → no-op.
+ *
+ * OSS / non-billing installs always hit the no-op path because
+ * `isBillingConfigured()` is false. Free-by-default.
+ *
+ * Throws on transient billing failure so redis-worker retries —
+ * silently defaulting to "free" during an outage would deprovision a
+ * paid org's basin and lose isolation.
+ */
+export async function reconcileBasinForOrg(orgId: string): Promise<ReconcileResult> {
+  if (!isBillingConfigured()) {
+    return { kind: "skipped", reason: "billing-not-configured" };
+  }
+
+  const plan = await getCurrentPlan(orgId);
+  if (plan === undefined) {
+    throw new Error(
+      `[streamBasinReconciler] billing plan unavailable for org ${orgId}; will retry`
+    );
+  }
+
+  const planCode = plan.v3Subscription?.plan?.code;
+  const paid = isPaidPlanCode(planCode);
+
+  const org = await prisma.organization.findFirst({
+    where: { id: orgId },
+    select: { id: true, streamBasinName: true },
+  });
+  if (!org) {
+    return { kind: "skipped", reason: "org-not-found" };
+  }
+
+  if (paid && !org.streamBasinName) {
+    const retention = retentionForPlanCode(planCode);
+    await provisionBasinForOrg({ id: org.id, streamBasinName: null, retention });
+    logger.info("[streamBasinReconciler] provisioned (paid upgrade)", {
+      orgId,
+      planCode,
+      retention,
+    });
+    return { kind: "provisioned", retention };
+  }
+
+  if (paid && org.streamBasinName) {
+    const retention = retentionForPlanCode(planCode);
+    await reconfigureBasinForOrg(org.id, retention);
+    logger.info("[streamBasinReconciler] reconfigured (paid tier change)", {
+      orgId,
+      planCode,
+      retention,
+    });
+    return { kind: "reconfigured", retention };
+  }
+
+  if (!paid && org.streamBasinName) {
+    // Downgrade. Don't touch S2 — basin lingers, old streams keep their
+    // original retention until they age out. Just unstamp the org so
+    // future runs/sessions flow to the shared global basin.
+    await prisma.organization.update({
+      where: { id: org.id },
+      data: { streamBasinName: null },
+    });
+    logger.info("[streamBasinReconciler] deprovisioned (downgrade to free)", {
+      orgId,
+      planCode,
+      previousBasin: org.streamBasinName,
+    });
+    return { kind: "deprovisioned" };
+  }
+
+  return { kind: "skipped", reason: "free-no-basin" };
 }
