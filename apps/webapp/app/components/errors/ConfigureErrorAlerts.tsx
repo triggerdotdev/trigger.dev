@@ -196,7 +196,7 @@ export function ConfigureErrorAlerts({
                       name={slackChannel.name}
                       placeholder={<span className="text-text-dimmed">Select a Slack channel</span>}
                       heading="Filter channels…"
-                      defaultValue={selectedSlackChannelValue}
+                      value={selectedSlackChannelValue ?? ""}
                       dropdownIcon
                       variant="tertiary/medium"
                       items={slack.channels}
@@ -218,6 +218,15 @@ export function ConfigureErrorAlerts({
                     >
                       {(matches) => (
                         <>
+                          <SelectItem
+                            value=""
+                            className="border-b border-grid-bright text-text-dimmed"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <XMarkIcon className="size-4" />
+                              <span>No channel</span>
+                            </div>
+                          </SelectItem>
                           {matches?.map((channel) => (
                             <SelectItem
                               key={channel.id}

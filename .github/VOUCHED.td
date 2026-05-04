@@ -13,6 +13,7 @@ samejr
 isshaddad
 # Bots
 devin-ai-integration[bot]
+dependabot[bot]
 # Outside contributors
 gautamsi
 capaj

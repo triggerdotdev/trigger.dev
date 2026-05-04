@@ -1,7 +1,11 @@
 import { type LoaderFunctionArgs, type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
-import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
+import {
+  IconAlarmSnooze as IconAlarmSnoozeBase,
+  IconBugFilled,
+  IconCircleDotted,
+} from "@tabler/icons-react";
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
@@ -27,7 +31,7 @@ import {
 import { type NextRunList } from "~/presenters/v3/NextRunListPresenter.server";
 import { $replica } from "~/db.server";
 import { logsClickhouseClient, clickhouseClient } from "~/services/clickhouseInstance.server";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PageBody } from "~/components/layout/AppLayout";
 import {
   ResizableHandle,
@@ -324,13 +328,23 @@ export default function Page() {
           }}
           title={<span className="font-mono text-xs">{ErrorId.toFriendlyId(fingerprint)}</span>}
         />
+        <PageAccessories>
+          <LinkButton
+            to={alertsHref}
+            variant="secondary/small"
+            LeadingIcon={BellAlertIcon}
+            leadingIconClassName="text-alerts"
+          >
+            Configure alerts…
+          </LinkButton>
+        </PageAccessories>
       </NavBar>
 
       <PageBody scrollable={false}>
         <Suspense
           fallback={
-            <div className="my-2 flex items-center justify-center">
-              <div className="mx-auto flex items-center gap-2">
+            <div className="flex h-full items-center justify-center">
+              <div className="flex items-center gap-2">
                 <Spinner />
                 <Paragraph variant="small">Loading error details…</Paragraph>
               </div>
@@ -366,7 +380,6 @@ export default function Page() {
                   projectParam={projectParam}
                   envParam={envParam}
                   fingerprint={fingerprint}
-                  alertsHref={alertsHref}
                 />
               );
             }}
@@ -385,7 +398,6 @@ function ErrorGroupDetail({
   projectParam,
   envParam,
   fingerprint,
-  alertsHref,
 }: {
   errorGroup: ErrorGroupSummary | undefined;
   runList: NextRunList | undefined;
@@ -394,7 +406,6 @@ function ErrorGroupDetail({
   projectParam: string;
   envParam: string;
   fingerprint: string;
-  alertsHref: string;
 }) {
   const { value, values } = useSearchParams();
   const organization = useOrganization();
@@ -499,9 +510,12 @@ function ErrorGroupDetail({
                 additionalTableState={{ errorId: ErrorId.toFriendlyId(fingerprint) }}
               />
             ) : (
-              <Paragraph variant="small" className="p-4 text-text-dimmed">
-                No runs found for this error.
-              </Paragraph>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3">
+                <IconBugFilled className="size-16 text-charcoal-650" />
+                <Paragraph className="max-w-32 text-center text-text-dimmed">
+                  No runs found for this error.
+                </Paragraph>
+              </div>
             )}
           </div>
         </div>
@@ -510,11 +524,7 @@ function ErrorGroupDetail({
       {/* Right-hand detail sidebar */}
       <ResizableHandle id="error-detail-handle" />
       <ResizablePanel id="error-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-        <ErrorDetailSidebar
-          errorGroup={errorGroup}
-          fingerprint={fingerprint}
-          alertsHref={alertsHref}
-        />
+        <ErrorDetailSidebar errorGroup={errorGroup} fingerprint={fingerprint} />
       </ResizablePanel>
     </ResizablePanelGroup>
   );
@@ -523,24 +533,14 @@ function ErrorGroupDetail({
 function ErrorDetailSidebar({
   errorGroup,
   fingerprint,
-  alertsHref,
 }: {
   errorGroup: ErrorGroupSummary;
   fingerprint: string;
-  alertsHref: string;
 }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between border-b border-grid-dimmed py-2 pl-3 pr-2">
+      <div className="border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
-        <LinkButton
-          to={alertsHref}
-          variant="secondary/small"
-          LeadingIcon={BellAlertIcon}
-          leadingIconClassName="text-alerts"
-        >
-          Configure alerts
-        </LinkButton>
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="flex flex-col gap-4">

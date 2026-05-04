@@ -1,9 +1,10 @@
-import { tryCatch } from "@trigger.dev/core/v3";
+import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import { WorkerDeployment } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 
@@ -53,10 +54,8 @@ export class ChangeCurrentDeploymentService extends BaseService {
         switch (direction) {
           case "promote": {
             if (
-              compareDeploymentVersions(
-                currentPromotion.deployment.version,
-                deployment.version
-              ) >= 0
+              compareDeploymentVersions(currentPromotion.deployment.version, deployment.version) >=
+              0
             ) {
               throw new ServiceValidationError(
                 "Cannot promote a deployment that is older than the current deployment."
@@ -66,10 +65,8 @@ export class ChangeCurrentDeploymentService extends BaseService {
           }
           case "rollback": {
             if (
-              compareDeploymentVersions(
-                currentPromotion.deployment.version,
-                deployment.version
-              ) <= 0
+              compareDeploymentVersions(currentPromotion.deployment.version, deployment.version) <=
+              0
             ) {
               throw new ServiceValidationError(
                 "Cannot rollback to a deployment that is newer than the current deployment."
@@ -118,6 +115,58 @@ export class ChangeCurrentDeploymentService extends BaseService {
       logger.error("Error syncing task identifiers on deployment change", { error: syncError });
     }
 
+    const [scheduleSyncError] = await tryCatch(this.#syncSchedulesForDeployment(deployment));
+
+    if (scheduleSyncError) {
+      logger.error("Error syncing declarative schedules on deployment change", {
+        error: scheduleSyncError,
+      });
+    }
+
     await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
+  }
+
+  async #syncSchedulesForDeployment(deployment: WorkerDeployment) {
+    const worker = await this._prisma.backgroundWorker.findFirst({
+      where: { id: deployment.workerId! },
+    });
+
+    if (!worker) {
+      logger.error("Worker not found for deployment schedule sync", {
+        deploymentId: deployment.id,
+        workerId: deployment.workerId,
+      });
+      return;
+    }
+
+    const parsed = BackgroundWorkerMetadata.safeParse(worker.metadata);
+
+    if (!parsed.success) {
+      logger.error("Failed to parse worker metadata for schedule sync", {
+        deploymentId: deployment.id,
+        workerId: deployment.workerId,
+        error: parsed.error,
+      });
+      return;
+    }
+
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
+      where: { id: deployment.environmentId },
+      include: {
+        project: true,
+        organization: true,
+        orgMember: true,
+      },
+    });
+
+    if (!environment) {
+      logger.error("Environment not found for deployment schedule sync", {
+        deploymentId: deployment.id,
+        environmentId: deployment.environmentId,
+      });
+      return;
+    }
+
+    await syncDeclarativeSchedules(parsed.data.tasks, worker, environment, this._prisma);
   }
 }

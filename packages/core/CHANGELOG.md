@@ -1,5 +1,14 @@
 # internal-platform
 
+## 4.4.5
+
+### Patch Changes
+
+- Add `isReplay` boolean to the run context (`ctx.run.isReplay`), derived from the existing `replayedFromTaskRunFriendlyId` database field. Defaults to `false` for backwards compatibility. ([#3454](https://github.com/triggerdotdev/trigger.dev/pull/3454))
+- Redact the `resolveWaitpoint` runtime log so it only emits `id` and `type` instead of the full completed waitpoint. Previously the log printed the entire waitpoint (including `output`) to stdout in production runs, which could leak sensitive payloads. The value returned by `wait.forToken()` is unchanged. ([#3490](https://github.com/triggerdotdev/trigger.dev/pull/3490))
+- Add `SessionId` friendly ID generator and schemas for the new durable Session primitive. Exported from `@trigger.dev/core/v3/isomorphic` alongside `RunId`, `BatchId`, etc. Ships the `CreateSessionStreamWaitpoint` request/response schemas alongside the main Session CRUD. ([#3417](https://github.com/triggerdotdev/trigger.dev/pull/3417))
+- Truncate large error stacks and messages to prevent OOM crashes. Stack traces are capped at 50 frames (keeping top 5 + bottom 45 with an omission notice), individual stack lines at 1024 chars, and error messages at 1000 chars. Applied in parseError, sanitizeError, and OTel span recording. ([#3405](https://github.com/triggerdotdev/trigger.dev/pull/3405))
+
 ## 4.4.4
 
 ### Patch Changes

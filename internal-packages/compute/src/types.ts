@@ -2,10 +2,15 @@ import { z } from "zod";
 
 // ── Templates ────────────────────────────────────────────────────────────────
 
-export const TemplateCreateRequestSchema = z.object({
-  image: z.string(),
+export const MachineConfigSchema = z.object({
   cpu: z.number(),
   memory_gb: z.number(),
+});
+export type MachineConfig = z.infer<typeof MachineConfigSchema>;
+
+export const TemplateCreateRequestSchema = z.object({
+  image: z.string(),
+  machine_configs: z.array(MachineConfigSchema),
   background: z.boolean().optional(),
   callback: z
     .object({
@@ -16,15 +21,17 @@ export const TemplateCreateRequestSchema = z.object({
 });
 export type TemplateCreateRequest = z.infer<typeof TemplateCreateRequestSchema>;
 
-export const TemplateCallbackPayloadSchema = z.object({
-  template_id: z.string().optional(),
-  image: z.string(),
-  status: z.enum(["completed", "failed"]),
+export const TemplateCreateResultEntrySchema = z.object({
+  machine_config: MachineConfigSchema,
   error: z.string().optional(),
-  metadata: z.record(z.string()).optional(),
-  duration_ms: z.number().optional(),
 });
-export type TemplateCallbackPayload = z.infer<typeof TemplateCallbackPayloadSchema>;
+export type TemplateCreateResultEntry = z.infer<typeof TemplateCreateResultEntrySchema>;
+
+export const TemplateCreateResponseSchema = z.object({
+  results: z.array(TemplateCreateResultEntrySchema),
+  error: z.string().optional(),
+});
+export type TemplateCreateResponse = z.infer<typeof TemplateCreateResponseSchema>;
 
 // ── Instances ────────────────────────────────────────────────────────────────
 

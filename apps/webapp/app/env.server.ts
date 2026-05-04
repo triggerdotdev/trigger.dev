@@ -1,7 +1,41 @@
 import { z } from "zod";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
+
+// Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
+// non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
+// and its _REQUIRED variant. Adds zod issues for empty input or unknown names.
+const parseMachinePresetCsv = (
+  raw: string,
+  ctx: z.RefinementCtx
+): MachinePresetName[] => {
+  const names = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (names.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must list at least one machine preset",
+    });
+    return z.NEVER;
+  }
+  const out: MachinePresetName[] = [];
+  for (const name of names) {
+    const parsed = MachinePresetName.safeParse(name);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `unknown machine preset: "${name}"`,
+      });
+      return z.NEVER;
+    }
+    out.push(parsed.data);
+  }
+  return out;
+};
 
 const GithubAppEnvSchema = z.preprocess(
   (val) => {
@@ -342,6 +376,25 @@ const EnvironmentSchema = z
     COMPUTE_GATEWAY_URL: z.string().optional(),
     COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
     COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
+    // Comma-separated machine preset names to build boot snapshots for on
+    // deploy (e.g. "small-1x,small-2x,medium-1x"). Default: "small-1x".
+    COMPUTE_TEMPLATE_MACHINE_PRESETS: z
+      .string()
+      .default("small-1x")
+      .transform(parseMachinePresetCsv),
+    // Subset of COMPUTE_TEMPLATE_MACHINE_PRESETS that must succeed for a
+    // required-mode deploy to be considered successful. Failures of presets
+    // outside this list are logged but don't fail the deploy. Defaults to the
+    // full COMPUTE_TEMPLATE_MACHINE_PRESETS list when unset (everything required).
+    COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED: z
+      .string()
+      .optional()
+      .transform((v, ctx) =>
+        parseMachinePresetCsv(
+          v ?? process.env.COMPUTE_TEMPLATE_MACHINE_PRESETS ?? "small-1x",
+          ctx
+        )
+      ),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_TIMEOUT_MS: z.coerce
@@ -1461,7 +1514,19 @@ const EnvironmentSchema = z
     PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
   })
   .and(GithubAppEnvSchema)
-  .and(S2EnvSchema);
+  .and(S2EnvSchema)
+  .superRefine((env, ctx) => {
+    const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
+    for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
+      if (!presets.has(required)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED"],
+          message: `"${required}" is not in COMPUTE_TEMPLATE_MACHINE_PRESETS`,
+        });
+      }
+    }
+  });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);

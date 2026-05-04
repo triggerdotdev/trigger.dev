@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository. Su
 
 ## Build and Development Commands
 
-This is a pnpm 10.23.0 monorepo using Turborepo. Run commands from root with `pnpm run`.
+This is a pnpm 10.33.2 monorepo using Turborepo. Run commands from root with `pnpm run`.
 
 ```bash
 pnpm run docker              # Start Docker services (PostgreSQL, Redis, Electric)

@@ -524,17 +524,15 @@ export function SideMenu({
                     isCollapsed={isCollapsed}
                   />
                 )}
-                {(user.admin || user.isImpersonating) && (
-                  <SideMenuItem
-                    name="Errors"
-                    icon={IconBugFilled}
-                    activeIconColor="text-errors"
-                    inactiveIconColor="text-errors"
-                    to={v3ErrorsPath(organization, project, environment)}
-                    data-action="errors"
-                    isCollapsed={isCollapsed}
-                  />
-                )}
+                <SideMenuItem
+                  name="Errors"
+                  icon={IconBugFilled}
+                  activeIconColor="text-errors"
+                  inactiveIconColor="text-errors"
+                  to={v3ErrorsPath(organization, project, environment)}
+                  data-action="errors"
+                  isCollapsed={isCollapsed}
+                />
                 <SideMenuItem
                   name="Query"
                   icon={TableCellsIcon}

@@ -19,3 +19,4 @@ publicHoistPattern:
   - "*prisma*"
 preferWorkspacePackages: true
 sideEffectsCache: false
+blockExoticSubdeps: true

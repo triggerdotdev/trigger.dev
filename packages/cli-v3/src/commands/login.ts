@@ -41,6 +41,7 @@ import { links } from "@trigger.dev/core/v3";
 
 export const LoginCommandOptions = CommonCommandOptions.extend({
   apiUrl: z.string(),
+  browser: z.boolean().default(true),
 });
 
 export type LoginCommandOptions = z.infer<typeof LoginCommandOptions>;
@@ -49,7 +50,21 @@ export function configureLoginCommand(program: Command) {
   return commonOptions(
     program
       .command("login")
-      .description("Login with Trigger.dev so you can perform authenticated actions")
+      .summary("Login with Trigger.dev so you can perform authenticated actions")
+      .description(
+        `Login with Trigger.dev so you can perform authenticated actions.
+
+Examples:
+  # Interactive login (opens browser)
+  $ trigger.dev login
+
+  # Headless / agent (print URL only)
+  $ trigger.dev login --no-browser
+
+  # Login to a named profile
+  $ trigger.dev login --profile staging`
+      )
+      .option("--no-browser", "Don't automatically open the browser; print the URL only")
   )
     .version(VERSION, "-v, --version", "Display the version number")
     .action(async (options) => {
@@ -67,7 +82,12 @@ export async function loginCommand(options: unknown) {
 }
 
 async function _loginCommand(options: LoginCommandOptions) {
-  return login({ defaultApiUrl: options.apiUrl, embedded: false, profile: options.profile });
+  return login({
+    defaultApiUrl: options.apiUrl,
+    embedded: false,
+    profile: options.profile,
+    browser: options.browser,
+  });
 }
 
 export type LoginOptions = {
@@ -75,6 +95,7 @@ export type LoginOptions = {
   embedded?: boolean;
   profile?: string;
   silent?: boolean;
+  browser?: boolean;
 };
 
 export async function login(options?: LoginOptions): Promise<LoginResult> {
@@ -259,7 +280,9 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         `Please visit the following URL to login:\n${chalkLink(authorizationCodeResult.url)}`
       );
 
-      if (await isLinuxServer()) {
+      if (opts.browser === false) {
+        log.message("Browser auto-open disabled. Visit the URL above to login.");
+      } else if (await isLinuxServer()) {
         log.message("Please install `xdg-utils` to automatically open the login URL.");
       } else {
         await open(authorizationCodeResult.url);

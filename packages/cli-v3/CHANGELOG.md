@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.4.5
+
+### Patch Changes
+
+- Add `--no-browser` flag to `init` and `login` to skip auto-opening the browser during authentication. Also error loudly when `init` is run without `--yes` under non-TTY stdin (previously default-and-exited silently, leaving the project half-initialized). Both commands now show an `Examples` section in `--help`. ([#3483](https://github.com/triggerdotdev/trigger.dev/pull/3483))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.5`
+  - `@trigger.dev/build@4.4.5`
+  - `@trigger.dev/schema-to-json@4.4.5`
+
 ## 4.4.4
 
 ### Patch Changes
