@@ -49,15 +49,16 @@ const { action, loader } = createActionApiRoute(
       action: "write",
       // Authorize against the union of the URL form, friendlyId, and
       // externalId so a JWT scoped to any form authorizes any URL.
+      // Type-level `write:sessions` (no id) also matches; `write:all` /
+      // `admin` bypass via the JWT ability's wildcard branches.
       resource: (params, _, __, ___, session) => {
         const ids = new Set<string>([params.session]);
         if (session) {
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return { sessions: [...ids] };
+        return [...ids].map((id) => ({ type: "sessions", id }));
       },
-      superScopes: ["write:sessions", "write:all", "admin"],
     },
   },
   async ({ request, params, authentication, resource: session }) => {

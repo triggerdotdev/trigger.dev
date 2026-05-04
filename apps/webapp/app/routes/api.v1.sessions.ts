@@ -37,8 +37,21 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "read",
-      resource: (_, __, searchParams) => ({ tasks: searchParams["filter[taskIdentifier]"] }),
-      superScopes: ["read:sessions", "read:all", "admin"],
+      // Multi-key resource preserves the pre-RBAC superScope semantics:
+      //   - Per-task scoping via `read:tasks:<id>` matches a task element
+      //   - Type-level `read:sessions` (the old superScope) matches the
+      //     sessions element (collection-level — no id)
+      //   - `read:all` / `admin` bypass via the JWT ability's wildcard branches
+      // The taskIdentifier filter accepts a string or an array; expand to
+      // one resource per task id so any per-task-scoped JWT among them
+      // grants access (the array gets OR semantics).
+      resource: (_, __, searchParams) => {
+        const taskFilter = asArray(searchParams["filter[taskIdentifier]"]) ?? [];
+        return [
+          ...taskFilter.map((id) => ({ type: "tasks" as const, id })),
+          { type: "sessions" as const },
+        ];
+      },
     },
     findResource: async () => 1,
   },
@@ -113,21 +126,19 @@ const { action } = createActionApiRoute(
       // Per-task scoping via `body.taskIdentifier` (action-route resource
       // callbacks receive the parsed body as the 4th arg — see
       // `apiBuilder.server.ts:710`). A JWT scoped only to `write:tasks:foo`
-      // can only create sessions whose `taskIdentifier` is `"foo"`. Broad
-      // callers (cli-v3 MCP, customer servers wrapping their own auth)
-      // hold the `write:sessions` super-scope and bypass the per-task
-      // check entirely.
+      // can only create sessions whose `taskIdentifier` is `"foo"`.
       //
-      // Note: the auth check is OR across resource types, so listing both
-      // `sessions` and `tasks` here would let a `write:sessions`-scoped
-      // JWT pass for *any* task — defeating the per-task narrowing. Keep
-      // it task-only and let the super-scope path handle session-level
-      // wildcard access.
+      // Multi-key resource: pre-RBAC this route had a `superScopes:
+      // ["write:sessions", "admin"]` whitelist; post-RBAC the equivalent
+      // is the `{ type: "sessions" }` element below — a `write:sessions`
+      // JWT (no id) matches it directly, deliberately bypassing the
+      // per-task check exactly as before. `admin` / `write:all` bypass
+      // via the JWT ability's wildcard branches.
       action: "write",
-      resource: (_params, _searchParams, _headers, body) => ({
-        tasks: body.taskIdentifier,
-      }),
-      superScopes: ["write:sessions", "admin"],
+      resource: (_params, _searchParams, _headers, body) => [
+        { type: "tasks", id: body.taskIdentifier },
+        { type: "sessions" },
+      ],
     },
     corsStrategy: "all",
   },

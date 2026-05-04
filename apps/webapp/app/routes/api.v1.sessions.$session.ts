@@ -29,8 +29,17 @@ export const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (session) => ({ sessions: [session.friendlyId, session.externalId ?? ""] }),
-      superScopes: ["read:sessions", "read:all", "admin"],
+      // Multi-key: a session is addressable by both friendlyId and (when
+      // set) externalId. A JWT scoped to either id grants access; type-
+      // level `read:sessions` (no id) matches both elements; `read:all`
+      // / `admin` bypass via the JWT ability's wildcard branches.
+      resource: (session) =>
+        session.externalId
+          ? [
+              { type: "sessions", id: session.friendlyId },
+              { type: "sessions", id: session.externalId },
+            ]
+          : { type: "sessions", id: session.friendlyId },
     },
   },
   async ({ resource: session }) => {
@@ -50,8 +59,7 @@ const { action } = createActionApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "admin",
-      resource: (params) => ({ sessions: params.session }),
-      superScopes: ["admin:sessions", "admin:all", "admin"],
+      resource: (params) => ({ type: "sessions", id: params.session }),
     },
   },
   async ({ authentication, params, body }) => {

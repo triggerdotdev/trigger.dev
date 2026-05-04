@@ -16,6 +16,7 @@ import { getTestServer } from "./helpers/sharedTestServer";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import { seedTestPAT, seedTestUser } from "./helpers/seedTestPAT";
 import { seedTestRun } from "./helpers/seedTestRun";
+import { seedTestApiSession } from "./helpers/seedTestApiSession";
 import { seedTestUserProject } from "./helpers/seedTestUserProject";
 import { seedTestWaitpoint } from "./helpers/seedTestWaitpoint";
 
@@ -2346,6 +2347,580 @@ describe("API", () => {
       );
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
+    });
+  });
+
+  // Sessions — JWT scope matrix.
+  //
+  // The session routes were authored against the pre-RBAC apiBuilder
+  // and used the legacy `superScopes: [...]` field to whitelist broad
+  // access. After TRI-8719 superScopes is dead code; the equivalent
+  // bypass is expressed via:
+  //   - multi-key resource arrays (one element per addressable key,
+  //     plus a collection-level `{ type: "sessions" }` for type-only
+  //     scopes)
+  //   - the JWT ability's `*:all` and `admin*` wildcard branches
+  //
+  // These tests lock in that the migration's "no JWT regresses"
+  // promise holds for sessions. Each historical superScope becomes a
+  // positive test, and per-task narrowing gets negative coverage.
+  describe("Sessions — JWT scope matrix", () => {
+    // ---- List sessions: GET /api/v1/sessions
+    //
+    // Resource: [{ type: "tasks", id: <filter> } per filter id, { type: "sessions" }]
+    // Old superScopes: ["read:sessions", "read:all", "admin"]
+    describe("List sessions — GET /api/v1/sessions", () => {
+      const path = (taskFilter?: string) =>
+        taskFilter
+          ? `/api/v1/sessions?filter[taskIdentifier]=${taskFilter}`
+          : "/api/v1/sessions";
+
+      const fetchWithJwt = async (jwt: string, taskFilter?: string) =>
+        getTestServer().webapp.fetch(path(taskFilter), {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      // The handler reads from ClickHouse via SessionsRepository, which
+      // isn't wired up in the e2e webapp container — so successful auth
+      // surfaces as 5xx after the handler errors. Assert "not 401, not
+      // 403" rather than 200 for the auth-passes paths.
+
+      it("read:tasks:foo on filter=foo: auth passes", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:tasks:foo",
+        ]);
+        const res = await fetchWithJwt(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("read:tasks:bar on filter=foo: 403 (per-task narrowing)", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:tasks:bar",
+        ]);
+        const res = await fetchWithJwt(jwt, "foo");
+        expect(res.status).toBe(403);
+      });
+
+      it("read:sessions on filter=foo: auth passes (was a superScope)", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:sessions",
+        ]);
+        const res = await fetchWithJwt(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("read:sessions on no-filter list: auth passes", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:sessions",
+        ]);
+        const res = await fetchWithJwt(jwt);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("read:all: auth passes (was a superScope)", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:all"]);
+        const res = await fetchWithJwt(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("admin: auth passes (was a superScope)", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin"]);
+        const res = await fetchWithJwt(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("read:tasks (type-only) on no-filter list: 403 (filter is sessions, not tasks)", async () => {
+        // No filter → resource is `{ type: "sessions" }` only. read:tasks
+        // doesn't match the sessions type, so 403 — explicit narrowing.
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:tasks",
+        ]);
+        const res = await fetchWithJwt(jwt);
+        expect(res.status).toBe(403);
+      });
+
+      it("write:tasks:foo (wrong action) on filter=foo: 403", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:tasks:foo",
+        ]);
+        const res = await fetchWithJwt(jwt, "foo");
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ---- Create session: POST /api/v1/sessions
+    //
+    // Resource: [{ type: "tasks", id: body.taskIdentifier }, { type: "sessions" }]
+    // Old superScopes: ["write:sessions", "admin"]
+    describe("Create session — POST /api/v1/sessions", () => {
+      const path = "/api/v1/sessions";
+
+      const post = async (jwt: string, taskIdentifier: string) =>
+        getTestServer().webapp.fetch(path, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            type: "chat.agent",
+            taskIdentifier,
+            triggerConfig: { basePayload: {} },
+          }),
+        });
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("write:tasks:foo matching body: auth passes", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:tasks:foo",
+        ]);
+        const res = await post(jwt, "foo");
+        // Body validation / handler can fail later (404 if task is
+        // missing, 400 for invalid body) — we only care that auth
+        // didn't reject.
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("write:tasks:bar mismatching body: 403", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:tasks:bar",
+        ]);
+        const res = await post(jwt, "foo");
+        expect(res.status).toBe(403);
+      });
+
+      it("write:sessions: auth passes (was a superScope)", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+        ]);
+        const res = await post(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("write:all: auth passes", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:all"]);
+        const res = await post(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("admin: auth passes", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin"]);
+        const res = await post(jwt, "foo");
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("read:tasks:foo (wrong action): 403", async () => {
+        const seed = await seedTestEnvironment(getTestServer().prisma);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:tasks:foo",
+        ]);
+        const res = await post(jwt, "foo");
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ---- Retrieve session: GET /api/v1/sessions/:session
+    //
+    // Resource: multi-key array of `{ type: "sessions", id }` entries
+    // for friendlyId and externalId (when set).
+    // Old superScopes: ["read:sessions", "read:all", "admin"]
+    describe("Retrieve session — GET /api/v1/sessions/:session", () => {
+      const get = async (sessionParam: string, jwt: string) =>
+        getTestServer().webapp.fetch(`/api/v1/sessions/${sessionParam}`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("read:sessions:<friendlyId>: 200", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          `read:sessions:${session.friendlyId}`,
+        ]);
+        const res = await get(session.friendlyId, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("read:sessions:<externalId> on externalId URL form: 200 (multi-key)", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          `read:sessions:${session.externalId}`,
+        ]);
+        const res = await get(session.externalId!, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("read:sessions (type-only): 200", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:sessions",
+        ]);
+        const res = await get(session.friendlyId, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("read:sessions:other (non-matching id): 403", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:sessions:not-this-session",
+        ]);
+        const res = await get(session.friendlyId, jwt);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ---- Update session: PATCH /api/v1/sessions/:session
+    //
+    // action: "admin" — only admin-tier scopes (or wildcards) satisfy.
+    // Old superScopes: ["admin:sessions", "admin:all", "admin"]
+    describe("Update session — PATCH /api/v1/sessions/:session", () => {
+      const patch = async (sessionParam: string, jwt: string) =>
+        getTestServer().webapp.fetch(`/api/v1/sessions/${sessionParam}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ tags: ["updated"] }),
+        });
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("admin:sessions:<friendlyId>: 200", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          `admin:sessions:${session.friendlyId}`,
+        ]);
+        const res = await patch(session.friendlyId, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("admin:sessions (type-only): 200", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "admin:sessions",
+        ]);
+        const res = await patch(session.friendlyId, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("admin:all: 200", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin:all"]);
+        const res = await patch(session.friendlyId, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("admin (bare): 200", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin"]);
+        const res = await patch(session.friendlyId, jwt);
+        expect(res.status).toBe(200);
+      });
+
+      it("write:sessions (wrong action — admin not aliased from write): 403", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+        ]);
+        const res = await patch(session.friendlyId, jwt);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ---- Close session: POST /api/v1/sessions/:session/close
+    //
+    // action: "admin" — same matrix as PATCH.
+    describe("Close session — POST /api/v1/sessions/:session/close", () => {
+      const close = async (sessionParam: string, jwt: string) =>
+        getTestServer().webapp.fetch(
+          `/api/v1/sessions/${sessionParam}/close`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${jwt}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ reason: "test" }),
+          }
+        );
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("admin:sessions: auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "admin:sessions",
+        ]);
+        const res = await close(session.friendlyId, jwt);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("admin: auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin"]);
+        const res = await close(session.friendlyId, jwt);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("write:sessions: 403 (admin action)", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+        ]);
+        const res = await close(session.friendlyId, jwt);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ---- End-and-continue: POST /api/v1/sessions/:session/end-and-continue
+    //
+    // action: "write" — multi-key sessions resource.
+    describe("End-and-continue — POST /api/v1/sessions/:session/end-and-continue", () => {
+      const endAndContinue = async (sessionParam: string, jwt: string) =>
+        getTestServer().webapp.fetch(
+          `/api/v1/sessions/${sessionParam}/end-and-continue`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${jwt}`,
+              "Content-Type": "application/json",
+            },
+            // Body shape doesn't matter for auth — handler runs after
+            // the auth check so any 4xx here means auth passed.
+            body: JSON.stringify({
+              reason: "test",
+              callingRunId: "run_does_not_exist",
+            }),
+          }
+        );
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("write:sessions: auth passes (was a superScope)", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+        ]);
+        const res = await endAndContinue(session.friendlyId, jwt);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("write:all: auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:all"]);
+        const res = await endAndContinue(session.friendlyId, jwt);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("read:sessions (wrong action): 403", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:sessions",
+        ]);
+        const res = await endAndContinue(session.friendlyId, jwt);
+        expect(res.status).toBe(403);
+      });
+    });
+
+    // ---- Realtime IO: GET (subscribe) and PUT (initialize)
+    //
+    // Both go through createLoaderApiRoute / createActionApiRoute — same
+    // multi-key sessions resource. No deep matrix here; one positive
+    // test per old superScope per method is enough.
+    describe("Realtime IO — /realtime/v1/sessions/:session/:io", () => {
+      const ioPath = (sessionParam: string) =>
+        `/realtime/v1/sessions/${sessionParam}/in`;
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("GET with read:sessions (was a superScope): auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "read:sessions",
+        ]);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId), {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("GET with read:all: auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:all"]);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId), {
+          method: "HEAD",
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("PUT with write:sessions (was a superScope): auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+        ]);
+        const res = await server.webapp.fetch(ioPath(session.friendlyId), {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${jwt}` },
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+    });
+
+    // ---- Realtime append: POST /realtime/v1/sessions/:session/:io/append
+    //
+    // action: "write" — multi-key sessions resource.
+    describe("Realtime append — POST /realtime/v1/sessions/:session/:io/append", () => {
+      const appendPath = (sessionParam: string) =>
+        `/realtime/v1/sessions/${sessionParam}/in/append`;
+
+      const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
+        generateJWT({
+          secretKey: apiKey,
+          payload: { pub: true, sub: envId, scopes },
+          expirationTime: "15m",
+        });
+
+      it("write:sessions (was a superScope): auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
+          "write:sessions",
+        ]);
+        const res = await server.webapp.fetch(appendPath(session.friendlyId), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: new Uint8Array([1, 2, 3]),
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("write:all: auth passes", async () => {
+        const server = getTestServer();
+        const seed = await seedTestEnvironment(server.prisma);
+        const session = await seedTestApiSession(server.prisma, seed.environment);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:all"]);
+        const res = await server.webapp.fetch(appendPath(session.friendlyId), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/octet-stream",
+          },
+          body: new Uint8Array([1, 2, 3]),
+        });
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
     });
   });
 });

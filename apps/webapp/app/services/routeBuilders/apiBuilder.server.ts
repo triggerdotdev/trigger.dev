@@ -88,6 +88,13 @@ type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, an
 // identifiers (a run is addressable by friendlyId / batch / tags / task) so a
 // JWT scoped to *any* of them grants access to the row.
 //
+// The pre-RBAC apiBuilder had a separate `superScopes: [...]` whitelist for
+// "broader-than-this-resource" access. Post-RBAC, that's expressed in two
+// ways: include a collection-level shape `{ type: "<subject>" }` (no id) in
+// the array so a `<action>:<subject>` JWT matches it, and rely on the JWT
+// ability's wildcard branches for the bypass tier (`*:all` and `admin*` —
+// see `internal-packages/rbac/src/ability.ts`). No code knob is needed.
+//
 // Batch operations are different: each item in the array is a *distinct*
 // resource and authorization must hold for every one of them. Wrapping the
 // array via `everyResource` flips the auth check from `some` to `every`. The
