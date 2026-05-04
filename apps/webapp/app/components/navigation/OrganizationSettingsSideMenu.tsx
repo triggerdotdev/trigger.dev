@@ -130,14 +130,18 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
-          <SideMenuItem
-            name="Roles"
-            icon={ShieldCheckIcon}
-            activeIconColor="text-sky-500"
-            inactiveIconColor="text-sky-500"
-            to={organizationRolesPath(organization)}
-            data-action="roles"
-          />
+          {isManagedCloud && (
+            <>
+              <SideMenuItem
+                name="Roles"
+                icon={ShieldCheckIcon}
+                activeIconColor="text-sky-500"
+                inactiveIconColor="text-sky-500"
+                to={organizationRolesPath(organization)}
+                data-action="roles"
+              />
+            </>
+          )}
           <SideMenuItem
             name="Settings"
             icon={Cog8ToothIcon}
