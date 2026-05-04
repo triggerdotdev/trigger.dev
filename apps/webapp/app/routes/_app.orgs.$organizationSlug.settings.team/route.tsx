@@ -593,44 +593,58 @@ function RolePicker({
   const error =
     fetcher.data && "error" in fetcher.data && fetcher.data.error ? fetcher.data.error : null;
 
+  const picker = (
+    <Select
+      defaultValue={currentRoleId ?? ""}
+      items={roles}
+      variant="tertiary/small"
+      disabled={!canManageMembers || isSubmitting}
+      dropdownIcon
+      text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
+      setValue={(next) => {
+        if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
+        // Upgrade-link rows have a value too (Ariakit needs one to
+        // make the row interactive — without it the Link inside
+        // doesn't even register the click), but they shouldn't
+        // submit the role-change form. The Link navigates the user
+        // to the plan-selection page; we just bail here.
+        if (!assignable.has(next)) return;
+        fetcher.submit(
+          { _formType: "set-role", userId: memberUserId, roleId: next },
+          { method: "post" }
+        );
+      }}
+    >
+      {(items) =>
+        items.map((role) => {
+          const isAssignable = assignable.has(role.id);
+          return isAssignable ? (
+            <SelectItem key={role.id} value={role.id}>
+              {role.name}
+            </SelectItem>
+          ) : (
+            <SelectLinkItem key={role.id} value={role.id} to={v3BillingPath(organization)}>
+              {role.name} (upgrade)
+            </SelectLinkItem>
+          );
+        })
+      }
+    </Select>
+  );
+
   return (
     <div className="flex flex-col items-end gap-1">
-      <Select
-        defaultValue={currentRoleId ?? ""}
-        items={roles}
-        variant="tertiary/small"
-        disabled={!canManageMembers || isSubmitting}
-        dropdownIcon
-        text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
-        setValue={(next) => {
-          if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
-          // Upgrade-link rows have a value too (Ariakit needs one to
-          // make the row interactive — without it the Link inside
-          // doesn't even register the click), but they shouldn't
-          // submit the role-change form. The Link navigates the user
-          // to the plan-selection page; we just bail here.
-          if (!assignable.has(next)) return;
-          fetcher.submit(
-            { _formType: "set-role", userId: memberUserId, roleId: next },
-            { method: "post" }
-          );
-        }}
-      >
-        {(items) =>
-          items.map((role) => {
-            const isAssignable = assignable.has(role.id);
-            return isAssignable ? (
-              <SelectItem key={role.id} value={role.id}>
-                {role.name}
-              </SelectItem>
-            ) : (
-              <SelectLinkItem key={role.id} value={role.id} to={v3BillingPath(organization)}>
-                {role.name} (upgrade)
-              </SelectLinkItem>
-            );
-          })
-        }
-      </Select>
+      {canManageMembers ? (
+        picker
+      ) : (
+        // Disabled <Select> swallows hover events on its own, so wrap it
+        // in a div the tooltip can attach to.
+        <SimpleTooltip
+          button={<div className="cursor-not-allowed">{picker}</div>}
+          content="You don't have permission to change roles"
+          disableHoverableContent
+        />
+      )}
       {error ? (
         <span className="text-xs text-error" role="alert">
           {error}
