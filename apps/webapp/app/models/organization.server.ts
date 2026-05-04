@@ -94,7 +94,6 @@ export async function createOrganization(
   try {
     await provisionBasinForOrg({
       id: organization.id,
-      slug: organization.slug,
       streamBasinName: organization.streamBasinName,
       // No `retention` — provisioner uses `defaultRetention()`.
     });

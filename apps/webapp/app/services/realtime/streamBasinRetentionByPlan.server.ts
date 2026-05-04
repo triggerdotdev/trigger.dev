@@ -12,34 +12,36 @@
  * path falls back to `defaultRetention()`.
  */
 import { env } from "~/env.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getCurrentPlan, isBillingConfigured } from "~/services/platform.v3.server";
 import { defaultRetention } from "./streamBasinProvisioner.server";
 
 /**
  * Resolve the retention duration for an org based on its current plan.
  *
- *  - Returns the configured retention for the plan when the billing
- *    API has data.
- *  - Returns `defaultRetention()` when no billing client is configured
- *    (OSS / non-cloud installs that flipped per-org basins on without
- *    wiring billing).
- *  - **Throws** when billing is configured but the call failed, so
- *    the redis-worker retry kicks in and we don't silently downgrade
- *    a paid org's retention.
+ *  - When billing is **not configured** (OSS / self-hosted installs),
+ *    returns `defaultRetention()` — the worker job converges, the
+ *    backfill completes, and operators get a sane default without
+ *    having to wire up a billing API.
+ *  - When billing **is configured** and the call succeeds, maps the
+ *    plan code to a retention duration.
+ *  - When billing **is configured** but the call failed (transient
+ *    outage / 5xx), **throws** so the redis-worker retry kicks in
+ *    and we don't silently downgrade a paid org's retention.
  */
 export async function resolveRetentionForOrg(orgId: string): Promise<string> {
-  const plan = await getCurrentPlan(orgId);
+  if (!isBillingConfigured()) {
+    // No billing wired up — operator either runs OSS or hasn't set
+    // BILLING_API_URL / BILLING_API_KEY. Fall back to the default;
+    // the org-create path uses the same default, so this is just the
+    // backfill's catch-up path arriving at the same answer.
+    return defaultRetention();
+  }
 
+  const plan = await getCurrentPlan(orgId);
   if (plan === undefined) {
-    // We can't tell from `getCurrentPlan` alone whether the billing
-    // client isn't configured (OSS) or whether the call failed
-    // (transient cloud outage). Today we conservatively throw so
-    // cloud installs retry. OSS installs that hit this path either:
-    //   (a) flipped the per-org-basins flag on without wiring billing
-    //       and should configure `BILLING_API_URL` / `BILLING_API_KEY`,
-    //       or
-    //   (b) shouldn't be calling this at all and should pass an
-    //       explicit retention to the provisioner.
+    // Billing client exists but the call failed. Throw so redis-worker
+    // retries — silently defaulting to free would clip a paid org's
+    // retention if a backfill landed during a transient billing outage.
     throw new Error(
       `[streamBasinRetentionByPlan] billing plan unavailable for org ${orgId}; will retry`
     );

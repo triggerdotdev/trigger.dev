@@ -44,6 +44,17 @@ function initializeClient() {
 }
 
 const client = singleton("billingClient", initializeClient);
+
+/**
+ * `true` when the billing client was instantiated — i.e. we're running
+ * in a cloud-style install with `BILLING_API_URL` + `BILLING_API_KEY`
+ * configured. OSS / self-hosted installs return `false` here, which
+ * lets callers distinguish "no billing wired up, fall back to
+ * defaults" from "billing wired up but the call failed, retry."
+ */
+export function isBillingConfigured(): boolean {
+  return client !== undefined;
+}
 // Failures from @trigger.dev/platform billing client calls are tracked via
 // this metric (with low-cardinality {function, kind} labels) rather than
 // logged. Every task invocation hits these paths, so per-call logs were too

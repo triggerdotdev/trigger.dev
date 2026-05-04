@@ -34,6 +34,7 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { parseDuration } from "./duration.server";
 
 export function isPerOrgBasinsEnabled(): boolean {
   return env.REALTIME_STREAMS_PER_ORG_BASINS_ENABLED === "true";
@@ -48,36 +49,28 @@ export function defaultRetention(): string {
 }
 
 /**
- * Build the basin name for an org. Format: `{prefix}-{env}-org-{slug}`.
- * The org slug is already lowercase-and-hyphenated by
- * `createOrganization`, so it satisfies S2 basin-name rules without
- * further normalization. We truncate defensively to keep total length
- * under 63 chars (a common bucket convention; verify against S2 docs
- * before raising).
+ * Build the basin name for an org. Format: `{prefix}-{env}-org-{id}`.
  *
- * Throws if `REALTIME_STREAMS_BASIN_NAME_PREFIX` +
- * `REALTIME_STREAMS_BASIN_NAME_ENV` are configured so long that no
- * room remains for the slug — without this guard, `slice(0, 0)` would
- * return an empty string and every org would share the same name,
- * silently colliding via S2's 409-on-create.
+ * We use the org's `id` (cuid, fixed-length, unique-by-construction)
+ * rather than the slug. Slugs are user-influenced, can change, and —
+ * critically — could collide across orgs once truncated to fit the
+ * S2 basin-name length cap. cuid is short (25 chars) and never
+ * collides, so the basin name is stable and tenant-isolated by
+ * construction.
+ *
+ * Format check: `triggerdotdev-prod-org-{25 chars}` is 47 chars total,
+ * comfortably under the conventional 63-char cap. If you change the
+ * prefix / env-name to something extreme, this still fails fast at
+ * S2's validator.
  */
-export function basinNameForOrg(org: { slug: string }): string {
+export function basinNameForOrg(org: { id: string }): string {
   const prefix = env.REALTIME_STREAMS_BASIN_NAME_PREFIX;
   const envName = env.REALTIME_STREAMS_BASIN_NAME_ENV;
-  const head = `${prefix}-${envName}-org-`;
-  const budget = 63 - head.length;
-  if (budget <= 0) {
-    throw new Error(
-      `[streamBasinProvisioner] REALTIME_STREAMS_BASIN_NAME_PREFIX + REALTIME_STREAMS_BASIN_NAME_ENV too long: head="${head}" leaves no room for the org slug (budget=${budget}). Shorten the prefix or env-name values.`
-    );
-  }
-  const slug = org.slug.slice(0, budget);
-  return `${head}${slug}`;
+  return `${prefix}-${envName}-org-${org.id}`;
 }
 
 type ProvisionInput = {
   id: string;
-  slug: string;
   /// Duration string passed straight to S2. Defaults to
   /// `defaultRetention()` when omitted. Caller decides; the provisioner
   /// has no opinion about what retention is appropriate.
@@ -156,7 +149,15 @@ export async function reconfigureBasinForOrg(
   if (!isPerOrgBasinsEnabled()) return;
 
   const accessToken = env.REALTIME_STREAMS_S2_ACCESS_TOKEN;
-  if (!accessToken) return;
+  if (!accessToken) {
+    // Per-org basins are enabled but no token is configured — that's a
+    // misconfiguration, not a no-op condition. Throw so the worker job
+    // surfaces in the queue's failure log instead of silently leaving
+    // retention stale on the basin.
+    throw new Error(
+      "REALTIME_STREAMS_S2_ACCESS_TOKEN must be set when REALTIME_STREAMS_PER_ORG_BASINS_ENABLED=true"
+    );
+  }
 
   const org = await prisma.organization.findFirst({
     where: { id: orgId },
@@ -197,8 +198,8 @@ async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<vo
       create_stream_on_read: true,
       default_stream_config: {
         storage_class: opts.storageClass,
-        retention_policy: { age: durationToSeconds(opts.retentionPolicy) },
-        delete_on_empty: { min_age_secs: durationToSeconds(opts.deleteOnEmptyMinAge) },
+        retention_policy: { age: parseDuration(opts.retentionPolicy) },
+        delete_on_empty: { min_age_secs: parseDuration(opts.deleteOnEmptyMinAge) },
       },
     },
   };
@@ -235,7 +236,7 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   const url = `https://aws.s2.dev/v1/basins/${encodeURIComponent(name)}`;
   const body = {
     default_stream_config: {
-      retention_policy: { age: durationToSeconds(opts.retentionPolicy) },
+      retention_policy: { age: parseDuration(opts.retentionPolicy) },
     },
   };
 
@@ -258,29 +259,3 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   throw new Error(`S2 reconfigureBasin failed: ${res.status} ${res.statusText} ${text}`);
 }
 
-/**
- * Parse a short duration string (e.g. `7d`, `30d`, `365d`, `1h`, `90m`,
- * `45s`, `2w`) into seconds. Tolerant of `7days` and `1week` forms too.
- * Throws on garbage so a misconfigured env var fails loudly at first use.
- */
-function durationToSeconds(input: string): number {
-  const trimmed = input.trim().toLowerCase();
-  const match = trimmed.match(/^(\d+)\s*(s|sec|secs|seconds?|m|min|mins|minutes?|h|hour|hours?|d|day|days?|w|week|weeks?|y|year|years?)$/);
-  if (!match) {
-    throw new Error(`Invalid duration string: ${input}`);
-  }
-  const value = parseInt(match[1]!, 10);
-  const unit = match[2]!;
-  const multiplier =
-    /^s/.test(unit) ? 1
-    : /^m(?:in|ins|inute|inutes)?$/.test(unit) ? 60
-    : /^h/.test(unit) ? 3600
-    : /^d/.test(unit) ? 86400
-    : /^w/.test(unit) ? 604800
-    : /^y/.test(unit) ? 31_536_000
-    : NaN;
-  if (!Number.isFinite(multiplier)) {
-    throw new Error(`Invalid duration unit: ${unit}`);
-  }
-  return value * multiplier;
-}

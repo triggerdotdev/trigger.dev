@@ -1,6 +1,7 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { isValidDuration } from "~/services/realtime/duration.server";
 import {
   isPerOrgBasinsEnabled,
   reconfigureBasinForOrg,
@@ -23,7 +24,10 @@ import { commonWorker } from "~/v3/commonWorker.server";
 const BodySchema = z
   .object({
     orgId: z.string(),
-    retention: z.string().optional(),
+    retention: z
+      .string()
+      .refine(isValidDuration, "retention must be a duration like 7d, 30d, 365d, 1h, 1y")
+      .optional(),
   })
   .strict();
 

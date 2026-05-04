@@ -317,7 +317,6 @@ function initializeWorker() {
           where: { id: payload.orgId },
           select: {
             id: true,
-            slug: true,
             streamBasinName: true,
           },
         });

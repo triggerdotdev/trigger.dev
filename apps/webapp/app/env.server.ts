@@ -3,6 +3,19 @@ import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
+import { isValidDuration } from "./services/realtime/duration.server";
+
+/**
+ * `z.string()` constrained to a duration string parseable by
+ * `parseDuration` (e.g. `7d`, `30d`, `365d`, `1h`). Validated at boot
+ * so a typo'd retention env var fails fast at startup rather than
+ * lurking until the first basin operation.
+ */
+function durationString() {
+  return z
+    .string()
+    .refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
+}
 
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
 // non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
@@ -1521,19 +1534,19 @@ const EnvironmentSchema = z
     /// Used at org-create and as the fallback when no plan-specific
     /// retention is resolved. Operators that don't run a billing API
     /// only need this one.
-    REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: z.string().default("30d"),
+    REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: durationString().default("30d"),
     /// Plan-specific retention overrides — only consulted by the
     /// optional `streamBasinRetentionByPlan` shim. Operators that
     /// don't map plans to retention (OSS, self-hosted) can ignore
     /// these and rely on the default above.
-    REALTIME_STREAMS_BASIN_RETENTION_FREE: z.string().default("7d"),
-    REALTIME_STREAMS_BASIN_RETENTION_HOBBY: z.string().default("30d"),
-    REALTIME_STREAMS_BASIN_RETENTION_PRO: z.string().default("365d"),
+    REALTIME_STREAMS_BASIN_RETENTION_FREE: durationString().default("7d"),
+    REALTIME_STREAMS_BASIN_RETENTION_HOBBY: durationString().default("30d"),
+    REALTIME_STREAMS_BASIN_RETENTION_PRO: durationString().default("365d"),
     /// Storage class applied to per-org basins at create time.
     REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
     /// `delete_on_empty_min_age` applied to per-org basins. Streams
     /// that go empty for this long are reaped automatically.
-    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: z.string().default("1h"),
+    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("1h"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
 
