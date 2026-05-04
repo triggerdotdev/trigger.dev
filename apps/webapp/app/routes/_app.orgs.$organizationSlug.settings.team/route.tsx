@@ -394,31 +394,36 @@ export default function Page() {
                   </a>
                 ) : null}
               </div>
-              <ul className="divide-ui-border mb-8 mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
+              <div className="mb-8 mt-3 grid w-full grid-cols-[1fr_auto_auto] items-center gap-x-2 border-y border-grid-bright">
                 {members.map((member) => (
-                  <li key={member.user.id} className="flex items-center gap-x-4 py-4">
-                    <UserAvatar
-                      avatarUrl={member.user.avatarUrl}
-                      name={member.user.name}
-                      className="size-10"
-                    />
-                    <div className="flex flex-col gap-0.5">
-                      <Header3>
-                        {member.user.name}{" "}
-                        {member.user.id === user.id && (
-                          <span className="text-text-dimmed">(You)</span>
-                        )}
-                      </Header3>
-                      <Paragraph variant="small">{member.user.email}</Paragraph>
-                    </div>
-                    <div className="flex grow items-center justify-end gap-4">
-                      <RolePicker
-                        memberUserId={member.user.id}
-                        currentRoleId={memberRoleByUserId.get(member.user.id) ?? null}
-                        roles={roles}
-                        assignableRoleIds={assignableRoleIds}
-                        canManageMembers={canManageMembers}
+                  <div
+                    key={member.user.id}
+                    className="col-span-3 grid grid-cols-subgrid items-center gap-x-2 border-b border-grid-bright py-2 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-x-2">
+                      <UserAvatar
+                        avatarUrl={member.user.avatarUrl}
+                        name={member.user.name}
+                        className="size-10"
                       />
+                      <div className="flex flex-col gap-0.5">
+                        <Header3>
+                          {member.user.name}{" "}
+                          {member.user.id === user.id && (
+                            <span className="text-text-dimmed">(You)</span>
+                          )}
+                        </Header3>
+                        <Paragraph variant="small">{member.user.email}</Paragraph>
+                      </div>
+                    </div>
+                    <RolePicker
+                      memberUserId={member.user.id}
+                      currentRoleId={memberRoleByUserId.get(member.user.id) ?? null}
+                      roles={roles}
+                      assignableRoleIds={assignableRoleIds}
+                      canManageMembers={canManageMembers}
+                    />
+                    <div className="justify-self-end">
                       <LeaveRemoveButton
                         userId={user.id}
                         member={member}
@@ -426,9 +431,9 @@ export default function Page() {
                         canManageMembers={canManageMembers}
                       />
                     </div>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
 
