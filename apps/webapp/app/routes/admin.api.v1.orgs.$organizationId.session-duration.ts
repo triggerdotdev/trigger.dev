@@ -42,7 +42,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   try {
     rawBody = await request.json();
   } catch {
-    return json({ success: false, errors: "Invalid JSON body" }, { status: 400 });
+    return json(
+      { success: false, errors: { formErrors: ["Invalid JSON body"], fieldErrors: {} } },
+      { status: 400 }
+    );
   }
   const parseResult = RequestBodySchema.safeParse(rawBody);
   if (!parseResult.success) {
