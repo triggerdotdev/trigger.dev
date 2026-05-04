@@ -195,6 +195,10 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     return null;
   }
 
+  async getUserRoles(userIds: string[]): Promise<Map<string, Role | null>> {
+    return new Map(userIds.map((id) => [id, null]));
+  }
+
   async setUserRole(): Promise<RoleAssignmentResult> {
     return { ok: false, error: "RBAC plugin not installed" };
   }

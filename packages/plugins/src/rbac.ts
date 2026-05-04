@@ -182,6 +182,16 @@ export interface RoleBaseAccessController {
     projectId?: string;
   }): Promise<Role | null>;
 
+  // Batch variant for callers that need per-user roles for many users
+  // in one round-trip (e.g. the Team page rendering N members).
+  // Org-scoped only — project-scoped reads still go through getUserRole.
+  // Returns a Map keyed by userId; users with no resolvable role map to
+  // null. The default fallback returns a Map of all userIds → null.
+  getUserRoles(
+    userIds: string[],
+    organizationId: string
+  ): Promise<Map<string, Role | null>>;
+
   setUserRole(params: {
     userId: string;
     organizationId: string;
