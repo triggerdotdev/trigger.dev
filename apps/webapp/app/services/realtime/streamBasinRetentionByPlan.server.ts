@@ -18,6 +18,7 @@ import { logger } from "~/services/logger.server";
 import { getCurrentPlan, isBillingConfigured } from "~/services/platform.v3.server";
 import {
   defaultRetention,
+  isPerOrgBasinsEnabled,
   provisionBasinForOrg,
   reconfigureBasinForOrg,
 } from "./streamBasinProvisioner.server";
@@ -60,7 +61,14 @@ export function retentionForPlanCode(code: string | null | undefined): string {
 }
 
 type ReconcileResult =
-  | { kind: "skipped"; reason: "billing-not-configured" | "org-not-found" | "free-no-basin" }
+  | {
+      kind: "skipped";
+      reason:
+        | "billing-not-configured"
+        | "feature-disabled"
+        | "org-not-found"
+        | "free-no-basin";
+    }
   | { kind: "provisioned"; retention: string }
   | { kind: "reconfigured"; retention: string }
   | { kind: "deprovisioned" };
@@ -94,6 +102,15 @@ type ReconcileResult =
 export async function reconcileBasinForOrg(orgId: string): Promise<ReconcileResult> {
   if (!isBillingConfigured()) {
     return { kind: "skipped", reason: "billing-not-configured" };
+  }
+
+  // Feature flag is the master switch for the whole per-org basin
+  // pipeline — `provisionBasinForOrg` / `reconfigureBasinForOrg` both
+  // no-op when it's off. Bail here so the reconcile log lines and
+  // result kinds reflect reality (no "provisioned (paid upgrade)" log
+  // for a no-op call), and skip the billing API round-trip entirely.
+  if (!isPerOrgBasinsEnabled()) {
+    return { kind: "skipped", reason: "feature-disabled" };
   }
 
   const plan = await getCurrentPlan(orgId);
