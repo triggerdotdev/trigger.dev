@@ -23,6 +23,11 @@ export type Permission = {
   // `<action>:<subject>` — display name, derived from the ability rule.
   name: string;
   description: string;
+  // Display bucket for the Roles page (e.g. "Runs", "Tasks"). The page
+  // groups permissions by this string and lists groups in the order they
+  // first appear in `allPermissions()`, so the plugin owns both the
+  // bucket label and the section ordering. Omit for "no grouping".
+  group?: string;
   // Inverted rules (CASL `cannot`) surface as ✗ in the Roles page.
   inverted?: boolean;
   // CASL conditions (e.g. `{ envType: "PRODUCTION" }`) — when present,

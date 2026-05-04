@@ -83,52 +83,10 @@ type LoaderRole = LoaderData["roles"][number];
 type LoaderPermission = LoaderData["allPermissions"][number];
 type RolePermission = LoaderRole["permissions"][number];
 
-// Permission name → display group. The wire-format Permission only
-// carries `name` and `description`, so this lives client-side.
-const PERMISSION_GROUP_BY_NAME: Record<string, string> = {
-  "read:runs": "Runs",
-  "write:runs": "Runs",
-  "read:tags": "Runs",
-  "read:batch": "Runs",
-  "write:batch": "Runs",
-  "read:tasks": "Tasks",
-  "write:tasks": "Tasks",
-  "trigger:tasks": "Tasks",
-  "batchTrigger:tasks": "Tasks",
-  "deploy:tasks": "Tasks",
-  "read:waitpoints": "Waitpoints",
-  "write:waitpoints": "Waitpoints",
-  "read:inputStreams": "Realtime",
-  "write:inputStreams": "Realtime",
-  "read:deployments": "Deployments",
-  "read:prompts": "Prompts",
-  "write:prompts": "Prompts",
-  "update:prompts": "Prompts",
-  "read:query": "Query",
-  "read:tokens": "Tokens",
-  "write:tokens": "Tokens",
-  "read:envvars": "Environment",
-  "write:envvars": "Environment",
-  "read:apiKeys": "Environment",
-  "write:apiKeys": "Environment",
-  "read:members": "Organisation",
-  "manage:members": "Organisation",
-  "manage:billing": "Organisation",
-};
-
-const GROUP_ORDER = [
-  "Runs",
-  "Tasks",
-  "Waitpoints",
-  "Realtime",
-  "Deployments",
-  "Prompts",
-  "Query",
-  "Tokens",
-  "Environment",
-  "Organisation",
-  "Other",
-] as const;
+// Permissions are bucketed by `permission.group` from the plugin.
+// Section order = first-seen order in `allPermissions()`. Permissions
+// without a group fall into "Other" at the bottom.
+const FALLBACK_GROUP = "Other";
 
 export default function Page() {
   const { roles, assignableRoleIds, allPermissions, systemRoles } =
@@ -353,16 +311,17 @@ function conditionLabel(conditions: Record<string, unknown>): string {
 function groupPermissions(
   permissions: LoaderPermission[]
 ): { group: string; permissions: LoaderPermission[] }[] {
+  // Insertion-ordered map: groups appear in the order their first
+  // permission was seen. Plugins that want a specific section order
+  // just emit permissions in that order from `allPermissions()`.
   const buckets = new Map<string, LoaderPermission[]>();
   for (const permission of permissions) {
-    const group = PERMISSION_GROUP_BY_NAME[permission.name] ?? "Other";
+    const group = permission.group ?? FALLBACK_GROUP;
     const list = buckets.get(group) ?? [];
     list.push(permission);
     buckets.set(group, list);
   }
-  return GROUP_ORDER.flatMap((group) =>
-    buckets.has(group) ? [{ group, permissions: buckets.get(group)! }] : []
-  );
+  return Array.from(buckets, ([group, permissions]) => ({ group, permissions }));
 }
 
 function CreateRoleUpsell() {
