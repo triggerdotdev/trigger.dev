@@ -34,13 +34,21 @@ export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRea
  *
  *  1. `run.streamBasinName` (set at trigger time, immutable per-run)
  *  2. `session.streamBasinName` (set at session create time)
- *  3. `REALTIME_STREAMS_S2_BASIN` (the legacy / OSS / pre-backfill global)
+ *  3. `organization.streamBasinName` (current org basin — only useful
+ *     when neither a run nor a session row exists yet, e.g. PUT init
+ *     against an externalId before the row is created)
+ *  4. `REALTIME_STREAMS_S2_BASIN` (the legacy / OSS / pre-backfill global)
  *
  * Old runs / sessions that pre-date the per-org-basins migration carry
  * `null` columns and fall through to the global basin, which is the
  * one their streams were originally created in. Once the legacy basin
  * drains via S2 retention (~30d on prod today), this fallback can be
  * dropped — but it's cheap to keep as a safety net.
+ *
+ * Callers should only pass `organization` when they know the row-bearing
+ * ref is absent (not when its column is null) — otherwise a pre-migration
+ * row's null column would short-circuit to the org's *current* basin
+ * instead of the legacy one its streams actually live in.
  *
  * OSS / s2-lite installs always hit the global path because the
  * provisioner is gated by `REALTIME_STREAMS_PER_ORG_BASINS_ENABLED`
@@ -49,12 +57,14 @@ export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRea
 export type StreamBasinContext = {
   run?: { streamBasinName: string | null } | null;
   session?: { streamBasinName: string | null } | null;
+  organization?: { streamBasinName: string | null } | null;
 };
 
 export function resolveStreamBasin(ctx: StreamBasinContext): string | undefined {
   return (
     ctx.run?.streamBasinName ??
     ctx.session?.streamBasinName ??
+    ctx.organization?.streamBasinName ??
     env.REALTIME_STREAMS_S2_BASIN ??
     undefined
   );
