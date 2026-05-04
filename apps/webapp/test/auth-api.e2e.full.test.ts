@@ -2272,6 +2272,54 @@ describe("API", () => {
       expect(res.status).not.toBe(403);
     });
 
+    it("multi-table body + JWT scoped to only one of them: 403 (every-table semantics)", async () => {
+      // detectTables matches `\bFROM\s+<name>\b` per query-schema, so
+      // a query with two FROM clauses (e.g. UNION) yields a multi-
+      // entry resource list. The route wraps it in everyResource so
+      // AND semantics apply: a JWT scoped to one detected table
+      // cannot submit a query that also reads the other.
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: { pub: true, sub: seed.environment.id, scopes: ["read:query:runs"] },
+        expirationTime: "15m",
+      });
+      const res = await post(
+        {
+          query:
+            "SELECT count() FROM runs UNION ALL SELECT count() FROM metrics",
+        },
+        { Authorization: `Bearer ${jwt}` }
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("multi-table body + JWT scoped to all detected tables: auth passes", async () => {
+      // Companion to the every-table 403 above — when the JWT covers
+      // every detected table the AND-check passes.
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["read:query:runs", "read:query:metrics"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await post(
+        {
+          query:
+            "SELECT count() FROM runs UNION ALL SELECT count() FROM metrics",
+        },
+        { Authorization: `Bearer ${jwt}` }
+      );
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
     it("body with table 'runs' + JWT read:query:other_table: 403", async () => {
       const server = getTestServer();
       const seed = await seedTestEnvironment(server.prisma);
