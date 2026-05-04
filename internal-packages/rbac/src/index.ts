@@ -149,6 +149,11 @@ class LazyController implements RoleBaseAccessController {
     return auth;
   }
 
+  async authenticatePat(...args: Parameters<RoleBaseAccessController["authenticatePat"]>) {
+    const result = await (await this.c()).authenticatePat(...args);
+    return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
+  }
+
   async systemRoles(...args: Parameters<RoleBaseAccessController["systemRoles"]>) {
     return (await this.c()).systemRoles(...args);
   }

@@ -6,11 +6,13 @@ import type {
   RbacSubject,
   RbacResource,
   BearerAuthResult,
+  PatAuthResult,
   SessionAuthResult,
   RoleAssignmentResult,
   RoleBaseAccessController,
   RoleMutationResult,
 } from "@trigger.dev/plugins";
+import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
@@ -155,6 +157,45 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       return { ok: false, reason: "unauthorized" };
     }
     return auth;
+  }
+
+  async authenticatePat(
+    request: Request,
+    context: { organizationId?: string; projectId?: string }
+  ): Promise<PatAuthResult> {
+    const rawToken = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim();
+    if (!rawToken || !rawToken.startsWith("tr_pat_")) {
+      return { ok: false, status: 401, error: "Invalid or Missing PAT" };
+    }
+
+    const hashedToken = createHash("sha256").update(rawToken).digest("hex");
+    const pat = await this.prisma.personalAccessToken.findFirst({
+      where: { hashedToken, revokedAt: null },
+      select: { id: true, userId: true },
+    });
+    if (!pat) {
+      return { ok: false, status: 401, error: "Invalid PAT" };
+    }
+
+    return {
+      ok: true,
+      tokenId: pat.id,
+      userId: pat.userId,
+      subject: {
+        type: "personalAccessToken",
+        tokenId: pat.id,
+        organizationId: context.organizationId ?? "",
+        projectId: context.projectId,
+      },
+      // No plugin → no role lookup. PATs in the OSS world are pure
+      // user-identity tokens; the route's own authorization block (or
+      // the absence of one) decides what they can do, same as it did
+      // before this method existed.
+      ability: permissiveAbility,
+    };
   }
 
   async systemRoles(_organizationId: string) {

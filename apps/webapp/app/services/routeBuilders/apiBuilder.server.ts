@@ -83,6 +83,15 @@ async function authenticateRequestForApiBuilder(
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
+// Sentinel ability for routes that don't opt into the cap-and-floor PAT
+// model — preserves pre-RBAC behaviour where PATs were pure user-identity
+// tokens. New routes that want gated PAT auth declare a `context` and
+// `authorization` block; the actual ability comes from `rbac.authenticatePat`.
+const PERMISSIVE_ABILITY: RbacAbility = {
+  can: () => true,
+  canSuper: () => false,
+};
+
 // Most route auth checks pass an array of resources to ability.can() with
 // "any-element-passes" semantics — a single record carries multiple
 // identifiers (a run is addressable by friendlyId / batch / tags / task) so a
@@ -365,6 +374,37 @@ type PATRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   corsStrategy?: "all" | "none";
+  // Resolves the target org/project for the request. Fed to
+  // `rbac.authenticatePat` so the plugin can compute the user's role
+  // floor (their authority in that org) for the cap intersection.
+  // When omitted, the PAT runs in identity-only mode — no role floor,
+  // no per-route ability gating beyond what authorization (if any)
+  // declares against a permissive baseline. Routes added before TRI-9087
+  // run in this mode by default.
+  context?: (
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined,
+    request: Request
+  ) =>
+    | { organizationId?: string; projectId?: string }
+    | Promise<{ organizationId?: string; projectId?: string }>;
+  authorization?: {
+    action: string;
+    resource: (
+      params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TParamsSchema>
+        : undefined,
+      searchParams: TSearchParamsSchema extends
+        | z.ZodFirstPartySchemaTypes
+        | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TSearchParamsSchema>
+        : undefined,
+      headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<THeadersSchema>
+        : undefined
+    ) => AuthResource;
+  };
 };
 
 type PATHandlerFunction<
@@ -384,6 +424,7 @@ type PATHandlerFunction<
     ? z.infer<THeadersSchema>
     : undefined;
   authentication: PersonalAccessTokenAuthenticationResult;
+  ability: RbacAbility;
   request: Request;
   apiVersion: API_VERSIONS;
 }) => Promise<Response>;
@@ -402,6 +443,8 @@ export function createLoaderPATApiRoute<
       searchParams: searchParamsSchema,
       headers: headersSchema,
       corsStrategy = "none",
+      context: contextFn,
+      authorization,
     } = options;
 
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
@@ -471,11 +514,53 @@ export function createLoaderPATApiRoute<
 
       const apiVersion = getApiVersion(request);
 
+      // Resolve ability via the rbac plugin. When neither `context` nor
+      // `authorization` is declared, the legacy permissive ability stands
+      // in — preserves the pre-RBAC PAT behaviour for routes that
+      // haven't opted into the cap-and-floor model yet.
+      let ability: RbacAbility = PERMISSIVE_ABILITY;
+      if (contextFn || authorization) {
+        const ctx = contextFn ? await contextFn(parsedParams, request) : {};
+        const patAuth = await rbac.authenticatePat(request, ctx);
+        if (!patAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: patAuth.error }, { status: patAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        ability = patAuth.ability;
+
+        if (authorization) {
+          const $resource = authorization.resource(
+            parsedParams,
+            parsedSearchParams,
+            parsedHeaders
+          );
+          if (!checkAuth(ability, authorization.action, $resource)) {
+            return await wrapResponse(
+              request,
+              json(
+                {
+                  error: "Unauthorized",
+                  code: "unauthorized",
+                  param: "access_token",
+                  type: "authorization",
+                },
+                { status: 403 }
+              ),
+              corsStrategy !== "none"
+            );
+          }
+        }
+      }
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
         headers: parsedHeaders,
         authentication: authenticationResult,
+        ability,
         request,
         apiVersion,
       });

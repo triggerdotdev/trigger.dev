@@ -12,4 +12,6 @@ export type {
   RbacUser,
   BearerAuthResult,
   SessionAuthResult,
+  PatAuthResult,
+  SystemRole,
 } from "./rbac.js";

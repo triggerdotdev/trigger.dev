@@ -372,7 +372,7 @@ function CreatePersonalAccessToken({
 
             {showRolePicker && (
               <InputGroup>
-                <Label>Role</Label>
+                <Label>Maximum role</Label>
                 <Select<string, SystemRole>
                   value={selectedRoleId}
                   setValue={(v) => setSelectedRoleId(v)}
@@ -395,8 +395,8 @@ function CreatePersonalAccessToken({
                   }
                 </Select>
                 <Hint>
-                  The token's permissions are bound to this role. Defaults to your own role so the
-                  token can't do more than you can.
+                  The token can act with up to this role. Your current role in each org is the
+                  actual ceiling — the token never grants more than you have.
                 </Hint>
               </InputGroup>
             )}

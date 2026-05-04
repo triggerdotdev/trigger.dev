@@ -106,6 +106,20 @@ export type SessionAuthResult =
   | { ok: false; reason: "unauthenticated" | "unauthorized" }
   | { ok: true; user: RbacUser; subject: RbacSubject; ability: RbacAbility };
 
+// PAT auth deliberately omits `environment` — PATs are user identity
+// tokens, not environment tokens. The ability is resolved per-request
+// from the user's role in the target org (passed via `context`),
+// intersected with the PAT's optional max-role cap.
+export type PatAuthResult =
+  | { ok: false; status: 401 | 403; error: string }
+  | {
+      ok: true;
+      tokenId: string;
+      userId: string;
+      subject: RbacSubject;
+      ability: RbacAbility;
+    };
+
 export interface RoleBaseAccessController {
   // API routes (Bearer token): one DB query → identity + pre-built ability
   // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
@@ -116,6 +130,21 @@ export interface RoleBaseAccessController {
     request: Request,
     context: { organizationId?: string; projectId?: string }
   ): Promise<SessionAuthResult>;
+
+  // PAT-authenticated routes (Authorization: Bearer tr_pat_…). The token
+  // identifies the user; the effective ability is `min(user's current
+  // role in the target org, the PAT's optional max-role cap)`. The user's
+  // actual org membership is the floor — if they've been demoted or
+  // removed, the PAT auto-narrows. The cap is set at PAT creation and
+  // ceilings the token even when the user is more privileged.
+  //
+  // No plugin installed → fallback returns a permissive ability so PAT
+  // routes that don't yet declare an `authorization` block keep working
+  // exactly as they did pre-RBAC.
+  authenticatePat(
+    request: Request,
+    context: { organizationId?: string; projectId?: string }
+  ): Promise<PatAuthResult>;
 
   // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails.
   // resource accepts the same single-or-array shape as RbacAbility.can — array form means
