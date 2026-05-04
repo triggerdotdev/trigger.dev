@@ -12,7 +12,10 @@ import {
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
@@ -57,7 +60,7 @@ const { action, loader } = createActionApiRoute(
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return [...ids].map((id) => ({ type: "sessions", id }));
+        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
       },
     },
   },

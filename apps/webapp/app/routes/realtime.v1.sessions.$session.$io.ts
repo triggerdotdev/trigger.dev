@@ -10,6 +10,7 @@ import {
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -125,7 +126,7 @@ const loader = createLoaderApiRoute(
           ids.add(row.friendlyId);
           if (row.externalId) ids.add(row.externalId);
         }
-        return [...ids].map((id) => ({ type: "sessions", id }));
+        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
       },
     },
   },

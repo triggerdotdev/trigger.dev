@@ -20,6 +20,7 @@ import {
 import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -47,10 +48,10 @@ export const loader = createLoaderApiRoute(
       // grants access (the array gets OR semantics).
       resource: (_, __, searchParams) => {
         const taskFilter = asArray(searchParams["filter[taskIdentifier]"]) ?? [];
-        return [
+        return anyResource([
           ...taskFilter.map((id) => ({ type: "tasks" as const, id })),
           { type: "sessions" as const },
-        ];
+        ]);
       },
     },
     findResource: async () => 1,
@@ -135,10 +136,11 @@ const { action } = createActionApiRoute(
       // per-task check exactly as before. `admin` / `write:all` bypass
       // via the JWT ability's wildcard branches.
       action: "write",
-      resource: (_params, _searchParams, _headers, body) => [
-        { type: "tasks", id: body.taskIdentifier },
-        { type: "sessions" },
-      ],
+      resource: (_params, _searchParams, _headers, body) =>
+        anyResource([
+          { type: "tasks", id: body.taskIdentifier },
+          { type: "sessions" },
+        ]),
     },
     corsStrategy: "all",
   },

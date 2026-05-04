@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 
 const SearchParamsSchema = z.object({
   tags: z
@@ -21,10 +24,11 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // This is a dummy value, it's not used
     authorization: {
       action: "read",
-      resource: (_, __, searchParams) => [
-        { type: "runs" },
-        ...(searchParams.tags ?? []).map((tag) => ({ type: "tags", id: tag })),
-      ],
+      resource: (_, __, searchParams) =>
+        anyResource([
+          { type: "runs" },
+          ...(searchParams.tags ?? []).map((tag) => ({ type: "tags", id: tag })),
+        ]),
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {

@@ -7,6 +7,7 @@ import {
   deleteInputStreamWaitpoint,
 } from "~/services/inputStreamWaitpointCache.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -135,7 +136,7 @@ const loader = createLoaderApiRoute(
         if (run.batch?.friendlyId) {
           resources.push({ type: "batch", id: run.batch.friendlyId });
         }
-        return resources;
+        return anyResource(resources);
       },
     },
   },

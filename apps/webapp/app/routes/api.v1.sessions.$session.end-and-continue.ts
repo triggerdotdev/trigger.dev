@@ -8,7 +8,10 @@ import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { swapSessionRun } from "~/services/realtime/sessionRunManager.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   session: z.string(),
@@ -52,7 +55,7 @@ const { action, loader } = createActionApiRoute(
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return [...ids].map((id) => ({ type: "sessions", id }));
+        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
       },
     },
   },

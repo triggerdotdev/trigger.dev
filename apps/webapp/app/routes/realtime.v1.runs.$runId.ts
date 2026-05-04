@@ -3,7 +3,10 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -40,7 +43,7 @@ export const loader = createLoaderApiRoute(
         if (run.batch?.friendlyId) {
           resources.push({ type: "batch", id: run.batch.friendlyId });
         }
-        return resources;
+        return anyResource(resources);
       },
     },
   },

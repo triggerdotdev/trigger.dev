@@ -2,7 +2,10 @@ import { json } from "@remix-run/server-runtime";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
@@ -35,7 +38,7 @@ export const loader = createLoaderApiRoute(
         if (run.batchId) {
           resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
         }
-        return resources;
+        return anyResource(resources);
       },
     },
   },

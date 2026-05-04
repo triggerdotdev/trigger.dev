@@ -3,7 +3,10 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 const ParamsSchema = z.object({
@@ -114,7 +117,7 @@ export const loader = createLoaderApiRoute(
         if (run.batch?.friendlyId) {
           resources.push({ type: "batch", id: run.batch.friendlyId });
         }
-        return resources;
+        return anyResource(resources);
       },
     },
   },

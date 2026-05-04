@@ -11,6 +11,7 @@ import {
   serializeSessionWithFriendlyRunId,
 } from "~/services/realtime/sessions.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -35,10 +36,10 @@ export const loader = createLoaderApiRoute(
       // / `admin` bypass via the JWT ability's wildcard branches.
       resource: (session) =>
         session.externalId
-          ? [
+          ? anyResource([
               { type: "sessions", id: session.friendlyId },
               { type: "sessions", id: session.externalId },
-            ]
+            ])
           : { type: "sessions", id: session.friendlyId },
     },
   },

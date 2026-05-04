@@ -92,31 +92,54 @@ const PERMISSIVE_ABILITY: RbacAbility = {
   canSuper: () => false,
 };
 
-// Most route auth checks pass an array of resources to ability.can() with
-// "any-element-passes" semantics — a single record carries multiple
-// identifiers (a run is addressable by friendlyId / batch / tags / task) so a
-// JWT scoped to *any* of them grants access to the row.
+// A multi-resource auth check has two possible directions, and route authors
+// have to pick one explicitly:
 //
-// The pre-RBAC apiBuilder had a separate `superScopes: [...]` whitelist for
-// "broader-than-this-resource" access. Post-RBAC, that's expressed in two
-// ways: include a collection-level shape `{ type: "<subject>" }` (no id) in
-// the array so a `<action>:<subject>` JWT matches it, and rely on the JWT
-// ability's wildcard branches for the bypass tier (`*:all` and `admin*` —
-// see `internal-packages/rbac/src/ability.ts`). No code knob is needed.
+//  - `anyResource(...)` — succeed if *any* element passes. Used when a single
+//    record carries multiple identifiers (a run is addressable by friendlyId /
+//    batch / tags / task) so a JWT scoped to *any* of them grants access.
 //
-// Batch operations are different: each item in the array is a *distinct*
-// resource and authorization must hold for every one of them. Wrapping the
-// array via `everyResource` flips the auth check from `some` to `every`. The
-// marker is a Symbol so it can't collide with arbitrary RbacResource fields.
+//  - `everyResource(...)` — succeed only if *every* element passes. Used for
+//    batch operations where each element is a *distinct* resource and a JWT
+//    scoped to one element must not authorize the others.
+//
+// Bare `RbacResource[]` is intentionally *not* part of `AuthResource` — the
+// type system forces every multi-resource site to disambiguate. The original
+// pre-RBAC apiBuilder had a separate `superScopes: [...]` whitelist for
+// "broader-than-this-resource" access; post-RBAC that's expressed via the JWT
+// ability's wildcard branches (`*:all` and `admin*` — see
+// `internal-packages/rbac/src/ability.ts`) plus a collection-level shape
+// `{ type: "<subject>" }` (no id) in the `anyResource` array so a
+// `<action>:<subject>` JWT matches it. No code knob needed.
+//
+// Markers are Symbols so they can't collide with arbitrary RbacResource fields.
+const ANY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.anyResource");
 const EVERY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.everyResource");
+
+type AnyResourceAuth = {
+  readonly [ANY_RESOURCE_MARKER]: true;
+  readonly resources: readonly RbacResource[];
+};
 
 type EveryResourceAuth = {
   readonly [EVERY_RESOURCE_MARKER]: true;
   readonly resources: readonly RbacResource[];
 };
 
+export function anyResource(resources: RbacResource[]): AnyResourceAuth {
+  return { [ANY_RESOURCE_MARKER]: true, resources };
+}
+
 export function everyResource(resources: RbacResource[]): EveryResourceAuth {
   return { [EVERY_RESOURCE_MARKER]: true, resources };
+}
+
+function isAnyResource(value: unknown): value is AnyResourceAuth {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[ANY_RESOURCE_MARKER] === true
+  );
 }
 
 function isEveryResource(value: unknown): value is EveryResourceAuth {
@@ -127,7 +150,7 @@ function isEveryResource(value: unknown): value is EveryResourceAuth {
   );
 }
 
-type AuthResource = RbacResource | RbacResource[] | EveryResourceAuth;
+type AuthResource = RbacResource | AnyResourceAuth | EveryResourceAuth;
 
 function checkAuth(
   ability: RbacAbility,
@@ -136,6 +159,9 @@ function checkAuth(
 ): boolean {
   if (isEveryResource(resource)) {
     return resource.resources.every((r) => ability.can(action, r));
+  }
+  if (isAnyResource(resource)) {
+    return ability.can(action, [...resource.resources]);
   }
   return ability.can(action, resource);
 }
