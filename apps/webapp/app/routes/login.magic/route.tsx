@@ -23,6 +23,7 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import { setRedirectTo, commitSession as commitRedirectSession } from "~/services/redirectTo.server";
+import { sanitizeRedirectPath } from "~/utils";
 import {
   checkMagicLinkEmailRateLimit,
   checkMagicLinkEmailDailyRateLimit,
@@ -60,11 +61,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const session = await getUserSession(request);
   const error = session.get("auth:error");
 
-  // Get redirectTo from URL params and store in session if present
+  // Get redirectTo from URL params and store in session if present.
+  // Sanitize to drop non-page paths (fetcher routes, callbacks) which would
+  // render blank if the user was sent there post-login.
   const url = new URL(request.url);
-  const redirectTo = url.searchParams.get("redirectTo");
+  const sanitized = sanitizeRedirectPath(url.searchParams.get("redirectTo"));
+  const redirectTo = sanitized === "/" ? null : sanitized;
   const headers = new Headers();
-  
+
   if (redirectTo) {
     const redirectSession = await setRedirectTo(request, redirectTo);
     headers.append("Set-Cookie", await commitRedirectSession(redirectSession));
