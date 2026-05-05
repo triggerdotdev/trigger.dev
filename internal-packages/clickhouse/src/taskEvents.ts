@@ -33,6 +33,7 @@ export function insertTaskEvents(ch: ClickhouseWriter, settings?: ClickHouseSett
       type_json_skip_duplicated_paths: 1,
       input_format_json_throw_on_bad_escape_sequence: 0,
       input_format_json_use_string_type_for_ambiguous_paths_in_named_tuples_inference_from_objects: 1,
+      input_format_parallel_parsing: 0,
       ...settings,
     },
   });
@@ -170,6 +171,11 @@ export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSe
       type_json_skip_duplicated_paths: 1,
       input_format_json_throw_on_bad_escape_sequence: 0,
       input_format_json_use_string_type_for_ambiguous_paths_in_named_tuples_inference_from_objects: 1,
+      // Disable parallel parsing on the events insert path: a single oversized
+      // attributes payload was poisoning whole 5800-row batches on the cloud
+      // cluster. The OSS helm chart already disables it; cloud (managed CH)
+      // does not.
+      input_format_parallel_parsing: 0,
       ...settings,
     },
   });
