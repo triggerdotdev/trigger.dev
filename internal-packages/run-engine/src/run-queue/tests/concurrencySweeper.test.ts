@@ -175,4 +175,100 @@ describe("RunQueue Concurrency Sweeper", () => {
       }
     }
   );
+
+  // When the sweeper acks a run whose messageKey value is still sitting on the worker
+  // queue list (e.g. fast-path enqueued, never BLPOP'd), it deletes the message body but
+  // leaves a stale tombstone on the list. The next BLPOP returns that tombstone, GET
+  // returns nil, and the dequeue path logs "Failed to dequeue message from worker queue".
+  redisTest(
+    "should not produce 'Failed to dequeue message from worker queue' after sweeper acks a fast-path-enqueued run",
+    async ({ redisContainer }) => {
+      let enableConcurrencySweeper = false;
+      const logger = new Logger("RunQueue", "debug");
+      const errorSpy = vi.spyOn(logger, "error");
+
+      const queue = new RunQueue({
+        ...testOptions,
+        logger,
+        logLevel: "debug",
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        workerOptions: {
+          pollIntervalMs: 100,
+          immediatePollIntervalMs: 100,
+        },
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+        concurrencySweeper: {
+          scanSchedule: "* * * * * *",
+          scanJitterInMs: 5,
+          processMarkedSchedule: "* * * * * *",
+          processMarkedJitterInMs: 5,
+          callback: async (runIds) => {
+            if (!enableConcurrencySweeper) {
+              return [];
+            }
+            return [{ id: messageDev.runId, orgId: "o1234" }];
+          },
+        },
+      });
+
+      try {
+        await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
+
+        // Fast-path enqueue: SET messageKey, RPUSH messageKeyValue onto worker queue list,
+        // SADD runId into currentConcurrency. The message is on the list waiting to be popped.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: true,
+        });
+
+        // Pre-conditions: list has the entry, run is "in-flight" per operational concurrency,
+        // body exists. Fast-path bumps the operational currentConcurrency (SADD) but not
+        // currentDequeued — the displayed concurrency is bumped only when a worker BLPOPs.
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(1);
+        expect(await queue.operationalCurrentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(1);
+        expect(await queue.readMessage(messageDev.orgId, messageDev.runId)).toBeDefined();
+
+        // Sweeper now considers the run completed (test callback returns it), so
+        // processMarkedRun acks with removeFromWorkerQueue: false.
+        enableConcurrencySweeper = true;
+        await setTimeout(5_000);
+
+        // Sweeper has run: operational concurrency released, message body deleted.
+        expect(await queue.operationalCurrentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(0);
+        expect(await queue.readMessage(messageDev.orgId, messageDev.runId)).toBeUndefined();
+
+        // Trigger a blocking dequeue with a short timeout — production uses blockingPop:true,
+        // which is the only path that emits this error log.
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
+          "test_consumer",
+          authenticatedEnvDev.id,
+          { blockingPop: true, blockingPopTimeoutSeconds: 2 }
+        );
+        expect(dequeued).toBeUndefined();
+
+        // BUG: the dequeue path logs the exact Sentry-visible error. Match the message and
+        // the structured fields one-to-one with what TRIGGER-CLOUD-VC reports.
+        const failedDequeueErrors = errorSpy.mock.calls.filter(
+          ([msg]) => msg === "Failed to dequeue message from worker queue"
+        );
+        expect(failedDequeueErrors).toHaveLength(0);
+      } finally {
+        errorSpy.mockRestore();
+        await queue.quit();
+      }
+    }
+  );
 });
