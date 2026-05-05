@@ -107,19 +107,26 @@ export class DefaultQueueManager implements QueueManager {
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
 
-        // Only fetch task for TTL if caller didn't provide a per-trigger TTL
-        if (request.body.options?.ttl === undefined) {
-          const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
-            where: {
-              workerId: lockedBackgroundWorker.id,
-              runtimeEnvironmentId: request.environment.id,
-              slug: request.taskId,
-            },
-            select: { ttl: true },
-          });
+        // Always fetch the task so we can resolve `triggerSource` (which
+        // becomes `taskKind` on annotations and replicates to ClickHouse).
+        // Without this, AGENT/SCHEDULED runs triggered with
+        // `lockToVersion` + a queue override would be annotated as
+        // STANDARD and disappear from the run-list "Source" filter.
+        // `ttl` is read from the same row but only used when the caller
+        // didn't specify a per-trigger TTL.
+        const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
+          where: {
+            workerId: lockedBackgroundWorker.id,
+            runtimeEnvironmentId: request.environment.id,
+            slug: request.taskId,
+          },
+          select: { ttl: true, triggerSource: true },
+        });
 
+        if (request.body.options?.ttl === undefined) {
           taskTtl = lockedTask?.ttl;
         }
+        taskKind = lockedTask?.triggerSource;
       } else {
         // No queue override - fetch task with queue to get both default queue and TTL
         const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({

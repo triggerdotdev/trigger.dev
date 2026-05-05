@@ -260,11 +260,15 @@ export function mockChatAgent(
   });
 
   // Install the session open override so `sessions.open(id)` returns a
-  // SessionHandle with an in-memory `.out` that captures writes. `.in`
-  // stays the real SessionInputChannel — it routes through the
-  // `sessionStreams` global, which the mock-task-context installs as a
-  // TestSessionStreamManager.
-  __setSessionOpenImplForTests((id) => createTestSessionHandle(id, sessionOutState));
+  // SessionHandle with an in-memory `.out` that captures writes. The
+  // `.in` channel routes record subscriptions (`on`/`once`/`peek`)
+  // through the `sessionStreams` global — the mock task context
+  // installs a `TestSessionStreamManager` there — and stubs `wait()`
+  // so the suspend path resolves cleanly on `runSignal.abort()` without
+  // touching the api client.
+  __setSessionOpenImplForTests((id) =>
+    createTestSessionHandle(id, sessionOutState, () => runSignal?.signal)
+  );
 
   // Install the session start override so any test path that invokes
   // `sessions.start()` (typically through a server action shim like

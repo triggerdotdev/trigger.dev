@@ -4,7 +4,7 @@ import type {
   StreamWriteResult,
   WriterStreamOptions,
 } from "@trigger.dev/core/v3";
-import { ensureReadableStream } from "@trigger.dev/core/v3";
+import { ensureReadableStream, ManualWaitpointPromise } from "@trigger.dev/core/v3";
 import {
   SessionHandle,
   SessionInputChannel,
@@ -12,6 +12,51 @@ import {
   SessionPipeStreamOptions,
   SessionSubscribeOptions,
 } from "../sessions.js";
+
+/**
+ * Stub for `SessionInputChannel.wait` that skips the apiClient round-trip
+ * the production path makes via `createSessionStreamWaitpoint`. Without
+ * this override, every test that exercises the suspend fallback (e.g.
+ * the `chat.handover` idle-timeout case) throws `ApiClientMissingError`
+ * because `apiClientManager.clientOrThrow()` runs in a test process that
+ * has no `TRIGGER_SECRET_KEY`.
+ *
+ * The promise resolves with `{ ok: false, error }` when the harness
+ * aborts its run signal — that mimics production semantics (suspended
+ * until something happens, returns cleanly on abort) without making a
+ * network call.
+ */
+class TestSessionInputChannel extends SessionInputChannel {
+  constructor(sessionId: string, private readonly getAbortSignal: () => AbortSignal | undefined) {
+    super(sessionId);
+  }
+
+  // Override only the `wait` path. `on` / `once` / `peek` / `send`
+  // continue to flow through the real `sessionStreams` global, which
+  // the mock task context installs as a `TestSessionStreamManager`.
+  wait<T = unknown>(): ManualWaitpointPromise<T> {
+    return new ManualWaitpointPromise<T>((resolve: (value: { ok: false; error: Error }) => void) => {
+      const signal = this.getAbortSignal();
+      if (!signal) {
+        // Harness hasn't wired up its run signal yet — nothing to abort
+        // on. Stay pending; the run loop should never reach this state
+        // in practice but we don't want to throw here either.
+        return;
+      }
+      const onAbort = () => {
+        resolve({
+          ok: false,
+          error: new Error("session.in.wait() aborted by test harness"),
+        });
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+}
 
 /**
  * Per-session in-memory state collected from `.out` writes during a test.
@@ -201,16 +246,23 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
 
 /**
  * Construct a {@link SessionHandle} whose `.out` channel captures writes in
- * memory while `.in` reuses the real {@link SessionInputChannel} (which
- * routes through the `sessionStreams` global — the mock task context
- * installs a `TestSessionStreamManager` there).
+ * memory and whose `.in` channel routes through the `sessionStreams`
+ * global for record subscriptions (`on` / `once` / `peek`) but stubs
+ * `wait()` to skip the apiClient round-trip — see
+ * {@link TestSessionInputChannel}.
+ *
+ * `getAbortSignal` lets the channel observe the harness's run signal so
+ * `wait()` resolves cleanly on close. Pass a getter (not the signal
+ * directly) so the channel reads it lazily — the harness creates its
+ * `AbortController` after the override is installed.
  */
 export function createTestSessionHandle(
   sessionId: string,
-  state: TestSessionOutState
+  state: TestSessionOutState,
+  getAbortSignal: () => AbortSignal | undefined = () => undefined
 ): SessionHandle {
   return new SessionHandle(sessionId, {
-    in: new SessionInputChannel(sessionId),
+    in: new TestSessionInputChannel(sessionId, getAbortSignal),
     out: new TestSessionOutputChannel(sessionId, state),
   });
 }
