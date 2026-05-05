@@ -16,6 +16,23 @@ The highest-level approach. Handles message accumulation, stop signals, turn lif
   Every `chat.agent` conversation is backed by a durable Session — `externalId` is your `chatId`, `type` is `"chat.agent"`, `taskIdentifier` is the agent's task ID. The session is the run manager: it owns the chat's runs, persists across run lifecycles, and orchestrates handoffs (idle continuation, `chat.requestUpgrade`). You rarely need to touch the session directly (`chat.stream`, `chat.messages`, `chat.stopSignal` wrap everything), but `payload.sessionId` is available if you want to reach in — e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
 </Info>
 
+<Warning>
+  **Always spread `chat.toStreamTextOptions()` into every `streamText` call.** It wires up the `prepareStep` callback that drives [compaction](/ai-chat/compaction), [steering](/ai-chat/pending-messages), and [background injection](/ai-chat/background-injection) — features that silently no-op if the spread is missing. It also injects the system prompt set via `chat.prompt()`, the resolved model (when a registry is provided), and telemetry metadata.
+
+  Spread it **first** in the options object so any explicit overrides win:
+
+  ```ts
+  streamText({
+    ...chat.toStreamTextOptions({ registry, tools }),
+    messages,
+    abortSignal: signal,
+    // any explicit overrides go here
+  });
+  ```
+
+  Examples in this doc keep the spread implicit for brevity, but you should include it in real code.
+</Warning>
+
 ### Simple: return a StreamTextResult
 
 Return the `streamText` result from `run` and it's automatically piped to the frontend:
@@ -29,6 +46,7 @@ export const simpleChat = chat.agent({
   id: "simple-chat",
   run: async ({ messages, signal }) => {
     return streamText({
+      ...chat.toStreamTextOptions(), // prepareStep, system, telemetry — see callout above
       model: openai("gpt-4o"),
       system: "You are a helpful assistant.",
       messages,

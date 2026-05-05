@@ -160,6 +160,10 @@ The accumulated messages are available in:
 - `onTurnStart()` as `uiMessages` (`UIMessage[]`) — for persisting before streaming
 - `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persisting after the response
 
+<Warning>
+  **Always spread `chat.toStreamTextOptions()` into every `streamText` call.** It wires up the `prepareStep` callback that drives compaction, steering, and background injection. Skipping the spread silently disables those features. See [Backend → chat.agent()](/ai-chat/backend#chatagent).
+</Warning>
+
 Agents appear in the **Agents** section of the dashboard (not Tasks) and can be tested via the **Playground**.
 
 ## Three approaches

@@ -18,9 +18,13 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
     export const myChat = chat.agent({
       id: "my-chat",
       run: async ({ messages, signal }) => {
-        // messages is ModelMessage[] — pass directly to streamText
-        // signal fires on stop or run cancel
         return streamText({
+          // Spread chat.toStreamTextOptions() FIRST — it wires up
+          // prepareStep (compaction, steering, background injection),
+          // the system prompt set via chat.prompt(), and telemetry.
+          // Skipping this is the single most common cause of subtle
+          // bugs (silent broken compaction, missing steering, etc.).
+          ...chat.toStreamTextOptions(),
           model: openai("gpt-4o"),
           messages,
           abortSignal: signal,
@@ -28,6 +32,10 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
       },
     });
     ```
+
+    <Warning>
+      **Always spread `chat.toStreamTextOptions()` into your `streamText` call.** It wires up the `prepareStep` callback that drives compaction, mid-turn steering, and background injection — features that silently no-op if the spread is missing. Spread it **first** so any explicit overrides (e.g. a custom `prepareStep`) win.
+    </Warning>
 
     <Tip>
       For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the agent with [`chat.withUIMessage<...>().agent({...})`](/ai-chat/types) instead of `chat.agent`.
