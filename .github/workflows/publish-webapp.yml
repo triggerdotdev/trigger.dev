@@ -115,6 +115,10 @@ jobs:
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: 🪪 Attest build provenance
+        # Image is already pushed by this point — don't fail releases (and the
+        # downstream publish-helm job) on a Sigstore/GHCR-referrer hiccup. Real
+        # config errors still surface as a step warning in the workflow run.
+        continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: ghcr.io/triggerdotdev/trigger.dev
