@@ -251,6 +251,13 @@ model Organization {
 
   platformNotifications PlatformNotification[]
   errorGroupStates      ErrorGroupState[]
+
+  /// S2 basin that holds this org's realtime streams. Null until the
+  /// per-org basin has been provisioned (OSS / s2-lite installs leave
+  /// it null forever; reads fall back to the global basin env var).
+  /// Set once at provisioning time; retention is reconfigured in-place
+  /// when the org's plan changes.
+  streamBasinName String?
 }
 
 model OrgMember {
@@ -758,6 +765,12 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// S2 basin where this session's stream pair lives. Stamped at create
+  /// time from `Organization.streamBasinName` so reads can resolve the
+  /// basin without joining org. Null when the org has no per-org basin
+  /// (OSS, or pre-backfill); reads fall back to the global basin.
+  streamBasinName String?
+
   runs SessionRun[]
 
   /// Idempotency: `(env, externalId)` uniquely identifies a session.
@@ -992,6 +1005,11 @@ model TaskRun {
   realtimeStreamsVersion String   @default("v1")
   /// Store the stream keys that are being used by the run
   realtimeStreams        String[] @default([])
+  /// S2 basin where this run's realtime streams live. Stamped at create
+  /// time from `Organization.streamBasinName` so reads can resolve the
+  /// basin without joining org. Null when the org has no per-org basin
+  /// (OSS, or pre-backfill); reads fall back to the global basin.
+  streamBasinName        String?
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])

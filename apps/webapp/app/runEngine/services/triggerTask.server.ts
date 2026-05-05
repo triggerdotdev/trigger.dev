@@ -395,6 +395,7 @@ export class RunEngineTriggerTaskService {
                 bulkActionId: body.options?.bulkActionId,
                 planType,
                 realtimeStreamsVersion: options.realtimeStreamsVersion,
+                streamBasinName: environment.organization.streamBasinName,
                 debounce: body.options?.debounce,
                 annotations,
                 // When debouncing with triggerAndWait, create a span for the debounced trigger

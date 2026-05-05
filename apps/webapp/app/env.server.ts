@@ -3,6 +3,15 @@ import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
+import { isValidDuration } from "./services/realtime/duration.server";
+
+// `z.string()` constrained to a `parseDuration`-parseable string (e.g.
+// `7d`, `1h`). Validated at boot so a typo'd duration fails fast.
+function durationString() {
+  return z
+    .string()
+    .refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
+}
 
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
 // non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
@@ -1506,6 +1515,16 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    // When "true", provision a dedicated S2 basin per org and stamp
+    // `streamBasinName` on new rows. Off keeps everything on the single
+    // basin defined by `REALTIME_STREAMS_S2_BASIN`.
+    REALTIME_STREAMS_PER_ORG_BASINS_ENABLED: z.enum(["true", "false"]).default("false"),
+    // Per-org basin name = `{prefix}-{env}-org-{orgId}`.
+    REALTIME_STREAMS_BASIN_NAME_PREFIX: z.string().default("triggerdotdev"),
+    REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
+    REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: durationString().default("30d"),
+    REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
+    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("1h"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
 
