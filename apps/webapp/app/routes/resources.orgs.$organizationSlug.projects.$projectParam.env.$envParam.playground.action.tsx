@@ -10,7 +10,6 @@ import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
-import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 const PlaygroundAction = z.object({
   intent: z.enum(["create", "start", "save", "delete"]),
@@ -180,7 +179,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const ensureResult = await ensureRunForSession({
         session,
-        environment: environment as unknown as AuthenticatedEnvironment,
+        environment,
         reason: "initial",
       });
 
@@ -225,10 +224,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         },
       });
 
-      const publicAccessToken = await mintSessionToken(
-        environment as unknown as AuthenticatedEnvironment,
-        chatId
-      );
+      const publicAccessToken = await mintSessionToken(environment, chatId);
 
       return json({
         runId: run.friendlyId,
