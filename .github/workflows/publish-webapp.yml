@@ -4,6 +4,7 @@ permissions:
   contents: read
   packages: write
   id-token: write
+  attestations: write
 
 on:
   workflow_call:
@@ -58,6 +59,12 @@ jobs:
             image_tags=$image_tags,$ref_without_tag:v4-beta
           fi
 
+          # when pushing the mutable main tag, also push an immutable-by-convention
+          # full-commit-sha tag so a commit can be resolved to a specific digest
+          if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" == "main" ]]; then
+            image_tags=$image_tags,$ref_without_tag:${GITHUB_SHA}
+          fi
+
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
         env:
           STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
@@ -74,6 +81,7 @@ jobs:
             echo "BUILD_GIT_SHA=${GITHUB_SHA}"
             echo "BUILD_GIT_REF_NAME=${GITHUB_REF_NAME}"
             echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)"
+            echo "BUILD_TIMESTAMP_RFC3339=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_OUTPUT"
         env:
           STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
@@ -87,6 +95,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐳 Build image and push to GitHub Container Registry
+        id: build_push
         uses: depot/build-push-action@5f3b3c2e5a00f0093de47f657aeaefcedff27d18 # v1.17.0
         with:
           file: ./docker/Dockerfile
@@ -98,8 +107,16 @@ jobs:
             BUILD_GIT_SHA=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             BUILD_GIT_REF_NAME=${{ steps.set_build_info.outputs.BUILD_GIT_REF_NAME }}
             BUILD_TIMESTAMP_SECONDS=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_SECONDS }}
+            BUILD_TIMESTAMP_RFC3339=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_RFC3339 }}
             SENTRY_RELEASE=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             SENTRY_ORG=triggerdev
             SENTRY_PROJECT=trigger-cloud
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: 🪪 Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/triggerdotdev/trigger.dev
+          subject-digest: ${{ steps.build_push.outputs.digest }}
+          push-to-registry: true
