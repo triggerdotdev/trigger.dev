@@ -149,6 +149,20 @@ function getChatSession(): SessionHandle {
   return handle;
 }
 
+/**
+ * Stamp `gen_ai.conversation.id` on the active span at chat-run boot.
+ * The run-level span is already alive when the run callback fires, so
+ * `TaskContextSpanProcessor.onStart` (which stamps subsequent spans
+ * automatically) won't catch it — set explicitly here.
+ */
+function stampConversationIdOnActiveSpan(
+  conversationId: string | undefined,
+  span = trace.getActiveSpan()
+): void {
+  if (!span || !conversationId) return;
+  span.setAttribute(SemanticInternalAttributes.GEN_AI_CONVERSATION_ID, conversationId);
+}
+
 type ToolResultContent = Array<
   | {
     type: "text";
@@ -3697,6 +3711,8 @@ function chatCustomAgent<
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      taskContext.setConversationId(payload.chatId);
+      stampConversationIdOnActiveSpan(payload.chatId);
       return userRun(payload, runOptions);
     },
   });
@@ -3779,12 +3795,13 @@ function chatAgent<
       // `chat.createStartSessionAction` or browser-direct) before this
       // run is triggered — no client-side upsert needed here.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      taskContext.setConversationId(payload.chatId);
 
-      // Set gen_ai.conversation.id on the run-level span for dashboard context
+      // Stamp `gen_ai.conversation.id` on the run-level span. Every
+      // nested span inherits the same attribute via
+      // `TaskContextSpanProcessor.onStart`.
       const activeSpan = trace.getActiveSpan();
-      if (activeSpan) {
-        activeSpan.setAttribute("gen_ai.conversation.id", payload.chatId);
-      }
+      stampConversationIdOnActiveSpan(payload.chatId, activeSpan);
 
       // Store static UIMessageStream options in locals so resolveUIMessageStreamOptions() can read them
       if (uiMessageStreamOptions) {
