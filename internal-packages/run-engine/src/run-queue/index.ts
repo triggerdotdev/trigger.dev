@@ -2847,7 +2847,7 @@ export class RunQueue {
 
     await this.acknowledgeMessage(run.orgId, run.messageId, {
       skipDequeueProcessing: true,
-      removeFromWorkerQueue: false,
+      removeFromWorkerQueue: true,
     });
   }
 
