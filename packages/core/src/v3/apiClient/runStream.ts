@@ -431,7 +431,9 @@ export class SSEStreamSubscription implements StreamSubscription {
       }
 
       if (isTriggerRealtimeAuthError(error)) {
-        this.options.onError?.(error as Error);
+        // `onError` was already invoked in the `!response.ok` branch above
+        // (where the auth ApiError was originally constructed and thrown).
+        // Auth errors are non-retryable: terminate the stream cleanly.
         controller.error(error as Error);
         return;
       }
