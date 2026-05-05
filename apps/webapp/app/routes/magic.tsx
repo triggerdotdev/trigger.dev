@@ -6,10 +6,15 @@ import { authenticator } from "~/services/auth.server";
 import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { getRedirectTo } from "~/services/redirectTo.server";
 import { commitSession, getSession } from "~/services/sessionStorage.server";
+import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
+import { sanitizeRedirectPath } from "~/utils";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const redirectTo = await getRedirectTo(request);
+  // Defense-in-depth: sanitize the cookie value to drop non-page paths in case
+  // a stale cookie from before sanitization shipped is still in the browser.
+  const sanitized = sanitizeRedirectPath(await getRedirectTo(request));
+  const redirectTo = sanitized === "/" ? undefined : sanitized;
 
   const auth = await authenticator.authenticate("email-link", request, {
     failureRedirect: "/login/magic", // If auth fails, the failureRedirect will be thrown as a Response
@@ -51,7 +56,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   session.set(authenticator.sessionKey, auth);
 
   const headers = new Headers();
-  headers.append("Set-Cookie", await commitSession(session));
+  headers.append("Set-Cookie", await commitAuthenticatedSession(session, auth.userId));
   headers.append("Set-Cookie", await setLastAuthMethodHeader("email"));
 
   await trackAndClearReferralSource(request, auth.userId, headers);
