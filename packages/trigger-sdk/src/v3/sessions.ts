@@ -617,7 +617,8 @@ export class SessionInputChannel {
               // Advance the seq counter so the SSE tail doesn't replay the
               // record that was consumed via the waitpoint.
               const prevSeq = sessionStreams.lastSeqNum(this.sessionId, "in");
-              sessionStreams.setLastSeqNum(this.sessionId, "in", (prevSeq ?? -1) + 1);
+              const nextSeq = (prevSeq ?? -1) + 1;
+              sessionStreams.setLastSeqNum(this.sessionId, "in", nextSeq);
 
               return { ok: true as const, output: data as T };
             } else {

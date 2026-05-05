@@ -36,6 +36,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, unknown[]>();
   private tails = new Map<string, TailState>();
+  // Keys that were explicitly torn down by `disconnectStream`. The tail's
+  // `.finally` reconnect path checks this so a long-lived persistent handler
+  // (e.g. `chat.agent`'s run-level `stopInput.on(...)`) doesn't silently
+  // resurrect the tail mid-`session.in.wait()` and re-deliver the record
+  // that's already being delivered out-of-band via the waitpoint.
+  private explicitlyDisconnected = new Set<string>();
   private seqNums = new Map<string, number>();
 
   constructor(
@@ -58,6 +64,9 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
     handlerSet.add(handler);
 
+    // Explicit re-attach clears the "explicitly disconnected" suppression
+    // so the tail can subscribe again now that callers want delivery back.
+    this.explicitlyDisconnected.delete(key);
     this.#ensureTailConnected(sessionId, io);
 
     const buffered = this.buffer.get(key);
@@ -85,6 +94,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   ): InputStreamOncePromise<unknown> {
     const key = keyFor(sessionId, io);
 
+    this.explicitlyDisconnected.delete(key);
     this.#ensureTailConnected(sessionId, io);
 
     const buffered = this.buffer.get(key);
@@ -168,6 +178,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   disconnectStream(sessionId: string, io: SessionChannelIO): void {
     const key = keyFor(sessionId, io);
     const tail = this.tails.get(key);
+    const bufferedSize = this.buffer.get(key)?.length ?? 0;
+    // Mark as explicitly disconnected BEFORE we abort, so the tail's
+    // `.finally` reconnect path sees the flag when it runs (which can be
+    // synchronous in the AbortError catch). Cleared on the next explicit
+    // `on()`/`once()`.
+    this.explicitlyDisconnected.add(key);
     if (tail) {
       tail.abortController.abort();
       this.tails.delete(key);
@@ -222,6 +238,20 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       })
       .finally(() => {
         this.tails.delete(key);
+
+        // If the tail was torn down explicitly via `disconnectStream`,
+        // honor that — the caller (typically `session.in.wait()`) is
+        // suspending the run and expects no records to be buffered or
+        // delivered until a fresh `on()` / `once()` re-attaches. Without
+        // this guard a run-level persistent handler (e.g. `chat.agent`'s
+        // `stopInput.on(...)`) would auto-reconnect during the suspend
+        // window, the resurrected tail would receive the same record the
+        // waitpoint just delivered, and that record would land in the
+        // buffer where the next turn's `messagesInput.on(...)` drains it
+        // and runs a duplicate turn.
+        if (this.explicitlyDisconnected.has(key)) {
+          return;
+        }
 
         const hasHandlers = this.handlers.has(key) && this.handlers.get(key)!.size > 0;
         const hasWaiters =
