@@ -1,6 +1,6 @@
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -38,19 +38,19 @@ export function SearchInput({
     }
   }, [value, text, isFocused, paramName]);
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = () => {
     const resetValues = Object.fromEntries(resetParams.map((p) => [p, undefined]));
     if (text.trim()) {
       replace({ [paramName]: text.trim(), ...resetValues });
     } else {
       del([paramName, ...resetParams]);
     }
-  }, [text, replace, del, resetParams, paramName]);
+  };
 
-  const handleClear = useCallback(() => {
+  const handleClear = () => {
     setText("");
     del([paramName, ...resetParams]);
-  }, [del, resetParams, paramName]);
+  };
 
   return (
     <div className="flex items-center gap-1">

@@ -69,7 +69,12 @@ type BatchFiltersProps = {
 export function BatchFilters(props: BatchFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const hasFilters = searchParams.has("statuses") || searchParams.has("id");
+  const hasFilters =
+    searchParams.has("statuses") ||
+    searchParams.has("id") ||
+    searchParams.has("period") ||
+    searchParams.has("from") ||
+    searchParams.has("to");
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-1.5">
