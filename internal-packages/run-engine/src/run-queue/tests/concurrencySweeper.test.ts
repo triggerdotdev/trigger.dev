@@ -177,19 +177,17 @@ describe("RunQueue Concurrency Sweeper", () => {
   );
 
   // When the sweeper acks a run whose messageKey value is still sitting on the worker
-  // queue list (e.g. fast-path enqueued, never BLPOP'd), it deletes the message body but
-  // leaves a stale tombstone on the list. The next BLPOP returns that tombstone, GET
-  // returns nil, and the dequeue path logs "Failed to dequeue message from worker queue".
+  // queue list (e.g. fast-path enqueued, never BLPOP'd), it must remove the entry from
+  // the list as well as deleting the message body. Otherwise the list keeps a stale
+  // tombstone — the next BLPOP returns the messageKey, GET returns nil, and the dequeue
+  // path logs "Failed to dequeue message from worker queue".
   redisTest(
-    "should not produce 'Failed to dequeue message from worker queue' after sweeper acks a fast-path-enqueued run",
+    "should clear the worker queue list when sweeper acks a fast-path-enqueued run",
     async ({ redisContainer }) => {
       let enableConcurrencySweeper = false;
-      const logger = new Logger("RunQueue", "debug");
-      const errorSpy = vi.spyOn(logger, "error");
 
       const queue = new RunQueue({
         ...testOptions,
-        logger,
         logLevel: "debug",
         queueSelectionStrategy: new FairQueueSelectionStrategy({
           redis: {
@@ -242,31 +240,26 @@ describe("RunQueue Concurrency Sweeper", () => {
         expect(await queue.readMessage(messageDev.orgId, messageDev.runId)).toBeDefined();
 
         // Sweeper now considers the run completed (test callback returns it), so
-        // processMarkedRun acks with removeFromWorkerQueue: false.
+        // processMarkedRun acks with removeFromWorkerQueue: true.
         enableConcurrencySweeper = true;
         await setTimeout(5_000);
 
-        // Sweeper has run: operational concurrency released, message body deleted.
+        // Sweeper has run: operational concurrency released, message body deleted, AND
+        // the messageKey value has been LREM'd from the worker queue list. Without the
+        // LREM, the list would still contain the messageKey, and the next BLPOP would
+        // pop the tombstone and emit "Failed to dequeue message from worker queue".
         expect(await queue.operationalCurrentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(0);
         expect(await queue.readMessage(messageDev.orgId, messageDev.runId)).toBeUndefined();
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toEqual([]);
 
-        // Trigger a blocking dequeue with a short timeout — production uses blockingPop:true,
-        // which is the only path that emits this error log.
+        // A subsequent blocking dequeue finds nothing — no real message and no tombstone.
         const dequeued = await queue.dequeueMessageFromWorkerQueue(
           "test_consumer",
           authenticatedEnvDev.id,
           { blockingPop: true, blockingPopTimeoutSeconds: 2 }
         );
         expect(dequeued).toBeUndefined();
-
-        // BUG: the dequeue path logs the exact Sentry-visible error. Match the message and
-        // the structured fields one-to-one with what TRIGGER-CLOUD-VC reports.
-        const failedDequeueErrors = errorSpy.mock.calls.filter(
-          ([msg]) => msg === "Failed to dequeue message from worker queue"
-        );
-        expect(failedDequeueErrors).toHaveLength(0);
       } finally {
-        errorSpy.mockRestore();
         await queue.quit();
       }
     }
