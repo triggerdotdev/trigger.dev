@@ -4,6 +4,14 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 5, 2026" description="0.0.0-chat-prerelease-20260505140031" tags={["SDK"]}>
+
+## Fix: duplicate turn after `chat.agent` idle-suspends
+
+Every message sent to a `chat.agent` after the run idle-suspended produced two turns on the agent side instead of one — same user message, two LLM calls. Internal session-stream reconnect logic was racing the waitpoint and feeding the just-consumed message back into the next turn's input buffer. No public API change.
+
+</Update>
+
 <Update label="May 5, 2026" description="0.0.0-chat-prerelease-20260505084711" tags={["SDK"]}>
 
 ## `chat.headStart` — fast first-turn for chat.agent
