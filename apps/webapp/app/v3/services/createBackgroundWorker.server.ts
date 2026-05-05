@@ -29,6 +29,32 @@ import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
 import { scheduleEngine } from "../scheduleEngine.server";
 
+/**
+ * Strip BackgroundWorkerMetadata down to the slice that's actually read after
+ * storage. Everything else is duplicated to dedicated columns/tables
+ * (BackgroundWorker.{contentHash,cliVersion,sdkVersion,runtime,runtimeVersion},
+ * BackgroundWorkerTask, BackgroundWorkerFile, TaskQueue, Prompt). Today the
+ * only post-write reader is changeCurrentDeployment.server.ts, which feeds
+ * tasks[].schedule into syncDeclarativeSchedules. packageVersion, contentHash,
+ * and tasks[].filePath are kept solely to satisfy BackgroundWorkerMetadata's
+ * required fields when the column is parsed back.
+ */
+export function stripBackgroundWorkerMetadataForStorage(
+  metadata: BackgroundWorkerMetadata
+): Prisma.InputJsonValue {
+  return {
+    packageVersion: metadata.packageVersion,
+    contentHash: metadata.contentHash,
+    tasks: metadata.tasks
+      .filter((t) => t.schedule)
+      .map((t) => ({
+        id: t.id,
+        filePath: t.filePath,
+        schedule: t.schedule,
+      })),
+  };
+}
+
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
     projectRef: string,
@@ -79,8 +105,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
-          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
-          metadata: body.metadata as Prisma.InputJsonValue,
+          metadata: stripBackgroundWorkerMetadataForStorage(body.metadata),
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
