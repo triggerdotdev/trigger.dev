@@ -468,14 +468,22 @@ export class AgentChat<TAgent = unknown> {
   /**
    * Send a custom action to the agent.
    *
-   * Actions wake the agent, fire the `onAction` hook (which can modify
-   * conversation history via `chat.history.*`), then trigger a normal
-   * `run()` turn so the LLM responds to the updated state.
+   * Actions are not turns. They wake the agent, fire `hydrateMessages`
+   * (if configured) and `onAction` only — no `onTurnStart` /
+   * `prepareMessages` / `onBeforeTurnComplete` / `onTurnComplete`, no
+   * `run()` invocation.
    *
    * The action payload is validated against the agent's `actionSchema`
-   * on the backend.
+   * on the backend. Use `chat.history.*` inside `onAction` to mutate
+   * state. To produce a model response from the action, return a
+   * `StreamTextResult` (or `string` / `UIMessage`) from `onAction` —
+   * the returned stream is auto-piped over this stream. When `onAction`
+   * returns `void`, the action is side-effect-only and the returned
+   * stream completes immediately with `trigger:turn-complete`.
    *
-   * @returns A `ChatStream` for the agent's response.
+   * @returns A `ChatStream`. For void actions the stream completes
+   * immediately. For actions that return a model response, the stream
+   * carries the assistant chunks.
    *
    * @example
    * ```ts
