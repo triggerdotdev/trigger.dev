@@ -201,7 +201,7 @@ Equivalent to the frontend's `useChat().regenerate()` — replays a turn with th
 
 ### sendAction
 
-Routes a payload through `actionSchema` + `onAction`:
+Routes a payload through `actionSchema` + `onAction`. Actions are not turns: only `hydrateMessages` and `onAction` fire on the agent side — no turn lifecycle hooks, no `run()`. The returned `turn.rawChunks` contains whatever `onAction` produced (a streamed model response if it returned a `StreamTextResult`, otherwise just `trigger:turn-complete`):
 
 ```ts
 const turn = await harness.sendAction({ type: "undo" });

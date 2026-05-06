@@ -301,8 +301,12 @@ and direct API consumers.
 - `chat.agent({...})` definition — `id`, `idleTimeoutInSeconds`,
   `clientDataSchema`, `actionSchema`, `hydrateMessages`, `onPreload`,
   `onChatStart`, `onValidateMessages`, `onTurnStart`, `onTurnComplete`,
-  `onChatSuspend`, `onAction`, `run`. All callbacks have the same
-  signature and fire at the same lifecycle points.
+  `onChatSuspend`, `run`. All callbacks have the same signature and
+  fire at the same lifecycle points.
+- `onAction` is still defined the same way, but its semantics changed
+  in the [May 6 prerelease](/ai-chat/changelog) — actions are no longer
+  turns, and `onAction` returning a `StreamTextResult` produces a model
+  response.
 - `chat.customAgent({...})` and the `chat.createSession(payload, ...)`
   helper for building a session loop manually inside a custom agent.
 - `chat.defer` (deferred work) and `chat.history` (imperative history
