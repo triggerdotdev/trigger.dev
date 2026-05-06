@@ -139,7 +139,7 @@ export const maxDurationTask = task({
     maxTimeoutInMs: 2_000,
     factor: 1.4,
   },
-  maxDuration: 5,
+  maxComputeSeconds: 5,
   run: async (payload: { sleepFor: number }, { signal, ctx }) => {
     await setTimeout(payload.sleepFor * 1000, { signal });
   },
@@ -150,7 +150,7 @@ export const maxDurationParentTask = task({
   run: async (payload: { sleepFor?: number; maxDuration?: number }, { ctx, signal }) => {
     const result = await maxDurationTask.triggerAndWait(
       { sleepFor: payload.sleepFor ?? 10 },
-      { maxDuration: timeout.None }
+      { maxComputeSeconds: timeout.None }
     );
 
     return result;
