@@ -37,6 +37,7 @@
       "./v3/semanticInternalAttributes": "./src/v3/semanticInternalAttributes.ts",
       "./v3/utils/durations": "./src/v3/utils/durations.ts",
       "./v3/utils/flattenAttributes": "./src/v3/utils/flattenAttributes.ts",
+      "./v3/utils/gitBranch": "./src/v3/utils/gitBranch.ts",
       "./v3/utils/ioSerialization": "./src/v3/utils/ioSerialization.ts",
       "./v3/utils/omit": "./src/v3/utils/omit.ts",
       "./v3/utils/retries": "./src/v3/utils/retries.ts",
@@ -400,6 +401,17 @@
       "require": {
         "types": "./dist/commonjs/v3/utils/flattenAttributes.d.ts",
         "default": "./dist/commonjs/v3/utils/flattenAttributes.js"
+      }
+    },
+    "./v3/utils/gitBranch": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/utils/gitBranch.ts",
+        "types": "./dist/esm/v3/utils/gitBranch.d.ts",
+        "default": "./dist/esm/v3/utils/gitBranch.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/utils/gitBranch.d.ts",
+        "default": "./dist/commonjs/v3/utils/gitBranch.js"
       }
     },
     "./v3/utils/ioSerialization": {

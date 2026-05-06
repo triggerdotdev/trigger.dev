@@ -15,6 +15,7 @@ import type {
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
+import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 
 export class RoleBaseAccessFallback {
@@ -309,22 +310,6 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   async removeTokenRole(): Promise<RoleAssignmentResult> {
     return { ok: false, error: "RBAC plugin not installed" };
   }
-}
-
-// Mirror of `apps/webapp/app/v3/gitBranch.ts#sanitizeBranchName`.
-// Inlined here because internal-packages can't import webapp code; the
-// two should stay in sync. Strips common refs/* prefixes and rejects
-// unknown ref formats (returns undefined → no branch override).
-function sanitizeBranchName(ref: string | null): string | undefined {
-  if (!ref) return undefined;
-  if (ref.startsWith("refs/heads/")) return ref.substring("refs/heads/".length);
-  if (ref.startsWith("refs/remotes/")) return ref.substring("refs/remotes/".length);
-  if (ref.startsWith("refs/tags/")) return ref.substring("refs/tags/".length);
-  if (ref.startsWith("refs/pull/")) return ref.substring("refs/pull/".length);
-  if (ref.startsWith("refs/merge/")) return ref.substring("refs/merge/".length);
-  if (ref.startsWith("refs/release/")) return ref.substring("refs/release/".length);
-  if (ref.startsWith("refs/")) return undefined;
-  return ref;
 }
 
 function isPublicJWT(token: string): boolean {

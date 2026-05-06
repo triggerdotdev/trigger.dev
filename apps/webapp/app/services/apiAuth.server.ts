@@ -23,7 +23,7 @@ import {
   isOrganizationAccessToken,
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
-import { sanitizeBranchName } from "~/v3/gitBranch";
+import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),

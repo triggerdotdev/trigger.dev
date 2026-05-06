@@ -3,7 +3,7 @@ import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@tri
 import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
-import { sanitizeBranchName } from "~/v3/gitBranch";
+import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 
 export type { RuntimeEnvironment };
 

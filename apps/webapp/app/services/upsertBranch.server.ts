@@ -3,7 +3,7 @@ import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
 import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
-import { isValidGitBranchName, sanitizeBranchName } from "~/v3/gitBranch";
+import { isValidGitBranchName, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 
