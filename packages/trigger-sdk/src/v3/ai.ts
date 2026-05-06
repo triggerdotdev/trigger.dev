@@ -2679,6 +2679,17 @@ function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
   );
 }
 
+let warnedMissingOnAction = false;
+function warnMissingOnActionOnce() {
+  if (warnedMissingOnAction) return;
+  warnedMissingOnAction = true;
+  console.warn(
+    "[chat.agent] Received an action but no `onAction` handler is configured. " +
+      "The action is being ignored. Define `onAction` (and optionally `actionSchema`) on " +
+      "your agent to handle it."
+  );
+}
+
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
 }
@@ -3174,9 +3185,14 @@ export type ChatAgentOptions<
   /**
    * Called when the frontend sends a custom action via `transport.sendAction()`.
    *
-   * Fires after message hydration (if set) but before `onTurnStart` and `run()`.
-   * Use `chat.history.*` to modify the conversation state — the LLM will respond
-   * to the modified state.
+   * Actions are not turns. They fire `hydrateMessages` (if configured) and
+   * `onAction` only — no `onTurnStart` / `prepareMessages` /
+   * `onBeforeTurnComplete` / `onTurnComplete`, no `run()`. Use
+   * `chat.history.*` inside `onAction` to mutate state.
+   *
+   * To produce a model response from an action, return a
+   * `StreamTextResult` (auto-piped), `string`, or `UIMessage`. Returning
+   * `void` or nothing is the side-effect-only default.
    */
   onAction?: (
     event: ActionEvent<
@@ -3184,7 +3200,7 @@ export type ChatAgentOptions<
       inferSchemaOut<TClientDataSchema>,
       TUIMessage
     >
-  ) => Promise<void> | void;
+  ) => Promise<unknown> | unknown;
 
   /**
    * The run function for the chat task.
@@ -4072,13 +4088,20 @@ function chatAgent<
               ) as inferSchemaOut<TClientDataSchema>;
               const lastUserMessage = extractLastUserMessageText(uiMessages);
 
+              // Actions are not turns. They use a different span name
+              // and don't carry a turn.number. Branched on at `isAction`.
+              const isAction = currentWirePayload.trigger === "action";
+              const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
+
               const turnAttributes: Attributes = {
-                "turn.number": turn + 1,
+                ...(isAction ? {} : { "turn.number": turn + 1 }),
                 "gen_ai.conversation.id": currentWirePayload.chatId,
                 "gen_ai.operation.name": "chat",
                 "chat.trigger": currentWirePayload.trigger,
-                [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-chatbot",
-                [SemanticInternalAttributes.ENTITY_TYPE]: "chat-turn",
+                [SemanticInternalAttributes.STYLE_ICON]: isAction
+                  ? "tabler-bolt"
+                  : "tabler-message-chatbot",
+                [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
               };
 
               if (lastUserMessage) {
@@ -4102,7 +4125,7 @@ function chatAgent<
               }
 
               const turnResult = await tracer.startActiveSpan(
-                `chat turn ${turn + 1}`,
+                spanName,
                 async (turnSpan) => {
                   // (errors are caught by the outer try/catch which writes an error chunk)
                   locals.set(chatPipeCountKey, 0);
@@ -4268,10 +4291,17 @@ function chatAgent<
                   const turnNewUIMessages: TUIMessage[] = [];
 
                   // ── Action handling ──────────────────────────────────────
-                  // Actions arrive via the same chat-messages stream but with
-                  // trigger === "action". They wake the agent, modify state
-                  // (via onAction + chat.history), then fall through to run().
-                  if (currentWirePayload.trigger === "action") {
+                  // Actions arrive on the same input stream but with
+                  // trigger === "action". They are NOT turns — only
+                  // `hydrateMessages` and `onAction` fire. No turn lifecycle
+                  // hooks (`onTurnStart` / `prepareMessages` /
+                  // `onBeforeTurnComplete` / `onTurnComplete`) and no
+                  // `run()` invocation. To produce a model response from
+                  // an action, return a `StreamTextResult` (auto-piped),
+                  // string, or UIMessage from `onAction`. Turn counter
+                  // does not advance.
+                  let actionStreamResult: unknown = undefined;
+                  if (isAction) {
                     // Parse and validate the action payload
                     const parsedAction = parseAction
                       ? await parseAction(currentWirePayload.action)
@@ -4298,7 +4328,6 @@ function chatAgent<
                             [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
                             [SemanticInternalAttributes.COLLAPSED]: true,
                             "chat.id": currentWirePayload.chatId,
-                            "chat.turn": turn + 1,
                             "chat.trigger": "action",
                           },
                         }
@@ -4308,12 +4337,13 @@ function chatAgent<
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
 
-                    // Fire onAction — handler uses chat.history.* to modify state
+                    // Fire onAction — handler may mutate state via
+                    // `chat.history.*` and / or return a model response.
                     if (onAction) {
-                      await tracer.startActiveSpan(
+                      actionStreamResult = await tracer.startActiveSpan(
                         "onAction()",
                         async () => {
-                          await onAction({
+                          return await onAction({
                             action: parsedAction as any,
                             chatId: currentWirePayload.chatId,
                             turn,
@@ -4327,10 +4357,10 @@ function chatAgent<
                             [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
                             [SemanticInternalAttributes.COLLAPSED]: true,
                             "chat.id": currentWirePayload.chatId,
-                            "chat.turn": turn + 1,
-                            "chat.action": typeof parsedAction === "object" && parsedAction !== null
-                              ? JSON.stringify(parsedAction)
-                              : String(parsedAction),
+                            "chat.action":
+                              typeof parsedAction === "object" && parsedAction !== null
+                                ? JSON.stringify(parsedAction)
+                                : String(parsedAction),
                           },
                         }
                       );
@@ -4343,6 +4373,8 @@ function chatAgent<
                         accumulatedMessages = await toModelMessages(actionOverride);
                         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                       }
+                    } else {
+                      warnMissingOnActionOnce();
                     }
                   }
 
@@ -4536,6 +4568,54 @@ function chatAgent<
                   }
 
                   } // end if (trigger !== "action")
+
+                  // ── Action result handling ──────────────────────────────
+                  // For action turns, skip the turn machinery entirely.
+                  // If `onAction` returned a stream / string / UIMessage,
+                  // pipe it as the response. Either way, emit
+                  // `trigger:turn-complete` and then fall through to the
+                  // wait-for-next-message logic (shared with message turns).
+                  // The turn counter is decremented so the next iteration
+                  // sees the same `turn` value — actions don't count.
+                  if (isAction) {
+                    msgSub.off();
+
+                    if (
+                      (locals.get(chatPipeCountKey) ?? 0) === 0 &&
+                      isUIMessageStreamable(actionStreamResult)
+                    ) {
+                      try {
+                        const resolvedOptions = resolveUIMessageStreamOptions();
+                        const uiStream = (
+                          actionStreamResult as UIMessageStreamable
+                        ).toUIMessageStream({
+                          ...resolvedOptions,
+                          generateMessageId:
+                            resolvedOptions.generateMessageId ?? generateMessageId,
+                        });
+                        await pipeChat(uiStream, {
+                          signal: combinedSignal,
+                          spanName: "stream response",
+                        });
+                      } catch (error) {
+                        if (
+                          error instanceof Error &&
+                          error.name === "AbortError" &&
+                          runSignal.aborted
+                        ) {
+                          return "exit";
+                        }
+                        throw error;
+                      }
+                    }
+
+                    await writeTurnCompleteChunk(currentWirePayload.chatId);
+
+                    // Don't consume a turn iteration — actions aren't turns.
+                    turn--;
+                  }
+
+                  if (!isAction) {
 
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
@@ -5234,6 +5314,8 @@ function chatAgent<
                       }
                     );
                   }
+
+                  } // end if (!isAction)
 
                   // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
                   // Promises deferred in onTurnComplete (e.g. background self-review via
