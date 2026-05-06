@@ -763,8 +763,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Send a custom action chunk (for `chat.agent`'s `actionSchema` /
-   * `onAction` hook). Returns the agent's response stream just like
-   * `sendMessages`.
+   * `onAction` hook). Actions are not turns — only `hydrateMessages`
+   * and `onAction` fire on the agent side. The returned stream
+   * carries any model response `onAction` produced (when it returns a
+   * `StreamTextResult`); for `void`-returning side-effect-only actions
+   * the stream completes immediately with `trigger:turn-complete`.
    */
   sendAction = async (
     chatId: string,
