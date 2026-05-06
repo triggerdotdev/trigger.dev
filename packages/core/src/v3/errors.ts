@@ -724,6 +724,18 @@ const prettyInternalErrors: Partial<
       href: links.docs.troubleshooting.stalledExecution,
     },
   },
+  // Link only — we deliberately do NOT set `message`, so the original
+  // error message (e.g. "read ECONNRESET") is preserved in the dashboard.
+  // Common cause: an EventEmitter (node-redis, pg, etc.) emitted "error"
+  // with no listener attached, which Node escalates to uncaughtException.
+  // The docs page explains how to attach .on("error") listeners and how
+  // unhandled rejections route through the same path.
+  TASK_RUN_UNCAUGHT_EXCEPTION: {
+    link: {
+      name: "Read our troubleshooting guide",
+      href: links.docs.troubleshooting.uncaughtException,
+    },
+  },
 };
 
 const getPrettyTaskRunError = (code: TaskRunInternalError["code"]): TaskRunInternalError => {
