@@ -8,6 +8,7 @@ import {
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  type TaskRunError,
   type TaskRunInternalError,
   tryCatch,
   WorkerManifest,
@@ -555,7 +556,7 @@ export class TaskRunProcess {
     return this._child.connected;
   }
 
-  static parseExecuteError(error: unknown, dockerMode = true): TaskRunInternalError {
+  static parseExecuteError(error: unknown, dockerMode = true): TaskRunError {
     if (error instanceof CancelledProcessError) {
       return {
         type: "INTERNAL_ERROR",
@@ -590,11 +591,16 @@ export class TaskRunProcess {
     }
 
     if (error instanceof UncaughtExceptionError) {
+      // Surface the customer's original error as a regular task failure (user
+      // error → "Failed" status) rather than an internal error → "System
+      // failure" status. The exception was raised by user code (or a
+      // dependency the user controls, e.g. an EventEmitter "error" event with
+      // no listener); it isn't a platform fault.
       return {
-        type: "INTERNAL_ERROR",
-        code: TaskRunErrorCodes.TASK_EXECUTION_FAILED,
-        message: `Uncaught ${error.origin}: ${error.originalError.message}`,
-        stackTrace: error.originalError.stack,
+        type: "BUILT_IN_ERROR",
+        name: error.originalError.name,
+        message: error.originalError.message,
+        stackTrace: error.originalError.stack ?? "",
       };
     }
 
