@@ -4,6 +4,48 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 6, 2026" tags={["SDK", "Breaking"]}>
+
+## `chat.agent` actions are no longer turns
+
+Submitting an action via `transport.sendAction()` previously fell through to the regular turn machinery, calling `onTurnStart`, `run()`, `onTurnComplete`, etc. — meaning every action fired an LLM call by default. The workaround was a `chat.local`-based `skipModelCall` flag read in `run()`.
+
+Actions now fire `hydrateMessages` and `onAction` only. No `onTurnStart` / `prepareMessages` / `onBeforeTurnComplete` / `onTurnComplete`, no `run()` invocation, no turn-counter increment. The trace span is named `chat action` instead of `chat turn N`.
+
+`onAction`'s return type widens: returning `void` is side-effect-only (default); returning a `StreamTextResult`, `string`, or `UIMessage` produces a model response that's auto-piped back to the frontend.
+
+### Migration
+
+If you had `run()` branching on `payload.trigger === "action"` for a model response, return your `streamText(...)` from `onAction` instead. If you persisted in `onTurnComplete`, do that work inside `onAction`. For state-only actions, just remove the skip-the-model workaround.
+
+```ts
+// before
+onAction: async ({ action }) => {
+  if (action.type === "regenerate") {
+    runState.skipModelCall = false;
+    chat.history.slice(0, -1);
+  }
+},
+run: async ({ messages, signal }) => {
+  if (runState.skipModelCall) return;
+  return streamText({ model, messages, abortSignal: signal });
+},
+
+// after
+onAction: async ({ action, messages, signal }) => {
+  if (action.type === "regenerate") {
+    chat.history.slice(0, -1);
+    return streamText({ model, messages, abortSignal: signal });
+  }
+},
+run: async ({ messages, signal }) =>
+  streamText({ model, messages, abortSignal: signal }),
+```
+
+Actions arriving when no `onAction` handler is configured now `console.warn` once and are ignored — previously they silently fell through to `run()` with an empty wire payload.
+
+</Update>
+
 <Update label="May 5, 2026" description="0.0.0-chat-prerelease-20260505140031" tags={["SDK"]}>
 
 ## Fix: duplicate turn after `chat.agent` idle-suspends

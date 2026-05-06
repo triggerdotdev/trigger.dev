@@ -428,7 +428,9 @@ function Chat({ chatId, transport }) {
 
 ## Sending actions
 
-Send custom actions (undo, rollback, edit) to the agent via `transport.sendAction()`. Actions wake the agent, fire the `onAction` hook, and trigger a normal response — the LLM responds to the modified state.
+Send custom actions (undo, rollback, edit) to the agent via `transport.sendAction()`. Actions wake the agent and fire only `hydrateMessages` (if configured) and `onAction` — they're not turns, so `onTurnStart` / `prepareMessages` / `onBeforeTurnComplete` / `onTurnComplete` and `run()` do not fire.
+
+For optimistic UI, mirror the action's effect on the `useChat` state via `setMessages` while the request is in flight:
 
 ```tsx
 function ChatControls({ chatId }: { chatId: string }) {
@@ -439,12 +441,21 @@ function ChatControls({ chatId }: { chatId: string }) {
       startChatSession({ chatId, taskId, clientData }),
   });
 
+  const { setMessages } = useChat({ transport });
+
   return (
     <div>
-      <button onClick={() => transport.sendAction(chatId, { type: "undo" })}>
+      <button
+        onClick={() => {
+          void transport.sendAction(chatId, { type: "undo" });
+          setMessages((prev) => prev.slice(0, -2));
+        }}
+      >
         Undo last exchange
       </button>
-      <button onClick={() => transport.sendAction(chatId, { type: "rollback", targetMessageId: "msg-5" })}>
+      <button
+        onClick={() => transport.sendAction(chatId, { type: "rollback", targetMessageId: "msg-5" })}
+      >
         Rollback to message
       </button>
     </div>
@@ -455,7 +466,7 @@ function ChatControls({ chatId }: { chatId: string }) {
 The action payload is validated against the agent's `actionSchema` on the backend — invalid actions are rejected. See [Actions](/ai-chat/backend#actions) for the backend setup.
 
 <Note>
-  `sendAction` returns a `ReadableStream<UIMessageChunk>` — the agent's response to the modified state. If you're using `useChat`, the response is handled automatically through the transport.
+  `sendAction` returns a `ReadableStream<UIMessageChunk>`. For side-effect-only actions (where `onAction` returns `void`), the stream completes immediately with `trigger:turn-complete`. For actions where `onAction` returns a `StreamTextResult`, the stream carries the assistant chunks the same way `sendMessages` does — `useChat` consumes them automatically.
 </Note>
 
 For server-to-server usage, `AgentChat` has the same method:
