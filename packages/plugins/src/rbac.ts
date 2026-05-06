@@ -59,17 +59,14 @@ export type RbacResource = {
   [key: string]: unknown;
 };
 
-export type RbacEnvironment = {
-  id: string;
-  slug: string;
-  type: string;
-  apiKey: string;
-  pkApiKey: string;
-  organizationId: string;
-  projectId: string;
-  organization: { id: string; slug: string; title: string };
-  project: { id: string; slug: string; name: string; externalRef: string };
-};
+// The plugin contract carries the same env shape that host webapps' auth
+// flows use. Defined in @trigger.dev/core so it's importable from any
+// internal package without going through the plugin contract itself.
+export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import type { AuthenticatedEnvironment as RbacEnv } from "@trigger.dev/core/v3/auth/environment";
+
+/** @deprecated Renamed to `AuthenticatedEnvironment`. Kept as alias for transitional code. */
+export type RbacEnvironment = RbacEnv;
 
 export type RbacUser = {
   id: string;
@@ -96,7 +93,7 @@ export type BearerAuthResult =
   | { ok: false; status: 401 | 403; error: string }
   | {
       ok: true;
-      environment: RbacEnvironment;
+      environment: RbacEnv;
       subject: RbacSubject;
       ability: RbacAbility;
       jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean };

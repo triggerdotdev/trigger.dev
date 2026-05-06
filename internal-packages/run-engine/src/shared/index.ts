@@ -1,21 +1,24 @@
 import type { Attributes } from "@internal/tracing";
-import type { Prisma } from "@trigger.dev/database";
 
-export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
-  include: { project: true; organization: true; orgMember: true };
-}>;
+// Slim, structural shape carried across the auth boundary. Defined in
+// @trigger.dev/core so it's importable from internal packages and the
+// RBAC plugin contract without depending on @trigger.dev/database.
+export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 
+// Run-engine internal type — what enqueue/dequeue/concurrency code
+// actually needs from an env. Independent of `AuthenticatedEnvironment`
+// (the auth-boundary slim type) because internals receive Prisma
+// payloads where `concurrencyLimitBurstFactor` is `Decimal`. Accept
+// both number and a Decimal-like duck type so callers don't need to
+// coerce at every site.
 export type MinimalAuthenticatedEnvironment = {
-  id: AuthenticatedEnvironment["id"];
+  id: string;
   type: AuthenticatedEnvironment["type"];
-  maximumConcurrencyLimit: AuthenticatedEnvironment["maximumConcurrencyLimit"];
-  concurrencyLimitBurstFactor: AuthenticatedEnvironment["concurrencyLimitBurstFactor"];
-  project: {
-    id: AuthenticatedEnvironment["project"]["id"];
-  };
-  organization: {
-    id: AuthenticatedEnvironment["organization"]["id"];
-  };
+  maximumConcurrencyLimit: number;
+  concurrencyLimitBurstFactor: number | { toNumber(): number };
+  project: { id: string };
+  organization: { id: string };
 };
 
 const SemanticEnvResources = {

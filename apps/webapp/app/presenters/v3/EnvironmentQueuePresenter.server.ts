@@ -47,7 +47,10 @@ export class EnvironmentQueuePresenter extends BasePresenter {
       running,
       queued,
       concurrencyLimit: environment.maximumConcurrencyLimit,
-      burstFactor: environment.concurrencyLimitBurstFactor.toNumber(),
+      burstFactor:
+        typeof environment.concurrencyLimitBurstFactor === "number"
+          ? environment.concurrencyLimitBurstFactor
+          : environment.concurrencyLimitBurstFactor.toNumber(),
       runsEnabled: environment.type === "DEVELOPMENT" || organization.runsEnabled,
       queueSizeLimit,
     };

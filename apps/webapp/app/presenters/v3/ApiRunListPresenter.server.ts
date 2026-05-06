@@ -149,10 +149,10 @@ type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;
 
 export class ApiRunListPresenter extends BasePresenter {
   public async call(
-    project: Project,
+    project: Pick<Project, "id">,
     searchParams: ApiRunListSearchParams,
     apiVersion: API_VERSIONS,
-    environment?: RuntimeEnvironment
+    environment?: Pick<RuntimeEnvironment, "id" | "organizationId">
   ) {
     return this.trace("call", async (span) => {
       const options: RunListOptions = {

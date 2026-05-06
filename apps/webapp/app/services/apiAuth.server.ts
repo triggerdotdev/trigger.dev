@@ -1,5 +1,4 @@
 import { json } from "@remix-run/server-runtime";
-import { type Prettify } from "@trigger.dev/core";
 import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
 
@@ -36,12 +35,10 @@ const ClaimsSchema = z.object({
     .optional(),
 });
 
-type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
-
-export type AuthenticatedEnvironment = Optional<
-  NonNullable<Awaited<ReturnType<typeof findEnvironmentByApiKey>>>,
-  "orgMember"
->;
+// Re-export the slim shape defined in @trigger.dev/core. Single source of
+// truth across the auth boundary (RBAC plugin contract → webapp handlers).
+export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 
 export type ApiAuthenticationResult =
   | ApiAuthenticationResultSuccess

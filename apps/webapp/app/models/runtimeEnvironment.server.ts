@@ -7,14 +7,93 @@ import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 
 export type { RuntimeEnvironment };
 
+// Prisma include shape that maps cleanly to the slim AuthenticatedEnvironment.
+// Use this everywhere we fetch an env that flows to handlers — keeps the
+// returned shape consistent (and the Decimal coercion in toAuthenticated()
+// strips Prisma's Decimal class from the public surface).
+const authIncludeBase = {
+  project: true,
+  organization: true,
+  orgMember: {
+    select: {
+      userId: true,
+      user: { select: { id: true, displayName: true, name: true } },
+    },
+  },
+} satisfies Prisma.RuntimeEnvironmentInclude;
+
+const authIncludeWithParent = {
+  ...authIncludeBase,
+  parentEnvironment: { select: { id: true, apiKey: true } },
+} satisfies Prisma.RuntimeEnvironmentInclude;
+
+type PrismaEnvWithAuth = Prisma.RuntimeEnvironmentGetPayload<{ include: typeof authIncludeBase }>;
+type PrismaEnvWithAuthAndParent = Prisma.RuntimeEnvironmentGetPayload<{
+  include: typeof authIncludeWithParent;
+}>;
+
+// Coerce a Prisma RuntimeEnvironment payload to the slim
+// AuthenticatedEnvironment shape. Drops the columns handlers don't read
+// and converts `concurrencyLimitBurstFactor` from Prisma's Decimal to a
+// plain number (lossless at this scale). The optional union accepts both
+// query shapes — with parentEnvironment loaded, or without it.
+function toAuthenticated(
+  env: PrismaEnvWithAuth | PrismaEnvWithAuthAndParent,
+): AuthenticatedEnvironment {
+  return {
+    id: env.id,
+    slug: env.slug,
+    type: env.type,
+    apiKey: env.apiKey,
+    organizationId: env.organizationId,
+    projectId: env.projectId,
+    orgMemberId: env.orgMemberId,
+    parentEnvironmentId: env.parentEnvironmentId,
+    branchName: env.branchName,
+    archivedAt: env.archivedAt,
+    paused: env.paused,
+    shortcode: env.shortcode,
+    maximumConcurrencyLimit: env.maximumConcurrencyLimit,
+    concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor,
+    builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
+    createdAt: env.createdAt,
+    updatedAt: env.updatedAt,
+    project: {
+      id: env.project.id,
+      slug: env.project.slug,
+      name: env.project.name,
+      externalRef: env.project.externalRef,
+      engine: env.project.engine,
+      deletedAt: env.project.deletedAt,
+      defaultWorkerGroupId: env.project.defaultWorkerGroupId,
+      organizationId: env.project.organizationId,
+      builderProjectId: env.project.builderProjectId,
+    },
+    organization: {
+      id: env.organization.id,
+      slug: env.organization.slug,
+      title: env.organization.title,
+      streamBasinName: env.organization.streamBasinName,
+      maximumConcurrencyLimit: env.organization.maximumConcurrencyLimit,
+      runsEnabled: env.organization.runsEnabled,
+      maximumDevQueueSize: env.organization.maximumDevQueueSize,
+      maximumDeployedQueueSize: env.organization.maximumDeployedQueueSize,
+      featureFlags: env.organization.featureFlags,
+      apiRateLimiterConfig: env.organization.apiRateLimiterConfig,
+      batchRateLimitConfig: env.organization.batchRateLimitConfig,
+      batchQueueConcurrencyConfig: env.organization.batchQueueConcurrencyConfig,
+    },
+    orgMember: env.orgMember,
+    parentEnvironment: "parentEnvironment" in env ? env.parentEnvironment : null,
+  };
+}
+
 export async function findEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
   const include = {
-    project: true,
-    organization: true,
-    orgMember: true,
+    ...authIncludeBase,
     childEnvironments: branchName
       ? {
           where: {
@@ -67,20 +146,20 @@ export async function findEnvironmentByApiKey(
     const childEnvironment = environment.childEnvironments.at(0);
 
     if (childEnvironment) {
-      return {
+      return toAuthenticated({
         ...childEnvironment,
         apiKey: environment.apiKey,
         orgMember: environment.orgMember,
         organization: environment.organization,
         project: environment.project,
-      };
+      });
     }
 
     //A branch was specified but no child environment was found
     return null;
   }
 
-  return environment;
+  return toAuthenticated(environment);
 }
 
 /** @deprecated We don't use public api keys anymore */
@@ -92,50 +171,29 @@ export async function findEnvironmentByPublicApiKey(
     where: {
       pkApiKey: apiKey,
     },
-    include: {
-      project: true,
-      organization: true,
-      orgMember: true,
-    },
+    include: authIncludeBase,
   });
 
-  //don't return deleted projects
-  if (environment?.project.deletedAt !== null) {
+  if (!environment || environment.project.deletedAt !== null) {
     return null;
   }
 
-  return environment;
+  return toAuthenticated(environment);
 }
 
-export async function findEnvironmentById(
-  id: string
-): Promise<
-  | (AuthenticatedEnvironment & { parentEnvironment: { id: string; apiKey: string } | null })
-  | null
-> {
+export async function findEnvironmentById(id: string): Promise<AuthenticatedEnvironment | null> {
   const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       id,
     },
-    include: {
-      project: true,
-      organization: true,
-      orgMember: true,
-      parentEnvironment: {
-        select: {
-          id: true,
-          apiKey: true,
-        },
-      },
-    },
+    include: authIncludeWithParent,
   });
 
-  //don't return deleted projects
-  if (environment?.project.deletedAt !== null) {
+  if (!environment || environment.project.deletedAt !== null) {
     return null;
   }
 
-  return environment;
+  return toAuthenticated(environment);
 }
 
 export async function findEnvironmentBySlug(
@@ -143,7 +201,7 @@ export async function findEnvironmentBySlug(
   envSlug: string,
   userId: string
 ): Promise<AuthenticatedEnvironment | null> {
-  return $replica.runtimeEnvironment.findFirst({
+  const environment = await $replica.runtimeEnvironment.findFirst({
     where: {
       projectId: projectId,
       slug: envSlug,
@@ -161,12 +219,9 @@ export async function findEnvironmentBySlug(
         },
       ],
     },
-    include: {
-      project: true,
-      organization: true,
-      orgMember: true,
-    },
+    include: authIncludeBase,
   });
+  return environment ? toAuthenticated(environment) : null;
 }
 
 export async function findEnvironmentFromRun(
@@ -178,24 +233,16 @@ export async function findEnvironmentFromRun(
       id: runId,
     },
     include: {
-      runtimeEnvironment: {
-        include: {
-          project: true,
-          organization: true,
-          orgMember: true,
-        },
-      },
+      runtimeEnvironment: { include: authIncludeBase },
     },
   });
-
-  if (!taskRun) {
-    return null;
-  }
-
-  return taskRun?.runtimeEnvironment;
+  return taskRun?.runtimeEnvironment ? toAuthenticated(taskRun.runtimeEnvironment) : null;
 }
 
-export async function createNewSession(environment: RuntimeEnvironment, ipAddress: string) {
+export async function createNewSession(
+  environment: Pick<RuntimeEnvironment, "id">,
+  ipAddress: string
+) {
   const session = await prisma.runtimeEnvironmentSession.create({
     data: {
       environmentId: environment.id,

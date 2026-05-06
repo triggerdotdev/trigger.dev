@@ -98,6 +98,7 @@ export const loader = createLoaderApiRoute(
           taskIdentifier: true,
           runTags: true,
           realtimeStreamsVersion: true,
+          streamBasinName: true,
           batch: {
             select: {
               friendlyId: true,

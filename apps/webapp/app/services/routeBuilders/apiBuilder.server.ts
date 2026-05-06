@@ -5,7 +5,6 @@ import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
-import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import {
   authenticateApiRequestWithPersonalAccessToken,
@@ -64,19 +63,14 @@ async function authenticateRequestForApiBuilder(
     return { ok: false, status: result.status, error: result.error };
   }
 
-  // The fallback already filters deleted projects; this is belt-and-braces for
-  // any race between auth and the follow-up lookup, and fills in the full
-  // Prisma-shaped AuthenticatedEnvironment that handlers read from.
-  const environment = await findEnvironmentById(result.environment.id);
-  if (!environment) {
-    return { ok: false, status: 401, error: "Invalid API key" };
-  }
-
+  // Plugins return the full AuthenticatedEnvironment shape directly — no
+  // follow-up DB lookup. The fallback fetches via Prisma, the cloud plugin
+  // via Drizzle; both produce the same slim contract type.
   const authentication: ApiAuthenticationResultSuccess = {
     ok: true,
     apiKey: result.environment.apiKey,
     type: result.subject.type === "publicJWT" ? "PUBLIC_JWT" : "PRIVATE",
-    environment,
+    environment: result.environment,
     realtime: result.jwt?.realtime,
     oneTimeUse: result.jwt?.oneTimeUse,
   };

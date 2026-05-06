@@ -45,12 +45,20 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       const envId = extractJWTSub(rawToken);
       if (!envId) return { ok: false, status: 401, error: "Invalid Public Access Token" };
 
+      // Match the include shape of the slim AuthenticatedEnvironment so
+      // the bridge can use the returned env without a follow-up fetch.
       const env = await this.prisma.runtimeEnvironment.findFirst({
         where: { id: envId },
         include: {
           project: true,
           organization: true,
-          parentEnvironment: { select: { apiKey: true } },
+          orgMember: {
+            select: {
+              userId: true,
+              user: { select: { id: true, displayName: true, name: true } },
+            },
+          },
+          parentEnvironment: { select: { id: true, apiKey: true } },
         },
       });
       if (!env || env.project.deletedAt !== null) {
@@ -69,7 +77,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
       return {
         ok: true,
-        environment: toRbacEnvironment(env),
+        environment: toAuthenticatedEnvironment(env),
         subject: {
           type: "publicJWT",
           environmentId: env.id,
@@ -87,10 +95,19 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     // findEnvironmentByApiKey: include the matching child env so the
     // pivot below can adopt its identity.
     const branchName = sanitizeBranchName(request.headers.get("x-trigger-branch"));
+    // Match the include shape of the slim AuthenticatedEnvironment so
+    // the apiBuilder bridge can use the returned env directly without a
+    // follow-up findEnvironmentById call.
     const include = {
       project: true,
       organization: true,
-      orgMember: { select: { userId: true } },
+      orgMember: {
+        select: {
+          userId: true,
+          user: { select: { id: true, displayName: true, name: true } },
+        },
+      },
+      parentEnvironment: { select: { id: true, apiKey: true } },
       childEnvironments: branchName
         ? { where: { branchName, archivedAt: null } }
         : undefined,
@@ -134,12 +151,16 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       if (!child) {
         return { ok: false, status: 401, error: "No matching branch env" };
       }
+      // Pivot to the child env: child's id/type/branchName, parent's
+      // apiKey/orgMember/organization/project. parentEnvironment is set
+      // explicitly here so the slim shape stays internally consistent.
       env = {
         ...child,
         apiKey: env.apiKey,
         orgMember: env.orgMember,
         organization: env.organization,
         project: env.project,
+        parentEnvironment: { id: env.id, apiKey: env.apiKey },
         childEnvironments: [],
       };
     }
@@ -153,7 +174,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
     return {
       ok: true,
-      environment: toRbacEnvironment(env),
+      environment: toAuthenticatedEnvironment(env),
       subject,
       ability: permissiveAbility,
     };
@@ -336,39 +357,18 @@ function extractJWTSub(token: string): string | undefined {
   }
 }
 
-function toRbacEnvironment(
-  env: {
-    id: string;
-    slug: string;
-    type: string;
-    apiKey: string;
-    pkApiKey: string;
-    organizationId: string;
-    projectId: string;
-    organization: { id: string; slug: string; title: string };
-    project: { id: string; slug: string; name: string; externalRef: string };
-  }
-): RbacEnvironment {
-  return {
-    id: env.id,
-    slug: env.slug,
-    type: env.type,
-    apiKey: env.apiKey,
-    pkApiKey: env.pkApiKey,
-    organizationId: env.organizationId,
-    projectId: env.projectId,
-    organization: {
-      id: env.organization.id,
-      slug: env.organization.slug,
-      title: env.organization.title,
-    },
-    project: {
-      id: env.project.id,
-      slug: env.project.slug,
-      name: env.project.name,
-      externalRef: env.project.externalRef,
-    },
-  };
+// Coerce Prisma's RuntimeEnvironment payload (with project/organization/
+// orgMember/parentEnvironment includes) into the slim AuthenticatedEnvironment
+// the auth contract carries. Both shapes share most fields verbatim;
+// concurrencyLimitBurstFactor is a Prisma `Decimal(4,2)` that we coerce to
+// number (lossless at this scale, avoids dragging Prisma's Decimal class
+// across the auth boundary).
+// Pass through any compatible Prisma row (with project/organization/
+// orgMember/parentEnvironment includes) — TS structural typing accepts
+// extra fields, so the wide Prisma payload satisfies the slim contract.
+// We just call this as a typed identity to ensure the shape fits.
+function toAuthenticatedEnvironment(env: RbacEnvironment): RbacEnvironment {
+  return env;
 }
 
 function toRbacUser(user: {

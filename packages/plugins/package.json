@@ -15,6 +15,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*"
+  },
   "scripts": {
     "clean": "rimraf dist .turbo",
     "build": "tsup",
