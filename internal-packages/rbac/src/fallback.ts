@@ -80,10 +80,19 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       };
     }
 
+    // PREVIEW envs are parents — operating "on a branch" means routing
+    // to a child env keyed by branchName. The customer authenticates
+    // with the parent's apiKey + an `x-trigger-branch` header. Mirror
+    // findEnvironmentByApiKey: include the matching child env so the
+    // pivot below can adopt its identity.
+    const branchName = sanitizeBranchName(request.headers.get("x-trigger-branch"));
     const include = {
       project: true,
       organization: true,
       orgMember: { select: { userId: true } },
+      childEnvironments: branchName
+        ? { where: { branchName, archivedAt: null } }
+        : undefined,
     } as const;
     let env = await this.prisma.runtimeEnvironment.findFirst({
       where: { apiKey: rawToken },
@@ -106,6 +115,32 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
     if (!env || env.project.deletedAt !== null) {
       return { ok: false, status: 401, error: "Invalid API key" };
+    }
+
+    // PREVIEW env requires a branch header; pivot to the child env so
+    // downstream code operates on the branch (its own id, but the
+    // parent's apiKey/orgMember/organization/project — exactly what
+    // findEnvironmentByApiKey does for the legacy auth path).
+    if (env.type === "PREVIEW") {
+      if (!branchName) {
+        return {
+          ok: false,
+          status: 401,
+          error: "x-trigger-branch header required for preview env",
+        };
+      }
+      const child = env.childEnvironments?.[0];
+      if (!child) {
+        return { ok: false, status: 401, error: "No matching branch env" };
+      }
+      env = {
+        ...child,
+        apiKey: env.apiKey,
+        orgMember: env.orgMember,
+        organization: env.organization,
+        project: env.project,
+        childEnvironments: [],
+      };
     }
 
     const subject: RbacSubject = {
@@ -274,6 +309,22 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   async removeTokenRole(): Promise<RoleAssignmentResult> {
     return { ok: false, error: "RBAC plugin not installed" };
   }
+}
+
+// Mirror of `apps/webapp/app/v3/gitBranch.ts#sanitizeBranchName`.
+// Inlined here because internal-packages can't import webapp code; the
+// two should stay in sync. Strips common refs/* prefixes and rejects
+// unknown ref formats (returns undefined → no branch override).
+function sanitizeBranchName(ref: string | null): string | undefined {
+  if (!ref) return undefined;
+  if (ref.startsWith("refs/heads/")) return ref.substring("refs/heads/".length);
+  if (ref.startsWith("refs/remotes/")) return ref.substring("refs/remotes/".length);
+  if (ref.startsWith("refs/tags/")) return ref.substring("refs/tags/".length);
+  if (ref.startsWith("refs/pull/")) return ref.substring("refs/pull/".length);
+  if (ref.startsWith("refs/merge/")) return ref.substring("refs/merge/".length);
+  if (ref.startsWith("refs/release/")) return ref.substring("refs/release/".length);
+  if (ref.startsWith("refs/")) return undefined;
+  return ref;
 }
 
 function isPublicJWT(token: string): boolean {

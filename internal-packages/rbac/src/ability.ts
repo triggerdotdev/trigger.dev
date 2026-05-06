@@ -27,7 +27,13 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
   const matches = (action: string, r: RbacResource): boolean =>
     scopes.some((scope) => {
       const [scopeAction, scopeType, scopeId] = scope.split(":");
-      if (scopeAction === "admin") return true;
+      // Bare `admin` is the universal wildcard. `admin:<type>` is *not* —
+      // it falls through to normal matching as action="admin" against
+      // resources of that type. Pre-RBAC, the legacy checkAuthorization
+      // string-matched superScopes; `admin:sessions` only granted access
+      // to routes that explicitly listed it. Treating `admin:<anything>`
+      // as universal here would silently broaden any such tokens.
+      if (scopeAction === "admin" && !scopeType) return true;
       if (scopeAction !== action && scopeAction !== "*") return false;
       if (scopeType === "all") return true;
       if (scopeType !== r.type) return false;

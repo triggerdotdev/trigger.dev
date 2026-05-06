@@ -53,12 +53,15 @@ async function authenticateRequestForApiBuilder(
   request: Request,
   { allowJWT }: { allowJWT: boolean }
 ): Promise<
-  | { ok: false; status: 401; error: string }
+  | { ok: false; status: 401 | 403; error: string }
   | { ok: true; authentication: ApiAuthenticationResultSuccess; ability: RbacAbility }
 > {
   const result = await rbac.authenticateBearer(request, { allowJWT });
   if (!result.ok) {
-    return { ok: false, status: 401, error: result.error };
+    // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
+    // allowed) — e.g. a suspended account or IP block returns 403.
+    // Forwarding the status preserves that semantic for client retry logic.
+    return { ok: false, status: result.status, error: result.error };
   }
 
   // The fallback already filters deleted projects; this is belt-and-braces for
@@ -158,9 +161,19 @@ function checkAuth(
   resource: AuthResource
 ): boolean {
   if (isEveryResource(resource)) {
+    // Empty array via [].every() is vacuously true — would let any token
+    // pass auth. Routes building everyResource() from request bodies
+    // (e.g. batch trigger items) should never produce zero elements
+    // because body validation rejects empty arrays first, but defending
+    // here anyway since the auth layer should never grant on no input.
+    if (resource.resources.length === 0) return false;
     return resource.resources.every((r) => ability.can(action, r));
   }
   if (isAnyResource(resource)) {
+    // Symmetric guard: anyResource([]) is benign for most abilities
+    // (.some() is false on empty), but PERMISSIVE_ABILITY would still
+    // grant. Treat empty as "no resource declared" → deny.
+    if (resource.resources.length === 0) return false;
     return ability.can(action, [...resource.resources]);
   }
   return ability.can(action, resource);

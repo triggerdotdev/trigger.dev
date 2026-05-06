@@ -66,6 +66,29 @@ describe("buildJwtAbility", () => {
     expect(ability.can("write", { type: "deployments" })).toBe(true);
   });
 
+  // Pre-RBAC, the legacy checkAuthorization string-matched superScopes;
+  // a scope `admin:sessions` only granted access to routes that
+  // explicitly listed it. After the JWT-ability split we must not let
+  // `admin:<anything>` act as a universal wildcard — it should grant
+  // only the `admin` action against resources of that type.
+  it("admin:<type> is not a universal wildcard", () => {
+    const ability = buildJwtAbility(["admin:sessions"]);
+    expect(ability.can("read", { type: "runs" })).toBe(false);
+    expect(ability.can("write", { type: "tasks" })).toBe(false);
+    expect(ability.can("admin", { type: "runs" })).toBe(false);
+    // But it does grant the admin action on its own type.
+    expect(ability.can("admin", { type: "sessions" })).toBe(true);
+    expect(ability.can("admin", { type: "sessions", id: "ses_abc" })).toBe(true);
+  });
+
+  it("admin:<type>:<id> grants admin action only on that exact resource", () => {
+    const ability = buildJwtAbility(["admin:sessions:ses_abc"]);
+    expect(ability.can("admin", { type: "sessions", id: "ses_abc" })).toBe(true);
+    expect(ability.can("admin", { type: "sessions", id: "ses_xyz" })).toBe(false);
+    expect(ability.can("admin", { type: "runs" })).toBe(false);
+    expect(ability.can("read", { type: "sessions", id: "ses_abc" })).toBe(false);
+  });
+
   it("never grants canSuper", () => {
     expect(buildJwtAbility(["admin"]).canSuper()).toBe(false);
     expect(buildJwtAbility(["read:all"]).canSuper()).toBe(false);
