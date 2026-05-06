@@ -1,6 +1,6 @@
 import { TaskRunProcess, type TaskRunProcessOptions } from "./taskRunProcess.js";
 import { describe, it, expect, vi } from "vitest";
-import { UnexpectedExitError } from "@trigger.dev/core/v3/errors";
+import { UncaughtExceptionError, UnexpectedExitError } from "@trigger.dev/core/v3/errors";
 import type {
   TaskRunExecution,
   TaskRunExecutionPayload,
@@ -116,6 +116,39 @@ describe("TaskRunProcess", () => {
         expect(result.error).toBeInstanceOf(UnexpectedExitError);
         expect(result.error.stderr).toContain("not connected");
       }
+    });
+  });
+
+  describe("parseExecuteError(UncaughtExceptionError)", () => {
+    it("surfaces the original error name/message/stack as TASK_EXECUTION_FAILED", () => {
+      const error = new UncaughtExceptionError(
+        {
+          name: "Error",
+          message: "read ECONNRESET",
+          stack:
+            "Error: read ECONNRESET\n    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)",
+        },
+        "uncaughtException"
+      );
+
+      const result = TaskRunProcess.parseExecuteError(error);
+
+      expect(result.type).toBe("INTERNAL_ERROR");
+      expect(result.code).toBe("TASK_EXECUTION_FAILED");
+      expect(result.message).toBe("Uncaught uncaughtException: read ECONNRESET");
+      expect(result.stackTrace).toContain("TCP.onStreamRead");
+    });
+
+    it("preserves origin=unhandledRejection in the surfaced message", () => {
+      const error = new UncaughtExceptionError(
+        { name: "Error", message: "boom" },
+        "unhandledRejection"
+      );
+
+      const result = TaskRunProcess.parseExecuteError(error);
+
+      expect(result.code).toBe("TASK_EXECUTION_FAILED");
+      expect(result.message).toBe("Uncaught unhandledRejection: boom");
     });
   });
 });
