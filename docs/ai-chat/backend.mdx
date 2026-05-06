@@ -870,7 +870,7 @@ export const myChat = chat.agent({
 
 ### Actions
 
-Custom actions let the frontend send structured commands (undo, rollback, edit) that modify the conversation state before the LLM responds. Actions use the same input stream as messages, so they wake the agent from suspension and trigger a full turn.
+Custom actions let the frontend send structured commands (undo, rollback, edit) that modify the conversation state. **Actions are not turns** — they fire `hydrateMessages` (if set) and `onAction` only. No turn lifecycle hooks (`onTurnStart` / `prepareMessages` / `onBeforeTurnComplete` / `onTurnComplete`), no `run()`, no turn-counter increment. The trace span is named `chat action`.
 
 Define an `actionSchema` for validation and an `onAction` handler that uses `chat.history` to modify state:
 
@@ -901,6 +901,7 @@ export const myChat = chat.agent({
         });
         break;
     }
+    // returning void → side-effect-only, no model call
   },
 
   run: async ({ messages, signal }) => {
@@ -909,7 +910,26 @@ export const myChat = chat.agent({
 });
 ```
 
-**Lifecycle flow:** Wake → parse action against `actionSchema` → `hydrateMessages` (if set) → **`onAction`** → apply `chat.history` mutations → `onTurnStart` → `run()` → `onTurnComplete`
+**Lifecycle flow:** Wake → parse action against `actionSchema` → `hydrateMessages` (if set) → **`onAction`** → apply `chat.history` mutations → emit `trigger:turn-complete` → wait for next message.
+
+#### Returning a model response from an action
+
+`onAction` can return a `StreamTextResult`, `string`, or `UIMessage` to produce a response. The returned stream is auto-piped to the frontend just like a normal turn — but the rest of the turn machinery (`onTurnStart`, `onTurnComplete`, etc.) still does not fire.
+
+```ts
+onAction: async ({ action, messages }) => {
+  if (action.type === "regenerate") {
+    chat.history.slice(0, -1); // drop the last assistant
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+    });
+  }
+  // other actions return void → side-effect only
+}
+```
+
+This is useful for actions that *both* mutate state and want a fresh model response (regenerate-from-here, retry-with-different-style). Persistence is your responsibility inside `onAction` itself — you have access to the streamed response object.
 
 On the frontend, send actions via the transport:
 
@@ -921,10 +941,10 @@ const stream = await transport.sendAction(chatId, { type: "undo" });
 const stream = await agentChat.sendAction({ type: "rollback", targetMessageId: "msg-3" });
 ```
 
-The action payload is validated against `actionSchema` on the backend — invalid actions throw and abort the turn. The `action` parameter in `onAction` is fully typed from the schema.
+The action payload is validated against `actionSchema` on the backend — invalid actions throw and surface as a stream error. The `action` parameter in `onAction` is fully typed from the schema.
 
 <Note>
-  Actions always trigger `run()` — the LLM responds to the modified state. For silent state changes that don't need a response (e.g. injecting background context), use [`chat.inject()`](/ai-chat/background-injection) instead.
+  For silent state changes that should never appear as a turn (e.g. injecting background context), use [`chat.inject()`](/ai-chat/background-injection) instead. Actions are explicit user-driven mutations; injections are agent-side context updates.
 </Note>
 
 ### Chat history
