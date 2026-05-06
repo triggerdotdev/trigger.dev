@@ -1911,6 +1911,10 @@ importers:
         version: 4.17.0
 
   packages/plugins:
+    dependencies:
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 20.14.14
