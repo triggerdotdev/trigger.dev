@@ -206,6 +206,17 @@ function parseFrontmatter(content) {
 
 // --- Format the enhanced PR body ---
 
+/**
+ * Render the enhanced release PR body.
+ *
+ * @param {object} args
+ * @param {string} args.version - Proposed release version (e.g. "4.4.6").
+ * @param {Array<{text: string, type: string}>} args.packageEntries - Entries parsed from the changesets-generated PR body.
+ * @param {Array<{text: string, type: string, area: string}>} args.serverEntries - Entries parsed from .server-changes/*.md.
+ * @param {string} args.rawBody - The original changesets-generated PR body (kept in a collapsed details section).
+ * @param {{sourceBranch: string, currentLatest: string, willBeLatest: boolean, lineMatch: string|null}|null} args.releaseContext - Release-branch context (only set when SOURCE_BRANCH env is present); drives the "Release prep" header.
+ * @returns {string} Markdown body.
+ */
 function formatPrBody({ version, packageEntries, serverEntries, rawBody, releaseContext }) {
   const lines = [];
 
@@ -340,6 +351,17 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody, release
 
 // --- Main ---
 
+/**
+ * Build release-branch context for the PR body header.
+ *
+ * Reads SOURCE_BRANCH from the environment (set by changesets-pr.yml). When
+ * present, queries npm for the current `latest` dist-tag of @trigger.dev/sdk,
+ * compares the proposed version against it, and returns context for rendering
+ * the "Release prep" header. Returns null when SOURCE_BRANCH is unset (so the
+ * header is omitted on plain main releases that don't need branch context).
+ *
+ * @returns {Promise<{sourceBranch: string, currentLatest: string, willBeLatest: boolean, lineMatch: string|null}|null>}
+ */
 async function getReleaseContext() {
   const sourceBranch = process.env.SOURCE_BRANCH;
   if (!sourceBranch) return null;
