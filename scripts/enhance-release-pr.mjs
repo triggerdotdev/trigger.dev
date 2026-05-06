@@ -31,6 +31,15 @@ const ROOT_DIR = join(import.meta.dirname, "..");
 
 // --- Parse changeset PR body ---
 
+/**
+ * Parse the changesets-generated PR body into a flat list of entries.
+ * Deduplicates by linked PR number, skips dependency-only bumps, and
+ * heuristically categorizes each entry as fix / feature / breaking /
+ * improvement based on its leading text.
+ *
+ * @param {string} body - Raw markdown body from the changesets release PR.
+ * @returns {Array<{text: string, type: 'fix' | 'feature' | 'breaking' | 'improvement'}>}
+ */
 function parsePrBody(body) {
   const entries = [];
   if (!body) return entries;
@@ -88,6 +97,13 @@ function parsePrBody(body) {
 
 const REPO = "triggerdotdev/trigger.dev";
 
+/**
+ * Run a git command in the repo root and return its trimmed stdout.
+ * Rejects with the underlying execFile error on non-zero exit.
+ *
+ * @param {string[]} args - argv passed to git (e.g. ["log", "--format=%H"]).
+ * @returns {Promise<string>}
+ */
 function gitExec(args) {
   return new Promise((resolve, reject) => {
     execFile("git", args, { cwd: ROOT_DIR, maxBuffer: 1024 * 1024 }, (err, stdout) => {
@@ -97,6 +113,13 @@ function gitExec(args) {
   });
 }
 
+/**
+ * Find the commit that first added a file (used to attribute a
+ * `.server-changes/*.md` file back to the PR that introduced it).
+ *
+ * @param {string} filePath - Path relative to repo root.
+ * @returns {Promise<string|null>} Commit SHA, or null if not found / git failed.
+ */
 async function getCommitForFile(filePath) {
   try {
     // Find the commit that added this file
@@ -107,6 +130,15 @@ async function getCommitForFile(filePath) {
   }
 }
 
+/**
+ * Look up the PR that introduced a given commit. Prefers merged PRs and
+ * picks the earliest-merged one (matches @changesets/get-github-info).
+ * Requires GITHUB_TOKEN or GH_TOKEN; returns null without a token, on
+ * fetch failure, or when no PR is associated with the commit.
+ *
+ * @param {string} commitSha
+ * @returns {Promise<number|null>} PR number, or null.
+ */
 async function getPrForCommit(commitSha) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!token || !commitSha) return null;
@@ -139,6 +171,16 @@ async function getPrForCommit(commitSha) {
 
 // --- Parse .server-changes/ files ---
 
+/**
+ * Read every `.server-changes/*.md` file (skipping README.md), parse
+ * frontmatter, and return the entries to render under "Server changes" in
+ * the enhanced PR body. Looks up the introducing PR for each file and
+ * appends a PR link if one is found and not already inline. Frontmatter
+ * `type` and `area` fields drive section grouping (defaults: improvement,
+ * webapp).
+ *
+ * @returns {Promise<Array<{text: string, type: string, area: string}>>}
+ */
 async function parseServerChanges() {
   const dir = join(ROOT_DIR, ".server-changes");
   const entries = [];
@@ -189,6 +231,15 @@ async function parseServerChanges() {
   return entries;
 }
 
+/**
+ * Minimal YAML frontmatter parser — splits a `---`-delimited header from
+ * the body and returns both. Frontmatter values are trimmed strings; no
+ * type coercion. Returns the whole content as `body` when no frontmatter
+ * is present.
+ *
+ * @param {string} content
+ * @returns {{frontmatter: Record<string, string>, body: string}}
+ */
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { frontmatter: {}, body: content };
@@ -392,6 +443,13 @@ async function getReleaseContext() {
   return { sourceBranch, currentLatest, willBeLatest, lineMatch };
 }
 
+/**
+ * Entry point. Reads the raw changesets PR body from CHANGESET_PR_BODY env
+ * or stdin, gathers package + server entries and release-branch context,
+ * and writes the enhanced markdown body to stdout.
+ *
+ * @returns {Promise<void>}
+ */
 async function main() {
   let rawBody = process.env.CHANGESET_PR_BODY || "";
   if (!rawBody && !process.stdin.isTTY) {
