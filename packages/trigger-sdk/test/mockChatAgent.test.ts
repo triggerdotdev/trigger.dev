@@ -210,6 +210,174 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("actions returning void do not fire turn hooks or call run()", async () => {
+    const onChatStart = vi.fn();
+    const onTurnStart = vi.fn();
+    const onBeforeTurnComplete = vi.fn();
+    const onTurnComplete = vi.fn();
+    const onAction = vi.fn();
+    const runSpy = vi.fn();
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        runSpy();
+        return { stream: textStream("nope") };
+      },
+    });
+
+    const { z } = await import("zod");
+    const agent = chat.agent({
+      id: "mockChatAgent.actions.void",
+      actionSchema: z.object({ type: z.literal("undo") }),
+      onChatStart,
+      onTurnStart,
+      onBeforeTurnComplete,
+      onTurnComplete,
+      onAction: async (...args) => {
+        onAction(...args);
+        // void → side-effect only
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-void-action" });
+    try {
+      // Bootstrap with a message so the message-turn hooks fire once.
+      await harness.sendMessage(userMessage("hi"));
+      // sendMessage resolves on `trigger:turn-complete`, but onTurnComplete
+      // fires as a separate microtask after — let it settle before snapshotting.
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Snapshot call counts after the bootstrap — we'll assert these
+      // don't change for the action below.
+      const baselineRun = runSpy.mock.calls.length;
+      const baselineChatStart = onChatStart.mock.calls.length;
+      const baselineTurnStart = onTurnStart.mock.calls.length;
+      const baselineBeforeComplete = onBeforeTurnComplete.mock.calls.length;
+      const baselineComplete = onTurnComplete.mock.calls.length;
+
+      const actionTurn = await harness.sendAction({ type: "undo" });
+      await new Promise((r) => setTimeout(r, 50));
+
+      // onAction fired exactly once; no turn hooks fired; run() / LLM did not.
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(runSpy.mock.calls.length).toBe(baselineRun);
+      expect(onChatStart.mock.calls.length).toBe(baselineChatStart);
+      expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart);
+      expect(onBeforeTurnComplete.mock.calls.length).toBe(baselineBeforeComplete);
+      expect(onTurnComplete.mock.calls.length).toBe(baselineComplete);
+
+      // Stream still terminates cleanly with trigger:turn-complete so
+      // the frontend's useChat transitions back to ready.
+      const sawTurnComplete = actionTurn.rawChunks.some(
+        (c) =>
+          typeof c === "object" &&
+          c !== null &&
+          (c as { type?: string }).type === "trigger:turn-complete"
+      );
+      expect(sawTurnComplete).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("actions returning a stream pipe the response without firing turn hooks", async () => {
+    const onTurnStart = vi.fn();
+    const onTurnComplete = vi.fn();
+    const actionModel = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("regenerated") }),
+    });
+    const turnModel = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("normal-response") }),
+    });
+
+    const { z } = await import("zod");
+    const agent = chat.agent({
+      id: "mockChatAgent.actions.stream",
+      actionSchema: z.object({ type: z.literal("regenerate") }),
+      onTurnStart,
+      onTurnComplete,
+      onAction: async ({ messages }) => {
+        return streamText({ model: actionModel, messages });
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model: turnModel, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-stream-action" });
+    try {
+      await harness.sendMessage(userMessage("hi"));
+      await new Promise((r) => setTimeout(r, 50));
+      const baselineTurnStart = onTurnStart.mock.calls.length;
+      const baselineTurnComplete = onTurnComplete.mock.calls.length;
+
+      const actionTurn = await harness.sendAction({ type: "regenerate" });
+      await new Promise((r) => setTimeout(r, 50));
+
+      // No turn hooks fired during the action.
+      expect(onTurnStart.mock.calls.length).toBe(baselineTurnStart);
+      expect(onTurnComplete.mock.calls.length).toBe(baselineTurnComplete);
+
+      // Action's streamText output landed on the response.
+      const text = actionTurn.chunks
+        .filter((c) => c.type === "text-delta")
+        .map((c) => (c as { delta: string }).delta)
+        .join("");
+      expect(text).toBe("regenerated");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("warns once and emits turn-complete when an action arrives without onAction", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const runSpy = vi.fn();
+    const model = new MockLanguageModelV3({
+      doStream: async () => {
+        runSpy();
+        return { stream: textStream("nope") };
+      },
+    });
+
+    const { z } = await import("zod");
+    const agent = chat.agent({
+      id: "mockChatAgent.actions.no-handler",
+      actionSchema: z.object({ type: z.literal("undo") }),
+      run: async ({ messages, signal }) => {
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-no-handler" });
+    try {
+      await harness.sendMessage(userMessage("hi"));
+      const baselineRun = runSpy.mock.calls.length;
+
+      const actionTurn = await harness.sendAction({ type: "undo" });
+
+      // No additional model call; console.warn fired with our marker text.
+      expect(runSpy.mock.calls.length).toBe(baselineRun);
+      expect(
+        warnSpy.mock.calls.some((args) =>
+          (args[0] as string).includes("no `onAction` handler")
+        )
+      ).toBe(true);
+
+      const sawTurnComplete = actionTurn.rawChunks.some(
+        (c) =>
+          typeof c === "object" &&
+          c !== null &&
+          (c as { type?: string }).type === "trigger:turn-complete"
+      );
+      expect(sawTurnComplete).toBe(true);
+    } finally {
+      await harness.close();
+      warnSpy.mockRestore();
+    }
+  });
+
   it("passes clientData through to run() and hooks", async () => {
     const model = new MockLanguageModelV3({
       doStream: async () => ({ stream: textStream("ok") }),
