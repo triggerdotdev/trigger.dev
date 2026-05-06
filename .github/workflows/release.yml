@@ -158,10 +158,12 @@ jobs:
             DIST_TAG="release-$(echo "$NEW" | cut -d. -f1,2)"
           fi
 
-          echo "new=${NEW}"             >> "$GITHUB_OUTPUT"
-          echo "current=${CURRENT}"     >> "$GITHUB_OUTPUT"
-          echo "is_latest=${IS_LATEST}" >> "$GITHUB_OUTPUT"
-          echo "dist_tag=${DIST_TAG}"   >> "$GITHUB_OUTPUT"
+          {
+            echo "new=${NEW}"
+            echo "current=${CURRENT}"
+            echo "is_latest=${IS_LATEST}"
+            echo "dist_tag=${DIST_TAG}"
+          } >> "$GITHUB_OUTPUT"
 
           echo "::notice::Publishing ${NEW}; current latest=${CURRENT}; is_latest=${IS_LATEST}; dist_tag=${DIST_TAG:-latest}"
 
