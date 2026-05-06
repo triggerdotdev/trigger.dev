@@ -401,6 +401,21 @@ export const aiChat = chat
     },
     // #endregion
 
+    // #region actionSchema + onAction — typed actions for state-only mutations
+    // Actions are not turns: only `hydrateMessages` and `onAction` fire,
+    // no `run()` invocation, no model call. The `undo` action drops the
+    // last user/assistant exchange so the next message turn sees a
+    // truncated history.
+    actionSchema: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("undo") }),
+    ]),
+    onAction: async ({ action }) => {
+      if (action.type === "undo") {
+        chat.history.slice(0, -2);
+      }
+    },
+    // #endregion
+
     // #region onTurnComplete — persist + background self-review via chat.inject()
     onTurnComplete: async ({
       chatId,

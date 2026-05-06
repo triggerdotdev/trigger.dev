@@ -937,6 +937,24 @@ export function Chat({
               Stop
             </button>
           )}
+          {/* Undo — server-side `chat.history.slice(0, -2)` via the
+              `undo` action, optimistically reflected in the local
+              `useChat` state. Drops the last user / assistant exchange.
+              Only meaningful when there's at least one full exchange
+              and the chat isn't currently streaming. */}
+          {status !== "streaming" && messages.length >= 2 && (
+            <button
+              type="button"
+              disabled={isReadOnly}
+              onClick={() => {
+                void transport.sendAction(chatId, { type: "undo" });
+                setMessages((prev) => prev.slice(0, -2));
+              }}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+            >
+              Undo
+            </button>
+          )}
         </div>
       </form>
     </div>
