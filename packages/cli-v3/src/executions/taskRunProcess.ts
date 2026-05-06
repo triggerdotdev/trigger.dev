@@ -8,7 +8,6 @@ import {
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
-  type TaskRunError,
   type TaskRunInternalError,
   tryCatch,
   WorkerManifest,
@@ -556,7 +555,7 @@ export class TaskRunProcess {
     return this._child.connected;
   }
 
-  static parseExecuteError(error: unknown, dockerMode = true): TaskRunError {
+  static parseExecuteError(error: unknown, dockerMode = true): TaskRunInternalError {
     if (error instanceof CancelledProcessError) {
       return {
         type: "INTERNAL_ERROR",
@@ -591,16 +590,17 @@ export class TaskRunProcess {
     }
 
     if (error instanceof UncaughtExceptionError) {
-      // Surface the customer's original error as a regular task failure (user
-      // error → "Failed" status) rather than an internal error → "System
-      // failure" status. The exception was raised by user code (or a
-      // dependency the user controls, e.g. an EventEmitter "error" event with
-      // no listener); it isn't a platform fault.
+      // Dedicated INTERNAL_ERROR code so the engine handles retry via the
+      // existing crash-style lookup of run.lockedRetryConfig (same pathway as
+      // TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE etc.) and so the dashboard
+      // renders this as "Failed" rather than "System failure" — the exception
+      // was raised by user code (or a dependency the user controls, e.g. an
+      // EventEmitter "error" event with no listener), not a platform fault.
       return {
-        type: "BUILT_IN_ERROR",
-        name: error.originalError.name,
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_RUN_UNCAUGHT_EXCEPTION,
         message: error.originalError.message,
-        stackTrace: error.originalError.stack ?? "",
+        stackTrace: error.originalError.stack,
       };
     }
 

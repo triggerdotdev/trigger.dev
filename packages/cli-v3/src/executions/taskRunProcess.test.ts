@@ -120,7 +120,7 @@ describe("TaskRunProcess", () => {
   });
 
   describe("parseExecuteError(UncaughtExceptionError)", () => {
-    it("surfaces the original error as a BUILT_IN_ERROR so the run shows as Failed, not System failure", () => {
+    it("returns INTERNAL_ERROR with TASK_RUN_UNCAUGHT_EXCEPTION + original message and stack", () => {
       const error = new UncaughtExceptionError(
         {
           name: "Error",
@@ -133,15 +133,13 @@ describe("TaskRunProcess", () => {
 
       const result = TaskRunProcess.parseExecuteError(error);
 
-      expect(result.type).toBe("BUILT_IN_ERROR");
-      if (result.type === "BUILT_IN_ERROR") {
-        expect(result.name).toBe("Error");
-        expect(result.message).toBe("read ECONNRESET");
-        expect(result.stackTrace).toContain("TCP.onStreamRead");
-      }
+      expect(result.type).toBe("INTERNAL_ERROR");
+      expect(result.code).toBe("TASK_RUN_UNCAUGHT_EXCEPTION");
+      expect(result.message).toBe("read ECONNRESET");
+      expect(result.stackTrace).toContain("TCP.onStreamRead");
     });
 
-    it("preserves the original error for unhandledRejection origin too", () => {
+    it("uses the same code for unhandledRejection origin", () => {
       const error = new UncaughtExceptionError(
         { name: "TypeError", message: "boom" },
         "unhandledRejection"
@@ -149,11 +147,9 @@ describe("TaskRunProcess", () => {
 
       const result = TaskRunProcess.parseExecuteError(error);
 
-      expect(result.type).toBe("BUILT_IN_ERROR");
-      if (result.type === "BUILT_IN_ERROR") {
-        expect(result.name).toBe("TypeError");
-        expect(result.message).toBe("boom");
-      }
+      expect(result.type).toBe("INTERNAL_ERROR");
+      expect(result.code).toBe("TASK_RUN_UNCAUGHT_EXCEPTION");
+      expect(result.message).toBe("boom");
     });
   });
 });

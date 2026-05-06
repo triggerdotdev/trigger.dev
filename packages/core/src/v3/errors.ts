@@ -395,6 +395,7 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_EXECUTION_ABORTED":
         case "TASK_EXECUTION_FAILED":
         case "TASK_RUN_CRASHED":
+        case "TASK_RUN_UNCAUGHT_EXCEPTION":
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGTERM":
           return true;
@@ -425,6 +426,7 @@ export function shouldLookupRetrySettings(error: TaskRunError): boolean {
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_SIGSEGV":
+        case "TASK_RUN_UNCAUGHT_EXCEPTION":
           return true;
 
         default:
