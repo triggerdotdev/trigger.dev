@@ -169,6 +169,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
     uses: ./.github/workflows/publish.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
