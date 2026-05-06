@@ -206,8 +206,42 @@ function parseFrontmatter(content) {
 
 // --- Format the enhanced PR body ---
 
-function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
+function formatPrBody({ version, packageEntries, serverEntries, rawBody, releaseContext }) {
   const lines = [];
+
+  // Release-branch context header. Surfaces whether this PR will become the
+  // npm `latest` / Docker `:v4-beta` / GitHub "Latest" — surprising on
+  // release-branch hotfixes.
+  if (releaseContext) {
+    const { sourceBranch, currentLatest, willBeLatest, lineMatch } = releaseContext;
+    lines.push("## Release prep");
+    lines.push("");
+    lines.push(`- **Version:** \`${version}\``);
+    lines.push(`- **Source branch:** \`${sourceBranch}\``);
+    lines.push(`- **Current \`latest\` on npm:** \`${currentLatest}\``);
+    lines.push(
+      `- **This release will become \`latest\`:** ${
+        willBeLatest
+          ? "✅ yes"
+          : `❌ no — will publish to dist-tag \`release-${lineMatch || "?"}\``
+      }`
+    );
+    if (sourceBranch && sourceBranch.startsWith("release/")) {
+      lines.push("");
+      if (willBeLatest) {
+        lines.push(
+          `> Hotfix on the **${lineMatch}.x** line. Becomes \`latest\` because the current latest (${currentLatest}) is older. Customers running \`npm install\` will pick this up.`
+        );
+      } else {
+        lines.push(
+          `> Hotfix on the **${lineMatch}.x** line. Will NOT become \`latest\` because main has shipped a higher version (${currentLatest}). Customers wanting this fix on the ${lineMatch}.x line should pin: \`npm install @trigger.dev/sdk@release-${lineMatch}\`.`
+        );
+      }
+    }
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+  }
 
   const features = packageEntries.filter((e) => e.type === "feature");
   const fixes = packageEntries.filter((e) => e.type === "fix");
@@ -306,6 +340,36 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
 
 // --- Main ---
 
+async function getReleaseContext() {
+  const sourceBranch = process.env.SOURCE_BRANCH;
+  if (!sourceBranch) return null;
+
+  // Look up current npm `latest` for the canonical package
+  let currentLatest = "0.0.0";
+  try {
+    const out = await new Promise((resolve) => {
+      execFile(
+        "npm",
+        ["view", "@trigger.dev/sdk", "dist-tags.latest"],
+        { maxBuffer: 1024 * 1024 },
+        (err, stdout) => resolve(err ? "" : stdout.trim())
+      );
+    });
+    if (out && out !== "undefined") currentLatest = out;
+  } catch {
+    // fall through with default
+  }
+
+  const cmp = (a, b) =>
+    a.split(".").map(Number).reduce((acc, n, i) => acc || n - (b.split(".").map(Number)[i] ?? 0), 0);
+  const willBeLatest = cmp(version, currentLatest) > 0;
+
+  const m = sourceBranch.match(/^release\/(\d+\.\d+)\.x$/);
+  const lineMatch = m ? m[1] : null;
+
+  return { sourceBranch, currentLatest, willBeLatest, lineMatch };
+}
+
 async function main() {
   let rawBody = process.env.CHANGESET_PR_BODY || "";
   if (!rawBody && !process.stdin.isTTY) {
@@ -316,12 +380,14 @@ async function main() {
 
   const packageEntries = parsePrBody(rawBody);
   const serverEntries = await parseServerChanges();
+  const releaseContext = await getReleaseContext();
 
   const body = formatPrBody({
     version,
     packageEntries,
     serverEntries,
     rawBody,
+    releaseContext,
   });
 
   process.stdout.write(body);

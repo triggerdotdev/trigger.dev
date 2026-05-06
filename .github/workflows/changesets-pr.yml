@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - "release/**"
     paths:
       - "packages/**"
       - ".changeset/**"
@@ -56,16 +57,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=$(gh pr list --head changeset-release/main --json number --jq '.[0].number')
+          # On main: PR branch is `changeset-release/main`.
+          # On release/X.Y.x: PR branch is `changeset-release/release/X.Y.x`.
+          # Same source-branch lookup either way.
+          SOURCE_BRANCH="${GITHUB_REF_NAME}"
+          PR_BRANCH="changeset-release/${SOURCE_BRANCH}"
+          PR_NUMBER=$(gh pr list --head "$PR_BRANCH" --json number --jq '.[0].number')
           if [ -n "$PR_NUMBER" ]; then
-            git fetch origin changeset-release/main
+            git fetch origin "+${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}"
             # we arbitrarily reference the version of the cli package here; it is the same for all package releases
-            VERSION=$(git show origin/changeset-release/main:packages/cli-v3/package.json | jq -r '.version')
+            VERSION=$(git show "origin/${PR_BRANCH}:packages/cli-v3/package.json" | jq -r '.version')
             gh pr edit "$PR_NUMBER" --title "chore: release v$VERSION"
 
             # Enhance the PR body with a clean, deduplicated summary
             RAW_BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body')
-            ENHANCED_BODY=$(CHANGESET_PR_BODY="$RAW_BODY" node scripts/enhance-release-pr.mjs "$VERSION")
+            ENHANCED_BODY=$(CHANGESET_PR_BODY="$RAW_BODY" SOURCE_BRANCH="$SOURCE_BRANCH" node scripts/enhance-release-pr.mjs "$VERSION")
             if [ -n "$ENHANCED_BODY" ]; then
               gh api repos/triggerdotdev/trigger.dev/pulls/"$PR_NUMBER" \
                 -X PATCH \

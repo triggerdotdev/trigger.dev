@@ -5,6 +5,7 @@ on:
     types: [closed]
     branches:
       - main
+      - "release/**"
   workflow_dispatch:
     inputs:
       type:
@@ -38,7 +39,7 @@ jobs:
       github.repository == 'triggerdotdev/trigger.dev' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
-      github.event.pull_request.head.ref == 'changeset-release/main'
+      startsWith(github.event.pull_request.head.ref, 'changeset-release/')
     steps:
       - name: Show release summary
         env:
@@ -58,12 +59,13 @@ jobs:
       github.repository == 'triggerdotdev/trigger.dev' &&
       (
         (github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'release') ||
-        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'changeset-release/main')
+        (github.event_name == 'pull_request' && github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'changeset-release/'))
       )
     outputs:
       published: ${{ steps.changesets.outputs.published }}
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
+      is_latest: ${{ steps.compare.outputs.is_latest }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 # zizmor: ignore[artipacked] needs persisted git creds for tag push; no artifact upload here so no leak path
@@ -71,15 +73,25 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.sha }}
 
-      - name: Verify ref is on main
+      - name: Verify ref is on main or a release branch
         if: github.event_name == 'workflow_dispatch'
-        run: |
-          if ! git merge-base --is-ancestor "${GITHUB_EVENT_INPUTS_REF}" origin/main; then
-            echo "Error: ref must be an ancestor of main (i.e., already merged)"
-            exit 1
-          fi
         env:
           GITHUB_EVENT_INPUTS_REF: ${{ github.event.inputs.ref }}
+        run: |
+          set -e
+          if git merge-base --is-ancestor "${GITHUB_EVENT_INPUTS_REF}" origin/main; then
+            echo "Ref is reachable from main."
+            exit 0
+          fi
+          # Look for any origin/release/* branch that contains this ref.
+          for branch in $(git branch -r --list 'origin/release/*' --format '%(refname:short)'); do
+            if git merge-base --is-ancestor "${GITHUB_EVENT_INPUTS_REF}" "${branch}"; then
+              echo "Ref is reachable from ${branch}."
+              exit 0
+            fi
+          done
+          echo "Error: ref must be reachable from main or a release/* branch." >&2
+          exit 1
 
       - name: Setup pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
@@ -109,11 +121,60 @@ jobs:
       - name: Type check
         run: pnpm run typecheck --filter "@trigger.dev/*" --filter "trigger.dev"
 
+      # Decide whether this publish should become the new "latest" everywhere
+      # (npm dist-tag, Docker `:v4-beta` / `:latest`, GitHub release "Latest"
+      # badge, marketing-site changelog).
+      #
+      # Right rule: compare the new version to the current `latest`. NEW > CURRENT
+      # => becomes latest. Otherwise => goes to a per-line dist-tag (release-X.Y).
+      #
+      # Handles two scenarios with one rule:
+      #   - Lagged hotfix (main shipped 4.6.0, hotfix 4.4.7 from release/4.4.x):
+      #     4.4.7 < 4.6.0 -> NOT latest. dist-tag release-4.4.
+      #   - Fresh hotfix while main has unreleased work (main released 4.4.5,
+      #     PR #3173 merged but unreleased; hotfix 4.4.6 from release/4.4.x):
+      #     4.4.6 > 4.4.5 -> IS latest. Customers running `npm install` get it.
+      #
+      # Source of truth: npm's `latest` dist-tag for the canonical package
+      # (`@trigger.dev/sdk`). All public packages are version-locked via the
+      # `fixed` config, so any one is canonical.
+      - name: Compare new version to current latest
+        id: compare
+        run: |
+          set -euo pipefail
+          NEW=$(jq -r '.version' packages/cli-v3/package.json)
+          CURRENT=$(npm view @trigger.dev/sdk dist-tags.latest 2>/dev/null || true)
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
+            CURRENT="0.0.0"
+          fi
+
+          # sort -V is semver-aware. NEW strictly greater than CURRENT => becomes latest.
+          HIGHER=$(printf '%s\n%s\n' "$NEW" "$CURRENT" | sort -V | tail -1)
+          if [ "$HIGHER" = "$NEW" ] && [ "$NEW" != "$CURRENT" ]; then
+            IS_LATEST=true
+            DIST_TAG=""
+          else
+            IS_LATEST=false
+            DIST_TAG="release-$(echo "$NEW" | cut -d. -f1,2)"
+          fi
+
+          echo "new=${NEW}"             >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT}"     >> "$GITHUB_OUTPUT"
+          echo "is_latest=${IS_LATEST}" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=${DIST_TAG}"   >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Publishing ${NEW}; current latest=${CURRENT}; is_latest=${IS_LATEST}; dist_tag=${DIST_TAG:-latest}"
+
       - name: Publish
         id: changesets
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
-          publish: pnpm run changeset:release
+          # When this publish lags (lower than current latest), pass --tag release-<M.m>
+          # so npm's `latest` dist-tag is not touched. Otherwise default (= latest).
+          # `release-` prefix because npm rejects dist-tag names that parse as a valid
+          # semver range (`v4.4`, `4.4`, `4.4.x` would all be rejected).
+          # Build was done above; this step only publishes.
+          publish: ${{ steps.compare.outputs.dist_tag != '' && format('pnpm exec changeset publish --tag {0}', steps.compare.outputs.dist_tag) || 'pnpm exec changeset publish' }}
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,13 +194,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PR_BODY: ${{ github.event.pull_request.body }}
           STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION: ${{ steps.get_version.outputs.package_version }}
+          IS_LATEST: ${{ steps.compare.outputs.is_latest }}
         run: |
           VERSION="${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
           node scripts/generate-github-release.mjs "$VERSION" > /tmp/release-body.md
+          # --target dropped: changesets created the per-package tags on the
+          # release commit (which lives on main OR a release/* branch); the
+          # tag itself carries the right commit, no need to pin --target.
+          # --latest set explicitly: GitHub auto-detect uses publish date,
+          # which would mark a lagged hotfix as "Latest" by accident.
           gh release create "v${VERSION}" \
             --title "trigger.dev v${VERSION}" \
             --notes-file /tmp/release-body.md \
-            --target main
+            --latest="${IS_LATEST}"
 
       - name: Create and push Docker tag
         if: steps.changesets.outputs.published == 'true'
@@ -177,6 +244,7 @@ jobs:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     with:
       image_tag: v${{ needs.release.outputs.published_package_version }}
+      is_latest: ${{ needs.release.outputs.is_latest == 'true' }}
 
   # Trigger Helm chart release directly via workflow_call (same GITHUB_TOKEN
   # limitation as the Docker path). Runs after Docker images are published so
@@ -248,7 +316,11 @@ jobs:
           token: ${{ secrets.CROSS_REPO_PAT }}
           repository: triggerdotdev/trigger.dev-site-v3
           event-type: new-release
-          client-payload: '{"version": "${{ needs.release.outputs.published_package_version }}"}'
+          # is_latest is included so the marketing site's changelog can
+          # decide how to render lagged-line releases (e.g. demote to a
+          # secondary section, or skip headline placement). Existing site
+          # consumers ignoring the field are unaffected.
+          client-payload: '{"version": "${{ needs.release.outputs.published_package_version }}", "is_latest": ${{ needs.release.outputs.is_latest }}}'
 
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:

@@ -14,6 +14,11 @@ on:
         type: string
         required: false
         default: ""
+      is_latest:
+        description: "Whether this version should also tag :v4-beta. release.yml computes via version comparison."
+        type: boolean
+        required: false
+        default: false
     secrets:
       SENTRY_AUTH_TOKEN:
         required: false
@@ -53,10 +58,23 @@ jobs:
           ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
           image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
-          # if tag is a semver, also tag it as v4
           if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
-            # TODO: switch to v4 tag on GA
-            image_tags=$image_tags,$ref_without_tag:v4-beta
+            # Strip leading 'v' to get bare version (vX.Y.Z -> X.Y.Z)
+            VERSION="${STEPS_GET_TAG_OUTPUTS_TAG#v}"
+            MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
+
+            # Per-line floating tag — analog of npm "release-X.Y" dist-tag.
+            # Always set on a semver build so line-pinned consumers always get
+            # the latest patch on their line, regardless of whether it's the
+            # global :v4-beta / :latest.
+            image_tags=$image_tags,$ref_without_tag:release-${MAJOR_MINOR}
+
+            # Global :v4-beta updated only when release.yml decided this version
+            # is the highest-ever. Hotfixes on lagged lines must NOT clobber it.
+            # TODO: switch to :latest on v4 GA.
+            if [[ "${INPUTS_IS_LATEST}" == true ]]; then
+              image_tags=$image_tags,$ref_without_tag:v4-beta
+            fi
           fi
 
           # when pushing the mutable main tag, also push an immutable-by-convention
@@ -66,9 +84,11 @@ jobs:
           fi
 
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Docker tags: ${image_tags}"
         env:
           STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
           STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
+          INPUTS_IS_LATEST: ${{ inputs.is_latest }}
 
       - name: 📝 Set the build info
         id: set_build_info
