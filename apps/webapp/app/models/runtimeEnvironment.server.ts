@@ -54,7 +54,10 @@ function toAuthenticated(
     paused: env.paused,
     shortcode: env.shortcode,
     maximumConcurrencyLimit: env.maximumConcurrencyLimit,
-    concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor,
+    // Coerce Prisma's Decimal to a plain number — the slim type accepts
+    // both, but downstream consumers shouldn't have to narrow before
+    // doing arithmetic. Lossless at this scale (Decimal(4,2)).
+    concurrencyLimitBurstFactor: env.concurrencyLimitBurstFactor.toNumber(),
     builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
     createdAt: env.createdAt,
     updatedAt: env.updatedAt,

@@ -18,21 +18,52 @@ import { validateJWT } from "@trigger.dev/core/v3/jwt";
 import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 
+export type FallbackPrismaClients = {
+  // Used for writes (setUserRole, mutateRole, etc.) and any reads that
+  // can't tolerate replica lag (currently none on this controller, but
+  // kept for symmetry with the rest of the webapp).
+  primary: PrismaClient;
+  // Used for read-only auth-path queries: bearer-token env lookup,
+  // PAT lookup, session user lookup. Spreads the high-frequency auth
+  // load away from the primary, matching what `findEnvironmentByApiKey`
+  // / `findEnvironmentById` did before this PR.
+  replica: PrismaClient;
+};
+
+// Backwards-compat: a single PrismaClient is treated as both primary
+// and replica. Callers that care about replica isolation pass the
+// explicit FallbackPrismaClients shape.
+type PrismaInput = PrismaClient | FallbackPrismaClients;
+
+function resolvePrismaClients(input: PrismaInput): FallbackPrismaClients {
+  return "primary" in input ? input : { primary: input, replica: input };
+}
+
 export class RoleBaseAccessFallback {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly clients: FallbackPrismaClients;
+
+  constructor(prisma: PrismaInput) {
+    this.clients = resolvePrismaClients(prisma);
+  }
 
   create(
     helpers: { getSessionUserId: (request: Request) => Promise<string | null> }
   ): RoleBaseAccessFallbackController {
-    return new RoleBaseAccessFallbackController(this.prisma, helpers);
+    return new RoleBaseAccessFallbackController(this.clients, helpers);
   }
 }
 
 class RoleBaseAccessFallbackController implements RoleBaseAccessController {
+  private readonly prisma: PrismaClient; // alias for primary — used by writes
+  private readonly replica: PrismaClient;
+
   constructor(
-    private readonly prisma: PrismaClient,
+    clients: FallbackPrismaClients,
     private readonly helpers: { getSessionUserId: (request: Request) => Promise<string | null> }
-  ) {}
+  ) {
+    this.prisma = clients.primary;
+    this.replica = clients.replica;
+  }
 
   async authenticateBearer(
     request: Request,
@@ -47,7 +78,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
       // Match the include shape of the slim AuthenticatedEnvironment so
       // the bridge can use the returned env without a follow-up fetch.
-      const env = await this.prisma.runtimeEnvironment.findFirst({
+      const env = await this.replica.runtimeEnvironment.findFirst({
         where: { id: envId },
         include: {
           project: true,
@@ -112,7 +143,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
         ? { where: { branchName, archivedAt: null } }
         : undefined,
     } as const;
-    let env = await this.prisma.runtimeEnvironment.findFirst({
+    let env = await this.replica.runtimeEnvironment.findFirst({
       where: { apiKey: rawToken },
       include,
     });
@@ -124,7 +155,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     // on the new auth path. The PR's e2e suite covers this in
     // auth-cross-cutting.e2e.full.test.ts ("revoked key within grace").
     if (!env) {
-      const revoked = await this.prisma.revokedApiKey.findFirst({
+      const revoked = await this.replica.revokedApiKey.findFirst({
         where: { apiKey: rawToken, expiresAt: { gt: new Date() } },
         include: { runtimeEnvironment: { include } },
       });
@@ -187,7 +218,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     const userId = await this.helpers.getSessionUserId(request);
     if (!userId) return { ok: false, reason: "unauthenticated" };
 
-    const user = await this.prisma.user.findFirst({ where: { id: userId } });
+    const user = await this.replica.user.findFirst({ where: { id: userId } });
     if (!user) return { ok: false, reason: "unauthenticated" };
 
     const subject: RbacSubject = {
@@ -244,7 +275,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     }
 
     const hashedToken = createHash("sha256").update(rawToken).digest("hex");
-    const pat = await this.prisma.personalAccessToken.findFirst({
+    const pat = await this.replica.personalAccessToken.findFirst({
       where: { hashedToken, revokedAt: null },
       select: { id: true, userId: true },
     });
@@ -357,18 +388,18 @@ function extractJWTSub(token: string): string | undefined {
   }
 }
 
-// Coerce Prisma's RuntimeEnvironment payload (with project/organization/
+// Coerce a Prisma RuntimeEnvironment payload (with project/organization/
 // orgMember/parentEnvironment includes) into the slim AuthenticatedEnvironment
-// the auth contract carries. Both shapes share most fields verbatim;
-// concurrencyLimitBurstFactor is a Prisma `Decimal(4,2)` that we coerce to
-// number (lossless at this scale, avoids dragging Prisma's Decimal class
-// across the auth boundary).
-// Pass through any compatible Prisma row (with project/organization/
-// orgMember/parentEnvironment includes) — TS structural typing accepts
-// extra fields, so the wide Prisma payload satisfies the slim contract.
-// We just call this as a typed identity to ensure the shape fits.
+// the auth contract carries. The slim type accepts both `number` and
+// Decimal-like for `concurrencyLimitBurstFactor`, but explicit coercion
+// here keeps the value a plain number across the auth boundary so
+// downstream consumers don't have to narrow before doing arithmetic.
 function toAuthenticatedEnvironment(env: RbacEnvironment): RbacEnvironment {
-  return env;
+  const burst = env.concurrencyLimitBurstFactor;
+  return {
+    ...env,
+    concurrencyLimitBurstFactor: typeof burst === "number" ? burst : burst.toNumber(),
+  };
 }
 
 function toRbacUser(user: {

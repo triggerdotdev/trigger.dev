@@ -98,11 +98,17 @@
       "v3/semanticInternalAttributes": [
         "dist/commonjs/v3/semanticInternalAttributes.d.ts"
       ],
+      "v3/auth/environment": [
+        "dist/commonjs/v3/auth/environment.d.ts"
+      ],
       "v3/utils/durations": [
         "dist/commonjs/v3/utils/durations.d.ts"
       ],
       "v3/utils/flattenAttributes": [
         "dist/commonjs/v3/utils/flattenAttributes.d.ts"
+      ],
+      "v3/utils/gitBranch": [
+        "dist/commonjs/v3/utils/gitBranch.d.ts"
       ],
       "v3/utils/ioSerialization": [
         "dist/commonjs/v3/utils/ioSerialization.d.ts"

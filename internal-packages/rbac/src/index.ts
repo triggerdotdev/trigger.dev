@@ -14,6 +14,12 @@ export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigg
 
 type RbacHelpers = { getSessionUserId: (request: Request) => Promise<string | null> };
 
+// Either a single PrismaClient (used for both writes and reads — fine
+// for callers that don't have a separate replica), or `{primary, replica}`
+// where reads on the auth hot path go to the replica. The fallback
+// reads on every request, so callers with a replica should pass both.
+export type RbacPrismaInput = PrismaClient | { primary: PrismaClient; replica: PrismaClient };
+
 export type RbacCreateOptions = {
   // When true, skip loading the plugin, useful for tests
   forceFallback?: boolean;
@@ -47,12 +53,12 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
 class LazyController implements RoleBaseAccessController {
   private readonly _init: Promise<RoleBaseAccessController>;
 
-  constructor(prisma: PrismaClient, helpers: RbacHelpers, options?: RbacCreateOptions) {
+  constructor(prisma: RbacPrismaInput, helpers: RbacHelpers, options?: RbacCreateOptions) {
     this._init = this.load(prisma, helpers, options);
   }
 
   private async load(
-    prisma: PrismaClient,
+    prisma: RbacPrismaInput,
     helpers: RbacHelpers,
     options?: RbacCreateOptions
   ): Promise<RoleBaseAccessController> {
@@ -239,7 +245,7 @@ class RoleBaseAccess {
   // Synchronous — returns a lazy controller that resolves any installed
   // plugin on first call.
   create(
-    prisma: PrismaClient,
+    prisma: RbacPrismaInput,
     helpers: RbacHelpers,
     options?: RbacCreateOptions
   ): RoleBaseAccessController {
