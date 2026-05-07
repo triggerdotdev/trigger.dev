@@ -1,6 +1,5 @@
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import { trace } from "@opentelemetry/api";
 import {
   MeterProvider,
   InMemoryMetricExporter,
@@ -9,15 +8,24 @@ import {
 } from "@opentelemetry/sdk-metrics";
 
 export function createInMemoryTracing() {
-  // Initialize the tracer provider and exporter
+  // Initialize the tracer provider and exporter — but do NOT call
+  // `provider.register()`. Calling register() sets the OTel global APIs
+  // (trace/context/propagation), and webapp's `~/v3/tracer.server.ts`
+  // also calls register() via its singleton. Webapp's `vitest.config.ts`
+  // uses `pool: "forks"` with `--no-file-parallelism`, so all test
+  // files in a shard share one process — globals set by the first test
+  // to load tracer.server.ts conflict with subsequent createInMemoryTracing
+  // calls, throwing "Attempted duplicate registration of API: trace".
+  //
+  // The tracer returned from `provider.getTracer(...)` is scoped to
+  // this provider, so the InMemorySpanExporter still receives the
+  // spans the consuming test creates — no global registration needed.
   const exporter = new InMemorySpanExporter();
   const provider = new NodeTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
-  provider.register();
 
-  // Retrieve the tracer
-  const tracer = trace.getTracer("test-tracer");
+  const tracer = provider.getTracer("test-tracer");
 
   return {
     exporter,
