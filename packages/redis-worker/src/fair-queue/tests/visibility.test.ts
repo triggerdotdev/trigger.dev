@@ -2,7 +2,7 @@ import { describe, expect } from "vitest";
 import { redisTest } from "@internal/testcontainers";
 import { createRedisClient } from "@internal/redis";
 import { VisibilityManager, DefaultFairQueueKeyProducer } from "../index.js";
-import type { FairQueueKeyProducer } from "../types.js";
+import type { FairQueueKeyProducer, ReclaimedMessageInfo } from "../types.js";
 
 describe("VisibilityManager", () => {
   let keys: FairQueueKeyProducer;
@@ -465,7 +465,8 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:release-batch";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add messages to queue and claim them
         for (let i = 1; i <= 5; i++) {
@@ -501,7 +502,9 @@ describe("VisibilityManager", () => {
           queueId,
           queueKey,
           queueItemsKey,
-          masterQueueKey
+          tenantQueueIndexKey,
+          dispatchKey,
+          "t1"
         );
 
         // Verify 2 messages still in-flight
@@ -539,17 +542,18 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:empty-release";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Should not throw when releasing empty array
-        await manager.releaseBatch([], queueId, queueKey, queueItemsKey, masterQueueKey);
+        await manager.releaseBatch([], queueId, queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, "t1");
 
         await manager.close();
       }
     );
 
     redisTest(
-      "should update master queue with oldest message timestamp",
+      "should update dispatch indexes with oldest message timestamp",
       { timeout: 10000 },
       async ({ redisOptions }) => {
         keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
@@ -562,10 +566,11 @@ describe("VisibilityManager", () => {
         });
 
         const redis = createRedisClient(redisOptions);
-        const queueId = "tenant:t1:queue:master-update";
+        const queueId = "tenant:t1:queue:dispatch-update";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const masterQueueKey = keys.masterQueueKey(0);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim messages
         const baseTime = Date.now();
@@ -586,11 +591,276 @@ describe("VisibilityManager", () => {
         const claimed = await manager.claimBatch(queueId, queueKey, queueItemsKey, "consumer-1", 3);
 
         // Release all messages back
-        await manager.releaseBatch(claimed, queueId, queueKey, queueItemsKey, masterQueueKey);
+        await manager.releaseBatch(claimed, queueId, queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, "t1");
 
-        // Master queue should have been updated
-        const masterScore = await redis.zscore(masterQueueKey, queueId);
-        expect(masterScore).not.toBeNull();
+        // Tenant queue index should have the queue with correct score
+        const tenantQueueScore = await redis.zscore(tenantQueueIndexKey, queueId);
+        expect(tenantQueueScore).not.toBeNull();
+
+        // Dispatch index should have the tenant
+        const dispatchScore = await redis.zscore(dispatchKey, "t1");
+        expect(dispatchScore).not.toBeNull();
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
+  });
+
+  describe("reclaimTimedOut", () => {
+    redisTest(
+      "should return reclaimed message info with tenantId for concurrency release",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 100, // Very short timeout
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:reclaim-test";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
+
+        // Add and claim a message
+        const messageId = "reclaim-msg";
+        const storedMessage = {
+          id: messageId,
+          queueId,
+          tenantId: "t1",
+          payload: { id: 1, value: "test" },
+          timestamp: Date.now() - 1000,
+          attempt: 1,
+          metadata: { orgId: "org-123" },
+        };
+
+        await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+        await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+
+        // Claim with very short timeout
+        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 100);
+        expect(claimResult.claimed).toBe(true);
+
+        // Wait for timeout to expire
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        // Reclaim should return the message info
+        const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
+          queueKey: keys.queueKey(qId),
+          queueItemsKey: keys.queueItemsKey(qId),
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
+        }));
+
+        expect(reclaimedMessages).toHaveLength(1);
+        expect(reclaimedMessages[0]).toEqual({
+          messageId,
+          queueId,
+          tenantId: "t1",
+          metadata: { orgId: "org-123" },
+        });
+
+        // Verify message is back in queue
+        const queueCount = await redis.zcard(queueKey);
+        expect(queueCount).toBe(1);
+
+        // Verify message is back in queue with its original timestamp (not the deadline)
+        const queueMessages = await redis.zrange(queueKey, 0, -1, "WITHSCORES");
+        expect(queueMessages[0]).toBe(messageId);
+        expect(parseInt(queueMessages[1]!)).toBe(storedMessage.timestamp);
+
+        // Verify message is no longer in-flight
+        const inflightCount = await manager.getTotalInflightCount();
+        expect(inflightCount).toBe(0);
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should return empty array when no messages have timed out",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 60000, // Long timeout
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:no-timeout";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
+
+        // Add and claim a message with long timeout
+        const messageId = "long-timeout-msg";
+        const storedMessage = {
+          id: messageId,
+          queueId,
+          tenantId: "t1",
+          payload: { id: 1 },
+          timestamp: Date.now() - 1000,
+          attempt: 1,
+        };
+
+        await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+        await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+
+        await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1");
+
+        // Reclaim should return empty array (message hasn't timed out)
+        const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
+          queueKey: keys.queueKey(qId),
+          queueItemsKey: keys.queueItemsKey(qId),
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
+        }));
+
+        expect(reclaimedMessages).toHaveLength(0);
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should reclaim multiple timed-out messages and return all their info",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 100,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
+
+        // Add and claim messages for two different tenants
+        for (const tenant of ["t1", "t2"]) {
+          const queueId = `tenant:${tenant}:queue:multi-reclaim`;
+          const queueKey = keys.queueKey(queueId);
+          const queueItemsKey = keys.queueItemsKey(queueId);
+
+          const messageId = `msg-${tenant}`;
+          const storedMessage = {
+            id: messageId,
+            queueId,
+            tenantId: tenant,
+            payload: { id: 1 },
+            timestamp: Date.now() - 1000,
+            attempt: 1,
+          };
+
+          await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+          await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+
+          await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 100);
+        }
+
+        // Wait for timeout
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        // Reclaim should return both messages
+        const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
+          queueKey: keys.queueKey(qId),
+          queueItemsKey: keys.queueItemsKey(qId),
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
+        }));
+
+        expect(reclaimedMessages).toHaveLength(2);
+
+        // Verify both tenants are represented
+        const tenantIds = reclaimedMessages.map((m: ReclaimedMessageInfo) => m.tenantId).sort();
+        expect(tenantIds).toEqual(["t1", "t2"]);
+
+        await manager.close();
+        await redis.quit();
+      }
+    );
+
+    redisTest(
+      "should use fallback tenantId extraction when message data is missing or corrupted",
+      { timeout: 10000 },
+      async ({ redisOptions }) => {
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const manager = new VisibilityManager({
+          redis: redisOptions,
+          keys,
+          shardCount: 1,
+          defaultTimeoutMs: 100,
+        });
+
+        const redis = createRedisClient(redisOptions);
+        const queueId = "tenant:t1:queue:fallback-test";
+        const queueKey = keys.queueKey(queueId);
+        const queueItemsKey = keys.queueItemsKey(queueId);
+        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const dispatchKey = keys.dispatchKey(0);
+        const inflightDataKey = keys.inflightDataKey(0);
+
+        // Add and claim a message
+        const messageId = "fallback-msg";
+        const storedMessage = {
+          id: messageId,
+          queueId,
+          tenantId: "t1",
+          payload: { id: 1 },
+          timestamp: Date.now() - 1000,
+          attempt: 1,
+          metadata: { orgId: "org-123" },
+        };
+
+        await redis.zadd(queueKey, storedMessage.timestamp, messageId);
+        await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
+
+        // Claim the message
+        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 100);
+        expect(claimResult.claimed).toBe(true);
+
+        // Corrupt the in-flight data by setting invalid JSON
+        await redis.hset(inflightDataKey, messageId, "not-valid-json{{{");
+
+        // Wait for timeout
+        await new Promise((resolve) => setTimeout(resolve, 150));
+
+        // Reclaim should still work using fallback extraction
+        const reclaimedMessages = await manager.reclaimTimedOut(0, (qId) => ({
+          queueKey: keys.queueKey(qId),
+          queueItemsKey: keys.queueItemsKey(qId),
+          tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(qId)),
+          dispatchKey,
+          tenantId: keys.extractTenantId(qId),
+        }));
+
+        expect(reclaimedMessages).toHaveLength(1);
+        expect(reclaimedMessages[0]).toEqual({
+          messageId,
+          queueId,
+          tenantId: "t1", // Extracted from queueId via fallback
+          metadata: {}, // Empty metadata since we couldn't parse the stored message
+        });
 
         await manager.close();
         await redis.quit();

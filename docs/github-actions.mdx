@@ -83,6 +83,41 @@ jobs:
 
 If you already have a GitHub action file, you can just add the final step "🚀 Deploy Trigger.dev" to your existing file.
 
+## Preview branches
+
+To deploy to preview branches from Pull Requests and have them archived when PRs are merged or closed, use a workflow that runs on `pull_request` with **all four types** including `closed`:
+
+```yaml .github/workflows/trigger-preview-branches.yml
+name: Deploy to Trigger.dev (preview branches)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Deploy preview branch
+        run: npx trigger.dev@latest deploy --env preview
+        env:
+          TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_ACCESS_TOKEN }}
+```
+
+<Note>
+  **Include `closed`** in the `pull_request.types` list. Without it, preview branches won't be archived when PRs are merged or closed, and you may hit the limit on active preview branches. See [Preview branches](/deployment/preview-branches#preview-branches-with-github-actions-recommended) for more details.
+</Note>
+
 ## Creating a Personal Access Token
 
 <Steps>

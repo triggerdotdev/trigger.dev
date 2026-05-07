@@ -17,6 +17,7 @@ import {
 
 export type {
   AnyOnStartHookFunction,
+  AnyOnStartAttemptHookFunction,
   TaskStartHookParams,
   OnStartHookFunction,
   AnyOnFailureHookFunction,

@@ -52,7 +52,15 @@ describe("Task Runs V2", () => {
       100, // cost_in_cents
       0, // base_cost_in_cents
       { data: { key: "value" } }, // output
-      { data: { type: "BUILT_IN_ERROR", name: "Error", message: "error", stackTrace: "stack trace" } }, // error
+      {
+        data: {
+          type: "BUILT_IN_ERROR",
+          name: "Error",
+          message: "error",
+          stackTrace: "stack trace",
+        },
+      }, // error
+      "1234567890", // error_fingerprint
       ["tag1", "tag2"], // tags
       "1.0.0", // task_version
       "1.0.0", // sdk_version
@@ -74,6 +82,9 @@ describe("Task Runs V2", () => {
       ["bulk_action_group_id_1234", "bulk_action_group_id_1235"], // bulk_action_group_ids
       "", // worker_queue
       null, // max_duration_in_seconds
+      "", // trigger_source
+      "", // root_trigger_source
+      null, // is_warm_start
     ];
 
     const [insertError, insertResult] = await insert([taskRunData]);
@@ -180,6 +191,7 @@ describe("Task Runs V2", () => {
       0, // base_cost_in_cents
       { data: null }, // output
       { data: null }, // error
+      "", // error_fingerprint
       [], // tags
       "", // task_version
       "", // sdk_version
@@ -201,6 +213,9 @@ describe("Task Runs V2", () => {
       [], // bulk_action_group_ids
       "", // worker_queue
       null, // max_duration_in_seconds
+      "", // trigger_source
+      "", // root_trigger_source
+      null, // is_warm_start
     ];
 
     const run2: TaskRunInsertArray = [
@@ -230,6 +245,7 @@ describe("Task Runs V2", () => {
       0, // base_cost_in_cents
       { data: null }, // output
       { data: null }, // error
+      "", // error_fingerprint
       [], // tags
       "", // task_version
       "", // sdk_version
@@ -251,6 +267,9 @@ describe("Task Runs V2", () => {
       [], // bulk_action_group_ids
       "", // worker_queue
       null, // max_duration_in_seconds
+      "", // trigger_source
+      "", // root_trigger_source
+      null, // is_warm_start
     ];
 
     const [insertError, insertResult] = await insert([run1, run2]);
@@ -327,6 +346,7 @@ describe("Task Runs V2", () => {
         0, // base_cost_in_cents
         { data: null }, // output
         { data: null }, // error
+        "", // error_fingerprint
         [], // tags
         "", // task_version
         "", // sdk_version
@@ -348,6 +368,9 @@ describe("Task Runs V2", () => {
         [], // bulk_action_group_ids
         "", // worker_queue
         null, // max_duration_in_seconds
+        "", // trigger_source
+        "", // root_trigger_source
+        null, // is_warm_start
       ];
 
       const [insertError, insertResult] = await insert([taskRun]);

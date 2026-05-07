@@ -1,5 +1,121 @@
 # internal-platform
 
+## 4.4.5
+
+### Patch Changes
+
+- Add `isReplay` boolean to the run context (`ctx.run.isReplay`), derived from the existing `replayedFromTaskRunFriendlyId` database field. Defaults to `false` for backwards compatibility. ([#3454](https://github.com/triggerdotdev/trigger.dev/pull/3454))
+- Redact the `resolveWaitpoint` runtime log so it only emits `id` and `type` instead of the full completed waitpoint. Previously the log printed the entire waitpoint (including `output`) to stdout in production runs, which could leak sensitive payloads. The value returned by `wait.forToken()` is unchanged. ([#3490](https://github.com/triggerdotdev/trigger.dev/pull/3490))
+- Add `SessionId` friendly ID generator and schemas for the new durable Session primitive. Exported from `@trigger.dev/core/v3/isomorphic` alongside `RunId`, `BatchId`, etc. Ships the `CreateSessionStreamWaitpoint` request/response schemas alongside the main Session CRUD. ([#3417](https://github.com/triggerdotdev/trigger.dev/pull/3417))
+- Truncate large error stacks and messages to prevent OOM crashes. Stack traces are capped at 50 frames (keeping top 5 + bottom 45 with an omission notice), individual stack lines at 1024 chars, and error messages at 1000 chars. Applied in parseError, sanitizeError, and OTel span recording. ([#3405](https://github.com/triggerdotdev/trigger.dev/pull/3405))
+
+## 4.4.4
+
+### Patch Changes
+
+- Fix `list_deploys` MCP tool failing when deployments have null `runtime` or `runtimeVersion` fields. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
+- Propagate run tags to span attributes so they can be extracted server-side for LLM cost attribution metadata. ([#3213](https://github.com/triggerdotdev/trigger.dev/pull/3213))
+- Add `get_span_details` MCP tool for inspecting individual spans within a run trace. ([#3255](https://github.com/triggerdotdev/trigger.dev/pull/3255))
+
+  - New `get_span_details` tool returns full span attributes, timing, events, and AI enrichment (model, tokens, cost, speed)
+  - Span IDs now shown in `get_run_details` trace output for easy discovery
+  - New API endpoint `GET /api/v1/runs/:runId/spans/:spanId`
+  - New `retrieveSpan()` method on the API client
+
+- MCP server improvements: new tools, bug fixes, and new flags. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
+
+  **New tools:**
+
+  - `get_query_schema` — discover available TRQL tables and columns
+  - `query` — execute TRQL queries against your data
+  - `list_dashboards` — list built-in dashboards and their widgets
+  - `run_dashboard_query` — execute a single dashboard widget query
+  - `whoami` — show current profile, user, and API URL
+  - `list_profiles` — list all configured CLI profiles
+  - `switch_profile` — switch active profile for the MCP session
+  - `start_dev_server` — start `trigger dev` in the background and stream output
+  - `stop_dev_server` — stop the running dev server
+  - `dev_server_status` — check dev server status and view recent logs
+
+  **New API endpoints:**
+
+  - `GET /api/v1/query/schema` — query table schema discovery
+  - `GET /api/v1/query/dashboards` — list built-in dashboards
+
+  **New features:**
+
+  - `--readonly` flag hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes
+  - `read:query` JWT scope for query endpoint authorization
+  - `get_run_details` trace output is now paginated with cursor support
+  - MCP tool annotations (`readOnlyHint`, `destructiveHint`) for all tools
+
+  **Bug fixes:**
+
+  - Fixed `search_docs` tool failing due to renamed upstream Mintlify tool (`SearchTriggerDev` → `search_trigger_dev`)
+  - Fixed `list_deploys` failing when deployments have null `runtime`/`runtimeVersion` fields (#3139)
+  - Fixed `list_preview_branches` crashing due to incorrect response shape access
+  - Fixed `metrics` table column documented as `value` instead of `metric_value` in query docs
+  - Fixed dev CLI leaking build directories on rebuild — deprecated workers now clean up their build dirs when their last run completes
+
+  **Context optimizations:**
+
+  - `get_query_schema` now requires a table name and returns only one table's schema (was returning all tables)
+  - `get_current_worker` no longer inlines payload schemas; use new `get_task_schema` tool instead
+  - Query results formatted as text tables instead of JSON (~50% fewer tokens)
+  - `cancel_run`, `list_deploys`, `list_preview_branches` formatted as text instead of raw JSON
+  - Schema and dashboard API responses cached to avoid redundant fetches
+
+- Large run outputs can use the new API which allows switching object storage providers. ([#3275](https://github.com/triggerdotdev/trigger.dev/pull/3275))
+- Add optional `hasPrivateLink` field to the dequeue message organization object for private networking support ([#3264](https://github.com/triggerdotdev/trigger.dev/pull/3264))
+- Add support for setting TTL (time-to-live) defaults at the task level and globally in trigger.config.ts, with per-trigger overrides still taking precedence ([#3196](https://github.com/triggerdotdev/trigger.dev/pull/3196))
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+
+## 4.4.3
+
+### Patch Changes
+
+- Auto-cancel in-flight dev runs when the CLI exits, using a detached watchdog process that survives pnpm SIGKILL ([#3191](https://github.com/triggerdotdev/trigger.dev/pull/3191))
+
+## 4.4.2
+
+## 4.4.1
+
+## 4.4.0
+
+### Patch Changes
+
+- Add `maxDelay` option to debounce feature. This allows setting a maximum time limit for how long a debounced run can be delayed, ensuring execution happens within a specified window even with continuous triggers. ([#2984](https://github.com/triggerdotdev/trigger.dev/pull/2984))
+
+  ```typescript
+  await myTask.trigger(payload, {
+    debounce: {
+      key: "my-key",
+      delay: "5s",
+      maxDelay: "30m", // Execute within 30 minutes regardless of continuous triggers
+    },
+  });
+  ```
+
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- fix: vendor superjson to fix ESM/CJS compatibility ([#2949](https://github.com/triggerdotdev/trigger.dev/pull/2949))
+
+  Bundle superjson during build to avoid `ERR_REQUIRE_ESM` errors on Node.js versions that don't support `require(ESM)` by default (< 22.12.0) and AWS Lambda which intentionally disables it.
+
+- Add Vercel integration support to API schemas: `commitSHA` and `integrationDeployments` on deployment responses, and `source` field for environment variable imports. ([#2994](https://github.com/triggerdotdev/trigger.dev/pull/2994))
+
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Fix batch trigger failing with "ReadableStream is locked" error when network failures occur mid-stream. Added safe stream cancellation that gracefully handles locked streams during retry attempts. ([#2917](https://github.com/triggerdotdev/trigger.dev/pull/2917))
+- Add a maxDepth to flatten/unflattenAttributes to prevent possible issues ([#2890](https://github.com/triggerdotdev/trigger.dev/pull/2890))
+
 ## 4.3.2
 
 ## 4.3.1

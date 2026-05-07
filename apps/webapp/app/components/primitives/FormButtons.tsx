@@ -7,7 +7,7 @@ export function FormButtons({
   className,
 }: {
   cancelButton?: React.ReactNode;
-  confirmButton: React.ReactNode;
+  confirmButton?: React.ReactNode;
   defaultAction?: { name: string; value: string; disabled?: boolean };
   className?: string;
 }) {
@@ -29,7 +29,7 @@ export function FormButtons({
           aria-hidden="true"
         />
       )}
-      {cancelButton ? cancelButton : <div />} {confirmButton}
+      {cancelButton ? cancelButton : <div />} {confirmButton ?? null}
     </div>
   );
 }

@@ -92,6 +92,23 @@ export type RunQueueOptions = {
     processMarkedJitterInMs?: number;
     callback: ConcurrencySweeperCallback;
   };
+  /** TTL system for automatic run expiration */
+  ttlSystem?: {
+    /** Number of shards for TTL sorted sets (default: same as queue shards) */
+    shardCount?: number;
+    /** How often to poll each shard for expired runs (ms, default: 1000) */
+    pollIntervalMs?: number;
+    /** Max number of runs to expire per poll per shard (default: 100) */
+    batchSize?: number;
+    /** Whether TTL consumers (polling loops) are disabled on this instance (default: false) */
+    consumersDisabled?: boolean;
+    /** Key suffix for TTL worker's queue sorted set (relative to RunQueue keyPrefix) */
+    workerQueueSuffix: string;
+    /** Key suffix for TTL worker's items hash (relative to RunQueue keyPrefix) */
+    workerItemsSuffix: string;
+    /** Visibility timeout for TTL worker jobs (ms, default: 30000) */
+    visibilityTimeoutMs?: number;
+  };
 };
 
 export interface ConcurrencySweeperCallback {
@@ -271,6 +288,7 @@ export class RunQueue {
     this.#setupSubscriber();
     this.#setupLuaLogSubscriber();
     this.#startMasterQueueConsumers();
+    this.#startTtlConsumers();
     this.#registerCommands();
   }
 
@@ -600,16 +618,40 @@ export class RunQueue {
     );
   }
 
+  /**
+   * Enqueue a run message for execution.
+   *
+   * The Lua script atomically decides between two paths:
+   *
+   * **Fast path** (when `enableFastPath` is true and conditions are met):
+   * Skips the queue sorted set and pushes directly to the worker queue (Redis list).
+   * This eliminates the ~500ms debounce delay from the processQueueForWorkerQueue job.
+   * Conditions: no available messages in the queue, env concurrency available, queue concurrency available.
+   *
+   * **Slow path** (default, or when fast-path conditions aren't met):
+   * Adds to the queue sorted set, then a debounced processQueueForWorkerQueue job moves it
+   * to the worker queue after checking concurrency limits.
+   *
+   * Both paths are atomic within their respective Lua scripts. The fast path claims concurrency
+   * slots (SADD to currentConcurrency sets) identically to how the dequeue Lua does, so
+   * ack/nack/release operations work the same regardless of which path was taken.
+   *
+   * @param enableFastPath - Gated per WorkerInstanceGroup. Dev environments always true.
+   *   Production regions opt in via the `enableFastPath` flag on WorkerInstanceGroup.
+   */
   public async enqueueMessage({
     env,
     message,
     workerQueue,
     skipDequeueProcessing = false,
+    enableFastPath = false,
   }: {
     env: MinimalAuthenticatedEnvironment;
     message: InputPayload;
     workerQueue: string;
     skipDequeueProcessing?: boolean;
+    /** When true, the Lua script may push directly to the worker queue if concurrency is available. */
+    enableFastPath?: boolean;
   }) {
     return await this.#trace(
       "enqueueMessage",
@@ -617,6 +659,9 @@ export class RunQueue {
         const { runId, concurrencyKey } = message;
 
         const queueKey = this.keys.queueKey(env, message.queue, concurrencyKey);
+
+        // For CK queues, use wildcard dedup so all CKs share one worker queue processing job
+        const dedupQueueKey = concurrencyKey ? this.keys.toCkWildcard(queueKey) : queueKey;
 
         propagation.inject(context.active(), message);
 
@@ -635,13 +680,33 @@ export class RunQueue {
           attempt: 0,
         };
 
-        if (!skipDequeueProcessing) {
-          // This will move the message to the worker queue so it can be dequeued
+        // Pass TTL info to enqueue so it can be added atomically
+        const ttlInfo =
+          message.ttlExpiresAt && this.options.ttlSystem
+            ? {
+                ttlExpiresAt: message.ttlExpiresAt,
+                ttlQueueKey: this.keys.ttlQueueKeyForShard(this.#getTtlShardForQueue(queueKey)),
+                ttlMember: `${queueKey}|${message.runId}|${message.orgId}`,
+              }
+            : undefined;
+
+        // Enqueue the message. The Lua script atomically decides whether to fast-path
+        // (push directly to worker queue) or slow-path (add to queue sorted set).
+        const fastPathTaken = await this.#callEnqueueMessage(
+          messagePayload,
+          ttlInfo,
+          enableFastPath
+        );
+
+        span.setAttribute("fastPath", fastPathTaken);
+
+        if (!fastPathTaken && !skipDequeueProcessing) {
+          // Slow path: schedule the dequeue job to move the message from queue to worker queue
           await this.worker.enqueueOnce({
-            id: queueKey, // dedupe by environment, queue, and concurrency key
+            id: dedupQueueKey, // dedupe by environment and base queue (CK wildcard for CK queues)
             job: "processQueueForWorkerQueue",
             payload: {
-              queueKey,
+              queueKey: dedupQueueKey,
               environmentId: env.id,
             },
             // Add a small delay to dedupe messages so at most one of these will processed,
@@ -649,8 +714,6 @@ export class RunQueue {
             availableAt: new Date(Date.now() + (this.options.processWorkerQueueDebounceMs ?? 500)), // 500ms from now
           });
         }
-
-        return await this.#callEnqueueMessage(messagePayload);
       },
       {
         kind: SpanKind.PRODUCER,
@@ -740,12 +803,17 @@ export class RunQueue {
         });
 
         if (!options?.skipDequeueProcessing) {
+          // For CK queues, use wildcard dedup so all CKs share one worker queue processing job
+          const dedupQueueKey = message.concurrencyKey
+            ? this.keys.toCkWildcard(message.queue)
+            : message.queue;
+
           // This will move the message to the worker queue so it can be dequeued
           await this.worker.enqueueOnce({
-            id: message.queue, // dedupe by environment, queue, and concurrency key
+            id: dedupQueueKey, // dedupe by environment and base queue
             job: "processQueueForWorkerQueue",
             payload: {
-              queueKey: message.queue,
+              queueKey: dedupQueueKey,
               environmentId: message.environmentId,
             },
             // Add a small delay to dedupe messages so at most one of these will processed,
@@ -820,12 +888,17 @@ export class RunQueue {
         }
 
         if (!skipDequeueProcessing) {
+          // For CK queues, use wildcard dedup so all CKs share one worker queue processing job
+          const dedupQueueKey = message.concurrencyKey
+            ? this.keys.toCkWildcard(message.queue)
+            : message.queue;
+
           // This will move the message to the worker queue so it can be dequeued
           await this.worker.enqueueOnce({
-            id: message.queue, // dedupe by environment, queue, and concurrency key
+            id: dedupQueueKey, // dedupe by environment and base queue
             job: "processQueueForWorkerQueue",
             payload: {
-              queueKey: message.queue,
+              queueKey: dedupQueueKey,
               environmentId: message.environmentId,
             },
             // Add a small delay to dedupe messages so at most one of these will processed,
@@ -1209,6 +1282,169 @@ export class RunQueue {
     }
   }
 
+  // TTL System Methods
+
+  #startTtlConsumers() {
+    if (!this.options.ttlSystem) {
+      this.logger.debug("TTL system disabled (no ttlSystem config)");
+      return;
+    }
+
+    if (this.options.ttlSystem.consumersDisabled) {
+      this.logger.debug("TTL consumers disabled on this instance");
+      return;
+    }
+
+    const shardCount = this.options.ttlSystem.shardCount ?? this.shardCount;
+
+    for (let i = 0; i < shardCount; i++) {
+      this.logger.debug(`Starting TTL consumer ${i}`);
+      this.#startTtlConsumer(i).catch((err) => {
+        this.logger.error(`Failed to start TTL consumer ${i}`, { error: err });
+      });
+    }
+
+    this.logger.debug(`Started ${shardCount} TTL consumers`);
+  }
+
+  async #startTtlConsumer(shard: number) {
+    if (!this.options.ttlSystem) {
+      return;
+    }
+
+    const pollIntervalMs = this.options.ttlSystem.pollIntervalMs ?? 1000;
+    const batchSize = this.options.ttlSystem.batchSize ?? 100;
+    let processedCount = 0;
+
+    try {
+      for await (const _ of setInterval(pollIntervalMs, null, {
+        signal: this.abortController.signal,
+      })) {
+        const now = Date.now();
+
+        const [error, expiredRuns] = await tryCatch(
+          this.#expireTtlRuns(shard, now, batchSize)
+        );
+
+        if (error) {
+          this.logger.error(`Failed to expire TTL runs for shard ${shard}`, {
+            error,
+            service: this.name,
+            shard,
+          });
+          continue;
+        }
+
+        if (expiredRuns.length > 0) {
+          this.logger.debug(`Expired ${expiredRuns.length} TTL runs in shard ${shard}`, {
+            service: this.name,
+            shard,
+            count: expiredRuns.length,
+          });
+          processedCount += expiredRuns.length;
+        }
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+
+      this.logger.debug(`TTL consumer ${shard} stopped`, {
+        service: this.name,
+        shard,
+        processedCount,
+      });
+    }
+  }
+
+  /**
+   * Atomically expire TTL runs: removes from TTL set, acknowledges from normal queue,
+   * and enqueues each run to the TTL worker for DB updates.
+   */
+  async #expireTtlRuns(
+    shard: number,
+    now: number,
+    batchSize: number
+  ): Promise<Array<{ queueKey: string; runId: string; orgId: string }>> {
+    const ttlSystem = this.options.ttlSystem;
+    if (!ttlSystem) {
+      return [];
+    }
+
+    const shardCount = ttlSystem.shardCount ?? this.shardCount;
+    const ttlQueueKey = this.keys.ttlQueueKeyForShard(shard);
+    const keyPrefix = this.options.redis.keyPrefix ?? "";
+    const workerQueueKey = keyPrefix + ttlSystem.workerQueueSuffix;
+    const workerItemsKey = keyPrefix + ttlSystem.workerItemsSuffix;
+    const visibilityTimeoutMs = (ttlSystem.visibilityTimeoutMs ?? 30_000).toString();
+
+    // Atomically get and remove expired runs from TTL set, ack them from normal queues, and enqueue to TTL worker
+    const results = await this.redis.expireTtlRuns(
+      ttlQueueKey,
+      keyPrefix,
+      now.toString(),
+      batchSize.toString(),
+      shardCount.toString(),
+      workerQueueKey,
+      workerItemsKey,
+      visibilityTimeoutMs
+    );
+
+    if (!results || results.length === 0) {
+      return [];
+    }
+
+    // Parse the results: each item is "queueKey|runId|orgId"
+    const expiredRuns = results.map((member: string) => {
+      const [queueKey, runId, orgId] = member.split("|");
+      return { queueKey, runId, orgId };
+    });
+
+    // Rebalance master queues for all affected queues.
+    // Group by master queue key (derived from environment) since different queues
+    // may belong to different master queue shards.
+    const queuesByMasterKey = new Map<string, string[]>();
+
+    for (const { queueKey } of expiredRuns) {
+      const envId = this.keys.envIdFromQueue(queueKey);
+      const masterQueueKey = this.keys.masterQueueKeyForEnvironment(envId, this.shardCount);
+
+      const queues = queuesByMasterKey.get(masterQueueKey) ?? [];
+      queues.push(queueKey);
+      queuesByMasterKey.set(masterQueueKey, queues);
+    }
+
+    if (queuesByMasterKey.size > 0) {
+      const pipeline = this.redis.pipeline();
+      const keyPrefix = this.options.redis.keyPrefix ?? "";
+
+      for (const [masterQueueKey, queueNames] of queuesByMasterKey) {
+        // For CK queues, skip the legacy rebalance — the CK index was already
+        // updated inside the Lua script, and migrateLegacyMasterQueues would
+        // re-add the concrete :ck:bar member to the master queue.
+        // Only rebalance non-CK queues here.
+        const nonCkQueues = queueNames.filter((q) => !q.includes(":ck:"));
+        if (nonCkQueues.length > 0) {
+          const uniqueQueueNames = [...new Set(nonCkQueues)];
+          pipeline.migrateLegacyMasterQueues(masterQueueKey, keyPrefix, ...uniqueQueueNames);
+        }
+      }
+
+      await pipeline.exec();
+    }
+
+    return expiredRuns;
+  }
+
+  /**
+   * Get the TTL shard for a queue key
+   */
+  #getTtlShardForQueue(queueKey: string): number {
+    const { envId } = this.keys.descriptorFromQueue(queueKey);
+    const shardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+    return this.keys.masterQueueShardForEnvironment(envId, shardCount);
+  }
+
   async migrateLegacyMasterQueue(legacyMasterQueue: string) {
     const legacyMasterQueueKey = this.keys.legacyMasterQueueKey(legacyMasterQueue);
 
@@ -1268,6 +1504,40 @@ export class RunQueue {
     return this.#processMasterQueueShard(shard, environmentId, maxCount);
   }
 
+  // Test-only: directly dequeue from a queue (CK or non-CK) without enqueuing to worker queue
+  async testDequeueFromMasterQueue(
+    shard: number,
+    environmentId: string,
+    maxCount: number = 10
+  ): Promise<DequeuedMessage[]> {
+    const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
+    const envQueues = await this.queueSelectionStrategy.distributeFairQueuesFromParentQueue(
+      masterQueueKey,
+      environmentId
+    );
+
+    const allMessages: DequeuedMessage[] = [];
+
+    for (const env of envQueues) {
+      for (const queue of env.queues) {
+        const messages = this.keys.isCkWildcard(queue)
+          ? await this.#callDequeueMessagesFromCkQueue({
+              ckWildcardQueue: queue,
+              shard,
+              maxCount,
+            })
+          : await this.#callDequeueMessagesFromQueue({
+              messageQueue: queue,
+              shard,
+              maxCount,
+            });
+        allMessages.push(...messages);
+      }
+    }
+
+    return allMessages;
+  }
+
   async #processMasterQueueShard(shard: number, consumerId: string, maxCount: number = 10) {
     return this.#trace(
       "processMasterQueueShard",
@@ -1313,14 +1583,20 @@ export class RunQueue {
             attemptedQueues++;
 
             // Attempt to dequeue from this queue
-            const [error, messages] = await tryCatch(
-              this.#callDequeueMessagesFromQueue({
-                messageQueue: queue,
-                shard,
-                // TODO: make this configurable
-                maxCount,
-              })
-            );
+            // Dispatch CK wildcard queues to the CK-aware dequeue path
+            const dequeuePromise = this.keys.isCkWildcard(queue)
+              ? this.#callDequeueMessagesFromCkQueue({
+                  ckWildcardQueue: queue,
+                  shard,
+                  maxCount,
+                })
+              : this.#callDequeueMessagesFromQueue({
+                  messageQueue: queue,
+                  shard,
+                  maxCount,
+                });
+
+            const [error, messages] = await tryCatch(dequeuePromise);
 
             if (error) {
               this.logger.error(
@@ -1332,6 +1608,11 @@ export class RunQueue {
               );
 
               continue;
+            }
+
+            if (messages.length > 0) {
+              // Reset cooloff state on successful dequeue
+              this._queueCooloffStates.delete(queue);
             }
 
             if (messages.length === 0) {
@@ -1404,11 +1685,18 @@ export class RunQueue {
       service: this.name,
     });
 
-    const messages = await this.#callDequeueMessagesFromQueue({
-      messageQueue: queueKey,
-      shard,
-      maxCount: 10,
-    });
+    // Dispatch CK wildcard queues to the CK-aware dequeue path
+    const messages = this.keys.isCkWildcard(queueKey)
+      ? await this.#callDequeueMessagesFromCkQueue({
+          ckWildcardQueue: queueKey,
+          shard,
+          maxCount: 10,
+        })
+      : await this.#callDequeueMessagesFromQueue({
+          messageQueue: queueKey,
+          shard,
+          maxCount: 10,
+        });
 
     if (messages.length === 0) {
       return;
@@ -1455,7 +1743,38 @@ export class RunQueue {
     });
   }
 
-  async #callEnqueueMessage(message: OutputPayloadV2) {
+  /**
+   * Calls the appropriate Lua enqueue script variant (plain, TTL, CK, or TTL+CK).
+   *
+   * Each variant receives the same fast-path keys/args in addition to its own specific keys.
+   * The Lua script returns 1 (fast path taken) or 0 (slow path taken).
+   *
+   * All four variants share this KEYS layout:
+   *   KEYS[1..N]  = variant-specific keys (queue, message, concurrency, env, master, TTL, CK index)
+   *   KEYS[N+1]   = workerQueueKey        (fast-path: RPUSH target)
+   *   KEYS[N+2]   = queueConcurrencyLimitKey
+   *   KEYS[N+3]   = envConcurrencyLimitKey
+   *   KEYS[N+4]   = envConcurrencyLimitBurstFactorKey
+   *
+   * And this ARGV layout (appended after variant-specific args):
+   *   messageKeyValue              (fast-path: value to RPUSH into worker queue)
+   *   defaultEnvConcurrencyLimit   (fallback if no Redis key set)
+   *   defaultEnvConcurrencyBurstFactor
+   *   currentTime                  (ms timestamp for ZRANGEBYSCORE availability check)
+   *   enableFastPath               ('1' or '0')
+   *
+   * @returns true if the fast path was taken (message pushed directly to worker queue)
+   */
+  async #callEnqueueMessage(
+    message: OutputPayloadV2,
+    ttlInfo?: {
+      ttlExpiresAt: number;
+      ttlQueueKey: string;
+      ttlMember: string;
+    },
+    enableFastPath: boolean = false
+  ): Promise<boolean> {
+    // --- Slow-path keys (used by all variants) ---
     const queueKey = message.queue;
     const messageKey = this.keys.messageKey(message.orgId, message.runId);
     const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
@@ -1468,10 +1787,25 @@ export class RunQueue {
       this.shardCount
     );
 
+    // --- Fast-path keys (appended to each variant's KEYS) ---
+    const workerQueueKey = this.keys.workerQueueKey(message.workerQueue);
+    const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(message.queue);
+    const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(message.queue);
+    const envConcurrencyLimitBurstFactorKey =
+      this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(message.queue);
+    // The value stored in the worker queue list — used to look up the message payload on dequeue
+    const messageKeyValue = messageKey;
+
     const queueName = message.queue;
     const messageId = message.runId;
     const messageData = JSON.stringify(message);
     const messageScore = String(message.timestamp);
+    const currentTime = String(Date.now());
+    const enableFastPathArg = enableFastPath ? "1" : "0";
+    const defaultEnvConcurrencyLimit = String(this.options.defaultEnvConcurrency);
+    const defaultEnvConcurrencyBurstFactor = String(
+      this.options.defaultEnvConcurrencyBurstFactor ?? 1.0
+    );
 
     this.logger.debug("Calling enqueueMessage", {
       queueKey,
@@ -1486,23 +1820,137 @@ export class RunQueue {
       messageData,
       messageScore,
       masterQueueKey,
+      enableFastPath,
+      ttlInfo,
       service: this.name,
     });
 
-    await this.redis.enqueueMessage(
-      masterQueueKey,
-      queueKey,
-      messageKey,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      queueName,
-      messageId,
-      messageData,
-      messageScore
-    );
+    let result: number;
+
+    // Use CK-aware enqueue for messages with concurrency keys
+    if (message.concurrencyKey) {
+      const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
+      const ckWildcardName = this.keys.toCkWildcard(message.queue);
+
+      if (ttlInfo) {
+        result = await this.redis.enqueueMessageWithTtlCk(
+          // keys
+          masterQueueKey,
+          queueKey,
+          messageKey,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          ttlInfo.ttlQueueKey,
+          ckIndexKey,
+          workerQueueKey,
+          queueConcurrencyLimitKey,
+          envConcurrencyLimitKey,
+          envConcurrencyLimitBurstFactorKey,
+          // args
+          queueName,
+          messageId,
+          messageData,
+          messageScore,
+          ttlInfo.ttlMember,
+          String(ttlInfo.ttlExpiresAt),
+          ckWildcardName,
+          messageKeyValue,
+          defaultEnvConcurrencyLimit,
+          defaultEnvConcurrencyBurstFactor,
+          currentTime,
+          enableFastPathArg
+        );
+      } else {
+        result = await this.redis.enqueueMessageCk(
+          // keys
+          masterQueueKey,
+          queueKey,
+          messageKey,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          ckIndexKey,
+          workerQueueKey,
+          queueConcurrencyLimitKey,
+          envConcurrencyLimitKey,
+          envConcurrencyLimitBurstFactorKey,
+          // args
+          queueName,
+          messageId,
+          messageData,
+          messageScore,
+          ckWildcardName,
+          messageKeyValue,
+          defaultEnvConcurrencyLimit,
+          defaultEnvConcurrencyBurstFactor,
+          currentTime,
+          enableFastPathArg
+        );
+      }
+    } else if (ttlInfo) {
+      // Use the TTL-aware enqueue that atomically adds to both queues
+      result = await this.redis.enqueueMessageWithTtl(
+        // keys
+        masterQueueKey,
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        ttlInfo.ttlQueueKey,
+        workerQueueKey,
+        queueConcurrencyLimitKey,
+        envConcurrencyLimitKey,
+        envConcurrencyLimitBurstFactorKey,
+        // args
+        queueName,
+        messageId,
+        messageData,
+        messageScore,
+        ttlInfo.ttlMember,
+        String(ttlInfo.ttlExpiresAt),
+        messageKeyValue,
+        defaultEnvConcurrencyLimit,
+        defaultEnvConcurrencyBurstFactor,
+        currentTime,
+        enableFastPathArg
+      );
+    } else {
+      result = await this.redis.enqueueMessage(
+        // keys
+        masterQueueKey,
+        queueKey,
+        messageKey,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        workerQueueKey,
+        queueConcurrencyLimitKey,
+        envConcurrencyLimitKey,
+        envConcurrencyLimitBurstFactorKey,
+        // args
+        queueName,
+        messageId,
+        messageData,
+        messageScore,
+        messageKeyValue,
+        defaultEnvConcurrencyLimit,
+        defaultEnvConcurrencyBurstFactor,
+        currentTime,
+        enableFastPathArg
+      );
+    }
+
+    return result === 1;
   }
 
   async #callDequeueMessagesFromQueue({
@@ -1532,6 +1980,16 @@ export class RunQueue {
       const envQueueKey = this.keys.envQueueKeyFromQueue(messageQueue);
       const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
 
+      // Get TTL queue key if TTL system is enabled
+      const ttlShardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+      const ttlShard = this.keys.masterQueueShardForEnvironment(
+        this.keys.envIdFromQueue(messageQueue),
+        ttlShardCount
+      );
+      const ttlQueueKey = this.options.ttlSystem
+        ? this.keys.ttlQueueKeyForShard(ttlShard)
+        : "";
+
       this.logger.debug("#callDequeueMessagesFromQueue", {
         messageQueue,
         queueConcurrencyLimitKey,
@@ -1542,6 +2000,7 @@ export class RunQueue {
         messageKeyPrefix,
         envQueueKey,
         masterQueueKey,
+        ttlQueueKey,
         shard,
         maxCount,
       });
@@ -1557,6 +2016,7 @@ export class RunQueue {
         messageKeyPrefix,
         envQueueKey,
         masterQueueKey,
+        ttlQueueKey,
         //args
         messageQueue,
         String(Date.now()),
@@ -1613,6 +2073,117 @@ export class RunQueue {
 
       span.setAttribute("message_count", filteredMessages.length);
 
+      return filteredMessages;
+    });
+  }
+
+  async #callDequeueMessagesFromCkQueue({
+    ckWildcardQueue,
+    shard,
+    maxCount,
+  }: {
+    ckWildcardQueue: string;
+    shard: number;
+    maxCount: number;
+  }): Promise<DequeuedMessage[]> {
+    return this.#trace("callDequeueMessagesFromCkQueue", async (span) => {
+      span.setAttributes({
+        ckWildcardQueue,
+        shard,
+        maxCount,
+      });
+
+      const ckIndexKey = this.keys.ckIndexKeyFromQueue(ckWildcardQueue);
+      const queueConcurrencyLimitKey =
+        this.keys.queueConcurrencyLimitKeyFromQueue(ckWildcardQueue);
+      const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(ckWildcardQueue);
+      const envConcurrencyLimitBurstFactorKey =
+        this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(ckWildcardQueue);
+      const envCurrentConcurrencyKey =
+        this.keys.envCurrentConcurrencyKeyFromQueue(ckWildcardQueue);
+      const messageKeyPrefix = this.keys.messageKeyPrefixFromQueue(ckWildcardQueue);
+      const envQueueKey = this.keys.envQueueKeyFromQueue(ckWildcardQueue);
+      const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
+
+      // Get TTL queue key if TTL system is enabled
+      const ttlShardCount = this.options.ttlSystem?.shardCount ?? this.shardCount;
+      const ttlShard = this.keys.masterQueueShardForEnvironment(
+        this.keys.envIdFromQueue(ckWildcardQueue),
+        ttlShardCount
+      );
+      const ttlQueueKey = this.options.ttlSystem
+        ? this.keys.ttlQueueKeyForShard(ttlShard)
+        : "";
+
+      this.logger.debug("#callDequeueMessagesFromCkQueue", {
+        ckWildcardQueue,
+        ckIndexKey,
+        queueConcurrencyLimitKey,
+        envConcurrencyLimitKey,
+        envCurrentConcurrencyKey,
+        messageKeyPrefix,
+        envQueueKey,
+        masterQueueKey,
+        ttlQueueKey,
+        shard,
+        maxCount,
+      });
+
+      const result = await this.redis.dequeueMessagesFromCkQueue(
+        //keys
+        ckIndexKey,
+        queueConcurrencyLimitKey,
+        envConcurrencyLimitKey,
+        envConcurrencyLimitBurstFactorKey,
+        envCurrentConcurrencyKey,
+        messageKeyPrefix,
+        envQueueKey,
+        masterQueueKey,
+        ttlQueueKey,
+        //args
+        ckWildcardQueue,
+        String(Date.now()),
+        String(this.options.defaultEnvConcurrency),
+        String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
+        this.options.redis.keyPrefix ?? "",
+        String(maxCount)
+      );
+
+      if (!result) {
+        span.setAttribute("message_count", 0);
+        return [];
+      }
+
+      this.logger.debug("dequeueMessagesFromCkQueue raw result", {
+        result,
+        service: this.name,
+      });
+
+      const messages = [];
+      for (let i = 0; i < result.length; i += 3) {
+        const messageId = result[i];
+        const messageScore = result[i + 1];
+        const rawMessage = result[i + 2];
+
+        const parsedMessage = OutputPayload.safeParse(JSON.parse(rawMessage));
+        if (!parsedMessage.success) {
+          this.logger.error(`[${this.name}] Failed to parse CK message`, {
+            messageId,
+            error: parsedMessage.error,
+            service: this.name,
+          });
+          continue;
+        }
+
+        messages.push({
+          messageId,
+          messageScore,
+          message: parsedMessage.data,
+        });
+      }
+
+      const filteredMessages = messages.filter(Boolean) as DequeuedMessage[];
+      span.setAttribute("message_count", filteredMessages.length);
       return filteredMessages;
     });
   }
@@ -1800,6 +2371,29 @@ export class RunQueue {
       service: this.name,
     });
 
+    if (message.concurrencyKey) {
+      const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
+      const ckWildcardName = this.keys.toCkWildcard(message.queue);
+
+      return this.redis.acknowledgeMessageCk(
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        workerQueueKey,
+        ckIndexKey,
+        messageId,
+        messageQueue,
+        messageKeyValue,
+        removeFromWorkerQueue ? "1" : "0",
+        ckWildcardName
+      );
+    }
+
     return this.redis.acknowledgeMessage(
       masterQueueKey,
       messageKey,
@@ -1888,22 +2482,46 @@ export class RunQueue {
       service: this.name,
     });
 
-    await this.redis.nackMessage(
-      //keys
-      masterQueueKey,
-      messageKey,
-      messageQueue,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      //args
-      messageId,
-      messageQueue,
-      JSON.stringify(message),
-      String(messageScore)
-    );
+    if (message.concurrencyKey) {
+      const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
+      const ckWildcardName = this.keys.toCkWildcard(message.queue);
+
+      await this.redis.nackMessageCk(
+        //keys
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        ckIndexKey,
+        //args
+        messageId,
+        messageQueue,
+        JSON.stringify(message),
+        String(messageScore),
+        ckWildcardName
+      );
+    } else {
+      await this.redis.nackMessage(
+        //keys
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        //args
+        messageId,
+        messageQueue,
+        JSON.stringify(message),
+        String(messageScore)
+      );
+    }
   }
 
   async #callMoveToDeadLetterQueue({ message }: { message: OutputPayload }) {
@@ -1921,19 +2539,40 @@ export class RunQueue {
       this.shardCount
     );
 
-    await this.redis.moveToDeadLetterQueue(
-      masterQueueKey,
-      messageKey,
-      messageQueue,
-      queueCurrentConcurrencyKey,
-      envCurrentConcurrencyKey,
-      queueCurrentDequeuedKey,
-      envCurrentDequeuedKey,
-      envQueueKey,
-      deadLetterQueueKey,
-      messageId,
-      messageQueue
-    );
+    if (message.concurrencyKey) {
+      const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
+      const ckWildcardName = this.keys.toCkWildcard(message.queue);
+
+      await this.redis.moveToDeadLetterQueueCk(
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        deadLetterQueueKey,
+        ckIndexKey,
+        messageId,
+        messageQueue,
+        ckWildcardName
+      );
+    } else {
+      await this.redis.moveToDeadLetterQueue(
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        deadLetterQueueKey,
+        messageId,
+        messageQueue
+      );
+    }
   }
 
   #callUpdateEnvironmentConcurrencyLimits({
@@ -1973,7 +2612,7 @@ export class RunQueue {
       return;
     }
 
-    this.logger.info("Scanning concurrency sets for completed runs");
+    this.logger.debug("Scanning concurrency sets for completed runs");
 
     const stats = {
       streamCallbacks: 0,
@@ -2026,7 +2665,7 @@ export class RunQueue {
         return;
       }
 
-      this.logger.info("Processing concurrency keys from stream", {
+      this.logger.debug("Processing concurrency keys from stream", {
         keys: uniqueKeys,
       });
 
@@ -2096,9 +2735,9 @@ export class RunQueue {
   }
 
   private async processCurrentConcurrencyRunIds(concurrencyKey: string, runIds: string[]) {
-    this.logger.info("Processing concurrency set with runs", {
+    this.logger.debug("Processing concurrency set with runs", {
       concurrencyKey,
-      runIds: runIds.slice(0, 5), // Log first 5 for debugging,
+      runIds: runIds.slice(0, 5),
       runIdsLength: runIds.length,
     });
 
@@ -2106,12 +2745,12 @@ export class RunQueue {
     const completedRuns = await this.options.concurrencySweeper?.callback(runIds);
 
     if (!completedRuns) {
-      this.logger.info("No completed runs found in concurrency set", { concurrencyKey });
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
       return;
     }
 
     if (completedRuns.length === 0) {
-      this.logger.info("No completed runs found in concurrency set", { concurrencyKey });
+      this.logger.debug("No completed runs found in concurrency set", { concurrencyKey });
       return;
     }
 
@@ -2275,8 +2914,24 @@ end
       `,
     });
 
+    // Enqueue message with optional fast path.
+    //
+    // Returns 1 (fast path: message pushed directly to worker queue) or 0 (slow path: message
+    // added to queue sorted set, needs processQueueForWorkerQueue to move it later).
+    //
+    // Fast-path conditions (all must be true):
+    //   1. enableFastPath == '1' (gated per WorkerInstanceGroup)
+    //   2. No available messages in the queue (ZRANGEBYSCORE finds nothing with score <= now)
+    //   3. Env concurrency has capacity (SCARD < limit * burstFactor)
+    //   4. Queue concurrency has capacity (SCARD < min(queueLimit, envLimit))
+    //
+    // The fast path performs the same concurrency bookkeeping (SADD to currentConcurrency sets)
+    // as dequeueMessagesFromQueue, so ack/nack/release work identically for both paths.
+    //
+    // When enableFastPath == '0', the script skips the fast-path check entirely and behaves
+    // identically to the pre-fast-path version (with the addition of returning 0).
     this.redis.defineCommand("enqueueMessage", {
-      numberOfKeys: 8,
+      numberOfKeys: 12,
       lua: `
 local masterQueueKey = KEYS[1]
 local queueKey = KEYS[2]
@@ -2286,12 +2941,51 @@ local envCurrentConcurrencyKey = KEYS[5]
 local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
+-- Fast-path keys (KEYS 9-12)
+local workerQueueKey = KEYS[9]
+local queueConcurrencyLimitKey = KEYS[10]
+local envConcurrencyLimitKey = KEYS[11]
+local envConcurrencyLimitBurstFactorKey = KEYS[12]
 
 local queueName = ARGV[1]
 local messageId = ARGV[2]
 local messageData = ARGV[3]
 local messageScore = ARGV[4]
+-- Fast-path args (ARGV 5-9)
+local messageKeyValue = ARGV[5]
+local defaultEnvConcurrencyLimit = ARGV[6]
+local defaultEnvConcurrencyBurstFactor = ARGV[7]
+local currentTime = ARGV[8]
+local enableFastPath = ARGV[9]
 
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        return 1
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
 -- Write the message to the message key
 redis.call('SET', messageKey, messageData)
 
@@ -2315,11 +3009,414 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+return 0
+      `,
+    });
+
+    // Enqueue with TTL tracking. Same fast-path logic as enqueueMessage.
+    // On fast path, the TTL sorted set is intentionally skipped — the expireRun worker job
+    // (scheduled independently before enqueue) handles TTL expiry. This mirrors what
+    // dequeueMessagesFromQueue does: it removes from the TTL set when dequeuing.
+    this.redis.defineCommand("enqueueMessageWithTtl", {
+      numberOfKeys: 13,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+-- Fast-path keys (KEYS 10-13)
+local workerQueueKey = KEYS[10]
+local queueConcurrencyLimitKey = KEYS[11]
+local envConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitBurstFactorKey = KEYS[13]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ttlMember = ARGV[5]
+local ttlScore = ARGV[6]
+-- Fast-path args (ARGV 7-11)
+local messageKeyValue = ARGV[7]
+local defaultEnvConcurrencyLimit = ARGV[8]
+local defaultEnvConcurrencyBurstFactor = ARGV[9]
+local currentTime = ARGV[10]
+local enableFastPath = ARGV[11]
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        -- Skip TTL sorted set: the expireRun worker job handles TTL expiry independently
+        return 1
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+-- Write the message to the message key
+redis.call('SET', messageKey, messageData)
+
+-- Add the message to the queue
+redis.call('ZADD', queueKey, messageScore, messageId)
+
+-- Add the message to the env queue
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Add to TTL sorted set
+redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
+
+-- Rebalance the parent queues
+local earliestMessage = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+
+if #earliestMessage == 0 then
+  redis.call('ZREM', masterQueueKey, queueName)
+else
+  redis.call('ZADD', masterQueueKey, earliestMessage[2], queueName)
+end
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+return 0
+      `,
+    });
+
+    // CK-aware enqueue: adds to CK index + master queue with :ck:* member.
+    // Same fast-path logic as enqueueMessage. For CK queues, the fast-path checks the
+    // per-CK sub-queue for available messages and the per-CK concurrency limit.
+    this.redis.defineCommand("enqueueMessageCk", {
+      numberOfKeys: 13,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+-- Fast-path keys (KEYS 10-13)
+local workerQueueKey = KEYS[10]
+local queueConcurrencyLimitKey = KEYS[11]
+local envConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitBurstFactorKey = KEYS[13]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ckWildcardName = ARGV[5]
+-- Fast-path args (ARGV 6-10)
+local messageKeyValue = ARGV[6]
+local defaultEnvConcurrencyLimit = ARGV[7]
+local defaultEnvConcurrencyBurstFactor = ARGV[8]
+local currentTime = ARGV[9]
+local enableFastPath = ARGV[10]
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      -- For CK queues, check per-CK concurrency (same key as queue concurrency)
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        return 1
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+-- Write the message to the message key
+redis.call('SET', messageKey, messageData)
+
+-- Add the message to the CK-specific queue
+redis.call('ZADD', queueKey, messageScore, messageId)
+
+-- Add the message to the env queue
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], queueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx > 0 then
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, queueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+return 0
+      `,
+    });
+
+    // CK-aware enqueue with TTL tracking. Combines CK and TTL behavior with fast path.
+    // On fast path: skips both the CK sub-queue and TTL sorted set.
+    this.redis.defineCommand("enqueueMessageWithTtlCk", {
+      numberOfKeys: 14,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+-- Fast-path keys (KEYS 11-14)
+local workerQueueKey = KEYS[11]
+local queueConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitKey = KEYS[13]
+local envConcurrencyLimitBurstFactorKey = KEYS[14]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ttlMember = ARGV[5]
+local ttlScore = ARGV[6]
+local ckWildcardName = ARGV[7]
+-- Fast-path args (ARGV 8-12)
+local messageKeyValue = ARGV[8]
+local defaultEnvConcurrencyLimit = ARGV[9]
+local defaultEnvConcurrencyBurstFactor = ARGV[10]
+local currentTime = ARGV[11]
+local enableFastPath = ARGV[12]
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        -- Skip TTL sorted set: the expireRun worker job handles TTL expiry independently
+        return 1
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+-- Write the message to the message key
+redis.call('SET', messageKey, messageData)
+
+-- Add the message to the CK-specific queue
+redis.call('ZADD', queueKey, messageScore, messageId)
+
+-- Add the message to the env queue
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Add to TTL sorted set
+redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], queueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx > 0 then
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, queueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+return 0
+      `,
+    });
+
+    // Expire TTL runs - atomically removes from TTL set, acknowledges from normal queue, and enqueues to TTL worker
+    this.redis.defineCommand("expireTtlRuns", {
+      numberOfKeys: 1,
+      lua: `
+local ttlQueueKey = KEYS[1]
+local keyPrefix = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local batchSize = tonumber(ARGV[3])
+local shardCount = tonumber(ARGV[4])
+local workerQueueKey = ARGV[5]
+local workerItemsKey = ARGV[6]
+local visibilityTimeoutMs = tonumber(ARGV[7])
+
+-- Get expired runs from TTL sorted set (score <= currentTime)
+local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentTime, 'LIMIT', 0, batchSize)
+
+if #expiredMembers == 0 then
+  return {}
+end
+
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
+local results = {}
+
+for i, member in ipairs(expiredMembers) do
+  -- Parse member format: "queueKey|runId|orgId"
+  local pipePos1 = string.find(member, "|", 1, true)
+  if pipePos1 then
+    local pipePos2 = string.find(member, "|", pipePos1 + 1, true)
+    if pipePos2 then
+      local rawQueueKey = string.sub(member, 1, pipePos1 - 1)
+      local runId = string.sub(member, pipePos1 + 1, pipePos2 - 1)
+      local orgId = string.sub(member, pipePos2 + 1)
+
+      -- Prefix the queue key so it matches the actual Redis keys
+      local queueKey = keyPrefix .. rawQueueKey
+
+      -- Remove from TTL set
+      redis.call('ZREM', ttlQueueKey, member)
+
+      -- Construct keys for acknowledging the run from normal queue
+      -- Extract org from rawQueueKey: {org:orgId}:proj:...
+      local orgKeyStart = string.find(rawQueueKey, "{org:", 1, true)
+      local orgKeyEnd = string.find(rawQueueKey, "}", orgKeyStart, true)
+      local orgFromQueue = string.sub(rawQueueKey, orgKeyStart + 5, orgKeyEnd - 1)
+
+      local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
+
+      -- Delete message key
+      redis.call('DEL', messageKey)
+
+      -- Remove from queue sorted set
+      redis.call('ZREM', queueKey, runId)
+
+      -- Remove from env queue (derive from rawQueueKey)
+      -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
+      local envMatch = string.match(rawQueueKey, ":env:([^:]+)")
+      if envMatch then
+        local envQueueKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. envMatch
+        redis.call('ZREM', envQueueKey, runId)
+      end
+
+      -- Remove from concurrency sets
+      local concurrencyKey = queueKey .. ":currentConcurrency"
+      local dequeuedKey = queueKey .. ":currentDequeued"
+      redis.call('SREM', concurrencyKey, runId)
+      redis.call('SREM', dequeuedKey, runId)
+
+      -- Env concurrency (derive from rawQueueKey; must match RunQueueKeyProducer: org + proj + env)
+      -- rawQueueKey format: {org:X}:proj:Y:env:Z:queue:Q[:ck:C]
+      local projMatch = string.match(rawQueueKey, ":proj:([^:]+):env:")
+      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentConcurrency"
+      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentDequeued"
+      redis.call('SREM', envConcurrencyKey, runId)
+      redis.call('SREM', envDequeuedKey, runId)
+
+      -- Rebalance CK index if this is a CK queue
+      local ckMatch = string.match(rawQueueKey, "^(.+):ck:.+$")
+      if ckMatch then
+        local ckIndexKey = keyPrefix .. ckMatch .. ":ckIndex"
+        local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+        if #earliest == 0 then
+          redis.call('ZREM', ckIndexKey, rawQueueKey)
+        else
+          redis.call('ZADD', ckIndexKey, earliest[2], rawQueueKey)
+        end
+      end
+
+      -- Enqueue to TTL worker (runId is natural dedup key)
+      local serializedItem = cjson.encode({
+        job = "expireTtlRun",
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        visibilityTimeoutMs = visibilityTimeoutMs,
+        attempt = 0
+      })
+      redis.call('ZADD', workerQueueKey, nowMs, runId)
+      redis.call('HSET', workerItemsKey, runId, serializedItem)
+
+      -- Add to results
+      table.insert(results, member)
+    end
+  end
+end
+
+return results
       `,
     });
 
     this.redis.defineCommand("dequeueMessagesFromQueue", {
-      numberOfKeys: 9,
+      numberOfKeys: 10,
       lua: `
 local queueKey = KEYS[1]
 local queueConcurrencyLimitKey = KEYS[2]
@@ -2330,6 +3427,7 @@ local envCurrentConcurrencyKey = KEYS[6]
 local messageKeyPrefix = KEYS[7]
 local envQueueKey = KEYS[8]
 local masterQueueKey = KEYS[9]
+local ttlQueueKey = KEYS[10]  -- Optional: TTL sorted set key (empty string if not used)
 
 local queueName = ARGV[1]
 local currentTime = tonumber(ARGV[2])
@@ -2381,24 +3479,49 @@ local dequeuedCount = 0
 for i = 1, #messages, 2 do
     local messageId = messages[i]
     local messageScore = tonumber(messages[i + 1])
-    
+
     -- Get the message payload
     local messageKey = messageKeyPrefix .. messageId
     local messagePayload = redis.call('GET', messageKey)
-    
+
     if messagePayload then
-        -- Update concurrency
+        -- Parse the message to check for TTL expiration
+        local messageData = cjson.decode(messagePayload)
+        local ttlExpiresAt = messageData and messageData.ttlExpiresAt
+
+        -- Check if TTL has expired
+        if ttlExpiresAt and ttlExpiresAt <= currentTime then
+            -- TTL expired - remove from dequeue queues so it won't be retried,
+            -- but leave messageKey and ttlQueueKey intact for the TTL consumer
+            -- to discover and properly expire the run.
+            redis.call('ZREM', queueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+        else
+            -- Not expired - process normally
+            redis.call('ZREM', queueKey, messageId)
+            redis.call('ZREM', envQueueKey, messageId)
+            redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+            redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+            -- Remove from TTL set if provided (run is being executed, not expired)
+            if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+                local ttlMember = queueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+                redis.call('ZREM', ttlQueueKey, ttlMember)
+            end
+
+            -- Add to results
+            table.insert(results, messageId)
+            table.insert(results, messageScore)
+            table.insert(results, messagePayload)
+
+            dequeuedCount = dequeuedCount + 1
+        end
+    else
+        -- Stale entry: message key was already deleted (e.g. acknowledged),
+        -- but the sorted set member was not cleaned up. Remove it so it
+        -- doesn't block newer messages from being dequeued.
         redis.call('ZREM', queueKey, messageId)
         redis.call('ZREM', envQueueKey, messageId)
-        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
-        redis.call('SADD', envCurrentConcurrencyKey, messageId)
-        
-        -- Add to results
-        table.insert(results, messageId)
-        table.insert(results, messageScore)
-        table.insert(results, messagePayload)
-        
-        dequeuedCount = dequeuedCount + 1
     end
 end
 
@@ -2412,6 +3535,151 @@ else
 end
 
 -- Return results as a flat array: [messageId1, messageScore1, messagePayload1, messageId2, messageScore2, messagePayload2, ...]
+return results
+      `,
+    });
+
+    // CK-aware dequeue: iterates CK sub-queues from CK index
+    this.redis.defineCommand("dequeueMessagesFromCkQueue", {
+      numberOfKeys: 9,
+      lua: `
+local ckIndexKey = KEYS[1]
+local queueConcurrencyLimitKey = KEYS[2]
+local envConcurrencyLimitKey = KEYS[3]
+local envConcurrencyLimitBurstFactorKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local messageKeyPrefix = KEYS[6]
+local envQueueKey = KEYS[7]
+local masterQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+
+local ckWildcardName = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local defaultEnvConcurrencyLimit = ARGV[3]
+local defaultEnvConcurrencyBurstFactor = ARGV[4]
+local keyPrefix = ARGV[5]
+local maxCount = tonumber(ARGV[6] or '1')
+
+-- Check env concurrency
+local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+local envConcurrencyLimitBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+local envConcurrencyLimitWithBurstFactor = math.floor(envConcurrencyLimit * envConcurrencyLimitBurstFactor)
+
+if envCurrentConcurrency >= envConcurrencyLimitWithBurstFactor then
+  return nil
+end
+
+-- Get base queue concurrency limit
+local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+
+-- Calculate env available capacity
+local envAvailableCapacity = envConcurrencyLimitWithBurstFactor - envCurrentConcurrency
+local actualMaxCount = math.min(maxCount, envAvailableCapacity)
+
+if actualMaxCount <= 0 then
+  return nil
+end
+
+-- Get CK sub-queues from CK index with scores <= currentTime
+local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, actualMaxCount * 3)
+
+if #ckQueues == 0 then
+  -- Rebalance master queue in case CK index has future-scored entries
+  local anyIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+  if #anyIdx == 0 then
+    redis.call('ZREM', masterQueueKey, ckWildcardName)
+  else
+    redis.call('ZADD', masterQueueKey, anyIdx[2], ckWildcardName)
+  end
+  return nil
+end
+
+local results = {}
+local dequeuedCount = 0
+
+for _, ckQueueName in ipairs(ckQueues) do
+  if dequeuedCount >= actualMaxCount then
+    break
+  end
+
+  local fullQueueKey = keyPrefix .. ckQueueName
+
+  -- Check CK-specific concurrency
+  local ckConcurrencyKey = fullQueueKey .. ':currentConcurrency'
+  local ckCurrentConcurrency = tonumber(redis.call('SCARD', ckConcurrencyKey) or '0')
+
+  if ckCurrentConcurrency < queueConcurrencyLimit then
+    -- Try to dequeue one message from this CK sub-queue
+    local messages = redis.call('ZRANGEBYSCORE', fullQueueKey, '-inf', tostring(currentTime), 'WITHSCORES', 'LIMIT', 0, 1)
+
+    if #messages >= 2 then
+      local messageId = messages[1]
+      local messageScore = messages[2]
+
+      local messageKey = messageKeyPrefix .. messageId
+      local messagePayload = redis.call('GET', messageKey)
+
+      if messagePayload then
+        local messageData = cjson.decode(messagePayload)
+        local ttlExpiresAt = messageData and messageData.ttlExpiresAt
+
+        if ttlExpiresAt and ttlExpiresAt <= currentTime then
+          -- TTL expired - remove from queues
+          redis.call('ZREM', fullQueueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+        else
+          -- Dequeue normally
+          redis.call('ZREM', fullQueueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+          redis.call('SADD', ckConcurrencyKey, messageId)
+          redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+          -- Remove from TTL set if applicable
+          if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+            redis.call('ZREM', ttlQueueKey, ttlMember)
+          end
+
+          table.insert(results, messageId)
+          table.insert(results, messageScore)
+          table.insert(results, messagePayload)
+
+          dequeuedCount = dequeuedCount + 1
+        end
+      else
+        -- Stale entry
+        redis.call('ZREM', fullQueueKey, messageId)
+        redis.call('ZREM', envQueueKey, messageId)
+      end
+
+      -- Rebalance CK index for this sub-queue
+      local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+      if #earliest == 0 then
+        redis.call('ZREM', ckIndexKey, ckQueueName)
+      else
+        redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
+      end
+    else
+      -- No messages available in score range, update CK index
+      local any = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+      if #any == 0 then
+        redis.call('ZREM', ckIndexKey, ckQueueName)
+      else
+        redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
+      end
+    end
+  end
+end
+
+-- Rebalance master queue
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
 return results
       `,
     });
@@ -2599,6 +3867,177 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 `,
     });
 
+    // CK-aware acknowledge: rebalances CK index and master queue with :ck:* member
+    this.redis.defineCommand("acknowledgeMessageCk", {
+      numberOfKeys: 10,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local workerQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageKeyValue = ARGV[3]
+local removeFromWorkerQueue = ARGV[4]
+local ckWildcardName = ARGV[5]
+
+-- Remove the message from the message key
+redis.call('DEL', messageKey)
+
+-- Remove the message from the CK-specific queue
+redis.call('ZREM', messageQueueKey, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+
+-- Rebalance CK index
+local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliestInCkQueue == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)
+else
+  redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestInCkIndex = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestInCkIndex == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+-- Remove the message from the worker queue
+if removeFromWorkerQueue == '1' then
+  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+end
+`,
+    });
+
+    // CK-aware nack: rebalances CK index and master queue with :ck:* member
+    this.redis.defineCommand("nackMessageCk", {
+      numberOfKeys: 9,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = tonumber(ARGV[4])
+local ckWildcardName = ARGV[5]
+
+-- Update the message data
+redis.call('SET', messageKey, messageData)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+-- Enqueue the message back into the CK-specific queue
+redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+`,
+    });
+
+    // CK-aware move to dead letter queue
+    this.redis.defineCommand("moveToDeadLetterQueueCk", {
+      numberOfKeys: 10,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueue = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local deadLetterQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local ckWildcardName = ARGV[3]
+
+-- Remove the message from the CK-specific queue
+redis.call('ZREM', messageQueue, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+if #earliest == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)
+else
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+
+-- Add the message to the dead letter queue
+redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+`,
+    });
+
     this.redis.defineCommand("releaseConcurrency", {
       numberOfKeys: 4,
       lua: `
@@ -2740,13 +4179,66 @@ declare module "@internal/redis" {
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
       envQueueKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
       //args
       queueName: string,
       messageId: string,
       messageData: string,
       messageScore: string,
-      callback?: Callback<void>
-    ): Result<void, Context>;
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    enqueueMessageWithTtl(
+      //keys
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ttlQueueKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      //args
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ttlMember: string,
+      ttlScore: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    expireTtlRuns(
+      //keys
+      ttlQueueKey: string,
+      //args
+      keyPrefix: string,
+      currentTime: string,
+      batchSize: string,
+      shardCount: string,
+      workerQueueKey: string,
+      workerItemsKey: string,
+      visibilityTimeoutMs: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
 
     dequeueMessagesFromQueue(
       //keys
@@ -2759,6 +4251,7 @@ declare module "@internal/redis" {
       messageKeyPrefix: string,
       envQueueKey: string,
       masterQueueKey: string,
+      ttlQueueKey: string,
       //args
       childQueueName: string,
       currentTime: string,
@@ -2878,6 +4371,149 @@ declare module "@internal/redis" {
       maxCount: string,
       callback?: Callback<string[]>
     ): Result<string[], Context>;
+
+    // CK-aware commands
+    enqueueMessageCk(
+      //keys
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ckIndexKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      //args
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ckWildcardName: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    enqueueMessageWithTtlCk(
+      //keys
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ttlQueueKey: string,
+      ckIndexKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      //args
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ttlMember: string,
+      ttlScore: string,
+      ckWildcardName: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    dequeueMessagesFromCkQueue(
+      //keys
+      ckIndexKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      envCurrentConcurrencyKey: string,
+      messageKeyPrefix: string,
+      envQueueKey: string,
+      masterQueueKey: string,
+      ttlQueueKey: string,
+      //args
+      ckWildcardName: string,
+      currentTime: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      keyPrefix: string,
+      maxCount: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+
+    acknowledgeMessageCk(
+      // keys
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      workerQueueKey: string,
+      ckIndexKey: string,
+      // args
+      messageId: string,
+      messageQueueName: string,
+      messageKeyValue: string,
+      removeFromWorkerQueue: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    nackMessageCk(
+      // keys
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ckIndexKey: string,
+      // args
+      messageId: string,
+      messageQueueName: string,
+      messageData: string,
+      messageScore: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    moveToDeadLetterQueueCk(
+      // keys
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      deadLetterQueueKey: string,
+      ckIndexKey: string,
+      // args
+      messageId: string,
+      messageQueueName: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
   }
 }
 

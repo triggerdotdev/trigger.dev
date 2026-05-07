@@ -3,9 +3,19 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { S2, S2Error } from "@s2-dev/streamstore";
-import { Clipboard, ClipboardCheck, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Clipboard,
+  ClipboardCheck,
+  ChevronDown,
+  ChevronUp,
+  TerminalSquareIcon,
+  LayoutDashboardIcon,
+  GitBranchIcon,
+  ServerIcon,
+} from "lucide-react";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { GitMetadata } from "~/components/GitMetadata";
+import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -73,6 +83,90 @@ type LogEntry = {
   level: "info" | "error" | "warn" | "debug";
 };
 
+function getTriggeredViaDisplay(triggeredVia: string | null | undefined): {
+  icon: React.ReactNode;
+  label: string;
+} | null {
+  if (!triggeredVia) return null;
+
+  const iconClass = "size-4 text-text-dimmed";
+
+  switch (triggeredVia) {
+    case "cli:manual":
+      return {
+        icon: <TerminalSquareIcon className={iconClass} />,
+        label: "CLI (Manual)",
+      };
+    case "cli:github_actions":
+      return {
+        icon: <GitBranchIcon className={iconClass} />,
+        label: "CLI (GitHub Actions)",
+      };
+    case "cli:gitlab_ci":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (GitLab CI)",
+      };
+    case "cli:circleci":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (CircleCI)",
+      };
+    case "cli:jenkins":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Jenkins)",
+      };
+    case "cli:azure_pipelines":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Azure Pipelines)",
+      };
+    case "cli:bitbucket_pipelines":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Bitbucket Pipelines)",
+      };
+    case "cli:travis_ci":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Travis CI)",
+      };
+    case "cli:buildkite":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (Buildkite)",
+      };
+    case "cli:ci_other":
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: "CLI (CI)",
+      };
+    case "git_integration:github":
+      return {
+        icon: <GitBranchIcon className={iconClass} />,
+        label: "GitHub Integration",
+      };
+    case "dashboard":
+      return {
+        icon: <LayoutDashboardIcon className={iconClass} />,
+        label: "Dashboard",
+      };
+    default:
+      // Handle any unknown values gracefully
+      if (triggeredVia.startsWith("cli:")) {
+        return {
+          icon: <TerminalSquareIcon className={iconClass} />,
+          label: `CLI (${triggeredVia.replace("cli:", "")})`,
+        };
+      }
+      return {
+        icon: <ServerIcon className={iconClass} />,
+        label: triggeredVia,
+      };
+  }
+}
+
 export default function Page() {
   const { deployment, eventStream } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -104,17 +198,14 @@ export default function Page() {
 
         const readSession = await stream.readSession(
           {
-            seq_num: 0,
-            wait: 60,
-            as: "bytes",
+            start: { from: { seqNum: 0 }, clamp: true },
+            stop: { waitSecs: 60 },
           },
           { signal: abortController.signal }
         );
 
-        const decoder = new TextDecoder();
-
         for await (const record of readSession) {
-          const decoded = decoder.decode(record.body);
+          const decoded = record.body;
           const result = DeploymentEventFromString.safeParse(decoded);
 
           if (!result.success) {
@@ -123,8 +214,8 @@ export default function Page() {
               const headers: Record<string, string> = {};
 
               if (record.headers) {
-                for (const [nameBytes, valueBytes] of record.headers) {
-                  headers[decoder.decode(nameBytes)] = decoder.decode(valueBytes);
+                for (const [name, value] of record.headers) {
+                  headers[name] = value;
                 }
               }
               const level = (headers["level"]?.toLowerCase() as LogEntry["level"]) ?? "info";
@@ -408,6 +499,31 @@ export default function Page() {
                   )}
                 </Property.Value>
               </Property.Item>
+              <Property.Item>
+                <Property.Label>Triggered via</Property.Label>
+                <Property.Value>
+                  {(() => {
+                    const display = getTriggeredViaDisplay(deployment.triggeredVia);
+                    if (!display) return "–";
+                    return (
+                      <span className="flex items-center gap-1.5">
+                        {display.icon}
+                        {display.label}
+                      </span>
+                    );
+                  })()}
+                </Property.Value>
+              </Property.Item>
+              {deployment.vercelDeploymentUrl && (
+                <Property.Item>
+                  <Property.Label>Linked</Property.Label>
+                  <Property.Value>
+                    <div className="-ml-1 mt-0.5 flex flex-col">
+                      <VercelLink vercelDeploymentUrl={deployment.vercelDeploymentUrl} />
+                    </div>
+                  </Property.Value>
+                </Property.Item>
+              )}
             </Property.Table>
           </div>
 

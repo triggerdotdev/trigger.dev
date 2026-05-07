@@ -4,8 +4,7 @@ import os from "os";
 import path from "path";
 import { PassThrough } from "stream";
 import v8 from "v8";
-import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 
 // Format date as yyyy-MM-dd HH_mm_ss_SSS
 function formatDate(date: Date) {
@@ -25,21 +24,7 @@ function formatDate(date: Date) {
 }
 
 export async function loader({ request }: DataFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-  if (!authenticationResult) {
-    throw new Response("You must be an admin to perform this action", { status: 403 });
-  }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      id: authenticationResult.userId,
-    },
-  });
-
-  if (!user?.admin) {
-    throw new Response("You must be an admin to perform this action", { status: 403 });
-  }
+  await requireAdminApiRequest(request);
 
   const tempDir = os.tmpdir();
   const filepath = path.join(

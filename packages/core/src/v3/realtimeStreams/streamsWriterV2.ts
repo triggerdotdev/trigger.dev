@@ -6,12 +6,13 @@ export type StreamsWriterV2Options<T = any> = {
   basin: string;
   stream: string;
   accessToken: string;
+  endpoint?: string; // Custom S2 endpoint (for s2-lite)
   source: ReadableStream<T>;
   signal?: AbortSignal;
   flushIntervalMs?: number; // Used as lingerDuration for BatchTransform (default 200ms)
   maxRetries?: number; // Not used with appendSession, kept for compatibility
   debug?: boolean; // Enable debug logging (default false)
-  maxQueuedBytes?: number; // Max queued bytes for appendSession (default 10MB)
+  maxInflightBytes?: number; // Max queued bytes for appendSession (default 10MB)
 };
 
 /**
@@ -50,18 +51,28 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
   private streamPromise: Promise<void>;
   private readonly flushIntervalMs: number;
   private readonly debug: boolean;
-  private readonly maxQueuedBytes: number;
+  private readonly maxInflightBytes: number;
   private aborted = false;
   private sessionWritable: WritableStream<any> | null = null;
 
   constructor(private options: StreamsWriterV2Options<T>) {
     this.debug = options.debug ?? false;
-    this.s2Client = new S2({ accessToken: options.accessToken });
+    this.s2Client = new S2({
+      accessToken: options.accessToken,
+      ...(options.endpoint
+        ? {
+            endpoints: {
+              account: options.endpoint,
+              basin: options.endpoint,
+            },
+          }
+        : {}),
+    });
     this.flushIntervalMs = options.flushIntervalMs ?? 200;
-    this.maxQueuedBytes = options.maxQueuedBytes ?? 1024 * 1024 * 10; // 10MB default
+    this.maxInflightBytes = options.maxInflightBytes ?? 1024 * 1024 * 10; // 10MB default
 
     this.log(
-      `[S2MetadataStream] Initializing: basin=${options.basin}, stream=${options.stream}, flushIntervalMs=${this.flushIntervalMs}, maxQueuedBytes=${this.maxQueuedBytes}`
+      `[S2MetadataStream] Initializing: basin=${options.basin}, stream=${options.stream}, flushIntervalMs=${this.flushIntervalMs}, maxInflightBytes=${this.maxInflightBytes}`
     );
 
     // Check if already aborted
@@ -124,7 +135,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const stream = basin.stream(this.options.stream);
 
       const session = await stream.appendSession({
-        maxQueuedBytes: this.maxQueuedBytes,
+        maxInflightBytes: this.maxInflightBytes,
       });
 
       this.sessionWritable = session.writable;
@@ -141,7 +152,7 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
                 return;
               }
               // Convert each chunk to JSON string and wrap in AppendRecord
-              controller.enqueue(AppendRecord.make(JSON.stringify({ data: chunk, id: nanoid(7) })));
+              controller.enqueue(AppendRecord.string({ body: JSON.stringify({ data: chunk, id: nanoid(7) }) }));
             },
           })
         )
@@ -158,9 +169,9 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       const lastAcked = session.lastAckedPosition();
 
       if (lastAcked?.end) {
-        const recordsWritten = lastAcked.end.seq_num;
+        const recordsWritten = lastAcked.end.seqNum;
         this.log(
-          `[S2MetadataStream] Written ${recordsWritten} records, ending at seq_num=${lastAcked.end.seq_num}`
+          `[S2MetadataStream] Written ${recordsWritten} records, ending at seqNum=${lastAcked.end.seqNum}`
         );
       }
     } catch (error) {

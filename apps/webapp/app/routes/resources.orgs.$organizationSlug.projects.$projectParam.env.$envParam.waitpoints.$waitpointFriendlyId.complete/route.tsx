@@ -2,13 +2,7 @@ import { env } from "~/env.server";
 import { parse } from "@conform-to/zod";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import {
-  conditionallyExportPacket,
-  IOPacket,
-  stringifyIO,
-  timeoutError,
-  WaitpointTokenStatus,
-} from "@trigger.dev/core/v3";
+import { stringifyIO, timeoutError, WaitpointTokenStatus } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { Waitpoint } from "@trigger.dev/database";
 import { useCallback, useRef } from "react";
@@ -24,6 +18,8 @@ import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, ProjectParamSchema, v3RunsPath } from "~/utils/pathBuilder";
@@ -86,6 +82,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const waitpoint = await $replica.waitpoint.findFirst({
       select: {
         projectId: true,
+        environmentId: true,
       },
       where: {
         id: waitpointId,
@@ -150,11 +147,29 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             );
           }
 
+          const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+          if (!environment) {
+            return redirectWithErrorMessage(
+              submission.value.failureRedirect,
+              request,
+              "Environment not found"
+            );
+          }
+
+          if (environment.id !== waitpoint.environmentId) {
+            return redirectWithErrorMessage(
+              submission.value.failureRedirect,
+              request,
+              "No waitpoint found"
+            );
+          }
+
           const data = submission.value.payload ? JSON.parse(submission.value.payload) : {};
           const stringifiedData = await stringifyIO(data);
-          const finalData = await conditionallyExportPacket(
+          const finalData = await processWaitpointCompletionPacket(
             stringifiedData,
-            `${waitpointId}/waitpoint/token`
+            environment,
+            `${WaitpointId.toFriendlyId(waitpointId)}/token`
           );
 
           const result = await engine.completeWaitpoint({

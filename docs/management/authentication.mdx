@@ -158,3 +158,31 @@ await envvars.update("proj_1234", "preview", "DATABASE_URL", {
   value: "your_preview_database_url",
 });
 ```
+
+### Scoped authentication with `auth.withAuth`
+
+`auth.withAuth` runs a callback with a temporary API client configuration, then restores the previous configuration when the callback resolves or rejects. It's useful when a single process needs to make calls across multiple Trigger.dev projects or environments without mutating the global config manually.
+
+```ts
+import { auth, runs } from "@trigger.dev/sdk";
+
+const projectBRuns = await auth.withAuth(
+  { accessToken: process.env.TRIGGER_SECRET_KEY_PROJECT_B },
+  async () => {
+    return runs.list({ limit: 10 });
+  },
+);
+```
+
+Any SDK call inside the callback uses the overridden token. Calls outside the callback continue to use whatever was set by `configure` (or picked up from `TRIGGER_SECRET_KEY`).
+
+<Warning>
+  Avoid `auth.withAuth` as a per-request authentication strategy on long-running servers. Use it
+  only for sequential, non-overlapping scopes.
+</Warning>
+
+#### How scoping actually works
+
+Despite looking block-scoped, `auth.withAuth` stores the overridden configuration in a process-wide global (not [AsyncLocalStorage](https://nodejs.org/api/async_context.html)). It saves the previous config, installs the new one globally, runs the callback, and restores the previous config in a `finally`. This means sequential, non-overlapping usage is safe, but concurrent usage is not — if two `auth.withAuth` calls overlap (for example inside `Promise.all` with different tokens, or across concurrent request handlers on a long-running server) both will share whichever configuration was installed most recently, and SDK calls in one scope can silently use the other scope's token.
+
+A fix using async context isolation is tracked in [issue #3298](https://github.com/triggerdotdev/trigger.dev/issues/3298).

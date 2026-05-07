@@ -44,6 +44,18 @@
             ]
           },
           {
+            "group": "Building with AI",
+            "pages": [
+              "building-with-ai",
+              {
+                "group": "MCP Server",
+                "pages": ["mcp-introduction", "mcp-tools"]
+              },
+              "skills",
+              "mcp-agent-rules"
+            ]
+          },
+          {
             "group": "Writing tasks",
             "pages": [
               "writing-tasks-introduction",
@@ -58,6 +70,7 @@
               "machines",
               "idempotency",
               "runs/max-duration",
+              "runs/heartbeats",
               "tags",
               "runs/metadata",
               "tasks/streams",
@@ -117,6 +130,14 @@
             ]
           },
           {
+            "group": "Private networking",
+            "pages": [
+              "private-networking/overview",
+              "private-networking/aws-console-setup",
+              "private-networking/troubleshooting"
+            ]
+          },
+          {
             "group": "Realtime",
             "pages": [
               "realtime/overview",
@@ -124,7 +145,7 @@
               "realtime/run-object",
               "realtime/auth",
               {
-                "group": "React hooks (frontend)",
+                "group": "React hooks",
                 "pages": [
                   "realtime/react-hooks/overview",
                   "realtime/react-hooks/triggering",
@@ -167,8 +188,8 @@
             ]
           },
           {
-            "group": "MCP Server",
-            "pages": ["mcp-introduction", "mcp-tools", "mcp-agent-rules"]
+            "group": "Observability",
+            "pages": ["observability/query", "observability/dashboards"]
           },
           {
             "group": "Using the Dashboard",
@@ -226,12 +247,18 @@
           },
           {
             "group": "Tasks API",
-            "pages": ["management/tasks/trigger", "management/tasks/batch-trigger"]
+            "pages": [
+              "management/tasks/trigger",
+              "management/tasks/batch-trigger",
+              "management/tasks/trigger-batch"
+            ]
           },
           {
             "group": "Batches API",
             "pages": [
               "management/batches/create",
+              "management/batches/retrieve",
+              "management/batches/retrieve-results",
               "management/batches/stream-items"
             ]
           },
@@ -243,7 +270,21 @@
               "management/runs/replay",
               "management/runs/cancel",
               "management/runs/reschedule",
-              "management/runs/update-metadata"
+              "management/runs/update-metadata",
+              "management/runs/add-tags",
+              "management/runs/retrieve-events",
+              "management/runs/retrieve-trace",
+              "management/runs/retrieve-result"
+            ]
+          },
+          {
+            "group": "Queues API",
+            "pages": [
+              "management/queues/list",
+              "management/queues/retrieve",
+              "management/queues/pause",
+              "management/queues/concurrency-override",
+              "management/queues/concurrency-reset"
             ]
           },
           {
@@ -269,6 +310,29 @@
               "management/envvars/update",
               "management/envvars/delete"
             ]
+          },
+          {
+            "group": "Deployments API",
+            "pages": [
+              "management/deployments/list",
+              "management/deployments/retrieve",
+              "management/deployments/get-latest",
+              "management/deployments/promote"
+            ]
+          },
+          {
+            "group": "Waitpoints API",
+            "pages": [
+              "management/waitpoints/create",
+              "management/waitpoints/list",
+              "management/waitpoints/retrieve",
+              "management/waitpoints/complete",
+              "management/waitpoints/complete-callback"
+            ]
+          },
+          {
+            "group": "Query API",
+            "pages": ["management/query/execute", "management/query/schema", "management/query/dashboards"]
           }
         ]
       },
@@ -313,6 +377,7 @@
               "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
               "guides/frameworks/prisma",
+              "guides/frameworks/nango",
               "guides/frameworks/sequin",
               {
                 "group": "Supabase",
@@ -337,10 +402,15 @@
                   "guides/frameworks/webhooks-guides-overview",
                   "guides/frameworks/nextjs-webhooks",
                   "guides/frameworks/remix-webhooks",
-                  "guides/examples/stripe-webhook"
+                  "guides/examples/stripe-webhook",
+                  "guides/examples/hookdeck-webhook"
                 ]
               }
             ]
+          },
+          {
+            "group": "Migration guides",
+            "pages": ["migration-mergent", "migration-n8n"]
           },
           {
             "group": "Use cases",
@@ -360,6 +430,7 @@
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/cursor-background-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
               "guides/example-projects/meme-generator-human-in-the-loop",
@@ -412,10 +483,6 @@
             ]
           },
           {
-            "group": "Migration guides",
-            "pages": ["migration-mergent"]
-          },
-          {
             "group": "Community packages",
             "pages": [
               "guides/community/dotenvx",
@@ -437,6 +504,11 @@
     "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
+    }
+  },
+  "styling": {
+    "codeblocks": {
+      "theme": "css-variables"
     }
   },
   "appearance": {
@@ -581,6 +653,10 @@
       "destination": "/config/config-file"
     },
     {
+      "source": "/guides/frameworks",
+      "destination": "/guides/frameworks/nextjs"
+    },
+    {
       "source": "/guides/frameworks/introduction",
       "destination": "/guides/introduction"
     },
@@ -659,6 +735,14 @@
     {
       "source": "/upgrade-to-v4",
       "destination": "/migrating-from-v3"
+    },
+    {
+      "source": "/insights/query",
+      "destination": "/observability/query"
+    },
+    {
+      "source": "/insights/metrics",
+      "destination": "/observability/dashboards"
     }
   ]
 }

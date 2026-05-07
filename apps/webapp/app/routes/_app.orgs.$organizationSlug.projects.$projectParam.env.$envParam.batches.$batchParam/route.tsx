@@ -1,4 +1,4 @@
-import { ArrowRightIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { motion } from "framer-motion";
@@ -12,17 +12,14 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  BatchStatusCombo,
-  descriptionForBatchStatus,
-} from "~/components/runs/v3/BatchStatus";
+import { BatchStatusCombo, descriptionForBatchStatus } from "~/components/runs/v3/BatchStatus";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { BatchPresenter, type BatchPresenterData } from "~/presenters/v3/BatchPresenter.server";
+import { BatchPresenter } from "~/presenters/v3/BatchPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
@@ -35,8 +32,7 @@ const BatchParamSchema = EnvironmentParamSchema.extend({
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
-  const { organizationSlug, projectParam, envParam, batchParam } =
-    BatchParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam, batchParam } = BatchParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -85,7 +81,8 @@ export default function Page() {
     disabled: batch.hasFinished,
   });
 
-  const showProgressMeter = batch.isV2 && (batch.status === "PROCESSING" || batch.status === "PARTIAL_FAILED");
+  const showProgressMeter =
+    batch.isV2 && (batch.status === "PROCESSING" || batch.status === "PARTIAL_FAILED");
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
@@ -141,9 +138,7 @@ export default function Page() {
               </Property.Item>
               <Property.Item>
                 <Property.Label>Version</Property.Label>
-                <Property.Value>
-                  {batch.isV2 ? "v2 (Run Engine)" : "v1 (Legacy)"}
-                </Property.Value>
+                <Property.Value>{batch.isV2 ? "v2 (Run Engine)" : "v1 (Legacy)"}</Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Total runs</Property.Label>
@@ -243,11 +238,11 @@ export default function Page() {
       {/* Footer */}
       <div className="flex items-center justify-end gap-2 border-t border-grid-dimmed px-2">
         <LinkButton
-          variant="tertiary/medium"
+          variant="secondary/medium"
           to={v3BatchRunsPath(organization, project, environment, batch)}
-          LeadingIcon={RunsIcon}
-          leadingIconClassName="text-indigo-500"
-          TrailingIcon={ArrowRightIcon}
+          trailingIconClassName="text-runs"
+          TrailingIcon={RunsIcon}
+          className="text-text-bright"
         >
           View runs
         </LinkButton>
@@ -304,4 +299,3 @@ function BatchProgressMeter({ successCount, failureCount, totalCount }: BatchPro
     </div>
   );
 }
-

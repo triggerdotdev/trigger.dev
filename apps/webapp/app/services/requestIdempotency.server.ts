@@ -1,6 +1,6 @@
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { RedisWithClusterOptions } from "~/redis.server";
 import { validate as uuidValidate, version as uuidVersion } from "uuid";
@@ -33,13 +33,7 @@ export class RequestIdempotencyService<TTypes extends string> {
       : "request-idempotency:";
 
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({
-      persistentMap: new Map(),
-      unstableEvictOnSet: {
-        frequency: 0.001,
-        maxItems: 1000,
-      },
-    });
+    const memory = createLRUMemoryStore(1000);
     const redisCacheStore = new RedisCacheStore({
       name: "request-idempotency",
       connection: {

@@ -17,6 +17,7 @@ export * from "./otel.js";
 export * from "./schemas.js";
 export * from "./heartbeats.js";
 export * from "./streams.js";
+export * from "./query.js";
 export type { Context };
 
 import type { Context } from "./shared.js";
@@ -58,3 +59,4 @@ export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
+export * as prompts from "./prompts.js";

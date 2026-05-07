@@ -88,6 +88,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json(result, { status: 200 });
   } catch (error) {
+    // Customer-facing validation failures (invalid item shape, invalid JSON
+    // in the streamed body). The handler returns 4xx with the message;
+    // system handles it gracefully, no alert needed.
+    if (error instanceof ServiceValidationError) {
+      logger.warn("Stream batch items error", { batchId, error: error.message });
+      return json({ error: error.message }, { status: 422 });
+    }
+
+    if (error instanceof Error && error.message.includes("Invalid JSON")) {
+      logger.warn("Stream batch items error: invalid JSON", {
+        batchId,
+        error: error.message,
+      });
+      return json({ error: error.message }, { status: 400 });
+    }
+
     logger.error("Stream batch items error", {
       batchId,
       error: {
@@ -96,21 +112,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
 
-    if (error instanceof ServiceValidationError) {
-      return json({ error: error.message }, { status: 422 });
-    } else if (error instanceof Error) {
-      // Check for stream parsing errors
-      if (
-        error.message.includes("Invalid JSON") ||
-        error.message.includes("exceeds maximum size")
-      ) {
-        return json({ error: error.message }, { status: 400 });
-      }
-
-      return json(
-        { error: error.message },
-        { status: 500, headers: { "x-should-retry": "false" } }
-      );
+    if (error instanceof Error) {
+      return json({ error: error.message }, { status: 500 });
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });

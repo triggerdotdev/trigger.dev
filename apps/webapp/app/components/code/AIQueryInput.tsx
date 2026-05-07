@@ -1,7 +1,13 @@
-import { PencilSquareIcon, PlusIcon, SparklesIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, PencilSquareIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
-import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { Button } from "~/components/primitives/Buttons";
+import { Spinner } from "~/components/primitives/Spinner";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
+import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
+import { cn } from "~/utils/cn";
 
 // Lazy load streamdown components to avoid SSR issues
 const StreamdownRenderer = lazy(() =>
@@ -13,13 +19,6 @@ const StreamdownRenderer = lazy(() =>
     ),
   }))
 );
-import { Button } from "~/components/primitives/Buttons";
-import { Spinner } from "~/components/primitives/Spinner";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
-import { cn } from "~/utils/cn";
 
 type StreamEventType =
   | { type: "thinking"; content: string }
@@ -179,21 +178,7 @@ export function AIQueryInput({
           setThinking((prev) => prev + event.content);
           break;
         case "tool_call":
-          if (event.tool === "setTimeFilter") {
-            setThinking((prev) => {
-              if (prev.trimEnd().endsWith("Setting time filter...")) {
-                return prev;
-              }
-              return prev + `\nSetting time filter...\n`;
-            });
-          } else {
-            setThinking((prev) => {
-              if (prev.trimEnd().endsWith("Validating query...")) {
-                return prev;
-              }
-              return prev + `\nValidating query...\n`;
-            });
-          }
+          // Tool calls are handled silently — no UI text needed
           break;
         case "time_filter":
           // Apply time filter immediately when the AI sets it
@@ -262,13 +247,13 @@ export function AIQueryInput({
   }, [error]);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col">
       {/* Gradient border wrapper like the schedules AI input */}
       <div
-        className="rounded-md p-px"
+        className="overflow-hidden rounded-md p-px"
         style={{ background: "linear-gradient(to bottom right, #E543FF, #286399)" }}
       >
-        <div className="overflow-hidden rounded-[5px] bg-background-bright">
+        <div className="overflow-hidden rounded-md bg-background-bright">
           <form onSubmit={handleSubmit}>
             <textarea
               ref={textareaRef}
@@ -297,10 +282,10 @@ export function AIQueryInput({
                   variant="tertiary/small"
                   disabled={true}
                   LeadingIcon={Spinner}
-                  className="pl-1.5"
+                  className="pl-2"
                   iconSpacing="gap-1.5"
                 >
-                  {mode === "edit" ? "Editing..." : "Generating..."}
+                  {mode === "edit" ? "Editing…" : "Generating…"}
                 </Button>
               ) : (
                 <>
@@ -366,64 +351,60 @@ export function AIQueryInput({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="rounded-md border border-grid-dimmed bg-charcoal-850 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {isLoading ? (
-                    <Spinner
-                      color={{
-                        background: "rgba(99, 102, 241, 0.3)",
-                        foreground: "rgba(99, 102, 241, 1)",
-                      }}
-                      className="size-3"
-                    />
-                  ) : lastResult === "success" ? (
-                    <div className="size-3 rounded-full bg-success" />
-                  ) : lastResult === "error" ? (
-                    <div className="size-3 rounded-full bg-error" />
-                  ) : null}
-                  <span className="text-xs font-medium text-text-dimmed">
-                    {isLoading
-                      ? "AI is thinking..."
-                      : lastResult === "success"
+            <div className="px-1">
+              <div className="rounded-b-lg border-x border-b border-grid-dimmed bg-charcoal-850 p-3 pb-1">
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    {isLoading ? (
+                      <Spinner className="size-4" />
+                    ) : lastResult === "success" ? (
+                      <CheckIcon className="size-4 text-success" />
+                    ) : lastResult === "error" ? (
+                      <XMarkIcon className="size-4 text-error" />
+                    ) : null}
+                    <span className="text-xs font-medium text-text-dimmed">
+                      {isLoading
+                        ? "AI is thinking…"
+                        : lastResult === "success"
                         ? "Query generated"
                         : lastResult === "error"
-                          ? "Generation failed"
-                          : "AI response"}
-                  </span>
+                        ? "Generation failed"
+                        : "AI response"}
+                    </span>
+                  </div>
+                  {isLoading ? (
+                    <Button
+                      variant="minimal/small"
+                      onClick={() => {
+                        if (abortControllerRef.current) {
+                          abortControllerRef.current.abort();
+                        }
+                        setIsLoading(false);
+                        setShowThinking(false);
+                        setThinking("");
+                      }}
+                      className="text-xs"
+                    >
+                      Cancel
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="minimal/small"
+                      onClick={() => {
+                        setShowThinking(false);
+                        setThinking("");
+                      }}
+                      className="text-xs"
+                    >
+                      Dismiss
+                    </Button>
+                  )}
                 </div>
-                {isLoading ? (
-                  <Button
-                    variant="minimal/small"
-                    onClick={() => {
-                      if (abortControllerRef.current) {
-                        abortControllerRef.current.abort();
-                      }
-                      setIsLoading(false);
-                      setShowThinking(false);
-                      setThinking("");
-                    }}
-                    className="text-xs"
-                  >
-                    Cancel
-                  </Button>
-                ) : (
-                  <Button
-                    variant="minimal/small"
-                    onClick={() => {
-                      setShowThinking(false);
-                      setThinking("");
-                    }}
-                    className="text-xs"
-                  >
-                    Dismiss
-                  </Button>
-                )}
-              </div>
-              <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
-                  <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
-                </Suspense>
+                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                  <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
+                    <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
+                  </Suspense>
+                </div>
               </div>
             </div>
           </motion.div>

@@ -6,7 +6,7 @@ export const Card = ({ children, className }: { children: ReactNode; className?:
   return (
     <div
       className={cn(
-        "flex flex-col rounded-lg border border-grid-bright bg-background-bright pb-2 pt-4",
+        "flex flex-col rounded-lg border border-grid-bright bg-background-bright pb-1.5 pt-3",
         className
       )}
     >
@@ -15,9 +15,16 @@ export const Card = ({ children, className }: { children: ReactNode; className?:
   );
 };
 
-const CardHeader = ({ children }: { children: ReactNode }) => {
+const CardHeader = ({ children, draggable }: { children: ReactNode; draggable?: boolean }) => {
   return (
-    <Header3 className="mb-4 flex items-center justify-between gap-2 px-4">{children}</Header3>
+    <Header3
+      className={cn(
+        "drag-handle mb-3 flex items-center justify-between gap-2 pl-4 pr-3",
+        draggable && "cursor-grab active:cursor-grabbing"
+      )}
+    >
+      {children}
+    </Header3>
   );
 };
 

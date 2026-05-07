@@ -12,6 +12,7 @@ export const SemanticInternalAttributes = {
   ATTEMPT_NUMBER: "ctx.attempt.number",
   RUN_ID: "ctx.run.id",
   RUN_IS_TEST: "ctx.run.isTest",
+  RUN_IS_REPLAY: "ctx.run.isReplay",
   ORIGINAL_RUN_ID: "$original_run_id",
   BATCH_ID: "ctx.batch.id",
   TASK_SLUG: "ctx.task.id",
@@ -19,6 +20,7 @@ export const SemanticInternalAttributes = {
   TASK_EXPORT_NAME: "ctx.task.exportName",
   QUEUE_NAME: "ctx.queue.name",
   QUEUE_ID: "ctx.queue.id",
+  MACHINE_ID: "ctx.machine.id",
   MACHINE_PRESET_NAME: "ctx.machine.name",
   MACHINE_PRESET_CPU: "ctx.machine.cpu",
   MACHINE_PRESET_MEMORY: "ctx.machine.memory",
@@ -65,4 +67,5 @@ export const SemanticInternalAttributes = {
   WARM_START: "warm_start",
   ATTEMPT_EXECUTION_COUNT: "$trigger.executionCount",
   TASK_EVENT_STORE: "$trigger.taskEventStore",
+  RUN_TAGS: "ctx.run.tags",
 };

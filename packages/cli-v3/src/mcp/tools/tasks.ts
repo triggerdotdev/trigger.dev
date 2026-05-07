@@ -1,6 +1,6 @@
+import { z } from "zod";
 import { toolsMetadata } from "../config.js";
 import { CommonProjectsInput, TriggerTaskInput } from "../schemas.js";
-import { ToolMeta } from "../types.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 export const getCurrentWorker = {
@@ -44,16 +44,13 @@ export const getCurrentWorker = {
       contents.push(`The worker has ${worker.tasks.length} tasks registered:`);
 
       for (const task of worker.tasks) {
-        if (task.payloadSchema) {
-          contents.push(
-            `- ${task.slug} in ${task.filePath} (payload schema: ${JSON.stringify(
-              task.payloadSchema
-            )})`
-          );
-        } else {
-          contents.push(`- ${task.slug} in ${task.filePath}`);
-        }
+        contents.push(`- ${task.slug} in ${task.filePath}`);
       }
+
+      contents.push("");
+      contents.push(
+        "Use the `get_task_schema` tool with a task slug to get its payload schema."
+      );
     } else {
       contents.push(`The worker has no tasks registered.`);
     }
@@ -153,6 +150,77 @@ export const triggerTaskTool = {
           text: contents.join("\n"),
         },
       ],
+    };
+  }),
+};
+
+const GetTaskSchemaInput = CommonProjectsInput.extend({
+  taskSlug: z
+    .string()
+    .describe(
+      "The task slug/identifier to get the payload schema for. Use get_current_worker to see available tasks."
+    ),
+});
+
+export const getTaskSchemaTool = {
+  name: toolsMetadata.get_task_schema.name,
+  title: toolsMetadata.get_task_schema.title,
+  description: toolsMetadata.get_task_schema.description,
+  inputSchema: GetTaskSchemaInput.shape,
+  handler: toolHandler(GetTaskSchemaInput.shape, async (input, { ctx }) => {
+    ctx.logger?.log("calling get_task_schema", { input });
+
+    if (ctx.options.devOnly && input.environment !== "dev") {
+      return respondWithError(
+        `This MCP server is only available for the dev environment. You tried to access the ${input.environment} environment. Remove the --dev-only flag to access other environments.`
+      );
+    }
+
+    const projectRef = await ctx.getProjectRef({
+      projectRef: input.projectRef,
+      cwd: input.configPath,
+    });
+
+    const cliApiClient = await ctx.getCliApiClient(input.branch);
+
+    const workerResult = await cliApiClient.getWorkerByTag(
+      projectRef,
+      input.environment,
+      "current"
+    );
+
+    if (!workerResult.success) {
+      return respondWithError(workerResult.error);
+    }
+
+    const task = workerResult.data.worker.tasks.find((t) => t.slug === input.taskSlug);
+
+    if (!task) {
+      const available = workerResult.data.worker.tasks.map((t) => t.slug).join(", ");
+      return respondWithError(
+        `Task "${input.taskSlug}" not found. Available tasks: ${available}`
+      );
+    }
+
+    const content = [
+      `## ${task.slug}`,
+      "",
+      `**File:** ${task.filePath}`,
+    ];
+
+    if (task.payloadSchema) {
+      content.push("");
+      content.push("**Payload schema:**");
+      content.push("```json");
+      content.push(JSON.stringify(task.payloadSchema, null, 2));
+      content.push("```");
+    } else {
+      content.push("");
+      content.push("No payload schema defined — this task accepts any payload.");
+    }
+
+    return {
+      content: [{ type: "text", text: content.join("\n") }],
     };
   }),
 };

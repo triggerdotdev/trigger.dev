@@ -8,7 +8,7 @@ import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 import { Cache, createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { env } from "~/env.server";
 import { API_VERSIONS, CURRENT_API_VERSION } from "~/api/versions";
@@ -84,10 +84,7 @@ export class RealtimeClient {
     this.#registerCommands();
 
     const ctx = new DefaultStatefulContext();
-    const memory = new MemoryStore({
-      persistentMap: new Map(),
-      unstableEvictOnSet: { frequency: 0.01, maxItems: 1000 },
-    });
+    const memory = createLRUMemoryStore(1000);
     const redisCacheStore = new RedisCacheStore({
       connection: {
         keyPrefix: "tr:cache:realtime",
@@ -118,7 +115,8 @@ export class RealtimeClient {
     runId: string,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     return this.#streamRunsWhere(
       url,
@@ -126,7 +124,8 @@ export class RealtimeClient {
       `id='${runId}'`,
       apiVersion,
       requestOptions,
-      clientVersion
+      clientVersion,
+      signal
     );
   }
 
@@ -136,7 +135,8 @@ export class RealtimeClient {
     batchId: string,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     const whereClauses: string[] = [
       `"runtimeEnvironmentId"='${environment.id}'`,
@@ -151,7 +151,8 @@ export class RealtimeClient {
       whereClause,
       apiVersion,
       requestOptions,
-      clientVersion
+      clientVersion,
+      signal
     );
   }
 
@@ -161,7 +162,8 @@ export class RealtimeClient {
     params: RealtimeRunsParams,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
@@ -183,7 +185,8 @@ export class RealtimeClient {
       whereClause,
       apiVersion,
       requestOptions,
-      clientVersion
+      clientVersion,
+      signal
     );
 
     if (createdAtFilter) {
@@ -277,7 +280,8 @@ export class RealtimeClient {
     whereClause: string,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     const electricUrl = this.#constructRunsElectricUrl(
       url,
@@ -291,7 +295,7 @@ export class RealtimeClient {
       electricUrl,
       environment,
       apiVersion,
-      undefined,
+      signal,
       clientVersion
     );
   }

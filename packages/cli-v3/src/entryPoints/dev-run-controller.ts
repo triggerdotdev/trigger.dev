@@ -596,7 +596,7 @@ export class DevRunController {
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
       this.opts.worker.manifest,
       {
-        id: "unmanaged",
+        id: this.opts.worker.serverWorker.id,
         contentHash: this.opts.worker.build.contentHash,
         version: this.opts.worker.serverWorker?.version,
         engine: "V2",

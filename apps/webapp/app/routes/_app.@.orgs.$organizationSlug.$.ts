@@ -7,6 +7,14 @@ import { requireUser } from "~/services/session.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);
+
+  // If already impersonating, we need to clear the impersonation
+  if (user.isImpersonating) {
+    const url = new URL(request.url);
+    return clearImpersonation(request, url.pathname);
+  }
+
+  // Only admins can impersonate
   if (!user.admin) {
     return redirect("/");
   }

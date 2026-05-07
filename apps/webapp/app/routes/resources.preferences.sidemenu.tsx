@@ -1,0 +1,76 @@
+import { json, type ActionFunctionArgs } from "@remix-run/node";
+import { z } from "zod";
+import {
+  SideMenuSectionIdSchema,
+  type SideMenuSectionId,
+} from "~/components/navigation/sideMenuTypes";
+import {
+  updateItemOrder,
+  updateSideMenuPreferences,
+} from "~/services/dashboardPreferences.server";
+import { requireUser } from "~/services/session.server";
+
+// Transforms form data string "true"/"false" to boolean, or undefined if not present
+const booleanFromFormData = z
+  .enum(["true", "false"])
+  .transform((val) => val === "true")
+  .optional();
+
+const RequestSchema = z.object({
+  isCollapsed: booleanFromFormData,
+  sectionId: SideMenuSectionIdSchema.optional(),
+  sectionCollapsed: booleanFromFormData,
+  // Generic item order fields
+  organizationId: z.string().optional(),
+  listId: z.string().optional(),
+  itemOrder: z.string().optional(), // JSON-encoded string[]
+});
+
+export async function action({ request }: ActionFunctionArgs) {
+  const user = await requireUser(request);
+
+  const formData = await request.formData();
+  const rawData = Object.fromEntries(formData);
+
+  const result = RequestSchema.safeParse(rawData);
+  if (!result.success) {
+    return json({ success: false, error: "Invalid request data" }, { status: 400 });
+  }
+
+  // Handle item order update
+  if (result.data.organizationId && result.data.listId && result.data.itemOrder) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.data.itemOrder);
+    } catch {
+      parsed = [];
+    }
+    const orderResult = z.array(z.string()).safeParse(parsed);
+    if (orderResult.success) {
+      await updateItemOrder({
+        user,
+        organizationId: result.data.organizationId,
+        listId: result.data.listId,
+        order: orderResult.data,
+      });
+    }
+    return json({ success: true });
+  }
+
+  // Build sectionCollapsed parameter if both sectionId and sectionCollapsed are provided
+  const sectionCollapsed =
+    result.data.sectionId !== undefined && result.data.sectionCollapsed !== undefined
+      ? {
+          sectionId: result.data.sectionId as SideMenuSectionId,
+          collapsed: result.data.sectionCollapsed,
+        }
+      : undefined;
+
+  await updateSideMenuPreferences({
+    user,
+    isCollapsed: result.data.isCollapsed,
+    sectionCollapsed,
+  });
+
+  return json({ success: true });
+}

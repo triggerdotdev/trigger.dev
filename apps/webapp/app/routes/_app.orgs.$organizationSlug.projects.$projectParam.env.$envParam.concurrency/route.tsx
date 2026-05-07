@@ -291,7 +291,7 @@ function Upgradable({
 }: ConcurrencyResult) {
   const lastSubmission = useActionData();
   const [form, { environments: formEnvironments }] = useForm({
-    id: "purchase-concurrency",
+    id: "allocate-concurrency",
     // TODO: type this
     lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
@@ -446,7 +446,9 @@ function Upgradable({
               </TableRow>
             </TableBody>
           </Table>
-          <FormError id={formEnvironments.id}>{formEnvironments.error}</FormError>
+          <FormError id={formEnvironments.id}>
+            {formEnvironments.error ?? formEnvironments.initialError?.[""]?.[0]}
+          </FormError>
         </div>
         <Form className="flex flex-col gap-2" method="post" {...form.props} id="allocate">
           <input type="hidden" name="action" value="allocate" />
@@ -664,7 +666,9 @@ function PurchaseConcurrencyModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>{amount.error}</FormError>
+                <FormError id={amount.errorId}>
+                  {amount.error ?? amount.initialError?.[""]?.[0]}
+                </FormError>
                 <FormError>{form.error}</FormError>
               </InputGroup>
             </Fieldset>

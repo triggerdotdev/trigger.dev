@@ -149,8 +149,10 @@ export function useRealtimeRun<TTask extends AnyTask>(
   const hasCalledOnCompleteRef = useRef(false);
 
   // Effect to handle onComplete callback
+  // Only call onComplete when the run has actually finished (has finishedAt),
+  // not just when the subscription stream ends (which can happen due to network issues)
   useEffect(() => {
-    if (isComplete && run && options?.onComplete && !hasCalledOnCompleteRef.current) {
+    if (isComplete && run?.finishedAt && options?.onComplete && !hasCalledOnCompleteRef.current) {
       options.onComplete(run, error);
       hasCalledOnCompleteRef.current = true;
     }
@@ -313,8 +315,10 @@ export function useRealtimeRunWithStreams<
   const hasCalledOnCompleteRef = useRef(false);
 
   // Effect to handle onComplete callback
+  // Only call onComplete when the run has actually finished (has finishedAt),
+  // not just when the subscription stream ends (which can happen due to network issues)
   useEffect(() => {
-    if (isComplete && run && options?.onComplete && !hasCalledOnCompleteRef.current) {
+    if (isComplete && run?.finishedAt && options?.onComplete && !hasCalledOnCompleteRef.current) {
       options.onComplete(run, error);
       hasCalledOnCompleteRef.current = true;
     }

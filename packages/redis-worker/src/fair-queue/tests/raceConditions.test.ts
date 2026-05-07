@@ -624,12 +624,14 @@ describe("Race Condition Tests", () => {
           await new Promise((resolve) => setTimeout(resolve, 300));
 
           // Try to reclaim (should find nothing because heartbeat extended the deadline)
-          const reclaimed = await manager.reclaimTimedOut(0, (queueId) => ({
+          const reclaimedMessages = await manager.reclaimTimedOut(0, (queueId) => ({
             queueKey: keys.queueKey(queueId),
             queueItemsKey: keys.queueItemsKey(queueId),
-            masterQueueKey: keys.masterQueueKey(0),
+            tenantQueueIndexKey: keys.tenantQueueIndexKey(keys.extractTenantId(queueId)),
+            dispatchKey: keys.dispatchKey(0),
+            tenantId: keys.extractTenantId(queueId),
           }));
-          reclaimResults.push(reclaimed);
+          reclaimResults.push(reclaimedMessages.length);
         }
 
         // Heartbeats should have kept the message alive

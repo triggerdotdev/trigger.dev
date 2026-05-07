@@ -68,6 +68,9 @@ type CodeBlockProps = {
 
   /** Search term to highlight in the code */
   searchTerm?: string;
+
+  /** Whether to wrap the code */
+  wrap?: boolean;
 };
 
 const dimAmount = 0.5;
@@ -207,6 +210,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
       fileName,
       rowTitle,
       searchTerm,
+      wrap = false,
       ...props
     }: CodeBlockProps,
     ref
@@ -215,7 +219,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     const [copied, setCopied] = useState(false);
     const [modalCopied, setModalCopied] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isWrapped, setIsWrapped] = useState(false);
+    const [isWrapped, setIsWrapped] = useState(wrap);
 
     const onCopied = useCallback(
       (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -261,7 +265,10 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
     return (
       <>
         <div
-          className={cn("relative overflow-hidden rounded-md border border-grid-bright", className)}
+          className={cn(
+            "relative flex flex-col overflow-hidden rounded-md border border-grid-bright",
+            className
+          )}
           style={{
             backgroundColor: theme.plain.backgroundColor,
           }}
@@ -351,9 +358,8 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             <div
               dir="ltr"
               className={cn(
-                "px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-                !isWrapped && "overflow-x-auto",
-                isWrapped && "overflow-y-auto"
+                "min-h-0 flex-1 px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                "overflow-auto"
               )}
               style={{
                 maxHeight,
@@ -486,9 +492,9 @@ function HighlightCode({
   }, []);
 
   const containerClasses = cn(
-    "px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
-    !isWrapped && "overflow-x-auto",
-    isWrapped && "overflow-y-auto",
+    "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+    !isWrapped && "overflow-auto",
+    isWrapped && "overflow-auto",
     className
   );
 

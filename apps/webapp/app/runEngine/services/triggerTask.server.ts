@@ -6,6 +6,7 @@ import {
 import { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
+  RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
   taskRunErrorToString,
@@ -19,7 +20,6 @@ import {
   stringifyDuration,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { createTags } from "~/models/taskRunTag.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
@@ -40,7 +40,7 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
-import { ServiceValidationError } from "~/v3/services/common.server";
+import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -190,11 +190,6 @@ export class RunEngineTriggerTaskService {
         }
       }
 
-      const ttl =
-        typeof body.options?.ttl === "number"
-          ? stringifyDuration(body.options?.ttl)
-          : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
-
       // Get parent run if specified
       const parentRun = body.options?.parentRunId
         ? await this.prisma.taskRun.findFirst({
@@ -234,24 +229,6 @@ export class RunEngineTriggerTaskService {
         });
       }
 
-      if (!options.skipChecks) {
-        const queueSizeGuard = await this.queueConcern.validateQueueLimits(environment);
-
-        if (!queueSizeGuard.ok) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
-          );
-        }
-      }
-
-      const metadataPacket = body.options?.metadata
-        ? handleMetadataPacket(
-            body.options?.metadata,
-            body.options?.metadataType ?? "application/json",
-            this.metadataMaximumSize
-          )
-        : undefined;
-
       const lockedToBackgroundWorker = body.options?.lockToVersion
         ? await this.prisma.backgroundWorker.findFirst({
             where: {
@@ -268,23 +245,75 @@ export class RunEngineTriggerTaskService {
           })
         : undefined;
 
-      const { queueName, lockedQueueId } = await this.queueConcern.resolveQueueProperties(
-        triggerRequest,
-        lockedToBackgroundWorker ?? undefined
-      );
+      const { queueName, lockedQueueId, taskTtl } =
+        await this.queueConcern.resolveQueueProperties(
+          triggerRequest,
+          lockedToBackgroundWorker ?? undefined
+        );
 
-      //upsert tags
-      const tags = await createTags(
-        {
-          tags: body.options?.tags,
-          projectId: environment.projectId,
-        },
-        this.prisma
-      );
+      // Resolve TTL with precedence: per-trigger > task-level > dev default
+      let ttl: string | undefined;
+
+      if (body.options?.ttl !== undefined) {
+        ttl =
+          typeof body.options.ttl === "number"
+            ? stringifyDuration(body.options.ttl)
+            : body.options.ttl;
+      } else {
+        ttl = taskTtl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+      }
+
+      if (!options.skipChecks) {
+        const queueSizeGuard = await this.queueConcern.validateQueueLimits(
+          environment,
+          queueName
+        );
+
+        if (!queueSizeGuard.ok) {
+          throw new QueueSizeLimitExceededError(
+            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+            queueSizeGuard.maximumSize ?? 0,
+            undefined,
+            "warn"
+          );
+        }
+      }
+
+      const metadataPacket = body.options?.metadata
+        ? handleMetadataPacket(
+            body.options?.metadata,
+            body.options?.metadataType ?? "application/json",
+            this.metadataMaximumSize
+          )
+        : undefined;
+
+      const tags = (
+        body.options?.tags
+          ? typeof body.options.tags === "string"
+            ? [body.options.tags]
+            : body.options.tags
+          : []
+      ).filter((tag) => tag.trim().length > 0);
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
 
-      const workerQueue = await this.queueConcern.getWorkerQueue(environment, body.options?.region);
+      const workerQueueResult = await this.queueConcern.getWorkerQueue(
+        environment,
+        body.options?.region
+      );
+      const workerQueue = workerQueueResult?.masterQueue;
+      const enableFastPath = workerQueueResult?.enableFastPath ?? false;
+
+      // Build annotations for this run
+      const triggerSource = options.triggerSource ?? "api";
+      const triggerAction = options.triggerAction ?? "trigger";
+      const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
+      const annotations = {
+        triggerSource,
+        triggerAction,
+        rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
+        rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
+      };
 
       try {
         return await this.traceEventConcern.traceRun(
@@ -327,6 +356,7 @@ export class RunEngineTriggerTaskService {
                 queue: queueName,
                 lockedQueueId,
                 workerQueue,
+                enableFastPath,
                 isTest: body.options?.test ?? false,
                 delayUntil,
                 queuedAt: delayUntil ? undefined : new Date(),
@@ -365,7 +395,9 @@ export class RunEngineTriggerTaskService {
                 bulkActionId: body.options?.bulkActionId,
                 planType,
                 realtimeStreamsVersion: options.realtimeStreamsVersion,
+                streamBasinName: environment.organization.streamBasinName,
                 debounce: body.options?.debounce,
+                annotations,
                 // When debouncing with triggerAndWait, create a span for the debounced trigger
                 onDebounced:
                   body.options?.debounce && body.options?.resumeParentOnCompletion

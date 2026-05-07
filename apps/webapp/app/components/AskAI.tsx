@@ -5,6 +5,7 @@ import {
   HandThumbUpIcon,
   StopIcon,
 } from "@heroicons/react/20/solid";
+import { cn } from "~/utils/cn";
 import { type FeedbackComment, KapaProvider, type QA, useChat } from "@kapaai/react-sdk";
 import { useSearchParams } from "@remix-run/react";
 import DOMPurify from "dompurify";
@@ -37,7 +38,7 @@ function useKapaWebsiteId() {
   return routeMatch?.kapa.websiteId;
 }
 
-export function AskAI() {
+export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
   const { isManagedCloud } = useFeatures();
   const websiteId = useKapaWebsiteId();
 
@@ -54,21 +55,23 @@ export function AskAI() {
           hideShortcutKey
           data-modal-override-open-class-ask-ai="true"
           disabled
+          className={isCollapsed ? "w-full justify-center" : ""}
         >
           <AISparkleIcon className="size-5" />
         </Button>
       }
     >
-      {() => <AskAIProvider websiteId={websiteId} />}
+      {() => <AskAIProvider websiteId={websiteId} isCollapsed={isCollapsed} />}
     </ClientOnly>
   );
 }
 
 type AskAIProviderProps = {
   websiteId: string;
+  isCollapsed?: boolean;
 };
 
-function AskAIProvider({ websiteId }: AskAIProviderProps) {
+function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [initialQuery, setInitialQuery] = useState<string | undefined>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -112,28 +115,39 @@ function AskAIProvider({ websiteId }: AskAIProviderProps) {
       }}
       botProtectionMechanism="hcaptcha"
     >
-      <TooltipProvider disableHoverableContent>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="inline-flex">
-              <Button
-                variant="small-menu-item"
-                data-action="ask-ai"
-                shortcut={{ modifiers: ["mod"], key: "/", enabledOnInputElements: true }}
-                hideShortcutKey
-                data-modal-override-open-class-ask-ai="true"
-                onClick={() => openAskAI()}
-              >
-                <AISparkleIcon className="size-5" />
-              </Button>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="flex items-center gap-1 py-1.5 pl-2.5 pr-2 text-xs">
-            Ask AI
-            <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <motion.div layout="position" transition={{ duration: 0.2, ease: "easeInOut" }}>
+        <TooltipProvider disableHoverableContent>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={cn("inline-flex h-8", isCollapsed && "w-full")}>
+                <Button
+                  variant="small-menu-item"
+                  data-action="ask-ai"
+                  shortcut={{ modifiers: ["mod"], key: "i", enabledOnInputElements: true }}
+                  hideShortcutKey
+                  data-modal-override-open-class-ask-ai="true"
+                  onClick={() => openAskAI()}
+                  fullWidth={isCollapsed}
+                  className={cn("h-full", isCollapsed && "justify-center")}
+                >
+                  <AISparkleIcon className="size-5" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="right"
+              sideOffset={8}
+              className="flex items-center gap-2 text-xs"
+            >
+              Ask AI
+              <span className="flex items-center">
+                <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+                <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
+              </span>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </motion.div>
       <AskAIDialog
         initialQuery={initialQuery}
         isOpen={isOpen}

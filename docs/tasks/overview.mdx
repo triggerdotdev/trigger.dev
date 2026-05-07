@@ -64,7 +64,7 @@ Anything you return from the `run` function will be the result of the task. Data
 
 ### `retry` options
 
-A task is retried if an error is thrown, by default we retry 3 times.
+A task is retried if an error is thrown. By default, we retry 3 times.
 
 You can set the number of retries and the delay between retries in the `retry` field:
 
@@ -83,6 +83,16 @@ export const taskWithRetries = task({
   },
 });
 ```
+
+| Option | What it does |
+|---|---|
+| `maxAttempts` | Total number of attempts (including the first). Default: 3 |
+| `factor` | Exponential backoff multiplier. Each retry delay = previous delay x factor. With `factor: 1.8` and `minTimeoutInMs: 500`, retries wait 500ms, 900ms, 1620ms, etc. |
+| `minTimeoutInMs` | Delay before the first retry |
+| `maxTimeoutInMs` | Cap on the delay between retries |
+| `randomize` | Add jitter to retry delays to prevent multiple failing tasks from retrying in lockstep |
+
+<Note>Task-level retry settings override the defaults in your `trigger.config` file.</Note>
 
 For more information read [the retrying guide](/errors-retrying).
 
@@ -136,16 +146,32 @@ export const longTask = task({
 
 See our [maxDuration guide](/runs/max-duration) for more information.
 
+### `ttl` option
+
+You can set a default time-to-live (TTL) on a task. If a run is not dequeued within this time, it will expire and never execute. This is useful for time-sensitive tasks where stale runs should be discarded.
+
+```ts /trigger/time-sensitive-task.ts
+export const timeSensitiveTask = task({
+  id: "time-sensitive-task",
+  ttl: "10m", // Also accepts a number of seconds, e.g. 600
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+You can override this per-trigger by passing `ttl` in the trigger options, or set a project-wide default in your [trigger.config.ts](/config/config-file#ttl). Set `ttl: 0` to opt out of a config-level TTL. See [Time-to-live (TTL)](/runs#time-to-live-ttl) for more information.
+
 ## Global lifecycle hooks
 
 <Note>When specifying global lifecycle hooks, we recommend using the `init.ts` file.</Note>
 
 You can register global lifecycle hooks that are executed for all runs, regardless of the task. While you can still define these in the `trigger.config.ts` file, you can also register them anywhere in your codebase:
 
-```ts
+```typescript
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
+tasks.onStartAttempt(({ ctx, payload, task }) => {
   console.log("Run started", ctx.run);
 });
 
@@ -160,12 +186,12 @@ tasks.onFailure(({ ctx, error }) => {
 
 ### `init.ts`
 
-If you create a `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful if you want to register global lifecycle hooks, or initialize a database connection, etc.
+If you create an `init.ts` file at the root of your trigger directory, it will be automatically loaded when a task is executed. This is useful for registering global lifecycle hooks, initializing a database connection, etc.
 
 ```ts init.ts
 import { tasks } from "@trigger.dev/sdk";
 
-tasks.onStart(({ ctx, payload, task }) => {
+tasks.onStartAttempt(({ ctx, payload, task }) => {
   console.log("Run started", ctx.run);
 });
 ```
@@ -236,13 +262,35 @@ tasks.onResume("db", async ({ ctx, payload, task }) => {
 
 You can access the database client using `getDb()` in your tasks `run` function and all your hooks (global or task specific):
 
-```ts
+```typescript
 import { getDb } from "./db";
 
 export const myTask = task({
   run: async (payload: any, { ctx }) => {
     const db = getDb();
     await db.query("SELECT 1");
+  },
+});
+```
+
+#### Per-task middleware
+
+You can also define middleware per task by passing the `middleware` option in the task definition. This runs after global middleware and before the `run` function. Use it when only specific tasks need certain locals or setup:
+
+```typescript
+import { task, locals } from "@trigger.dev/sdk";
+
+const myLocal = locals.create<string>("myLocal");
+
+export const myTask = task({
+  id: "my-task",
+  middleware: async ({ payload, ctx, next }) => {
+    locals.set(myLocal, "some-value");
+    await next();
+  },
+  run: async (payload) => {
+    const value = locals.getOrThrow(myLocal);
+    // ...
   },
 });
 ```
@@ -297,7 +345,7 @@ export const taskWithOnStartAttempt = task({
 
 These lifecycle hooks allow you to run code when a run is paused or resumed because of a wait:
 
-```ts
+```typescript
 export const myTask = task({
   id: "my-task",
   onWait: async ({ wait }) => {
@@ -440,7 +488,7 @@ Read more about `catchError` in our [Errors and Retrying guide](/errors-retrying
 
 You can define an `onCancel` hook that is called when a run is cancelled. This is useful if you want to clean up any resources that were allocated for the run.
 
-```ts
+```typescript
 tasks.onCancel(({ ctx, signal }) => {
   console.log("Run cancelled", signal);
 });
@@ -448,7 +496,7 @@ tasks.onCancel(({ ctx, signal }) => {
 
 You can use the `onCancel` hook along with the `signal` passed into the run function to interrupt a call to an external service, for example using the [streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) function from the AI SDK:
 
-```ts
+```typescript
 import { logger, tasks, schemaTask } from "@trigger.dev/sdk";
 import { streamText } from "ai";
 import { z } from "zod";
@@ -502,7 +550,7 @@ export const interruptibleChat = schemaTask({
 
 The `onCancel` hook can optionally wait for the `run` function to finish, and access the output of the run:
 
-```ts
+```typescript
 import { logger, task } from "@trigger.dev/sdk";
 import { setTimeout } from "node:timers/promises";
 
@@ -534,6 +582,13 @@ export const cancelExampleTask = task({
   You will have up to 30 seconds to complete the `runPromise` in the `onCancel` hook. After that
   point the process will be killed.
 </Note>
+
+<Warning>
+  `onCancel` only runs if the run is actively executing. If a run is cancelled while queued or
+  suspended (e.g. waiting for a token), no machine is spun up and `onCancel` will not be called.
+  This is a known limitation we're planning to address. Follow the progress on our [feedback
+  board](https://feedback.trigger.dev/p/call-the-onfailure-hook-for-runs-that-were-canceled-expired).
+</Warning>
 
 ### `onStart` function (deprecated)
 

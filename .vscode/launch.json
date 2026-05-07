@@ -32,6 +32,15 @@
       "sourceMaps": true
     },
     {
+      "type": "node-terminal",
+      "request": "launch",
+      "name": "Debug opened test file",
+      "command": "pnpm run test -- ./${relativeFile}",
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}",
+      "sourceMaps": true
+    },
+    {
       "type": "chrome",
       "request": "launch",
       "name": "Chrome webapp",

@@ -5,8 +5,12 @@ import {
   defaultMachine as defaultMachineFromPlatform,
   machines as machinesFromPlatform,
   type BillingAlertsResult,
+  type CreatePrivateLinkConnectionBody,
   type Limits,
   type MachineCode,
+  type PrivateLinkConnection,
+  type PrivateLinkConnectionList,
+  type PrivateLinkRegionsResult,
   type ReportUsageResult,
   type SetPlanBody,
   type UpdateBillingAlertsRequest,
@@ -15,7 +19,7 @@ import {
   type CurrentPlan,
 } from "@trigger.dev/platform";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
-import { MemoryStore } from "@unkey/cache/stores";
+import { createLRUMemoryStore } from "@internal/cache";
 import { existsSync, readFileSync } from "node:fs";
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
@@ -27,6 +31,7 @@ import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { $replica } from "~/db.server";
+import { metrics } from "@opentelemetry/api";
 
 function initializeClient() {
   if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -34,24 +39,43 @@ function initializeClient() {
       url: process.env.BILLING_API_URL,
       apiKey: process.env.BILLING_API_KEY,
     });
-    console.log(`🤑 Billing client initialized: ${process.env.BILLING_API_URL}`);
     return client;
-  } else {
-    console.log(`🤑 Billing client not initialized`);
   }
 }
 
 const client = singleton("billingClient", initializeClient);
 
+/**
+ * `true` when the billing client was instantiated — i.e. we're running
+ * in a cloud-style install with `BILLING_API_URL` + `BILLING_API_KEY`
+ * configured. OSS / self-hosted installs return `false` here, which
+ * lets callers distinguish "no billing wired up, fall back to
+ * defaults" from "billing wired up but the call failed, retry."
+ */
+export function isBillingConfigured(): boolean {
+  return client !== undefined;
+}
+// Failures from @trigger.dev/platform billing client calls are tracked via
+// this metric (with low-cardinality {function, kind} labels) rather than
+// logged. Every task invocation hits these paths, so per-call logs were too
+// noisy; dashboard the counter for visibility instead.
+const platformClientMeter = metrics.getMeter("trigger.dev/platform-client");
+const platformClientFailuresCounter = platformClientMeter.createCounter(
+  "platform_client.failures_total",
+  {
+    description:
+      "Failures returned or thrown by @trigger.dev/platform billing client calls",
+  }
+);
+
+function recordPlatformFailure(fn: string, kind: "caught" | "no_success") {
+  platformClientFailuresCounter.add(1, { function: fn, kind });
+}
+
+
 function initializePlatformCache() {
   const ctx = new DefaultStatefulContext();
-  const memory = new MemoryStore({
-    persistentMap: new Map(),
-    unstableEvictOnSet: {
-      frequency: 0.01,
-      maxItems: 1000,
-    },
-  });
+  const memory = createLRUMemoryStore(1000);
   const redisCacheStore = new RedisCacheStore({
     connection: {
       keyPrefix: "tr:cache:platform:v3",
@@ -75,6 +99,11 @@ function initializePlatformCache() {
       stores: [memory, redisCacheStore],
       fresh: 60_000 * 5, // 5 minutes
       stale: 60_000 * 10, // 10 minutes
+    }),
+    entitlement: new Namespace<ReportUsageResult>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000, // serve without revalidation for 60s
+      stale: 120_000, // total TTL — fresh 0-60s, stale-revalidate 60-120s
     }),
   });
 
@@ -206,7 +235,7 @@ export async function getCurrentPlan(orgId: string) {
     firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
     if (!result.success) {
-      logger.error("Error getting current plan - no success", { orgId, error: result.error });
+      recordPlatformFailure("getCurrentPlan", "no_success");
       return undefined;
     }
 
@@ -222,7 +251,7 @@ export async function getCurrentPlan(orgId: string) {
 
     return { ...result, usage };
   } catch (e) {
-    logger.error("Error getting current plan - caught error", { orgId, error: e });
+    recordPlatformFailure("getCurrentPlan", "caught");
     return undefined;
   }
 }
@@ -233,13 +262,13 @@ export async function getLimits(orgId: string) {
   try {
     const result = await client.currentPlan(orgId);
     if (!result.success) {
-      logger.error("Error getting limits - no success", { orgId, error: result.error });
+      recordPlatformFailure("getLimits", "no_success");
       return undefined;
     }
 
     return result.v3Subscription?.plan?.limits;
   } catch (e) {
-    logger.error("Error getting limits - caught error", { orgId, error: e });
+    recordPlatformFailure("getLimits", "caught");
     return undefined;
   }
 }
@@ -315,7 +344,7 @@ export async function customerPortalUrl(orgId: string, orgSlug: string) {
       returnUrl: `${env.APP_ORIGIN}${organizationBillingPath({ slug: orgSlug })}`,
     });
   } catch (e) {
-    logger.error("Error getting customer portal Url", { orgId, error: e });
+    recordPlatformFailure("customerPortalUrl", "caught");
     return undefined;
   }
 }
@@ -326,12 +355,12 @@ export async function getPlans() {
   try {
     const result = await client.plans();
     if (!result.success) {
-      logger.error("Error getting plans - no success", { error: result.error });
+      recordPlatformFailure("getPlans", "no_success");
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting plans - caught error", { error: e });
+    recordPlatformFailure("getPlans", "caught");
     return undefined;
   }
 }
@@ -373,6 +402,7 @@ export async function setPlan(
       if (result.accepted) {
         // Invalidate billing cache since plan changed
         opts?.invalidateBillingCache?.(organization.id);
+        platformCache.entitlement.remove(organization.id).catch(() => {});
         return redirect(newProjectPath(organization, "You're on the Free plan."));
       } else {
         return redirectWithErrorMessage(
@@ -389,11 +419,13 @@ export async function setPlan(
     case "updated_subscription": {
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
+      platformCache.entitlement.remove(organization.id).catch(() => {});
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
+      platformCache.entitlement.remove(organization.id).catch(() => {});
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
   }
@@ -405,12 +437,44 @@ export async function setConcurrencyAddOn(organizationId: string, amount: number
   try {
     const result = await client.setAddOn(organizationId, { type: "concurrency", amount });
     if (!result.success) {
-      logger.error("Error setting concurrency add on - no success", { error: result.error });
+      recordPlatformFailure("setConcurrencyAddOn", "no_success");
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error setting concurrency add on - caught error", { error: e });
+    recordPlatformFailure("setConcurrencyAddOn", "caught");
+    return undefined;
+  }
+}
+
+export async function setSeatsAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "seats", amount });
+    if (!result.success) {
+      recordPlatformFailure("setSeatsAddOn", "no_success");
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    recordPlatformFailure("setSeatsAddOn", "caught");
+    return undefined;
+  }
+}
+
+export async function setBranchesAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "branches", amount });
+    if (!result.success) {
+      recordPlatformFailure("setBranchesAddOn", "no_success");
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    recordPlatformFailure("setBranchesAddOn", "caught");
     return undefined;
   }
 }
@@ -421,12 +485,12 @@ export async function getUsage(organizationId: string, { from, to }: { from: Dat
   try {
     const result = await client.usage(organizationId, { from, to });
     if (!result.success) {
-      logger.error("Error getting usage - no success", { error: result.error });
+      recordPlatformFailure("getUsage", "no_success");
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting usage - caught error", { error: e });
+    recordPlatformFailure("getUsage", "caught");
     return undefined;
   }
 }
@@ -455,12 +519,12 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
   try {
     const result = await client.usageSeries(organizationId, params);
     if (!result.success) {
-      logger.error("Error getting usage series - no success", { error: result.error });
+      recordPlatformFailure("getUsageSeries", "no_success");
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error getting usage series - caught error", { error: e });
+    recordPlatformFailure("getUsageSeries", "caught");
     return undefined;
   }
 }
@@ -479,12 +543,12 @@ export async function reportInvocationUsage(
       additionalData,
     });
     if (!result.success) {
-      logger.error("Error reporting invocation - no success", { error: result.error });
+      recordPlatformFailure("reportInvocationUsage", "no_success");
       return undefined;
     }
     return result;
   } catch (e) {
-    logger.error("Error reporting invocation - caught error", { error: e });
+    recordPlatformFailure("reportInvocationUsage", "caught");
     return undefined;
   }
 }
@@ -504,21 +568,34 @@ export async function getEntitlement(
 ): Promise<ReportUsageResult | undefined> {
   if (!client) return undefined;
 
-  try {
-    const result = await client.getEntitlement(organizationId);
-    if (!result.success) {
-      logger.error("Error getting entitlement - no success", { error: result.error });
-      return {
-        hasAccess: true as const,
-      };
+  // Errors must be caught inside the loader — @unkey/cache passes the loader
+  // promise to waitUntil() with no .catch(), so an unhandled rejection during
+  // background SWR revalidation would crash the process. Returning undefined
+  // on error tells SWR not to commit a fail-open value to the cache, which
+  // prevents transient billing errors from overwriting a legitimate
+  // hasAccess: false entry. The fail-open default is applied *outside* the
+  // SWR call so it never becomes a cached access decision.
+  const result = await platformCache.entitlement.swr(organizationId, async () => {
+    try {
+      const response = await client.getEntitlement(organizationId);
+      if (!response.success) {
+        recordPlatformFailure("getEntitlement", "no_success");
+        return undefined;
+      }
+      return response;
+    } catch (e) {
+      recordPlatformFailure("getEntitlement", "caught");
+      return undefined;
     }
-    return result;
-  } catch (e) {
-    logger.error("Error getting entitlement - caught error", { error: e });
+  });
+
+  if (result.err || result.val === undefined) {
     return {
       hasAccess: true as const,
     };
   }
+
+  return result.val;
 }
 
 export async function projectCreated(
@@ -554,7 +631,7 @@ export async function getBillingAlerts(
   if (!client) return undefined;
   const result = await client.getBillingAlerts(organizationId);
   if (!result.success) {
-    logger.error("Error getting billing alert", { error: result.error, organizationId });
+    recordPlatformFailure("getBillingAlert", "no_success");
     throw new Error("Error getting billing alert");
   }
   return result;
@@ -567,7 +644,7 @@ export async function setBillingAlert(
   if (!client) return undefined;
   const result = await client.updateBillingAlerts(organizationId, alert);
   if (!result.success) {
-    logger.error("Error setting billing alert", { error: result.error, organizationId });
+    recordPlatformFailure("setBillingAlert", "no_success");
     throw new Error("Error setting billing alert");
   }
   return result;
@@ -580,11 +657,7 @@ export async function generateRegistryCredentials(
   if (!client) return undefined;
   const result = await client.generateRegistryCredentials(projectId, region);
   if (!result.success) {
-    logger.error("Error generating registry credentials", {
-      error: result.error,
-      projectId,
-      region,
-    });
+    recordPlatformFailure("generateRegistryCredentials", "no_success");
     throw new Error("Failed to generate registry credentials");
   }
 
@@ -603,17 +676,117 @@ export async function enqueueBuild(
   if (!client) return undefined;
   const result = await client.enqueueBuild(projectId, { deploymentId, artifactKey, options });
   if (!result.success) {
-    logger.error("Error enqueuing build", {
-      error: result.error,
-      projectId,
-      deploymentId,
-      artifactKey,
-      options,
-    });
+    recordPlatformFailure("enqueueBuild", "no_success");
     throw new Error("Failed to enqueue build");
   }
 
   return result;
+}
+
+export async function getPrivateLinks(
+  organizationId: string
+): Promise<PrivateLinkConnectionList | undefined> {
+  if (!client) return undefined;
+
+  const [error, result] = await tryCatch(client.getPrivateLinks(organizationId));
+
+  if (error) {
+    recordPlatformFailure("getPrivateLinks", "caught");
+    return undefined;
+  }
+
+  if (!result.success) {
+    recordPlatformFailure("getPrivateLinks", "no_success");
+    return undefined;
+  }
+
+  return result;
+}
+
+export async function createPrivateLink(
+  organizationId: string,
+  body: CreatePrivateLinkConnectionBody
+): Promise<PrivateLinkConnection | undefined> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.createPrivateLink(organizationId, body));
+
+  if (error) {
+    recordPlatformFailure("createPrivateLink", "caught");
+    throw error;
+  }
+
+  if (!result.success) {
+    recordPlatformFailure("createPrivateLink", "no_success");
+    throw new Error(result.error ?? "Failed to create private link");
+  }
+
+  return result;
+}
+
+export async function deletePrivateLink(
+  organizationId: string,
+  connectionId: string
+): Promise<void> {
+  if (!client) throw new Error("Platform client not configured");
+
+  const [error, result] = await tryCatch(client.deletePrivateLink(organizationId, connectionId));
+
+  if (error) {
+    recordPlatformFailure("deletePrivateLink", "caught");
+    throw error;
+  }
+
+  if (!result.success) {
+    recordPlatformFailure("deletePrivateLink", "no_success");
+    throw new Error(result.error ?? "Failed to delete private link");
+  }
+}
+
+export async function getPrivateLinkRegions(
+  organizationId: string
+): Promise<PrivateLinkRegionsResult | undefined> {
+  if (!client) return undefined;
+
+  const [error, result] = await tryCatch(client.getPrivateLinkRegions(organizationId));
+
+  if (error) {
+    recordPlatformFailure("getPrivateLinkRegions", "caught");
+    return undefined;
+  }
+
+  if (!result.success) {
+    recordPlatformFailure("getPrivateLinkRegions", "no_success");
+    return undefined;
+  }
+
+  return result;
+}
+
+export async function triggerInitialDeployment(
+  projectId: string,
+  options: { environment: "preview" | "prod" | "staging" }
+): Promise<void> {
+  if (!client) return;
+
+  const [error, result] = await tryCatch(client.triggerInitialDeployment(projectId, options));
+
+  if (error) {
+    logger.warn("Error triggering initial deployment", {
+      projectId,
+      environment: options.environment,
+      error,
+    });
+    return;
+  }
+
+  if (!result.success) {
+    logger.warn("Failed to trigger initial deployment", {
+      projectId,
+      environment: options.environment,
+      error: result.error,
+    });
+  }
 }
 
 function isCloud(): boolean {

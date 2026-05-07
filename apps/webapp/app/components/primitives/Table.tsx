@@ -64,18 +64,30 @@ type TableProps = {
   className?: string;
   children: ReactNode;
   fullWidth?: boolean;
+  showTopBorder?: boolean;
 };
 
 // Add TableContext
 const TableContext = createContext<{ variant: TableVariant }>({ variant: "dimmed" });
 
 export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: TableVariant }>(
-  ({ className, containerClassName, children, fullWidth, variant = "dimmed" }, ref) => {
+  (
+    {
+      className,
+      containerClassName,
+      children,
+      fullWidth,
+      variant = "dimmed",
+      showTopBorder = true,
+    },
+    ref
+  ) => {
     return (
       <TableContext.Provider value={{ variant }}>
         <div
           className={cn(
-            "overflow-x-auto whitespace-nowrap border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            showTopBorder && "border-t",
             containerClassName,
             fullWidth && "w-full"
           )}
@@ -164,10 +176,22 @@ type TableCellBasicProps = {
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
+  disableTooltipHoverableContent?: boolean;
 };
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
-  ({ className, alignment = "left", children, colSpan, hiddenLabel = false, tooltip }, ref) => {
+  (
+    {
+      className,
+      alignment = "left",
+      children,
+      colSpan,
+      hiddenLabel = false,
+      tooltip,
+      disableTooltipHoverableContent = false,
+    },
+    ref
+  ) => {
     const { variant } = useContext(TableContext);
     let alignmentClassName = "text-left";
     switch (alignment) {
@@ -210,6 +234,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
               content={tooltip}
               contentClassName="normal-case tracking-normal"
               enabled={isHovered}
+              disableHoverableContent={disableTooltipHoverableContent}
             />
           </div>
         ) : (
@@ -230,6 +255,7 @@ type TableCellProps = TableCellBasicProps & {
   isSelected?: boolean;
   isTabbableCell?: boolean;
   children?: ReactNode;
+  style?: React.CSSProperties;
 };
 
 export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
@@ -246,6 +272,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       isSticky = false,
       isSelected,
       isTabbableCell = false,
+      style,
     },
     ref
   ) => {
@@ -291,6 +318,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           className
         )}
         colSpan={colSpan}
+        style={style}
       >
         {to ? (
           <Link
@@ -403,7 +431,7 @@ export const TableCellMenu = forwardRef<
     onClick?: (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
     visibleButtons?: ReactNode;
     hiddenButtons?: ReactNode;
-    popoverContent?: ReactNode;
+    popoverContent?: ReactNode | ((close: () => void) => ReactNode);
     children?: ReactNode;
     isSelected?: boolean;
   }
@@ -423,6 +451,8 @@ export const TableCellMenu = forwardRef<
   ) => {
     const [isOpen, setIsOpen] = useState(false);
     const { variant } = useContext(TableContext);
+    const resolvedContent =
+      typeof popoverContent === "function" ? popoverContent(() => setIsOpen(false)) : popoverContent;
 
     return (
       <TableCell
@@ -458,8 +488,8 @@ export const TableCellMenu = forwardRef<
             {/* Always visible buttons  */}
             {visibleButtons}
             {/* Always visible popover with ellipsis trigger */}
-            {popoverContent && (
-              <Popover onOpenChange={(open) => setIsOpen(open)}>
+            {resolvedContent && (
+              <Popover open={isOpen} onOpenChange={(open) => setIsOpen(open)}>
                 <PopoverVerticalEllipseTrigger
                   isOpen={isOpen}
                   className="duration-0 group-hover/table-row:text-text-bright"
@@ -468,7 +498,11 @@ export const TableCellMenu = forwardRef<
                   className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
                   align="end"
                 >
-                  <div className="flex flex-col gap-1 p-1">{popoverContent}</div>
+                  {typeof popoverContent === "function" ? (
+                    resolvedContent
+                  ) : (
+                    <div className="flex flex-col gap-1 p-1">{resolvedContent}</div>
+                  )}
                 </PopoverContent>
               </Popover>
             )}

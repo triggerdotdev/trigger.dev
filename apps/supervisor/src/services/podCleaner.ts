@@ -90,7 +90,7 @@ export class PodCleaner {
           status: "succeeded",
         });
 
-        this.logger.info("Deleted batch of pods", { continuationToken });
+        this.logger.debug("Deleted batch of pods", { continuationToken });
       } catch (err) {
         this.logger.error("Failed to delete batch of pods", {
           err: err instanceof Error ? err.message : String(err),

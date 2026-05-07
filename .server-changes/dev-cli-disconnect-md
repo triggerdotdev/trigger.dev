@@ -1,0 +1,6 @@
+---
+area: webapp
+type: feature
+---
+
+Added `/engine/v1/dev/disconnect` endpoint to auto-cancel runs when the CLI disconnects. Maximum of 500 runs can be cancelled. Uses the bulk action system when there are more than 25 runs to cancel.

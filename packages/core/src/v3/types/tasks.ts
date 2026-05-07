@@ -21,6 +21,7 @@ import {
   MachineMemory,
   MachinePresetName,
   RetryOptions,
+  PromptMetadata,
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
@@ -276,6 +277,29 @@ type CommonTaskOptions<
    * Minimum value is 5 seconds
    */
   maxDuration?: number;
+
+  /**
+   * Set a default time-to-live for runs of this task. If the run is not executed within this time, it will be removed from the queue and never execute.
+   *
+   * This can be a string like "1h" (1 hour), "30m" (30 minutes), "1d" (1 day), or a number of seconds.
+   *
+   * If omitted it will use the value in your `trigger.config.ts` file, if set.
+   *
+   * You can override this on a per-trigger basis by setting the `ttl` option when triggering the task.
+   *
+   * @example
+   *
+   * ```ts
+   * export const myTask = task({
+   *   id: "my-task",
+   *   ttl: "10m",
+   *   run: async (payload) => {
+   *     //...
+   *   },
+   * });
+   * ```
+   */
+  ttl?: string | number;
 
   /** This gets called when a task is triggered. It's where you put the code you want to execute.
    *
@@ -945,6 +969,22 @@ export type TriggerOptions = {
      * @default "leading"
      */
     mode?: "leading" | "trailing";
+    /**
+     * Maximum total delay before the run must execute, regardless of subsequent triggers.
+     * This prevents indefinite delays when continuous triggers keep pushing the execution time.
+     *
+     * When specified, if a new trigger would push the execution time beyond this limit
+     * (measured from the first trigger), the current debounced run will be allowed to execute
+     * and a new run will be created for subsequent triggers.
+     *
+     * If not specified, falls back to the server's default maximum (typically 1 hour).
+     *
+     * Supported formats: `{number}s` (seconds), `{number}m` (minutes), `{number}h` (hours),
+     * `{number}d` (days), `{number}w` (weeks).
+     *
+     * @example "30m", "2h", "1d"
+     */
+    maxDelay?: string;
   };
 };
 
@@ -988,6 +1028,13 @@ export type TaskMetadataWithFunctions = TaskMetadata & {
     onStart?: (payload: any, params: StartFnParams) => Promise<void>;
     onStartAttempt?: (payload: any, params: StartAttemptFnParams) => Promise<void>;
     parsePayload?: AnySchemaParseFn;
+  };
+  schema?: TaskSchema;
+};
+
+export type PromptMetadataWithFunctions = PromptMetadata & {
+  fns: {
+    resolve: (variables: Record<string, unknown>) => Promise<unknown>;
   };
   schema?: TaskSchema;
 };

@@ -139,16 +139,13 @@ describe("RunEngine attempt failures", () => {
       expect(result2.run.attemptNumber).toBe(2);
       expect(result2.run.status).toBe("COMPLETED_SUCCESSFULLY");
 
-      //waitpoint should have been completed, with the output
+      //standalone triggers don't create waitpoints, so none should exist
       const runWaitpointAfter = await prisma.waitpoint.findMany({
         where: {
           completedByTaskRunId: run.id,
         },
       });
-      expect(runWaitpointAfter.length).toBe(1);
-      expect(runWaitpointAfter[0].type).toBe("RUN");
-      expect(runWaitpointAfter[0].output).toBe(`{"foo":"bar"}`);
-      expect(runWaitpointAfter[0].outputIsError).toBe(false);
+      expect(runWaitpointAfter.length).toBe(0);
 
       //state should be completed
       const executionData4 = await engine.getRunExecutionData({ runId: run.id });
@@ -631,16 +628,13 @@ describe("RunEngine attempt failures", () => {
       expect(result2.run.attemptNumber).toBe(2);
       expect(result2.run.status).toBe("COMPLETED_SUCCESSFULLY");
 
-      //waitpoint should have been completed, with the output
+      //standalone triggers don't create waitpoints, so none should exist
       const runWaitpointAfter = await prisma.waitpoint.findMany({
         where: {
           completedByTaskRunId: run.id,
         },
       });
-      expect(runWaitpointAfter.length).toBe(1);
-      expect(runWaitpointAfter[0].type).toBe("RUN");
-      expect(runWaitpointAfter[0].output).toBe(`{"foo":"bar"}`);
-      expect(runWaitpointAfter[0].outputIsError).toBe(false);
+      expect(runWaitpointAfter.length).toBe(0);
 
       //state should be completed
       const executionData4 = await engine.getRunExecutionData({ runId: run.id });

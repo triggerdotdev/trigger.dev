@@ -1,6 +1,11 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { EnvelopeIcon, LockOpenIcon, UserPlusIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowUpCircleIcon,
+  EnvelopeIcon,
+  LockOpenIcon,
+  UserPlusIcon,
+} from "@heroicons/react/20/solid";
 import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
@@ -29,6 +34,7 @@ import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/email.server";
 import { requireUserId } from "~/services/session.server";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
+import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
 
 const Params = z.object({
   organizationSlug: z.string(),
@@ -122,7 +128,8 @@ export const action: ActionFunction = async ({ request, params }) => {
 };
 
 export default function Page() {
-  const { limits } = useTypedLoaderData<typeof loader>();
+  const { limits, canPurchaseSeats, seatPricing, extraSeats, maxSeatQuota, planSeatLimit } =
+    useTypedLoaderData<typeof loader>();
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
   const lastSubmission = useActionData();
@@ -150,25 +157,54 @@ export default function Page() {
           title="Invite team members"
           description={`Invite new team members to ${organization.title}.`}
         />
-        {total > limits.limit && (
-          <InfoPanel
-            variant="upgrade"
-            icon={LockOpenIcon}
-            iconClassName="text-indigo-500"
-            title="Unlock more team members"
-            accessory={
-              <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                Upgrade
-              </LinkButton>
-            }
-            panelClassName="mb-4"
-          >
-            <Paragraph variant="small">
-              You've used all {limits.limit} of your available team members. Upgrade your plan to
-              add more.
-            </Paragraph>
-          </InfoPanel>
-        )}
+        {total > limits.limit &&
+          (canPurchaseSeats && seatPricing ? (
+            <InfoPanel
+              variant="upgrade"
+              icon={LockOpenIcon}
+              iconClassName="text-indigo-500"
+              title="Need more seats?"
+              accessory={
+                <PurchaseSeatsModal
+                  seatPricing={seatPricing}
+                  extraSeats={extraSeats}
+                  usedSeats={limits.used}
+                  maxQuota={maxSeatQuota}
+                  planSeatLimit={planSeatLimit}
+                  triggerButton={<Button variant="primary/small">Purchase more seats…</Button>}
+                />
+              }
+              panelClassName="mb-4"
+            >
+              <Paragraph variant="small">
+                You've used all {limits.limit} of your available team members. Purchase extra seats
+                to add more.
+              </Paragraph>
+            </InfoPanel>
+          ) : (
+            <InfoPanel
+              variant="upgrade"
+              icon={LockOpenIcon}
+              iconClassName="text-indigo-500"
+              title="Unlock more team members"
+              accessory={
+                <LinkButton
+                  to={v3BillingPath(organization)}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                  leadingIconClassName="text-indigo-500"
+                >
+                  Upgrade
+                </LinkButton>
+              }
+              panelClassName="mb-4"
+            >
+              <Paragraph variant="small">
+                You've used all {limits.limit} of your available team members. Upgrade your plan to
+                add more.
+              </Paragraph>
+            </InfoPanel>
+          ))}
         <Form method="post" {...form.props}>
           <Fieldset>
             <InputGroup>

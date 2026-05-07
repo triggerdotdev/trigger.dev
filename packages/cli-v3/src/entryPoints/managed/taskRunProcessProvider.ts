@@ -1,4 +1,4 @@
-import { WorkerManifest } from "@trigger.dev/core/v3";
+import { WorkerManifest, generateFriendlyId } from "@trigger.dev/core/v3";
 import { TaskRunProcess } from "../../executions/taskRunProcess.js";
 import { RunnerEnv } from "./env.js";
 import { RunLogger, SendDebugLogOptions } from "./logger.js";
@@ -22,6 +22,7 @@ export class TaskRunProcessProvider {
   private readonly logger: RunLogger;
   private readonly processKeepAliveEnabled: boolean;
   private readonly processKeepAliveMaxExecutionCount: number;
+  private readonly machineId = generateFriendlyId("machine");
 
   // Process keep-alive state
   private persistentProcess: TaskRunProcess | null = null;
@@ -250,7 +251,7 @@ export class TaskRunProcessProvider {
       workerManifest: this.workerManifest,
       env: processEnv,
       serverWorker: {
-        id: "managed",
+        id: this.env.TRIGGER_DEPLOYMENT_ID,
         contentHash: this.env.TRIGGER_CONTENT_HASH,
         version: this.env.TRIGGER_DEPLOYMENT_VERSION,
         engine: "V2",
@@ -269,6 +270,7 @@ export class TaskRunProcessProvider {
     return {
       ...taskRunEnv,
       ...this.env.gatherProcessEnv(),
+      TRIGGER_MACHINE_ID: this.machineId,
       HEARTBEAT_INTERVAL_MS: String(this.env.TRIGGER_HEARTBEAT_INTERVAL_SECONDS * 1000),
     };
   }

@@ -134,6 +134,25 @@ export interface ConcurrencyCheckResult {
 }
 
 // ============================================================================
+// Visibility Types
+// ============================================================================
+
+/**
+ * Information about a reclaimed message from visibility timeout.
+ * Used to release concurrency after a message is returned to the queue.
+ */
+export interface ReclaimedMessageInfo {
+  /** Message ID */
+  messageId: string;
+  /** Queue ID */
+  queueId: string;
+  /** Tenant ID for concurrency release */
+  tenantId: string;
+  /** Additional metadata for concurrency group extraction */
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================================================
 // Scheduler Types
 // ============================================================================
 
@@ -162,6 +181,14 @@ export interface SchedulerContext {
 }
 
 /**
+ * Extended context for two-level dispatch scheduling.
+ */
+export interface DispatchSchedulerContext extends SchedulerContext {
+  /** Get queues for a specific tenant from the per-tenant queue index (Level 2) */
+  getQueuesForTenant(tenantId: string, limit?: number): Promise<QueueWithScore[]>;
+}
+
+/**
  * Pluggable scheduler interface for fair queue selection.
  */
 export interface FairScheduler {
@@ -178,6 +205,18 @@ export interface FairScheduler {
     masterQueueShard: string,
     consumerId: string,
     context: SchedulerContext
+  ): Promise<TenantQueues[]>;
+
+  /**
+   * Select queues using the two-level tenant dispatch index.
+   * Level 1: reads tenantIds from dispatch shard.
+   * Level 2: reads queueIds from per-tenant index.
+   * Optional - falls back to selectQueues with flat queue list if not implemented.
+   */
+  selectQueuesFromDispatch?(
+    dispatchShardKey: string,
+    consumerId: string,
+    context: DispatchSchedulerContext
   ): Promise<TenantQueues[]>;
 
   /**
@@ -272,6 +311,12 @@ export interface FairQueueKeyProducer {
   deadLetterQueueKey(tenantId: string): string;
   /** Get the dead letter queue data hash key for a tenant */
   deadLetterQueueDataKey(tenantId: string): string;
+
+  // Tenant dispatch keys (two-level index)
+  /** Get the dispatch index key for a shard (Level 1: tenantIds with capacity) */
+  dispatchKey(shardId: number): string;
+  /** Get the per-tenant queue index key (Level 2: queueIds for a tenant) */
+  tenantQueueIndexKey(tenantId: string): string;
 
   // Extraction methods
   /** Extract tenant ID from a queue ID */
@@ -401,9 +446,23 @@ export interface FairQueueOptions<TPayloadSchema extends z.ZodTypeAny = z.ZodUnk
   /** Name for metrics/tracing (default: "fairqueue") */
   name?: string;
 
-  // Global rate limiting
-  /** Optional global rate limiter to limit processing across all consumers */
-  globalRateLimiter?: GlobalRateLimiter;
+  // Worker queue backpressure
+  /**
+   * Maximum number of items allowed in a worker queue before claiming pauses.
+   * When set, the claim phase checks worker queue depth and skips claiming if
+   * the queue is at or above this limit. This prevents unbounded worker queue
+   * growth which could cause visibility timeouts (claimed messages have a
+   * visibility timeout that ticks while they sit in the worker queue).
+   * Requires `workerQueueDepthCheckId` to know which queue to check.
+   * Disabled by default (0 = no limit).
+   */
+  workerQueueMaxDepth?: number;
+  /**
+   * The worker queue ID to check depth against when workerQueueMaxDepth is set.
+   * Required when workerQueueMaxDepth > 0 and the system uses a single shared worker queue.
+   * If not set, depth checking is disabled even if workerQueueMaxDepth is set.
+   */
+  workerQueueDepthCheckId?: string;
 }
 
 // ============================================================================

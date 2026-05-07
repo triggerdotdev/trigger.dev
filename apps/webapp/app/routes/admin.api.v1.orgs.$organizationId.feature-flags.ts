@@ -1,47 +1,19 @@
 import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags.server";
+import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 const ParamsSchema = z.object({
   organizationId: z.string(),
 });
 
-async function authenticateAdmin(request: Request) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-  if (!authenticationResult) {
-    return { error: json({ error: "Invalid or Missing API key" }, { status: 401 }) };
-  }
-
-  const user = await prisma.user.findUnique({
-    where: {
-      id: authenticationResult.userId,
-    },
-  });
-
-  if (!user) {
-    return { error: json({ error: "Invalid or Missing API key" }, { status: 401 }) };
-  }
-
-  if (!user.admin) {
-    return { error: json({ error: "You must be an admin to perform this action" }, { status: 403 }) };
-  }
-
-  return { user };
-}
-
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const authResult = await authenticateAdmin(request);
-
-  if ("error" in authResult) {
-    return authResult.error;
-  }
+  await requireAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
+  const organization = await prisma.organization.findFirst({
     where: {
       id: organizationId,
     },
@@ -70,15 +42,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const authResult = await authenticateAdmin(request);
-
-  if ("error" in authResult) {
-    return authResult.error;
-  }
+  await requireAdminApiRequest(request);
 
   const { organizationId } = ParamsSchema.parse(params);
 
-  const organization = await prisma.organization.findUnique({
+  const organization = await prisma.organization.findFirst({
     where: {
       id: organizationId,
     },

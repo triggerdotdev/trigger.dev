@@ -46,7 +46,8 @@ import {
   findTSQLFunction,
   validateFunctionArgs,
 } from "./functions";
-import { PrinterContext } from "./printer_context";
+import { PrinterContext, WhereClauseCondition } from "./printer_context";
+import { calculateTimeBucketInterval } from "./time_buckets";
 import {
   findTable,
   validateTable,
@@ -58,6 +59,7 @@ import {
   ClickHouseType,
   hasFieldMapping,
   getInternalValueFromMappingCaseInsensitive,
+  type ColumnFormatType,
 } from "./schema";
 
 /**
@@ -114,13 +116,17 @@ export class ClickHousePrinter {
   private outputColumns: OutputColumnMetadata[] = [];
   /** Whether we're currently processing GROUP BY expressions */
   private inGroupByContext = false;
+  /** Whether the current query has a GROUP BY clause (used for JSON subfield type hints) */
+  private queryHasGroupBy = false;
   /** Columns hidden when SELECT * is expanded to core columns only */
   private hiddenColumns: string[] = [];
   /**
-   * Set of column aliases defined in the current SELECT clause.
+   * Map of column aliases defined in the current SELECT clause.
+   * Key is the lowercase alias (for case-insensitive lookup),
+   * value is the canonical form (as it appears in the generated SQL).
    * Used to allow ORDER BY/HAVING to reference aliased columns.
    */
-  private selectAliases: Set<string> = new Set();
+  private selectAliases: Map<string, string> = new Map();
   /**
    * Set of internal ClickHouse column names that are allowed (e.g., tenant columns).
    * These are populated from tableSchema.tenantColumns when processing joins.
@@ -385,12 +391,17 @@ export class ClickHousePrinter {
     // Extract SELECT column aliases BEFORE visiting columns
     // This allows ORDER BY/HAVING to reference aliased columns
     const savedAliases = this.selectAliases;
-    this.selectAliases = new Set();
+    this.selectAliases = new Map();
     if (node.select) {
       for (const col of node.select) {
         this.extractSelectAlias(col);
       }
     }
+
+    // Track if query has GROUP BY for JSON subfield type hint decisions
+    // (ClickHouse requires .:String for Dynamic types in GROUP BY, and SELECT must match)
+    const savedQueryHasGroupBy = this.queryHasGroupBy;
+    this.queryHasGroupBy = !!node.group_by;
 
     // Process SELECT columns and collect metadata
     // Using flatMap because asterisk expansion can return multiple columns
@@ -543,6 +554,7 @@ export class ClickHousePrinter {
 
     // Restore saved contexts (for nested queries)
     this.selectAliases = savedAliases;
+    this.queryHasGroupBy = savedQueryHasGroupBy;
     this.tableContexts = savedTableContexts;
     this.allowedInternalColumns = savedInternalColumns;
     this.internalOnlyColumns = savedInternalOnlyColumns;
@@ -561,20 +573,25 @@ export class ClickHousePrinter {
    */
   private extractSelectAlias(expr: Expression): void {
     // Handle explicit Alias: SELECT ... AS name
+    // Key is lowercase for case-insensitive lookup, value is the original casing
+    // so that ORDER BY/GROUP BY output matches the alias in the generated SQL.
     if ((expr as Alias).expression_type === "alias") {
-      this.selectAliases.add((expr as Alias).alias);
+      const alias = (expr as Alias).alias;
+      this.selectAliases.set(alias.toLowerCase(), alias);
       return;
     }
 
     // Handle implicit names from function calls (e.g., COUNT() → 'count')
+    // ClickHouse generates implicit aliases as lowercase
     if ((expr as Call).expression_type === "call") {
       const call = expr as Call;
-      // Aggregations and functions get implicit lowercase names
-      this.selectAliases.add(call.name.toLowerCase());
+      const canonicalName = call.name.toLowerCase();
+      this.selectAliases.set(canonicalName, canonicalName);
       return;
     }
 
     // Handle implicit names from arithmetic operations (e.g., a + b → 'plus')
+    // ClickHouse generates these as lowercase
     if ((expr as ArithmeticOperation).expression_type === "arithmetic_operation") {
       const op = expr as ArithmeticOperation;
       const opNames: Record<ArithmeticOperationOp, string> = {
@@ -584,7 +601,8 @@ export class ClickHousePrinter {
         [ArithmeticOperationOp.Div]: "divide",
         [ArithmeticOperationOp.Mod]: "modulo",
       };
-      this.selectAliases.add(opNames[op.op]);
+      const canonicalName = opNames[op.op];
+      this.selectAliases.set(canonicalName, canonicalName);
       return;
     }
 
@@ -627,37 +645,47 @@ export class ClickHousePrinter {
     let sqlResult: string;
     if ((col as Field).expression_type === "field") {
       const field = col as Field;
-      const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
 
-      if (virtualColumnName !== null) {
-        // Visit the field (which will return the expression)
-        const visited = this.visit(col);
-        // Add the alias to preserve the column name
-        sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
+      // Check if this is a bare JSON field that should use a text column
+      const textColumn = this.getTextColumnForField(field.chain);
+      if (textColumn !== null && outputName) {
+        // Use the text column instead of the JSON column, with alias to preserve name
+        sqlResult = `${this.printIdentifier(textColumn)} AS ${this.printIdentifier(outputName)}`;
       } else {
-        // Visit the field to get the ClickHouse SQL
-        const visited = this.visit(col);
+        const virtualColumnName = this.getVirtualColumnNameForField(field.chain);
 
-        // Check if this is a JSON subfield access (will have .:String type hint)
-        // If so, add an alias to preserve the nice column name (dots → underscores)
-        const isJsonSubfield = this.isJsonSubfieldAccess(field.chain);
-        if (isJsonSubfield) {
-          // Build the alias using underscores (e.g., "error_data_name")
-          const aliasName = field.chain.filter((p): p is string => typeof p === "string").join("_");
-          sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
-          // Override output name for metadata
-          effectiveOutputName = aliasName;
-        }
-        // Check if the column has a different clickhouseName - if so, add an alias
-        // to ensure results come back with the user-facing name
-        else if (
-          outputName &&
-          sourceColumn?.clickhouseName &&
-          sourceColumn.clickhouseName !== outputName
-        ) {
-          sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+        if (virtualColumnName !== null) {
+          // Visit the field (which will return the expression)
+          const visited = this.visit(col);
+          // Add the alias to preserve the column name
+          sqlResult = `${visited} AS ${this.printIdentifier(virtualColumnName)}`;
         } else {
-          sqlResult = visited;
+          // Visit the field to get the ClickHouse SQL
+          const visited = this.visit(col);
+
+          // Check if this is a JSON subfield access (will have .:String type hint)
+          // If so, add an alias to preserve the nice column name (dots → underscores)
+          const isJsonSubfield = this.isJsonSubfieldAccess(field.chain);
+          if (isJsonSubfield) {
+            // Build the alias using underscores, excluding any dataPrefix
+            // e.g., output.message -> "output_message" (not "output_data_message")
+            const dataPrefix = this.getDataPrefixForField(field.chain);
+            const aliasName = this.buildAliasWithoutDataPrefix(field.chain, dataPrefix);
+            sqlResult = `${visited} AS ${this.printIdentifier(aliasName)}`;
+            // Override output name for metadata
+            effectiveOutputName = aliasName;
+          }
+          // Check if the column has a different clickhouseName - if so, add an alias
+          // to ensure results come back with the user-facing name
+          else if (
+            outputName &&
+            sourceColumn?.clickhouseName &&
+            sourceColumn.clickhouseName !== outputName
+          ) {
+            sqlResult = `${visited} AS ${this.printIdentifier(outputName)}`;
+          } else {
+            sqlResult = visited;
+          }
         }
       }
     } else if (
@@ -675,8 +703,23 @@ export class ClickHousePrinter {
       } else {
         sqlResult = visited;
       }
+    } else if ((col as Alias).expression_type === "alias") {
+      // Handle Alias expressions - check if inner expression is a bare JSON field with textColumn
+      const alias = col as Alias;
+      if ((alias.expr as Field).expression_type === "field") {
+        const innerField = alias.expr as Field;
+        const textColumn = this.getTextColumnForField(innerField.chain);
+        if (textColumn !== null) {
+          // Use the text column with the user's explicit alias
+          sqlResult = `${this.printIdentifier(textColumn)} AS ${this.printIdentifier(alias.alias)}`;
+        } else {
+          sqlResult = this.visit(col);
+        }
+      } else {
+        sqlResult = this.visit(col);
+      }
     } else {
-      // For Alias expressions or other types, visit normally
+      // For other types, visit normally
       sqlResult = this.visit(col);
     }
 
@@ -695,6 +738,14 @@ export class ClickHousePrinter {
       // Only add description if specified in schema (columns and virtual columns)
       if (sourceColumn?.description) {
         metadata.description = sourceColumn.description;
+      }
+
+      // Set format hint from prettyFormat() or auto-populate from customRenderType
+      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      if (sourceWithFormat?.format) {
+        metadata.format = sourceWithFormat.format;
+      } else if (sourceColumn?.customRenderType) {
+        metadata.format = sourceColumn.customRenderType as ColumnFormatType;
       }
 
       this.outputColumns.push(metadata);
@@ -817,6 +868,11 @@ export class ClickHousePrinter {
       if (isVirtualColumn(columnSchema)) {
         // Virtual column: use the expression with an alias
         sqlResult = `(${columnSchema.expression}) AS ${this.printIdentifier(columnName)}`;
+      } else if (columnSchema.textColumn) {
+        // JSON column with text column optimization: use the text column with alias
+        sqlResult = `${this.printIdentifier(columnSchema.textColumn)} AS ${this.printIdentifier(
+          columnName
+        )}`;
       } else {
         // Regular column: use the actual ClickHouse column name
         const clickhouseName = columnSchema.clickhouseName ?? columnName;
@@ -883,6 +939,53 @@ export class ClickHousePrinter {
         sourceColumn: columnInfo.column,
         inferredType: columnInfo.column?.type ?? null,
       };
+    }
+
+    // Handle prettyFormat(expr, 'formatType') — metadata-only wrapper
+    if ((col as Call).expression_type === "call") {
+      const call = col as Call;
+      if (call.name.toLowerCase() === "prettyformat") {
+        if (call.args.length !== 2) {
+          throw new QueryError(
+            "prettyFormat() requires exactly 2 arguments: prettyFormat(expression, 'formatType')"
+          );
+        }
+        const formatArg = call.args[1];
+        if (
+          (formatArg as Constant).expression_type !== "constant" ||
+          typeof (formatArg as Constant).value !== "string"
+        ) {
+          throw new QueryError(
+            "prettyFormat() second argument must be a string literal format type"
+          );
+        }
+        const formatType = (formatArg as Constant).value as string;
+        const validFormats = [
+          "bytes",
+          "decimalBytes",
+          "quantity",
+          "percent",
+          "duration",
+          "durationSeconds",
+          "costInDollars",
+          "cost",
+        ];
+        if (!validFormats.includes(formatType)) {
+          throw new QueryError(
+            `Unknown format type '${formatType}'. Valid types: ${validFormats.join(", ")}`
+          );
+        }
+        const innerAnalysis = this.analyzeSelectColumn(call.args[0]);
+        return {
+          outputName: innerAnalysis.outputName,
+          sourceColumn: {
+            ...(innerAnalysis.sourceColumn ?? {}),
+            type: innerAnalysis.sourceColumn?.type ?? innerAnalysis.inferredType ?? undefined,
+            format: formatType as ColumnFormatType,
+          } as Partial<ColumnSchema> & { format?: ColumnFormatType },
+          inferredType: innerAnalysis.inferredType,
+        };
+      }
     }
 
     // Handle Call (function/aggregation) - infer type from function
@@ -1438,6 +1541,9 @@ export class ClickHousePrinter {
         // Look up table schema and get ClickHouse table name
         const tableSchema = this.lookupTable(tableName);
 
+        // Validate that required tenant columns are present in enforcedWhereClause
+        this.validateRequiredTenantColumns(tableSchema);
+
         // Always add the TSQL table name as an alias if no explicit alias is provided
         // This ensures table-qualified column references work in WHERE clauses
         // (needed to avoid alias conflicts when columns have expressions)
@@ -1486,8 +1592,8 @@ export class ClickHousePrinter {
           }
         }
 
-        // Add tenant isolation guard
-        extraWhere = this.createTenantGuard(tableSchema, effectiveAlias);
+        // Add enforced WHERE clause guard (tenant isolation + plan limits)
+        extraWhere = this.createEnforcedGuard(tableSchema, effectiveAlias);
       } else if (
         (tableExpr as SelectQuery).expression_type === "select_query" ||
         (tableExpr as SelectSetQuery).expression_type === "select_set_query"
@@ -1509,9 +1615,21 @@ export class ClickHousePrinter {
       joinStrings.push(`AS ${this.printIdentifier(node.alias)}`);
     }
 
-    // Add FINAL
-    if (node.table_final) {
-      joinStrings.push("FINAL");
+    // Add FINAL for direct table references to ReplacingMergeTree tables
+    // to ensure deduplicated results. Only applied when the table schema
+    // opts in via `useFinal: true` (not needed for plain MergeTree tables).
+    if (node.table) {
+      const tableExpr = node.table;
+      if ((tableExpr as Field).expression_type === "field") {
+        const field = tableExpr as Field;
+        const tableName = field.chain[0];
+        if (typeof tableName === "string") {
+          const tableSchema = this.lookupTable(tableName);
+          if (tableSchema.useFinal) {
+            joinStrings.push("FINAL");
+          }
+        }
+      }
     }
 
     // Add SAMPLE
@@ -1534,77 +1652,217 @@ export class ClickHousePrinter {
   }
 
   // ============================================================
-  // Tenant Isolation
+  // Enforced WHERE Clause
   // ============================================================
 
   /**
-   * Create a WHERE clause expression for tenant isolation and required filters
-   * Note: We use just the column name without table prefix since ClickHouse
-   * requires the actual table name (task_runs_v2), not the TSQL alias (task_runs)
+   * Validate that required tenant columns are present in enforcedWhereClause.
    *
-   * Organization ID is always required. Project ID and Environment ID are optional -
-   * if not provided, the query will return results across all projects/environments.
+   * If a table defines `tenantColumns.organizationId`, the `enforcedWhereClause`
+   * MUST include that column to ensure tenant isolation. This prevents accidental
+   * data leaks when the caller forgets to include tenant isolation conditions.
    *
-   * Required filters from the table schema are also always included.
+   * @throws QueryError if a required tenant column is missing
    */
-  private createTenantGuard(tableSchema: TableSchema, _tableAlias: string): And | CompareOperation {
-    const { tenantColumns, requiredFilters } = tableSchema;
+  private validateRequiredTenantColumns(tableSchema: TableSchema): void {
+    const { tenantColumns } = tableSchema;
+    if (!tenantColumns) return;
 
-    // Organization guard is always required
-    const orgGuard: CompareOperation = {
-      expression_type: "compare_operation",
-      op: CompareOperationOp.Eq,
-      left: { expression_type: "field", chain: [tenantColumns.organizationId] } as Field,
-      right: { expression_type: "constant", value: this.context.organizationId } as Constant,
+    // Organization ID is always required if the table defines it
+    if (tenantColumns.organizationId) {
+      const orgColumn = tenantColumns.organizationId;
+      if (!this.context.enforcedWhereClause[orgColumn]) {
+        throw new QueryError(
+          `Table '${tableSchema.name}' requires '${orgColumn}' in enforcedWhereClause for tenant isolation`
+        );
+      }
+    }
+    // Note: projectId and environmentId are optional - no validation needed
+  }
+
+  /**
+   * Format a Date as a ClickHouse-compatible DateTime64 string.
+   * ClickHouse expects format: 'YYYY-MM-DD HH:MM:SS.mmm' (in UTC)
+   */
+  private formatDateForClickHouse(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+    const ms = String(date.getUTCMilliseconds()).padStart(3, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
+  }
+
+  /**
+   * Create an AST expression for a value.
+   * Date values are wrapped in toDateTime64() for ClickHouse compatibility.
+   */
+  private createValueExpression(value: Date | string | number): Expression {
+    if (value instanceof Date) {
+      // Wrap Date in toDateTime64(formatted_string, 3) for ClickHouse DateTime64(3) columns
+      return {
+        expression_type: "call",
+        name: "toDateTime64",
+        args: [
+          { expression_type: "constant", value: this.formatDateForClickHouse(value) } as Constant,
+          { expression_type: "constant", value: 3 } as Constant,
+        ],
+      } as Call;
+    }
+    return { expression_type: "constant", value } as Constant;
+  }
+
+  /**
+   * Map condition operator to CompareOperationOp
+   */
+  private mapConditionOpToCompareOp(
+    op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte"
+  ): CompareOperationOp {
+    switch (op) {
+      case "eq":
+        return CompareOperationOp.Eq;
+      case "neq":
+        return CompareOperationOp.NotEq;
+      case "gt":
+        return CompareOperationOp.Gt;
+      case "gte":
+        return CompareOperationOp.GtEq;
+      case "lt":
+        return CompareOperationOp.Lt;
+      case "lte":
+        return CompareOperationOp.LtEq;
+    }
+  }
+
+  /**
+   * Create an AST expression from a WhereClauseCondition
+   *
+   * @param column - The column name
+   * @param condition - The condition to apply
+   * @param tableAlias - Optional table alias to qualify the column reference.
+   *                     When provided, constructs the field chain as [tableAlias, column]
+   *                     so resolveFieldChain will resolve to the correct table in multi-join queries.
+   * @returns The AST expression for the condition
+   */
+  private createConditionExpression(
+    column: string,
+    condition: WhereClauseCondition,
+    tableAlias?: string
+  ): Expression {
+    // When tableAlias is provided, qualify the field chain to ensure it binds
+    // to the correct table in multi-join queries
+    const fieldExpr: Field = {
+      expression_type: "field",
+      chain: tableAlias ? [tableAlias, column] : [column],
     };
 
-    // Collect all guards - org is always included
-    const guards: CompareOperation[] = [orgGuard];
-
-    // Only add project guard if projectId is provided
-    if (this.context.projectId !== undefined) {
-      const projectGuard: CompareOperation = {
-        expression_type: "compare_operation",
-        op: CompareOperationOp.Eq,
-        left: { expression_type: "field", chain: [tenantColumns.projectId] } as Field,
-        right: { expression_type: "constant", value: this.context.projectId } as Constant,
+    if (condition.op === "between") {
+      const betweenExpr: BetweenExpr = {
+        expression_type: "between_expr",
+        expr: fieldExpr,
+        low: this.createValueExpression(condition.low),
+        high: this.createValueExpression(condition.high),
       };
-      guards.push(projectGuard);
+      return betweenExpr;
     }
 
-    // Only add environment guard if environmentId is provided
-    if (this.context.environmentId !== undefined) {
-      const envGuard: CompareOperation = {
-        expression_type: "compare_operation",
-        op: CompareOperationOp.Eq,
-        left: { expression_type: "field", chain: [tenantColumns.environmentId] } as Field,
-        right: { expression_type: "constant", value: this.context.environmentId } as Constant,
+    if (condition.op === "in") {
+      // Create a tuple of values for the IN clause
+      const tupleExpr: Tuple = {
+        expression_type: "tuple",
+        exprs: condition.values.map((value) => this.createValueExpression(value)),
       };
-      guards.push(envGuard);
+      const inExpr: CompareOperation = {
+        expression_type: "compare_operation",
+        left: fieldExpr,
+        right: tupleExpr,
+        op: CompareOperationOp.In,
+      };
+      return inExpr;
     }
 
-    // Add required filters from the table schema
+    // Simple comparison
+    const compareExpr: CompareOperation = {
+      expression_type: "compare_operation",
+      left: fieldExpr,
+      right: this.createValueExpression(condition.value),
+      op: this.mapConditionOpToCompareOp(condition.op),
+    };
+    return compareExpr;
+  }
+
+  /**
+   * Create a WHERE clause expression for enforced conditions and required filters.
+   *
+   * This method applies:
+   * 1. All conditions from enforcedWhereClause (tenant isolation + plan limits)
+   * 2. Required filters from the table schema (e.g., engine = 'V2')
+   *
+   * Conditions are applied if the column exists in either:
+   * - The exposed columns (tableSchema.columns)
+   * - The tenant columns (tableSchema.tenantColumns)
+   *
+   * This ensures the same enforcedWhereClause can be used across different tables.
+   *
+   * All guard expressions are qualified with the table alias to ensure they bind
+   * to the correct table in multi-join queries, preventing potential security
+   * issues where an unqualified column reference could bind to the wrong table.
+   */
+  private createEnforcedGuard(tableSchema: TableSchema, tableAlias: string): Expression | null {
+    const { requiredFilters, tenantColumns } = tableSchema;
+    const guards: Expression[] = [];
+
+    // Build a set of valid columns for this table (exposed + tenant columns)
+    const validColumns = new Set<string>(Object.keys(tableSchema.columns));
+    if (tenantColumns) {
+      if (tenantColumns.organizationId) validColumns.add(tenantColumns.organizationId);
+      if (tenantColumns.projectId) validColumns.add(tenantColumns.projectId);
+      if (tenantColumns.environmentId) validColumns.add(tenantColumns.environmentId);
+    }
+
+    // Apply all enforced conditions for columns that exist in this table
+    // Pass tableAlias to ensure guards are qualified and bind to the correct table
+    for (const [column, condition] of Object.entries(this.context.enforcedWhereClause)) {
+      // Skip undefined/null conditions (allows conditional inclusion like project_id?: condition)
+      if (condition === undefined || condition === null) {
+        continue;
+      }
+      // Only apply if column exists in this table's schema or is a tenant column
+      if (validColumns.has(column)) {
+        guards.push(this.createConditionExpression(column, condition, tableAlias));
+      }
+    }
+
+    // Add required filters from the table schema (e.g., engine = 'V2')
+    // Also qualified with table alias to ensure correct binding in multi-join queries
     if (requiredFilters && requiredFilters.length > 0) {
       for (const filter of requiredFilters) {
         const filterGuard: CompareOperation = {
           expression_type: "compare_operation",
           op: CompareOperationOp.Eq,
-          left: { expression_type: "field", chain: [filter.column] } as Field,
+          left: { expression_type: "field", chain: [tableAlias, filter.column] } as Field,
           right: { expression_type: "constant", value: filter.value } as Constant,
         };
         guards.push(filterGuard);
       }
     }
 
-    // If only org guard, return it directly (no need for AND wrapper)
+    // Return null if no guards (empty enforcedWhereClause and no requiredFilters)
+    if (guards.length === 0) {
+      return null;
+    }
+
+    // If only one guard, return it directly (no need for AND wrapper)
     if (guards.length === 1) {
-      return orgGuard;
+      return guards[0];
     }
 
     return {
       expression_type: "and",
       exprs: guards,
-    };
+    } as And;
   }
 
   // ============================================================
@@ -1711,7 +1969,39 @@ export class ClickHousePrinter {
     // Transform the right side if it contains user-friendly values
     const transformedRight = this.transformValueMapExpression(node.right, columnSchema);
 
-    const left = this.visit(node.left);
+    // Check if we should use a text column for bare JSON field comparisons
+    // This applies to: Eq, NotEq, Like, ILike, NotLike, NotILike
+    const textColumnOps = [
+      CompareOperationOp.Eq,
+      CompareOperationOp.NotEq,
+      CompareOperationOp.Like,
+      CompareOperationOp.ILike,
+      CompareOperationOp.NotLike,
+      CompareOperationOp.NotILike,
+    ];
+    const useTextColumn = textColumnOps.includes(node.op);
+    const leftTextColumn = useTextColumn ? this.getTextColumnForExpression(node.left) : null;
+
+    // Build the left side, qualifying the text column with table alias if present
+    let left: string;
+    if (leftTextColumn) {
+      // Check if the field is qualified with a table alias (e.g., r.output)
+      // and prepend that alias to the text column to avoid ambiguity in JOINs
+      const fieldNode = node.left as Field;
+      if (fieldNode.expression_type === "field" && fieldNode.chain.length >= 2) {
+        const firstPart = fieldNode.chain[0];
+        if (typeof firstPart === "string" && this.tableContexts.has(firstPart)) {
+          // The field is qualified with a table alias, prepend it to the text column
+          left = this.printIdentifier(firstPart) + "." + this.printIdentifier(leftTextColumn);
+        } else {
+          left = this.printIdentifier(leftTextColumn);
+        }
+      } else {
+        left = this.printIdentifier(leftTextColumn);
+      }
+    } else {
+      left = this.visit(node.left);
+    }
     const right = this.visit(transformedRight);
 
     switch (node.op) {
@@ -2074,19 +2364,46 @@ export class ClickHousePrinter {
       return `(${virtualExpression})`;
     }
 
+    // Inject dataPrefix for JSON columns if needed (e.g., output.message -> output.data.message)
+    const chainWithPrefix = this.injectDataPrefix(node.chain);
+
     // Try to resolve column names through table context
-    const resolvedChain = this.resolveFieldChain(node.chain);
+    const resolvedChain = this.resolveFieldChain(chainWithPrefix);
+
+    // For Map columns, convert dot-notation to bracket syntax:
+    // metadata.user -> metadata['user']
+    if (resolvedChain.length > 1) {
+      const rootColumnSchema = this.resolveFieldToColumnSchema([node.chain[0]]);
+      if (rootColumnSchema?.type.startsWith("Map(")) {
+        const rootCol = this.printIdentifierOrIndex(resolvedChain[0]);
+        const mapKeys = resolvedChain.slice(1);
+        let result = rootCol;
+        for (const key of mapKeys) {
+          result = `${result}[${this.context.addValue(String(key))}]`;
+        }
+        return result;
+      }
+    }
 
     // Print each chain element
     let result = resolvedChain.map((part) => this.printIdentifierOrIndex(part)).join(".");
 
     // For JSON column subfield access (e.g., error.data.name), add .:String type hint
-    // This is required because ClickHouse's Dynamic/Variant types are not allowed in
-    // GROUP BY without type casting, and SELECT/GROUP BY expressions must match
+    // This is ONLY required when the query has GROUP BY, because:
+    // 1. ClickHouse's Dynamic/Variant types are not allowed in GROUP BY without type casting
+    // 2. SELECT/GROUP BY expressions must match
+    // For queries without GROUP BY, the .:String type hint actually breaks the query
+    // (returns NULL instead of the actual value)
+    // We also skip this in WHERE comparisons where it breaks the query
     if (resolvedChain.length > 1) {
       // Check if the root column (first part) is a JSON column
       const rootColumnSchema = this.resolveFieldToColumnSchema([node.chain[0]]);
-      if (rootColumnSchema?.type === "JSON") {
+      // Add .:String ONLY for GROUP BY queries, and NOT in WHERE comparisons
+      if (
+        rootColumnSchema?.type === "JSON" &&
+        this.queryHasGroupBy &&
+        !this.isInWhereComparisonContext()
+      ) {
         // Add .:String type hint for JSON subfield access
         result = `${result}.:String`;
       }
@@ -2106,6 +2423,20 @@ export class ClickHousePrinter {
     }
 
     // Check if we're inside a comparison operation (WHERE/HAVING context)
+    for (const node of this.stack) {
+      if ((node as CompareOperation).expression_type === "compare_operation") {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Check if we're inside a WHERE/HAVING comparison operation.
+   * Unlike isInComparisonContext(), this does NOT include GROUP BY context.
+   * Used to skip .:String type hints in WHERE clauses where they break queries.
+   */
+  private isInWhereComparisonContext(): boolean {
     for (const node of this.stack) {
       if ((node as CompareOperation).expression_type === "compare_operation") {
         return true;
@@ -2153,6 +2484,125 @@ export class ClickHousePrinter {
 
     const rootColumnSchema = this.resolveFieldToColumnSchema([chain[0]]);
     return rootColumnSchema?.type === "JSON";
+  }
+
+  /**
+   * Check if a field should use a text column instead of the JSON column.
+   * Returns the text column name if the field is a bare JSON field with textColumn defined,
+   * or null if the original column should be used.
+   *
+   * A "bare" JSON field means selecting the entire column (e.g., SELECT output)
+   * rather than accessing a subfield (e.g., SELECT output.data.name).
+   */
+  private getTextColumnForField(chain: Array<string | number>): string | null {
+    if (chain.length === 0) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    let columnSchema: ColumnSchema | null = null;
+
+    if (chain.length === 1) {
+      // Unqualified: just column name
+      columnSchema = this.resolveFieldToColumnSchema(chain);
+    } else if (chain.length === 2) {
+      // Could be table.column (qualified) - check if first part is a table alias
+      const tableSchema = this.tableContexts.get(firstPart);
+      if (tableSchema) {
+        const columnName = chain[1];
+        if (typeof columnName === "string") {
+          columnSchema = tableSchema.columns[columnName] || null;
+        }
+      }
+      // If not a table alias, it's JSON path access (e.g., output.data) - return null
+    }
+    // chain.length > 2 means JSON path access - return null
+
+    return columnSchema?.textColumn ?? null;
+  }
+
+  /**
+   * Get the text column for an expression if it's a bare JSON field.
+   * Returns null if the expression is not a field or doesn't have a textColumn.
+   */
+  private getTextColumnForExpression(expr: Expression): string | null {
+    if ((expr as Field).expression_type !== "field") return null;
+    return this.getTextColumnForField((expr as Field).chain);
+  }
+
+  /**
+   * Get the dataPrefix for a field chain if the root column has one defined.
+   * Returns null if the column doesn't have a dataPrefix or if this isn't a subfield access.
+   */
+  private getDataPrefixForField(chain: Array<string | number>): string | null {
+    if (chain.length < 2) return null; // Need at least column.subfield
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    // Check if first part is a table alias (table.column.subfield)
+    const tableSchema = this.tableContexts.get(firstPart);
+    if (tableSchema) {
+      // Qualified: table.column.subfield - need at least 3 parts
+      if (chain.length < 3) return null;
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+      const columnSchema = tableSchema.columns[columnName];
+      return columnSchema?.dataPrefix ?? null;
+    }
+
+    // Unqualified: column.subfield
+    const columnSchema = this.resolveFieldToColumnSchema([firstPart]);
+    return columnSchema?.dataPrefix ?? null;
+  }
+
+  /**
+   * Inject dataPrefix into a field chain if the root column has one defined.
+   * e.g., [output, message] -> [output, data, message] when dataPrefix is "data"
+   * Returns the original chain if no dataPrefix applies.
+   */
+  private injectDataPrefix(chain: Array<string | number>): Array<string | number> {
+    const dataPrefix = this.getDataPrefixForField(chain);
+    if (!dataPrefix) return chain;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return chain;
+
+    // Check if first part is a table alias
+    const tableSchema = this.tableContexts.get(firstPart);
+    if (tableSchema) {
+      // Qualified: table.column.subfield -> table.column.dataPrefix.subfield
+      // [table, column, subfield] -> [table, column, dataPrefix, subfield]
+      return [chain[0], chain[1], dataPrefix, ...chain.slice(2)];
+    }
+
+    // Unqualified: column.subfield -> column.dataPrefix.subfield
+    // [column, subfield] -> [column, dataPrefix, subfield]
+    return [chain[0], dataPrefix, ...chain.slice(1)];
+  }
+
+  /**
+   * Build an alias name for a field chain, excluding the dataPrefix if present.
+   * e.g., [output, message] with dataPrefix "data" -> "output_message"
+   * This gives users clean column names without the internal data wrapper.
+   */
+  private buildAliasWithoutDataPrefix(
+    chain: Array<string | number>,
+    dataPrefix: string | null
+  ): string {
+    // Filter to just string parts and join with underscores
+    const parts = chain.filter((p): p is string => typeof p === "string");
+
+    if (dataPrefix) {
+      // Remove the dataPrefix from the parts (it's an implementation detail)
+      const prefixIndex = parts.indexOf(dataPrefix);
+      if (prefixIndex > 0) {
+        // Only remove if it's not the first element (column name)
+        parts.splice(prefixIndex, 1);
+      }
+    }
+
+    return parts.join("_");
   }
 
   /**
@@ -2270,8 +2720,11 @@ export class ClickHousePrinter {
     }
 
     // Check if it's a SELECT alias (e.g., from COUNT() or explicit AS)
-    if (this.selectAliases.has(columnName)) {
-      return chain; // Valid alias reference
+    // Case-insensitive lookup: map key is lowercase, value is the canonical form
+    // that matches the alias as it appears in the generated SQL
+    const canonicalAlias = this.selectAliases.get(columnName.toLowerCase());
+    if (canonicalAlias !== undefined) {
+      return [canonicalAlias, ...chain.slice(1)];
     }
 
     // Check if this is an internal-only column being accessed in a user projection context
@@ -2380,6 +2833,31 @@ export class ClickHousePrinter {
       return columnSchema.clickhouseName || columnSchema.name;
     }
 
+    // Check if this is a tenant column that's not exposed in the schema's columns
+    // These are internal columns used for tenant isolation guards
+    const { tenantColumns, requiredFilters } = tableSchema;
+    if (tenantColumns) {
+      if (
+        columnName === tenantColumns.organizationId ||
+        columnName === tenantColumns.projectId ||
+        columnName === tenantColumns.environmentId
+      ) {
+        // Tenant columns are already ClickHouse column names, return as-is
+        return columnName;
+      }
+    }
+
+    // Check if this is a required filter column (e.g., engine = 'V2')
+    // These are internal columns used for enforced filters
+    if (requiredFilters) {
+      for (const filter of requiredFilters) {
+        if (columnName === filter.column) {
+          // Required filter columns are already ClickHouse column names, return as-is
+          return columnName;
+        }
+      }
+    }
+
     // Column not in schema - this is a security issue, block access
     // Check if the user typed a ClickHouse column name instead of the TSQL name
     for (const [tsqlName, colSchema] of Object.entries(tableSchema.columns)) {
@@ -2402,8 +2880,21 @@ export class ClickHousePrinter {
   private visitCall(node: Call): string {
     const name = node.name;
 
+    // Handle prettyFormat() — strip wrapper, only emit the inner expression
+    if (name.toLowerCase() === "prettyformat") {
+      if (node.args.length !== 2) {
+        throw new QueryError("prettyFormat() requires exactly 2 arguments");
+      }
+      return this.visit(node.args[0]);
+    }
+
+    // Handle timeBucket() - special TSQL function for automatic time bucketing
+    if (name.toLowerCase() === "timebucket") {
+      return this.visitTimeBucket(node);
+    }
+
     // Check if this is a comparison function
-    if (name in TSQL_COMPARISON_MAPPING) {
+    if (Object.prototype.hasOwnProperty.call(TSQL_COMPARISON_MAPPING, name)) {
       const op = TSQL_COMPARISON_MAPPING[name];
       if (node.args.length !== 2) {
         throw new QueryError(`Comparison '${name}' requires exactly two arguments`);
@@ -2450,7 +2941,7 @@ export class ClickHousePrinter {
     if (funcMeta) {
       validateFunctionArgs(node.args, funcMeta.minArgs, funcMeta.maxArgs, name);
 
-      const args = node.args.map((arg) => this.visit(arg));
+      const args = this.visitCallArgs(name, node.args);
       const params = node.params ? node.params.map((p) => this.visit(p)) : null;
       const paramsPart = params ? `(${params.join(", ")})` : "";
       return `${funcMeta.clickhouseName}${paramsPart}(${args.join(", ")})`;
@@ -2458,6 +2949,86 @@ export class ClickHousePrinter {
 
     // Unknown function - throw error
     throw new QueryError(`Unknown function: ${name}`);
+  }
+
+  /**
+   * Valid ClickHouse interval unit keywords used by date functions like dateAdd, dateDiff, etc.
+   */
+  private static readonly INTERVAL_UNITS = new Set([
+    "nanosecond",
+    "microsecond",
+    "millisecond",
+    "second",
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "month",
+    "quarter",
+    "year",
+  ]);
+
+  /**
+   * Date functions whose first argument is an interval unit keyword.
+   * ClickHouse requires the unit as a bare keyword (e.g., `dateAdd(day, 7, col)`),
+   * not a string literal (e.g., `dateAdd('day', 7, col)` fails).
+   */
+  private static readonly DATE_FUNCTIONS_WITH_INTERVAL_UNIT = new Set([
+    "dateadd",
+    "datesub",
+    "datediff",
+    "date_add",
+    "date_sub",
+    "date_diff",
+  ]);
+
+  /**
+   * Visit function call arguments, handling date functions that require an interval unit
+   * keyword as their first argument. For these functions, the first arg is output as a
+   * bare keyword instead of being parameterized or resolved as a column reference.
+   */
+  private visitCallArgs(functionName: string, args: Expression[]): string[] {
+    const lowerName = functionName.toLowerCase();
+
+    if (
+      ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) &&
+      args.length > 0
+    ) {
+      const firstArg = args[0];
+      const intervalUnit = this.extractIntervalUnit(firstArg);
+
+      if (intervalUnit) {
+        return [intervalUnit, ...args.slice(1).map((arg) => this.visit(arg))];
+      }
+    }
+
+    return args.map((arg) => this.visit(arg));
+  }
+
+  /**
+   * Try to extract a valid interval unit keyword from an expression.
+   * Handles both string constants ('day') and bare identifiers (day).
+   * Returns the bare keyword string if valid, or null if not an interval unit.
+   */
+  private extractIntervalUnit(expr: Expression): string | null {
+    if (expr.expression_type === "constant") {
+      const value = (expr as Constant).value;
+      if (typeof value === "string" && ClickHousePrinter.INTERVAL_UNITS.has(value.toLowerCase())) {
+        return value.toLowerCase();
+      }
+    }
+
+    if (expr.expression_type === "field") {
+      const chain = (expr as Field).chain;
+      if (chain.length === 1 && typeof chain[0] === "string") {
+        const name = chain[0].toLowerCase();
+        if (ClickHousePrinter.INTERVAL_UNITS.has(name)) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   private visitJoinConstraint(node: JoinConstraint): string {
@@ -2531,6 +3102,77 @@ export class ClickHousePrinter {
       return `SAMPLE ${sample} OFFSET ${this.visitRatioExpr(node.offset_value)}`;
     }
     return `SAMPLE ${sample}`;
+  }
+
+  // ============================================================
+  // timeBucket() Support
+  // ============================================================
+
+  /**
+   * Handle the `timeBucket()` TSQL function.
+   *
+   * Resolves the table's timeConstraint column to its ClickHouse name,
+   * calculates an appropriate interval from the query's time range,
+   * and emits `toStartOfInterval(column, INTERVAL N UNIT)`.
+   *
+   * @throws QueryError if timeBucket() is called with arguments, or if the table
+   *   has no timeConstraint, or if no timeRange is provided in the context.
+   */
+  private visitTimeBucket(node: Call): string {
+    // Validate: timeBucket() takes no arguments
+    if (node.args.length > 0) {
+      throw new QueryError(
+        "timeBucket() does not accept arguments. It automatically uses the table's time constraint column."
+      );
+    }
+
+    // Find the table with a timeConstraint
+    const tableWithConstraint = this.findTimeConstraintTable();
+    if (!tableWithConstraint) {
+      throw new QueryError(
+        "timeBucket() requires a table with a timeConstraint defined in its schema."
+      );
+    }
+
+    const { tableSchema, clickhouseColumnName } = tableWithConstraint;
+
+    // Get the time range from context
+    const timeRange = this.context.timeRange;
+    if (!timeRange) {
+      throw new QueryError(
+        "timeBucket() requires a time range to be provided. Pass a timeRange option when compiling the query."
+      );
+    }
+
+    // Calculate the appropriate interval (use table-specific thresholds if defined)
+    const interval = calculateTimeBucketInterval(
+      timeRange.from,
+      timeRange.to,
+      tableSchema.timeBucketThresholds
+    );
+
+    // Emit toStartOfInterval(column, INTERVAL N UNIT)
+    return `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
+  }
+
+  /**
+   * Find a table in the current query context that has a timeConstraint defined.
+   * Returns the table schema and the resolved ClickHouse column name for the constraint.
+   */
+  private findTimeConstraintTable(): {
+    tableSchema: TableSchema;
+    clickhouseColumnName: string;
+  } | null {
+    for (const tableSchema of this.tableContexts.values()) {
+      if (tableSchema.timeConstraint) {
+        const columnSchema = tableSchema.columns[tableSchema.timeConstraint];
+        if (columnSchema) {
+          const clickhouseColumnName = columnSchema.clickhouseName || columnSchema.name;
+          return { tableSchema, clickhouseColumnName };
+        }
+      }
+    }
+    return null;
   }
 
   // ============================================================

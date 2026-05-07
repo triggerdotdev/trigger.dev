@@ -19,7 +19,7 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
@@ -32,6 +32,7 @@ import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { CopyTextLink } from "~/components/primitives/CopyTextLink";
 import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -55,10 +56,14 @@ import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
+import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -73,6 +78,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { useCanViewLogsPage } from "~/hooks/useCanViewLogsPage";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -125,7 +131,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationSlug,
       runParam,
       spanParam,
-      error,
+      linkedRunId,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+              cause:
+                error.cause instanceof Error
+                  ? { name: error.cause.name, message: error.cause.message }
+                  : error.cause,
+            }
+          : error,
     });
     return redirectWithErrorMessage(
       v3RunPath(
@@ -238,35 +256,62 @@ function SpanBody({
 
   span = applySpanOverrides(span, spanOverrides);
 
+  const isAiInspector =
+    span.entity?.type === "ai-generation" ||
+    span.entity?.type === "ai-summary" ||
+    span.entity?.type === "ai-tool-call" ||
+    span.entity?.type === "ai-embed" ||
+    span.entity?.type === "prompt";
+
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3 pr-2">
-        <div className="flex items-center gap-1 overflow-x-hidden">
-          <RunIcon
-            name={span.style?.icon}
-            spanName={span.message}
-            className="size-5 min-h-5 min-w-5"
-          />
-          <Header2 className={cn("overflow-x-hidden")}>
-            <SpanTitle {...span} size="large" hideAccessory />
-          </Header2>
+    <div
+      className={cn(
+        "grid h-full max-h-full overflow-hidden bg-background-bright",
+        isAiInspector ? "grid-rows-[auto_1fr]" : "grid-rows-[2.5rem_1fr]"
+      )}
+    >
+      <div className="border-b border-grid-bright px-3 pr-2">
+        <div className="grid h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <RunIcon
+              name={span.style?.icon}
+              spanName={span.message}
+              className="size-5 min-h-5 min-w-5"
+            />
+            <Header2 className="min-w-0">
+              <SpanTitle {...span} size="large" hideAccessory overrideDimmed />
+            </Header2>
+          </div>
+          {runParam && closePanel && (
+            <Button
+              onClick={closePanel}
+              variant="minimal/small"
+              TrailingIcon={ExitIcon}
+              shortcut={{ key: "esc" }}
+              shortcutPosition="before-trailing-icon"
+              className="pl-1"
+            />
+          )}
         </div>
-        {runParam && closePanel && (
-          <Button
-            onClick={closePanel}
-            variant="minimal/small"
-            TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
-            shortcutPosition="before-trailing-icon"
-            className="pl-1"
-          />
-        )}
       </div>
-      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      {isAiInspector ? (
         <SpanEntity span={span} />
-      </div>
+      ) : (
+        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <SpanEntity span={span} />
+        </div>
+      )}
     </div>
   );
+}
+
+function formatSpanDuration(nanoseconds: number): string {
+  const ms = nanoseconds / 1_000_000;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const mins = Math.floor(ms / 60_000);
+  const secs = ((ms % 60_000) / 1000).toFixed(0);
+  return `${mins}m ${secs}s`;
 }
 
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
@@ -319,6 +364,7 @@ function RunBody({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
+  const canViewLogsPage = useCanViewLogsPage();
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
@@ -990,7 +1036,7 @@ function RunBody({
           )}
         </div>
       </div>
-      <div className="flex items-center flex-wrap py-2 justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-grid-dimmed px-2 py-2">
         <div className="flex items-center gap-4">
           {run.friendlyId !== runParam && (
             <LinkButton
@@ -1012,44 +1058,57 @@ function RunBody({
         </div>
         <div className="flex items-center">
           {run.logsDeletedAt === null ? (
-            <div className="flex">
+            canViewLogsPage ? (
+              <div className="flex">
+                <LinkButton
+                  to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
+                    new Date(run.createdAt).getTime() - 60000
+                  }`}
+                  variant="secondary/medium"
+                  className="rounded-r-none border-r-0"
+                >
+                  View logs
+                </LinkButton>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="secondary/medium"
+                      className="rounded-l-none border-l-charcoal-700 px-1.5"
+                    >
+                      <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="min-w-[140px] p-1" align="end">
+                    <PopoverMenuItem
+                      to={`${v3LogsPath(
+                        organization,
+                        project,
+                        environment
+                      )}?runId=${runParam}&from=${new Date(run.createdAt).getTime() - 60000}`}
+                      title="View logs"
+                      icon={ArrowRightIcon}
+                      leadingIconClassName="text-blue-500"
+                    />
+                    <PopoverMenuItem
+                      to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                      title="Download logs"
+                      icon={CloudArrowDownIcon}
+                      leadingIconClassName="text-indigo-500"
+                      openInNewTab
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            ) : (
               <LinkButton
-                to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
-                  new Date(run.createdAt).getTime() - 60000
-                }`}
+                to={v3RunDownloadLogsPath({ friendlyId: runParam })}
+                LeadingIcon={CloudArrowDownIcon}
+                leadingIconClassName="text-indigo-400"
                 variant="secondary/medium"
-                className="rounded-r-none border-r-0"
               >
-                View logs
+                Download logs
               </LinkButton>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="secondary/medium"
-                    className="rounded-l-none border-l-charcoal-700 px-1.5"
-                  >
-                    <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="min-w-[140px] p-1" align="end">
-                  <PopoverMenuItem
-                    to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
-                      new Date(run.createdAt).getTime() - 60000
-                    }`}
-                    title="View logs"
-                    icon={ArrowRightIcon}
-                    leadingIconClassName="text-blue-500"
-                  />
-                  <PopoverMenuItem
-                    to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-                    title="Download logs"
-                    icon={CloudArrowDownIcon}
-                    leadingIconClassName="text-indigo-500"
-                    openInNewTab
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+            )
           ) : null}
         </div>
       </div>
@@ -1127,6 +1186,35 @@ function RunError({ error }: { error: TaskRunError }) {
   }
 }
 
+function CollapsibleProperties({ code }: { code: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-t border-grid-bright pt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
+      >
+        <ChevronUpIcon
+          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
+        />
+        Raw properties
+      </button>
+      {open && (
+        <div className="mt-1.5">
+          <CodeBlock
+            code={code}
+            maxLines={20}
+            showLineNumbers={false}
+            showCopyButton
+            showTextWrapping
+            showOpenInModal
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -1173,53 +1261,14 @@ function SpanEntity({ span }: { span: Span }) {
         )}
         <Property.Table>
           <Property.Item>
-            <Property.Label>Message</Property.Label>
-            <Property.Value className="whitespace-pre-wrap">{span.message}</Property.Value>
+            <Property.Label className="flex items-center justify-between">
+              <span>Message</span>
+              <CopyTextLink value={span.message} />
+            </Property.Label>
+            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+              {span.message}
+            </Property.Value>
           </Property.Item>
-          {span.triggeredRuns.length > 0 && (
-            <Property.Item>
-              <div className="flex flex-col gap-1.5">
-                <Header3>Triggered runs</Header3>
-                <Table containerClassName="max-h-[12.5rem]">
-                  <TableHeader className="bg-background-bright">
-                    <TableRow>
-                      <TableHeaderCell>Run #</TableHeaderCell>
-                      <TableHeaderCell>Task</TableHeaderCell>
-                      <TableHeaderCell>Version</TableHeaderCell>
-                      <TableHeaderCell>Created at</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {span.triggeredRuns.map((run) => {
-                      const path = v3RunSpanPath(
-                        organization,
-                        project,
-                        environment,
-                        { friendlyId: run.friendlyId },
-                        { spanId: run.spanId }
-                      );
-                      return (
-                        <TableRow key={run.friendlyId}>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.number}
-                          </TableCell>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.taskIdentifier}
-                          </TableCell>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            {run.taskVersion ?? "–"}
-                          </TableCell>
-                          <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
-                            <DateTime date={run.createdAt} />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </Property.Item>
-          )}
         </Property.Table>
         {span.events.length > 0 && <SpanEvents spanEvents={span.events} />}
         {span.properties !== undefined ? (
@@ -1244,6 +1293,48 @@ function SpanEntity({ span }: { span: Span }) {
             showOpenInModal
           />
         ) : null}
+        {span.triggeredRuns.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Header3>Runs</Header3>
+            <Table containerClassName="max-h-[12.5rem]">
+              <TableHeader className="bg-background-bright">
+                <TableRow>
+                  <TableHeaderCell>ID</TableHeaderCell>
+                  <TableHeaderCell>Task</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {span.triggeredRuns.map((run) => {
+                  const path = v3RunSpanPath(
+                    organization,
+                    project,
+                    environment,
+                    { friendlyId: run.friendlyId },
+                    { spanId: run.spanId }
+                  );
+                  return (
+                    <TableRow key={run.friendlyId}>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        <TruncatedCopyableValue value={run.friendlyId} />
+                      </TableCell>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        {run.taskIdentifier}
+                      </TableCell>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        <TaskRunStatusCombo status={run.status} />
+                      </TableCell>
+                      <TableCell to={path} actionClassName="py-1.5" rowHoverStyle="bright">
+                        <DateTimeAccurate date={run.createdAt} hour12={false} hideDate={true} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
     );
   }
@@ -1322,6 +1413,54 @@ function SpanEntity({ span }: { span: Span }) {
           runId={span.entity.object.runId}
           streamKey={span.entity.object.streamKey}
           metadata={span.entity.object.metadata}
+          displayName={span.entity.object.displayName}
+        />
+      );
+    }
+    case "ai-generation":
+    case "ai-summary": {
+      return (
+        <AISpanDetails
+          aiData={span.entity.object}
+          promptVersionData={span.entity.promptVersionData}
+          rawProperties={
+            typeof span.properties === "string"
+              ? span.properties
+              : span.properties != null
+              ? JSON.stringify(span.properties, null, 2)
+              : undefined
+          }
+          startTime={span.startTime}
+          duration={span.duration}
+        />
+      );
+    }
+    case "ai-tool-call": {
+      return (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3">
+            <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
+          </div>
+          <AIToolCallSpanDetails data={span.entity.object} />
+        </div>
+      );
+    }
+    case "ai-embed": {
+      return (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="px-3">
+            <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
+          </div>
+          <AIEmbedSpanDetails data={span.entity.object} />
+        </div>
+      );
+    }
+    case "prompt": {
+      return (
+        <PromptSpanDetails
+          promptData={span.entity.object}
+          startTime={span.startTime}
+          duration={span.duration}
         />
       );
     }

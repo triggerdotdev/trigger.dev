@@ -1,4 +1,5 @@
 import {
+  CreditCardIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
@@ -60,10 +61,10 @@ export const variantClasses = {
     linkClassName: "transition hover:bg-blue-400/20",
   },
   pricing: {
-    className: "border-charcoal-700 bg-charcoal-800",
-    icon: <ChartBarIcon className="h-5 w-5 shrink-0 text-text-dimmed" />,
-    textColor: "text-text-bright",
-    linkClassName: "transition hover:bg-charcoal-750",
+    className: "border-indigo-400/20 bg-indigo-800/30",
+    icon: <CreditCardIcon className="h-5 w-5 shrink-0 text-indigo-400" />,
+    textColor: "text-indigo-300",
+    linkClassName: "transition hover:bg-indigo-400/20",
   },
 } as const;
 

@@ -15,6 +15,7 @@ import {
   BatchTriggerV3Service,
 } from "~/v3/services/batchTriggerV3.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
@@ -72,6 +73,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-engine-version": engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
       traceparent,
       tracestate,
     } = headers;
@@ -113,6 +115,8 @@ const { action, loader } = createActionApiRoute(
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
           realtimeStreamsVersion ?? undefined
         ),
+        triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+        triggerAction: "trigger",
       });
 
       const $responseHeaders = await responseHeaders(
@@ -123,6 +127,18 @@ const { action, loader } = createActionApiRoute(
 
       return json(batch, { status: 202, headers: $responseHeaders });
     } catch (error) {
+      // Customer-facing validation/quota failures (invalid batch shape,
+      // entitlements exhausted). The handler returns 422 with the message;
+      // system handles it gracefully, no alert needed.
+      if (error instanceof ServiceValidationError) {
+        logger.warn("Batch trigger error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+      if (error instanceof OutOfEntitlementError) {
+        logger.warn("Batch trigger error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+
       logger.error("Batch trigger error", {
         error: {
           message: (error as Error).message,
@@ -130,11 +146,7 @@ const { action, loader } = createActionApiRoute(
         },
       });
 
-      if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof OutOfEntitlementError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
+      if (error instanceof Error) {
         return json(
           { error: "Something went wrong" },
           { status: 500, headers: { "x-should-retry": "false" } }

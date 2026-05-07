@@ -18,6 +18,7 @@ type OverrideOptions = {
   payload?: string;
   metadata?: unknown;
   bulkActionId?: string;
+  triggerSource?: string;
 } & RunOptionsData;
 
 export class ReplayTaskRunService extends BaseService {
@@ -64,7 +65,7 @@ export class ReplayTaskRunService extends BaseService {
       existingTaskRun.engine === "V1" ||
       existingEnvironment.type === "DEVELOPMENT" ||
       authenticatedEnvironment.type === "DEVELOPMENT";
-    const region = ignoreRegion ? undefined : existingTaskRun.workerQueue;
+    const region = ignoreRegion ? undefined : overrideOptions.region ?? existingTaskRun.workerQueue;
 
     try {
       const taskQueue = await this._prisma.taskQueue.findFirst({
@@ -110,6 +111,7 @@ export class ReplayTaskRunService extends BaseService {
               overrideOptions.version === "latest" ? undefined : overrideOptions.version,
             bulkActionId: overrideOptions?.bulkActionId,
             region,
+            priority: overrideOptions.prioritySeconds,
           },
         },
         {
@@ -122,6 +124,8 @@ export class ReplayTaskRunService extends BaseService {
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
             existingTaskRun.realtimeStreamsVersion
           ),
+          triggerSource: overrideOptions.triggerSource ?? "api",
+          triggerAction: "replay",
         }
       );
 

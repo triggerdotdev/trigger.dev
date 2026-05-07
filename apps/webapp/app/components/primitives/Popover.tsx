@@ -66,6 +66,10 @@ const PopoverMenuItem = React.forwardRef<
     onClick?: React.MouseEventHandler;
     disabled?: boolean;
     openInNewTab?: boolean;
+    name?: string;
+    value?: string;
+    type?: React.ComponentProps<"button">["type"];
+    danger?: boolean;
   }
 >(
   (
@@ -80,18 +84,26 @@ const PopoverMenuItem = React.forwardRef<
       onClick,
       disabled,
       openInNewTab = false,
+      name,
+      value,
+      type,
+      danger = false,
     },
     ref
   ) => {
     const contentProps = {
       variant: variant.variant,
       LeadingIcon: icon,
-      leadingIconClassName,
+      leadingIconClassName: danger
+        ? cn(leadingIconClassName, "transition-colors group-hover/button:text-error")
+        : leadingIconClassName,
       fullWidth: true,
       textAlignLeft: true,
       TrailingIcon: isSelected ? CheckIcon : undefined,
       className: cn(
-        "group-hover:bg-charcoal-700",
+        danger
+          ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors [&_span]:group-hover/button:text-error"
+          : "group-hover:bg-charcoal-700",
         isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
         className
       ),
@@ -114,7 +126,6 @@ const PopoverMenuItem = React.forwardRef<
 
     return (
       <button
-        type="button"
         ref={ref as React.Ref<HTMLButtonElement>}
         onClick={onClick}
         disabled={disabled}
@@ -122,6 +133,9 @@ const PopoverMenuItem = React.forwardRef<
           "group/button outline-none focus-custom",
           contentProps.fullWidth ? "w-full" : ""
         )}
+        name={name}
+        value={value}
+        type={type ?? "button"}
       >
         <ButtonContent {...contentProps}>{title}</ButtonContent>
       </button>
@@ -154,10 +168,12 @@ function PopoverSideMenuTrigger({
   children,
   className,
   shortcut,
+  hideShortcutKey = false,
   ...props
 }: {
   isOpen?: boolean;
   shortcut?: useShortcutKeys.ShortcutDefinition;
+  hideShortcutKey?: boolean;
 } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
   const ref = React.useRef<HTMLButtonElement>(null);
   useShortcutKeys.useShortcutKeys({
@@ -176,14 +192,14 @@ function PopoverSideMenuTrigger({
       {...props}
       ref={ref}
       className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center gap-x-1.5 rounded-sm bg-transparent px-[0.4rem] text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
-        shortcut ? "justify-between" : "",
+        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
+        shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
         className
       )}
     >
       {children}
-      {shortcut && (
-        <ShortcutKey className={cn("size-4 flex-none")} shortcut={shortcut} variant={"small"} />
+      {shortcut && !hideShortcutKey && (
+        <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant={"small"} />
       )}
     </PopoverTrigger>
   );
@@ -194,6 +210,18 @@ const popoverArrowTriggerVariants = {
     trigger: "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright",
     text: "group-hover:text-text-bright",
     icon: "text-text-dimmed group-hover:text-text-bright",
+  },
+  primary: {
+    trigger:
+      "bg-indigo-600 border border-indigo-500 text-text-bright hover:bg-indigo-500 hover:border-indigo-400 disabled:opacity-50 disabled:pointer-events-none",
+    text: "text-text-bright hover:text-white",
+    icon: "text-text-bright",
+  },
+  secondary: {
+    trigger:
+      "bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 disabled:opacity-60 disabled:pointer-events-none",
+    text: "text-text-bright",
+    icon: "text-text-bright",
   },
   tertiary: {
     trigger: "bg-tertiary text-text-bright hover:bg-charcoal-600",
@@ -241,20 +269,40 @@ function PopoverArrowTrigger({
   );
 }
 
+const popoverVerticalEllipseVariants = {
+  minimal: {
+    trigger: "size-6 rounded-[3px] text-text-dimmed hover:bg-tertiary hover:text-text-bright",
+    icon: "size-5",
+  },
+  secondary: {
+    trigger:
+      "size-6 rounded border border-charcoal-600 bg-secondary text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550",
+    icon: "size-4",
+  },
+} as const;
+
+type PopoverVerticalEllipseVariant = keyof typeof popoverVerticalEllipseVariants;
+
 function PopoverVerticalEllipseTrigger({
   isOpen,
+  variant = "minimal",
   className,
   ...props
-}: { isOpen?: boolean } & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+}: {
+  isOpen?: boolean;
+  variant?: PopoverVerticalEllipseVariant;
+} & React.ComponentPropsWithoutRef<typeof PopoverTrigger>) {
+  const styles = popoverVerticalEllipseVariants[variant];
   return (
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded-[3px] p-0.5 text-text-dimmed transition focus-custom hover:bg-tertiary hover:text-text-bright",
+        "group flex items-center justify-center transition focus-custom",
+        styles.trigger,
         className
       )}
     >
-      <EllipsisVerticalIcon className={cn("size-5 transition group-hover:text-text-bright")} />
+      <EllipsisVerticalIcon className={cn(styles.icon, "transition")} />
     </PopoverTrigger>
   );
 }
