@@ -1,7 +1,7 @@
 ---
 title: "Features"
 sidebarTitle: "Features"
-description: "Per-run data, deferred work, custom streaming, subtask integration, and preload."
+description: "Per-run data, deferred work, custom streaming, and subtask integration."
 ---
 
 ## Per-run data with chat.local
@@ -416,84 +416,3 @@ export const mySubtask = schemaTask({
 | `ai.chatContext<typeof myChat>()` | `{ chatId, turn, continuation, clientData } \| undefined` | Chat context with typed `clientData`. Returns `undefined` if not in a chat context. |
 | `ai.chatContextOrThrow<typeof myChat>()` | `{ chatId, turn, continuation, clientData }` | Same as above but throws if not in a chat context |
 | `ai.currentToolOptions()` | `ToolCallExecutionOptions \| undefined` | Full tool execution options |
-
----
-
-## Preload
-
-Preload eagerly triggers a run for a chat before the first message is sent. This allows initialization (DB setup, context loading) to happen while the user is still typing, reducing first-response latency.
-
-<Tip>
-  See also [Head Start](/ai-chat/head-start) — solves the same first-turn TTFC problem from the other direction. Preload trades idle compute for fast TTFC (good when the user *will* send a message). Head Start runs step 1's LLM call in your warm process while the agent run boots in parallel — no idle compute, gates the run on a real first message.
-</Tip>
-
-
-### Frontend
-
-Call `transport.preload(chatId)` to start a run early:
-
-```tsx
-import { useEffect } from "react";
-import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
-import { useChat } from "@ai-sdk/react";
-
-export function Chat({ chatId }) {
-  const transport = useTriggerChatTransport({
-    task: "my-chat",
-    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
-    clientData: { userId: currentUser.id },
-  });
-
-  // Preload on mount — run starts before the user types anything.
-  // Trigger config (idleTimeoutInSeconds, machine, tags) lives in the
-  // server action that wraps `chat.createStartSessionAction`.
-  useEffect(() => {
-    transport.preload(chatId);
-  }, [chatId]);
-
-  const { messages, sendMessage } = useChat({ id: chatId, transport });
-  // ...
-}
-```
-
-Preload is a no-op if a session already exists for this chatId.
-
-When the transport needs a trigger token for preload, your `accessToken` callback receives `{ chatId, purpose: "preload" }` (same as for a normal trigger, but `purpose` is `"trigger"` when starting a run from `sendMessages`). See [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
-
-### Backend
-
-On the backend, the `onPreload` hook fires immediately. The run then waits for the first message. When the user sends a message, `onChatStart` fires with `preloaded: true` — you can skip initialization that was already done in `onPreload`:
-
-```ts
-export const myChat = chat.agent({
-  id: "my-chat",
-  onPreload: async ({ chatId, clientData }) => {
-    // Eagerly initialize — runs before the first message
-    userContext.init(await loadUser(clientData.userId));
-    await db.chat.create({ data: { id: chatId } });
-  },
-  onChatStart: async ({ preloaded }) => {
-    if (preloaded) return; // Already initialized in onPreload
-    // ... fallback initialization for non-preloaded runs
-  },
-  run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
-  },
-});
-```
-
-With `chat.createSession()` or raw tasks, check `payload.trigger === "preload"` and wait for the first message:
-
-```ts
-if (payload.trigger === "preload") {
-  // Initialize early...
-  const result = await chat.messages.waitWithIdleTimeout({
-    idleTimeoutInSeconds: 60,
-    timeout: "1h",
-  });
-  if (!result.ok) return;
-  currentPayload = result.output;
-}
-```

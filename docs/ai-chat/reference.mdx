@@ -15,10 +15,10 @@ Options for `chat.agent()`.
 | `clientDataSchema`            | `TaskSchema`                                                | —                              | Schema for validating and typing `clientData`                                                       |
 | `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
 | `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires on turn 0 before `run()`                                                                      |
-| `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/backend#onvalidatemessages) |
-| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/backend#hydratemessages) |
-| `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/backend#actions) |
-| `onAction`                    | `(event: ActionEvent) => Promise<unknown> \| unknown`       | —                              | Handle custom actions. Actions are not turns — only `hydrateMessages` + `onAction` fire. Return a `StreamTextResult` (or `string` / `UIMessage`) for a model response; return `void` for side-effect-only. See [Actions](/ai-chat/backend#actions) |
+| `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/lifecycle-hooks#onvalidatemessages) |
+| `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
+| `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/actions) |
+| `onAction`                    | `(event: ActionEvent) => Promise<unknown> \| unknown`       | —                              | Handle custom actions. Actions are not turns — only `hydrateMessages` + `onAction` fire. Return a `StreamTextResult` (or `string` / `UIMessage`) for a model response; return `void` for side-effect-only. See [Actions](/ai-chat/actions) |
 | `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
 | `onBeforeTurnComplete`        | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | —                              | Fires after response but before stream closes. Includes `writer`.                                   |
 | `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
@@ -33,9 +33,9 @@ Options for `chat.agent()`.
 | `preloadIdleTimeoutInSeconds` | `number`                                                    | Same as `idleTimeoutInSeconds` | Idle timeout after `onPreload` fires                                                                |
 | `preloadTimeout`              | `string`                                                    | Same as `turnTimeout`          | Suspend timeout for preloaded runs                                                                  |
 | `uiMessageStreamOptions`      | `ChatUIMessageStreamOptions`                                | —                              | Default options for `toUIMessageStream()`. Per-turn override via `chat.setUIMessageStreamOptions()` |
-| `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/backend#onchatsuspend--onchatresume) |
+| `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/lifecycle-hooks#onchatsuspend--onchatresume) |
 | `onChatResume`                | `(event: ChatResumeEvent) => Promise<void> \| void`         | —                              | Fires right after the run resumes from suspension                                                   |
-| `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/backend#exitafterpreloadidle) |
+| `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/lifecycle-hooks#exitafterpreloadidle) |
 
 Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Those hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
 
@@ -122,7 +122,7 @@ Passed to the `onValidateMessages` callback.
 
 ## HydrateMessagesEvent
 
-Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/backend#hydratemessages).
+Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages).
 
 | Field              | Type                                                  | Description                                               |
 | ------------------ | ----------------------------------------------------- | --------------------------------------------------------- |
@@ -137,7 +137,7 @@ Passed to the `hydrateMessages` callback. See [hydrateMessages](/ai-chat/backend
 
 ## ActionEvent
 
-Passed to the `onAction` callback. See [Actions](/ai-chat/backend#actions).
+Passed to the `onAction` callback. See [Actions](/ai-chat/actions).
 
 | Field        | Type                        | Description                                              |
 | ------------ | --------------------------- | -------------------------------------------------------- |
@@ -502,7 +502,7 @@ Options for the frontend transport constructor and `useTriggerChatTransport` hoo
 | `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes. `session` is the full `ChatSession` or `null` when the run ends. |
 | `multiTab`             | `boolean`                                                            | `false`                     | Enable multi-tab claim coordination via `BroadcastChannel`. See [Frontend → multi-tab](/ai-chat/frontend#multi-tab-coordination). |
 | `watch`                | `boolean`                                                            | `false`                     | Read-only watcher mode — keep the SSE subscription open across `trigger:turn-complete` so a viewer sees turns 2, 3, … through one long-lived stream. |
-| `headStart`            | `string`                                                             | —                           | URL of a [`chat.headStart`](/ai-chat/head-start) route handler. When set, the FIRST message of a brand-new chat POSTs to this URL so step 1's LLM call runs in your warm process while the agent run boots in parallel. Subsequent turns bypass it. |
+| `headStart`            | `string`                                                             | —                           | URL of a [`chat.headStart`](/ai-chat/fast-starts#head-start) route handler. When set, the FIRST message of a brand-new chat POSTs to this URL so step 1's LLM call runs in your warm process while the agent run boots in parallel. Subsequent turns bypass it. |
 
 ### `accessToken` callback
 
@@ -643,7 +643,7 @@ The action payload is validated against the agent's `actionSchema` on the backen
 </button>
 ```
 
-See [Actions](/ai-chat/backend#actions) for backend setup and [Sending actions](/ai-chat/frontend#sending-actions) for frontend usage.
+See [Actions](/ai-chat/actions) for backend setup and [Sending actions](/ai-chat/frontend#sending-actions) for frontend usage.
 
 ### transport.preload()
 
@@ -653,7 +653,7 @@ Eagerly trigger a run before the first message.
 transport.preload(chatId, { idleTimeoutInSeconds?: number }): Promise<void>
 ```
 
-No-op if a session already exists for this chatId. See [Preload](/ai-chat/features#preload) for full details.
+No-op if a session already exists for this chatId. See [Preload](/ai-chat/fast-starts#preload) for full details.
 
 ## useTriggerChatTransport
 

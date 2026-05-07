@@ -1,0 +1,375 @@
+---
+title: "Lifecycle hooks"
+sidebarTitle: "Lifecycle hooks"
+description: "Hook into every stage of a chat agent's run: preload, turn start, turn complete, suspend, resume, and more."
+---
+
+`chat.agent({ ... })` accepts a set of lifecycle hooks for persisting state, validating input, transforming messages, and reacting to suspension and resumption. They fire in a fixed order around each turn.
+
+**Per-turn order:** `onValidateMessages` → `hydrateMessages` → `onChatStart` (turn 0 only) → `onTurnStart` → `run()` → `onBeforeTurnComplete` → `onTurnComplete`.
+
+**Suspend / resume:** `onChatSuspend` fires when the run transitions from idle to suspended (waiting on the next message); `onChatResume` fires on wake.
+
+## Task context (`ctx`)
+
+Every chat lifecycle callback and the `run` payload include `ctx`: the same run context object as `task({ run: (payload, { ctx }) => ... })`. Import the type with `import type { TaskRunContext } from "@trigger.dev/sdk"` (the `Context` export is the same type). Use `ctx` for tags, metadata, or any API that needs the full run record. The string `runId` on chat events is always `ctx.run.id` (both are provided for convenience). See [Task context (`ctx`)](/ai-chat/reference#task-context-ctx) in the API reference.
+
+Standard [task lifecycle hooks](/tasks/overview) such as `onWait`, `onResume`, `onComplete`, and `onFailure` are also available on `chat.agent()` with the same shapes as on a normal `task()`.
+
+Chat agents also have two dedicated suspension hooks, `onChatSuspend` and `onChatResume`, that fire at the idle-to-suspended transition with full chat context. Use them for resource cleanup (e.g. tearing down sandboxes) and re-initialization. See [onChatSuspend / onChatResume](#onchatsuspend--onchatresume) and the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
+
+## onPreload
+
+Fires when a preloaded run starts, before any messages arrive. Use it to eagerly initialize state (DB records, user context) while the user is still typing.
+
+Preloaded runs are triggered by calling `transport.preload(chatId)` on the frontend. See [Preload](/ai-chat/fast-starts#preload) for details.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onPreload: async ({ ctx, chatId, clientData, runId, chatAccessToken }) => {
+    // Initialize early, before the first message arrives
+    const user = await db.user.findUnique({ where: { id: clientData.userId } });
+    userContext.init({ name: user.name, plan: user.plan });
+
+    await db.chat.create({ data: { id: chatId, userId: clientData.userId } });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  onChatStart: async ({ preloaded }) => {
+    if (preloaded) return; // Already initialized in onPreload
+    // ... non-preloaded initialization
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+| Field             | Type                                          | Description                      |
+| ----------------- | --------------------------------------------- | -------------------------------- |
+| `ctx`             | `TaskRunContext`                              | Full task run context. See [reference](/ai-chat/reference#task-context-ctx). |
+| `chatId`          | `string`                                      | Chat session ID                  |
+| `runId`           | `string`                                      | The Trigger.dev run ID           |
+| `chatAccessToken` | `string`                                      | Scoped access token for this run |
+| `clientData`      | Typed by `clientDataSchema`                   | Custom data from the frontend    |
+| `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks  |
+
+Every lifecycle callback receives a `writer`, a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend. Non-transient `data-*` chunks written via the `writer` are automatically added to the response message and available in `onTurnComplete`. Add `transient: true` for ephemeral chunks (progress indicators, etc.) that should not persist. See [Custom data parts](/ai-chat/features#custom-data-parts).
+
+## onChatStart
+
+Fires once on the first turn (turn 0) before `run()` executes. Use it to create a chat record in your database.
+
+The `continuation` field tells you whether this is a brand new chat or a continuation of an existing one (where the previous run timed out or was cancelled). The `preloaded` field tells you whether `onPreload` already ran.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onChatStart: async ({ chatId, clientData, continuation, preloaded }) => {
+    if (preloaded) return; // Already set up in onPreload
+    if (continuation) return; // Chat record already exists
+
+    const { userId } = clientData as { userId: string };
+    await db.chat.create({
+      data: { id: chatId, userId, title: "New chat" },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  `clientData` contains custom data from the frontend: either the `clientData` option on the
+  transport constructor (sent with every message) or the `metadata` option on `sendMessage()`
+  (per-message). See [Client data and metadata](/ai-chat/frontend#client-data-and-metadata).
+</Tip>
+
+## onValidateMessages
+
+Validate or transform incoming `UIMessage[]` before they are converted to model messages. Fires once per turn with the raw messages from the wire payload (after cleanup of aborted tool parts), **before** accumulation and `toModelMessages()`.
+
+Return the validated messages array. Throw to abort the turn with an error.
+
+This is the right place to call the AI SDK's [`validateUIMessages`](https://ai-sdk.dev/docs/ai-sdk-ui/chatbot-message-persistence#validating-messages-on-the-server) to catch malformed messages from storage or untrusted input before they reach the model, especially useful when persisting conversations to a database where tool schemas may drift between deploys.
+
+| Field     | Type                                                            | Description                              |
+| --------- | --------------------------------------------------------------- | ---------------------------------------- |
+| `messages` | `UIMessage[]`                                                  | Incoming UI messages for this turn       |
+| `chatId`  | `string`                                                        | Chat session ID                          |
+| `turn`    | `number`                                                        | Turn number (0-indexed)                  |
+| `trigger` | `"submit-message" \| "regenerate-message" \| "preload" \| "close"` | The trigger type for this turn        |
+
+```ts
+import { validateUIMessages } from "ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onValidateMessages: async ({ messages }) => {
+    return validateUIMessages({ messages, tools: chatTools });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, tools: chatTools, abortSignal: signal });
+  },
+});
+```
+
+<Note>
+  `onValidateMessages` fires **before** `onTurnStart` and message accumulation. If you need to validate messages loaded from a database, do the loading in `onChatStart` or `onPreload` and let `onValidateMessages` validate the full incoming set each turn.
+</Note>
+
+## hydrateMessages
+
+Load the full message history from your backend on every turn, replacing the built-in linear accumulator. When set, the hook's return value becomes the accumulated state; the normal accumulation logic (append for submit, replace for regenerate) is skipped entirely.
+
+Use this when the backend should be the source of truth for message history: abuse prevention, branching conversations (DAGs), or rollback/undo support.
+
+| Field              | Type                                                  | Description                                               |
+| ------------------ | ----------------------------------------------------- | --------------------------------------------------------- |
+| `chatId`           | `string`                                              | Chat session ID                                           |
+| `turn`             | `number`                                              | Turn number (0-indexed)                                   |
+| `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
+| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend (empty for actions) |
+| `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
+| `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
+| `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
+| `previousRunId`    | `string \| undefined`                                 | The previous run ID (if continuation)                     |
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const record = await db.chat.findUnique({ where: { id: chatId } });
+    const stored = record?.messages ?? [];
+
+    // Append the new user message and persist
+    if (trigger === "submit-message" && incomingMessages.length > 0) {
+      const newMsg = incomingMessages[incomingMessages.length - 1]!;
+      stored.push(newMsg);
+      await db.chat.update({
+        where: { id: chatId },
+        data: { messages: stored },
+      });
+    }
+
+    return stored;
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+**Lifecycle position:** `onValidateMessages` → **`hydrateMessages`** → `onChatStart` (turn 0) → `onTurnStart` → `run()`
+
+After the hook returns, any incoming wire message whose ID matches a hydrated message is auto-merged. This makes [tool approvals](/ai-chat/frontend#tool-approvals) work transparently with hydration.
+
+<Note>
+  `hydrateMessages` also fires for [action](/ai-chat/actions) turns (`trigger: "action"`) with empty `incomingMessages`. This lets the action handler work with the latest DB state.
+</Note>
+
+## onTurnStart
+
+Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins so a mid-stream page refresh still shows the user's message.
+
+| Field             | Type                                          | Description                                     |
+| ----------------- | --------------------------------------------- | ----------------------------------------------- |
+| `ctx`             | `TaskRunContext`                              | Full task run context. See [reference](/ai-chat/reference#task-context-ctx). |
+| `chatId`          | `string`                                      | Chat session ID                                 |
+| `messages`        | `ModelMessage[]`                              | Full accumulated conversation (model format)    |
+| `uiMessages`      | `UIMessage[]`                                 | Full accumulated conversation (UI format)       |
+| `turn`            | `number`                                      | Turn number (0-indexed)                         |
+| `runId`           | `string`                                      | The Trigger.dev run ID                          |
+| `chatAccessToken` | `string`                                      | Scoped access token for this run                |
+| `continuation`    | `boolean`                                     | Whether this run is continuing an existing chat |
+| `preloaded`       | `boolean`                                     | Whether this run was preloaded                  |
+| `clientData`      | Typed by `clientDataSchema`                   | Custom data from the frontend                   |
+| `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks                 |
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onTurnStart: async ({ chatId, uiMessages, runId, chatAccessToken }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken },
+      update: { runId, publicAccessToken: chatAccessToken },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  By persisting in `onTurnStart`, the user's message is saved to your database before the AI starts
+  streaming. If the user refreshes mid-stream, the message is already there.
+</Tip>
+
+## onBeforeTurnComplete
+
+Fires after the response is captured but **before** the stream closes. The `writer` can send custom chunks that appear in the current turn. Use this for post-processing indicators, compaction progress, or any data the user should see before the turn ends.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onBeforeTurnComplete: async ({ writer, usage, uiMessages }) => {
+    // Write a custom data part while the stream is still open
+    writer.write({
+      type: "data-usage-summary",
+      data: {
+        tokens: usage?.totalTokens,
+        messageCount: uiMessages.length,
+      },
+    });
+
+    // You can also compact messages here and write progress
+    if (usage?.totalTokens && usage.totalTokens > 50_000) {
+      writer.write({ type: "data-compaction", data: { status: "compacting" } });
+      chat.setMessages(compactedMessages);
+      writer.write({ type: "data-compaction", data: { status: "complete" } });
+    }
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+Receives the same fields as [`TurnCompleteEvent`](/ai-chat/reference#turncompleteevent), plus a [`writer`](/ai-chat/reference#chatwriter).
+
+## onTurnComplete
+
+Fires after each turn completes, after the response is captured and the stream is closed. This is the primary hook for persisting the assistant's response. Does not include a `writer` since the stream is already closed.
+
+| Field                | Type                     | Description                                                                                  |
+| -------------------- | ------------------------ | -------------------------------------------------------------------------------------------- |
+| `ctx`                | `TaskRunContext`         | Full task run context. See [reference](/ai-chat/reference#task-context-ctx).                |
+| `chatId`             | `string`                 | Chat session ID                                                                              |
+| `messages`           | `ModelMessage[]`         | Full accumulated conversation (model format)                                                 |
+| `uiMessages`         | `UIMessage[]`            | Full accumulated conversation (UI format)                                                    |
+| `newMessages`        | `ModelMessage[]`         | Only this turn's messages (model format)                                                     |
+| `newUIMessages`      | `UIMessage[]`            | Only this turn's messages (UI format)                                                        |
+| `responseMessage`    | `UIMessage \| undefined` | The assistant's response for this turn                                                       |
+| `turn`               | `number`                 | Turn number (0-indexed)                                                                      |
+| `runId`              | `string`                 | The Trigger.dev run ID                                                                       |
+| `chatAccessToken`    | `string`                 | Scoped access token for this run                                                             |
+| `lastEventId`        | `string \| undefined`    | Stream position for resumption. Persist this with the session.                               |
+| `stopped`            | `boolean`                | Whether the user stopped generation during this turn                                         |
+| `continuation`       | `boolean`                | Whether this run is continuing an existing chat                                              |
+| `rawResponseMessage` | `UIMessage \| undefined` | The raw assistant response before abort cleanup (same as `responseMessage` when not stopped) |
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: { messages: uiMessages },
+    });
+    await db.chatSession.upsert({
+      where: { id: chatId },
+      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Tip>
+  Use `uiMessages` to overwrite the full conversation each turn (simplest). Use `newUIMessages` if
+  you prefer to store messages individually, e.g. one database row per message.
+</Tip>
+
+<Tip>
+  Persist `lastEventId` alongside the session. When the transport reconnects after a page refresh,
+  it uses this to skip past already-seen events, preventing duplicate messages.
+</Tip>
+
+<Tip>
+  For a full **conversation + session** persistence pattern (including preload, continuation, and token renewal), see [Database persistence](/ai-chat/patterns/database-persistence).
+</Tip>
+
+## onChatSuspend / onChatResume
+
+Chat-specific hooks that fire at the **idle-to-suspended** transition: the moment the run stops using compute and waits for the next message. These replace the need for the generic `onWait` / `onResume` task hooks for chat-specific work.
+
+The `phase` discriminator tells you **when** the suspend/resume happened:
+
+- `"preload"`: after `onPreload`, waiting for the first message
+- `"turn"`: after `onTurnComplete`, waiting for the next message
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onChatSuspend: async (event) => {
+    // Tear down expensive resources before suspending
+    await disposeCodeSandbox(event.ctx.run.id);
+    if (event.phase === "turn") {
+      logger.info("Suspending after turn", { turn: event.turn });
+    }
+  },
+  onChatResume: async (event) => {
+    // Re-initialize after waking up
+    logger.info("Resumed", { phase: event.phase });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+| Field        | Type             | Description                                                  |
+| ------------ | ---------------- | ------------------------------------------------------------ |
+| `phase`      | `"preload" \| "turn"` | Whether this is a preload or post-turn suspension       |
+| `ctx`        | `TaskRunContext` | Full task run context                                        |
+| `chatId`     | `string`         | Chat session ID                                              |
+| `runId`      | `string`         | The Trigger.dev run ID                                       |
+| `clientData` | Typed by `clientDataSchema` | Custom data from the frontend                   |
+| `turn`       | `number`         | Turn number (**`"turn"` phase only**)                        |
+| `messages`   | `ModelMessage[]` | Accumulated model messages (**`"turn"` phase only**)         |
+| `uiMessages` | `UIMessage[]`    | Accumulated UI messages (**`"turn"` phase only**)            |
+
+<Tip>
+  Unlike `onWait` (which fires for all wait types: duration, task, batch, token), `onChatSuspend` fires only at chat suspension points with full chat context. No need to filter on `wait.type`.
+</Tip>
+
+## exitAfterPreloadIdle
+
+When set to `true`, a preloaded run completes successfully after the idle timeout elapses instead of suspending. Use this for "fire and forget" preloads. If the user doesn't send a message during the idle window, the run ends cleanly.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  preloadIdleTimeoutInSeconds: 10,
+  exitAfterPreloadIdle: true,
+  onPreload: async ({ chatId, clientData }) => {
+    // Eagerly set up state. If no message comes, the run just ends.
+    await initializeChat(chatId, clientData);
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+## See also
+
+- [Reference](/ai-chat/reference) for full event-type definitions
+- [Database persistence](/ai-chat/patterns/database-persistence) for the canonical persistence pattern
+- [Code execution sandbox](/ai-chat/patterns/code-sandbox) for an `onChatSuspend` use case
+- [Backend](/ai-chat/backend) for `chat.agent({ ... })` itself, prompts, stop signals, persistence overview, and runtime configuration

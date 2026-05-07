@@ -463,7 +463,7 @@ function ChatControls({ chatId }: { chatId: string }) {
 }
 ```
 
-The action payload is validated against the agent's `actionSchema` on the backend — invalid actions are rejected. See [Actions](/ai-chat/backend#actions) for the backend setup.
+The action payload is validated against the agent's `actionSchema` on the backend — invalid actions are rejected. See [Actions](/ai-chat/actions) for the backend setup.
 
 <Note>
   `sendAction` returns a `ReadableStream<UIMessageChunk>`. For side-effect-only actions (where `onAction` returns `void`), the stream completes immediately with `trigger:turn-complete`. For actions where `onAction` returns a `StreamTextResult`, the stream carries the assistant chunks the same way `sendMessages` does — `useChat` consumes them automatically.
