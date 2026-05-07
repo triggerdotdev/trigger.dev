@@ -6,6 +6,7 @@ import {
   type TaskRunTemplate,
   PrismaClientOrTransaction,
 } from "@trigger.dev/database";
+import { inferSchema } from "@jsonhero/schema-infer";
 import parse from "parse-duration";
 import { type PrismaClient } from "~/db.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
@@ -34,6 +35,8 @@ type Task = {
   taskIdentifier: string;
   filePath: string;
   friendlyId: string;
+  payloadSchema?: unknown;
+  inferredPayloadSchema?: unknown;
 };
 
 type Queue = {
@@ -244,11 +247,30 @@ export class TestTaskPresenter {
       },
     });
 
+    // Infer schema from existing run payloads when no explicit schema is defined
+    let inferredPayloadSchema: unknown | undefined;
+    if (!task.payloadSchema && latestRuns.length > 0 && task.triggerSource === "STANDARD") {
+      let inference: ReturnType<typeof inferSchema> | undefined;
+      for (const run of latestRuns) {
+        try {
+          const parsed = await parsePacket({ data: run.payload, dataType: run.payloadType });
+          inference = inferSchema(parsed, inference);
+        } catch {
+          // Skip malformed runs — inference is best-effort
+        }
+      }
+      if (inference) {
+        inferredPayloadSchema = inference.toJSONSchema();
+      }
+    }
+
     const taskWithEnvironment = {
       id: task.id,
       taskIdentifier: task.slug,
       filePath: task.filePath,
       friendlyId: task.friendlyId,
+      payloadSchema: task.payloadSchema ?? undefined,
+      inferredPayloadSchema,
     };
 
     switch (task.triggerSource) {

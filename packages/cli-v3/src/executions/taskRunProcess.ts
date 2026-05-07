@@ -33,6 +33,7 @@ import {
   MaxDurationExceededError,
   UnexpectedExitError,
   SuspendedProcessError,
+  UncaughtExceptionError,
 } from "@trigger.dev/core/v3/errors";
 
 export type OnSendDebugLogMessage = InferSocketMessageSchema<
@@ -126,7 +127,7 @@ export class TaskRunProcess {
       return;
     }
 
-    await tryCatch(this.#flush());
+    await tryCatch(this.#flush({ disableContext: !kill }));
 
     if (kill) {
       await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
@@ -205,6 +206,18 @@ export class TaskRunProcess {
         },
         UNCAUGHT_EXCEPTION: async (message) => {
           logger.debug("uncaught exception in task run process", { ...message });
+
+          // The worker process reports uncaught exceptions and unhandled rejections via this
+          // event, but does not exit on its own. If we don't terminate the attempt here, run()
+          // hangs (the awaited promise that triggered the throw is orphaned) until maxDuration
+          // expires — surfacing as TIMED_OUT/MAX_DURATION_EXCEEDED with empty attempts. Reject
+          // any pending attempts now and gracefully terminate the worker so OTEL gets a flush
+          // window before SIGKILL.
+          this.#rejectPendingAttempts(
+            new UncaughtExceptionError(message.error, message.origin)
+          );
+
+          await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
         },
         SEND_DEBUG_LOG: async (message) => {
           this.onSendDebugLog.post(message);
@@ -240,10 +253,10 @@ export class TaskRunProcess {
     return this;
   }
 
-  async #flush(timeoutInMs: number = 5_000) {
+  async #flush({ timeoutInMs = 5_000, disableContext = false } = {}) {
     logger.debug("flushing task run process", { pid: this.pid });
 
-    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs }, timeoutInMs + 1_000);
+    await this._ipc?.sendWithAck("FLUSH", { timeoutInMs, disableContext }, timeoutInMs + 1_000);
   }
 
   async #cancel(timeoutInMs: number = 30_000) {
@@ -297,6 +310,19 @@ export class TaskRunProcess {
         env: params.env,
         isWarmStart: isWarmStart ?? this.options.isWarmStart,
       });
+    } else {
+      // Child process is dead or disconnected — the IPC send was skipped so the attempt
+      // promise would hang forever. Reject it immediately to let the caller handle it.
+      this._attemptStatuses.set(key, "REJECTED");
+
+      // @ts-expect-error - rejecter is assigned in the promise constructor above
+      rejecter(
+        new UnexpectedExitError(
+          -1,
+          null,
+          "Child process is not connected, cannot execute task run"
+        )
+      );
     }
 
     const result = await promise;
@@ -324,6 +350,23 @@ export class TaskRunProcess {
 
   #handleError(error: Error) {
     logger.debug("child process error", { error, pid: this.pid });
+  }
+
+  #rejectPendingAttempts(error: Error) {
+    for (const [id, status] of this._attemptStatuses.entries()) {
+      if (status !== "PENDING") {
+        continue;
+      }
+
+      this._attemptStatuses.set(id, "REJECTED");
+
+      const attemptPromise = this._attemptPromises.get(id);
+      if (!attemptPromise) {
+        continue;
+      }
+
+      attemptPromise.rejecter(error);
+    }
   }
 
   async #handleExit(code: number | null, signal: NodeJS.Signals | null) {
@@ -543,6 +586,21 @@ export class TaskRunProcess {
       return {
         type: "INTERNAL_ERROR",
         code: TaskRunErrorCodes.GRACEFUL_EXIT_TIMEOUT,
+      };
+    }
+
+    if (error instanceof UncaughtExceptionError) {
+      // Dedicated INTERNAL_ERROR code so the engine handles retry via the
+      // existing crash-style lookup of run.lockedRetryConfig (same pathway as
+      // TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE etc.) and so the dashboard
+      // renders this as "Failed" rather than "System failure" — the exception
+      // was raised by user code (or a dependency the user controls, e.g. an
+      // EventEmitter "error" event with no listener), not a platform fault.
+      return {
+        type: "INTERNAL_ERROR",
+        code: TaskRunErrorCodes.TASK_RUN_UNCAUGHT_EXCEPTION,
+        message: error.originalError.message,
+        stackTrace: error.originalError.stack,
       };
     }
 

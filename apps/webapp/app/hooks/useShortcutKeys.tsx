@@ -43,8 +43,10 @@ export function useShortcutKeys({
 
   useHotkeys(
     keys,
-    (event, hotkeysEvent) => {
-      action(event);
+    (event) => {
+      if (!event.repeat) {
+        action(event);
+      }
     },
     {
       enabled: isEnabled,

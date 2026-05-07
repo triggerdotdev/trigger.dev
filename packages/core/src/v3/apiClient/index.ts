@@ -17,6 +17,8 @@ import {
   CreateBatchRequestBody,
   CreateBatchResponse,
   CreateEnvironmentVariableRequestBody,
+  CreateInputStreamWaitpointRequestBody,
+  CreateInputStreamWaitpointResponseBody,
   CreateScheduleOptions,
   CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
@@ -30,14 +32,31 @@ import {
   ListScheduleOptions,
   QueueItem,
   QueueTypeName,
+  QueryExecuteRequestBody,
+  QueryExecuteResponseBody,
+  QueryExecuteCSVResponseBody,
+  QuerySchemaResponseBody,
+  ListDashboardsResponseBody,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   ResetIdempotencyKeyResponse,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
+  ResolvePromptRequestBody,
+  ResolvePromptResponseBody,
+  ListPromptsResponseBody,
+  ListPromptVersionsResponseBody,
+  PromotePromptVersionRequestBody,
+  CreatePromptOverrideRequestBody,
+  UpdatePromptOverrideRequestBody,
+  ReactivatePromptOverrideRequestBody,
+  PromptOkResponseBody,
+  PromptOverrideCreatedResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveSpanDetailResponseBody,
   ScheduleObject,
+  SendInputStreamResponseBody,
   StreamBatchItemsResponse,
   TaskRunExecutionResult,
   TriggerTaskRequestBody,
@@ -171,6 +190,7 @@ export class ApiClient {
   public readonly accessToken: string;
   public readonly previewBranch?: string;
   public readonly futureFlags: ApiClientFutureFlags;
+  private readonly additionalHeaders?: Record<string, string>;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
@@ -183,7 +203,9 @@ export class ApiClient {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
-    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+    const { additionalHeaders, ...restRequestOptions } = requestOptions;
+    this.additionalHeaders = additionalHeaders;
+    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, restRequestOptions);
     this.futureFlags = futureFlags;
   }
 
@@ -537,9 +559,10 @@ export class ApiClient {
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v2/packets/${encoded}`,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -549,9 +572,10 @@ export class ApiClient {
   }
 
   getPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v1/packets/${encoded}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -576,6 +600,18 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunTraceResponseBody,
       `${this.baseUrl}/api/v1/runs/${runId}/trace`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveSpan(runId: string, spanId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveSpanDetailResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/spans/${spanId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -1314,6 +1350,8 @@ export class ApiClient {
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /** Called for each SSE event with the full event metadata (id, timestamp). */
+      onPart?: (part: SSEStreamPart<T>) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
@@ -1330,10 +1368,14 @@ export class ApiClient {
 
     const stream = await subscription.subscribe();
 
+    const onPart = options?.onPart;
+
     return stream.pipeThrough(
       new TransformStream<SSEStreamPart, T>({
         transform(chunk, controller) {
-          controller.enqueue(chunk.chunk as T);
+          const data = chunk.chunk as T;
+          onPart?.(chunk as SSEStreamPart<T>);
+          controller.enqueue(data);
         },
       })
     );
@@ -1382,6 +1424,41 @@ export class ApiClient {
     );
   }
 
+  async sendInputStream(
+    runId: string,
+    streamId: string,
+    data: unknown,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      SendInputStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/input/${streamId}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({ data }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async createInputStreamWaitpoint(
+    runFriendlyId: string,
+    body: CreateInputStreamWaitpointRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateInputStreamWaitpointResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/input-streams/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
     return zodfetch(
       z.record(z.any()),
@@ -1406,6 +1483,64 @@ export class ApiClient {
     );
   }
 
+  async executeQuery(
+    query: string,
+    options?: {
+      scope?: "environment" | "project" | "organization";
+      period?: string;
+      from?: string;
+      to?: string;
+      format?: "json" | "csv";
+    },
+    requestOptions?: ZodFetchOptions
+  ): Promise<QueryExecuteResponseBody> {
+    const body = {
+      query,
+      scope: options?.scope ?? "environment",
+      period: options?.period,
+      from: options?.from,
+      to: options?.to,
+      format: options?.format ?? "json",
+    };
+
+    return zodfetch(
+      QueryExecuteResponseBody,
+      `${this.baseUrl}/api/v1/query`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async getQuerySchema(requestOptions?: ZodFetchOptions): Promise<QuerySchemaResponseBody> {
+    return zodfetch(
+      QuerySchemaResponseBody,
+      `${this.baseUrl}/api/v1/query/schema`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async listDashboards(
+    requestOptions?: ZodFetchOptions
+  ): Promise<ListDashboardsResponseBody> {
+    return zodfetch(
+      ListDashboardsResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -1422,6 +1557,18 @@ export class ApiClient {
         {} as Record<string, string>
       ),
     };
+
+    if (this.additionalHeaders) {
+      for (const [key, value] of Object.entries(this.additionalHeaders)) {
+        if (!(key in headers)) {
+          headers[key] = value;
+        }
+      }
+    }
+
+    if (!headers["x-trigger-source"]) {
+      headers["x-trigger-source"] = "sdk";
+    }
 
     if (this.previewBranch) {
       headers["x-trigger-branch"] = this.previewBranch;
@@ -1459,6 +1606,86 @@ export class ApiClient {
     }
 
     return headers;
+  }
+
+  resolvePrompt(
+    slug: string,
+    body: ResolvePromptRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ResolvePromptResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPrompts(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptsResponseBody,
+      `${this.baseUrl}/api/v1/prompts`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPromptVersions(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptVersionsResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/versions`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  promotePromptVersion(slug: string, body: PromotePromptVersionRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/promote`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createPromptOverride(slug: string, body: CreatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOverrideCreatedResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updatePromptOverride(slug: string, body: UpdatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "PUT", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  removePromptOverride(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "DELETE", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  reactivatePromptOverride(slug: string, body: ReactivatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override/reactivate`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   #getRealtimeHeaders() {

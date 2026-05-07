@@ -26,14 +26,17 @@ const { action } = createActionApiRoute(
       select: {
         id: true,
         friendlyId: true,
+        streamBasinName: true,
         parentTaskRun: {
           select: {
             friendlyId: true,
+            streamBasinName: true,
           },
         },
         rootTaskRun: {
           select: {
             friendlyId: true,
+            streamBasinName: true,
           },
         },
       },
@@ -43,16 +46,19 @@ const { action } = createActionApiRoute(
       return new Response("Run not found", { status: 404 });
     }
 
-    const targetId =
+    const targetRun =
       params.target === "self"
-        ? run.friendlyId
+        ? run
         : params.target === "parent"
-        ? run.parentTaskRun?.friendlyId
-        : run.rootTaskRun?.friendlyId;
+        ? run.parentTaskRun
+        : run.rootTaskRun;
 
-    if (!targetId) {
+    if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
     }
+
+    const targetId = targetRun.friendlyId;
+    const basinContext = { run: { streamBasinName: targetRun.streamBasinName ?? null } };
 
     if (request.method === "PUT") {
       // This is the "create" endpoint
@@ -80,7 +86,8 @@ const { action } = createActionApiRoute(
 
       const realtimeStream = getRealtimeStreamInstance(
         authentication.environment,
-        updatedRun.realtimeStreamsVersion
+        updatedRun.realtimeStreamsVersion,
+        basinContext
       );
 
       const { responseHeaders } = await realtimeStream.initializeStream(targetId, params.streamId);
@@ -112,7 +119,11 @@ const { action } = createActionApiRoute(
         resumeFromChunkNumber = parsed;
       }
 
-      const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
+      const realtimeStream = getRealtimeStreamInstance(
+        authentication.environment,
+        streamVersion,
+        basinContext
+      );
 
       return realtimeStream.ingestData(
         request.body,
@@ -139,14 +150,17 @@ const loader = createLoaderApiRoute(
         select: {
           id: true,
           friendlyId: true,
+          streamBasinName: true,
           parentTaskRun: {
             select: {
               friendlyId: true,
+              streamBasinName: true,
             },
           },
           rootTaskRun: {
             select: {
               friendlyId: true,
+              streamBasinName: true,
             },
           },
         },
@@ -158,16 +172,18 @@ const loader = createLoaderApiRoute(
       return new Response("Run not found", { status: 404 });
     }
 
-    const targetId =
+    const targetRun =
       params.target === "self"
-        ? run.friendlyId
+        ? run
         : params.target === "parent"
-        ? run.parentTaskRun?.friendlyId
-        : run.rootTaskRun?.friendlyId;
+        ? run.parentTaskRun
+        : run.rootTaskRun;
 
-    if (!targetId) {
+    if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
     }
+
+    const targetId = targetRun.friendlyId;
 
     // Handle HEAD request to get last chunk index
     if (request.method !== "HEAD") {
@@ -178,7 +194,11 @@ const loader = createLoaderApiRoute(
     const clientId = request.headers.get("X-Client-Id") || "default";
     const streamVersion = request.headers.get("X-Stream-Version") || "v1";
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion);
+    const realtimeStream = getRealtimeStreamInstance(
+      authentication.environment,
+      streamVersion,
+      { run: { streamBasinName: targetRun.streamBasinName ?? null } }
+    );
 
     const lastChunkIndex = await realtimeStream.getLastChunkIndex(
       targetId,

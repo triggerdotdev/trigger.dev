@@ -37,6 +37,10 @@ export type RetryOutcome =
       settings: TaskRunExecutionRetry;
       machine?: string;
       wasOOMError?: boolean;
+      // Current usage values for calculating updated totals
+      usageDurationMs: number;
+      costInCents: number;
+      machinePreset: string | null;
     };
 
 export async function retryOutcomeFromCompletion(
@@ -70,6 +74,9 @@ export async function retryOutcomeFromCompletion(
       machine: oomResult.machine,
       settings: { timestamp: Date.now() + delay, delay },
       wasOOMError: true,
+      usageDurationMs: oomResult.usageDurationMs,
+      costInCents: oomResult.costInCents,
+      machinePreset: oomResult.machinePreset,
     };
   }
 
@@ -87,7 +94,7 @@ export async function retryOutcomeFromCompletion(
     return { outcome: "fail_run", sanitizedError };
   }
 
-  // Get the run settings
+  // Get the run settings and current usage values
   const run = await prisma.taskRun.findFirst({
     where: {
       id: runId,
@@ -95,6 +102,9 @@ export async function retryOutcomeFromCompletion(
     select: {
       maxAttempts: true,
       lockedRetryConfig: true,
+      usageDurationMs: true,
+      costInCents: true,
+      machinePreset: true,
     },
   });
 
@@ -151,6 +161,9 @@ export async function retryOutcomeFromCompletion(
       outcome: "retry",
       method: "queue", // we'll always retry on the queue because usually having no settings means something bad happened
       settings: retrySettings,
+      usageDurationMs: run.usageDurationMs,
+      costInCents: run.costInCents,
+      machinePreset: run.machinePreset,
     };
   }
 
@@ -158,13 +171,22 @@ export async function retryOutcomeFromCompletion(
     outcome: "retry",
     method: retryUsingQueue ? "queue" : "immediate",
     settings: retrySettings,
+    usageDurationMs: run.usageDurationMs,
+    costInCents: run.costInCents,
+    machinePreset: run.machinePreset,
   };
 }
 
 async function retryOOMOnMachine(
   prisma: PrismaClientOrTransaction,
   runId: string
-): Promise<{ machine: string; retrySettings: RetryOptions } | undefined> {
+): Promise<{
+  machine: string;
+  retrySettings: RetryOptions;
+  usageDurationMs: number;
+  costInCents: number;
+  machinePreset: string | null;
+} | undefined> {
   try {
     const run = await prisma.taskRun.findFirst({
       where: {
@@ -173,6 +195,8 @@ async function retryOOMOnMachine(
       select: {
         machinePreset: true,
         lockedRetryConfig: true,
+        usageDurationMs: true,
+        costInCents: true,
       },
     });
 
@@ -201,7 +225,13 @@ async function retryOOMOnMachine(
       return;
     }
 
-    return { machine: retryMachine, retrySettings: parsedRetryConfig.data };
+    return {
+      machine: retryMachine,
+      retrySettings: parsedRetryConfig.data,
+      usageDurationMs: run.usageDurationMs,
+      costInCents: run.costInCents,
+      machinePreset: run.machinePreset,
+    };
   } catch (error) {
     console.error("[FailedTaskRunRetryHelper] Failed to get execution retry", {
       runId,

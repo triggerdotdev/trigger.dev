@@ -14,6 +14,7 @@ export { StandardResourceCatalog } from "../resource-catalog/standardResourceCat
 export {
   TaskContextSpanProcessor,
   TaskContextLogProcessor,
+  TaskContextMetricExporter,
 } from "../taskContext/otelProcessors.js";
 export * from "../usage-api.js";
 export { DevUsageManager } from "../usage/devUsageManager.js";
@@ -31,3 +32,4 @@ export { populateEnv } from "./populateEnv.js";
 export { StandardTraceContextManager } from "../traceContext/manager.js";
 export { StandardHeartbeatsManager } from "../heartbeats/manager.js";
 export { StandardRealtimeStreamsManager } from "../realtimeStreams/manager.js";
+export { StandardInputStreamManager } from "../inputStreams/manager.js";

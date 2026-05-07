@@ -36,8 +36,11 @@ export async function action({ request }: LoaderFunctionArgs) {
     ...parsedBody.data.claims,
   };
 
+  // Sign with the environment's current canonical key, not the raw header key,
+  // so JWTs minted with a revoked (grace-window) key still validate — validation
+  // in jwtAuth.server.ts uses environment.apiKey.
   const jwt = await internal_generateJWT({
-    secretKey: authenticationResult.apiKey,
+    secretKey: authenticationResult.environment.apiKey,
     payload: claims,
     expirationTime: parsedBody.data.expirationTime ?? "1h",
   });

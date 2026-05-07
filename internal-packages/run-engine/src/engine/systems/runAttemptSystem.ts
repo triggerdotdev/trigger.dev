@@ -1,8 +1,7 @@
 import {
   createCache,
-  createMemoryStore,
+  createLRUMemoryStore,
   DefaultStatefulContext,
-  MemoryStore,
   Namespace,
   RedisCacheStore,
   UnkeyCache,
@@ -130,7 +129,7 @@ export class RunAttemptSystem {
     this.delayedRunSystem = options.delayedRunSystem;
 
     const ctx = new DefaultStatefulContext();
-    const memory = createMemoryStore(5000, 0.001);
+    const memory = createLRUMemoryStore(5000);
     const redisCacheStore = new RedisCacheStore({
       name: "run-attempt-system",
       connection: {
@@ -175,7 +174,7 @@ export class RunAttemptSystem {
   }
 
   public async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
-    const run = await this.$.prisma.taskRun.findFirst({
+    const run = await this.$.readOnlyPrisma.taskRun.findFirst({
       where: {
         id: runId,
       },
@@ -197,6 +196,7 @@ export class RunAttemptSystem {
         machinePreset: true,
         runTags: true,
         isTest: true,
+        replayedFromTaskRunFriendlyId: true,
         idempotencyKey: true,
         idempotencyKeyOptions: true,
         startedAt: true,
@@ -237,7 +237,6 @@ export class RunAttemptSystem {
             filePath: "unknown",
           }),
       this.#resolveTaskRunExecutionQueue({
-        runId,
         lockedQueueId: run.lockedQueueId ?? undefined,
         queueName: run.queue,
         runtimeEnvironmentId: run.runtimeEnvironment.id,
@@ -264,6 +263,7 @@ export class RunAttemptSystem {
         id: run.friendlyId,
         tags: run.runTags,
         isTest: run.isTest,
+        isReplay: !!run.replayedFromTaskRunFriendlyId,
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
         idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
@@ -337,7 +337,7 @@ export class RunAttemptSystem {
             });
           }
 
-          const taskRun = await prisma.taskRun.findFirst({
+          const taskRun = await this.$.readOnlyPrisma.taskRun.findFirst({
             where: {
               id: runId,
             },
@@ -404,6 +404,7 @@ export class RunAttemptSystem {
                   status: "EXECUTING",
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
+                  isWarmStart: isWarmStart ?? false,
                 },
                 select: {
                   id: true,
@@ -427,6 +428,7 @@ export class RunAttemptSystem {
                   payloadType: true,
                   runTags: true,
                   isTest: true,
+                  replayedFromTaskRunFriendlyId: true,
                   idempotencyKey: true,
                   idempotencyKeyOptions: true,
                   startedAt: true,
@@ -539,7 +541,6 @@ export class RunAttemptSystem {
               }),
               this.#resolveTaskRunExecutionTask(taskRun.lockedById),
               this.#resolveTaskRunExecutionQueue({
-                runId,
                 lockedQueueId: updatedRun.lockedQueueId ?? undefined,
                 queueName: updatedRun.queue,
                 runtimeEnvironmentId: updatedRun.runtimeEnvironment.id,
@@ -577,6 +578,7 @@ export class RunAttemptSystem {
               createdAt: updatedRun.createdAt,
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
+              isReplay: !!updatedRun.replayedFromTaskRunFriendlyId,
               idempotencyKey: getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
               idempotencyKeyScope: extractIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
@@ -707,8 +709,33 @@ export class RunAttemptSystem {
           }
 
           span.setAttribute("completionStatus", completion.ok);
+          span.setAttribute("runId", runId);
 
           const completedAt = new Date();
+
+          // Read current usage values to calculate new totals (safe under runLock)
+          const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              usageDurationMs: true,
+              costInCents: true,
+              machinePreset: true,
+            },
+          });
+
+          if (!currentRun) {
+            throw new ServiceValidationError("Run not found", 404);
+          }
+
+          // Calculate new usage totals
+          const updatedUsage = this.#calculateUpdatedUsage({
+            runId,
+            currentUsageDurationMs: currentRun.usageDurationMs,
+            currentCostInCents: currentRun.costInCents,
+            attemptDurationMs: completion.usage?.durationMs ?? 0,
+            machinePresetName: currentRun.machinePreset,
+            environmentType: latestSnapshot.environmentType,
+          });
 
           const run = await prisma.taskRun.update({
             where: { id: runId },
@@ -717,6 +744,8 @@ export class RunAttemptSystem {
               completedAt,
               output: completion.output,
               outputType: completion.outputType,
+              usageDurationMs: updatedUsage.usageDurationMs,
+              costInCents: updatedUsage.costInCents,
               executionSnapshots: {
                 create: {
                   executionStatus: "FINISHED",
@@ -776,16 +805,15 @@ export class RunAttemptSystem {
             },
           });
 
-          if (!run.associatedWaitpoint) {
-            throw new ServiceValidationError("No associated waitpoint found", 400);
+          // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+          if (run.associatedWaitpoint) {
+            await this.waitpointSystem.completeWaitpoint({
+              id: run.associatedWaitpoint.id,
+              output: completion.output
+                ? { value: completion.output, type: completion.outputType, isError: false }
+                : undefined,
+            });
           }
-
-          await this.waitpointSystem.completeWaitpoint({
-            id: run.associatedWaitpoint.id,
-            output: completion.output
-              ? { value: completion.output, type: completion.outputType, isError: false }
-              : undefined,
-          });
 
           this.$.eventBus.emit("runSucceeded", {
             time: completedAt,
@@ -873,7 +901,7 @@ export class RunAttemptSystem {
 
           const failedAt = new Date();
 
-          const retryResult = await retryOutcomeFromCompletion(prisma, {
+          const retryResult = await retryOutcomeFromCompletion(this.$.readOnlyPrisma, {
             runId,
             error: completion.error,
             retryUsingQueue: forceRequeue ?? false,
@@ -883,7 +911,7 @@ export class RunAttemptSystem {
 
           // Force requeue means it was crashed so the attempt span needs to be closed
           if (forceRequeue) {
-            const minimalRun = await prisma.taskRun.findFirst({
+            const minimalRun = await this.$.readOnlyPrisma.taskRun.findFirst({
               where: {
                 id: runId,
               },
@@ -930,6 +958,7 @@ export class RunAttemptSystem {
                 completedAt: failedAt,
                 reason: retryResult.reason,
                 finalizeRun: true,
+                attemptDurationMs: completion.usage?.durationMs,
                 tx: prisma,
               });
               return {
@@ -948,10 +977,22 @@ export class RunAttemptSystem {
                 error: retryResult.sanitizedError,
                 workerId,
                 runnerId,
+                attemptDurationMs: completion.usage?.durationMs,
               });
             }
             case "retry": {
               const retryAt = new Date(retryResult.settings.timestamp);
+
+              // Calculate new usage totals using the current machine's rate
+              // (retryResult includes current usage values from the read in retryOutcomeFromCompletion)
+              const updatedUsage = this.#calculateUpdatedUsage({
+                runId,
+                currentUsageDurationMs: retryResult.usageDurationMs,
+                currentCostInCents: retryResult.costInCents,
+                attemptDurationMs: completion.usage?.durationMs ?? 0,
+                machinePresetName: retryResult.machinePreset,
+                environmentType: latestSnapshot.environmentType,
+              });
 
               const run = await prisma.taskRun.update({
                 where: {
@@ -959,6 +1000,8 @@ export class RunAttemptSystem {
                 },
                 data: {
                   machinePreset: retryResult.machine,
+                  usageDurationMs: updatedUsage.usageDurationMs,
+                  costInCents: updatedUsage.costInCents,
                 },
                 include: {
                   runtimeEnvironment: {
@@ -1248,6 +1291,7 @@ export class RunAttemptSystem {
   If the run is in-progress it will change it's state to PENDING_CANCEL and notify the worker.
   If the run is not in-progress it will finish it.
   You can pass `finalizeRun` in if you know it's no longer running, e.g. the worker has messaged to say it's done.
+  You can optionally pass `attemptDurationMs` if you have completion data with usage info.
   */
   async cancelRun({
     runId,
@@ -1257,6 +1301,7 @@ export class RunAttemptSystem {
     reason,
     finalizeRun,
     bulkActionId,
+    attemptDurationMs,
     tx,
   }: {
     runId: string;
@@ -1266,6 +1311,7 @@ export class RunAttemptSystem {
     reason?: string;
     finalizeRun?: boolean;
     bulkActionId?: string;
+    attemptDurationMs?: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult & { alreadyFinished: boolean }> {
     const prisma = tx ?? this.$.prisma;
@@ -1312,6 +1358,32 @@ export class RunAttemptSystem {
           raw: reason,
         };
 
+        // Calculate updated usage if we have attempt duration data
+        let usageUpdate: { usageDurationMs: number; costInCents: number } | undefined;
+        if (attemptDurationMs !== undefined) {
+          const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
+            where: { id: runId },
+            select: {
+              usageDurationMs: true,
+              costInCents: true,
+              machinePreset: true,
+            },
+          });
+
+          if (!currentRun) {
+            throw new ServiceValidationError("Run not found", 404);
+          }
+
+          usageUpdate = this.#calculateUpdatedUsage({
+            runId,
+            currentUsageDurationMs: currentRun.usageDurationMs,
+            currentCostInCents: currentRun.costInCents,
+            attemptDurationMs,
+            machinePresetName: currentRun.machinePreset,
+            environmentType: latestSnapshot.environmentType,
+          });
+        }
+
         const run = await prisma.taskRun.update({
           where: { id: runId },
           data: {
@@ -1323,6 +1395,10 @@ export class RunAttemptSystem {
                   push: bulkActionId,
                 }
               : undefined,
+            ...(usageUpdate && {
+              usageDurationMs: usageUpdate.usageDurationMs,
+              costInCents: usageUpdate.costInCents,
+            }),
           },
           select: {
             id: true,
@@ -1366,35 +1442,39 @@ export class RunAttemptSystem {
         });
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
+        //unless finalizeRun is true (worker is known to be dead), in which case skip straight to FINISHED
         if (
           isExecuting(latestSnapshot.executionStatus) ||
           isPendingExecuting(latestSnapshot.executionStatus)
         ) {
-          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-            run,
-            snapshot: {
-              executionStatus: "PENDING_CANCEL",
-              description: "Run was cancelled",
-            },
-            previousSnapshotId: latestSnapshot.id,
-            environmentId: latestSnapshot.environmentId,
-            environmentType: latestSnapshot.environmentType,
-            projectId: latestSnapshot.projectId,
-            organizationId: latestSnapshot.organizationId,
-            workerId,
-            runnerId,
-          });
+          if (!finalizeRun) {
+            const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+              run,
+              snapshot: {
+                executionStatus: "PENDING_CANCEL",
+                description: "Run was cancelled",
+              },
+              previousSnapshotId: latestSnapshot.id,
+              environmentId: latestSnapshot.environmentId,
+              environmentType: latestSnapshot.environmentType,
+              projectId: latestSnapshot.projectId,
+              organizationId: latestSnapshot.organizationId,
+              workerId,
+              runnerId,
+            });
 
-          //the worker needs to be notified so it can kill the run and complete the attempt
-          await sendNotificationToWorker({
-            runId,
-            snapshot: newSnapshot,
-            eventBus: this.$.eventBus,
-          });
-          return {
-            alreadyFinished: false,
-            ...executionResultFromSnapshot(newSnapshot),
-          };
+            //the worker needs to be notified so it can kill the run and complete the attempt
+            await sendNotificationToWorker({
+              runId,
+              snapshot: newSnapshot,
+              eventBus: this.$.eventBus,
+            });
+            return {
+              alreadyFinished: false,
+              ...executionResultFromSnapshot(newSnapshot),
+            };
+          }
+          // finalizeRun is true — fall through to finish the run immediately
         }
 
         //not executing, so we will actually finish the run
@@ -1413,15 +1493,13 @@ export class RunAttemptSystem {
           runnerId,
         });
 
-        if (!run.associatedWaitpoint) {
-          throw new ServiceValidationError("No associated waitpoint found", 400);
+        // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+        if (run.associatedWaitpoint) {
+          await this.waitpointSystem.completeWaitpoint({
+            id: run.associatedWaitpoint.id,
+            output: { value: JSON.stringify(error), isError: true },
+          });
         }
-
-        //complete the waitpoint so the parent run can continue
-        await this.waitpointSystem.completeWaitpoint({
-          id: run.associatedWaitpoint.id,
-          output: { value: JSON.stringify(error), isError: true },
-        });
 
         await this.#finalizeRun(run);
 
@@ -1478,6 +1556,7 @@ export class RunAttemptSystem {
     error,
     workerId,
     runnerId,
+    attemptDurationMs,
   }: {
     runId: string;
     latestSnapshot: EnhancedExecutionSnapshot;
@@ -1485,6 +1564,7 @@ export class RunAttemptSystem {
     error: TaskRunError;
     workerId?: string;
     runnerId?: string;
+    attemptDurationMs?: number;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
 
@@ -1492,6 +1572,30 @@ export class RunAttemptSystem {
       const status = runStatusFromError(error, latestSnapshot.environmentType);
 
       const truncatedError = this.#truncateTaskRunError(error);
+
+      // Read current usage values to calculate new totals
+      const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
+        where: { id: runId },
+        select: {
+          usageDurationMs: true,
+          costInCents: true,
+          machinePreset: true,
+        },
+      });
+
+      if (!currentRun) {
+        throw new ServiceValidationError("Run not found", 404);
+      }
+
+      // Calculate new usage totals
+      const updatedUsage = this.#calculateUpdatedUsage({
+        runId,
+        currentUsageDurationMs: currentRun.usageDurationMs,
+        currentCostInCents: currentRun.costInCents,
+        attemptDurationMs: attemptDurationMs ?? 0,
+        machinePresetName: currentRun.machinePreset,
+        environmentType: latestSnapshot.environmentType,
+      });
 
       //run permanently failed
       const run = await prisma.taskRun.update({
@@ -1502,6 +1606,8 @@ export class RunAttemptSystem {
           status,
           completedAt: failedAt,
           error: truncatedError,
+          usageDurationMs: updatedUsage.usageDurationMs,
+          costInCents: updatedUsage.costInCents,
         },
         select: {
           id: true,
@@ -1553,18 +1659,17 @@ export class RunAttemptSystem {
         runnerId,
       });
 
-      if (!run.associatedWaitpoint) {
-        throw new ServiceValidationError("No associated waitpoint found", 400);
-      }
-
       await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
         removeFromWorkerQueue: true,
       });
 
-      await this.waitpointSystem.completeWaitpoint({
-        id: run.associatedWaitpoint.id,
-        output: { value: JSON.stringify(truncatedError), isError: true },
-      });
+      // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+      if (run.associatedWaitpoint) {
+        await this.waitpointSystem.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: { value: JSON.stringify(truncatedError), isError: true },
+        });
+      }
 
       this.$.eventBus.emit("runFailed", {
         time: failedAt,
@@ -1618,7 +1723,7 @@ export class RunAttemptSystem {
     backgroundWorkerTaskId: string
   ): Promise<BackwardsCompatibleTaskRunExecution["task"]> {
     const result = await this.cache.tasks.swr(backgroundWorkerTaskId, async () => {
-      const task = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+      const task = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
         where: {
           id: backgroundWorkerTaskId,
         },
@@ -1654,7 +1759,7 @@ export class RunAttemptSystem {
     organizationId: string
   ): Promise<TaskRunExecutionOrganization> {
     const result = await this.cache.orgs.swr(organizationId, async () => {
-      const organization = await this.$.prisma.organization.findFirstOrThrow({
+      const organization = await this.$.readOnlyPrisma.organization.findFirstOrThrow({
         where: { id: organizationId },
         select: {
           id: true,
@@ -1687,7 +1792,7 @@ export class RunAttemptSystem {
     runtimeEnvironmentId: string
   ): Promise<TaskRunExecutionProject> {
     const result = await this.cache.projects.swr(runtimeEnvironmentId, async () => {
-      const { project } = await this.$.prisma.runtimeEnvironment.findFirstOrThrow({
+      const { project } = await this.$.readOnlyPrisma.runtimeEnvironment.findFirstOrThrow({
         where: { id: runtimeEnvironmentId },
         select: {
           id: true,
@@ -1735,7 +1840,7 @@ export class RunAttemptSystem {
     }
 
     const result = await this.cache.machinePresets.swr(backgroundWorkerTaskId, async () => {
-      const { machineConfig } = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+      const { machineConfig } = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
         where: {
           id: backgroundWorkerTaskId,
         },
@@ -1766,14 +1871,16 @@ export class RunAttemptSystem {
   }
 
   async #resolveTaskRunExecutionQueue(params: {
-    runId: string;
     lockedQueueId?: string;
     queueName: string;
     runtimeEnvironmentId: string;
   }): Promise<TaskRunExecutionQueue> {
-    const result = await this.cache.queues.swr(params.runId, async () => {
+    // Cache key should be based on queue identity, not run ID
+    // Using lockedQueueId if available, otherwise environment + queue name
+    const cacheKey = params.lockedQueueId ?? `${params.runtimeEnvironmentId}:${params.queueName}`;
+    const result = await this.cache.queues.swr(cacheKey, async () => {
       const queue = params.lockedQueueId
-        ? await this.$.prisma.taskQueue.findFirst({
+        ? await this.$.readOnlyPrisma.taskQueue.findFirst({
             where: {
               id: params.lockedQueueId,
             },
@@ -1783,7 +1890,7 @@ export class RunAttemptSystem {
               name: true,
             },
           })
-        : await this.$.prisma.taskQueue.findFirst({
+        : await this.$.readOnlyPrisma.taskQueue.findFirst({
             where: {
               runtimeEnvironmentId: params.runtimeEnvironmentId,
               name: params.queueName,
@@ -1796,10 +1903,11 @@ export class RunAttemptSystem {
           });
 
       if (!queue) {
-        throw new ServiceValidationError(
-          `Could not resolve queue data for queue ${params.queueName}`,
-          404
-        );
+        // Return synthetic queue so run/span view still loads (e.g. createFailedTaskRun with fallback queue)
+        return {
+          id: params.queueName,
+          name: params.queueName,
+        };
       }
 
       return {
@@ -1826,7 +1934,7 @@ export class RunAttemptSystem {
     backgroundWorkerTaskId: string
   ): Promise<TaskRunExecutionDeployment | undefined> {
     const result = await this.cache.deployments.swr(backgroundWorkerTaskId, async () => {
-      const { worker } = await this.$.prisma.backgroundWorkerTask.findFirstOrThrow({
+      const { worker } = await this.$.readOnlyPrisma.backgroundWorkerTask.findFirstOrThrow({
         where: { id: backgroundWorkerTaskId },
         select: {
           worker: {
@@ -1872,30 +1980,25 @@ export class RunAttemptSystem {
     }
 
     if (completion.flushedMetadata) {
-      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+      const [, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
 
       if (!packet) {
-        return;
-      }
-
-      if (packetError) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: packetError,
-        });
-
         return;
       }
 
       const metadata = FlushedRunMetadata.safeParse(packet);
 
       if (!metadata.success) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: metadata.error,
-        });
+        // Customer's metadata operations don't match the schema (typically
+        // non-JSON values in `operations[].value`). System ignores it.
+        this.$.logger.warn(
+          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
+          {
+            runId,
+            flushedMetadata: completion.flushedMetadata,
+            error: metadata.error,
+          }
+        );
 
         return;
       }
@@ -1923,6 +2026,64 @@ export class RunAttemptSystem {
     };
   }
 
+  // PostgreSQL int4 max value (~24.85 days in milliseconds)
+  static readonly MAX_INT4 = 2_147_483_647;
+
+  /**
+   * Calculates the updated usage values for a run by adding the attempt's usage to the current totals.
+   * This should be called under the runLock to ensure safe read-modify-write.
+   * Cost is only calculated for non-dev environments.
+   */
+  #calculateUpdatedUsage({
+    runId,
+    currentUsageDurationMs,
+    currentCostInCents,
+    attemptDurationMs,
+    machinePresetName,
+    environmentType,
+  }: {
+    runId: string;
+    currentUsageDurationMs: number;
+    currentCostInCents: number;
+    attemptDurationMs: number;
+    machinePresetName: string | null;
+    environmentType: RuntimeEnvironmentType;
+  }): { usageDurationMs: number; costInCents: number } {
+    let usageDurationMs = currentUsageDurationMs + attemptDurationMs;
+
+    // Overflow protection: cap at PostgreSQL int4 max value
+    if (usageDurationMs > RunAttemptSystem.MAX_INT4) {
+      this.$.logger.error("usageDurationMs overflow detected, capping at max int4 value", {
+        runId,
+        currentUsageDurationMs,
+        attemptDurationMs,
+        calculatedTotal: usageDurationMs,
+        cappedAt: RunAttemptSystem.MAX_INT4,
+      });
+      usageDurationMs = RunAttemptSystem.MAX_INT4;
+    }
+
+    // Only calculate cost for non-dev environments
+    let costInCents = currentCostInCents;
+    if (environmentType !== "DEVELOPMENT") {
+      const machinePreset = machinePresetName
+        ? machinePresetFromName(
+            this.options.machines.machines,
+            machinePresetName as MachinePresetName
+          )
+        : machinePresetFromName(
+            this.options.machines.machines,
+            this.options.machines.defaultMachine
+          );
+
+      costInCents = currentCostInCents + attemptDurationMs * machinePreset.centsPerMs;
+    }
+
+    return {
+      usageDurationMs,
+      costInCents,
+    };
+  }
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {

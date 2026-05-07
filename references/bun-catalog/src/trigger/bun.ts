@@ -8,6 +8,8 @@ export const bunTask = task({
     const query = db.query("select 'Hello world' as message;");
     console.log(query.get()); // => { message: "Hello world" }
 
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     return {
       message: "Query executed",
       bunVersion: Bun.version,

@@ -4,6 +4,7 @@ permissions:
   contents: read
   packages: write
   id-token: write
+  attestations: write
 
 on:
   workflow_call:
@@ -13,6 +14,9 @@ on:
         type: string
         required: false
         default: ""
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        required: false
 
 jobs:
   publish:
@@ -24,12 +28,13 @@ jobs:
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
     steps:
       - name: 🏭 Setup Depot CLI
-        uses: depot/setup-action@v1
+        uses: depot/setup-action@15c09a5f77a0840ad4bce955686522a257853461 # v1.7.1
 
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: "#️⃣ Get the image tag"
         id: get_tag
@@ -40,42 +45,58 @@ jobs:
       - name: 🔢 Get the commit hash
         id: get_commit
         run: |
-          echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(echo "${GITHUB_SHA}" | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: 📛 Set the tags
         id: set_tags
         run: |
           ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
-          image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
+          image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
           # if tag is a semver, also tag it as v4
-          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+          if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
             # TODO: switch to v4 tag on GA
             image_tags=$image_tags,$ref_without_tag:v4-beta
           fi
 
+          # when pushing the mutable main tag, also push an immutable-by-convention
+          # full-commit-sha tag so a commit can be resolved to a specific digest
+          if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" == "main" ]]; then
+            image_tags=$image_tags,$ref_without_tag:${GITHUB_SHA}
+          fi
+
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+        env:
+          STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
+          STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
 
       - name: 📝 Set the build info
         id: set_build_info
         run: |
-          tag=${{ steps.get_tag.outputs.tag }}
-          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
-            echo "BUILD_APP_VERSION=${tag}" >> "$GITHUB_OUTPUT"
-          fi
-          echo "BUILD_GIT_SHA=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          echo "BUILD_GIT_REF_NAME=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)" >> "$GITHUB_OUTPUT"
+          {
+            tag="${STEPS_GET_TAG_OUTPUTS_TAG}"
+            if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
+              echo "BUILD_APP_VERSION=${tag}"
+            fi
+            echo "BUILD_GIT_SHA=${GITHUB_SHA}"
+            echo "BUILD_GIT_REF_NAME=${GITHUB_REF_NAME}"
+            echo "BUILD_TIMESTAMP_SECONDS=$(date +%s)"
+            echo "BUILD_TIMESTAMP_RFC3339=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
+          STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
 
       - name: 🐙 Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐳 Build image and push to GitHub Container Registry
-        uses: depot/build-push-action@v1
+        id: build_push
+        uses: depot/build-push-action@5f3b3c2e5a00f0093de47f657aeaefcedff27d18 # v1.17.0
         with:
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
@@ -86,8 +107,20 @@ jobs:
             BUILD_GIT_SHA=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             BUILD_GIT_REF_NAME=${{ steps.set_build_info.outputs.BUILD_GIT_REF_NAME }}
             BUILD_TIMESTAMP_SECONDS=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_SECONDS }}
+            BUILD_TIMESTAMP_RFC3339=${{ steps.set_build_info.outputs.BUILD_TIMESTAMP_RFC3339 }}
             SENTRY_RELEASE=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             SENTRY_ORG=triggerdev
             SENTRY_PROJECT=trigger-cloud
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: 🪪 Attest build provenance
+        # Image is already pushed by this point — don't fail releases (and the
+        # downstream publish-helm job) on a Sigstore/GHCR-referrer hiccup. Real
+        # config errors still surface as a step warning in the workflow run.
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/triggerdotdev/trigger.dev
+          subject-digest: ${{ steps.build_push.outputs.digest }}
+          push-to-registry: true

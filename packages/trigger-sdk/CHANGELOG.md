@@ -1,5 +1,118 @@
 # @trigger.dev/sdk
 
+## 4.4.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.5`
+
+## 4.4.4
+
+### Patch Changes
+
+- Define and manage AI prompts with `prompts.define()`. Create typesafe prompt templates with variables, resolve them at runtime, and manage versions and overrides from the dashboard without redeploying. ([#3244](https://github.com/triggerdotdev/trigger.dev/pull/3244))
+- Add support for setting TTL (time-to-live) defaults at the task level and globally in trigger.config.ts, with per-trigger overrides still taking precedence ([#3196](https://github.com/triggerdotdev/trigger.dev/pull/3196))
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+
+## 4.4.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Add input streams for bidirectional communication with running tasks. Define typed input streams with `streams.input<T>({ id })`, then consume inside tasks via `.wait()` (suspends the process), `.once()` (waits for next message), or `.on()` (subscribes to a continuous stream). Send data from backends with `.send(runId, data)` or from frontends with the new `useInputStreamSend` React hook. ([#3146](https://github.com/triggerdotdev/trigger.dev/pull/3146))
+
+  Upgrade S2 SDK from 0.17 to 0.22 with support for custom endpoints (s2-lite) via the new `endpoints` configuration, `AppendRecord.string()` API, and `maxInflightBytes` session option.
+
+- fix(sdk): batch triggerAndWait variants now return correct run.taskIdentifier instead of unknown ([#3080](https://github.com/triggerdotdev/trigger.dev/pull/3080))
+- Add PAYLOAD_TOO_LARGE error to handle graceful recovery of sending batch trigger items with payloads that exceed the maximum payload size ([#3137](https://github.com/triggerdotdev/trigger.dev/pull/3137))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Add OTEL metrics pipeline for task workers. Workers collect process CPU/memory, Node.js runtime metrics (event loop utilization, event loop delay, heap usage), and user-defined custom metrics via `otel.metrics.getMeter()`. Metrics are exported to ClickHouse with 10-second aggregation buckets and 1m/5m rollups, and are queryable through the dashboard query engine with typed attribute columns, `prettyFormat()` for human-readable values, and AI query support. ([#3061](https://github.com/triggerdotdev/trigger.dev/pull/3061))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.1`
+
+## 4.4.0
+
+### Minor Changes
+
+- Added `query.execute()` which lets you query your Trigger.dev data using TRQL (Trigger Query Language) and returns results as typed JSON rows or CSV. It supports configurable scope (environment, project, or organization), time filtering via `period` or `from`/`to` ranges, and a `format` option for JSON or CSV output. ([#3060](https://github.com/triggerdotdev/trigger.dev/pull/3060))
+
+  ```typescript
+  import { query } from "@trigger.dev/sdk";
+  import type { QueryTable } from "@trigger.dev/sdk";
+
+  // Basic untyped query
+  const result = await query.execute("SELECT run_id, status FROM runs LIMIT 10");
+
+  // Type-safe query using QueryTable to pick specific columns
+  const typedResult = await query.execute<QueryTable<"runs", "run_id" | "status" | "triggered_at">>(
+    "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
+  );
+  typedResult.results.forEach((row) => {
+    console.log(row.run_id, row.status); // Fully typed
+  });
+
+  // Aggregation query with inline types
+  const stats = await query.execute<{ status: string; count: number }>(
+    "SELECT status, COUNT(*) as count FROM runs GROUP BY status",
+    { scope: "project", period: "30d" }
+  );
+
+  // CSV export
+  const csv = await query.execute("SELECT run_id, status FROM runs", {
+    format: "csv",
+    period: "7d",
+  });
+  console.log(csv.results); // Raw CSV string
+  ```
+
+### Patch Changes
+
+- Add `maxDelay` option to debounce feature. This allows setting a maximum time limit for how long a debounced run can be delayed, ensuring execution happens within a specified window even with continuous triggers. ([#2984](https://github.com/triggerdotdev/trigger.dev/pull/2984))
+
+  ```typescript
+  await myTask.trigger(payload, {
+    debounce: {
+      key: "my-key",
+      delay: "5s",
+      maxDelay: "30m", // Execute within 30 minutes regardless of continuous triggers
+    },
+  });
+  ```
+
+- Aligned the SDK's `getRunIdForOptions` logic with the Core package to handle semantic targets (`root`, `parent`) in root tasks. ([#2874](https://github.com/triggerdotdev/trigger.dev/pull/2874))
+- Export `AnyOnStartAttemptHookFunction` type to allow defining `onStartAttempt` hooks for individual tasks. ([#2966](https://github.com/triggerdotdev/trigger.dev/pull/2966))
+- Fixed a minor issue in the deployment command on distinguishing between local builds for the cloud vs local builds for self-hosting setups. ([#3070](https://github.com/triggerdotdev/trigger.dev/pull/3070))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+
+## 4.3.3
+
+### Patch Changes
+
+- Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
+
+  - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
+  - Updated internal code to handle async validation from AI SDK v6's Schema type
+
+- Expose user-provided idempotency key and scope in task context. `ctx.run.idempotencyKey` now returns the original key passed to `idempotencyKeys.create()` instead of the hash, and `ctx.run.idempotencyKeyScope` shows the scope ("run", "attempt", or "global"). ([#2903](https://github.com/triggerdotdev/trigger.dev/pull/2903))
+- Updated dependencies:
+  - `@trigger.dev/core@4.3.3`
+
 ## 4.3.2
 
 ### Patch Changes

@@ -52,7 +52,6 @@ export class CreateTaskRunAttemptService extends BaseService {
           runtimeEnvironmentId: environment.id,
         },
         include: {
-          tags: true,
           attempts: {
             take: 1,
             orderBy: {
@@ -209,8 +208,9 @@ export class CreateTaskRunAttemptService extends BaseService {
           payloadType: taskRun.payloadType,
           context: taskRun.context,
           createdAt: taskRun.createdAt,
-          tags: taskRun.tags.map((tag) => tag.name),
+          tags: taskRun.runTags ?? [],
           isTest: taskRun.isTest,
+          isReplay: !!taskRun.replayedFromTaskRunFriendlyId,
           idempotencyKey: taskRun.idempotencyKey ?? undefined,
           startedAt: taskRun.startedAt ?? taskRun.createdAt,
           durationMs: taskRun.usageDurationMs,

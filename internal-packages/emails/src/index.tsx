@@ -2,6 +2,9 @@ import { ReactElement } from "react";
 
 import { z } from "zod";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
+import AlertErrorGroupEmail, {
+  AlertErrorGroupEmailSchema,
+} from "../emails/alert-error-group";
 import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
 import AlertDeploymentFailureEmail, {
@@ -31,6 +34,7 @@ export const DeliverEmailSchema = z
     InviteEmailSchema,
     AlertRunEmailSchema,
     AlertAttemptEmailSchema,
+    AlertErrorGroupEmailSchema,
     AlertDeploymentFailureEmailSchema,
     AlertDeploymentSuccessEmailSchema,
     MfaEnabledEmailSchema,
@@ -112,6 +116,18 @@ export class EmailClient {
             data.version
           }.${data.environment}] ${formatErrorMessageForSubject(data.error.message)}`,
           component: <AlertRunFailureEmail {...data} />,
+        };
+      }
+      case "alert-error-group": {
+        const classLabel =
+          data.classification === "new_issue"
+            ? "New error"
+            : data.classification === "regression"
+              ? "Regression"
+              : "Error resurfaced";
+        return {
+          subject: `[${data.organization}] ${classLabel}: ${data.error.type ?? "Error"} in ${data.taskIdentifier} [${data.environment}]`,
+          component: <AlertErrorGroupEmail {...data} />,
         };
       }
       case "alert-deployment-failure": {

@@ -1056,3 +1056,159 @@ export const demonstrateTrailingWithMetadata = task({
     };
   },
 });
+
+/**
+ * Example 12: Debounce with maxDelay
+ *
+ * The maxDelay option limits how long a debounced run can be delayed.
+ * Even if triggers keep coming, the run will eventually execute after maxDelay
+ * from the first trigger. This is useful for scenarios where you want to
+ * debounce but also guarantee execution within a certain time window.
+ *
+ * Use case: Summarizing AI conversation threads that need to stay relatively
+ * up to date. You want to debounce as messages come in, but also guarantee
+ * the summary runs at least every 30 minutes.
+ */
+export const processConversationSummary = task({
+  id: "process-conversation-summary",
+  run: async (payload: { conversationId: string; messageCount: number }) => {
+    logger.info("Generating conversation summary", { payload });
+
+    // Simulate AI summarization work
+    await wait.for({ seconds: 2 });
+
+    logger.info("Conversation summary generated", {
+      conversationId: payload.conversationId,
+      messageCount: payload.messageCount,
+    });
+
+    return {
+      summarized: true,
+      conversationId: payload.conversationId,
+      messageCount: payload.messageCount,
+      summarizedAt: new Date().toISOString(),
+    };
+  },
+});
+
+/**
+ * Demonstrates maxDelay in action.
+ *
+ * This simulates a chat application where messages come in continuously.
+ * With just debounce, the summary task would keep getting delayed forever.
+ * With maxDelay: "30s", the summary will run at most 30 seconds after the first trigger,
+ * even if messages keep coming.
+ *
+ * Run this task and observe:
+ * - Messages trigger the summary task with debounce
+ * - Each trigger extends the delay by 5s
+ * - But maxDelay ensures execution happens within 30s of the first trigger
+ */
+export const simulateChatWithMaxWait = task({
+  id: "simulate-chat-with-max-wait",
+  run: async (payload: { conversationId?: string; simulateDelay?: number }) => {
+    const conversationId = payload.conversationId ?? "conv-123";
+    const delayBetweenMessages = payload.simulateDelay ?? 3000; // 3 seconds
+
+    logger.info("Starting chat simulation with maxDelay", {
+      conversationId,
+      delayBetweenMessages,
+    });
+
+    logger.info(
+      "Debounce delay is 5s, maxDelay is 30s. Messages arrive every 3s, so debounce would normally keep extending. But maxDelay ensures execution within 30s."
+    );
+
+    const handles: string[] = [];
+
+    // Simulate 15 messages over ~45 seconds
+    // Without maxDelay, the task would never run because each trigger resets the 5s delay
+    // With maxDelay: "30s", the task will run after 30 seconds from the first trigger
+    for (let i = 1; i <= 15; i++) {
+      logger.info(`Message ${i}/15 received`, { messageNumber: i });
+
+      const handle = await processConversationSummary.trigger(
+        {
+          conversationId,
+          messageCount: i,
+        },
+        {
+          debounce: {
+            key: `conversation-${conversationId}`,
+            delay: "5s",
+            mode: "trailing", // Use latest message count
+            maxDelay: "30s", // Ensure execution within 30s of first trigger
+          },
+        }
+      );
+
+      handles.push(handle.id);
+      logger.info(`Message ${i} triggered, run ID: ${handle.id}`, {
+        messageNumber: i,
+        runId: handle.id,
+      });
+
+      // Wait between messages (simulating real chat)
+      if (i < 15) {
+        await new Promise((resolve) => setTimeout(resolve, delayBetweenMessages));
+      }
+    }
+
+    const uniqueHandles = [...new Set(handles)];
+
+    logger.info("Chat simulation complete", {
+      totalMessages: 15,
+      uniqueRuns: uniqueHandles.length,
+      note:
+        "With maxDelay, runs should have been created periodically despite continuous triggering",
+    });
+
+    return {
+      conversationId,
+      totalMessages: 15,
+      uniqueRunsCreated: uniqueHandles.length,
+      runIds: uniqueHandles,
+      message:
+        "Due to maxDelay: '30s', the summary task runs periodically even with continuous triggers",
+    };
+  },
+});
+
+/**
+ * A simpler maxDelay example showing the basic usage pattern.
+ *
+ * This is the recommended pattern for using maxDelay:
+ * - delay: How long to wait after each trigger before executing
+ * - maxDelay: Maximum total wait time from the first trigger
+ */
+export const onNewMessage = task({
+  id: "on-new-message",
+  run: async (payload: { conversationId: string; message: string }) => {
+    logger.info("New message received", {
+      conversationId: payload.conversationId,
+      messagePreview: payload.message.substring(0, 50),
+    });
+
+    // Trigger summarization with debounce and maxDelay
+    const handle = await processConversationSummary.trigger(
+      {
+        conversationId: payload.conversationId,
+        messageCount: 1, // In real code, you'd track actual count
+      },
+      {
+        debounce: {
+          key: `summary-${payload.conversationId}`,
+          delay: "10s", // Wait 10s after last message before summarizing
+          mode: "trailing", // Use latest state
+          maxDelay: "5m", // But always summarize within 5 minutes
+        },
+      }
+    );
+
+    logger.info("Summary task triggered (debounced with maxDelay)", {
+      runId: handle.id,
+    });
+
+    return { summaryRunId: handle.id };
+  },
+});

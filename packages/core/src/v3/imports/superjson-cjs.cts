@@ -1,8 +1,10 @@
+// Use vendored superjson bundle to avoid ESM/CJS compatibility issues
+// See: https://github.com/triggerdotdev/trigger.dev/issues/2937
 // @ts-ignore
-const { default: superjson } = require("superjson");
+const superjson = require("../vendor/superjson.cjs");
 
 // @ts-ignore
-superjson.registerCustom<Buffer, number[]>(
+superjson.default.registerCustom<Buffer, number[]>(
   {
     isApplicable: (v: unknown): v is Buffer => typeof Buffer === "function" && Buffer.isBuffer(v),
     serialize: (v: Buffer) => [...v],
@@ -12,4 +14,4 @@ superjson.registerCustom<Buffer, number[]>(
 );
 
 // @ts-ignore
-module.exports.default = superjson;
+module.exports.default = superjson.default;

@@ -6,16 +6,18 @@ import {
   ExclamationTriangleIcon,
   LightBulbIcon,
   MagnifyingGlassIcon,
+  XMarkIcon,
   UserPlusIcon,
   VideoCameraIcon,
 } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
-import { Link, useRevalidator, useSubmit } from "@remix-run/react";
+import { Link, useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useEffect, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { PanelHandle } from "react-window-splitter";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
@@ -42,9 +44,11 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -84,6 +88,7 @@ import {
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
+import { motion } from "framer-motion";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
@@ -192,14 +197,20 @@ export default function Page() {
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
+  const usefulLinksPanelRef = useRef<PanelHandle>(null);
+  const fetcher = useFetcher();
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
 
-  // Create a submit handler to save the preference
-  const submit = useSubmit();
-
-  const handleUsefulLinksToggle = (show: boolean) => {
+  const toggleUsefulLinks = useCallback((show: boolean) => {
     setShowUsefulLinks(show);
-    submit({ showUsefulLinks: show.toString() }, { method: "post" });
-  };
+    if (show) {
+      usefulLinksPanelRef.current?.expand();
+    } else {
+      usefulLinksPanelRef.current?.collapse();
+    }
+    fetcherRef.current.submit({ showUsefulLinks: show.toString() }, { method: "post" });
+  }, []);
 
   return (
     <PageContainer>
@@ -226,27 +237,24 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="tasks-main" className="max-h-full">
+          <ResizablePanel id="tasks-main" min="100px" className="max-h-full">
             <div className={cn("grid h-full grid-rows-1")}>
               {hasTasks ? (
                 <div className="flex min-w-0 max-w-full flex-col">
                   {tasks.length === 0 ? <UserHasNoTasks /> : null}
                   <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center gap-1 p-2">
-                      <Input
-                        placeholder="Search tasks"
-                        variant="tertiary"
-                        icon={MagnifyingGlassIcon}
-                        fullWidth={true}
+                    <div className="flex items-center justify-between gap-1 p-2">
+                      <AnimatedSearchField
                         value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
+                        onChange={setFilterText}
+                        placeholder="Search tasks…"
                         autoFocus
                       />
-                      {!showUsefulLinks && (
+                        {!showUsefulLinks && (
                         <Button
-                          variant="minimal/small"
+                          variant="secondary/small"
                           TrailingIcon={LightBulbIcon}
-                          onClick={() => handleUsefulLinksToggle(true)}
+                          onClick={() => toggleUsefulLinks(true)}
                           className="px-2.5"
                         />
                       )}
@@ -417,20 +425,29 @@ export default function Page() {
               )}
             </div>
           </ResizablePanel>
-          {hasTasks && showUsefulLinks ? (
-            <>
-              <ResizableHandle id="tasks-handle" />
-              <ResizablePanel
-                id="tasks-inspector"
-                min="200px"
-                default="400px"
-                max="500px"
-                className="w-full"
-              >
-                <HelpfulInfoHasTasks onClose={() => handleUsefulLinksToggle(false)} />
-              </ResizablePanel>
-            </>
-          ) : null}
+          <ResizableHandle
+            id="tasks-handle"
+            className={collapsibleHandleClassName(hasTasks && showUsefulLinks)}
+          />
+          <ResizablePanel
+            id="tasks-inspector"
+            handle={usefulLinksPanelRef}
+            default="400px"
+            min="400px"
+            max="500px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!hasTasks || !showUsefulLinks}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 400 }}>
+              {hasTasks && (
+                <HelpfulInfoHasTasks onClose={() => toggleUsefulLinks(false)} />
+              )}
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
@@ -848,5 +865,56 @@ function FailedToLoadStats() {
       button={<ExclamationTriangleIcon className="size-4 text-warning" />}
       content="We were unable to load the task stats, please try again later."
     />
+  );
+}
+
+function AnimatedSearchField({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  return (
+    <motion.div
+      initial={{ width: "auto" }}
+      animate={{ width: isFocused && value.length > 0 ? "24rem" : "auto" }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="relative h-6 min-w-52"
+    >
+      <Input
+        type="text"
+        variant="secondary-small"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        fullWidth
+        autoFocus={autoFocus}
+        className={cn(isFocused && "placeholder:text-text-dimmed/70")}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") e.currentTarget.blur();
+        }}
+        icon={<MagnifyingGlassIcon className="size-4" />}
+        accessory={
+          value.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
+            >
+              <XMarkIcon className="size-3" />
+            </button>
+          ) : undefined
+        }
+      />
+    </motion.div>
   );
 }

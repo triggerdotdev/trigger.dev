@@ -237,7 +237,7 @@ spec:
               value: {{ .Values.supervisor.config.debug | quote }}
             # OTEL
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://{{ include "trigger-v4.fullname" . }}-webapp:{{ .Values.webapp.service.port }}/otel"
+              value: "http://{{ include "trigger-v4.fullname" . }}-webapp.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.webapp.service.port }}/otel"
             {{- with .Values.supervisor.extraEnvVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

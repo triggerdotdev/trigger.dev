@@ -1,0 +1,5 @@
+{
+  "name": "esm-import-fixture",
+  "private": true,
+  "type": "module"
+}

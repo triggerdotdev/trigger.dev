@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { parseTSQLSelect, parseTSQLExpr } from "../index.js";
+import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
 import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
-import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
+import {
+  createSchemaRegistry,
+  column,
+  type TableSchema,
+  type SchemaRegistry,
+} from "./schema.js";
+import type { BucketThreshold } from "./time_buckets.js";
 import { QueryError, SyntaxError } from "./errors.js";
 
 /**
@@ -85,10 +91,12 @@ function createTestContext(
 ): PrinterContext {
   const schema = createSchemaRegistry([taskRunsSchema, taskEventsSchema]);
   return createPrinterContext({
-    organizationId: "org_test123",
-    projectId: "proj_test456",
-    environmentId: "env_test789",
     schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test123" },
+      project_id: { op: "eq", value: "proj_test456" },
+      environment_id: { op: "eq", value: "env_test789" },
+    },
     ...overrides,
   });
 }
@@ -153,10 +161,12 @@ describe("ClickHousePrinter", () => {
     it("should expand SELECT * with column name mapping", () => {
       const schema = createSchemaRegistry([runsSchema]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       const { sql, columns } = printQuery("SELECT * FROM runs", ctx);
@@ -216,10 +226,12 @@ describe("ClickHousePrinter", () => {
 
       const schema = createSchemaRegistry([schemaWithVirtual]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       const { sql, columns } = printQuery("SELECT * FROM runs", ctx);
@@ -241,15 +253,17 @@ describe("ClickHousePrinter", () => {
   describe("Table and column name mapping", () => {
     function createMappedContext() {
       const schema = createSchemaRegistry([runsSchema]);
-      return createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
-        schema,
-      });
-    }
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
 
-    it("should map user-friendly table name to ClickHouse name", () => {
+  it("should map user-friendly table name to ClickHouse name", () => {
       const ctx = createMappedContext();
       const { sql } = printQuery("SELECT * FROM runs", ctx);
 
@@ -472,15 +486,17 @@ describe("ClickHousePrinter", () => {
 
     function createJsonContext() {
       const schema = createSchemaRegistry([jsonSchema]);
-      return createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
-        schema,
-      });
-    }
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
 
-    it("should transform IS NULL to equals empty object for JSON columns with nullValue", () => {
+  it("should transform IS NULL to equals empty object for JSON columns with nullValue", () => {
       const ctx = createJsonContext();
       const { sql } = printQuery("SELECT * FROM runs WHERE error IS NULL", ctx);
 
@@ -596,6 +612,501 @@ describe("ClickHousePrinter", () => {
       // Regular columns should not have type hints
       expect(sql).toContain("GROUP BY status");
       expect(sql).not.toContain(".:String");
+    });
+
+    it("should NOT add .:String type hint for JSON subfield in WHERE comparison", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT id FROM runs WHERE error.data.name = 'test'",
+        ctx
+      );
+
+      // WHERE clause should NOT have .:String type hint (it breaks the query)
+      expect(sql).toContain("equals(error.data.name,");
+      expect(sql).not.toContain("error.data.name.:String");
+    });
+
+    it("should NOT add .:String for JSON subfield in WHERE with LIKE", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT id FROM runs WHERE error.message LIKE '%error%'",
+        ctx
+      );
+
+      // WHERE clause should NOT have .:String type hint
+      expect(sql).toContain("like(error.message,");
+      expect(sql).not.toContain("error.message.:String");
+    });
+
+    it("should NOT add .:String in SELECT or WHERE when no GROUP BY", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT error.data.name FROM runs WHERE error.data.name = 'test'",
+        ctx
+      );
+
+      // SELECT should NOT have .:String (no GROUP BY, so no need for type hint)
+      expect(sql).toContain("error.data.name AS error_data_name");
+      expect(sql).not.toContain(".:String");
+      // WHERE should NOT have .:String
+      expect(sql).toContain("equals(error.data.name,");
+    });
+
+    it("should add .:String in GROUP BY but not in WHERE for same query", () => {
+      const ctx = createJsonContext();
+      const { sql } = printQuery(
+        "SELECT error.data.name, count() AS cnt FROM runs WHERE error.data.name = 'test' GROUP BY error.data.name",
+        ctx
+      );
+
+      // SELECT should have .:String
+      expect(sql).toContain("error.data.name.:String AS error_data_name");
+      // GROUP BY should have .:String
+      expect(sql).toContain("GROUP BY error.data.name.:String");
+      // WHERE should NOT have .:String
+      expect(sql).toContain("equals(error.data.name,");
+      expect(sql).not.toMatch(/equals\(error\.data\.name\.:String/);
+    });
+  });
+
+  describe("textColumn optimization for JSON columns", () => {
+    // Create a schema with JSON columns that have textColumn set
+    const textColumnSchema: TableSchema = {
+      name: "runs",
+      clickhouseName: "trigger_dev.task_runs_v2",
+      columns: {
+        id: { name: "id", ...column("String") },
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          textColumn: "output_text",
+        },
+        error: {
+          name: "error",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          textColumn: "error_text",
+        },
+        status: { name: "status", ...column("String") },
+        organization_id: { name: "organization_id", ...column("String") },
+        project_id: { name: "project_id", ...column("String") },
+        environment_id: { name: "environment_id", ...column("String") },
+      },
+      tenantColumns: {
+        organizationId: "organization_id",
+        projectId: "project_id",
+        environmentId: "environment_id",
+      },
+    };
+
+    function createTextColumnContext() {
+      const schema = createSchemaRegistry([textColumnSchema]);
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
+
+  describe("SELECT clause", () => {
+    it("should use text column when selecting bare JSON column", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output FROM runs", ctx);
+
+        // Should use the text column with an alias to preserve the column name
+        expect(sql).toContain("output_text AS output");
+      });
+
+      it("should use text column for multiple JSON columns", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output, error FROM runs", ctx);
+
+        expect(sql).toContain("output_text AS output");
+        expect(sql).toContain("error_text AS error");
+      });
+
+      it("should use JSON column for subfield access without .:String when no GROUP BY", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output.data.name FROM runs", ctx);
+
+        // Should use the original JSON column without .:String (no GROUP BY)
+        expect(sql).toContain("output.data.name AS output_data_name");
+        expect(sql).not.toContain("output_text");
+        expect(sql).not.toContain(".:String");
+      });
+    });
+
+    describe("SELECT * expansion", () => {
+      it("should use text columns when expanding SELECT *", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT * FROM runs", ctx);
+
+        // Should use text columns for JSON columns
+        expect(sql).toContain("output_text AS output");
+        expect(sql).toContain("error_text AS error");
+      });
+    });
+
+    describe("WHERE clause", () => {
+      it("should use text column for exact equality comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output = '{}'", ctx);
+
+        expect(sql).toContain("equals(output_text,");
+        expect(sql).not.toMatch(/equals\(output,/);
+      });
+
+      it("should use text column for inequality comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output != '{}'", ctx);
+
+        expect(sql).toContain("notEquals(output_text,");
+      });
+
+      it("should use text column for LIKE comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output LIKE '%error%'", ctx);
+
+        expect(sql).toContain("like(output_text,");
+        expect(sql).not.toMatch(/like\(output,/);
+      });
+
+      it("should use text column for ILIKE comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE error ILIKE '%failed%'", ctx);
+
+        expect(sql).toContain("ilike(error_text,");
+      });
+
+      it("should use text column for NOT LIKE comparison", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output NOT LIKE '%test%'", ctx);
+
+        expect(sql).toContain("notLike(output_text,");
+      });
+
+      it("should use JSON column for subfield comparison without .:String", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT id FROM runs WHERE output.data.name = 'test'",
+          ctx
+        );
+
+        // Should use the original JSON column, not the text column
+        // And should NOT have .:String in WHERE (breaks the query)
+        expect(sql).toContain("equals(output.data.name,");
+        expect(sql).not.toContain("output_text");
+        expect(sql).not.toContain("output.data.name.:String");
+      });
+
+      it("should still use nullValue transformation for IS NULL", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE output IS NULL", ctx);
+
+        // NULL check should use the text column with nullValue
+        expect(sql).toContain("equals(output_text, '{}')");
+      });
+
+      it("should still use nullValue transformation for IS NOT NULL", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT id FROM runs WHERE error IS NOT NULL", ctx);
+
+        expect(sql).toContain("notEquals(error_text, '{}')");
+      });
+    });
+
+    describe("edge cases", () => {
+      it("should work with columns without textColumn defined", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT status FROM runs WHERE status = 'completed'", ctx);
+
+        // Regular column should work as before
+        expect(sql).toContain("status");
+        expect(sql).not.toContain("status_text");
+      });
+
+      it("should use text column for aliased JSON columns in SELECT", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT output AS result FROM runs", ctx);
+
+        // Should use text column with user's alias
+        expect(sql).toContain("output_text AS result");
+      });
+
+      it("should use text column for table-qualified JSON columns in SELECT", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT runs.output FROM runs", ctx);
+
+        // Should use text column
+        expect(sql).toContain("output_text AS output");
+      });
+
+      it("should use text column in both SELECT and WHERE for same query", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT output FROM runs WHERE output LIKE '%test%'",
+          ctx
+        );
+
+        // SELECT should use text column
+        expect(sql).toContain("output_text AS output");
+        // WHERE should use text column
+        expect(sql).toContain("like(output_text,");
+      });
+    });
+
+    describe("JOINs with textColumn", () => {
+      // Create a second schema with the same JSON column names to test JOIN ambiguity
+      const runsSchemaWithTextColumn: TableSchema = {
+        name: "runs",
+        clickhouseName: "trigger_dev.task_runs_v2",
+        columns: {
+          id: { name: "id", ...column("String") },
+          output: {
+            name: "output",
+            ...column("JSON"),
+            nullValue: "'{}'",
+            textColumn: "output_text",
+          },
+          organization_id: { name: "organization_id", ...column("String") },
+          project_id: { name: "project_id", ...column("String") },
+          environment_id: { name: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      const eventsSchemaWithTextColumn: TableSchema = {
+        name: "events",
+        clickhouseName: "trigger_dev.task_events_v2",
+        columns: {
+          id: { name: "id", ...column("String") },
+          run_id: { name: "run_id", ...column("String") },
+          output: {
+            name: "output",
+            ...column("JSON"),
+            nullValue: "'{}'",
+            textColumn: "output_text",
+          },
+          organization_id: { name: "organization_id", ...column("String") },
+          project_id: { name: "project_id", ...column("String") },
+          environment_id: { name: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      function createJoinTextColumnContext() {
+        const schema = createSchemaRegistry([runsSchemaWithTextColumn, eventsSchemaWithTextColumn]);
+        return createPrinterContext({
+          schema,
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_test" },
+            project_id: { op: "eq", value: "proj_test" },
+            environment_id: { op: "eq", value: "env_test" },
+          },
+        });
+      }
+
+      it("should qualify text column with table alias in JOIN WHERE clause to avoid ambiguity", () => {
+        const ctx = createJoinTextColumnContext();
+        const { sql } = printQuery(
+          `SELECT r.id FROM runs r JOIN events e ON r.id = e.run_id WHERE r.output = '{}'`,
+          ctx
+        );
+
+        // The text column should be table-qualified to avoid ambiguity
+        // since both tables have an output_text column
+        expect(sql).toContain("equals(r.output_text,");
+        // Should NOT have unqualified output_text in the comparison
+        expect(sql).not.toMatch(/equals\(output_text,/);
+      });
+
+      it("should qualify text column with table alias for LIKE in JOIN", () => {
+        const ctx = createJoinTextColumnContext();
+        const { sql } = printQuery(
+          `SELECT r.id FROM runs r JOIN events e ON r.id = e.run_id WHERE e.output LIKE '%error%'`,
+          ctx
+        );
+
+        // Should use table-qualified text column
+        expect(sql).toContain("like(e.output_text,");
+        expect(sql).not.toMatch(/like\(output_text,/);
+      });
+
+      it("should handle multiple qualified text column comparisons in JOIN", () => {
+        const ctx = createJoinTextColumnContext();
+        const { sql } = printQuery(
+          `SELECT r.id FROM runs r JOIN events e ON r.id = e.run_id WHERE r.output = '{}' AND e.output != '{}'`,
+          ctx
+        );
+
+        // Both comparisons should be table-qualified
+        expect(sql).toContain("equals(r.output_text,");
+        expect(sql).toContain("notEquals(e.output_text,");
+      });
+    });
+  });
+
+  describe("dataPrefix for JSON columns", () => {
+    // Create a schema with JSON columns that have dataPrefix set
+    const dataPrefixSchema: TableSchema = {
+      name: "runs",
+      clickhouseName: "trigger_dev.task_runs_v2",
+      columns: {
+        id: { name: "id", ...column("String") },
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          dataPrefix: "data",
+        },
+        error: {
+          name: "error",
+          ...column("JSON"),
+          nullValue: "'{}'",
+          dataPrefix: "data",
+        },
+        status: { name: "status", ...column("String") },
+        organization_id: { name: "organization_id", ...column("String") },
+        project_id: { name: "project_id", ...column("String") },
+        environment_id: { name: "environment_id", ...column("String") },
+      },
+      tenantColumns: {
+        organizationId: "organization_id",
+        projectId: "project_id",
+        environmentId: "environment_id",
+      },
+    };
+
+    function createDataPrefixContext() {
+      const schema = createSchemaRegistry([dataPrefixSchema]);
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
+    });
+  }
+
+  describe("SELECT clause", () => {
+    it("should inject dataPrefix into JSON subfield path", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.message FROM runs", ctx);
+
+        // Should transform output.message to output.data.message
+        expect(sql).toContain("output.data.message");
+      });
+
+      it("should generate clean alias without dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql, columns } = printQuery("SELECT output.message FROM runs", ctx);
+
+        // Alias should be output_message, not output_data_message
+        expect(sql).toContain("AS output_message");
+        expect(sql).not.toContain("AS output_data_message");
+        expect(columns).toContainEqual(
+          expect.objectContaining({ name: "output_message" })
+        );
+      });
+
+      it("should handle nested paths with dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.user.name FROM runs", ctx);
+
+        // Should transform output.user.name to output.data.user.name
+        expect(sql).toContain("output.data.user.name");
+        // Alias should be output_user_name
+        expect(sql).toContain("AS output_user_name");
+      });
+
+      it("should work with multiple JSON columns with dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.msg, error.code FROM runs", ctx);
+
+        expect(sql).toContain("output.data.msg");
+        expect(sql).toContain("error.data.code");
+        expect(sql).toContain("AS output_msg");
+        expect(sql).toContain("AS error_code");
+      });
+
+      it("should not affect bare JSON column selection", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output FROM runs", ctx);
+
+        // Bare column should not have dataPrefix injected
+        expect(sql).not.toContain("output.data");
+        expect(sql).toMatch(/SELECT\s+output[\s,]/);
+      });
+    });
+
+    describe("WHERE clause", () => {
+      it("should inject dataPrefix into WHERE comparison", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery(
+          "SELECT id FROM runs WHERE output.status = 'success'",
+          ctx
+        );
+
+        // Should transform output.status to output.data.status
+        expect(sql).toContain("output.data.status");
+      });
+
+      it("should inject dataPrefix into LIKE comparison", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery(
+          "SELECT id FROM runs WHERE error.message LIKE '%failed%'",
+          ctx
+        );
+
+        expect(sql).toContain("error.data.message");
+      });
+    });
+
+    describe("GROUP BY clause", () => {
+      it("should inject dataPrefix into GROUP BY", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery(
+          "SELECT output.type, count() AS cnt FROM runs GROUP BY output.type",
+          ctx
+        );
+
+        // Should inject dataPrefix in both SELECT and GROUP BY
+        expect(sql).toContain("output.data.type");
+        expect(sql).toContain("GROUP BY output.data.type");
+      });
+    });
+
+    describe("edge cases", () => {
+      it("should not affect columns without dataPrefix", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT status FROM runs", ctx);
+
+        // Regular column should not be affected
+        expect(sql).toContain("status");
+        expect(sql).not.toContain("status.data");
+      });
+
+      it("should work with explicit alias on JSON subfield", () => {
+        const ctx = createDataPrefixContext();
+        const { sql } = printQuery("SELECT output.message AS msg FROM runs", ctx);
+
+        // Should inject dataPrefix but use user's alias
+        expect(sql).toContain("output.data.message");
+        expect(sql).toContain("AS msg");
+      });
     });
   });
 
@@ -739,12 +1250,103 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("Date functions with interval units", () => {
+    it("should output dateAdd with string interval as bare keyword", () => {
+      const { sql } = printQuery("SELECT dateAdd('day', 7, created_at) AS week_later FROM task_runs");
+
+      expect(sql).toContain("dateAdd(day, 7, created_at)");
+      expect(sql).not.toContain("'day'");
+    });
+
+    it("should output dateAdd with bare identifier interval as keyword", () => {
+      const { sql } = printQuery("SELECT dateAdd(day, 7, created_at) AS week_later FROM task_runs");
+
+      expect(sql).toContain("dateAdd(day, 7, created_at)");
+    });
+
+    it("should output dateDiff with string interval as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('minute', started_at, completed_at) AS duration_minutes FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(minute,");
+      expect(sql).not.toContain("'minute'");
+    });
+
+    it("should output dateSub with string interval as bare keyword", () => {
+      const { sql } = printQuery("SELECT dateSub('hour', 1, created_at) AS earlier FROM task_runs");
+
+      expect(sql).toContain("dateSub(hour, 1, created_at)");
+      expect(sql).not.toContain("'hour'");
+    });
+
+    it("should keep dateTrunc interval as parameterized string (ClickHouse expects string)", () => {
+      const { sql } = printQuery(
+        "SELECT dateTrunc('month', created_at) AS month_start FROM task_runs"
+      );
+
+      expect(sql).toContain("dateTrunc(");
+      expect(sql).not.toContain("dateTrunc(month,");
+    });
+
+    it("should output date_add (underscore variant) with bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT date_add('week', 2, created_at) AS two_weeks FROM task_runs"
+      );
+
+      expect(sql).toContain("date_add(week, 2, created_at)");
+      expect(sql).not.toContain("'week'");
+    });
+
+    it("should output date_diff (underscore variant) with bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT date_diff('second', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("date_diff(second,");
+      expect(sql).not.toContain("'second'");
+    });
+
+    it("should handle case-insensitive interval units", () => {
+      const { sql } = printQuery("SELECT dateAdd('DAY', 7, created_at) AS week_later FROM task_runs");
+
+      expect(sql).toContain("dateAdd(day, 7, created_at)");
+    });
+
+    it("should output dateDiff with sub-second units as bare keywords", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('millisecond', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(millisecond,");
+      expect(sql).not.toContain("'millisecond'");
+    });
+
+    it("should output dateDiff with microsecond as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('microsecond', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(microsecond,");
+    });
+
+    it("should output dateDiff with nanosecond as bare keyword", () => {
+      const { sql } = printQuery(
+        "SELECT dateDiff('nanosecond', started_at, completed_at) AS dur FROM task_runs"
+      );
+
+      expect(sql).toContain("dateDiff(nanosecond,");
+    });
+  });
+
   describe("Tenant isolation", () => {
     it("should inject tenant guards for single table", () => {
       const context = createTestContext({
-        organizationId: "org_abc",
-        projectId: "proj_def",
-        environmentId: "env_ghi",
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_abc" },
+          project_id: { op: "eq", value: "proj_def" },
+          environment_id: { op: "eq", value: "env_ghi" },
+        },
       });
       const { sql, params } = printQuery("SELECT * FROM task_runs", context);
 
@@ -1057,15 +1659,17 @@ describe("Value mapping (valueMap)", () => {
 
   function createValueMapContext() {
     const schema = createSchemaRegistry([statusMappedSchema]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  it("should transform user-friendly value to internal value in equality comparison", () => {
+it("should transform user-friendly value to internal value in equality comparison", () => {
     const ctx = createValueMapContext();
     const { sql, params } = printQuery("SELECT * FROM runs WHERE status = 'Completed'", ctx);
 
@@ -1173,15 +1777,17 @@ describe("WHERE transform (whereTransform)", () => {
 
   function createPrefixedContext() {
     const schema = createSchemaRegistry([prefixedIdSchema]);
-    return createPrinterContext({
-      organizationId: "org_test123",
-      projectId: "proj_test456",
-      environmentId: "env_test789",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test123" },
+      project_id: { op: "eq", value: "proj_test456" },
+      environment_id: { op: "eq", value: "env_test789" },
+    },
+  });
+}
 
-  it("should strip prefix from value in equality comparison", () => {
+it("should strip prefix from value in equality comparison", () => {
     const ctx = createPrefixedContext();
     const { params } = printQuery("SELECT * FROM runs WHERE batch_id = 'batch_abc123'", ctx);
 
@@ -1397,16 +2003,18 @@ describe("Virtual columns", () => {
 
   function createVirtualColumnContext() {
     const schema = createSchemaRegistry([virtualColumnSchema]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  describe("SELECT clause", () => {
-    it("should expand bare virtual column to expression with alias", () => {
+describe("SELECT clause", () => {
+  it("should expand bare virtual column to expression with alias", () => {
       const ctx = createVirtualColumnContext();
       const { sql } = printQuery("SELECT execution_duration FROM runs", ctx);
 
@@ -1638,16 +2246,18 @@ describe("Expression columns with division (cost/invocation_cost pattern)", () =
 
   function createCostExpressionContext() {
     const schema = createSchemaRegistry([costExpressionSchema]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  describe("WHERE clause with division expression columns", () => {
-    it("should expand invocation_cost > 100 to (base_cost_in_cents / 100.0) > 100", () => {
+describe("WHERE clause with division expression columns", () => {
+  it("should expand invocation_cost > 100 to (base_cost_in_cents / 100.0) > 100", () => {
       const ctx = createCostExpressionContext();
       const { sql } = printQuery("SELECT * FROM runs WHERE invocation_cost > 100", ctx);
 
@@ -1782,16 +2392,18 @@ describe("Column metadata", () => {
 
   function createMetadataTestContext() {
     const schema = createSchemaRegistry([schemaWithRenderTypes]);
-    return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
-      schema,
-    });
-  }
+  return createPrinterContext({
+    schema,
+    enforcedWhereClause: {
+      organization_id: { op: "eq", value: "org_test" },
+      project_id: { op: "eq", value: "proj_test" },
+      environment_id: { op: "eq", value: "env_test" },
+    },
+  });
+}
 
-  describe("Basic column metadata", () => {
-    it("should return column metadata for simple field references", () => {
+describe("Basic column metadata", () => {
+  it("should return column metadata for simple field references", () => {
       const ctx = createMetadataTestContext();
       const { columns } = printQuery("SELECT run_id, created_at FROM runs", ctx);
 
@@ -1818,16 +2430,19 @@ describe("Column metadata", () => {
         name: "status",
         type: "LowCardinality(String)",
         customRenderType: "runStatus",
+        format: "runStatus",
       });
       expect(columns[1]).toEqual({
         name: "usage_duration_ms",
         type: "UInt32",
         customRenderType: "duration",
+        format: "duration",
       });
       expect(columns[2]).toEqual({
         name: "cost_in_cents",
         type: "Float64",
         customRenderType: "cost",
+        format: "cost",
       });
     });
 
@@ -2170,6 +2785,133 @@ describe("Column metadata", () => {
       expect(columns[2].name).toBe("avg");
     });
   });
+
+  describe("prettyFormat()", () => {
+    it("should strip prettyFormat from SQL and attach format to column metadata", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'bytes') AS memory FROM runs",
+        ctx
+      );
+
+      // SQL should not contain prettyFormat
+      expect(sql).not.toContain("prettyFormat");
+      expect(sql).toContain("usage_duration_ms");
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("memory");
+      expect(columns[0].format).toBe("bytes");
+    });
+
+    it("should work with aggregation wrapping", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(avg(usage_duration_ms), 'bytes') AS avg_memory FROM runs",
+        ctx
+      );
+
+      expect(sql).not.toContain("prettyFormat");
+      expect(sql).toContain("avg(usage_duration_ms)");
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("avg_memory");
+      expect(columns[0].format).toBe("bytes");
+      expect(columns[0].type).toBe("Float64");
+    });
+
+    it("should work without explicit alias", () => {
+      const ctx = createMetadataTestContext();
+      const { sql, columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'percent') FROM runs",
+        ctx
+      );
+
+      expect(sql).not.toContain("prettyFormat");
+      expect(columns).toHaveLength(1);
+      expect(columns[0].name).toBe("usage_duration_ms");
+      expect(columns[0].format).toBe("percent");
+    });
+
+    it("should throw for invalid format type", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 'invalid') FROM runs",
+          ctx
+        );
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 'invalid') FROM runs",
+          ctx
+        );
+      }).toThrow(/Unknown format type/);
+    });
+
+    it("should throw for wrong argument count", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery("SELECT prettyFormat(usage_duration_ms) FROM runs", ctx);
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery("SELECT prettyFormat(usage_duration_ms) FROM runs", ctx);
+      }).toThrow(/requires exactly 2 arguments/);
+    });
+
+    it("should throw when second argument is not a string literal", () => {
+      const ctx = createMetadataTestContext();
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 123) FROM runs",
+          ctx
+        );
+      }).toThrow(QueryError);
+      expect(() => {
+        printQuery(
+          "SELECT prettyFormat(usage_duration_ms, 123) FROM runs",
+          ctx
+        );
+      }).toThrow(/must be a string literal/);
+    });
+
+    it("should override schema-level customRenderType", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT prettyFormat(usage_duration_ms, 'bytes') AS mem FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(1);
+      // prettyFormat's format should take precedence
+      expect(columns[0].format).toBe("bytes");
+      // customRenderType from schema should NOT be set since prettyFormat overrides
+      // The source column had customRenderType: "duration" but prettyFormat replaces it
+    });
+
+    it("should auto-populate format from customRenderType when not explicitly set", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery(
+        "SELECT usage_duration_ms, cost_in_cents FROM runs",
+        ctx
+      );
+
+      expect(columns).toHaveLength(2);
+      // customRenderType should auto-populate format
+      expect(columns[0].customRenderType).toBe("duration");
+      expect(columns[0].format).toBe("duration");
+      expect(columns[1].customRenderType).toBe("cost");
+      expect(columns[1].format).toBe("cost");
+    });
+
+    it("should not set format when column has no customRenderType", () => {
+      const ctx = createMetadataTestContext();
+      const { columns } = printQuery("SELECT run_id FROM runs", ctx);
+
+      expect(columns).toHaveLength(1);
+      expect(columns[0].format).toBeUndefined();
+      expect(columns[0].customRenderType).toBeUndefined();
+    });
+  });
 });
 
 describe("Unknown column blocking", () => {
@@ -2193,10 +2935,12 @@ describe("Unknown column blocking", () => {
       // Using the internal name directly should be blocked
       const schema = createSchemaRegistry([runsSchema]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       // 'created_at' is not in runsSchema - only 'created' which maps to 'created_at'
@@ -2210,10 +2954,12 @@ describe("Unknown column blocking", () => {
       // When user types 'created_at', we should suggest 'created'
       const schema = createSchemaRegistry([runsSchema]);
       const ctx = createPrinterContext({
-        organizationId: "org_test",
-        projectId: "proj_test",
-        environmentId: "env_test",
         schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
       });
 
       expect(() => {
@@ -2346,9 +3092,6 @@ describe("Field Mapping Value Transformation", () => {
   function createFieldMappingContext(): PrinterContext {
     const schemaRegistry = createSchemaRegistry([fieldMappingSchema]);
     return new PrinterContext(
-      "org_123",
-      "proj_456",
-      "env_789",
       schemaRegistry,
       {},
       {
@@ -2356,6 +3099,11 @@ describe("Field Mapping Value Transformation", () => {
           proj_tenant1: "my-project-ref",
           proj_other: "other-project",
         },
+      },
+      {
+        organization_id: { op: "eq", value: "org_123" },
+        project_id: { op: "eq", value: "proj_456" },
+        environment_id: { op: "eq", value: "env_789" },
       }
     );
   }
@@ -2474,20 +3222,24 @@ describe("Internal-only column blocking", () => {
   function createHiddenTenantContext(): PrinterContext {
     const schema = createSchemaRegistry([hiddenTenantSchema]);
     return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
       schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
     });
   }
 
   function createHiddenFilterContext(): PrinterContext {
     const schema = createSchemaRegistry([hiddenFilterSchema]);
     return createPrinterContext({
-      organizationId: "org_test",
-      projectId: "proj_test",
-      environmentId: "env_test",
       schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test" },
+        project_id: { op: "eq", value: "proj_test" },
+        environment_id: { op: "eq", value: "env_test" },
+      },
     });
   }
 
@@ -2655,10 +3407,12 @@ describe("Required Filters", () => {
   function createRequiredFiltersContext(): PrinterContext {
     const schemaRegistry = createSchemaRegistry([schemaWithRequiredFilters]);
     return createPrinterContext({
-      organizationId: "org_test123",
-      projectId: "proj_test456",
-      environmentId: "env_test789",
       schema: schemaRegistry,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+        project_id: { op: "eq", value: "proj_test456" },
+        environment_id: { op: "eq", value: "env_test789" },
+      },
     });
   }
 
@@ -2757,5 +3511,357 @@ describe("Required Filters", () => {
     expect(sql).toContain("status");
     expect(sql).toContain("created_at");   // triggered_at maps to created_at
     expect(sql).toContain("cost_in_cents"); // total_cost is a virtual column
+  });
+});
+
+// ============================================================
+// timeBucket() Tests
+// ============================================================
+
+describe("timeBucket()", () => {
+  /**
+   * Schema with timeConstraint for timeBucket() tests.
+   * Uses column mapping: TSQL "triggered_at" → ClickHouse "created_at"
+   */
+  const timeBucketSchema: TableSchema = {
+    name: "runs",
+    clickhouseName: "trigger_dev.task_runs_v2",
+    timeConstraint: "triggered_at",
+    columns: {
+      id: { name: "id", ...column("String") },
+      status: { name: "status", ...column("String") },
+      triggered_at: {
+        name: "triggered_at",
+        clickhouseName: "created_at",
+        ...column("DateTime64"),
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  /**
+   * Schema without timeConstraint (for error tests)
+   */
+  const noTimeConstraintSchema: TableSchema = {
+    name: "events",
+    clickhouseName: "trigger_dev.events_v1",
+    columns: {
+      id: { name: "id", ...column("String") },
+      event_type: { name: "event_type", ...column("String") },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  /** 7-day time range: should produce 6 HOUR buckets */
+  const sevenDayRange = {
+    from: new Date("2024-01-01T00:00:00Z"),
+    to: new Date("2024-01-08T00:00:00Z"),
+  };
+
+  /** 1-hour time range: should produce 1 MINUTE buckets */
+  const oneHourRange = {
+    from: new Date("2024-01-01T00:00:00Z"),
+    to: new Date("2024-01-01T01:00:00Z"),
+  };
+
+  function createTimeBucketContext(
+    overrides: Partial<Parameters<typeof createPrinterContext>[0]> = {}
+  ): PrinterContext {
+    const schema = createSchemaRegistry([timeBucketSchema]);
+    return createPrinterContext({
+      schema,
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+        project_id: { op: "eq", value: "proj_test456" },
+        environment_id: { op: "eq", value: "env_test789" },
+      },
+      timeRange: sevenDayRange,
+      ...overrides,
+    });
+  }
+
+  function printTimeBucketQuery(query: string, context?: PrinterContext) {
+    const ast = parseTSQLSelect(query);
+    const ctx = context ?? createTimeBucketContext();
+    return printToClickHouse(ast, ctx);
+  }
+
+  describe("SELECT with timeBucket()", () => {
+    it("should compile timeBucket() to toStartOfInterval with correct column and interval", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      // Should use ClickHouse column name (created_at), not TSQL name (triggered_at)
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+      expect(sql).toContain("count()");
+    });
+
+    it("should use 1 MINUTE interval for 1-hour time range", () => {
+      const ctx = createTimeBucketContext({ timeRange: oneHourRange });
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket",
+        ctx
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 1 MINUTE)");
+    });
+
+    it("should work with other selected columns", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), status, count() FROM runs GROUP BY timeBucket, status"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+      expect(sql).toContain("status");
+      expect(sql).toContain("count()");
+    });
+  });
+
+  describe("GROUP BY with timeBucket alias", () => {
+    it("should allow GROUP BY timeBucket (bare identifier, matching implicit alias)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      // The GROUP BY should reference the alias, not re-expand
+      expect(sql).toContain("GROUP BY");
+      // The SELECT should have the toStartOfInterval call
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+
+    it("should allow GROUP BY timebucket (all lowercase)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timebucket"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+
+    it("should allow GROUP BY TIMEBUCKET (all uppercase)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY TIMEBUCKET"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+  });
+
+  describe("ORDER BY with timeBucket alias", () => {
+    it("should allow ORDER BY timeBucket", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket ORDER BY timeBucket"
+      );
+
+      expect(sql).toContain("ORDER BY timebucket");
+    });
+
+    it("should allow ORDER BY timeBucket DESC", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket ORDER BY timeBucket DESC"
+      );
+
+      expect(sql).toContain("ORDER BY timebucket DESC");
+    });
+  });
+
+  describe("error handling", () => {
+    it("should throw when timeBucket() is called with arguments", () => {
+      expect(() =>
+        printTimeBucketQuery("SELECT timeBucket(triggered_at) FROM runs")
+      ).toThrow("timeBucket() does not accept arguments");
+    });
+
+    it("should throw when table has no timeConstraint", () => {
+      const schema = createSchemaRegistry([noTimeConstraintSchema]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: sevenDayRange,
+      });
+
+      expect(() =>
+        printTimeBucketQuery("SELECT timeBucket(), count() FROM events GROUP BY timeBucket", ctx)
+      ).toThrow("timeConstraint");
+    });
+
+    it("should throw when no timeRange is provided", () => {
+      const ctx = createTimeBucketContext({ timeRange: undefined });
+
+      expect(() =>
+        printTimeBucketQuery("SELECT timeBucket(), count() FROM runs GROUP BY timeBucket", ctx)
+      ).toThrow("time range");
+    });
+  });
+
+  describe("column name mapping", () => {
+    it("should resolve timeConstraint through column mapping (TSQL → ClickHouse)", () => {
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      // timeConstraint is "triggered_at" which maps to CH "created_at"
+      expect(sql).toContain("created_at");
+      expect(sql).not.toContain("triggered_at");
+    });
+
+    it("should work with timeConstraint column that has no clickhouseName mapping", () => {
+      const schemaNoMapping: TableSchema = {
+        name: "logs",
+        clickhouseName: "trigger_dev.logs_v1",
+        timeConstraint: "timestamp",
+        columns: {
+          id: { name: "id", ...column("String") },
+          timestamp: { name: "timestamp", ...column("DateTime64") },
+          organization_id: { name: "organization_id", ...column("String") },
+          project_id: { name: "project_id", ...column("String") },
+          environment_id: { name: "environment_id", ...column("String") },
+        },
+        tenantColumns: {
+          organizationId: "organization_id",
+          projectId: "project_id",
+          environmentId: "environment_id",
+        },
+      };
+
+      const schema = createSchemaRegistry([schemaNoMapping]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: sevenDayRange,
+      });
+
+      const { sql } = printTimeBucketQuery(
+        "SELECT timeBucket(), count() FROM logs GROUP BY timeBucket",
+        ctx
+      );
+
+      // No clickhouseName, so uses the TSQL name "timestamp" directly
+      expect(sql).toContain("toStartOfInterval(timestamp, INTERVAL 6 HOUR)");
+    });
+  });
+
+  describe("case insensitivity", () => {
+    it("should handle timeBucket() case-insensitively in SELECT", () => {
+      // The parser preserves case, but visitCall checks case-insensitively
+      const { sql } = printTimeBucketQuery(
+        "SELECT TIMEBUCKET(), count() FROM runs GROUP BY timeBucket"
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    });
+  });
+
+  describe("integration with compileTSQL", () => {
+    it("should work through the full compileTSQL pipeline", () => {
+      const { sql, params } = compileTSQL(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket",
+        {
+          tableSchema: [timeBucketSchema],
+          enforcedWhereClause: {
+            organization_id: { op: "eq", value: "org_test123" },
+            project_id: { op: "eq", value: "proj_test456" },
+            environment_id: { op: "eq", value: "env_test789" },
+          },
+          timeRange: sevenDayRange,
+        }
+      );
+
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+      expect(sql).toContain("count()");
+      // Tenant isolation should still be applied
+      expect(Object.values(params)).toContain("org_test123");
+    });
+  });
+
+  describe("per-table timeBucketThresholds", () => {
+    const customThresholds: BucketThreshold[] = [
+      // 10-second minimum granularity (e.g., for pre-aggregated metrics)
+      { maxRangeSeconds: 10 * 60, interval: { value: 10, unit: "SECOND" } },
+      { maxRangeSeconds: 30 * 60, interval: { value: 30, unit: "SECOND" } },
+      { maxRangeSeconds: 2 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    ];
+
+    const schemaWithCustomThresholds: TableSchema = {
+      ...timeBucketSchema,
+      name: "metrics",
+      timeBucketThresholds: customThresholds,
+    };
+
+    it("should use custom thresholds when defined on the table schema", () => {
+      // 3-minute range: global default would give 5 SECOND, custom gives 10 SECOND
+      const threeMinuteRange = {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-01T00:03:00Z"),
+      };
+
+      const schema = createSchemaRegistry([schemaWithCustomThresholds]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: threeMinuteRange,
+      });
+
+      const ast = parseTSQLSelect(
+        "SELECT timeBucket(), count() FROM metrics GROUP BY timeBucket"
+      );
+      const { sql } = printToClickHouse(ast, ctx);
+
+      // Custom thresholds: under 10 min → 10 SECOND (not the global 5 SECOND)
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 10 SECOND)");
+    });
+
+    it("should fall back to global defaults when no custom thresholds are defined", () => {
+      // 3-minute range with standard schema (no custom thresholds)
+      const threeMinuteRange = {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-01T00:03:00Z"),
+      };
+
+      const schema = createSchemaRegistry([timeBucketSchema]);
+      const ctx = createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test123" },
+          project_id: { op: "eq", value: "proj_test456" },
+          environment_id: { op: "eq", value: "env_test789" },
+        },
+        timeRange: threeMinuteRange,
+      });
+
+      const ast = parseTSQLSelect(
+        "SELECT timeBucket(), count() FROM runs GROUP BY timeBucket"
+      );
+      const { sql } = printToClickHouse(ast, ctx);
+
+      // Global default: under 5 min → 5 SECOND
+      expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 5 SECOND)");
+    });
   });
 });

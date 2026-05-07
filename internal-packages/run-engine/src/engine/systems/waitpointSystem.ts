@@ -4,6 +4,7 @@ import {
   Prisma,
   PrismaClientOrTransaction,
   TaskQueue,
+  TaskRun,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   Waitpoint,
@@ -14,6 +15,7 @@ import { sendNotificationToWorker } from "../eventBus.js";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
+import { isFinalRunStatus } from "../statuses.js";
 
 export type WaitpointSystemOptions = {
   resources: SystemResources;
@@ -364,6 +366,22 @@ export class WaitpointSystem {
 
   /**
    * Prevents a run from continuing until the waitpoint is completed.
+   *
+   * This method uses two separate SQL statements intentionally:
+   *
+   * 1. A CTE that INSERTs TaskRunWaitpoint rows (blocking connections) and
+   *    _WaitpointRunConnections rows (historical connections).
+   *
+   * 2. A separate SELECT that checks if any of the requested waitpoints are still PENDING.
+   *
+   * These MUST be separate statements because of PostgreSQL MVCC in READ COMMITTED isolation:
+   * each statement gets its own snapshot. If a concurrent `completeWaitpoint` commits between
+   * the CTE starting and finishing, the CTE's snapshot won't see the COMPLETED status. By using
+   * a separate SELECT, we get a fresh snapshot that reflects the latest committed state.
+   *
+   * The pending check queries ALL requested waitpoint IDs (not just the ones actually inserted
+   * by the CTE). This is intentional: if a TaskRunWaitpoint row already existed (ON CONFLICT
+   * DO NOTHING skipped the insert), a still-PENDING waitpoint should still count as blocking.
    */
   async blockRunWithWaitpoint({
     runId,
@@ -397,8 +415,10 @@ export class WaitpointSystem {
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
       let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-      //block the run with the waitpoints, returning how many waitpoints are pending
-      const insert = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
+      // Insert the blocking connections and the historical run connections.
+      // We use a CTE to do both inserts atomically. Data-modifying CTEs are
+      // always executed regardless of whether they're referenced in the outer query.
+      await prisma.$queryRaw`
         WITH inserted AS (
           INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
           SELECT
@@ -423,12 +443,21 @@ export class WaitpointSystem {
           WHERE w.id IN (${Prisma.join($waitpoints)})
           ON CONFLICT DO NOTHING
         )
-        SELECT COUNT(*) as pending_count
-        FROM inserted i
-        JOIN "Waitpoint" w ON w.id = i."waitpointId"
-        WHERE w.status = 'PENDING';`;
+        SELECT COUNT(*) FROM inserted`;
 
-      const isRunBlocked = Number(insert.at(0)?.pending_count ?? 0) > 0;
+      // Check if the run is actually blocked using a separate query.
+      // This MUST be a separate statement from the CTE above because in READ COMMITTED
+      // isolation, each statement gets its own snapshot. The CTE's snapshot is taken when
+      // it starts, so if a concurrent completeWaitpoint commits during the CTE, the CTE
+      // won't see it. This fresh query gets a new snapshot that reflects the latest commits.
+      const pendingCheck = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
+        SELECT COUNT(*) as pending_count
+        FROM "Waitpoint"
+        WHERE id IN (${Prisma.join($waitpoints)})
+        AND status = 'PENDING'
+      `;
+
+      const isRunBlocked = Number(pendingCheck.at(0)?.pending_count ?? 0) > 0;
 
       let newStatus: TaskRunExecutionStatus = "SUSPENDED";
       if (
@@ -493,6 +522,121 @@ export class WaitpointSystem {
       }
 
       return snapshot;
+    });
+  }
+
+  /**
+   * Lockless version of blockRunWithWaitpoint for batch item processing.
+   *
+   * When processing batchTriggerAndWait items, blockRunWithCreatedBatch has already
+   * transitioned the parent run to EXECUTING_WITH_WAITPOINTS before any items are
+   * processed. Per-item calls to blockRunWithWaitpoint would all compete for the same
+   * parent run lock just to insert a TaskRunWaitpoint row — causing lock contention
+   * and LockAcquisitionTimeoutError with large batches.
+   *
+   * This method performs only the CTE insert (which is idempotent via ON CONFLICT DO
+   * NOTHING) and timeout scheduling, without acquiring the parent run lock.
+   */
+  async blockRunWithWaitpointLockless({
+    runId,
+    waitpoints,
+    projectId,
+    timeout,
+    spanIdToComplete,
+    batch,
+    tx,
+  }: {
+    runId: string;
+    waitpoints: string | string[];
+    projectId: string;
+    timeout?: Date;
+    spanIdToComplete?: string;
+    batch: { id: string; index?: number };
+    tx?: PrismaClientOrTransaction;
+  }): Promise<void> {
+    const prisma = tx ?? this.$.prisma;
+    const $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
+
+    // Insert the blocking connections and the historical run connections.
+    // No lock needed: ON CONFLICT DO NOTHING makes concurrent inserts safe,
+    // and the parent snapshot is already EXECUTING_WITH_WAITPOINTS from
+    // blockRunWithCreatedBatch.
+    await prisma.$queryRaw`
+      WITH inserted AS (
+        INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
+        SELECT
+          gen_random_uuid(),
+          ${runId},
+          w.id,
+          ${projectId},
+          NOW(),
+          NOW(),
+          ${spanIdToComplete ?? null},
+          ${batch.id},
+          ${batch.index ?? null}
+        FROM "Waitpoint" w
+        WHERE w.id IN (${Prisma.join($waitpoints)})
+        ON CONFLICT DO NOTHING
+        RETURNING "waitpointId"
+      ),
+      connected_runs AS (
+        INSERT INTO "_WaitpointRunConnections" ("A", "B")
+        SELECT ${runId}, w.id
+        FROM "Waitpoint" w
+        WHERE w.id IN (${Prisma.join($waitpoints)})
+        ON CONFLICT DO NOTHING
+      )
+      SELECT COUNT(*) FROM inserted`;
+
+    // Schedule timeout jobs if needed
+    if (timeout) {
+      for (const waitpoint of $waitpoints) {
+        await this.$.worker.enqueue({
+          id: `finishWaitpoint.${waitpoint}`,
+          job: "finishWaitpoint",
+          payload: {
+            waitpointId: waitpoint,
+            error: JSON.stringify(timeoutError(timeout)),
+          },
+          availableAt: timeout,
+        });
+      }
+    }
+  }
+
+  /**
+   * Blocks a run with a waitpoint and immediately completes the waitpoint.
+   *
+   * Used when creating a pre-failed child run: the parent needs to be blocked
+   * by the waitpoint so it can receive the error output, but the waitpoint is
+   * already resolved because the child run is terminal from the start.
+   */
+  async blockRunAndCompleteWaitpoint({
+    runId,
+    waitpointId,
+    output,
+    projectId,
+    organizationId,
+    batch,
+  }: {
+    runId: string;
+    waitpointId: string;
+    output: { value: string; type?: string; isError: boolean };
+    projectId: string;
+    organizationId: string;
+    batch?: { id: string; index?: number };
+  }): Promise<void> {
+    await this.blockRunWithWaitpoint({
+      runId,
+      waitpoints: waitpointId,
+      projectId,
+      organizationId,
+      batch,
+    });
+
+    await this.completeWaitpoint({
+      id: waitpointId,
+      output,
     });
   }
 
@@ -693,6 +837,20 @@ export class WaitpointSystem {
         }
         case "SUSPENDED": {
           if (!snapshot.checkpointId) {
+            // A run canceled mid-suspend has its checkpoint cleared by the
+            // cancel path; reaching here just means cancel won the race.
+            // Skip rather than throw — there's nothing to resume.
+            if (snapshot.runStatus === "CANCELED") {
+              this.$.logger.warn(
+                `continueRunIfUnblocked: run was canceled while suspended, skipping`,
+                { runId, snapshot }
+              );
+              return {
+                status: "skipped",
+                reason: "run was canceled while suspended",
+              };
+            }
+
             this.$.logger.error(`continueRunIfUnblocked: run is suspended, but has no checkpoint`, {
               runId,
               snapshot,
@@ -770,5 +928,105 @@ export class WaitpointSystem {
       projectId,
       environmentId,
     };
+  }
+
+  /**
+   * Builds the waitpoint output payload from a completed run's stored output/error.
+   */
+  #buildWaitpointOutputFromRun(
+    run: Pick<TaskRun, "status" | "output" | "outputType" | "error">
+  ): { value: string; type?: string; isError: boolean } | undefined {
+    if (run.status === "COMPLETED_SUCCESSFULLY") {
+      if (run.output == null) {
+        return undefined;
+      }
+      return {
+        value: run.output,
+        type: run.outputType ?? undefined,
+        isError: false,
+      };
+    }
+    if (isFinalRunStatus(run.status)) {
+      return {
+        value: JSON.stringify(run.error ?? {}),
+        isError: true,
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * Gets an existing run waitpoint or creates one lazily.
+   * Used for debounce/idempotency when a late-arriving triggerAndWait caller
+   * needs to block on an existing run that was created without a waitpoint.
+   * When the run has already completed, creates the waitpoint and immediately
+   * completes it with the run's output/error so the parent can resume.
+   */
+  public async getOrCreateRunWaitpoint({
+    runId,
+    projectId,
+    environmentId,
+  }: {
+    runId: string;
+    projectId: string;
+    environmentId: string;
+  }): Promise<Waitpoint> {
+    // Fast path: check if waitpoint already exists
+    const run = await this.$.prisma.taskRun.findFirst({
+      where: { id: runId },
+      include: { associatedWaitpoint: true },
+    });
+
+    if (!run) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+
+    if (run.associatedWaitpoint) {
+      return run.associatedWaitpoint;
+    }
+
+    // Need to create - use run lock to prevent races (operational decisions use latest snapshot inside lock)
+    return this.$.runLock.lock("getOrCreateRunWaitpoint", [runId], async () => {
+      const prisma = this.$.prisma;
+
+      // Double-check after acquiring lock
+      const runAfterLock = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        include: { associatedWaitpoint: true },
+      });
+
+      if (!runAfterLock) {
+        throw new Error(`Run not found: ${runId}`);
+      }
+
+      if (runAfterLock.associatedWaitpoint) {
+        return runAfterLock.associatedWaitpoint;
+      }
+
+      // Operational decision: use latest execution snapshot, not TaskRun status
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+
+      // Create waitpoint and link to run atomically
+      const waitpointData = this.buildRunAssociatedWaitpoint({ projectId, environmentId });
+
+      const waitpoint = await prisma.waitpoint.create({
+        data: {
+          ...waitpointData,
+          completedByTaskRunId: runId,
+        },
+      });
+
+      // If run has already finished (per snapshot), complete the waitpoint immediately so the parent can resume
+      if (snapshot.executionStatus === "FINISHED") {
+        const output = this.#buildWaitpointOutputFromRun(runAfterLock);
+        const completed = await this.completeWaitpoint({
+          id: waitpoint.id,
+          output,
+        });
+        return completed;
+      }
+
+      return waitpoint;
+    });
   }
 }

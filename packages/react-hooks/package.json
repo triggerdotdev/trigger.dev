@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/react-hooks",
-  "version": "4.3.2",
+  "version": "4.4.5",
   "description": "trigger.dev react hooks",
   "license": "MIT",
   "publishConfig": {
@@ -37,14 +37,14 @@
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@trigger.dev/core": "workspace:^4.3.2",
+    "@trigger.dev/core": "workspace:^4.4.5",
     "swr": "^2.2.5"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.15.4",
     "@types/react": "*",
     "@types/react-dom": "*",
-    "rimraf": "^3.0.2",
+    "rimraf": "^6.0.1",
     "tshy": "^3.0.2",
     "tsx": "4.17.0"
   },

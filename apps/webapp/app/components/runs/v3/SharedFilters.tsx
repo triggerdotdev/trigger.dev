@@ -4,35 +4,31 @@ import {
   endOfDay,
   endOfMonth,
   endOfWeek,
-  isSaturday,
-  isSunday,
-  previousSaturday,
   startOfDay,
   startOfMonth,
   startOfWeek,
-  startOfYear,
   subDays,
-  subMonths,
   subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
-import { startTransition, useCallback, useEffect, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import simplur from "simplur";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
 import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
+import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { type ShortcutDefinition } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { cn } from "~/utils/cn";
-import { Button } from "../../primitives/Buttons";
+import { organizationBillingPath } from "~/utils/pathBuilder";
+import { Button, LinkButton } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
-
-export type DisplayableEnvironment = Pick<RuntimeEnvironment, "type" | "id"> & {
-  userName?: string;
-};
 
 export function FilterMenuProvider({
   children,
@@ -96,6 +92,10 @@ const timePeriods = [
     value: "3d",
   },
   {
+    label: "5 days",
+    value: "5d",
+  },
+  {
     label: "7 days",
     value: "7d",
   },
@@ -106,10 +106,6 @@ const timePeriods = [
   {
     label: "30 days",
     value: "30d",
-  },
-  {
-    label: "90 days",
-    value: "90d",
   },
 ];
 
@@ -126,6 +122,22 @@ function parsePeriodString(period: string): { value: number; unit: string } | nu
     return { value: parseInt(match[1], 10), unit: match[2] };
   }
   return null;
+}
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+// Convert a period string to days using parse-duration
+function periodToDays(period: string): number {
+  const ms = parse(period);
+  if (!ms) return 0;
+  return ms / MS_PER_DAY;
+}
+
+// Calculate the number of days a date range spans from now
+function dateRangeToDays(from?: Date): number {
+  if (!from) return 0;
+  const now = new Date();
+  return Math.ceil((now.getTime() - from.getTime()) / MS_PER_DAY);
 }
 
 const DEFAULT_PERIOD = "7d";
@@ -203,6 +215,48 @@ export const timeFilters = ({
   };
 };
 
+export function timeFilterFromTo(props: {
+  period?: string;
+  from?: string | number;
+  to?: string | number;
+  defaultPeriod: string;
+}): { from: Date; to: Date; isDefault: boolean } {
+  const time = timeFilters(props);
+
+  const periodMs = time.period ? parse(time.period) : undefined;
+
+  if (periodMs) {
+    return {
+      from: new Date(Date.now() - periodMs),
+      to: new Date(),
+      isDefault: time.isDefault,
+    };
+  }
+
+  if (time.from && time.to) {
+    return {
+      from: time.from,
+      to: time.to,
+      isDefault: time.isDefault,
+    };
+  }
+
+  if (time.from) {
+    return {
+      from: time.from,
+      to: new Date(),
+      isDefault: time.isDefault,
+    };
+  }
+
+  const defaultPeriodMs = parse(props.defaultPeriod) ?? 24 * 60 * 60 * 1_000;
+  return {
+    from: new Date(Date.now() - defaultPeriodMs),
+    to: time.to ?? new Date(),
+    isDefault: time.isDefault,
+  };
+}
+
 export function timeFilterRenderValues({
   from,
   to,
@@ -246,7 +300,12 @@ export function timeFilterRenderValues({
     case "range":
       {
         //If the day is the same, only show the time for the `to` date
-        const isSameDay = from && to && from.getDate() === to.getDate() && from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+        const isSameDay =
+          from &&
+          to &&
+          from.getDate() === to.getDate() &&
+          from.getMonth() === to.getMonth() &&
+          from.getFullYear() === to.getFullYear();
 
         valueLabel = (
           <span>
@@ -268,8 +327,8 @@ export function timeFilterRenderValues({
     rangeType === "range" || rangeType === "period"
       ? labelName
       : rangeType === "from"
-        ? `${labelName} after`
-        : `${labelName} before`;
+      ? `${labelName} after`
+      : `${labelName} before`;
 
   return { label, valueLabel, rangeType };
 }
@@ -289,9 +348,15 @@ export interface TimeFilterProps {
   /** Label name used in the filter display, defaults to "Created" */
   labelName?: string;
   hideLabel?: boolean;
+  /** Keyboard shortcut to open the dropdown */
+  shortcut?: ShortcutDefinition;
   applyShortcut?: ShortcutDefinition | undefined;
   /** Callback when the user applies a time filter selection, receives the applied values */
   onValueChange?: (values: TimeFilterApplyValues) => void;
+  /** When set an upgrade message will be shown if you select a period further back than this number of days */
+  maxPeriodDays?: number;
+  /** Optional className override for the value text in the filter pill */
+  valueClassName?: string;
 }
 
 export function TimeFilter({
@@ -301,13 +366,26 @@ export function TimeFilter({
   to,
   labelName = "Created",
   hideLabel = false,
+  shortcut,
   applyShortcut,
   onValueChange,
+  maxPeriodDays,
+  valueClassName,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
   const periodValue = period ?? value("period");
   const fromValue = from ?? value("from");
   const toValue = to ?? value("to");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   const constrained = timeFilters({
     period: periodValue,
@@ -322,15 +400,37 @@ export function TimeFilter({
       {() => (
         <TimeDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label={hideLabel ? undefined : constrained.label}
-                icon={filterIcon("period")}
-                value={constrained.valueLabel}
-                removable={false}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                <AppliedFilter
+                  label={hideLabel ? undefined : constrained.label}
+                  icon={filterIcon("period")}
+                  value={constrained.valueLabel}
+                  removable={false}
+                  variant="secondary/small"
+                  valueClassName={valueClassName}
+                />
+              </Ariakit.TooltipAnchor>
+              {shortcut && (
+                <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span>Filter by time period</span>
+                    <ShortcutKey
+                      className="size-4 flex-none"
+                      shortcut={shortcut}
+                      variant="small"
+                    />
+                  </div>
+                </Ariakit.Tooltip>
+              )}
+            </Ariakit.TooltipProvider>
           }
           period={constrained.period}
           from={constrained.from}
@@ -339,6 +439,7 @@ export function TimeFilter({
           labelName={labelName}
           applyShortcut={applyShortcut}
           onValueChange={onValueChange}
+          maxPeriodDays={maxPeriodDays}
         />
       )}
     </FilterMenuProvider>
@@ -356,6 +457,8 @@ function getInitialCustomDuration(period?: string): { value: string; unit: strin
   return { value: "", unit: "m" };
 }
 
+type SectionType = "duration" | "dateRange";
+
 export function TimeDropdown({
   trigger,
   period,
@@ -366,6 +469,7 @@ export function TimeDropdown({
   applyShortcut,
   onApply,
   onValueChange,
+  maxPeriodDays,
 }: {
   trigger: ReactNode;
   period?: string;
@@ -377,14 +481,16 @@ export function TimeDropdown({
   onApply?: (values: TimeFilterApplyValues) => void;
   /** When provided, the component operates in controlled mode and skips URL navigation */
   onValueChange?: (values: TimeFilterApplyValues) => void;
+  /** When set an upgrade message will be shown if you select a period further back than this number of days */
+  maxPeriodDays?: number;
 }) {
+  const organization = useOptionalOrganization();
   const [open, setOpen] = useState<boolean | undefined>();
   const { replace } = useSearchParams();
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
 
   // Section selection state: "duration" or "dateRange"
-  type SectionType = "duration" | "dateRange";
   const initialSection: SectionType = from || to ? "dateRange" : "duration";
   const [activeSection, setActiveSection] = useState<SectionType>(initialSection);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -418,28 +524,41 @@ export function TimeDropdown({
     return !isNaN(value) && value > 0;
   })();
 
-  const applySelection = useCallback(() => {
-    setValidationError(null);
+  // Calculate if the current selection exceeds maxPeriodDays
+  const exceedsMaxPeriod = (() => {
+    if (!maxPeriodDays) return false;
 
     if (activeSection === "duration") {
-      // Validate custom duration
-      if (selectedPeriod === "custom" && !isCustomDurationValid) {
-        setValidationError("Please enter a valid custom duration");
+      const periodToCheck =
+        selectedPeriod === "custom" ? `${customValue}${customUnit}` : selectedPeriod;
+      if (!periodToCheck) return false;
+      return periodToDays(periodToCheck) > maxPeriodDays;
+    } else {
+      // For date range, check if fromValue is further back than maxPeriodDays
+      return dateRangeToDays(fromValue) > maxPeriodDays;
+    }
+  })();
+
+  const applyPeriod = useCallback(
+    (periodToApply: string) => {
+      setValidationError(null);
+
+      if (maxPeriodDays && periodToDays(periodToApply) > maxPeriodDays) {
+        setValidationError(
+          `Your plan allows a maximum of ${maxPeriodDays} days. Upgrade for longer retention.`
+        );
         return;
       }
 
-      let periodToApply = selectedPeriod;
-      if (selectedPeriod === "custom") {
-        periodToApply = `${customValue}${customUnit}`;
-      }
-
-      const values: TimeFilterApplyValues = { period: periodToApply, from: undefined, to: undefined };
+      const values: TimeFilterApplyValues = {
+        period: periodToApply,
+        from: undefined,
+        to: undefined,
+      };
 
       if (onValueChange) {
-        // Controlled mode - just call the handler
         onValueChange(values);
       } else {
-        // URL mode - navigate
         replace({
           period: periodToApply,
           cursor: undefined,
@@ -453,6 +572,30 @@ export function TimeDropdown({
       setToValue(undefined);
       setOpen(false);
       onApply?.(values);
+    },
+    [maxPeriodDays, onValueChange, replace, onApply]
+  );
+
+  const applySelection = useCallback(() => {
+    setValidationError(null);
+
+    if (exceedsMaxPeriod) {
+      setValidationError(
+        `Your plan allows a maximum of ${maxPeriodDays} days. Upgrade for longer retention.`
+      );
+      return;
+    }
+
+    if (activeSection === "duration") {
+      // Validate custom duration
+      if (selectedPeriod === "custom" && !isCustomDurationValid) {
+        setValidationError("Please enter a valid custom duration");
+        return;
+      }
+
+      const periodToApply =
+        selectedPeriod === "custom" ? `${customValue}${customUnit}` : selectedPeriod;
+      applyPeriod(periodToApply);
     } else {
       // Validate date range
       if (!fromValue && !toValue) {
@@ -498,6 +641,9 @@ export function TimeDropdown({
     replace,
     onApply,
     onValueChange,
+    exceedsMaxPeriod,
+    maxPeriodDays,
+    applyPeriod,
   ]);
 
   return (
@@ -538,9 +684,9 @@ export function TimeDropdown({
                       ? "border-indigo-500 "
                       : "border-charcoal-650 hover:border-charcoal-600",
                     validationError &&
-                    activeSection === "duration" &&
-                    selectedPeriod === "custom" &&
-                    "border-error"
+                      activeSection === "duration" &&
+                      selectedPeriod === "custom" &&
+                      "border-error"
                   )}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -608,7 +754,7 @@ export function TimeDropdown({
                           setCustomValue(parsed.value.toString());
                           setCustomUnit(parsed.unit);
                         }
-                        setValidationError(null);
+                        applyPeriod(p.value);
                       }}
                       fullWidth
                       type="button"
@@ -683,7 +829,7 @@ export function TimeDropdown({
                 />
               </div>
               {/* Quick select date ranges */}
-              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+              <div className="mt-2 grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="Yesterday"
                   isActive={selectedQuickDate === "yesterday"}
@@ -702,43 +848,24 @@ export function TimeDropdown({
                   onClick={() => {
                     const today = new Date();
                     setFromValue(startOfDay(today));
-                    setToValue(today);
+                    setToValue(endOfDay(today));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("today");
                   }}
                 />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                 <QuickDateButton
                   label="This week"
                   isActive={selectedQuickDate === "thisWeek"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfWeek(now, { weekStartsOn: 1 }));
-                    setToValue(now);
+                    setToValue(endOfWeek(now, { weekStartsOn: 1 }));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("thisWeek");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last weekend"
-                  isActive={selectedQuickDate === "lastWeekend"}
-                  onClick={() => {
-                    const now = new Date();
-                    let saturday: Date;
-                    if (isSaturday(now)) {
-                      saturday = subDays(now, 7);
-                    } else if (isSunday(now)) {
-                      saturday = subDays(now, 8);
-                    } else {
-                      saturday = previousSaturday(now);
-                    }
-                    const sunday = endOfDay(subDays(saturday, -1));
-                    setFromValue(startOfDay(saturday));
-                    setToValue(sunday);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastWeekend");
                   }}
                 />
                 <QuickDateButton
@@ -754,53 +881,15 @@ export function TimeDropdown({
                   }}
                 />
                 <QuickDateButton
-                  label="Last weekdays"
-                  isActive={selectedQuickDate === "lastWeekdays"}
-                  onClick={() => {
-                    const lastWeek = subWeeks(new Date(), 1);
-                    const monday = startOfWeek(lastWeek, { weekStartsOn: 1 });
-                    const friday = endOfDay(subDays(monday, -4)); // Monday + 4 days = Friday
-                    setFromValue(startOfDay(monday));
-                    setToValue(friday);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastWeekdays");
-                  }}
-                />
-                <QuickDateButton
-                  label="Last month"
-                  isActive={selectedQuickDate === "lastMonth"}
-                  onClick={() => {
-                    const lastMonth = subMonths(new Date(), 1);
-                    setFromValue(startOfMonth(lastMonth));
-                    setToValue(endOfMonth(lastMonth));
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("lastMonth");
-                  }}
-                />
-                <QuickDateButton
                   label="This month"
                   isActive={selectedQuickDate === "thisMonth"}
                   onClick={() => {
                     const now = new Date();
                     setFromValue(startOfMonth(now));
-                    setToValue(now);
+                    setToValue(endOfMonth(now));
                     setActiveSection("dateRange");
                     setValidationError(null);
                     setSelectedQuickDate("thisMonth");
-                  }}
-                />
-                <QuickDateButton
-                  label="Year to date"
-                  isActive={selectedQuickDate === "yearToDate"}
-                  onClick={() => {
-                    const now = new Date();
-                    setFromValue(startOfYear(now));
-                    setToValue(now);
-                    setActiveSection("dateRange");
-                    setValidationError(null);
-                    setSelectedQuickDate("yearToDate");
                   }}
                 />
               </div>
@@ -812,10 +901,28 @@ export function TimeDropdown({
             </div>
           </div>
 
+          {/* Upgrade callout when exceeding maxPeriodDays */}
+          {exceedsMaxPeriod && organization && (
+            <Callout
+              variant="pricing"
+              cta={
+                <LinkButton
+                  variant="primary/small"
+                  to={organizationBillingPath({ slug: organization.slug })}
+                >
+                  Upgrade
+                </LinkButton>
+              }
+              className="items-center"
+            >
+              {simplur`Your plan allows a maximum of ${maxPeriodDays} day[|s].`}
+            </Callout>
+          )}
+
           {/* Action buttons */}
           <div className="flex justify-between gap-1 border-t border-grid-bright px-0 pt-3">
             <Button
-              variant="tertiary/small"
+              variant="secondary/small"
               onClick={(e) => {
                 e.preventDefault();
                 setFromValue(from);
@@ -829,16 +936,21 @@ export function TimeDropdown({
             </Button>
             <Button
               variant="primary/small"
-              shortcut={applyShortcut ? applyShortcut : {
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
+              shortcut={
+                applyShortcut
+                  ? applyShortcut
+                  : {
+                      modifiers: ["mod"],
+                      key: "Enter",
+                      enabledOnInputElements: true,
+                    }
+              }
               onClick={(e) => {
                 e.preventDefault();
                 applySelection();
               }}
               type="button"
+              disabled={exceedsMaxPeriod}
             >
               Apply
             </Button>

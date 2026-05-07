@@ -1,4 +1,8 @@
-import { BuildServerMetadata, type InitializeDeploymentRequestBody } from "@trigger.dev/core/v3";
+import {
+  BuildServerMetadata,
+  type InitializeDeploymentRequestBody,
+  type ExternalBuildData,
+} from "@trigger.dev/core/v3";
 import { customAlphabet } from "nanoid";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -55,6 +59,28 @@ export class InitializeDeploymentService extends BaseService {
         };
       }
 
+      // v4 CLI versions always send `payload.type` ("MANAGED" or "V1"). v3 CLI
+      // versions never do, so the absence of `type` is a reliable signal that
+      // the request came from a 3.x CLI. Detection always runs (so we can
+      // observe how many deploys are still using v3), enforcement is gated
+      // behind DEPRECATE_V3_CLI_DEPLOYS_ENABLED so it can be rolled out safely.
+      if (!payload.type) {
+        const enforced = env.DEPRECATE_V3_CLI_DEPLOYS_ENABLED === "1";
+
+        logger.warn("Detected deploy from deprecated v3 CLI", {
+          environmentId: environment.id,
+          projectId: environment.projectId,
+          organizationId: environment.project.organizationId,
+          enforced,
+        });
+
+        if (enforced) {
+          throw new ServiceValidationError(
+            "The trigger.dev CLI v3 is no longer supported for deployments. Please upgrade your project to v4: https://trigger.dev/docs/migrating-from-v3"
+          );
+        }
+      }
+
       if (payload.type === "UNMANAGED") {
         throw new ServiceValidationError("UNMANAGED deployments are not supported");
       }
@@ -89,12 +115,18 @@ export class InitializeDeploymentService extends BaseService {
         );
       }
 
-      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started.
-      // This helps avoid Depot token expiration issues.
-      const externalBuildData =
-        payload.initialStatus === "PENDING" || payload.isNativeBuild
-          ? undefined
-          : await createRemoteImageBuild(environment.project);
+      // For the `PENDING` initial status, defer the creation of the Depot build until the deployment is started to avoid token expiration issues.
+      // For local and native builds we don't need to generate the Depot tokens. We still need to create an empty object sadly due to a bug in older CLI versions.
+      const generateExternalBuildToken =
+        payload.initialStatus === "PENDING" || payload.isNativeBuild || payload.isLocalBuild;
+
+      const externalBuildData = generateExternalBuildToken
+        ? ({
+            projectId: "-",
+            buildToken: "-",
+            buildId: "-",
+          } satisfies ExternalBuildData)
+        : await createRemoteImageBuild(environment.project);
 
       const triggeredBy = payload.userId
         ? await this._prisma.user.findFirst({
@@ -200,6 +232,7 @@ export class InitializeDeploymentService extends BaseService {
                     artifactKey: payload.artifactKey,
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
+                    skipEnqueue: payload.skipEnqueue,
                   }
                 : {}),
             }
@@ -221,6 +254,7 @@ export class InitializeDeploymentService extends BaseService {
           imageReference: imageRef,
           imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
           git: payload.gitMeta ?? undefined,
+          commitSHA: payload.gitMeta?.commitSha ?? undefined,
           runtime: payload.runtime ?? undefined,
           triggeredVia: payload.triggeredVia ?? undefined,
           startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
@@ -237,7 +271,8 @@ export class InitializeDeploymentService extends BaseService {
         new Date(Date.now() + timeoutMs)
       );
 
-      if (payload.isNativeBuild) {
+      // For github integration there is no artifactKey, hence we skip it here
+      if (payload.isNativeBuild && payload.artifactKey && !payload.skipEnqueue) {
         const result = await deploymentService
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,

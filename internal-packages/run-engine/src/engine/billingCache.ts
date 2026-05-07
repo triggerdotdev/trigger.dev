@@ -1,14 +1,13 @@
 import {
   createCache,
+  createLRUMemoryStore,
   DefaultStatefulContext,
-  MemoryStore,
   Namespace,
   Ok,
   RedisCacheStore,
   type UnkeyCache,
   type CacheError,
   type Result,
-  createMemoryStore,
 } from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
 import type { Logger } from "@trigger.dev/core/logger";
@@ -21,6 +20,7 @@ const BILLING_STALE_TTL = 60000 * 10; // 10 minutes
 export type BillingPlan = {
   isPaying: boolean;
   type: "free" | "paid" | "enterprise";
+  hasPrivateLink?: boolean;
 };
 
 export type BillingCacheOptions = {
@@ -53,7 +53,7 @@ export class BillingCache {
 
     this.cache = createCache({
       currentPlan: new Namespace<BillingPlan>(ctx, {
-        stores: [createMemoryStore(1000), redisCacheStore],
+        stores: [createLRUMemoryStore(1000), redisCacheStore],
         fresh: BILLING_FRESH_TTL,
         stale: BILLING_STALE_TTL,
       }),
@@ -73,7 +73,11 @@ export class BillingCache {
     return await this.cache.currentPlan.swr(orgId, async () => {
       // This is safe because options can't change at runtime
       const planResult = await this.billingOptions!.getCurrentPlan(orgId);
-      return { isPaying: planResult.isPaying, type: planResult.type };
+      return {
+        isPaying: planResult.isPaying,
+        type: planResult.type,
+        hasPrivateLink: planResult.hasPrivateLink,
+      };
     });
   }
 

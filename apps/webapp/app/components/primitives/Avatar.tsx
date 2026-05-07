@@ -1,8 +1,10 @@
 import {
+  BoltIcon,
   BuildingOffice2Icon,
   CodeBracketSquareIcon,
   FaceSmileIcon,
   FireIcon,
+  GlobeAltIcon,
   RocketLaunchIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
@@ -25,7 +27,8 @@ export const AvatarData = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal(AvatarType.enum.image),
-    url: z.string().url(),
+    url: z.string(),
+    lastIconHex: z.string().optional(),
   }),
 ]);
 
@@ -85,6 +88,7 @@ export const avatarIcons: Record<string, React.ComponentType<React.SVGProps<SVGS
   "hero:fire": FireIcon,
   "hero:star": StarIcon,
   "hero:face-smile": FaceSmileIcon,
+  "hero:bolt": BoltIcon,
 };
 
 export const defaultAvatarColors = [
@@ -179,9 +183,21 @@ function AvatarIcon({
 }
 
 function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
+  if (!avatar.url) {
+    return (
+      <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
+        <GlobeAltIcon className="size-[90%] text-text-dimmed" />
+      </span>
+    );
+  }
+
   return (
-    <span className="grid place-items-center" style={styleFromSize(size)}>
-      <img src={avatar.url} alt="Organization avatar" className="size-6" />
+    <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
+      <img
+        src={avatar.url}
+        alt="Organization avatar"
+        className="size-full rounded-[10%] object-contain"
+      />
     </span>
   );
 }

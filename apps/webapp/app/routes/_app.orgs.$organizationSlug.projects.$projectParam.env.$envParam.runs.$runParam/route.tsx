@@ -48,9 +48,13 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type ResizableSnapshot,
+  collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
@@ -111,7 +115,7 @@ import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectP
 
 const resizableSettings = {
   parent: {
-    autosaveId: "panel-run-parent",
+    autosaveId: "panel-run-parent-v2",
     handleId: "parent-handle",
     main: {
       id: "run",
@@ -119,7 +123,7 @@ const resizableSettings = {
     },
     inspector: {
       id: "inspector",
-      default: "430px" as const,
+      default: "500px" as const,
       min: "50px" as const,
     },
   },
@@ -303,7 +307,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList } = useLoaderData<typeof loader>();
+  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
+    useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -427,25 +432,47 @@ export default function Page() {
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizable={resizable}
           />
         ) : (
-          <NoLogsView run={run} />
+          <NoLogsView run={run} resizable={resizable} />
         )}
       </PageBody>
     </>
   );
 }
 
+function shouldLiveReload({
+  events,
+  maximumLiveReloadingSetting,
+  run,
+}: {
+  events: TraceEvent[];
+  maximumLiveReloadingSetting: number;
+  run: { completedAt: string | null };
+}): boolean {
+  // We don't live reload if there are a ton of spans/logs
+  if (events.length > maximumLiveReloadingSetting) return false;
+
+  // If the run was completed a while ago, we don't need to live reload anymore
+  if (run.completedAt && new Date(run.completedAt).getTime() < Date.now() - 30_000) return false;
+
+  return true;
+}
+
 function TraceView({
   run,
   trace,
   maximumLiveReloadingSetting,
-}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
+  resizable,
+}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting" | "resizable">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { searchParams, replaceSearchParam } = useReplaceSearchParams();
   const selectedSpanId = searchParams.get("span") ?? undefined;
+  const frozenSpanId = useFrozenValue(selectedSpanId);
+  const displaySpanId = selectedSpanId ?? frozenSpanId;
 
   if (!trace) {
     return <></>;
@@ -453,18 +480,19 @@ function TraceView({
 
   const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration, overridesBySpanId } =
     trace;
-  const shouldLiveReload = events.length <= maximumLiveReloadingSetting;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
   }, 250);
+
+  const isLiveReloading = shouldLiveReload({ events, maximumLiveReloadingSetting, run });
 
   const revalidator = useRevalidator();
   const streamedEvents = useEventSource(
     v3RunStreamingPath(organization, project, environment, run),
     {
       event: "message",
-      disabled: !shouldLiveReload,
+      disabled: !isLiveReloading,
     }
   );
   useEffect(() => {
@@ -475,18 +503,22 @@ function TraceView({
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
+  const frozenSpanOverrides = useFrozenValue(spanOverrides);
+  const displaySpanOverrides = selectedSpanId ? spanOverrides : frozenSpanOverrides;
 
   // Get the linked run ID for cached spans (map built during RunPresenter walk)
   const { linkedRunIdBySpanId } = trace;
   const selectedSpanLinkedRunId = selectedSpanId
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
+  const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
+  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -511,37 +543,50 @@ function TraceView({
             rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
             queuedDuration={queuedDuration}
             environmentType={run.environment.type}
-            shouldLiveReload={shouldLiveReload}
+            shouldLiveReload={isLiveReloading}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
             rootRun={run.rootTaskRun}
             parentRun={run.parentTaskRun}
             isCompleted={run.completedAt !== null}
+            treeSnapshot={resizable.tree as ResizableSnapshot}
           />
         </ResizablePanel>
-        <ResizableHandle id={resizableSettings.parent.handleId} />
-        {selectedSpanId && (
-          <ResizablePanel
-            id={resizableSettings.parent.inspector.id}
-            default={resizableSettings.parent.inspector.default}
-            min={resizableSettings.parent.inspector.min}
-            isStaticAtRest
+        <ResizableHandle
+          id={resizableSettings.parent.handleId}
+          className={collapsibleHandleClassName(!!selectedSpanId)}
+        />
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
+          className="overflow-hidden"
+          collapsible
+          collapsed={!selectedSpanId}
+          onCollapseChange={() => {}}
+          collapsedSize="0px"
+          collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+        >
+          <div
+            className="h-full"
+            style={{ minWidth: parseInt(resizableSettings.parent.inspector.min) }}
           >
-            {" "}
-            <SpanView
-              runParam={run.friendlyId}
-              spanId={selectedSpanId}
-              spanOverrides={spanOverrides as SpanOverride | undefined}
-              closePanel={() => replaceSearchParam("span")}
-              linkedRunId={selectedSpanLinkedRunId}
-            />
-          </ResizablePanel>
-        )}
+            {displaySpanId && (
+              <SpanView
+                runParam={run.friendlyId}
+                spanId={displaySpanId}
+                spanOverrides={displaySpanOverrides as SpanOverride | undefined}
+                closePanel={() => replaceSearchParam("span")}
+                linkedRunId={displayLinkedRunId}
+              />
+            )}
+          </div>
+        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );
 }
 
-function NoLogsView({ run }: Pick<LoaderData, "run">) {
+function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -561,7 +606,7 @@ function NoLogsView({ run }: Pick<LoaderData, "run">) {
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -652,6 +697,7 @@ type TasksTreeViewProps = {
     spanId: string;
   } | null;
   isCompleted: boolean;
+  treeSnapshot?: ResizableSnapshot;
 };
 
 function TasksTreeView({
@@ -668,6 +714,7 @@ function TasksTreeView({
   rootRun,
   parentRun,
   isCompleted,
+  treeSnapshot,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
@@ -751,7 +798,7 @@ function TasksTreeView({
           onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
         />
       </div>
-      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId}>
+      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
         <ResizablePanel
           id={resizableSettings.tree.tree.id}
@@ -1803,7 +1850,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
-        shortcut={{ key: "[" }}
+        shortcut={{ key: "j" }}
         tooltip="Previous Run"
         disabled={!to}
         replace
@@ -1822,7 +1869,7 @@ function NextRunButton({ to }: { to: string | null }) {
         leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
-        shortcut={{ key: "]" }}
+        shortcut={{ key: "k" }}
         tooltip="Next Run"
         disabled={!to}
         replace

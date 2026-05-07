@@ -192,4 +192,24 @@ Check your [cloud.trigger.dev](http://cloud.trigger.dev) dashboard and you shoul
 </Step>
 </Steps>
 
+### If you see a runtime error when calling tasks.trigger()
+
+If you see `TypeError: Cannot read properties of undefined (reading 'toString')` when calling `tasks.trigger()` from your edge function, the SDK is hitting a dependency that expects Node-style APIs not available in the Supabase Edge (Deno) runtime. Use the [Tasks API](/management/tasks/trigger) with `fetch` instead of the SDK—that avoids loading the SDK in Deno:
+
+```ts
+const response = await fetch(
+  `https://api.trigger.dev/api/v1/tasks/your-task-id/trigger`,
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${Deno.env.get("TRIGGER_SECRET_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ payload: { your: "payload" } }),
+  }
+);
+```
+
+See [Trigger task via API](/management/tasks/trigger) for full request/response details and optional fields (e.g. `delay`, `idempotencyKey`).
+
 <SupabaseDocsCards />

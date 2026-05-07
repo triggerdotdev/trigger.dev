@@ -2,11 +2,10 @@ import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
 import { startSpan, type Tracer } from "@internal/tracing";
 import {
   createCache,
+  createLRUMemoryStore,
   DefaultStatefulContext,
   Namespace,
   type UnkeyCache,
-  MemoryStore,
-  createMemoryStore,
 } from "@internal/cache";
 import { randomUUID } from "crypto";
 import seedrandom from "seedrandom";
@@ -107,7 +106,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
 
   constructor(private options: FairQueueSelectionStrategyOptions) {
     const ctx = new DefaultStatefulContext();
-    const memory = createMemoryStore(1000);
+    const memory = createLRUMemoryStore(1000);
 
     this._cache = createCache({
       concurrencyLimit: new Namespace<number>(ctx, {

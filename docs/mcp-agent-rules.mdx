@@ -1,13 +1,16 @@
 ---
 title: "Agent rules"
 sidebarTitle: "Agent rules"
-description: "Learn how to use the Trigger.dev agent rules with the MCP server"
-tag: "new"
+description: "Install Trigger.dev agent rules to guide AI assistants toward correct, up-to-date code patterns."
 ---
 
 ## What are Trigger.dev agent rules?
 
 Trigger.dev agent rules are comprehensive instruction sets that guide AI assistants to write optimal Trigger.dev code. These rules ensure your AI assistant understands best practices, current APIs, and recommended patterns when working with Trigger.dev projects.
+
+<Note>
+  Agent Rules are one of three AI tools we provide. You can also install [Skills](/skills) for portable cross-editor instruction sets or the [MCP Server](/mcp-introduction) for live project interaction. See the [comparison table](/building-with-ai#skills-vs-agent-rules-vs-mcp) for details.
+</Note>
 
 ## Installation
 
@@ -113,6 +116,17 @@ npx trigger.dev@latest install-rules
 
 ## Next steps
 
-- [Install the MCP server](/mcp-introduction) for complete Trigger.dev integration
-- [Explore MCP tools](/mcp-tools) for project management and task execution
-
+<CardGroup cols={2}>
+  <Card title="Skills" icon="wand-magic-sparkles" href="/skills">
+    Portable instruction sets that work across all AI coding assistants.
+  </Card>
+  <Card title="MCP Server" icon="sparkles" href="/mcp-introduction">
+    Give your AI assistant direct access to Trigger.dev tools and APIs.
+  </Card>
+  <Card title="Complete AI setup" icon="layer-group" href="/building-with-ai">
+    See all AI tools and how they compare.
+  </Card>
+  <Card title="Writing tasks" icon="code" href="/tasks/overview">
+    Learn the task patterns that agent rules teach your AI assistant.
+  </Card>
+</CardGroup>

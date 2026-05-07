@@ -3,7 +3,8 @@ import { parse } from "@conform-to/zod";
 import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation, useNavigate, useSearchParams, useLocation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { typedjson, useTypedFetcher } from "remix-typedjson";
+import { redirect,
+typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
@@ -39,11 +40,13 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
+import { triggerInitialDeployment } from "~/services/platform.v3.server";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { requireUserId } from "~/services/session.server";
 import {
   githubAppInstallPath,
   EnvironmentParamSchema,
-  v3ProjectSettingsPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
 import { type BranchTrackingConfig } from "~/v3/github";
@@ -208,6 +211,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (resultOrFail.isOk()) {
+      // Trigger initial deployment for marketplace flows now that GitHub is connected.
+      // We check the persisted onboardingOrigin on the Vercel integration rather than
+      // the redirectUrl, because the redirect URL loses the marketplace context when
+      // the user installs the GitHub App for the first time (full-page redirect cycle).
+      try {
+        const vercelService = new VercelIntegrationService();
+        const vercelIntegration = await vercelService.getVercelProjectIntegration(projectId);
+        if (
+          vercelIntegration?.parsedIntegrationData.onboardingCompleted &&
+          vercelIntegration.parsedIntegrationData.onboardingOrigin === "marketplace"
+        ) {
+          logger.info("Marketplace flow detected, triggering initial deployment", { projectId });
+          await triggerInitialDeployment(projectId, { environment: "prod" });
+        }
+      } catch (error) {
+        logger.error("Failed to check Vercel integration or trigger initial deployment", { projectId, error });
+      }
+
       return redirectWithMessage(
         request,
         redirectUrl,
@@ -330,12 +351,15 @@ export function ConnectGitHubRepoModal({
   projectSlug,
   environmentSlug,
   redirectUrl,
+  preventDismiss,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   redirectUrl?: string;
+  /** When true, prevents closing the modal via Escape key or clicking outside */
+  preventDismiss?: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
@@ -385,13 +409,34 @@ export function ConnectGitHubRepoModal({
   const actionUrl = gitHubResourcePath(organizationSlug, projectSlug, environmentSlug);
 
   return (
-    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+    <Dialog
+      open={isModalOpen}
+      onOpenChange={(open) => {
+        // When preventDismiss is true, only allow opening, not closing
+        if (preventDismiss && !open) {
+          return;
+        }
+        setIsModalOpen(open);
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" variant={"secondary/medium"} LeadingIcon={OctoKitty}>
           Connect GitHub repo
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        showCloseButton={!preventDismiss}
+        onInteractOutside={(e) => {
+          if (preventDismiss) {
+            e.preventDefault();
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          if (preventDismiss) {
+            e.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>Connect GitHub repository</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
           <Form method="post" action={actionUrl} {...form.props} className="w-full">
@@ -435,7 +480,7 @@ export function ConnectGitHubRepoModal({
                         navigate(
                           githubAppInstallPath(
                             organizationSlug,
-                            `${v3ProjectSettingsPath(
+                            `${v3ProjectSettingsIntegrationsPath(
                               { slug: organizationSlug },
                               { slug: projectSlug },
                               { slug: environmentSlug }
@@ -514,9 +559,11 @@ export function ConnectGitHubRepoModal({
                   </Button>
                 }
                 cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
+                  preventDismiss ? undefined : (
+                    <DialogClose asChild>
+                      <Button variant="tertiary/medium">Cancel</Button>
+                    </DialogClose>
+                  )
                 }
               />
             </Fieldset>
@@ -541,7 +588,7 @@ export function GitHubConnectionPrompt({
   redirectUrl?: string;
 }) {
 
-  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
+  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsIntegrationsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
   return (
     <Fieldset>
       <InputGroup fullWidth>
@@ -818,8 +865,14 @@ export function GitHubSettingsPanel({
   const fetcher = useTypedFetcher<typeof loader>();
   const location = useLocation();
 
-  // Use provided redirectUrl or fall back to current path (without search params)
-  const effectiveRedirectUrl = location.pathname;
+  // Preserve current search params (e.g. origin=marketplace, next=...) but strip
+  // openGithubRepoModal so the modal doesn't re-open in a loop after the action redirect.
+  const effectiveRedirectUrl = (() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("openGithubRepoModal");
+    const search = params.toString();
+    return search ? `${location.pathname}?${search}` : location.pathname;
+  })();
   useEffect(() => {
     fetcher.load(gitHubResourcePath(organizationSlug, projectSlug, environmentSlug));
   }, [organizationSlug, projectSlug, environmentSlug]);

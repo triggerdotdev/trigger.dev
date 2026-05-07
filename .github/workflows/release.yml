@@ -33,6 +33,7 @@ jobs:
   show-release-summary:
     name: 📋 Release Summary
     runs-on: ubuntu-latest
+    permissions: {}
     if: |
       github.repository == 'triggerdotdev/trigger.dev' &&
       github.event_name == 'pull_request' &&
@@ -43,7 +44,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          echo "$PR_BODY" | sed -n '/^# Releases/,$p' >> $GITHUB_STEP_SUMMARY
+          echo "$PR_BODY" | sed -n '/^# Releases/,$p' >> "$GITHUB_STEP_SUMMARY"
 
   release:
     name: 🚀 Release npm packages
@@ -65,7 +66,7 @@ jobs:
       published_package_version: ${{ steps.get_version.outputs.package_version }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 # zizmor: ignore[artipacked] needs persisted git creds for tag push; no artifact upload here so no leak path
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || github.sha }}
@@ -73,18 +74,20 @@ jobs:
       - name: Verify ref is on main
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if ! git merge-base --is-ancestor ${{ github.event.inputs.ref }} origin/main; then
+          if ! git merge-base --is-ancestor "${GITHUB_EVENT_INPUTS_REF}" origin/main; then
             echo "Error: ref must be an ancestor of main (i.e., already merged)"
             exit 1
           fi
+        env:
+          GITHUB_EVENT_INPUTS_REF: ${{ github.event.inputs.ref }}
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
-          version: 10.23.0
+          version: 10.33.2
 
       - name: Setup node
-        uses: buildjet/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20.20.0
           cache: "pnpm"
@@ -108,10 +111,10 @@ jobs:
 
       - name: Publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf # v1.7.0
         with:
           publish: pnpm run changeset:release
-          createGithubReleases: true
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -119,16 +122,133 @@ jobs:
         if: steps.changesets.outputs.published == 'true'
         id: get_version
         run: |
-          package_version=$(echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version')
+          package_version=$(echo "${STEPS_CHANGESETS_OUTPUTS_PUBLISHEDPACKAGES}" | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+        env:
+          STEPS_CHANGESETS_OUTPUTS_PUBLISHEDPACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
 
-      # this triggers the publish workflow for the docker images
+      - name: Create unified GitHub release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR_BODY: ${{ github.event.pull_request.body }}
+          STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION: ${{ steps.get_version.outputs.package_version }}
+        run: |
+          VERSION="${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
+          node scripts/generate-github-release.mjs "$VERSION" > /tmp/release-body.md
+          gh release create "v${VERSION}" \
+            --title "trigger.dev v${VERSION}" \
+            --notes-file /tmp/release-body.md \
+            --target main
+
       - name: Create and push Docker tag
         if: steps.changesets.outputs.published == 'true'
         run: |
           set -e
-          git tag "v.docker.${{ steps.get_version.outputs.package_version }}"
-          git push origin "v.docker.${{ steps.get_version.outputs.package_version }}"
+          git tag "v.docker.${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
+          git push origin "v.docker.${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
+        env:
+          STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION: ${{ steps.get_version.outputs.package_version }}
+
+      - name: Create and push Helm chart tag
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          set -e
+          git tag "helm-v${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
+          git push origin "helm-v${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
+        env:
+          STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION: ${{ steps.get_version.outputs.package_version }}
+
+  # Trigger Docker builds directly via workflow_call since tags pushed with
+  # GITHUB_TOKEN don't trigger other workflows (GitHub Actions limitation).
+  publish-docker:
+    name: 🐳 Publish Docker images
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/publish.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+    with:
+      image_tag: v${{ needs.release.outputs.published_package_version }}
+
+  # Trigger Helm chart release directly via workflow_call (same GITHUB_TOKEN
+  # limitation as the Docker path). Runs after Docker images are published so
+  # the chart never references images that don't exist yet.
+  publish-helm:
+    name: 🧭 Publish Helm chart
+    needs: [release, publish-docker]
+    if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/release-helm.yml
+    with:
+      chart_version: ${{ needs.release.outputs.published_package_version }}
+
+  # After Docker images are published, update the GitHub release with the exact GHCR tag URL.
+  # The GHCR package version ID is only known after the image is pushed, so we query for it here.
+  update-release:
+    name: 🔗 Update release Docker link
+    needs: [release, publish-docker]
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Update GitHub release with Docker image link
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEEDS_RELEASE_OUTPUTS_PUBLISHED_PACKAGE_VERSION: ${{ needs.release.outputs.published_package_version }}
+        run: |
+          set -e
+          VERSION="${NEEDS_RELEASE_OUTPUTS_PUBLISHED_PACKAGE_VERSION}"
+          TAG="v${VERSION}"
+
+          # Query GHCR for the version ID matching this tag
+          VERSION_ID=$(gh api --paginate -H "Accept: application/vnd.github+json" \
+            /orgs/triggerdotdev/packages/container/trigger.dev/versions \
+            --jq ".[] | select(.metadata.container.tags[] == \"${TAG}\") | .id" \
+            | head -1)
+
+          if [ -z "$VERSION_ID" ]; then
+            echo "Warning: Could not find GHCR version ID for tag ${TAG}, skipping update"
+            exit 0
+          fi
+
+          DOCKER_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev/${VERSION_ID}?tag=${TAG}"
+          GENERIC_URL="https://github.com/triggerdotdev/trigger.dev/pkgs/container/trigger.dev"
+
+          # Get current release body and replace the generic link with the tag-specific one.
+          # Use word boundary after GENERIC_URL (closing paren) to avoid matching URLs that
+          # already have a version ID appended (idempotent on re-runs).
+          gh release view "${TAG}" --repo triggerdotdev/trigger.dev --json body --jq '.body' > /tmp/release-body.md
+          sed -i "s|${GENERIC_URL})|${DOCKER_URL})|g" /tmp/release-body.md
+
+          gh release edit "${TAG}" --repo triggerdotdev/trigger.dev --notes-file /tmp/release-body.md
+
+  # Dispatch changelog entry creation to the marketing site repo.
+  # Runs after update-release so the GitHub release body already has the exact Docker image URL.
+  dispatch-changelog:
+    name: 📝 Dispatch changelog PR
+    needs: [release, update-release]
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: triggerdotdev/trigger.dev-site-v3
+          event-type: new-release
+          client-payload: '{"version": "${{ needs.release.outputs.published_package_version }}"}'
 
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
@@ -141,18 +261,19 @@ jobs:
     if: github.repository == 'triggerdotdev/trigger.dev' && github.event_name == 'workflow_dispatch' && github.event.inputs.type == 'prerelease'
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.ref }}
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         with:
-          version: 10.23.0
+          version: 10.33.2
 
       - name: Setup node
-        uses: buildjet/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20.20.0
           cache: "pnpm"
@@ -169,9 +290,10 @@ jobs:
         run: pnpm run generate
 
       - name: Snapshot version
-        run: pnpm exec changeset version --snapshot ${{ github.event.inputs.prerelease_tag }}
+        run: pnpm exec changeset version --snapshot "${GITHUB_EVENT_INPUTS_PRERELEASE_TAG}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_INPUTS_PRERELEASE_TAG: ${{ github.event.inputs.prerelease_tag }}
 
       - name: Clean
         run: pnpm run clean --filter "@trigger.dev/*" --filter "trigger.dev"
@@ -180,6 +302,7 @@ jobs:
         run: pnpm run build --filter "@trigger.dev/*" --filter "trigger.dev"
 
       - name: Publish prerelease
-        run: pnpm exec changeset publish --no-git-tag --snapshot --tag ${{ github.event.inputs.prerelease_tag }}
+        run: pnpm exec changeset publish --no-git-tag --snapshot --tag "${GITHUB_EVENT_INPUTS_PRERELEASE_TAG}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_INPUTS_PRERELEASE_TAG: ${{ github.event.inputs.prerelease_tag }}

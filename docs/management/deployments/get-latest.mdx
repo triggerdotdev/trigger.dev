@@ -1,0 +1,11 @@
+---
+title: "Get latest deployment"
+openapi: "v3-openapi GET /api/v1/deployments/latest"
+---
+
+<Warning>
+  This endpoint only returns **unmanaged** deployments, which are used in self-hosted setups. It
+  will return `404` for standard CLI deployments made against Trigger.dev Cloud.
+
+  If you're using the CLI to deploy, use the [list deployments](/management/deployments/list) endpoint instead.
+</Warning>

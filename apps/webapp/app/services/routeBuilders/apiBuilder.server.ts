@@ -26,6 +26,30 @@ import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
 
+// Client aborts and service-level validation errors aren't bugs — they're
+// expected at API boundaries. Log them at `warn` so they stay in stdout
+// without flowing to Sentry via Logger.onError.
+function logBoundaryError(
+  message: "Error in loader" | "Error in action",
+  error: unknown,
+  url: string
+) {
+  const formatted =
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : String(error);
+  const isExpected =
+    error instanceof Error &&
+    (error.name === "AbortError" ||
+      error instanceof ServiceValidationError ||
+      error instanceof EngineServiceValidationError);
+  if (isExpected) {
+    logger.warn(message, { error: formatted, url });
+  } else {
+    logger.error(message, { error: formatted, url });
+  }
+}
+
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
 
 type ApiKeyRouteBuilderOptions<
@@ -260,17 +284,7 @@ export function createLoaderApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in loader", {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in loader", error, request.url);
 
         return await wrapResponse(
           request,
@@ -469,7 +483,13 @@ type ApiKeyActionRouteBuilderOptions<
         : undefined,
       body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TBodySchema>
-        : undefined
+        : undefined,
+      // The resolved resource from `findResource`. `undefined` when the route
+      // doesn't declare `findResource`. Routes that need to expand the auth
+      // scope to alternate identifiers of the same row (e.g. friendlyId +
+      // externalId for sessions) read it here so a JWT minted for either form
+      // authorizes both URL forms.
+      resource: TResource | undefined
     ) => AuthorizationResources;
     superScopes?: string[];
   };
@@ -667,9 +687,33 @@ export function createActionApiRoute<
         parsedBody = body.data;
       }
 
+      // Resolve the resource before authorization so the auth scope check
+      // can expand to alternate identifiers of the same row (e.g. a Session
+      // is addressable by both `friendlyId` and `externalId` and a JWT minted
+      // for either form should authorize both URL forms). Mirrors the
+      // ordering in `createLoaderApiRoute`.
+      const resource = options.findResource
+        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
+        : undefined;
+
+      // Run authorization first — but with the resolved resource available
+      // as the 5th arg so the auth scope check can expand to alternate
+      // identifiers of the same row (e.g. a Session is addressable by both
+      // `friendlyId` and `externalId`). Resource-null is checked AFTER auth
+      // so:
+      //   - underscoped JWT + missing resource → 403 (no info leak)
+      //   - underscoped JWT + existing resource → 403 (existing behavior)
+      //   - PRIVATE key + missing resource → auth passes → 404 (correct)
+      //   - PRIVATE key + existing resource → auth passes → handler runs
       if (authorization) {
-        const { action, resource, superScopes } = authorization;
-        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders, parsedBody);
+        const { action, resource: authResource, superScopes } = authorization;
+        const $resource = authResource(
+          parsedParams,
+          parsedSearchParams,
+          parsedHeaders,
+          parsedBody,
+          resource
+        );
 
         logger.debug("Checking authorization", {
           action,
@@ -702,10 +746,6 @@ export function createActionApiRoute<
         }
       }
 
-      const resource = options.findResource
-        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
-        : undefined;
-
       if (options.findResource && !resource) {
         return await wrapResponse(
           request,
@@ -730,17 +770,7 @@ export function createActionApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in action", {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in action", error, request.url);
 
         return await wrapResponse(
           request,
@@ -750,6 +780,283 @@ export function createActionApiRoute<
       } catch (innerError) {
         logger.error("[apiBuilder] Failed to handle error", { error, innerError });
 
+        return json({ error: "Internal Server Error" }, { status: 500 });
+      }
+    }
+  }
+
+  return { loader, action };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-method action route builder
+// ---------------------------------------------------------------------------
+
+type HttpMethod = "POST" | "PUT" | "PATCH" | "DELETE";
+
+type InferZod<T> = T extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+  ? z.infer<T>
+  : undefined;
+
+type MethodHandlerArgs<TParamsSchema, TSearchParamsSchema, THeadersSchema, TBodySchema> = {
+  params: InferZod<TParamsSchema>;
+  searchParams: InferZod<TSearchParamsSchema>;
+  headers: InferZod<THeadersSchema>;
+  body: InferZod<TBodySchema>;
+  authentication: ApiAuthenticationResultSuccess;
+  request: Request;
+};
+
+type MethodConfig<TParamsSchema, TSearchParamsSchema, THeadersSchema> = {
+  body?: AnyZodSchema;
+  handler: (
+    args: MethodHandlerArgs<TParamsSchema, TSearchParamsSchema, THeadersSchema, any>
+  ) => Promise<Response>;
+};
+
+type MultiMethodApiRouteOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
+> = {
+  params?: TParamsSchema;
+  searchParams?: TSearchParamsSchema;
+  headers?: THeadersSchema;
+  allowJWT?: boolean;
+  corsStrategy?: "all" | "none";
+  authorization?: {
+    action: AuthorizationAction;
+    resource: (params: InferZod<TParamsSchema>) => AuthorizationResources;
+    superScopes?: string[];
+  };
+  maxContentLength?: number;
+  methods: Partial<
+    Record<HttpMethod, MethodConfig<TParamsSchema, TSearchParamsSchema, THeadersSchema>>
+  >;
+};
+
+/**
+ * Creates a Remix route that dispatches to different handlers based on HTTP method.
+ * Shares authentication, param parsing, CORS, and authorization across all methods.
+ * Each method can define its own body schema.
+ */
+export function createMultiMethodApiRoute<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined
+>(options: MultiMethodApiRouteOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema>) {
+  const {
+    params: paramsSchema,
+    searchParams: searchParamsSchema,
+    headers: headersSchema,
+    allowJWT = false,
+    corsStrategy = "none",
+    authorization,
+    maxContentLength,
+    methods,
+  } = options;
+
+  const allowedMethods = Object.keys(methods).join(", ");
+
+  async function loader({ request }: LoaderFunctionArgs) {
+    if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
+      return apiCors(request, json({}));
+    }
+    return new Response(null, { status: 405 });
+  }
+
+  async function action({ request, params }: ActionFunctionArgs) {
+    const method = request.method.toUpperCase() as HttpMethod;
+    const methodConfig = methods[method];
+
+    if (!methodConfig) {
+      return await wrapResponse(
+        request,
+        json(
+          { error: "Method not allowed" },
+          { status: 405, headers: { Allow: allowedMethods } }
+        ),
+        corsStrategy !== "none"
+      );
+    }
+
+    try {
+      // Authenticate
+      const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
+
+      if (!authenticationResult) {
+        return await wrapResponse(
+          request,
+          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      if (!authenticationResult.ok) {
+        return await wrapResponse(
+          request,
+          json({ error: authenticationResult.error }, { status: 401 }),
+          corsStrategy !== "none"
+        );
+      }
+
+      if (maxContentLength) {
+        const contentLength = request.headers.get("content-length");
+        if (!contentLength || parseInt(contentLength) > maxContentLength) {
+          return await wrapResponse(
+            request,
+            json({ error: "Request body too large" }, { status: 413 }),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
+      // Parse params
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Params Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      // Parse search params
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Query Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      // Parse headers
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Headers Error", details: fromZodError(headers.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      // Authorize
+      if (authorization) {
+        const { action, resource, superScopes } = authorization;
+        const $resource = resource(parsedParams);
+
+        logger.debug("Checking authorization", {
+          action,
+          resource: $resource,
+          superScopes,
+          scopes: authenticationResult.scopes,
+        });
+
+        const authorizationResult = checkAuthorization(
+          authenticationResult,
+          action,
+          $resource,
+          superScopes
+        );
+
+        if (!authorizationResult.authorized) {
+          return await wrapResponse(
+            request,
+            json(
+              {
+                error: `Unauthorized: ${authorizationResult.reason}`,
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
+      // Parse body (per-method schema)
+      let parsedBody: any = undefined;
+      if (methodConfig.body) {
+        const rawBody = await request.text();
+        if (rawBody.length === 0) {
+          return await wrapResponse(
+            request,
+            json({ error: "Request body is empty" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const rawParsedJson = safeJsonParse(rawBody);
+        if (!rawParsedJson) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid JSON" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const body = methodConfig.body.safeParse(rawParsedJson);
+        if (!body.success) {
+          return await wrapResponse(
+            request,
+            json({ error: fromZodError(body.error).toString() }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+        parsedBody = body.data;
+      }
+
+      // Dispatch to method handler
+      const result = await methodConfig.handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        headers: parsedHeaders,
+        body: parsedBody,
+        authentication: authenticationResult,
+        request,
+      });
+      return await wrapResponse(request, result, corsStrategy !== "none");
+    } catch (error) {
+      try {
+        if (error instanceof Response) {
+          return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+
+        logBoundaryError("Error in action", error, request.url);
+
+        return await wrapResponse(
+          request,
+          json({ error: "Internal Server Error" }, { status: 500 }),
+          corsStrategy !== "none"
+        );
+      } catch (innerError) {
+        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
         return json({ error: "Internal Server Error" }, { status: 500 });
       }
     }
@@ -879,17 +1186,7 @@ export function createLoaderWorkerApiRoute<
         return error;
       }
 
-      logger.error("Error in loader", {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-              }
-            : String(error),
-        url: request.url,
-      });
+      logBoundaryError("Error in loader", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -1054,17 +1351,7 @@ export function createActionWorkerApiRoute<
         return json({ error: error.message }, { status: error.status ?? 422 });
       }
 
-      logger.error("Error in action", {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-              }
-            : String(error),
-        url: request.url,
-      });
+      logBoundaryError("Error in action", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }

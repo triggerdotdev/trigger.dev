@@ -151,7 +151,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const repository = new EnvironmentVariablesRepository(prisma);
-  const result = await repository.create(project.id, submission.value);
+  const result = await repository.create(project.id, {
+    ...submission.value,
+    lastUpdatedBy: {
+      type: "user",
+      userId,
+    },
+  });
 
   if (!result.success) {
     if (result.variableErrors) {

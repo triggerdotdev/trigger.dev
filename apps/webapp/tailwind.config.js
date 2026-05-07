@@ -159,11 +159,14 @@ const runs = colors.indigo[500];
 const batches = colors.pink[500];
 const schedules = colors.yellow[500];
 const queues = colors.purple[500];
+const query = colors.blue[500];
+const metrics = colors.green[500];
+const customDashboards = charcoal[400];
 const deployments = colors.green[500];
 const concurrency = colors.amber[500];
 const limits = colors.purple[500];
 const regions = colors.green[500];
-const logs = colors.blue[500];
+const logs = colors.pink[500];
 const tests = colors.lime[500];
 const apiKeys = colors.amber[500];
 const environmentVariables = colors.pink[500];
@@ -172,6 +175,9 @@ const projectSettings = colors.blue[500];
 const orgSettings = colors.blue[500];
 const docs = colors.blue[500];
 const bulkActions = colors.emerald[500];
+const aiPrompts = colors.blue[500];
+const aiMetrics = colors.green[500];
+const errors = colors.amber[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -240,6 +246,7 @@ module.exports = {
         schedules,
         concurrency,
         queues,
+        query,
         regions,
         limits,
         deployments,
@@ -252,6 +259,11 @@ module.exports = {
         orgSettings,
         docs,
         bulkActions,
+        metrics,
+        customDashboards,
+        aiPrompts,
+        aiMetrics,
+        errors,
       },
       focusStyles: {
         outline: "1px solid",

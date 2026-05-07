@@ -14,7 +14,7 @@ import {
   TaskRunAttempt,
 } from "@trigger.dev/database";
 import { z } from "zod";
-import { $transaction, prisma, PrismaClientOrTransaction } from "~/db.server";
+import { prisma, PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -25,7 +25,7 @@ import { generateFriendlyId } from "../friendlyIdentifiers";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../r2.server";
+import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -57,6 +57,8 @@ export type BatchTriggerTaskServiceOptions = {
   spanParentAsLink?: boolean;
   oneTimeUseToken?: string;
   realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 type RunItemData = {
@@ -249,7 +251,9 @@ export class BatchTriggerV3Service extends BaseService {
 
           if (!queueSizeGuard.isWithinLimits) {
             throw new ServiceValidationError(
-              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`
+              `Cannot trigger ${newRunCount} tasks as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+              undefined,
+              "warn"
             );
           }
 
@@ -853,6 +857,8 @@ export class BatchTriggerV3Service extends BaseService {
         skipChecks: true,
         runFriendlyId: task.runId,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
+        triggerSource: options?.triggerSource ?? "api",
+        triggerAction: options?.triggerAction ?? "trigger",
       }
     );
 
@@ -924,13 +930,76 @@ export class BatchTriggerV3Service extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
 
       return {
-        data: filename,
+        data: uploadedFilename,
         dataType: "application/store",
       };
     });
+  }
+}
+
+export async function tryCompleteBatchV3(
+  batchId: string,
+  tx: PrismaClientOrTransaction,
+  scheduleResumeOnComplete: boolean
+) {
+  const batch = await tx.batchTaskRun.findFirst({
+    where: { id: batchId },
+    select: {
+      id: true,
+      sealed: true,
+      status: true,
+      expectedCount: true,
+      dependentTaskAttemptId: true,
+    },
+  });
+
+  if (!batch) {
+    logger.debug("tryCompleteBatchV3: Batch not found", { batchId });
+    return;
+  }
+
+  if (batch.status === "COMPLETED") {
+    logger.debug("tryCompleteBatchV3: Already completed", { batchId });
+    return;
+  }
+
+  if (!batch.sealed) {
+    logger.debug("tryCompleteBatchV3: Not sealed yet", { batchId });
+    return;
+  }
+
+  // Count completed items (read-only, no contention)
+  const completedCount = await tx.batchTaskRunItem.count({
+    where: { batchTaskRunId: batchId, status: "COMPLETED" },
+  });
+
+  if (completedCount < batch.expectedCount) {
+    logger.debug("tryCompleteBatchV3: Not all items completed", {
+      batchId,
+      completedCount,
+      expectedCount: batch.expectedCount,
+    });
+    return;
+  }
+
+  // Mark batch COMPLETED (idempotent via status check)
+  const updated = await tx.batchTaskRun.updateMany({
+    where: { id: batchId, status: "PENDING" },
+    data: { status: "COMPLETED", completedAt: new Date(), completedCount },
+  });
+
+  if (updated.count === 0) {
+    logger.debug("tryCompleteBatchV3: Already transitioned", { batchId });
+    return;
+  }
+
+  logger.debug("tryCompleteBatchV3: Batch completed", { batchId, completedCount });
+
+  if (scheduleResumeOnComplete && batch.dependentTaskAttemptId) {
+    await ResumeBatchRunService.enqueue(batchId, true, tx);
   }
 }
 
@@ -953,86 +1022,32 @@ export async function completeBatchTaskRunItemV3(
     isRetry,
   });
 
-  if (isRetry) {
-    logger.debug("completeBatchTaskRunItemV3 retrying", {
-      itemId,
-      batchTaskRunId,
-      scheduleResumeOnComplete,
-      taskRunAttemptId,
-      retryAttempt,
-    });
-  }
-
   try {
-    await $transaction(
-      tx,
-      "completeBatchTaskRunItemV3",
-      async (tx, span) => {
-        span?.setAttribute("batch_id", batchTaskRunId);
+    // Update item to COMPLETED (no transaction needed, no contention)
+    const updated = await tx.batchTaskRunItem.updateMany({
+      where: { id: itemId, status: "PENDING" },
+      data: { status: "COMPLETED", taskRunAttemptId },
+    });
 
-        // Update the item to complete
-        const updated = await tx.batchTaskRunItem.updateMany({
-          where: {
-            id: itemId,
-            status: "PENDING",
-          },
-          data: {
-            status: "COMPLETED",
-            taskRunAttemptId,
-          },
-        });
+    if (updated.count === 0) {
+      logger.debug("completeBatchTaskRunItemV3: Item already completed", {
+        itemId,
+        batchTaskRunId,
+      });
+      return;
+    }
 
-        if (updated.count === 0) {
-          return;
-        }
-
-        const updatedBatchRun = await tx.batchTaskRun.update({
-          where: {
-            id: batchTaskRunId,
-          },
-          data: {
-            completedCount: {
-              increment: 1,
-            },
-          },
-          select: {
-            sealed: true,
-            status: true,
-            completedCount: true,
-            expectedCount: true,
-            dependentTaskAttemptId: true,
-          },
-        });
-
-        if (
-          updatedBatchRun.status === "PENDING" &&
-          updatedBatchRun.completedCount === updatedBatchRun.expectedCount &&
-          updatedBatchRun.sealed
-        ) {
-          await tx.batchTaskRun.update({
-            where: {
-              id: batchTaskRunId,
-            },
-            data: {
-              status: "COMPLETED",
-              completedAt: new Date(),
-            },
-          });
-
-          // We only need to resume the batch if it has a dependent task attempt ID
-          if (scheduleResumeOnComplete && updatedBatchRun.dependentTaskAttemptId) {
-            await ResumeBatchRunService.enqueue(batchTaskRunId, true, tx);
-          }
-        }
-      },
-      {
-        timeout: 10_000,
-        maxWait: 4_000,
-      }
-    );
+    // Schedule debounced completion check
+    // enqueue with same ID overwrites, resetting the 200ms timer (debounce behavior)
+    await legacyRunEngineWorker.enqueue({
+      id: `tryCompleteBatchV3:${batchTaskRunId}`,
+      job: "tryCompleteBatchV3",
+      payload: { batchId: batchTaskRunId, scheduleResumeOnComplete },
+      availableAt: new Date(Date.now() + 200),
+    });
   } catch (error) {
     if (isPrismaRetriableError(error) || isPrismaRaceConditionError(error)) {
-      logger.error("completeBatchTaskRunItemV3 failed with a Prisma Error, scheduling a retry", {
+      logger.error("completeBatchTaskRunItemV3 failed, scheduling retry", {
         itemId,
         batchTaskRunId,
         error,
@@ -1041,24 +1056,17 @@ export async function completeBatchTaskRunItemV3(
       });
 
       if (isRetry) {
-        //throwing this error will cause the Redis worker to retry the job
         throw error;
       } else {
-        //schedule a retry
         await legacyRunEngineWorker.enqueue({
           id: `completeBatchTaskRunItem:${itemId}`,
           job: "completeBatchTaskRunItem",
-          payload: {
-            itemId,
-            batchTaskRunId,
-            scheduleResumeOnComplete,
-            taskRunAttemptId,
-          },
+          payload: { itemId, batchTaskRunId, scheduleResumeOnComplete, taskRunAttemptId },
           availableAt: new Date(Date.now() + 2_000),
         });
       }
     } else {
-      logger.error("completeBatchTaskRunItemV3 failed with a non-retriable error", {
+      logger.error("completeBatchTaskRunItemV3 failed with non-retriable error", {
         itemId,
         batchTaskRunId,
         error,
