@@ -904,6 +904,302 @@ describe("mockChatAgent", () => {
       }
     });
 
+    it("extractNewToolResults dedups against a real-stream-built chain", async () => {
+      // Build the chain through real model streams (no chat.history.set seed)
+      // and assert extractNewToolResults compares against the post-merge state.
+      const { z } = await import("zod");
+      const { tool } = await import("ai");
+      const askUser = tool({
+        description: "Ask the user.",
+        inputSchema: z.object({ q: z.string() }),
+      });
+      const TC = "tc_real_chain_1";
+
+      let callIdx = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({
+          stream:
+            callIdx++ === 0
+              ? toolCallStream({ toolCallId: TC, toolName: "askUser", input: { q: "?" } })
+              : textStream("done"),
+        }),
+      });
+
+      let extractedAgainstRealChain: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.extract-real",
+        tools: { askUser },
+        onTurnComplete: async () => {
+          // After the HITL answer turn, the chain has TC resolved. An
+          // incoming "echo" message carrying TC again should yield [].
+          // A second new TC should yield exactly one entry.
+          const incoming = {
+            id: "echo",
+            role: "assistant" as const,
+            parts: [
+              {
+                type: "tool-askUser",
+                toolCallId: TC,
+                state: "output-available" as const,
+                input: { q: "?" },
+                output: { answer: "hi" },
+              },
+              {
+                type: "tool-askUser",
+                toolCallId: "tc_real_chain_2",
+                state: "output-available" as const,
+                input: { q: "second" },
+                output: { answer: "yes" },
+              },
+            ],
+          };
+          extractedAgainstRealChain = chat.history.extractNewToolResults(incoming as any);
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, tools: { askUser }, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-extract-real" });
+      try {
+        await harness.sendMessage(userMessage("hi"));
+        await new Promise((r) => setTimeout(r, 50));
+        // HITL answer for TC, lands via the runtime merger.
+        const toolAnswer = {
+          id: "ai-sdk-fresh-id-real",
+          role: "assistant" as const,
+          parts: [
+            {
+              type: "tool-askUser",
+              toolCallId: TC,
+              state: "output-available" as const,
+              input: { q: "?" },
+              output: { answer: "hi" },
+            },
+          ],
+        };
+        await harness.sendMessage(toolAnswer as any);
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(extractedAgainstRealChain).toEqual([
+          { toolCallId: "tc_real_chain_2", toolName: "askUser", output: { answer: "yes" } },
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("extractNewToolResults surfaces output-error parts via the runtime merger", async () => {
+      // The runtime merges incoming tool-answer messages onto the head
+      // assistant via the toolCallId map. Here we send an answer in
+      // `output-error` state and verify (a) getResolvedToolCalls reports
+      // it, and (b) extractNewToolResults emits it with errorText set.
+      const { z } = await import("zod");
+      const { tool } = await import("ai");
+      const search = tool({
+        description: "Search.",
+        inputSchema: z.object({ q: z.string() }),
+      });
+      const TC = "tc_err_via_merger";
+
+      let callIdx = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({
+          stream:
+            callIdx++ === 0
+              ? toolCallStream({ toolCallId: TC, toolName: "search", input: { q: "x" } })
+              : textStream("noted"),
+        }),
+      });
+
+      let resolved: any;
+      let extracted: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.extract-error",
+        tools: { search },
+        onTurnComplete: async () => {
+          resolved = chat.history.getResolvedToolCalls();
+          // An echo carrying the same error toolCallId — should NOT surface
+          // as new because it's already resolved on the chain.
+          const echo = {
+            id: "echo-err",
+            role: "assistant" as const,
+            parts: [
+              {
+                type: "tool-search",
+                toolCallId: TC,
+                state: "output-error" as const,
+                input: { q: "x" },
+                errorText: "boom",
+              },
+            ],
+          };
+          extracted = chat.history.extractNewToolResults(echo as any);
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, tools: { search }, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-extract-error" });
+      try {
+        await harness.sendMessage(userMessage("kick"));
+        await new Promise((r) => setTimeout(r, 50));
+        // HITL answer arriving as output-error.
+        const errAnswer = {
+          id: "ai-sdk-err-fresh",
+          role: "assistant" as const,
+          parts: [
+            {
+              type: "tool-search",
+              toolCallId: TC,
+              state: "output-error" as const,
+              input: { q: "x" },
+              errorText: "boom",
+            },
+          ],
+        };
+        await harness.sendMessage(errAnswer as any);
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(resolved).toHaveLength(1);
+        expect(resolved[0]).toMatchObject({ toolCallId: TC, toolName: "search" });
+        // Echo of the same error toolCallId is already resolved → []
+        expect(extracted).toEqual([]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("extractNewToolResults handles a multi-tool message where only one is new", async () => {
+      // Pure-helper edge: incoming message has two tool parts with the
+      // same toolName but different toolCallIds — one already resolved
+      // on the chain, one fresh. Only the fresh one should surface.
+      let extracted: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.extract-multi",
+        run: async ({ messages, signal }) => {
+          chat.history.set([
+            {
+              id: "a-seed",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-search",
+                  toolCallId: "tc-old",
+                  state: "output-available",
+                  input: { q: "old" },
+                  output: { hits: 1 },
+                },
+              ],
+            } as any,
+            { id: "u-1", role: "user", parts: [{ type: "text", text: "u" }] } as any,
+          ]);
+
+          const incoming = {
+            id: "a-incoming",
+            role: "assistant" as const,
+            parts: [
+              // Same tool, already-resolved id — should be filtered.
+              {
+                type: "tool-search",
+                toolCallId: "tc-old",
+                state: "output-available" as const,
+                input: { q: "old" },
+                output: { hits: 1 },
+              },
+              // Same tool, fresh id — should surface.
+              {
+                type: "tool-search",
+                toolCallId: "tc-new",
+                state: "output-available" as const,
+                input: { q: "new" },
+                output: { hits: 9 },
+              },
+              // Duplicate of tc-new in the same message — must collapse
+              // to a single emission (within-message dedup).
+              {
+                type: "tool-search",
+                toolCallId: "tc-new",
+                state: "output-available" as const,
+                input: { q: "new" },
+                output: { hits: 9 },
+              },
+            ],
+          };
+          extracted = chat.history.extractNewToolResults(incoming as any);
+
+          return streamText({
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("ok") }),
+            }),
+            messages,
+            abortSignal: signal,
+          });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-extract-multi" });
+      try {
+        await harness.sendMessage(userMessage("kick"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(extracted).toEqual([
+          { toolCallId: "tc-new", toolName: "search", output: { hits: 9 } },
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("getPendingToolCalls still returns the assistant's pending calls when a user message follows", async () => {
+      // Edge: the chain is [assistant(input-available), user]. The most
+      // recent assistant is the one with the pending tool call, even
+      // though the strict tail is a user message. The walk-back semantic
+      // means pending stays pending until the assistant is mutated.
+      let pendingAfterUser: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.pending-after-user",
+        run: async ({ messages, signal }) => {
+          chat.history.set([
+            {
+              id: "a-pending",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-askUser",
+                  toolCallId: "tc-still-pending",
+                  state: "input-available",
+                  input: { q: "?" },
+                },
+              ],
+            } as any,
+            { id: "u-after", role: "user", parts: [{ type: "text", text: "anyway..." }] } as any,
+          ]);
+          pendingAfterUser = chat.history.getPendingToolCalls();
+          return streamText({
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("ok") }),
+            }),
+            messages,
+            abortSignal: signal,
+          });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-pending-after-user" });
+      try {
+        await harness.sendMessage(userMessage("kick"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(pendingAfterUser).toEqual([
+          { toolCallId: "tc-still-pending", toolName: "askUser", messageId: "a-pending" },
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+
     it("getChain returns a defensive copy parallel to all()", async () => {
       let chainCopy: any;
       let allCopy: any;

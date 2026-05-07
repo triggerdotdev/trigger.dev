@@ -1517,6 +1517,10 @@ function getResolvedToolCallsFromHistory(messages: UIMessage[]): ChatToolCallRef
  * Pure helper: tool parts in `message` that have a fresh result not
  * already represented by the resolved toolCallIds in `messages`. The
  * `errorText` field is present only for `output-error` parts.
+ *
+ * Within a single `message`, duplicate `toolCallId`s emit only once
+ * (first occurrence wins). This guards against malformed assistants
+ * with repeated tool parts.
  * @internal
  */
 function extractNewToolResultsFromHistory(
@@ -1526,10 +1530,13 @@ function extractNewToolResultsFromHistory(
   const resolved = new Set(
     getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId)
   );
+  const seen = new Set<string>();
   const out: ChatNewToolResult[] = [];
   for (const { part, toolCallId, toolName, state } of iterateToolParts(message)) {
     if (!isResolvedToolState(state)) continue;
     if (resolved.has(toolCallId)) continue;
+    if (seen.has(toolCallId)) continue;
+    seen.add(toolCallId);
     if (state === "output-error") {
       out.push({ toolCallId, toolName, output: undefined, errorText: part.errorText });
     } else {
@@ -1556,12 +1563,11 @@ const chatHistory = {
   },
 
   /**
-   * Read the current chain as an ordered `UIMessage[]`. Alias for `all()` —
-   * use this when working alongside parent-aware APIs (TRI-9120) where
-   * "chain" disambiguates from "graph".
+   * Read the current chain as an ordered `UIMessage[]`. Identical to
+   * `all()`; use whichever name reads better in context.
    */
   getChain(): UIMessage[] {
-    return [...getChatHistoryState()];
+    return chatHistory.all();
   },
 
   /**
@@ -1573,13 +1579,22 @@ const chatHistory = {
   },
 
   /**
-   * Tool calls on the leaf assistant message still waiting on an answer
-   * (`input-available` state). Use this to gate fresh user turns during
-   * HITL flows: if `getPendingToolCalls().length > 0`, an `addToolOutput`
-   * is expected before any new user message.
+   * Tool calls on the *most recent* assistant message that are still in
+   * `input-available` state (waiting on an `addToolOutput` answer). The
+   * scan walks back from the tail and stops at the first assistant
+   * message it finds, so a trailing user message does not change the
+   * result — pending tool calls remain pending until they're resolved
+   * on that assistant or the assistant is removed.
    *
-   * Returns `[]` if there is no assistant message yet, or if the leaf
-   * assistant has no pending tool calls.
+   * Use this to gate fresh user turns or actions during HITL flows: if
+   * `getPendingToolCalls().length > 0`, an `addToolOutput` is expected.
+   *
+   * Returns `[]` if there is no assistant message yet, or if the most
+   * recent assistant has no pending tool calls.
+   *
+   * Approval flows (`approval-requested` / `approval-responded` states)
+   * are not surfaced here. Those are about the user authorizing a tool
+   * to run; "pending" is about the user *answering* a tool call.
    */
   getPendingToolCalls(): ChatToolCallRef[] {
     return getPendingToolCallsFromHistory(getChatHistoryState());
@@ -1599,6 +1614,8 @@ const chatHistory = {
    * not already represented in the current chain. Use this when
    * persisting tool results to your own store: each call surfaces only
    * the *new* answers, so writes stay idempotent across re-streams.
+   * Duplicate `toolCallId`s within `message` itself are also collapsed
+   * to a single entry.
    */
   extractNewToolResults(message: UIMessage): ChatNewToolResult[] {
     return extractNewToolResultsFromHistory(message, getChatHistoryState());
