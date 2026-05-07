@@ -46,10 +46,8 @@ export class RoleBaseAccessFallback {
     this.clients = resolvePrismaClients(prisma);
   }
 
-  create(
-    helpers: { getSessionUserId: (request: Request) => Promise<string | null> }
-  ): RoleBaseAccessFallbackController {
-    return new RoleBaseAccessFallbackController(this.clients, helpers);
+  create(): RoleBaseAccessFallbackController {
+    return new RoleBaseAccessFallbackController(this.clients);
   }
 }
 
@@ -57,10 +55,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   private readonly prisma: PrismaClient; // alias for primary — used by writes
   private readonly replica: PrismaClient;
 
-  constructor(
-    clients: FallbackPrismaClients,
-    private readonly helpers: { getSessionUserId: (request: Request) => Promise<string | null> }
-  ) {
+  constructor(clients: FallbackPrismaClients) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
   }
@@ -212,13 +207,12 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   }
 
   async authenticateSession(
-    request: Request,
-    context: { organizationId?: string; projectId?: string }
+    _request: Request,
+    context: { userId: string | null; organizationId?: string; projectId?: string }
   ): Promise<SessionAuthResult> {
-    const userId = await this.helpers.getSessionUserId(request);
-    if (!userId) return { ok: false, reason: "unauthenticated" };
+    if (!context.userId) return { ok: false, reason: "unauthenticated" };
 
-    const user = await this.replica.user.findFirst({ where: { id: userId } });
+    const user = await this.replica.user.findFirst({ where: { id: context.userId } });
     if (!user) return { ok: false, reason: "unauthenticated" };
 
     const subject: RbacSubject = {
@@ -251,7 +245,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
 
   async authenticateAuthorizeSession(
     request: Request,
-    context: { organizationId?: string; projectId?: string },
+    context: { userId: string | null; organizationId?: string; projectId?: string },
     check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult> {
     const auth = await this.authenticateSession(request, context);

@@ -6,6 +6,7 @@
 import { json, redirect } from "@remix-run/server-runtime";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import { rbac } from "~/services/rbac.server";
+import { getUserId } from "~/services/session.server";
 import type {
   AuthorizationOption,
   DashboardLoaderOptions,
@@ -85,7 +86,15 @@ export async function authenticateAndAuthorize<
   const ctx = (options.context
     ? await options.context(parsedParams, request)
     : ({} as TContext)) as TContext;
-  const auth = await rbac.authenticateSession(request, ctx);
+  // Resolve userId from the session cookie *here* (the dashboard
+  // request boundary) and feed it into the rbac plugin context. The
+  // plugin no longer takes a `helpers.getSessionUserId` callback —
+  // statically importing session.server from rbac.server dragged the
+  // entire remix-auth strategy chain (each strategy validates its
+  // secret at module load) into anything that pulled `rbac` in,
+  // including PAT-only callers.
+  const userId = (await getUserId(request)) ?? null;
+  const auth = await rbac.authenticateSession(request, { ...ctx, userId });
   if (!auth.ok) {
     if (auth.reason === "unauthenticated") {
       return { ok: false, response: loginRedirectFor(request, options.loginRedirect) };

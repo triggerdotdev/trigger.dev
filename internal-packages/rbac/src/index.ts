@@ -12,8 +12,6 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { RoleBaseAccessFallback } from "./fallback.js";
 export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
 
-type RbacHelpers = { getSessionUserId: (request: Request) => Promise<string | null> };
-
 // Either a single PrismaClient (used for both writes and reads — fine
 // for callers that don't have a separate replica), or `{primary, replica}`
 // where reads on the auth hot path go to the replica. The fallback
@@ -53,24 +51,23 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
 class LazyController implements RoleBaseAccessController {
   private readonly _init: Promise<RoleBaseAccessController>;
 
-  constructor(prisma: RbacPrismaInput, helpers: RbacHelpers, options?: RbacCreateOptions) {
-    this._init = this.load(prisma, helpers, options);
+  constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
+    this._init = this.load(prisma, options);
   }
 
   private async load(
     prisma: RbacPrismaInput,
-    helpers: RbacHelpers,
     options?: RbacCreateOptions
   ): Promise<RoleBaseAccessController> {
     if (options?.forceFallback) {
-      return new RoleBaseAccessFallback(prisma).create(helpers);
+      return new RoleBaseAccessFallback(prisma).create();
     }
     const moduleName = "@triggerdotdev/plugins/rbac";
     try {
       const module = await import(moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
       console.log("RBAC: using plugin implementation");
-      return plugin.create(helpers);
+      return plugin.create();
     } catch (err) {
       // The dynamic import either succeeded or failed for one of two
       // distinct reasons. Distinguishing them is critical for debugging
@@ -108,7 +105,7 @@ class LazyController implements RoleBaseAccessController {
           "RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback"
         );
       }
-      return new RoleBaseAccessFallback(prisma).create(helpers);
+      return new RoleBaseAccessFallback(prisma).create();
     }
   }
 
@@ -246,10 +243,9 @@ class RoleBaseAccess {
   // plugin on first call.
   create(
     prisma: RbacPrismaInput,
-    helpers: RbacHelpers,
     options?: RbacCreateOptions
   ): RoleBaseAccessController {
-    return new LazyController(prisma, helpers, options);
+    return new LazyController(prisma, options);
   }
 }
 

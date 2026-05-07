@@ -32,7 +32,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
-import { scheduleEmail } from "~/services/email.server";
+import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { rbac } from "~/services/rbac.server";
 import { requireUserId } from "~/services/session.server";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";

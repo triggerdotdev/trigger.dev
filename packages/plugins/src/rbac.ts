@@ -122,10 +122,16 @@ export interface RoleBaseAccessController {
   // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
   authenticateBearer(request: Request, options?: { allowJWT?: boolean }): Promise<BearerAuthResult>;
 
-  // Dashboard loaders/actions (session cookie): one DB query → user + pre-built ability
+  // Dashboard loaders/actions (session cookie): one DB query → user + pre-built ability.
+  // The caller resolves `userId` from the session cookie and passes it in.
+  // (`null` means "no authenticated user"; the plugin returns `{ ok: false,
+  // reason: "unauthenticated" }`.) The plugin used to take a
+  // `helpers.getSessionUserId(request)` callback at create-time; pulling the
+  // userId resolution into the caller drops a static module-load coupling
+  // from the plugin's host module to the host's session-cookie code.
   authenticateSession(
     request: Request,
-    context: { organizationId?: string; projectId?: string }
+    context: { userId: string | null; organizationId?: string; projectId?: string }
   ): Promise<SessionAuthResult>;
 
   // PAT-authenticated routes (Authorization: Bearer tr_pat_…). The token
@@ -154,7 +160,7 @@ export interface RoleBaseAccessController {
 
   authenticateAuthorizeSession(
     request: Request,
-    context: { organizationId?: string; projectId?: string },
+    context: { userId: string | null; organizationId?: string; projectId?: string },
     check: { action: string; resource: RbacResource | RbacResource[] }
   ): Promise<SessionAuthResult>;
 
@@ -251,7 +257,5 @@ export type RoleMutationResult =
 export type RoleAssignmentResult = { ok: true } | { ok: false; error: string };
 
 export interface RoleBasedAccessControlPlugin {
-  create(
-    helpers: { getSessionUserId: (request: Request) => Promise<string | null> }
-  ): RoleBaseAccessController | Promise<RoleBaseAccessController>;
+  create(): RoleBaseAccessController | Promise<RoleBaseAccessController>;
 }
