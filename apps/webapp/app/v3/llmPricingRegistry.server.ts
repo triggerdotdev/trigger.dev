@@ -57,21 +57,40 @@ export const llmPricingRegistry = singleton("llmPricingRegistry", () => {
     });
   });
 
+  // Coalesce reload calls so a burst of publishes only triggers one reload.
+  // A reload always fires within LLM_PRICING_RELOAD_DEBOUNCE_MS of the first
+  // publish in a burst; subsequent publishes during that window are no-ops
+  // because the trailing-edge reload will pick up everything when it queries
+  // the DB. Bounds reload rate to at most 1 / debounce-window regardless of
+  // how chatty the publisher is.
+  const debounceMs = env.LLM_PRICING_RELOAD_DEBOUNCE_MS;
+  let pendingReloadTimer: NodeJS.Timeout | null = null;
+
+  function scheduleReload() {
+    if (pendingReloadTimer) return;
+    pendingReloadTimer = setTimeout(() => {
+      pendingReloadTimer = null;
+      registry.reload().catch((err) => {
+        logger.warn("Failed to reload LLM pricing registry from pub/sub", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, debounceMs);
+  }
+
   subscriber.on("message", (channel) => {
     if (channel !== env.LLM_PRICING_RELOAD_CHANNEL) return;
-    registry.reload().catch((err) => {
-      logger.warn("Failed to reload LLM pricing registry from pub/sub", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    scheduleReload();
   });
 
   signalsEmitter.on("SIGTERM", () => {
     clearInterval(interval);
+    if (pendingReloadTimer) clearTimeout(pendingReloadTimer);
     void subscriber.quit().catch(() => {});
   });
   signalsEmitter.on("SIGINT", () => {
     clearInterval(interval);
+    if (pendingReloadTimer) clearTimeout(pendingReloadTimer);
     void subscriber.quit().catch(() => {});
   });
 
