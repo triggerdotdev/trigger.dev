@@ -630,6 +630,313 @@ describe("mockChatAgent", () => {
     }
   });
 
+  describe("chat.history read primitives", () => {
+    // These tests drive a chat.agent through realistic streams and read
+    // chat.history inside hooks/tools where the accumulator is in the
+    // expected state. The pure walks themselves are exercised end-to-end
+    // rather than via direct internal access.
+
+    function toolCallStream(opts: { toolCallId: string; toolName: string; input: object }) {
+      return simulateReadableStream({
+        chunks: [
+          { type: "tool-input-start", id: opts.toolCallId, toolName: opts.toolName },
+          { type: "tool-input-delta", id: opts.toolCallId, delta: JSON.stringify(opts.input) },
+          { type: "tool-input-end", id: opts.toolCallId },
+          {
+            type: "tool-call",
+            toolCallId: opts.toolCallId,
+            toolName: opts.toolName,
+            input: JSON.stringify(opts.input),
+          },
+          {
+            type: "finish",
+            finishReason: { unified: "tool-calls", raw: "tool_calls" },
+            usage: {
+              inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 5, text: 0, reasoning: undefined },
+            },
+          },
+        ] as LanguageModelV3StreamPart[],
+      });
+    }
+
+    it("getPendingToolCalls returns input-available parts on the leaf assistant", async () => {
+      const { z } = await import("zod");
+      const { tool } = await import("ai");
+      const askUser = tool({
+        description: "Ask the user.",
+        inputSchema: z.object({ q: z.string() }),
+      });
+      const TC = "tc_pending_1";
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({
+          stream: toolCallStream({ toolCallId: TC, toolName: "askUser", input: { q: "?" } }),
+        }),
+      });
+
+      let pending: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.pending",
+        tools: { askUser },
+        onTurnComplete: async () => {
+          pending = chat.history.getPendingToolCalls();
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, tools: { askUser }, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-pending" });
+      try {
+        await harness.sendMessage(userMessage("hi"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(pending).toHaveLength(1);
+        expect(pending[0]).toMatchObject({ toolCallId: TC, toolName: "askUser" });
+        expect(typeof pending[0].messageId).toBe("string");
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("getPendingToolCalls returns [] when the leaf assistant has no pending tool calls", async () => {
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({ stream: textStream("hello") }),
+      });
+      let pending: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.pending-empty",
+        onTurnComplete: async () => {
+          pending = chat.history.getPendingToolCalls();
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-pending-empty" });
+      try {
+        await harness.sendMessage(userMessage("hi"));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(pending).toEqual([]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("getResolvedToolCalls walks all messages after a HITL answer lands", async () => {
+      const { z } = await import("zod");
+      const { tool } = await import("ai");
+      const askUser = tool({
+        description: "Ask the user.",
+        inputSchema: z.object({ q: z.string() }),
+      });
+      const TC = "tc_resolved_1";
+
+      let callIdx = 0;
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({
+          stream:
+            callIdx++ === 0
+              ? toolCallStream({ toolCallId: TC, toolName: "askUser", input: { q: "?" } })
+              : textStream("done"),
+        }),
+      });
+
+      const turnsResolved: any[] = [];
+      const agent = chat.agent({
+        id: "mockChatAgent.history.resolved",
+        tools: { askUser },
+        onTurnComplete: async () => {
+          turnsResolved.push(chat.history.getResolvedToolCalls());
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, tools: { askUser }, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-resolved" });
+      try {
+        await harness.sendMessage(userMessage("hi"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        // Send a HITL tool answer that resolves TC. The merge attaches the
+        // output to the head assistant — it now shows in `output-available`
+        // state.
+        const toolAnswer = {
+          id: "ai-sdk-fresh-id",
+          role: "assistant" as const,
+          parts: [
+            {
+              type: "tool-askUser",
+              toolCallId: TC,
+              state: "output-available" as const,
+              input: { q: "?" },
+              output: { answer: "hi" },
+            },
+          ],
+        };
+        await harness.sendMessage(toolAnswer as any);
+        await new Promise((r) => setTimeout(r, 50));
+
+        // After turn 1 only, no tool call is resolved yet (input-available).
+        // After the HITL answer is merged, the merged head shows the tool
+        // in `output-available` — getResolvedToolCalls reflects that.
+        const last = turnsResolved.at(-1) ?? [];
+        expect(last).toHaveLength(1);
+        expect(last[0]).toMatchObject({ toolCallId: TC, toolName: "askUser" });
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("extractNewToolResults dedups against already-resolved toolCallIds", async () => {
+      // Pure-function smoke test: feed a synthetic chain via a tool that
+      // calls extractNewToolResults() during execution. The chain is
+      // overridden via chat.history.set() inside run(), so we control
+      // exactly what's in scope.
+      let extracted: any;
+      const agent = chat.agent({
+        id: "mockChatAgent.history.extract",
+        run: async ({ messages, signal }) => {
+          chat.history.set([
+            {
+              id: "a-seed",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-askUser",
+                  toolCallId: "tc-1",
+                  state: "output-available",
+                  input: { q: "?" },
+                  output: { color: "red" },
+                },
+              ],
+            } as any,
+            { id: "u-1", role: "user", parts: [{ type: "text", text: "u" }] } as any,
+          ]);
+
+          const incoming = {
+            id: "a-incoming",
+            role: "assistant" as const,
+            parts: [
+              {
+                type: "tool-askUser",
+                toolCallId: "tc-1",
+                state: "output-available" as const,
+                input: { q: "?" },
+                output: { color: "red" },
+              },
+              {
+                type: "tool-search",
+                toolCallId: "tc-2",
+                state: "output-available" as const,
+                input: { q: "x" },
+                output: { hits: 7 },
+              },
+              {
+                type: "tool-search",
+                toolCallId: "tc-err",
+                state: "output-error" as const,
+                input: { q: "y" },
+                errorText: "boom",
+              },
+            ],
+          };
+          extracted = chat.history.extractNewToolResults(incoming as any);
+
+          return streamText({
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("ok") }),
+            }),
+            messages,
+            abortSignal: signal,
+          });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-extract" });
+      try {
+        await harness.sendMessage(userMessage("kick"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(extracted).toEqual([
+          { toolCallId: "tc-2", toolName: "search", output: { hits: 7 } },
+          { toolCallId: "tc-err", toolName: "search", output: undefined, errorText: "boom" },
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("findMessage returns the message by id, or undefined when missing", async () => {
+      let foundUser: any;
+      let foundAssistant: any;
+      let missing: any;
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({ stream: textStream("ok") }),
+      });
+      const agent = chat.agent({
+        id: "mockChatAgent.history.find",
+        onTurnComplete: async ({ uiMessages }) => {
+          // Locate ids the agent actually produced/saw, then probe findMessage.
+          const userId = uiMessages.find((m) => m.role === "user")?.id ?? "u-fixed";
+          const asstId = uiMessages.find((m) => m.role === "assistant")?.id;
+          foundUser = chat.history.findMessage(userId);
+          foundAssistant = asstId ? chat.history.findMessage(asstId) : undefined;
+          missing = chat.history.findMessage("definitely-not-here");
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-find" });
+      try {
+        await harness.sendMessage(userMessage("hello", "u-fixed"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(foundUser?.id).toBe("u-fixed");
+        expect(foundAssistant).toBeTruthy();
+        expect(missing).toBeUndefined();
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it("getChain returns a defensive copy parallel to all()", async () => {
+      let chainCopy: any;
+      let allCopy: any;
+      const model = new MockLanguageModelV3({
+        doStream: async () => ({ stream: textStream("ok") }),
+      });
+      const agent = chat.agent({
+        id: "mockChatAgent.history.chain",
+        onTurnComplete: async () => {
+          chainCopy = chat.history.getChain();
+          allCopy = chat.history.all();
+          // Mutate one — must not affect the other.
+          chainCopy.push({ id: "stray", role: "user", parts: [] });
+        },
+        run: async ({ messages, signal }) => {
+          return streamText({ model, messages, abortSignal: signal });
+        },
+      });
+
+      const harness = mockChatAgent(agent, { chatId: "test-history-chain" });
+      try {
+        await harness.sendMessage(userMessage("a"));
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(chainCopy.length).toBeGreaterThan(0);
+        expect(allCopy.length).toBe(chainCopy.length - 1);
+        expect(allCopy.find((m: any) => m.id === "stray")).toBeUndefined();
+      } finally {
+        await harness.close();
+      }
+    });
+  });
+
   it("cleans up properly after close() so the next harness starts fresh", async () => {
     const model = new MockLanguageModelV3({
       doStream: async () => ({ stream: textStream("first") }),
