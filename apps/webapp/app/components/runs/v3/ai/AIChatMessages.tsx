@@ -211,7 +211,7 @@ export function AssistantResponse({
       />
       {mode === "rendered" ? (
         <ChatBubble>
-          <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
+          <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed [overflow-wrap:anywhere]">
             <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
               <StreamdownRenderer>{text}</StreamdownRenderer>
             </Suspense>

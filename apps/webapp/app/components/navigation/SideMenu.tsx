@@ -2,6 +2,7 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
+  ArrowsRightLeftIcon,
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
@@ -91,6 +92,7 @@ import {
   v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
+  v3SessionsPath,
   v3TestPath,
   v3UsagePath,
   v3WaitpointTokensPath,
@@ -476,6 +478,15 @@ export function SideMenu({
                   activeIconColor="text-indigo-500"
                   inactiveIconColor="text-indigo-500"
                   to={v3AgentsPath(organization, project, environment)}
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Sessions"
+                  icon={ArrowsRightLeftIcon}
+                  activeIconColor="text-teal-500"
+                  inactiveIconColor="text-teal-500"
+                  to={v3SessionsPath(organization, project, environment)}
+                  data-action="sessions"
                   isCollapsed={isCollapsed}
                 />
                 <SideMenuItem
