@@ -7,10 +7,6 @@ import path from "path";
 import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
-// `expect` is only used inside assertNonNullable — lazy-loaded via require
-// inside the function so this module can be imported in non-test contexts
-// (e.g. a vitest globalSetup that starts containers before any worker
-// exists, where vitest's expect-init-at-load-time would crash).
 import type { TaskContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
@@ -190,12 +186,21 @@ export async function createMinIOContainer(network: StartedNetwork) {
 }
 
 export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
-  // Loaded lazily so importers of this module don't pay the vitest top-level
-  // init cost outside a test worker. See the import note at the top.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { expect } = require("vitest") as typeof import("vitest");
-  expect(value).toBeDefined();
-  expect(value).not.toBeNull();
+  // Plain throw — *not* `vitest.expect`. Two reasons:
+  //   1. This module is imported by globalSetup files that run before any
+  //      vitest worker exists, so `import { expect }` from "vitest" at
+  //      top level can crash on init.
+  //   2. Lazy-loading via `require("vitest")` (the prior fix) collides
+  //      with OTel auto-instrumentation: `@opentelemetry/instrumentation`
+  //      hooks `require()` via `require-in-the-middle`, and vitest is
+  //      ESM-only — the require() throws "Vitest cannot be imported in
+  //      a CommonJS module using require()", failing every test that
+  //      uses `assertNonNullable` after OTel's been touched.
+  // The plain throw still gives vitest a useful failure (the message is
+  // shown in the stack trace) without the instrumentation hazard.
+  if (value === null || value === undefined) {
+    throw new Error(`assertNonNullable: value was ${value === null ? "null" : "undefined"}`);
+  }
 }
 
 export async function withContainerSetup<T>({
