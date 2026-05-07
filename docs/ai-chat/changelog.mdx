@@ -93,7 +93,7 @@ const transport = useTriggerChatTransport({
 
 ### Bundle isolation
 
-Tool schemas (`description` + `inputSchema`) live in their own module that imports only `ai` and `zod`. The agent task imports those schemas and adds heavy `execute` fns. The route handler imports schemas only — keeping the warm-process bundle light is what makes the win possible. Runtime "strip executes" helpers don't solve this — bundlers resolve imports at build time. See [Head Start → Setup](/ai-chat/head-start#setup) for the full split.
+Tool schemas (`description` + `inputSchema`) live in their own module that imports only `ai` and `zod`. The agent task imports those schemas and adds heavy `execute` fns. The route handler imports schemas only — keeping the warm-process bundle light is what makes the win possible. Runtime "strip executes" helpers don't solve this — bundlers resolve imports at build time. See [Fast starts → Head Start setup](/ai-chat/fast-starts#setup) for the full split.
 
 ### Compared to Preload
 
@@ -117,7 +117,7 @@ app.post("/api/chat", chat.toNodeListener(handler));
 
 ## Docs
 
-- New [Head Start guide](/ai-chat/head-start) — bundle isolation, schema/execute split, route handler setup, transport option, lifecycle, limitations.
+- New [Head Start guide](/ai-chat/fast-starts#head-start) — bundle isolation, schema/execute split, route handler setup, transport option, lifecycle, limitations.
 - [Reference](/ai-chat/reference#triggerchattransport-options) — `headStart` transport option.
 
 </Update>
@@ -341,7 +341,7 @@ chat.agent({
 
 Tool approval updates are auto-merged after hydration — no extra handling needed.
 
-See [hydrateMessages](/ai-chat/backend#hydratemessages).
+See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages).
 
 ## `chat.history` — imperative message mutations
 
@@ -378,7 +378,7 @@ chat.agent({
 Frontend: `transport.sendAction(chatId, { type: "undo" })`
 Server: `agentChat.sendAction({ type: "undo" })`
 
-See [Actions](/ai-chat/backend#actions) and [Sending actions](/ai-chat/frontend#sending-actions).
+See [Actions](/ai-chat/actions) and [Sending actions](/ai-chat/frontend#sending-actions).
 
 </Update>
 

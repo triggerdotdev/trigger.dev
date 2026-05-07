@@ -192,7 +192,7 @@ export const myChat = chat.agent({
 
 ## User-initiated compaction
 
-Sometimes you want the user to decide when to compact — a "Summarize conversation" button, a `/compact` slash command, or a settings toggle. Wire this up with [actions](/ai-chat/backend#actions): the frontend sends a typed action, `onAction` runs the summary, and `chat.history.set()` replaces the conversation.
+Sometimes you want the user to decide when to compact — a "Summarize conversation" button, a `/compact` slash command, or a settings toggle. Wire this up with [actions](/ai-chat/actions): the frontend sends a typed action, `onAction` runs the summary, and `chat.history.set()` replaces the conversation.
 
 ### Backend
 

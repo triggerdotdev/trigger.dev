@@ -371,7 +371,7 @@ Custom actions (undo, rollback, edit) ride on the same `.in` channel using `kind
 }
 ```
 
-Actions wake the agent from suspension (same as messages), fire the `onAction` hook, then trigger a normal `run()` turn. The `action` payload is validated against the agent's `actionSchema`. See [Actions](/ai-chat/backend#actions).
+Actions wake the agent from suspension (same as messages), fire the `onAction` hook, then trigger a normal `run()` turn. The `action` payload is validated against the agent's `actionSchema`. See [Actions](/ai-chat/actions).
 
 ### Tool approval responses
 
@@ -494,5 +494,5 @@ The transport-facing `publicAccessToken` returned from `POST /api/v1/sessions` c
 
 - [`TriggerChatTransport`](/ai-chat/frontend) — Built-in browser transport (implements this protocol)
 - [`AgentChat`](/ai-chat/server-chat) — Built-in server-side client
-- [Backend lifecycle](/ai-chat/backend#lifecycle-hooks) — What the agent does on each event
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks) — What the agent does on each event
 - [Version upgrades](/ai-chat/patterns/version-upgrades) — How `chat.requestUpgrade()` uses continuations

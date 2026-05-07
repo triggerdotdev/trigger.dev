@@ -189,7 +189,7 @@ export const myChat = chat
 
 ### Builder-level hooks
 
-All [lifecycle hooks](/ai-chat/backend#lifecycle-hooks) can be set on the builder: `onPreload`, `onChatStart`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`, `onCompacted`, `onChatSuspend`, `onChatResume`.
+All [lifecycle hooks](/ai-chat/lifecycle-hooks) can be set on the builder: `onPreload`, `onChatStart`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`, `onCompacted`, `onChatSuspend`, `onChatResume`.
 
 Builder hooks and task-level hooks **coexist**. When both are defined for the same event, the builder hook runs first, then the task hook:
 
@@ -223,7 +223,7 @@ If you do not rely on custom `UIMessage` generics (only default text, reasoning,
 ## See also
 
 - [Backend — `chat.agent()`](/ai-chat/backend#chat-agent)
-- [Backend — Lifecycle hooks](/ai-chat/backend#lifecycle-hooks)
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks)
 - [Frontend — transport & `useChat`](/ai-chat/frontend)
 - [API reference — `chat.withUIMessage`](/ai-chat/reference#chat-withuimessage)
 - [API reference — `chat.withClientData`](/ai-chat/reference#chat-withclientdata)

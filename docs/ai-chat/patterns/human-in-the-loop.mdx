@@ -155,17 +155,39 @@ onTurnComplete: async ({ finishReason, responseMessage }) => {
 
 ### Via response parts
 
-If you need more nuance (e.g. which specific tool is pending), inspect the parts directly:
+If you need more nuance (e.g. which specific tool is pending), use `chat.history.getPendingToolCalls()`:
 
 ```ts
-function pendingToolCalls(message: UIMessage): string[] {
-  return message.parts
-    .filter((p) => p.type.startsWith("tool-") && p.state === "input-available")
-    .map((p) => p.toolCallId);
-}
+const pending = chat.history.getPendingToolCalls();
+// [{ toolCallId, toolName, messageId }]
 ```
 
-Both `finishReason === "tool-calls"` and `pendingToolCalls(responseMessage).length > 0` are equivalent in practice. Use `finishReason` for dispatch, parts for detail.
+The result reflects the most recent assistant message: the one waiting on `addToolOutput`. Use it from `onAction` to gate fresh user turns ("can't send a new message while a HITL is open"), or from `onTurnComplete` to decide what to persist.
+
+Both `finishReason === "tool-calls"` and `chat.history.getPendingToolCalls().length > 0` are equivalent in practice. Use `finishReason` for dispatch, the helper for detail.
+
+### Acting once per net-new tool result
+
+When the user's `addToolOutput` round-trips a tool answer back to the agent, the wire message carries the resolved tool part. If you want to fire side-effects (audit log, billing, notifications) exactly once per resolved tool call, do it in `hydrateMessages` before the runtime merges. `chat.history.extractNewToolResults(message)` returns only the parts whose `toolCallId` isn't already resolved on the chain:
+
+```ts
+hydrateMessages: async ({ incomingMessages }) => {
+  for (const msg of incomingMessages) {
+    if (msg.role !== "assistant") continue;
+    for (const r of chat.history.extractNewToolResults(msg)) {
+      await auditLog.record({
+        toolCallId: r.toolCallId,
+        toolName: r.toolName,
+        output: r.output,
+        errorText: r.errorText, // set only for output-error parts
+      });
+    }
+  }
+  return incomingMessages;
+},
+```
+
+`extractNewToolResults` compares against the current `chat.history`. By the time `onTurnComplete` fires, the chain already contains `responseMessage`, so the helper returns `[]` there. Use it where the message is from outside the accumulator: `hydrateMessages`, `onAction` if the action carries a message, or any custom pre-merge code path.
 
 ## Persistence: one message vs one record per pause
 
