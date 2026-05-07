@@ -36,8 +36,9 @@ Options for `chat.agent()`.
 | `onChatSuspend`               | `(event: ChatSuspendEvent) => Promise<void> \| void`        | —                              | Fires right before the run suspends. See [onChatSuspend](/ai-chat/lifecycle-hooks#onchatsuspend--onchatresume) |
 | `onChatResume`                | `(event: ChatResumeEvent) => Promise<void> \| void`         | —                              | Fires right after the run resumes from suspension                                                   |
 | `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/lifecycle-hooks#exitafterpreloadidle) |
+| `oomMachine`                  | `MachinePresetName`                                         | —                              | Fallback machine when an attempt fails with OOM. Setting it enables a single OOM retry on the larger machine. See [OOM resilience](/ai-chat/patterns/oom-resilience) |
 
-Plus all standard [TaskOptions](/tasks/overview) — `retry`, `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Those hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
+Plus most standard [TaskOptions](/tasks/overview) — `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Generic `retry` is **not** exposed on `chat.agent`; use `oomMachine` for OOM recovery, or drop down to `chat.task` if you need richer retry semantics. Standard hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
 
 ## Task context (`ctx`)
 
