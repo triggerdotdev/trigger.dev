@@ -37,62 +37,69 @@ export const llmPricingRegistry = singleton("llmPricingRegistry", () => {
     });
   }, reloadInterval);
 
-  // Pub/sub reload — billing's LLM registry worker publishes on this channel
-  // immediately after writing new/changed model rows, so all webapp pods see
-  // updates within ~1s instead of waiting for the next interval tick.
-  const subscriber = createRedisClient("llm-pricing:subscriber", {
-    keyPrefix: "llm-pricing:subscriber:",
-    host: env.COMMON_WORKER_REDIS_HOST,
-    port: env.COMMON_WORKER_REDIS_PORT,
-    username: env.COMMON_WORKER_REDIS_USERNAME,
-    password: env.COMMON_WORKER_REDIS_PASSWORD,
-    tlsDisabled: env.COMMON_WORKER_REDIS_TLS_DISABLED === "true",
-    clusterMode: env.COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED === "1",
-  });
-
-  subscriber.subscribe(env.LLM_PRICING_RELOAD_CHANNEL).catch((err) => {
-    logger.warn("Failed to subscribe to LLM pricing reload channel", {
-      channel: env.LLM_PRICING_RELOAD_CHANNEL,
-      error: err instanceof Error ? err.message : String(err),
+  // Pub/sub reload is opt-in per process. Without it, the registry stays
+  // accurate via the existing 5-minute interval. In multi-service deployments
+  // we only want the OTel-ingesting services subscribed — the dashboard and
+  // worker services don't need real-time pricing freshness and shouldn't pile
+  // onto each publish with a full-table reload.
+  if (env.LLM_PRICING_RELOAD_PUBSUB_ENABLED) {
+    const subscriber = createRedisClient("llm-pricing:subscriber", {
+      keyPrefix: "llm-pricing:subscriber:",
+      host: env.COMMON_WORKER_REDIS_HOST,
+      port: env.COMMON_WORKER_REDIS_PORT,
+      username: env.COMMON_WORKER_REDIS_USERNAME,
+      password: env.COMMON_WORKER_REDIS_PASSWORD,
+      tlsDisabled: env.COMMON_WORKER_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED === "1",
     });
-  });
 
-  // Coalesce reload calls so a burst of publishes only triggers one reload.
-  // A reload always fires within LLM_PRICING_RELOAD_DEBOUNCE_MS of the first
-  // publish in a burst; subsequent publishes during that window are no-ops
-  // because the trailing-edge reload will pick up everything when it queries
-  // the DB. Bounds reload rate to at most 1 / debounce-window regardless of
-  // how chatty the publisher is.
-  const debounceMs = env.LLM_PRICING_RELOAD_DEBOUNCE_MS;
-  let pendingReloadTimer: NodeJS.Timeout | null = null;
-
-  function scheduleReload() {
-    if (pendingReloadTimer) return;
-    pendingReloadTimer = setTimeout(() => {
-      pendingReloadTimer = null;
-      registry.reload().catch((err) => {
-        logger.warn("Failed to reload LLM pricing registry from pub/sub", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+    subscriber.subscribe(env.LLM_PRICING_RELOAD_CHANNEL).catch((err) => {
+      logger.warn("Failed to subscribe to LLM pricing reload channel", {
+        channel: env.LLM_PRICING_RELOAD_CHANNEL,
+        error: err instanceof Error ? err.message : String(err),
       });
-    }, debounceMs);
+    });
+
+    // Coalesce reload calls so a burst of publishes only triggers one
+    // reload. The first publish schedules a reload at
+    // T+LLM_PRICING_RELOAD_DEBOUNCE_MS; subsequent publishes during that
+    // window are no-ops because the trailing reload picks up everything
+    // when it queries the DB. Bounds reload rate to at most 1 per debounce
+    // window regardless of publisher chattiness.
+    const debounceMs = env.LLM_PRICING_RELOAD_DEBOUNCE_MS;
+    let pendingReloadTimer: NodeJS.Timeout | null = null;
+
+    function scheduleReload() {
+      if (pendingReloadTimer) return;
+      pendingReloadTimer = setTimeout(() => {
+        pendingReloadTimer = null;
+        registry.reload().catch((err) => {
+          logger.warn("Failed to reload LLM pricing registry from pub/sub", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }, debounceMs);
+    }
+
+    subscriber.on("message", (channel) => {
+      if (channel !== env.LLM_PRICING_RELOAD_CHANNEL) return;
+      scheduleReload();
+    });
+
+    signalsEmitter.on("SIGTERM", () => {
+      clearInterval(interval);
+      if (pendingReloadTimer) clearTimeout(pendingReloadTimer);
+      void subscriber.quit().catch(() => {});
+    });
+    signalsEmitter.on("SIGINT", () => {
+      clearInterval(interval);
+      if (pendingReloadTimer) clearTimeout(pendingReloadTimer);
+      void subscriber.quit().catch(() => {});
+    });
+  } else {
+    signalsEmitter.on("SIGTERM", () => clearInterval(interval));
+    signalsEmitter.on("SIGINT", () => clearInterval(interval));
   }
-
-  subscriber.on("message", (channel) => {
-    if (channel !== env.LLM_PRICING_RELOAD_CHANNEL) return;
-    scheduleReload();
-  });
-
-  signalsEmitter.on("SIGTERM", () => {
-    clearInterval(interval);
-    if (pendingReloadTimer) clearTimeout(pendingReloadTimer);
-    void subscriber.quit().catch(() => {});
-  });
-  signalsEmitter.on("SIGINT", () => {
-    clearInterval(interval);
-    if (pendingReloadTimer) clearTimeout(pendingReloadTimer);
-    void subscriber.quit().catch(() => {});
-  });
 
   return registry;
 });
