@@ -9,7 +9,10 @@ import {
   type InputStreamWaitWithIdleTimeoutOptions,
   isSchemaZodEsque,
   logger,
+  type MachinePresetName,
   ManualWaitpointPromise,
+  OutOfMemoryError,
+  sessionStreams,
   type PipeStreamResult,
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
@@ -133,6 +136,53 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
  * @internal
  */
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
+
+/**
+ * Scan `session.out` for the latest `trigger:turn-complete` chunk and
+ * return its SSE timestamp. Used at OOM-retry boot to derive a
+ * lower-bound timestamp for the `session.in` filter — records older
+ * than `T_last_complete` belong to turns that already completed on the
+ * prior attempt and are dropped before they reach the turn loop.
+ *
+ * Implementation is a streaming scan: subscribes via the existing SSE
+ * endpoint with a short `timeoutInSeconds`, processes each part inline,
+ * and discards the chunk body so memory stays O(1) regardless of how
+ * many records are on `session.out`. Bandwidth scales linearly with
+ * stream length but the scan only fires on retry — a rare event.
+ *
+ * Returns `undefined` if no `trigger:turn-complete` chunk has been
+ * written yet (first-turn OOM, no completed turns to dedup against).
+ * @internal
+ */
+async function findLatestTurnCompleteTimestamp(
+  chatId: string
+): Promise<number | undefined> {
+  const apiClient = apiClientManager.clientOrThrow();
+  let latestTs: number | undefined;
+  const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
+    timeoutInSeconds: 1,
+    onPart: (part) => {
+      let chunk: unknown = part.chunk;
+      if (typeof chunk === "string") {
+        try {
+          chunk = JSON.parse(chunk);
+        } catch {
+          return;
+        }
+      }
+      if (chunk && typeof chunk === "object" && (chunk as { type?: unknown }).type === "trigger:turn-complete") {
+        latestTs = part.timestamp;
+      }
+    },
+  });
+  // Drain the stream to drive `onPart`. We don't accumulate the chunks —
+  // each iteration discards the data immediately, so a long session.out
+  // doesn't blow memory on the retry-boot worker.
+  for await (const _ of stream) {
+    // intentionally empty
+  }
+  return latestTs;
+}
 
 /**
  * Resolve the Session handle for the current chat.agent run. Throws if
@@ -3378,8 +3428,42 @@ export type ChatAgentOptions<
     ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
     unknown
   >,
-  "run"
+  "run" | "retry"
 > & {
+  /**
+   * Fallback machine preset to use when an attempt fails with an
+   * out-of-memory (OOM) error. Setting this enables a single OOM retry:
+   * the next attempt boots on the larger machine, and the chat picks
+   * up via the standard continuation path (same `chatId` / Session,
+   * accumulator rebuilds via `hydrateMessages` or post-`onTurnStart`
+   * persisted state).
+   *
+   * Set `machine` (top-level `TaskOptions`) to control the *default*
+   * machine the agent runs on. `oomMachine` is the *retry-only* swap.
+   *
+   * Note: an OOM retry restarts the entire turn from the top — the
+   * model call and any in-flight tool executes re-run on the larger
+   * machine. Make tool executes idempotent or persist results before
+   * returning if you can't tolerate re-execution.
+   *
+   * Generic `retry` options are not exposed on `chat.agent` because
+   * arbitrary retries against an LLM-driven loop tend to be expensive
+   * and side-effecting. If you need richer retry semantics, drop down
+   * to `chat.task` (the raw primitive).
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   machine: "small-1x",
+   *   oomMachine: "medium-2x",
+   *   run: async ({ messages, signal }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  oomMachine?: MachinePresetName;
+
   /**
    * Schema for validating `clientData` from the frontend.
    * Accepts Zod, ArkType, Valibot, or any supported schema library.
@@ -4025,19 +4109,28 @@ function chatAgent<
     onChatSuspend,
     onChatResume,
     exitAfterPreloadIdle = false,
+    oomMachine,
     ...restOptions
   } = options;
 
   const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
   const parseAction = actionSchema ? getSchemaParseFn(actionSchema) : undefined;
 
+  // chat.agent does not expose generic retry options (see docstring on
+  // `oomMachine`). The only opt-in is an OOM-triggered machine swap. If
+  // `oomMachine` is set we allow one retry on a larger machine; otherwise
+  // we keep the historical no-retry default.
+  const retry = oomMachine
+    ? { maxAttempts: 2, outOfMemory: { machine: oomMachine } }
+    : { maxAttempts: 1 };
+
   const task = createTask<
     TIdentifier,
     ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
     unknown
   >({
-    retry: { maxAttempts: 1 },
     ...restOptions,
+    retry,
     triggerSource: "agent",
     agentConfig: { type: "ai-sdk-chat" },
     run: async (
@@ -4103,6 +4196,37 @@ function chatAgent<
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
       let accumulatedUIMessages: TUIMessage[] = [];
+
+      // OOM-retry boot: a fresh worker subscribes to `session.in` from
+      // seq 0 and would re-deliver every record ever appended to that
+      // session — including the messages from turns that already
+      // completed on the prior attempt. Without dedup, the loop would
+      // re-process them as fresh turns.
+      //
+      // We derive the cutoff from `session.out`: the latest
+      // `trigger:turn-complete` chunk's timestamp is the high-water
+      // mark of completed work. Any session.in record with a timestamp
+      // at or below that mark belongs to a completed turn and is
+      // dropped by the SessionStreamManager filter before dispatch.
+      //
+      // No customer setup required. With `hydrateMessages` configured,
+      // the OOM'd turn re-runs against the full prior conversation (the
+      // common pattern). Without it, the OOM'd turn re-runs against
+      // whatever the chat.agent's default accumulator can rebuild from
+      // `payload.messages` — degraded continuity but no duplicate work.
+      if (ctx.attempt.number > 1) {
+        try {
+          const cutoff = await findLatestTurnCompleteTimestamp(payload.chatId);
+          if (cutoff !== undefined) {
+            sessionStreams.setMinTimestamp(payload.chatId, "in", cutoff);
+          }
+        } catch (error) {
+          logger.warn(
+            "chat.agent OOM-retry session.out scan failed; session.in dedup not applied",
+            { error: error instanceof Error ? error.message : String(error) }
+          );
+        }
+      }
 
       // Token usage tracking across turns
       let previousTurnUsage: LanguageModelUsage | undefined;
@@ -5708,6 +5832,17 @@ function chatAgent<
               // of killing the entire run. This keeps the conversation alive.
               if (turnError instanceof Error && turnError.name === "AbortError" && runSignal.aborted) {
                 // Full run cancellation — exit immediately
+                throw turnError;
+              }
+
+              // OOM errors must escape the turn loop so the task runtime can
+              // honor `retry.outOfMemory.machine` (set on chat.agent via
+              // `oomMachine`). Catching them here would keep the dead worker
+              // alive and defeat the machine swap. Re-throw and let the
+              // runtime dispatch the retry on a larger machine; recovery on
+              // attempt 2 picks up via the standard continuation path
+              // (same chatId / Session, accumulator rehydrates).
+              if (turnError instanceof OutOfMemoryError) {
                 throw turnError;
               }
 

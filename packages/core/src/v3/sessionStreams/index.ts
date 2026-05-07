@@ -59,6 +59,14 @@ export class SessionStreamsAPI implements SessionStreamManager {
     this.#getManager().setLastSeqNum(sessionId, io, seqNum);
   }
 
+  public setMinTimestamp(
+    sessionId: string,
+    io: SessionChannelIO,
+    minTimestamp: number | undefined
+  ): void {
+    this.#getManager().setMinTimestamp(sessionId, io, minTimestamp);
+  }
+
   public shiftBuffer(sessionId: string, io: SessionChannelIO): boolean {
     return this.#getManager().shiftBuffer(sessionId, io);
   }

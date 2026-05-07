@@ -45,6 +45,20 @@ export interface SessionStreamManager {
   /** Advance the last-seen sequence number (prevents SSE replay after `.wait` resume). */
   setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
+  /**
+   * Set a per-stream lower-bound SSE timestamp. Records whose timestamp
+   * is `<= minTimestamp` are dropped before dispatch. Used by chat.agent
+   * on OOM-retry boot to skip session.in records belonging to turns
+   * that already completed on the prior attempt.
+   *
+   * Pass `undefined` to clear the filter.
+   */
+  setMinTimestamp(
+    sessionId: string,
+    io: SessionChannelIO,
+    minTimestamp: number | undefined
+  ): void;
+
   /** Remove and discard the first buffered record. Returns true if one was removed. */
   shiftBuffer(sessionId: string, io: SessionChannelIO): boolean;
 

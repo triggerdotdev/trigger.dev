@@ -36,6 +36,13 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, unknown[]>();
   private tails = new Map<string, TailState>();
+  // Per-stream lower-bound timestamp filter. When set, records whose
+  // SSE timestamp is <= the bound are dropped before dispatch — used by
+  // chat.agent on OOM-retry boot to skip session.in records belonging
+  // to turns that already completed on the prior attempt. The filter
+  // is consulted in `runTail`'s `onPart` so the buffer never sees the
+  // dropped records.
+  private minTimestamps = new Map<string, number>();
   // Keys that were explicitly torn down by `disconnectStream`. The tail's
   // `.finally` reconnect path checks this so a long-lived persistent handler
   // (e.g. `chat.agent`'s run-level `stopInput.on(...)`) doesn't silently
@@ -164,6 +171,19 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
+  setMinTimestamp(
+    sessionId: string,
+    io: SessionChannelIO,
+    minTimestamp: number | undefined
+  ): void {
+    const key = keyFor(sessionId, io);
+    if (minTimestamp === undefined) {
+      this.minTimestamps.delete(key);
+    } else {
+      this.minTimestamps.set(key, minTimestamp);
+    }
+  }
+
   shiftBuffer(sessionId: string, io: SessionChannelIO): boolean {
     const key = keyFor(sessionId, io);
     const buffered = this.buffer.get(key);
@@ -213,6 +233,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   reset(): void {
     this.disconnect();
     this.seqNums.clear();
+    this.minTimestamps.clear();
     this.handlers.clear();
 
     for (const [, waiters] of this.onceWaiters) {
@@ -271,16 +292,40 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     const key = keyFor(sessionId, io);
     try {
       const lastSeq = this.seqNums.get(key);
+      // Dispatch is driven from `onPart` (not the for-await loop) so each
+      // record reaches dispatch with its full SSE metadata in scope —
+      // specifically the timestamp, which we need for the per-stream
+      // min-timestamp filter. The for-await loop below just drains the
+      // pipeThrough output to keep the source flowing.
       const stream = await this.apiClient.subscribeToSessionStream<unknown>(sessionId, io, {
         signal,
         baseUrl: this.baseUrl,
         timeoutInSeconds: 600,
         lastEventId: lastSeq !== undefined ? String(lastSeq) : undefined,
         onPart: (part) => {
+          if (signal.aborted) return;
           const seqNum = parseInt(part.id, 10);
           if (Number.isFinite(seqNum)) {
             this.seqNums.set(key, seqNum);
           }
+
+          // Min-timestamp filter: drop records older than (or at) the
+          // bound. Used to skip already-processed records on OOM-retry
+          // boot.
+          const minTs = this.minTimestamps.get(key);
+          if (minTs !== undefined && part.timestamp <= minTs) {
+            return;
+          }
+
+          let data: unknown = part.chunk;
+          if (typeof data === "string") {
+            try {
+              data = JSON.parse(data);
+            } catch {
+              // keep as string
+            }
+          }
+          this.#dispatch(key, data);
         },
         onComplete: () => {
           if (this.debug) {
@@ -294,21 +339,10 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         },
       });
 
-      for await (const record of stream) {
+      // Drain to keep the pipeThrough flowing. Records were already
+      // dispatched in `onPart`, so the body here is a no-op.
+      for await (const _record of stream) {
         if (signal.aborted) break;
-
-        let data: unknown;
-        if (typeof record === "string") {
-          try {
-            data = JSON.parse(record);
-          } catch {
-            data = record;
-          }
-        } else {
-          data = record;
-        }
-
-        this.#dispatch(key, data);
       }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") return;
