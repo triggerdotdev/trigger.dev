@@ -587,7 +587,16 @@ async function openHandoverSession(opts: {
         generateMessageId: () => turnMessageId,
       })
     );
-    void handoverWhenDone(result).finally(() => clearTimeout(idleTimer));
+    // `handoverWhenDone` re-throws on dispatch failure for visibility,
+    // but the recovery (resolveDecision + handoverSkip) has already run
+    // by then and `stitchHandoverStream` closes the response cleanly via
+    // `decisionPromise`. The user-facing path is fine; we only suppress
+    // the unhandled-rejection so processes started with
+    // `--unhandled-rejections=throw` don't crash on what is effectively
+    // a logged failure with no further action to take.
+    void handoverWhenDone(result)
+      .finally(() => clearTimeout(idleTimer))
+      .catch(() => {});
 
     const stitched = stitchHandoverStream(teed);
 
