@@ -1272,6 +1272,56 @@ const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions<UIMessag
   "chat.uiMessageStreamOptions.perTurn"
 );
 
+/**
+ * Run-scoped `toolCallId → assistant messageId` map. Records the head
+ * assistant id whenever the accumulator absorbs an assistant message
+ * containing tool parts. Used as a fallback in the id-merge for
+ * incoming tool-answer messages — if the AI SDK regenerates the
+ * assistant id on a HITL `addToolOutput` resume, we look up the
+ * original head id by `toolCallId` and rewrite it before the merge.
+ *
+ * Customer-side workaround for the same case is documented in Arena
+ * AI's chat-agent task; lifting it into the SDK so customers don't
+ * have to. See TRI-9137.
+ * @internal
+ */
+const chatToolCallToMessageIdKey = locals.create<Map<string, string>>(
+  "chat.toolCallToMessageId"
+);
+
+function recordToolCallIdsFromMessage(message: { id?: string; role?: string; parts?: unknown[] } | undefined) {
+  if (!message || message.role !== "assistant" || !message.id) return;
+  let map = locals.get(chatToolCallToMessageIdKey);
+  if (!map) {
+    map = new Map();
+    locals.set(chatToolCallToMessageIdKey, map);
+  }
+  for (const part of message.parts ?? []) {
+    if (typeof part !== "object" || part == null) continue;
+    const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
+    if (typeof toolCallId === "string" && toolCallId.length > 0) {
+      map.set(toolCallId, message.id);
+    }
+  }
+}
+
+function rewriteIncomingIdViaToolCallMap<T extends { id?: string; parts?: unknown[] }>(
+  incoming: T
+): T {
+  const map = locals.get(chatToolCallToMessageIdKey);
+  if (!map || map.size === 0) return incoming;
+  for (const part of incoming.parts ?? []) {
+    if (typeof part !== "object" || part == null) continue;
+    const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    const headId = map.get(toolCallId);
+    if (headId && headId !== incoming.id) {
+      return { ...incoming, id: headId };
+    }
+  }
+  return incoming;
+}
+
 // ---------------------------------------------------------------------------
 // Token usage helpers (internal)
 // ---------------------------------------------------------------------------
@@ -4539,11 +4589,28 @@ function chatAgent<
                       // IDs match because we always pass generateMessageId + originalMessages
                       // to toUIMessageStream, so the backend's start chunk carries the same
                       // messageId that the frontend uses.
+                      //
+                      // Fallback for HITL `addToolOutput` continuations where the AI SDK
+                      // regenerates the assistant id (Arena AI report, TRI-9137): if the
+                      // id-match fails, look up the head messageId via toolCallId and
+                      // rewrite the incoming id before retrying. The mapping is
+                      // populated whenever an assistant containing tool parts lands in
+                      // the accumulator.
                       let replaced = false;
-                      for (const incoming of cleanedUIMessages) {
-                        const idx = accumulatedUIMessages.findIndex(
+                      for (const raw of cleanedUIMessages) {
+                        let incoming = raw;
+                        let idx = accumulatedUIMessages.findIndex(
                           (m) => m.id === incoming.id
                         );
+                        if (idx === -1) {
+                          const rewritten = rewriteIncomingIdViaToolCallMap(incoming);
+                          if (rewritten.id !== incoming.id) {
+                            incoming = rewritten as typeof raw;
+                            idx = accumulatedUIMessages.findIndex(
+                              (m) => m.id === incoming.id
+                            );
+                          }
+                        }
                         if (idx !== -1) {
                           accumulatedUIMessages[idx] = incoming as TUIMessage;
                           replaced = true;
@@ -4551,6 +4618,7 @@ function chatAgent<
                           accumulatedUIMessages.push(incoming as TUIMessage);
                           turnNewUIMessages.push(incoming as TUIMessage);
                         }
+                        recordToolCallIdsFromMessage(incoming);
                       }
                       if (replaced) {
                         // Reconvert all model messages since a replacement changes the structure
@@ -5006,6 +5074,12 @@ function chatAgent<
                     }
                     turnNewUIMessages.push(capturedResponseMessage);
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    // Record toolCallId → head messageId so a HITL
+                    // continuation next turn can recover the head id
+                    // even if the AI SDK regenerates it. See
+                    // `chatToolCallToMessageIdKey` for the full
+                    // rationale (TRI-9137).
+                    recordToolCallIdsFromMessage(capturedResponseMessage);
                     try {
                       const responseModelMessages = await toModelMessages([
                         stripProviderMetadata(capturedResponseMessage),

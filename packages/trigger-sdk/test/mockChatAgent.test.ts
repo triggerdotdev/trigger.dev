@@ -178,6 +178,135 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("merges HITL tool answer onto head assistant when AI SDK regenerates the id", async () => {
+    // Regression for TRI-9137: customers (Arena AI) report that the AI SDK
+    // intermittently mints a fresh id on `addToolOutput` resume, breaking
+    // id-based dedup. Our SDK records `toolCallId → head messageId` whenever
+    // an assistant with tool parts lands in the accumulator and uses that
+    // map as a fallback in the merge so a fresh-id incoming still attaches
+    // to the right head.
+    const { z } = await import("zod");
+    const { tool } = await import("ai");
+
+    const askUserTool = tool({
+      description: "Ask the user a question.",
+      inputSchema: z.object({ question: z.string() }),
+      // No execute — HITL round-trip via addToolOutput.
+    });
+
+    const HEAD_TOOL_CALL_ID = "tc_regression_9137";
+
+    // Turn 1: model emits a tool-call for askUser. No text, no finish-reason
+    // logic beyond `tool-calls`. Agent's response will carry a tool-input-
+    // available part with HEAD_TOOL_CALL_ID.
+    const turn1Stream = simulateReadableStream({
+      chunks: [
+        { type: "tool-input-start", id: HEAD_TOOL_CALL_ID, toolName: "askUser" },
+        {
+          type: "tool-input-delta",
+          id: HEAD_TOOL_CALL_ID,
+          delta: JSON.stringify({ question: "what color?" }),
+        },
+        { type: "tool-input-end", id: HEAD_TOOL_CALL_ID },
+        {
+          type: "tool-call",
+          toolCallId: HEAD_TOOL_CALL_ID,
+          toolName: "askUser",
+          input: JSON.stringify({ question: "what color?" }),
+        },
+        {
+          type: "finish",
+          finishReason: { unified: "tool-calls", raw: "tool_calls" },
+          usage: {
+            inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+            outputTokens: { total: 10, text: 0, reasoning: undefined },
+          },
+        },
+      ] as LanguageModelV3StreamPart[],
+    });
+
+    // Turn 2: model produces a final text response — exercises the post-HITL
+    // continuation streamText after the tool answer is merged in.
+    const turn2Stream = textStream("blue is great");
+
+    let callIdx = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: callIdx++ === 0 ? turn1Stream : turn2Stream }),
+    });
+
+    const turnsSeen: { turn: number; uiMessages: any[] }[] = [];
+
+    const agent = chat.agent({
+      id: "mockChatAgent.hitl-id-regen",
+      tools: { askUser: askUserTool },
+      onTurnComplete: async ({ turn, uiMessages }) => {
+        turnsSeen.push({
+          turn,
+          uiMessages: uiMessages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            toolStates: (m.parts ?? [])
+              .filter((p: any) => typeof p?.toolCallId === "string")
+              .map((p: any) => ({ toolCallId: p.toolCallId, state: p.state })),
+          })),
+        });
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model, messages, tools: { askUser: askUserTool }, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-hitl-id-regen" });
+    try {
+      // Turn 1: user message → agent emits tool-input-available for askUser
+      await harness.sendMessage(userMessage("hi"));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Capture the head assistant id the agent produced.
+      const turn1 = turnsSeen.at(-1);
+      const headAssistant = turn1?.uiMessages.find(
+        (m) => m.role === "assistant" && m.toolStates.length > 0
+      );
+      expect(headAssistant?.id).toBeTruthy();
+      const HEAD_ID = headAssistant!.id as string;
+
+      // Turn 2: simulate AI SDK regenerating the assistant id on
+      // addToolOutput resume — fresh id, but the same toolCallId in
+      // tool-output-available state.
+      const FRESH_ID = "regenerated-by-ai-sdk-" + Math.random().toString(36).slice(2);
+      const toolAnswerMessage = {
+        id: FRESH_ID,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-askUser",
+            toolCallId: HEAD_TOOL_CALL_ID,
+            state: "output-available" as const,
+            input: { question: "what color?" },
+            output: { color: "blue" },
+          },
+        ],
+      };
+      await harness.sendMessage(toolAnswerMessage as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      // The merge must rewrite FRESH_ID back to HEAD_ID via the toolCallId
+      // map, attaching the tool answer to the existing head — no duplicate.
+      const turn2 = turnsSeen.at(-1);
+      expect(turn2).toBeTruthy();
+      const assistantsWithToolCall = turn2!.uiMessages.filter(
+        (m) =>
+          m.role === "assistant" &&
+          m.toolStates.some((t: any) => t.toolCallId === HEAD_TOOL_CALL_ID)
+      );
+      expect(assistantsWithToolCall).toHaveLength(1);
+      expect(assistantsWithToolCall[0]!.id).toBe(HEAD_ID);
+      expect(turn2!.uiMessages.find((m) => m.id === FRESH_ID)).toBeUndefined();
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("routes custom actions through actionSchema + onAction", async () => {
     const model = new MockLanguageModelV3({
       doStream: async () => ({ stream: textStream("ok") }),
