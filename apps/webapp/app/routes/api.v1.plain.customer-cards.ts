@@ -140,7 +140,7 @@ export async function action({ request }: ActionFunctionArgs) {
       ? { email: customer.email }
       : null;
 
-    const user = where ? await prisma.user.findUnique({ where, include: userInclude }) : null;
+    const user = where ? await prisma.user.findFirst({ where, include: userInclude }) : null;
 
     // If user not found, return empty cards
     if (!user) {
