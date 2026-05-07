@@ -37,11 +37,11 @@ export const llmPricingRegistry = singleton("llmPricingRegistry", () => {
     });
   }, reloadInterval);
 
-  // Pub/sub reload is opt-in per process. Without it, the registry stays
-  // accurate via the existing 5-minute interval. In multi-service deployments
-  // we only want the OTel-ingesting services subscribed — the dashboard and
-  // worker services don't need real-time pricing freshness and shouldn't pile
-  // onto each publish with a full-table reload.
+  // Pub/sub reload is opt-in per process (default off). Without it, the
+  // registry stays accurate via the existing 5-minute interval. Enable on
+  // the OTel-ingesting services where pricing freshness directly affects
+  // span cost enrichment; dashboard and worker services don't need it and
+  // shouldn't pile onto each publish with a full-table reload.
   if (env.LLM_PRICING_RELOAD_PUBSUB_ENABLED) {
     const subscriber = createRedisClient("llm-pricing:subscriber", {
       keyPrefix: "llm-pricing:subscriber:",
