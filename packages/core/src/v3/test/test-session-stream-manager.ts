@@ -138,6 +138,15 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.seqNums.set(keyFor(sessionId, io), seqNum);
   }
 
+  setMinTimestamp(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _minTimestamp: number | undefined
+  ): void {
+    // No filter applied in tests; the test harness drives records directly
+    // and the chat.agent retry path is exercised separately.
+  }
+
   shiftBuffer(sessionId: string, io: SessionChannelIO): boolean {
     const key = keyFor(sessionId, io);
     const buffered = this.buffer.get(key);
