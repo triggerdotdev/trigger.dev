@@ -4,6 +4,50 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 7, 2026" description="0.0.0-chat-prerelease-20260507131256" tags={["SDK"]}>
+
+## `chat.history` read primitives for HITL flows
+
+Customers building human-in-the-loop tools were re-implementing the same accumulator-walking logic to figure out which tool calls were pending, which were resolved, and which results in an incoming wire message were actually new. Lifted into the SDK as five new methods on `chat.history`:
+
+| Method | Description |
+|---|---|
+| `chat.history.getPendingToolCalls()` | Tool calls on the most recent assistant message in `input-available` state — gates fresh user turns during HITL. |
+| `chat.history.getResolvedToolCalls()` | All tool calls in the chain in `output-available` or `output-error` state. |
+| `chat.history.extractNewToolResults(message)` | Tool results in `message` whose `toolCallId` is not already resolved on the chain. Most useful in `hydrateMessages` against an incoming wire message, before the runtime merges it. |
+| `chat.history.getChain()` | Same as `chat.history.all()` — alias that reads better alongside parent-aware APIs. |
+| `chat.history.findMessage(messageId)` | Direct lookup; `undefined` if absent. |
+
+```ts
+// Refuse a regenerate while a tool call is awaiting an answer
+onAction: async ({ action }) => {
+  if (action.type === "regenerate") {
+    if (chat.history.getPendingToolCalls().length > 0) return;
+    chat.history.slice(0, -1);
+  }
+},
+
+// Side-effect once per net-new tool result on incoming wire messages
+hydrateMessages: async ({ incomingMessages }) => {
+  for (const msg of incomingMessages) {
+    for (const r of chat.history.extractNewToolResults(msg)) {
+      await auditLog.record({ id: r.toolCallId, output: r.output, errorText: r.errorText });
+    }
+  }
+  return incomingMessages;
+},
+```
+
+See [`chat.history`](/ai-chat/backend#chat-history) and [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop).
+
+## Fix: HITL `addToolOutput` resume preserves the assistant message id
+
+In some HITL flows the AI SDK regenerated the assistant message id when the user's `addToolOutput` answer round-tripped back to the agent. The fresh id slipped past the runtime's id-based merge, leaving the resolved tool answer attached to a sibling assistant message instead of the head, which broke downstream dedup and rendered the tool answer twice.
+
+The runtime now records `toolCallId → head messageId` whenever an assistant with tool parts lands in the accumulator and rewrites the incoming id back via that map before the merge. Customers who had a content-match workaround for this can drop it.
+
+</Update>
+
 <Update label="May 6, 2026" description="0.0.0-chat-prerelease-20260506093419" tags={["SDK", "Breaking"]}>
 
 ## `chat.agent` actions are no longer turns
