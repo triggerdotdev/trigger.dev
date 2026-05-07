@@ -53,6 +53,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
@@ -79,20 +80,16 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { useCanViewLogsPage } from "~/hooks/useCanViewLogsPage";
-import { findProjectBySlug } from "~/models/project.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
-import { AgentView, type AgentViewAuth } from "~/components/runs/v3/agent/AgentView";
-import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { mintRunToken } from "~/services/realtime/mintRunToken.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
+  v3SessionPath,
   v3DeploymentVersionPath,
   v3LogsPath,
   v3RunDownloadLogsPath,
@@ -142,39 +139,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       );
     }
 
-    // For agent runs, mint a read-only run-scoped token so the Agent tab
-    // can subscribe to the run's backing Session from the browser. We
-    // also forward the initial user messages + the session identifier
-    // extracted from the task payload — the AgentView uses the session
-    // to subscribe to `.in` / `.out` (replaces the old run-scoped
-    // chat-messages + chat streams). Runs without an identifiable
-    // session (misformed payload, legacy pre-chat-agent runs) get
-    // `agentSession: null`; the AgentView renders a loading spinner
-    // without subscribing.
-    let agentView: AgentViewAuth | null = null;
-    if (result.type === "run" && result.run.isAgentRun && result.run.agentSession) {
-      const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-      const environment = project
-        ? await findEnvironmentBySlug(project.id, envParam, userId)
-        : null;
-      if (environment) {
-        const publicAccessToken = await mintRunToken(environment, result.run.friendlyId);
-        agentView = {
-          publicAccessToken,
-          apiOrigin: env.API_ORIGIN || env.LOGIN_ORIGIN,
-          sessionId: result.run.agentSession,
-          initialMessages: (result.run.agentInitialMessages ?? []) as AgentViewAuth["initialMessages"],
-        };
-      }
-    }
-
     // Reconstruct the discriminated union explicitly. Spreading
-    // `{ ...result, agentView }` collapses the union and loses the
+    // `{ ...result }` collapses the union and loses the
     // `type === "run" | "span"` discriminant downstream in `SpanView`.
     if (result.type === "run") {
-      return typedjson({ type: "run" as const, run: result.run, agentView });
+      return typedjson({ type: "run" as const, run: result.run });
     }
-    return typedjson({ type: "span" as const, span: result.span, agentView });
+    return typedjson({ type: "span" as const, span: result.span });
   } catch (error) {
     logger.error("Error loading span", {
       projectParam,
@@ -264,7 +235,6 @@ export function SpanView({
       return (
         <RunBody
           run={fetcher.data.run}
-          agentView={fetcher.data.agentView}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -399,13 +369,11 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 
 function RunBody({
   run,
-  agentView,
   runParam,
   spanId,
   closePanel,
 }: {
   run: SpanRun;
-  agentView: AgentViewAuth | null;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -458,18 +426,6 @@ function RunBody({
           >
             Overview
           </TabButton>
-          {run.isAgentRun && (
-            <TabButton
-              isActive={tab === "agent"}
-              layoutId="span-run"
-              onClick={() => {
-                replace({ tab: "agent" });
-              }}
-              shortcut={{ key: "a" }}
-            >
-              Agent
-            </TabButton>
-          )}
           <TabButton
             isActive={tab === "detail"}
             layoutId="span-run"
@@ -505,12 +461,7 @@ function RunBody({
       </div>
       <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div>
-          {tab === "agent" && run.isAgentRun && agentView ? (
-            <AgentView
-              run={{ friendlyId: run.friendlyId, taskIdentifier: run.taskIdentifier }}
-              agentView={agentView}
-            />
-          ) : tab === "detail" ? (
+          {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
               <Property.Table>
                 <Property.Item>
@@ -683,6 +634,32 @@ function RunBody({
                           </TextLink>
                         }
                         content={`View batches filtered by ${run.batch.friendlyId}`}
+                        disableHoverableContent
+                      />
+                    </Property.Value>
+                  </Property.Item>
+                )}
+                {run.session && (
+                  <Property.Item>
+                    <Property.Label>Session</Property.Label>
+                    <Property.Value>
+                      <SimpleTooltip
+                        button={
+                          <TextLink
+                            to={v3SessionPath(organization, project, environment, {
+                              friendlyId: run.session.friendlyId,
+                            })}
+                            className="group flex flex-wrap items-center gap-x-2 gap-y-0"
+                          >
+                            <CopyableText
+                              value={run.session.externalId ?? run.session.friendlyId}
+                              copyValue={run.session.externalId ?? run.session.friendlyId}
+                              asChild
+                            />
+                            <SessionStatusCombo status={run.session.status} />
+                          </TextLink>
+                        }
+                        content={`Jump to session (${run.session.reason})`}
                         disableHoverableContent
                       />
                     </Property.Value>

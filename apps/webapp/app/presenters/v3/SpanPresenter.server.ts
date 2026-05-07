@@ -1,6 +1,5 @@
 import {
   type MachinePreset,
-  parsePacket,
   prettyPrintPacket,
   RunAnnotations,
   SemanticInternalAttributes,
@@ -10,20 +9,6 @@ import {
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
 
-/**
- * Minimal structural type for the user messages we extract from an agent
- * run's task payload. We deliberately avoid importing AI SDK's `UIMessage`
- * here because the webapp's pinned `ai@4` declares a wider role union
- * (`'data' | ...`) than `@ai-sdk/react@3`'s `UIMessage` accepts. The data
- * crosses a JSON boundary anyway (typedjson) — keeping this loose lets the
- * client-side type be the source of truth.
- */
-type AgentInitialMessage = {
-  id: string;
-  role: "user" | "assistant" | "system";
-  parts?: unknown[];
-  [key: string]: unknown;
-};
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
   extractIdempotencyKeyScope,
@@ -260,46 +245,6 @@ export class SpanPresenter extends BasePresenter {
     const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
     const isAgentRun = taskKind === "AGENT";
 
-    // For agent runs, extract the initial user messages + the backing
-    // Session handle from the task payload (from the original
-    // `triggerTask({ payload: { messages, sessionId, chatId, ... } })`
-    // call). When the run was started with `trigger: "preload"`,
-    // `messages` is empty — the first user message arrives later over
-    // the session `.in` channel and is merged in by the AgentView.
-    //
-    // `agentSession` is the identifier the dashboard uses to address the
-    // backing Session when subscribing to `.out` / `.in`. Prefer the
-    // explicit `sessionId` threaded by `TriggerChatTransport` /
-    // `chat.createTriggerAction`; fall back to `chatId` for pre-migration
-    // agent runs (the session resource route accepts either, matching
-    // `resolveSessionByIdOrExternalId`).
-    let agentInitialMessages: AgentInitialMessage[] = [];
-    let agentSession: string | null = null;
-    if (isAgentRun && run.payload && run.payloadType !== "application/store") {
-      try {
-        const parsed = await parsePacket({
-          data: typeof run.payload === "string" ? run.payload : JSON.stringify(run.payload),
-          dataType: run.payloadType ?? "application/json",
-        });
-        if (parsed && typeof parsed === "object") {
-          if (Array.isArray((parsed as any).messages)) {
-            agentInitialMessages = (parsed as any).messages as AgentInitialMessage[];
-          }
-          const sessionId = (parsed as any).sessionId;
-          const chatId = (parsed as any).chatId;
-          if (typeof sessionId === "string" && sessionId.length > 0) {
-            agentSession = sessionId;
-          } else if (typeof chatId === "string" && chatId.length > 0) {
-            agentSession = chatId;
-          }
-        }
-      } catch {
-        // Fall back to empty initial messages + null session — the
-        // AgentView will show a loading spinner and surface any stream
-        // subscription errors to the console.
-      }
-    }
-
     let region: { name: string; location: string | null } | null = null;
 
     if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
@@ -315,6 +260,48 @@ export class SpanPresenter extends BasePresenter {
 
       region = workerGroup ?? null;
     }
+
+    // Only AGENT-tagged runs (chat.agent and friends) can be session-bound,
+    // so skip the SessionRun lookup for the much larger set of standard runs.
+    // Lookup is by the unique `runId` index, but the cheapest query is the
+    // one we don't run.
+    const sessionRun = isAgentRun
+      ? await this._replica.sessionRun.findFirst({
+          where: { runId: run.id },
+          select: {
+            reason: true,
+            triggeredAt: true,
+            session: {
+              select: {
+                friendlyId: true,
+                externalId: true,
+                type: true,
+                taskIdentifier: true,
+                closedAt: true,
+                expiresAt: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    const session = sessionRun
+      ? {
+          friendlyId: sessionRun.session.friendlyId,
+          externalId: sessionRun.session.externalId,
+          type: sessionRun.session.type,
+          taskIdentifier: sessionRun.session.taskIdentifier,
+          status:
+            sessionRun.session.closedAt != null
+              ? ("CLOSED" as const)
+              : sessionRun.session.expiresAt != null &&
+                sessionRun.session.expiresAt.getTime() < Date.now()
+              ? ("EXPIRED" as const)
+              : ("ACTIVE" as const),
+          reason: sessionRun.reason,
+          triggeredAt: sessionRun.triggeredAt,
+        }
+      : undefined;
 
     return {
       id: run.id,
@@ -358,8 +345,6 @@ export class SpanPresenter extends BasePresenter {
       isRunning: RUNNING_STATUSES.includes(run.status),
       isError: isFailedRunStatus(run.status),
       isAgentRun,
-      agentInitialMessages,
-      agentSession,
       payload,
       payloadType: run.payloadType,
       output,
@@ -378,6 +363,7 @@ export class SpanPresenter extends BasePresenter {
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
+      session,
       engine: run.engine,
       region,
       workerQueue: run.workerQueue,

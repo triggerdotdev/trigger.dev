@@ -507,6 +507,23 @@ export function v3BatchesPath(
   return `${v3EnvironmentPath(organization, project, environment)}/batches`;
 }
 
+export function v3SessionsPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/sessions`;
+}
+
+export function v3SessionPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  session: { friendlyId: string }
+) {
+  return `${v3SessionsPath(organization, project, environment)}/${session.friendlyId}`;
+}
+
 export function v3BatchPath(
   organization: OrgForPath,
   project: ProjectForPath,

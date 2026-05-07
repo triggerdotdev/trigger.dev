@@ -29,11 +29,6 @@ export type AgentViewAuth = {
   initialMessages: UIMessage[];
 };
 
-type AgentViewRun = {
-  friendlyId: string;
-  taskIdentifier: string;
-};
-
 /**
  * Max state-update interval while assistant chunks are streaming. Matches
  * the `experimental_throttle: 100` we previously passed to `useChat`.
@@ -51,9 +46,9 @@ const STATE_FLUSH_THROTTLE_MS = 100;
 const INITIAL_PAYLOAD_TIMESTAMP = 0;
 
 /**
- * Renders an agent run's chat conversation as it unfolds.
+ * Renders a Session's chat conversation as it unfolds.
  *
- * Subscribes to both channels of the run's backing {@link Session}:
+ * Subscribes to both channels of the {@link Session}:
  * - **`.out`** delivers assistant `UIMessageChunk`s (text deltas, tool
  *   calls, reasoning, etc.) produced by the agent's
  *   `chatStream.writer(...)` calls — objects, already parsed by the S2
@@ -74,19 +69,12 @@ const INITIAL_PAYLOAD_TIMESTAMP = 0;
  * Intended to be mounted inside a scrollable container — the component
  * does not own its own scrollbar.
  */
-export function AgentView({
-  run,
-  agentView,
-}: {
-  run: AgentViewRun;
-  agentView: AgentViewAuth;
-}) {
+export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const messages = useAgentRunMessages({
-    runFriendlyId: run.friendlyId,
+  const messages = useAgentSessionMessages({
     sessionId: agentView.sessionId,
     apiOrigin: agentView.apiOrigin,
     orgSlug: organization.slug,
@@ -120,8 +108,8 @@ export function AgentView({
 }
 
 // ---------------------------------------------------------------------------
-// useAgentRunMessages — reads both realtime streams for a run and maintains
-// a chronologically ordered, merged message list.
+// useAgentSessionMessages — reads both realtime streams for a session and
+// maintains a chronologically ordered, merged message list.
 // ---------------------------------------------------------------------------
 
 /**
@@ -222,8 +210,7 @@ function createOrchestrationState(): MessageOrchestrationState {
   };
 }
 
-function useAgentRunMessages({
-  runFriendlyId,
+function useAgentSessionMessages({
   sessionId,
   apiOrigin,
   orgSlug,
@@ -231,7 +218,6 @@ function useAgentRunMessages({
   envSlug,
   initialMessages,
 }: {
-  runFriendlyId: string;
   sessionId: string;
   apiOrigin: string;
   orgSlug: string;
@@ -287,9 +273,14 @@ function useAgentRunMessages({
     const abort = new AbortController();
 
     const encodedSession = encodeURIComponent(sessionId);
+    // Always use the page's own origin to avoid CORS preflight failures
+    // when the configured `apiOrigin` (e.g. `localhost`) differs from the
+    // origin the dashboard was loaded from (e.g. `127.0.0.1`). The dashboard
+    // resource route is same-origin by construction.
+    const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
     const sessionBase =
-      `${apiOrigin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
-      `/runs/${runFriendlyId}/realtime/v1/sessions/${encodedSession}`;
+      `${origin}/resources/orgs/${orgSlug}/projects/${projectSlug}/env/${envSlug}` +
+      `/sessions/${encodedSession}/realtime/v1`;
 
     const outputUrl = `${sessionBase}/out`;
     const inputUrl = `${sessionBase}/in`;
@@ -463,7 +454,7 @@ function useAgentRunMessages({
         pendingTimerRef.current = null;
       }
     };
-  }, [runFriendlyId, sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
+  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
   return useMemo(() => {
     const timestamps = timestampsRef.current;
