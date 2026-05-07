@@ -44,6 +44,8 @@ import {
   convertToModelMessages,
   dynamicTool,
   generateId as generateMessageId,
+  getToolName,
+  isToolUIPart,
   jsonSchema,
   JSONSchema7,
   Schema,
@@ -1411,18 +1413,195 @@ function getChatHistoryState(): UIMessage[] {
 }
 
 /**
- * Imperative API for modifying the accumulated message history.
+ * A tool call surfaced by `chat.history.getPendingToolCalls()` /
+ * `getResolvedToolCalls()`. Identifies the call by its `toolCallId` plus
+ * the `messageId` of the assistant message that hosts it, so callers can
+ * locate the part precisely without re-walking the chain.
+ */
+export type ChatToolCallRef = {
+  toolCallId: string;
+  toolName: string;
+  messageId: string;
+};
+
+/**
+ * A new tool result surfaced by `chat.history.extractNewToolResults()`.
+ * `errorText` is set iff the part is in `output-error` state; otherwise
+ * `output` carries the resolved value.
+ */
+export type ChatNewToolResult = {
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+  errorText?: string;
+};
+
+/**
+ * Tool parts that are "done" — either succeeded with a value or failed
+ * with an error. Excludes pending (`input-streaming`/`input-available`)
+ * and approval (`approval-requested`/`approval-responded`) states.
+ * @internal
+ */
+function isResolvedToolState(state: unknown): state is "output-available" | "output-error" {
+  return state === "output-available" || state === "output-error";
+}
+
+/** @internal */
+function isPendingToolState(state: unknown): state is "input-available" {
+  return state === "input-available";
+}
+
+/**
+ * Walk an assistant message and yield each tool part with its callId,
+ * name, and state. Skips non-assistant messages and non-tool parts.
+ * @internal
+ */
+function* iterateToolParts(
+  message: UIMessage
+): Generator<{ part: any; toolCallId: string; toolName: string; state: unknown }> {
+  if (message.role !== "assistant") return;
+  for (const part of (message.parts ?? []) as any[]) {
+    if (!isToolUIPart(part)) continue;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    yield {
+      part,
+      toolCallId,
+      toolName: getToolName(part),
+      state: part.state,
+    };
+  }
+}
+
+/**
+ * Tool parts on the *leaf* assistant message that are still waiting on
+ * an answer (`input-available` state). Used to gate fresh user turns
+ * during HITL flows.
+ * @internal
+ */
+function getPendingToolCallsFromHistory(messages: UIMessage[]): ChatToolCallRef[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]!;
+    if (msg.role !== "assistant") continue;
+    const pending: ChatToolCallRef[] = [];
+    for (const { toolCallId, toolName, state } of iterateToolParts(msg)) {
+      if (isPendingToolState(state)) {
+        pending.push({ toolCallId, toolName, messageId: msg.id });
+      }
+    }
+    return pending;
+  }
+  return [];
+}
+
+/**
+ * All tool parts across the chain that have already produced an output
+ * (`output-available` or `output-error`). Used to dedup re-saves when
+ * the AI SDK resends an assistant with progressively more answered
+ * parts.
+ * @internal
+ */
+function getResolvedToolCallsFromHistory(messages: UIMessage[]): ChatToolCallRef[] {
+  const out: ChatToolCallRef[] = [];
+  for (const msg of messages) {
+    for (const { toolCallId, toolName, state } of iterateToolParts(msg)) {
+      if (isResolvedToolState(state)) {
+        out.push({ toolCallId, toolName, messageId: msg.id });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Pure helper: tool parts in `message` that have a fresh result not
+ * already represented by the resolved toolCallIds in `messages`. The
+ * `errorText` field is present only for `output-error` parts.
+ * @internal
+ */
+function extractNewToolResultsFromHistory(
+  message: UIMessage,
+  messages: UIMessage[]
+): ChatNewToolResult[] {
+  const resolved = new Set(
+    getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId)
+  );
+  const out: ChatNewToolResult[] = [];
+  for (const { part, toolCallId, toolName, state } of iterateToolParts(message)) {
+    if (!isResolvedToolState(state)) continue;
+    if (resolved.has(toolCallId)) continue;
+    if (state === "output-error") {
+      out.push({ toolCallId, toolName, output: undefined, errorText: part.errorText });
+    } else {
+      out.push({ toolCallId, toolName, output: part.output });
+    }
+  }
+  return out;
+}
+
+/**
+ * Imperative API for reading and modifying the accumulated message history.
  *
  * Mutations use the same deferred override mechanism as `chat.setMessages()`:
- * they are applied at lifecycle checkpoints (after hooks return).
+ * they are applied at lifecycle checkpoints (after hooks return). Reads are
+ * synchronous against the current accumulator state.
  *
  * Can be called from `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`,
- * `run()`, or AI SDK tools.
+ * `run()`, `onAction`, or AI SDK tools.
  */
 const chatHistory = {
   /** Read the current accumulated UI messages (copy). */
   all(): UIMessage[] {
     return [...getChatHistoryState()];
+  },
+
+  /**
+   * Read the current chain as an ordered `UIMessage[]`. Alias for `all()` —
+   * use this when working alongside parent-aware APIs (TRI-9120) where
+   * "chain" disambiguates from "graph".
+   */
+  getChain(): UIMessage[] {
+    return [...getChatHistoryState()];
+  },
+
+  /**
+   * Find a message by id. Returns `undefined` if no message with that id
+   * is present in the current chain.
+   */
+  findMessage(messageId: string): UIMessage | undefined {
+    return getChatHistoryState().find((m) => m.id === messageId);
+  },
+
+  /**
+   * Tool calls on the leaf assistant message still waiting on an answer
+   * (`input-available` state). Use this to gate fresh user turns during
+   * HITL flows: if `getPendingToolCalls().length > 0`, an `addToolOutput`
+   * is expected before any new user message.
+   *
+   * Returns `[]` if there is no assistant message yet, or if the leaf
+   * assistant has no pending tool calls.
+   */
+  getPendingToolCalls(): ChatToolCallRef[] {
+    return getPendingToolCallsFromHistory(getChatHistoryState());
+  },
+
+  /**
+   * Tool calls across the chain with a final result (`output-available`
+   * or `output-error`). Use this to dedup re-saves when the AI SDK
+   * resends an assistant message with progressively more answered parts.
+   */
+  getResolvedToolCalls(): ChatToolCallRef[] {
+    return getResolvedToolCallsFromHistory(getChatHistoryState());
+  },
+
+  /**
+   * Pure helper: returns the tool parts in `message` whose results are
+   * not already represented in the current chain. Use this when
+   * persisting tool results to your own store: each call surfaces only
+   * the *new* answers, so writes stay idempotent across re-streams.
+   */
+  extractNewToolResults(message: UIMessage): ChatNewToolResult[] {
+    return extractNewToolResultsFromHistory(message, getChatHistoryState());
   },
 
   /** Replace all accumulated messages. Same as `chat.setMessages()`. */
