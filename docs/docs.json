@@ -130,7 +130,8 @@
                       "ai-chat/patterns/code-sandbox",
                       "ai-chat/patterns/human-in-the-loop",
                       "ai-chat/patterns/large-payloads",
-                      "ai-chat/patterns/skills"
+                      "ai-chat/patterns/skills",
+                      "ai-chat/patterns/oom-resilience"
                     ]
                   },
                   "ai-chat/client-protocol",
