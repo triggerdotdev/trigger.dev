@@ -260,6 +260,15 @@ function PlaygroundChat() {
   // Resource route prefix — all realtime traffic goes through session-authed routes
   const playgroundBaseURL = `${apiOrigin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
 
+  // The transport is constructed once (guarded ref below); reading
+  // `startSession` directly there would freeze its closure to the
+  // first render's sidebar values, so subsequent edits to tags /
+  // machine / maxAttempts / maxDuration / version / region would be
+  // silently ignored on the first send. Mirror the `clientDataJsonRef`
+  // pattern so the transport always calls the latest `startSession`.
+  const startSessionRef = useRef(startSession);
+  startSessionRef.current = startSession;
+
   // Create TriggerChatTransport directly (not via useTriggerChatTransport hook
   // to avoid React version mismatch between SDK and webapp)
   const transportRef = useRef<TriggerChatTransport | null>(null);
@@ -274,8 +283,8 @@ function PlaygroundChat() {
       // session-PAT-authed request. Wiring the same call to both
       // keeps the Preload button working without a separate refresh
       // route.
-      startSession: async () => ({ publicAccessToken: await startSession() }),
-      accessToken: () => startSession(),
+      startSession: async () => ({ publicAccessToken: await startSessionRef.current() }),
+      accessToken: () => startSessionRef.current(),
       baseURL: playgroundBaseURL,
       clientData: JSON.parse(clientDataJson || "{}") as Record<string, unknown>,
       ...(activeConversation?.publicAccessToken
