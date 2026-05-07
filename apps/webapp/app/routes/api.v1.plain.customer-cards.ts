@@ -398,7 +398,7 @@ export async function action({ request }: ActionFunctionArgs) {
                   asideContent: [
                     uiComponent.linkButton({
                       label: "View",
-                      url: `${env.APP_ORIGIN}/orgs/${project.orgSlug}/projects/${project.slug}`,
+                      url: `${env.APP_ORIGIN}/@/orgs/${project.orgSlug}/projects/${project.slug}`,
                     }),
                   ],
                 }),
