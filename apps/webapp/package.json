@@ -199,7 +199,7 @@
     "react-resizable-panels": "^2.0.9",
     "react-stately": "^3.29.1",
     "react-use": "17.5.1",
-    "react-window-splitter": "^0.4.1",
+    "react-window-splitter": "0.4.1",
     "recharts": "^2.15.2",
     "regression": "^2.0.1",
     "remix-auth": "^3.6.0",

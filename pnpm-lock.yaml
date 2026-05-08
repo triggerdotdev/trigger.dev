@@ -756,7 +756,7 @@ importers:
         specifier: 17.5.1
         version: 17.5.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       react-window-splitter:
-        specifier: ^0.4.1
+        specifier: 0.4.1
         version: 0.4.1(@types/react@18.2.69)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       recharts:
         specifier: ^2.15.2
