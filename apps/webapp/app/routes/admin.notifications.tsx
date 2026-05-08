@@ -251,8 +251,13 @@ async function handleArchiveAction(formData: FormData) {
     return typedjson({ error: "Missing notificationId" }, { status: 400 });
   }
 
-  await archivePlatformNotification(notificationId);
-  return typedjson({ success: true });
+  try {
+    await archivePlatformNotification(notificationId);
+    return typedjson({ success: true });
+  } catch (error) {
+    logger.error("Failed to archive platform notification", { error });
+    return typedjson({ error: "Failed to archive notification" }, { status: 500 });
+  }
 }
 
 async function handleDeleteAction(formData: FormData) {
@@ -261,8 +266,13 @@ async function handleDeleteAction(formData: FormData) {
     return typedjson({ error: "Missing notificationId" }, { status: 400 });
   }
 
-  await deletePlatformNotification(notificationId);
-  return typedjson({ success: true });
+  try {
+    await deletePlatformNotification(notificationId);
+    return typedjson({ success: true });
+  } catch (error) {
+    logger.error("Failed to delete platform notification", { error });
+    return typedjson({ error: "Failed to delete notification" }, { status: 500 });
+  }
 }
 
 async function handlePublishNowAction(formData: FormData) {
@@ -271,8 +281,13 @@ async function handlePublishNowAction(formData: FormData) {
     return typedjson({ error: "Missing notificationId" }, { status: 400 });
   }
 
-  await publishNowPlatformNotification(notificationId);
-  return typedjson({ success: true });
+  try {
+    await publishNowPlatformNotification(notificationId);
+    return typedjson({ success: true });
+  } catch (error) {
+    logger.error("Failed to publish platform notification", { error });
+    return typedjson({ error: "Failed to publish notification" }, { status: 500 });
+  }
 }
 
 async function handleEditAction(formData: FormData) {
