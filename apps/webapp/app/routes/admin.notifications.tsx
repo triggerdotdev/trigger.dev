@@ -37,6 +37,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { prisma } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import {
   archivePlatformNotification,
@@ -234,7 +235,8 @@ async function handleCreateAction(formData: FormData, userId: string, isPreview:
         { status: 400 }
       );
     }
-    return typedjson({ error: err.message }, { status: 500 });
+    logger.error("Failed to create platform notification", { error: err });
+    return typedjson({ error: "Something went wrong" }, { status: 500 });
   }
 
   if (isPreview) {
@@ -310,7 +312,8 @@ async function handleEditAction(formData: FormData) {
         { status: 400 }
       );
     }
-    return typedjson({ error: err.message }, { status: 500 });
+    logger.error("Failed to update platform notification", { error: err });
+    return typedjson({ error: "Something went wrong" }, { status: 500 });
   }
 
   return typedjson({ success: true, id: result.value.id });

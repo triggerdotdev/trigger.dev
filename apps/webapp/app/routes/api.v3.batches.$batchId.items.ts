@@ -112,10 +112,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     });
 
-    if (error instanceof Error) {
-      return json({ error: error.message }, { status: 500 });
-    }
-
     return json({ error: "Something went wrong" }, { status: 500 });
   }
 }

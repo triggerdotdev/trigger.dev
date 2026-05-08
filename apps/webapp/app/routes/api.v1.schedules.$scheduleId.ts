@@ -6,6 +6,7 @@ import { Prisma, prisma } from "~/db.server";
 import { scheduleUniqWhereClause } from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { UpsertSchedule } from "~/v3/schedules";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
@@ -57,10 +58,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
             { status: error.code === "P2025" ? 404 : 422 }
           );
         } else {
-          return json(
-            { error: error instanceof Error ? error.message : "Internal Server Error" },
-            { status: 500 }
-          );
+          logger.error("Failed to delete schedule", { error });
+          return json({ error: "Something went wrong" }, { status: 500 });
         }
       }
     }
@@ -110,10 +109,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
           return json({ error: error.message }, { status: 422 });
         }
 
-        return json(
-          { error: error instanceof Error ? error.message : "Internal Server Error" },
-          { status: 500 }
-        );
+        logger.error("Failed to upsert schedule", { error });
+        return json({ error: "Something went wrong" }, { status: 500 });
       }
     }
   }

@@ -11,6 +11,7 @@ import {
   deleteInputStreamWaitpoint,
   setInputStreamWaitpoint,
 } from "~/services/inputStreamWaitpointCache.server";
+import { logger } from "~/services/logger.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { parseDelay } from "~/utils/delays";
@@ -138,10 +139,9 @@ const { action, loader } = createActionApiRoute(
     } catch (error) {
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
       }
 
+      logger.error("Failed to create input-stream waitpoint", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

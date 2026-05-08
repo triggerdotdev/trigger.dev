@@ -1,5 +1,6 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { err, ok, type Result } from "neverthrow";
+import { logger } from "~/services/logger.server";
 import { authenticateAdminRequest } from "~/services/personalAccessToken.server";
 import {
   createPlatformNotification,
@@ -42,7 +43,8 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: "Validation failed", details: error.issues }, { status: 400 });
     }
 
-    return json({ error: error.message }, { status: 500 });
+    logger.error("Failed to create platform notification", { error });
+    return json({ error: "Something went wrong" }, { status: 500 });
   }
 
   return json(result.value, { status: 201 });

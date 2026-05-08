@@ -153,10 +153,9 @@ const { action, loader } = createActionApiRoute(
         return json({ error: error.message }, { status: error.status ?? 422 });
       } else if (error instanceof OutOfEntitlementError) {
         return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
       }
 
+      logger.error("Trigger task failed", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

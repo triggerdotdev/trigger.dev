@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { ApiRunResultPresenter } from "~/presenters/v3/ApiRunResultPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   /* This is the run friendly ID */
@@ -35,10 +36,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     return json(result);
   } catch (error) {
-    if (error instanceof Error) {
-      return json({ error: error.message }, { status: 500 });
-    } else {
-      return json({ error: JSON.stringify(error) }, { status: 500 });
-    }
+    logger.error("Failed to load run result", { error });
+    return json({ error: "Something went wrong" }, { status: 500 });
   }
 }

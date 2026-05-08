@@ -4,6 +4,7 @@ import { CreateScheduleOptions, ScheduleObject } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { UpsertSchedule } from "~/v3/schedules";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
@@ -71,10 +72,8 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: 422 });
     }
 
-    return json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 }
-    );
+    logger.error("Failed to create schedule", { error });
+    return json({ error: "Something went wrong" }, { status: 500 });
   }
 }
 
