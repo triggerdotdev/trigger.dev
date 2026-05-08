@@ -70,11 +70,18 @@ function isValidSnapshot(value: unknown): boolean {
     if (it.type !== "panel") continue;
     const cv = it.currentValue as Record<string, unknown> | null;
     if (!cv || typeof cv !== "object" || cv.type !== "pixel") return false;
-    // value must be numeric (number or numeric string) so prepareSnapshot's
-    // `new Big(value)` rehydration can't throw on us.
-    if (typeof cv.value !== "string" && typeof cv.value !== "number") return false;
+    // value must parse as a finite number so prepareSnapshot's
+    // `new Big(value)` rehydration can't throw — guards against strings
+    // like "50%" or "" that satisfy typeof but break Big.
+    if (!isFiniteNumeric(cv.value)) return false;
   }
   return true;
+}
+
+function isFiniteNumeric(v: unknown): boolean {
+  if (typeof v === "number") return Number.isFinite(v);
+  if (typeof v === "string" && v.trim() !== "") return Number.isFinite(Number(v));
+  return false;
 }
 
 const ResizablePanel = Panel;
