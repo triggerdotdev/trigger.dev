@@ -26,6 +26,7 @@ export const links = {
       personalAccessToken:
         "https://trigger.dev/docs/github-actions#creating-a-personal-access-token",
     },
+    maxDuration: "https://trigger.dev/docs/runs/max-duration",
   },
   site: {
     home: "https://trigger.dev",
