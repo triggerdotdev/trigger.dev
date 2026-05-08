@@ -341,11 +341,16 @@ function validateConfig(config: TriggerConfig, warn = true) {
     config.build.extensions.push(adaptResolveEnvVarsToSyncEnvVarsExtension(resolveEnvVarsFn));
   }
 
-  if (!config.maxDuration) {
+  // Resolve maxComputeSeconds → maxDuration so plain-object exports that bypass
+  // defineConfig() still work. This mirrors the resolution defineConfig() applies
+  // at the SDK boundary; downstream CLI/runtime code only reads `maxDuration`.
+  const resolvedMaxDuration = config.maxComputeSeconds ?? config.maxDuration;
+  if (!resolvedMaxDuration) {
     throw new Error(
-      `The "maxDuration" trigger.config option is now required, and must be at least 5 seconds.`
+      `The "maxComputeSeconds" trigger.config option is now required, and must be at least 5 seconds.`
     );
   }
+  config.maxDuration = resolvedMaxDuration;
 
   if (config.runtime && config.runtime === "bun") {
     warn &&
