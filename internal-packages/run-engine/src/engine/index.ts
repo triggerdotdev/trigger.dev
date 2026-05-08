@@ -498,6 +498,7 @@ export class RunEngine {
       bulkActionId,
       planType,
       realtimeStreamsVersion,
+      streamBasinName,
       debounce,
       annotations,
       onDebounced,
@@ -660,6 +661,7 @@ export class RunEngine {
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               planType,
               realtimeStreamsVersion,
+              streamBasinName,
               debounce: debounce
                 ? {
                   key: debounce.key,

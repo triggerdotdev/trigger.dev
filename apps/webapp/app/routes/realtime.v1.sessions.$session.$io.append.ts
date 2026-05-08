@@ -81,7 +81,9 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return json(

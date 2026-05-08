@@ -46,6 +46,7 @@ const { action } = createActionApiRoute(
         friendlyId: true,
         completedAt: true,
         realtimeStreamsVersion: true,
+        streamBasinName: true,
       },
     });
 
@@ -68,7 +69,8 @@ const { action } = createActionApiRoute(
 
     const realtimeStream = getRealtimeStreamInstance(
       authentication.environment,
-      run.realtimeStreamsVersion
+      run.realtimeStreamsVersion,
+      { run }
     );
 
     // Build the input stream record (raw user data, no wrapper)
@@ -155,7 +157,8 @@ const loader = createLoaderApiRoute(
 
     const realtimeStream = getRealtimeStreamInstance(
       authentication.environment,
-      run.realtimeStreamsVersion
+      run.realtimeStreamsVersion,
+      { run }
     );
 
     // Read from the internal S2 stream name (prefixed to avoid user stream collisions)

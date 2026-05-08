@@ -167,6 +167,7 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            streamBasinName: authentication.environment.organization.streamBasinName,
           },
           update: { triggerConfig: triggerConfigJson },
         });
@@ -186,6 +187,7 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            streamBasinName: authentication.environment.organization.streamBasinName,
           },
         });
       }

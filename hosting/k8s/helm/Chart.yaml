@@ -27,7 +27,7 @@ dependencies:
     repository: "oci://registry-1.docker.io/bitnamicharts"
     condition: redis.deploy
   - name: clickhouse
-    version: "9.3.7"
+    version: "9.4.4"
     repository: "oci://registry-1.docker.io/bitnamicharts"
     condition: clickhouse.deploy
   - name: minio

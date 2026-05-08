@@ -41,6 +41,8 @@ jobs:
 
       - name: ⬇️ Checkout git repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: 📦 Get image repo
         id: get_repository
@@ -63,16 +65,20 @@ jobs:
       - name: 📛 Set tags to push
         id: set_tags
         run: |
-          ref_without_tag=ghcr.io/triggerdotdev/${{ steps.get_repository.outputs.repo }}
-          image_tags=$ref_without_tag:${{ steps.get_tag.outputs.tag }}
+          ref_without_tag=ghcr.io/triggerdotdev/${STEPS_GET_REPOSITORY_OUTPUTS_REPO}
+          image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
           # if tag is a semver, also tag it as v4
-          if [[ "${{ steps.get_tag.outputs.is_semver }}" == true ]]; then
+          if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
             # TODO: switch to v4 tag on GA
             image_tags=$image_tags,$ref_without_tag:v4-beta
           fi
 
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+        env:
+          STEPS_GET_REPOSITORY_OUTPUTS_REPO: ${{ steps.get_repository.outputs.repo }}
+          STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
+          STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
 
       - name: 🐙 Login to GitHub Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0

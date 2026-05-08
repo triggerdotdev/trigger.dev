@@ -29,6 +29,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     select: {
       id: true,
       friendlyId: true,
+      streamBasinName: true,
       runtimeEnvironment: {
         include: {
           project: true,
@@ -64,7 +65,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   // The runtimeEnvironment from the run is already in the correct shape for AuthenticatedEnvironment
-  const realtimeStream = getRealtimeStreamInstance(run.runtimeEnvironment, streamVersion);
+  const realtimeStream = getRealtimeStreamInstance(run.runtimeEnvironment, streamVersion, {
+    run,
+  });
 
   return realtimeStream.ingestData(
     request.body,
@@ -127,7 +130,8 @@ export const loader = createLoaderApiRoute(
 
     const realtimeStream = getRealtimeStreamInstance(
       authentication.environment,
-      run.realtimeStreamsVersion
+      run.realtimeStreamsVersion,
+      { run }
     );
 
     return realtimeStream.streamResponse(request, run.friendlyId, params.streamId, getRequestAbortSignal(), {
