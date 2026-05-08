@@ -44,7 +44,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     logger.error("Failed to create platform notification", { error });
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 
   return json(result.value, { status: 201 });

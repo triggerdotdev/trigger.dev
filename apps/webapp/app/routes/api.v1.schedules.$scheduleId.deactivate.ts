@@ -70,6 +70,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json(presenter.toJSONResponse(result), { status: 200 });
   } catch (error) {
     logger.error("Failed to deactivate schedule", { error });
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

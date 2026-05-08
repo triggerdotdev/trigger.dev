@@ -236,7 +236,7 @@ async function handleCreateAction(formData: FormData, userId: string, isPreview:
       );
     }
     logger.error("Failed to create platform notification", { error: err });
-    return typedjson({ error: "Something went wrong" }, { status: 500 });
+    return typedjson({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 
   if (isPreview) {
@@ -256,7 +256,7 @@ async function handleArchiveAction(formData: FormData) {
     return typedjson({ success: true });
   } catch (error) {
     logger.error("Failed to archive platform notification", { error, notificationId });
-    return typedjson({ error: "Failed to archive notification" }, { status: 500 });
+    return typedjson({ error: "Failed to archive notification, please try again." }, { status: 500 });
   }
 }
 
@@ -271,7 +271,7 @@ async function handleDeleteAction(formData: FormData) {
     return typedjson({ success: true });
   } catch (error) {
     logger.error("Failed to delete platform notification", { error, notificationId });
-    return typedjson({ error: "Failed to delete notification" }, { status: 500 });
+    return typedjson({ error: "Failed to delete notification, please try again." }, { status: 500 });
   }
 }
 
@@ -286,7 +286,7 @@ async function handlePublishNowAction(formData: FormData) {
     return typedjson({ success: true });
   } catch (error) {
     logger.error("Failed to publish platform notification", { error, notificationId });
-    return typedjson({ error: "Failed to publish notification" }, { status: 500 });
+    return typedjson({ error: "Failed to publish notification, please try again." }, { status: 500 });
   }
 }
 
@@ -328,7 +328,7 @@ async function handleEditAction(formData: FormData) {
       );
     }
     logger.error("Failed to update platform notification", { error: err });
-    return typedjson({ error: "Something went wrong" }, { status: 500 });
+    return typedjson({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 
   return typedjson({ success: true, id: result.value.id });

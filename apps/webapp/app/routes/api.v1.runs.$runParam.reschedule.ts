@@ -88,6 +88,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     logger.error("Failed to reschedule run", { error });
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

@@ -59,7 +59,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           );
         } else {
           logger.error("Failed to delete schedule", { error });
-          return json({ error: "Something went wrong" }, { status: 500 });
+          return json({ error: "Something went wrong, please try again." }, { status: 500 });
         }
       }
     }
@@ -110,7 +110,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
 
         logger.error("Failed to upsert schedule", { error });
-        return json({ error: "Something went wrong" }, { status: 500 });
+        return json({ error: "Something went wrong, please try again." }, { status: 500 });
       }
     }
   }

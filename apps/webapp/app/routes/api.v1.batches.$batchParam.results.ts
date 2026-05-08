@@ -38,6 +38,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json(result);
   } catch (error) {
     logger.error("Failed to load batch results", { error });
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

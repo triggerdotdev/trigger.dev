@@ -37,7 +37,7 @@ export const loader = createLoaderApiRoute(
       }
 
       logger.error("Failed to list queues", { error });
-      return json({ error: "Something went wrong" }, { status: 500 });
+      return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   }
 );

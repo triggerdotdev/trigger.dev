@@ -87,6 +87,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
   } catch (error) {
     logger.error("Failed to add run tags", { error });
-    return json({ error: "Something went wrong" }, { status: 500 });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

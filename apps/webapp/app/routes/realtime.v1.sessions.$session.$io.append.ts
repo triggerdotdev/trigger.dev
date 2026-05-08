@@ -140,7 +140,7 @@ const { action, loader } = createActionApiRoute(
         io: params.io,
         error: appendError,
       });
-      return json({ ok: false, error: "Something went wrong" }, { status: 500 });
+      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
     }
 
     // Fire any run-scoped waitpoints registered against this channel. Best
