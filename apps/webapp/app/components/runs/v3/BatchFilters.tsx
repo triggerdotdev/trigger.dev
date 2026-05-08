@@ -8,25 +8,18 @@ import {
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
-import { ListFilterIcon } from "lucide-react";
-import type { ReactNode } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { z } from "zod";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { FormError } from "~/components/primitives/FormError";
-import { Input } from "~/components/primitives/Input";
-import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  ComboBox,
-  SelectButtonItem,
   SelectItem,
   SelectList,
   SelectPopover,
   SelectProvider,
-  SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import {
   Tooltip,
   TooltipContent,
@@ -35,6 +28,7 @@ import {
 } from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Button } from "../../primitives/Buttons";
 import {
   allBatchStatuses,
@@ -42,7 +36,13 @@ import {
   batchStatusTitle,
   descriptionForBatchStatus,
 } from "./BatchStatus";
-import { TimeFilter, appliedSummary, FilterMenuProvider } from "./SharedFilters";
+import {
+  TimeFilter,
+  appliedSummary,
+  FilterMenuProvider,
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
+} from "./SharedFilters";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const BatchStatus = z.enum(allBatchStatuses);
@@ -69,130 +69,30 @@ type BatchFiltersProps = {
 export function BatchFilters(props: BatchFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const hasFilters = searchParams.has("statuses") || searchParams.has("id");
+  const hasFilters =
+    searchParams.has("statuses") ||
+    searchParams.has("id") ||
+    searchParams.has("period") ||
+    searchParams.has("from") ||
+    searchParams.has("to");
 
   return (
-    <div className="flex flex-row flex-wrap items-center gap-1">
-      <FilterMenu {...props} />
-      <TimeFilter />
-      <AppliedFilters />
+    <div className="flex flex-row flex-wrap items-center gap-1.5">
+      <PermanentStatusFilter />
+      <PermanentBatchIdFilter />
+      <TimeFilter shortcut={{ key: "d" }} />
       {hasFilters && (
-        <Form className="h-6">
-          <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+        <Form className="-ml-1 h-6">
+          <Button
+            variant="minimal/small"
+            LeadingIcon={XMarkIcon}
+            tooltip="Clear all filters"
+            className="group-hover/button:bg-transparent"
+            leadingIconClassName="group-hover/button:text-text-bright"
+          />
         </Form>
       )}
     </div>
-  );
-}
-
-const filterTypes = [
-  {
-    name: "statuses",
-    title: "Status",
-    icon: (
-      <div className="flex size-4 items-center justify-center">
-        <div className="size-3 rounded-full border-2 border-text-dimmed" />
-      </div>
-    ),
-  },
-  { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
-] as const;
-
-type FilterType = (typeof filterTypes)[number]["name"];
-
-const shortcut = { key: "f" };
-
-function FilterMenu(props: BatchFiltersProps) {
-  const [filterType, setFilterType] = useState<FilterType | undefined>();
-
-  const filterTrigger = (
-    <SelectTrigger
-      icon={
-        <div className="flex size-4 items-center justify-center">
-          <ListFilterIcon className="size-3.5" />
-        </div>
-      }
-      variant={"secondary/small"}
-      shortcut={shortcut}
-      tooltipTitle={"Filter batches"}
-    >
-      Filter
-    </SelectTrigger>
-  );
-
-  return (
-    <FilterMenuProvider onClose={() => setFilterType(undefined)}>
-      {(search, setSearch) => (
-        <Menu
-          searchValue={search}
-          clearSearchValue={() => setSearch("")}
-          trigger={filterTrigger}
-          filterType={filterType}
-          setFilterType={setFilterType}
-          {...props}
-        />
-      )}
-    </FilterMenuProvider>
-  );
-}
-
-function AppliedFilters() {
-  return (
-    <>
-      <AppliedStatusFilter />
-      <AppliedBatchIdFilter />
-    </>
-  );
-}
-
-type MenuProps = {
-  searchValue: string;
-  clearSearchValue: () => void;
-  trigger: React.ReactNode;
-  filterType: FilterType | undefined;
-  setFilterType: (filterType: FilterType | undefined) => void;
-} & BatchFiltersProps;
-
-function Menu(props: MenuProps) {
-  switch (props.filterType) {
-    case undefined:
-      return <MainMenu {...props} />;
-    case "statuses":
-      return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "batch":
-      return <BatchIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-  }
-}
-
-function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
-  const filtered = useMemo(() => {
-    return filterTypes.filter((item) => {
-      return item.title.toLowerCase().includes(searchValue.toLowerCase());
-    });
-  }, [searchValue]);
-
-  return (
-    <SelectProvider virtualFocus={true}>
-      {trigger}
-      <SelectPopover>
-        <ComboBox placeholder={"Filter by..."} shortcut={shortcut} value={searchValue} />
-        <SelectList>
-          {filtered.map((type, index) => (
-            <SelectButtonItem
-              key={type.name}
-              onClick={() => {
-                clearSearchValue();
-                setFilterType(type.name);
-              }}
-              icon={type.icon}
-              shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
-            >
-              {type.title}
-            </SelectButtonItem>
-          ))}
-        </SelectList>
-      </SelectPopover>
-    </SelectProvider>
   );
 }
 
@@ -219,10 +119,6 @@ function StatusDropdown({
     replace({ statuses: values, cursor: undefined, direction: undefined });
   };
 
-  const filtered = useMemo(() => {
-    return statuses.filter((item) => item.title.toLowerCase().includes(searchValue.toLowerCase()));
-  }, [searchValue]);
-
   return (
     <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
       {trigger}
@@ -237,9 +133,8 @@ function StatusDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by status..."} value={searchValue} />
         <SelectList>
-          {filtered.map((item, index) => (
+          {statuses.map((item, index) => (
             <SelectItem
               key={item.value}
               value={item.value}
@@ -265,30 +160,68 @@ function StatusDropdown({
   );
 }
 
-function AppliedStatusFilter() {
+const statusShortcut = { key: "s" };
+
+function PermanentStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
+  const hasStatuses = statuses.length > 0;
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  if (statuses.length === 0) {
-    return null;
-  }
+  useShortcutKeys({
+    shortcut: statusShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <StatusDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Status"
-                icon={<StatusIcon className="size-3.5" />}
-                value={appliedSummary(
-                  statuses.map((v) => batchStatusTitle(v as BatchTaskRunStatus))
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasStatuses ? (
+                  <AppliedFilter
+                    label="Status"
+                    icon={<StatusIcon className="size-3.5" />}
+                    value={appliedSummary(
+                      statuses.map((v) => batchStatusTitle(v as BatchTaskRunStatus))
+                    )}
+                    onRemove={() => del(["statuses", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <div className="grid size-4 place-items-center">
+                      <div className="size-[75%] rounded-full border-2 border-text-bright" />
+                    </div>
+                    <span>Status</span>
+                  </div>
                 )}
-                onRemove={() => del(["statuses", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by status</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={statusShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -298,117 +231,83 @@ function AppliedStatusFilter() {
   );
 }
 
-function BatchIdDropdown({
-  trigger,
-  clearSearchValue,
-  searchValue,
-  onClose,
-}: {
-  trigger: ReactNode;
-  clearSearchValue: () => void;
-  searchValue: string;
-  onClose?: () => void;
-}) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const batchIdValue = value("id");
+function validateBatchId(value: string): string | undefined {
+  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
+  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
+}
 
-  const [batchId, setBatchId] = useState(batchIdValue);
-
-  const apply = useCallback(() => {
-    clearSearchValue();
-    replace({
-      cursor: undefined,
-      direction: undefined,
-      id: batchId === "" ? undefined : batchId?.toString(),
-    });
-
-    setOpen(false);
-  }, [batchId, replace]);
-
-  let error: string | undefined = undefined;
-  if (batchId) {
-    if (!batchId.startsWith("batch_")) {
-      error = "Batch IDs start with 'batch_'";
-    } else if (batchId.length !== 27 && batchId.length !== 31) {
-      error = "Batch IDs are 27/32 characters long";
-    }
-  }
-
+function BatchIdDropdown(
+  props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
+) {
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
-      {trigger}
-      <SelectPopover
-        hideOnEnter={false}
-        hideOnEscape={() => {
-          if (onClose) {
-            onClose();
-            return false;
-          }
-
-          return true;
-        }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
-      >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Batch ID</Label>
-            <Input
-              placeholder="batch_"
-              value={batchId ?? ""}
-              onChange={(e) => setBatchId(e.target.value)}
-              variant="small"
-              className="w-[29ch] font-mono"
-              spellCheck={false}
-            />
-            {error ? <FormError>{error}</FormError> : null}
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              disabled={error !== undefined || !batchId}
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={() => apply()}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
-      </SelectPopover>
-    </SelectProvider>
+    <IdFilterDropdown
+      {...props}
+      label="Batch ID"
+      placeholder="batch_"
+      paramKey="id"
+      validate={validateBatchId}
+    />
   );
 }
 
-function AppliedBatchIdFilter() {
+const batchIdShortcut = { key: "b" };
+
+function PermanentBatchIdFilter() {
   const { value, del } = useSearchParams();
-
-  if (value("id") === undefined) {
-    return null;
-  }
-
   const batchId = value("id");
+  const hasBatchId = batchId !== undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: batchIdShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <BatchIdDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Batch ID"
-                icon={<Squares2X2Icon className="size-3.5" />}
-                value={batchId}
-                onRemove={() => del(["id", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  <Ariakit.Select
+                    ref={triggerRef}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasBatchId ? (
+                  <AppliedFilter
+                    label="Batch ID"
+                    icon={<Squares2X2Icon className="size-3.5" />}
+                    value={batchId}
+                    onRemove={() => del(["id", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <Squares2X2Icon className="size-3.5" />
+                    <span>Batch ID</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by batch ID</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={batchIdShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
