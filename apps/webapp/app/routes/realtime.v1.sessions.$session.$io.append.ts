@@ -135,7 +135,12 @@ const { action, loader } = createActionApiRoute(
           { status: appendError.status ?? 422 }
         );
       }
-      return json({ ok: false, error: appendError.message }, { status: 500 });
+      logger.error("Failed to append to session stream", {
+        sessionId: session.id,
+        io: params.io,
+        error: appendError,
+      });
+      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
     }
 
     // Fire any run-scoped waitpoints registered against this channel. Best

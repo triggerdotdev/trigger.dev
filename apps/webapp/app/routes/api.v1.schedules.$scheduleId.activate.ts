@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { scheduleUniqWhereClause, scheduleWhereClause } from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   scheduleId: z.string(),
@@ -68,9 +69,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json(presenter.toJSONResponse(result), { status: 200 });
   } catch (error) {
-    return json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 }
-    );
+    logger.error("Failed to activate schedule", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }
