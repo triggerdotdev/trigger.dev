@@ -1,3 +1,4 @@
+import { context, propagation, trace } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import {
@@ -8,22 +9,35 @@ import {
 } from "@opentelemetry/sdk-metrics";
 
 export function createInMemoryTracing() {
-  // Initialize the tracer provider and exporter — but do NOT call
-  // `provider.register()`. Calling register() sets the OTel global APIs
-  // (trace/context/propagation), and webapp's `~/v3/tracer.server.ts`
-  // also calls register() via its singleton. Webapp's `vitest.config.ts`
-  // uses `pool: "forks"` with `--no-file-parallelism`, so all test
-  // files in a shard share one process — globals set by the first test
-  // to load tracer.server.ts conflict with subsequent createInMemoryTracing
-  // calls, throwing "Attempted duplicate registration of API: trace".
+  // Webapp's vitest config uses `pool: "forks"` with `--no-file-parallelism`,
+  // so all test files in a shard share one process. globalThis persists
+  // across files even though vitest clears the module cache between them.
   //
-  // The tracer returned from `provider.getTracer(...)` is scoped to
-  // this provider, so the InMemorySpanExporter still receives the
-  // spans the consuming test creates — no global registration needed.
+  // OTel's `provider.register()` calls trace/context/propagation
+  // `setGlobal*` — and `setGlobal` no-ops (logs an error, returns false)
+  // when a global is already set. Two patterns hit that path:
+  // 1. `~/v3/tracer.server.ts` runs `provider.register()` via its
+  //    `singleton("opentelemetry", setupTelemetry)` — first test in the
+  //    shard to import that path sets the globals to webapp's tracer.
+  // 2. A subsequent test calls `createInMemoryTracing()` to swap in its
+  //    own in-memory provider. Without disabling first, register() is
+  //    a no-op — the test's provider receives spans via its
+  //    SimpleSpanProcessor (provider-scoped), but `trace.getActiveSpan()`
+  //    (used by code under test, e.g. sentryTraceContext.server.ts)
+  //    reads from the stale global context manager from step 1.
+  //
+  // Disable first, then register, so the test's provider always wins
+  // for both span recording and the global API. After the test, the
+  // next caller's createInMemoryTracing rotates again — no leakage.
+  trace.disable();
+  context.disable();
+  propagation.disable();
+
   const exporter = new InMemorySpanExporter();
   const provider = new NodeTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+  provider.register();
 
   const tracer = provider.getTracer("test-tracer");
 
