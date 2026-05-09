@@ -4,6 +4,56 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 8, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
+
+## 512 KiB `/in/append` ceiling removed for long chats — slim wire + S3 snapshot
+
+`chat.agent` long-running chats with heavy tool results were hitting the realtime API's 512 KiB body cap on `/realtime/v1/sessions/{id}/in/append` once the accumulated `UIMessage[]` history (which the wire shipped in full on every send) crossed the limit. The 413 surfaced as a CORS error in browsers and stalled chats around turn 10–30 with tool use.
+
+The wire is now **delta-only**: each `.in/append` carries at most one new `UIMessage` (the new user turn or a tool-approval response) instead of the full history. The agent rebuilds prior history at run boot from a durable JSON snapshot in object storage plus a replay of the `session.out` tail. The 512 KiB ceiling stops being pressure — slim payloads are normally a few KB regardless of chat length.
+
+```ts
+// Before — full history shipped on every send
+{ messages: [u1, a1, u2, a2, /* ... 30 turns ... */, u31], chatId, trigger: "submit-message" }
+
+// After — only the new turn
+{ message: u31, chatId, trigger: "submit-message" }
+```
+
+### What changed
+
+- **`ChatTaskWirePayload`**: `messages: UIMessage[]` is removed. Replaced by `message?: UIMessage` (singular, optional) and a dedicated `headStartMessages?: UIMessage[]` field used only by `chat.headStart` first-turn handover.
+- **Run boot**: when `hydrateMessages` is not registered, the runtime reads `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json` from object storage and replays any `session.out` chunks landed since the snapshot's cursor. Snapshot writes happen after every `onTurnComplete`, awaited so they survive an idle suspend.
+- **`hydrateMessages` short-circuit**: registering the hook skips snapshot read/write and replay entirely. Customer is the source of truth for history, same as today.
+- **`hydrateMessages.incomingMessages`**: now consistently 0-or-1-length across every trigger type. Previously `regenerate-message` and continuations occasionally shipped full history; they now ship none.
+- **`onChatStart.messages`**: on a continuation, reflects the **full prior conversation** loaded from snapshot+replay (was empty-or-tiny on a fresh run before).
+- **OOM-retry boot**: uses the snapshot's `lastOutTimestamp` as the `session.in` cutoff, saving one stream subscription per retry.
+- **Built-in transports**: `TriggerChatTransport`, `AgentChat`, mid-stream pending-message handling, and `chat.headStart` route handler all updated to the slim shape. Existing customer code calling `transport.sendMessage(...)` / `agentChat.sendMessage(...)` is unaffected — the change is below those surfaces.
+
+### Object store configuration
+
+Snapshot read/write reuses Trigger.dev's existing object-store infrastructure — the same presigned-URL routes used for large payloads. Set `OBJECT_STORE_*` env vars on your webapp deployment if you haven't already; MinIO works locally via `OBJECT_STORE_DEFAULT_PROTOCOL`.
+
+If no object store is configured **and** no `hydrateMessages` hook is registered, conversations don't survive run boundaries (the runtime logs a warning at registration time). Either configure an object store or register `hydrateMessages`.
+
+### Breaking surface
+
+- **Custom transports**: any code constructing `ChatTaskWirePayload` directly must drop `messages` and use `message`. See the rewritten [Client Protocol](/ai-chat/client-protocol).
+- **Client-side `setMessages` no longer round-trips**: full-history mutations on the client never reached the agent before this release either, but the slim wire makes that explicit. Use server-side [`chat.history.set()`](/ai-chat/backend#chat-history) inside `onTurnStart` for compaction.
+- **Custom server-to-server senders**: code calling `apiClient.appendToSessionInput(sessionId, ...)` or hitting `/realtime/v1/sessions/{id}/in/append` directly must switch to the slim shape.
+
+Hard cutover — there is no compat shim. v4.5 is prerelease.
+
+### Docs
+
+- Rewritten [Client Protocol](/ai-chat/client-protocol) — slim payload, new `headStartMessages` field, new "How history is rebuilt" and "Head-start protocol caveat" sections.
+- New [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — end-to-end walkthrough of the snapshot model, OOM-retry interaction, crash semantics, `hydrateMessages` short-circuit.
+- New [Tool result auditing](/ai-chat/patterns/tool-result-auditing) — the `extractNewToolResults` + `onTurnComplete` / `hydrateMessages` pattern for HITL audit logging.
+- [v4.5 section of the upgrade guide](/ai-chat/upgrade-guide#v45-wire-format-change) — migration steps for custom transports and `hydrateMessages` consumers.
+- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages), [`onChatStart`](/ai-chat/lifecycle-hooks#onchatstart) — clarifications on the new `incomingMessages` and `messages` shapes.
+
+</Update>
+
 <Update label="May 7, 2026" description="0.0.0-chat-prerelease-20260507131256" tags={["SDK"]}>
 
 ## `chat.history` read primitives for HITL flows

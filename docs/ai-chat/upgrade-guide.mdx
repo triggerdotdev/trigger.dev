@@ -354,9 +354,140 @@ If any of those misfire, check that:
 - You haven't left a stale `getStartToken` option on the transport;
   it's not part of `TriggerChatTransportOptions` anymore.
 
+## v4.5 wire format change
+
+A second migration lands on top of the Sessions release. v4.5 removes the full-history wire payload — clients now ship at most one new `UIMessage` per `.in/append`, and the agent rebuilds prior history from a durable JSON snapshot in object storage plus a replay of the `session.out` tail.
+
+If you use the built-in `TriggerChatTransport` / `AgentChat` and don't reach into the wire shape directly, **most apps need no changes** — the change is below the customer-facing surface. Customers who built custom transports, hit `/realtime/v1/sessions/{id}/in/append` directly, or rely on specific behaviors of `hydrateMessages` / `onChatStart` should read this section.
+
+### Why the change
+
+Long chats with heavy tool results were hitting the realtime API's 512 KiB body cap on `/in/append` once the accumulated `UIMessage[]` history (which the wire shipped in full on every send) crossed the limit. The 413 surfaced as a CORS error in browsers and stalled chats around turn 10–30 with tool use.
+
+The wire is now **delta-only**: each `.in/append` carries at most one new `UIMessage`. The agent rebuilds prior history at run boot. The 512 KiB ceiling stops being pressure — typical payloads are a few KB regardless of chat length.
+
+### Object-store configuration
+
+Snapshot read/write uses Trigger.dev's existing object-store infrastructure — the same presigned-URL routes used for large payloads. Set the standard `OBJECT_STORE_*` env vars on your webapp deployment if you haven't already; MinIO and S3-compatible stores work via `OBJECT_STORE_DEFAULT_PROTOCOL`.
+
+| Env var | Purpose |
+|---|---|
+| `OBJECT_STORE_BASE_URL` | Endpoint URL (S3, MinIO, R2, etc.) |
+| `OBJECT_STORE_ACCESS_KEY_ID` | Access key |
+| `OBJECT_STORE_SECRET_ACCESS_KEY` | Secret key |
+| `OBJECT_STORE_DEFAULT_PROTOCOL` | `s3` (default), `minio`, etc. |
+
+Snapshots are written under `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json`. Each snapshot is small (typically tens of KB) and overwritten every turn — no append-only growth.
+
+<Warning>
+  **No object store + no `hydrateMessages` = conversations don't survive run boundaries.** With neither piece of state, a continuation boots empty and the agent can't reconstruct prior turns. Either configure an object store or register `hydrateMessages`. The runtime logs a warning at agent registration time when both are missing.
+</Warning>
+
+### Custom transports
+
+If you've built your own transport (Slack bot, CLI, native app) against the [Client Protocol](/ai-chat/client-protocol), the `ChatTaskWirePayload` shape changed:
+
+```ts before
+type ChatTaskWirePayload = {
+  messages: UIMessage[];        // full history
+  chatId: string;
+  trigger: "submit-message" | "regenerate-message" | "preload" | "close" | "action";
+  // ...
+};
+```
+
+```ts after
+type ChatTaskWirePayload = {
+  message?: UIMessage;          // singular, optional
+  headStartMessages?: UIMessage[];  // chat.headStart only, "handover-prepare"
+  chatId: string;
+  trigger:
+    | "submit-message"
+    | "regenerate-message"
+    | "preload"
+    | "close"
+    | "action"
+    | "handover-prepare";
+  // ...
+};
+```
+
+What to send per trigger:
+
+| Trigger | What to put in the payload |
+|---|---|
+| `submit-message` | The new user message (or a tool-approval-responded assistant message) in `message` |
+| `regenerate-message` | No `message` — the agent trims its own tail |
+| `preload` / `close` / `action` | No `message` |
+| `handover-prepare` (head-start only) | Full prior history in `headStartMessages` (route handler — not on `/in/append`) |
+
+The full wire breakdown is in the rewritten [Client Protocol](/ai-chat/client-protocol).
+
+### `hydrateMessages` consumers
+
+The hook signature is unchanged. Two behavior tightenings worth knowing:
+
+1. **`incomingMessages` is now consistently 0-or-1-length.** Previously some triggers (`regenerate-message`, continuation) shipped full history; now all triggers ship at most one. If you assumed `incomingMessages` could contain multiple messages and acted on them as a batch, the loop now runs zero or one times. Patterns like the one below work the same — they just iterate fewer messages:
+
+```ts
+hydrateMessages: async ({ incomingMessages }) => {
+  for (const msg of incomingMessages) {  // 0-or-1 iterations
+    for (const r of chat.history.extractNewToolResults(msg)) {
+      await auditLog.record({ id: r.toolCallId, output: r.output });
+    }
+  }
+  return await db.getMessages(chatId);
+}
+```
+
+2. **Registering `hydrateMessages` short-circuits snapshot+replay.** The runtime trusts your hook to be the source of truth, so it doesn't read or write the JSON snapshot or replay `session.out`. Zero object-store traffic. Trade-off: you own persistence end-to-end.
+
+### `onChatStart` consumers
+
+`onChatStart.messages` reflects the **full prior conversation** on a continuation now (was empty-or-tiny before). The runtime loads the accumulator from snapshot+replay before `onChatStart` runs. If you used `messages.length === 0` as a proxy for "this is a new chat," switch to the explicit `continuation: false` flag — `messages` may be non-empty even on an unrelated continuation path.
+
+```ts before
+onChatStart: async ({ messages, chatId, clientData }) => {
+  if (messages.length === 0) {        // ❌ unreliable on continuations now
+    await db.chat.create({ /* ... */ });
+  }
+}
+```
+
+```ts after
+onChatStart: async ({ continuation, chatId, clientData }) => {
+  if (!continuation) {                // ✅ explicit
+    await db.chat.create({ /* ... */ });
+  }
+}
+```
+
+### Client-side `setMessages` doesn't round-trip
+
+The new wire makes one thing explicit that was implicit before: **mutating `useChat()`'s messages on the client doesn't change the agent's history.** Full-history mutations were silently overwritten by the wire's accumulator before this release; now they aren't even shipped.
+
+For history compaction, summarization, or branch-swap, mutate the agent's accumulator inside `onTurnStart` using [`chat.setMessages()`](/ai-chat/backend) or [`chat.history.set()`](/ai-chat/backend#chat-history). The client's `useChat` will reconcile against the next `session.out` payload.
+
+### Verifying the v4.5 migration
+
+After updating, the smoke check is the same as for v4.4:
+
+- Send a message, confirm the assistant streams a response.
+- Reload mid-stream, confirm resume.
+- Send 30+ turns with tool calls — `.in/append` body sizes stay under ~5 KB the entire time. (Pre-change baseline: payloads grew past 512 KB around turn 10-30.)
+- Idle out a run, send another message — the new run reads the snapshot, replays the tail, and continues seamlessly.
+
+If continuations boot empty:
+
+- Confirm `OBJECT_STORE_*` env vars are set on the webapp.
+- Confirm the bucket key `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json` exists after a successful turn.
+- Or — register `hydrateMessages` and let your DB be the source of truth.
+
 ## Reference
 
 - [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options)
 - [`chat.createStartSessionAction`](/ai-chat/reference)
 - [Backend setup](/ai-chat/backend)
 - [Frontend setup](/ai-chat/frontend)
+- [Client Protocol](/ai-chat/client-protocol) — wire format reference
+- [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — snapshot model end-to-end
