@@ -398,3 +398,52 @@ export const upgradeTest = task({
     };
   },
 });
+
+// ─── Example 9: Quick-fire burst test ──────────────────────────────
+//
+// Fire N messages back-to-back without awaiting between sends. The agent's
+// session.in queues records in arrival order; the per-turn loop processes
+// the first one, and the rest land as pendingMessages mid-stream (or queue
+// up for the next turn). Validates: (1) no records dropped at the dedup
+// cutoff, (2) ordering preserved, (3) no race between snapshot.write of
+// turn N and boot of turn N+1, (4) all responses eventually arrive.
+
+export const burstTest = task({
+  id: "chat-client-burst-test",
+  run: async (payload: { count?: number }) => {
+    const count = payload.count ?? 5;
+    const agentChat = new AgentChat<typeof aiChat>({
+      agent: "ai-chat",
+      clientData: { userId: "burst-test", model: "gpt-4o-mini" },
+    });
+    await agentChat.preload();
+
+    const start = Date.now();
+
+    // Fire all N concurrently. Each call POSTs to /in/append immediately;
+    // the agent dequeues in arrival order and processes sequentially.
+    const sends = Array.from({ length: count }, (_, i) =>
+      agentChat
+        .sendMessage(`Reply with the single word: msg-${i + 1}.`)
+        .then((stream) => stream.text())
+        .then((text) => ({ idx: i + 1, text: text.slice(0, 80), error: null as string | null }))
+        .catch((err) => ({ idx: i + 1, text: "", error: String(err?.message || err) }))
+    );
+
+    const results = await Promise.all(sends);
+    const elapsedMs = Date.now() - start;
+
+    await agentChat.close();
+
+    return {
+      chatId: agentChat.id,
+      count,
+      elapsedMs,
+      results,
+      anyErrors: results.filter((r) => r.error).length,
+      orderedTextsContainingIndex: results.map((r) =>
+        r.text.toLowerCase().includes(`msg-${r.idx}`) ? "ok" : "miss"
+      ),
+    };
+  },
+});

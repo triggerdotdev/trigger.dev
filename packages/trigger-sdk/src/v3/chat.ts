@@ -26,7 +26,7 @@
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
 import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
-import type { ChatInputChunk } from "./ai-shared.js";
+import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
@@ -485,14 +485,22 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       });
     }
 
-    // For "submit-message" we only deliver the latest user message via
-    // `.in` — the agent already has the full history from its prior turn
-    // (or the persisted store, on a fresh run). For "regenerate-message",
-    // pass the full message array so the agent can re-derive context.
-    const slicedMessages = trigger === "submit-message" ? messages.slice(-1) : messages;
-    const wirePayload = {
-      ...(body ?? {}),
-      messages: slicedMessages,
+    // Slim wire — at most ONE message per record. The agent rebuilds prior
+    // history from its durable S3 snapshot + session.out replay at run boot
+    // (or `hydrateMessages`, if registered). See plan vivid-humming-bonbon.
+    //
+    //   - "submit-message": ship the latest message (new user message OR a
+    //     tool-approval-responded assistant message). Throw if absent.
+    //   - "regenerate-message": omit `message`; the agent slices its own
+    //     history (drops the trailing assistant) and re-runs.
+    if (trigger === "submit-message" && messages.length === 0) {
+      throw new Error(
+        "TriggerChatTransport.sendMessages: 'submit-message' trigger requires at least one message"
+      );
+    }
+    const wirePayload: ChatTaskWirePayload = {
+      ...((body as Record<string, unknown>) ?? {}),
+      ...(trigger === "submit-message" ? { message: messages.at(-1) } : {}),
       chatId,
       trigger,
       messageId,
@@ -545,9 +553,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       throw new Error("sendMessagesViaHandover called without headStart configured");
     }
 
-    const wirePayload = {
+    // Head-start ships full UIMessage history via `headStartMessages`. The
+    // route handler runs on the customer's own HTTP endpoint (NOT
+    // `/realtime/v1/sessions/{id}/in/append`), so the 512 KiB body cap
+    // doesn't apply. The agent's run boot consumes `headStartMessages` ONLY
+    // when no snapshot exists yet (very first turn) — see plan section B.3.
+    const wirePayload: ChatTaskWirePayload = {
       ...((args.body as Record<string, unknown>) ?? {}),
-      messages: args.messages,
+      headStartMessages: args.messages,
       chatId: args.chatId,
       trigger: args.trigger,
       messageId: args.messageId,
@@ -669,8 +682,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         ? { ...(this.defaultMetadata ?? {}), ...(metadata ?? {}) }
         : undefined;
 
-    const wirePayload = {
-      messages: [message],
+    const wirePayload: ChatTaskWirePayload = {
+      message,
       chatId,
       trigger: "submit-message" as const,
       metadata: mergedMetadata,
@@ -782,8 +795,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const state = await this.ensureSessionState(chatId);
 
-    const wirePayload = {
-      messages: [] as never[],
+    const wirePayload: ChatTaskWirePayload = {
       chatId,
       trigger: "action" as const,
       action,

@@ -265,7 +265,12 @@ async function openHandoverSession(opts: {
   if (!chatId) {
     throw new Error("[chat.handover] request body missing `chatId`");
   }
-  const uiMessages = (wirePayload.messages ?? []) as UIMessage[];
+  // Slim wire — head-start ships full history via `headStartMessages` (not
+  // `message`/`messages`) because the route handler runs on the customer's
+  // own HTTP endpoint and isn't subject to the 512 KiB `/in/append` cap.
+  // The full UIMessage[] flows through `wirePayload` into the auto-trigger
+  // `basePayload` below, where the agent run boot consumes it on first turn.
+  const uiMessages = (wirePayload.headStartMessages ?? []) as UIMessage[];
   // `convertToModelMessages` is async — resolve once up front so the
   // synchronous `toStreamTextOptions` builder can hand back a fully
   // formed object. AI SDK's `streamText` validates `messages` as a

@@ -1948,6 +1948,27 @@ export const SendInputStreamResponseBody = z.object({
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
 
+/**
+ * Response body for `GET /realtime/v1/sessions/:id/:io/records`. A non-SSE,
+ * `wait=0` drain of a session channel — used at run boot for snapshot
+ * replay where the SSE long-poll tax (~1s on empty streams) was the
+ * dominant cost. The shape mirrors the webapp's internal `StreamRecord`
+ * type (`apps/webapp/app/services/realtime/types.ts`); each record's
+ * `data` is a JSON-encoded chunk body that callers parse client-side.
+ */
+export const ReadSessionStreamRecordsResponseBody = z.object({
+  records: z.array(
+    z.object({
+      data: z.string(),
+      id: z.string(),
+      seqNum: z.number(),
+    })
+  ),
+});
+export type ReadSessionStreamRecordsResponseBody = z.infer<
+  typeof ReadSessionStreamRecordsResponseBody
+>;
+
 export const ResolvePromptRequestBody = z.object({
   variables: z.record(z.unknown()).default({}),
   label: z.string().optional(),

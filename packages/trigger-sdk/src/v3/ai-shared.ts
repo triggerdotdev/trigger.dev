@@ -27,9 +27,31 @@ export const PENDING_MESSAGE_INJECTED_TYPE = "data-pending-message-injected" as 
 /**
  * The wire payload shape sent by `TriggerChatTransport`.
  * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
+ *
+ * Slim wire: at most ONE message per record. The agent runtime
+ * reconstructs prior history at run boot from a durable S3 snapshot +
+ * `session.out` replay (or `hydrateMessages` if registered). The wire is
+ * delta-only — see plan `vivid-humming-bonbon.md`.
  */
 export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
-  messages: TMessage[];
+  /**
+   * The single message being delivered on this trigger. Set for:
+   *   - `submit-message`: the new user message OR a tool-approval-responded
+   *     assistant message (with `state: "approval-responded"` tool parts).
+   *   - `regenerate-message`: omitted (the agent slices its own history).
+   *   - `preload` / `close` / `action`: omitted.
+   *   - `handover-prepare`: omitted (use `headStartMessages` instead).
+   */
+  message?: TMessage;
+  /**
+   * Bespoke escape hatch for `chat.headStart`. The customer's HTTP route
+   * handler ships full `UIMessage[]` history at the very first turn — before
+   * any snapshot exists. The route handler isn't subject to the
+   * `MAX_APPEND_BODY_BYTES` cap on `/in/append` because it goes through the
+   * customer's own HTTP endpoint. Used ONLY by `trigger: "handover-prepare"`.
+   * Ignored on every other trigger.
+   */
+  headStartMessages?: TMessage[];
   chatId: string;
   trigger:
     | "submit-message"
@@ -169,7 +191,7 @@ export type InferChatClientData<TTask extends AnyTask> = TTask extends Task<
   : unknown;
 
 /**
- * Extracts the UI message type from a chat task (wire payload `messages` items).
+ * Extracts the UI message type from a chat task (wire payload `message` items).
  *
  * @example
  * ```ts

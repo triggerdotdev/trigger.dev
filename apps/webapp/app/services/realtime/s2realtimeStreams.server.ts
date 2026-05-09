@@ -441,8 +441,16 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   // ---------- Internals: S2 REST ----------
   private async s2Append(stream: string, body: S2AppendInput): Promise<S2AppendAck> {
-    // POST /v1/streams/{stream}/records (JSON)
-    const res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(stream)}/records`, {
+    // POST /v1/streams/{stream}/records (JSON).
+    //
+    // Retries transient failures (network errors and 5xx) up to 3 times with
+    // exponential backoff. Undici's "fetch failed" errors observed locally
+    // are pre-connection (DNS/TCP) so the request never reaches S2, making
+    // retry safe — the alternative is a 500 surfacing to the SDK transport,
+    // which then retries the whole `/in/append` round-trip and pollutes
+    // logs. 4xx are not retried (genuine client errors).
+    const url = `${this.baseUrl}/streams/${encodeURIComponent(stream)}/records`;
+    const init: RequestInit = {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -451,12 +459,60 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         "S2-Basin": this.basin,
       },
       body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`S2 append failed: ${res.status} ${res.statusText} ${text}`);
+    };
+
+    const maxAttempts = 3;
+    const backoffsMs = [100, 250, 600];
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // The `try` only wraps `fetch` — once we have a Response we handle status
+      // outside the catch, so a 4xx throw can't be swallowed and retried.
+      let res: Response | undefined;
+      try {
+        res = await fetch(url, init);
+      } catch (err) {
+        lastError = err;
+      }
+
+      if (res) {
+        if (res.ok) {
+          return (await res.json()) as S2AppendAck;
+        }
+        const text = await res.text().catch(() => "");
+        const httpError = new Error(
+          `S2 append failed: ${res.status} ${res.statusText} ${text}`
+        );
+        if (res.status >= 400 && res.status < 500) {
+          // 4xx — caller-side problem (auth, malformed body, closed stream).
+          // Retrying won't help.
+          throw httpError;
+        }
+        // 5xx — retryable.
+        lastError = httpError;
+      }
+
+      const isLastAttempt = attempt === maxAttempts - 1;
+      const diagnostics = describeFetchError(lastError);
+      if (isLastAttempt) {
+        this.logger.error("S2 append failed after retries", {
+          stream,
+          attempts: maxAttempts,
+          ...diagnostics,
+        });
+        break;
+      }
+
+      this.logger.warn("S2 append transient failure, retrying", {
+        stream,
+        attempt: attempt + 1,
+        nextDelayMs: backoffsMs[attempt],
+        ...diagnostics,
+      });
+      await new Promise((resolve) => setTimeout(resolve, backoffsMs[attempt]));
     }
-    return (await res.json()) as S2AppendAck;
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   private async getS2AccessToken(id: string): Promise<string> {
@@ -559,4 +615,41 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     const n = Number(digits);
     return Number.isFinite(n) && n >= 0 ? n + 1 : undefined;
   }
+}
+
+// Pulls the underlying network error out of undici's generic "fetch failed".
+// undici sets `error.cause` to either a SystemError-shaped object with `code`
+// (e.g. `ECONNRESET`, `UND_ERR_SOCKET`, `ETIMEDOUT`), `errno`, and `syscall`,
+// or — for happy-eyeballs / multi-address connect attempts — an
+// `AggregateError` whose `errors[]` each carry their own code. Surfacing
+// those tells us whether failures are pre-connection (DNS / TCP), mid-stream
+// socket resets, or genuine S2 server errors.
+function describeFetchError(err: unknown): Record<string, unknown> {
+  if (!(err instanceof Error)) {
+    return { error: String(err) };
+  }
+  const out: Record<string, unknown> = {
+    error: err.message,
+    name: err.name,
+  };
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause && typeof cause === "object") {
+    const c = cause as Record<string, unknown>;
+    if (typeof c.code === "string") out.causeCode = c.code;
+    if (typeof c.errno === "number" || typeof c.errno === "string") out.causeErrno = c.errno;
+    if (typeof c.syscall === "string") out.causeSyscall = c.syscall;
+    if (typeof c.message === "string") out.causeMessage = c.message;
+    if (Array.isArray(c.errors)) {
+      out.causeErrors = c.errors
+        .filter((e: unknown): e is Error => e instanceof Error)
+        .map((e) => ({
+          message: e.message,
+          code: (e as { code?: unknown }).code,
+          syscall: (e as { syscall?: unknown }).syscall,
+          address: (e as { address?: unknown }).address,
+          port: (e as { port?: unknown }).port,
+        }));
+    }
+  }
+  return out;
 }

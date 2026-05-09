@@ -10,6 +10,12 @@ import {
   __setSessionStartImplForTests,
 } from "../sessions.js";
 import {
+  __setReadChatSnapshotImplForTests,
+  __setReplaySessionOutTailImplForTests,
+  __setWriteChatSnapshotImplForTests,
+  type ChatSnapshotV1,
+} from "../ai.js";
+import {
   createTestSessionHandle,
   type TestSessionOutState,
 } from "./test-session-handle.js";
@@ -19,10 +25,14 @@ export type SetupLocals = (locals: {
   set<T>(key: LocalsKey<T>, value: T): void;
 }) => void | Promise<void>;
 
-// The wire payload shape used by chat.agent tasks. Kept loose here so we
-// don't import from the backend-only ai.ts module.
+// The slim wire payload shape used by chat.agent tasks. Kept loose here so we
+// don't import from the backend-only ai.ts module. At most ONE message per
+// record — runtime rebuilds prior history from snapshot + replay at boot.
 type ChatWirePayload = {
-  messages: UIMessage[];
+  /** At most one message — singular under the slim wire. Set on submit-message. */
+  message?: UIMessage;
+  /** Bespoke escape hatch — only set on `trigger: "handover-prepare"`. */
+  headStartMessages?: UIMessage[];
   chatId: string;
   trigger:
     | "submit-message"
@@ -69,6 +79,16 @@ export type MockChatAgentOptions = {
    */
   mode?: "preload" | "submit-message" | "handover-prepare";
   /**
+   * Pre-seed the snapshot the agent reads at run boot. The runtime's
+   * snapshot read is replaced with one that returns this snapshot
+   * (skipping the real S3 GET). Use to drive boot scenarios — fresh
+   * boot with prior history, OOM-retry boot with stale snapshot, etc.
+   * Pass `undefined` (the default) to start with no snapshot.
+   *
+   * See plan section B.3 for the boot orchestration spec.
+   */
+  snapshot?: ChatSnapshotV1;
+  /**
    * Callback that runs **before** the agent's `run()` is invoked, with a
    * `set` function for pre-seeding locals. Use this to inject server-side
    * dependencies (database clients, service stubs) that the agent reads
@@ -108,13 +128,30 @@ export type MockChatAgentHarness = {
   readonly chatId: string;
 
   /**
-   * Send a user message and wait for the next turn-complete. Returns the
-   * chunks produced during this turn.
+   * Send a single user message (or tool-approval-responded assistant
+   * message) and wait for the next turn-complete. Returns the chunks
+   * produced during this turn.
+   *
+   * Slim wire: at most ONE message per send. The agent reconstructs prior
+   * history from snapshot + session.out replay at run boot.
    */
-  sendMessage(message: UIMessage | UIMessage[]): Promise<MockChatAgentTurn>;
+  sendMessage(message: UIMessage): Promise<MockChatAgentTurn>;
 
-  /** Send a regenerate signal with the messages and wait for the next turn-complete. */
-  sendRegenerate(messages: UIMessage[]): Promise<MockChatAgentTurn>;
+  /**
+   * Send a regenerate signal (no message body — slim wire). The agent
+   * trims trailing assistant messages from its in-memory accumulator and
+   * re-runs. Waits for turn-complete.
+   */
+  sendRegenerate(): Promise<MockChatAgentTurn>;
+
+  /**
+   * Drive the head-start path: sends `trigger: "handover-prepare"` with
+   * `headStartMessages` carrying the first-turn UIMessage history. Used
+   * only at the very first turn before any snapshot exists. The route
+   * handler ships full UIMessage history through this path because the
+   * customer's HTTP endpoint isn't subject to the `/in/append` cap.
+   */
+  sendHeadStart(args: { messages: UIMessage[] }): Promise<MockChatAgentTurn>;
 
   /** Send a custom action and wait for the next turn-complete. */
   sendAction(action: unknown): Promise<MockChatAgentTurn>;
@@ -146,6 +183,34 @@ export type MockChatAgentHarness = {
    * with `mode: "handover-prepare"`. Awaits the run finishing.
    */
   sendHandoverSkip(): Promise<void>;
+
+  /**
+   * Pre-seed the snapshot read for the next boot. The runtime's snapshot
+   * read returns this snapshot (skipping S3). Pass `undefined` to clear —
+   * the boot then sees no snapshot and falls through to replay-only.
+   *
+   * Effective on the next run boot only. Calling mid-turn is a no-op
+   * because the snapshot read happens once at run boot.
+   */
+  seedSnapshot(snapshot: ChatSnapshotV1 | undefined): void;
+
+  /**
+   * Pre-seed `session.out` chunks for the next boot's replay. The runtime's
+   * `replaySessionOutTail` returns whatever the synthetic chunks reduce
+   * to. Pass `[]` to clear (boot replay returns no messages).
+   *
+   * Requires `__setReplaySessionOutTailImplForTests` exported from
+   * `ai.ts`. The harness throws a clear error at call time if that hook
+   * isn't available.
+   */
+  seedSessionOutTail(chunks?: UIMessageChunk[]): void;
+
+  /**
+   * The most recently written snapshot, or `undefined` if no snapshot
+   * has been written yet. Updated each time `writeChatSnapshot` is
+   * invoked from the run loop's snapshot-write site (plan section B.6).
+   */
+  getSnapshot(): ChatSnapshotV1 | undefined;
 
   /**
    * Close the chat session cleanly. Sends `trigger: "close"` and awaits the
@@ -259,6 +324,31 @@ export function mockChatAgent(
     harnessReadyResolve = resolve;
   });
 
+  // ── Snapshot read/write override state ───────────────────────────────
+  // The runtime's snapshot read returns whatever `seededSnapshot` is at
+  // boot time. The runtime's snapshot write captures into
+  // `lastWrittenSnapshot` for harness consumers to assert via
+  // `getSnapshot()`. Installed below alongside the session overrides;
+  // cleared on close in the same finally block.
+  let seededSnapshot: ChatSnapshotV1 | undefined = options.snapshot;
+  let lastWrittenSnapshot: ChatSnapshotV1 | undefined;
+  let seededReplayChunks: UIMessageChunk[] = [];
+
+  __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
+    return seededSnapshot as ChatSnapshotV1<T> | undefined;
+  });
+  __setWriteChatSnapshotImplForTests(<T extends UIMessage>(_id: string, snapshot: ChatSnapshotV1<T>) => {
+    lastWrittenSnapshot = snapshot as ChatSnapshotV1;
+  });
+
+  // Replay override: install a default that returns whatever
+  // `seededReplayChunks` reduces to. Cleared in the same `finally` block
+  // as the other test overrides.
+  __setReplaySessionOutTailImplForTests(async () => {
+    if (seededReplayChunks.length === 0) return [];
+    return (await reduceChunksToMessages(seededReplayChunks)) as never;
+  });
+
   // Install the session open override so `sessions.open(id)` returns a
   // SessionHandle with an in-memory `.out` that captures writes. The
   // `.in` channel routes record subscriptions (`on`/`once`/`peek`)
@@ -306,7 +396,6 @@ export function mockChatAgent(
       runSignal = new AbortController();
 
       const initialPayload: ChatWirePayload = {
-        messages: [],
         chatId,
         trigger: mode,
         metadata: clientData,
@@ -374,9 +463,12 @@ export function mockChatAgent(
       throw err;
     })
     .finally(() => {
-      // Always clear the session open override, even if the task threw.
+      // Always clear the test overrides, even if the task threw.
       __setSessionOpenImplForTests(undefined);
       __setSessionStartImplForTests(undefined);
+      __setReadChatSnapshotImplForTests(undefined);
+      __setWriteChatSnapshotImplForTests(undefined);
+      __setReplaySessionOutTailImplForTests(undefined);
     });
 
   const sendPayloadAndWait = async (
@@ -398,27 +490,33 @@ export function mockChatAgent(
     chatId,
 
     async sendMessage(message) {
-      const messages = Array.isArray(message) ? message : [message];
       return sendPayloadAndWait({
-        messages,
+        message,
         chatId,
         trigger: "submit-message",
         metadata: clientData,
       });
     },
 
-    async sendRegenerate(messages) {
+    async sendRegenerate() {
       return sendPayloadAndWait({
-        messages,
         chatId,
         trigger: "regenerate-message",
         metadata: clientData,
       });
     },
 
+    async sendHeadStart({ messages }) {
+      return sendPayloadAndWait({
+        headStartMessages: messages,
+        chatId,
+        trigger: "handover-prepare",
+        metadata: clientData,
+      });
+    },
+
     async sendAction(action) {
       return sendPayloadAndWait({
-        messages: [],
         chatId,
         trigger: "action",
         action,
@@ -458,6 +556,18 @@ export function mockChatAgent(
       ]);
     },
 
+    seedSnapshot(snapshot) {
+      seededSnapshot = snapshot;
+    },
+
+    seedSessionOutTail(chunks) {
+      seededReplayChunks = chunks ?? [];
+    },
+
+    getSnapshot() {
+      return lastWrittenSnapshot;
+    },
+
     async close() {
       await harnessReady;
 
@@ -470,7 +580,6 @@ export function mockChatAgent(
         await sendSessionInput(sessionId, {
           kind: "message",
           payload: {
-            messages: [],
             chatId,
             trigger: "close",
           },
@@ -505,4 +614,73 @@ export function mockChatAgent(
   };
 
   return harness;
+}
+
+/**
+ * Reduce a synthetic UIMessageChunk[] sequence into the UIMessage[] that
+ * the runtime's `replaySessionOutTail` would produce. Splits chunks at
+ * `start` boundaries and feeds each segment through AI SDK's
+ * `readUIMessageStream`. The trailing un-finished segment goes through
+ * `cleanupAbortedParts`. Mirrors the production reducer used in
+ * `ai.ts:replaySessionOutTail`.
+ */
+async function reduceChunksToMessages(chunks: UIMessageChunk[]): Promise<UIMessage[]> {
+  if (chunks.length === 0) return [];
+  const aiModule = (await import("ai")) as {
+    readUIMessageStream?: (args: { stream: ReadableStream<UIMessageChunk> }) => AsyncIterable<UIMessage>;
+    cleanupAbortedParts?: (msg: UIMessage) => UIMessage;
+  };
+  const readUIMessageStream = aiModule.readUIMessageStream;
+  const cleanupAbortedParts = aiModule.cleanupAbortedParts;
+  if (!readUIMessageStream) return [];
+
+  type Segment = { chunks: UIMessageChunk[]; closed: boolean };
+  const segments: Segment[] = [];
+  let current: Segment | undefined;
+  for (const chunk of chunks) {
+    if (chunk.type === "start") {
+      current = { chunks: [chunk], closed: false };
+      segments.push(current);
+      continue;
+    }
+    if (!current) {
+      current = { chunks: [], closed: false };
+      segments.push(current);
+    }
+    current.chunks.push(chunk);
+    if (chunk.type === "finish") {
+      current.closed = true;
+      current = undefined;
+    }
+  }
+
+  const out: UIMessage[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const isTrailing = i === segments.length - 1 && !seg.closed;
+    const segmentStream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const c of seg.chunks) controller.enqueue(c);
+        controller.close();
+      },
+    });
+    let last: UIMessage | undefined;
+    try {
+      for await (const snapshot of readUIMessageStream({ stream: segmentStream })) {
+        last = snapshot;
+      }
+    } catch {
+      // Skip malformed segment — tests can assert by inspecting what makes it through.
+      continue;
+    }
+    if (!last) continue;
+    if (isTrailing && cleanupAbortedParts) {
+      const cleaned = cleanupAbortedParts(last);
+      if (!cleaned.parts || cleaned.parts.length === 0) continue;
+      out.push(cleaned);
+    } else {
+      out.push(last);
+    }
+  }
+  return out;
 }
