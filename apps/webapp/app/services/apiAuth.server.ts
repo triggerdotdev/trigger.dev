@@ -6,8 +6,11 @@ import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import {
+  authIncludeBase,
+  authIncludeWithParent,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
+  toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
@@ -507,17 +510,14 @@ export async function authenticatedEnvironmentForAuthentication(
                 }
               : {}),
           },
-          include: {
-            project: true,
-            organization: true,
-          },
+          include: authIncludeBase,
         });
 
         if (!environment) {
           throw json({ error: "Environment not found" }, { status: 404 });
         }
 
-        return environment;
+        return toAuthenticated(environment);
       }
 
       const environment = await $replica.runtimeEnvironment.findFirst({
@@ -527,11 +527,7 @@ export async function authenticatedEnvironmentForAuthentication(
           branchName: sanitizedBranch,
           archivedAt: null,
         },
-        include: {
-          project: true,
-          organization: true,
-          parentEnvironment: true,
-        },
+        include: authIncludeWithParent,
       });
 
       if (!environment) {
@@ -542,12 +538,13 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
       }
 
-      return {
+      // PREVIEW envs reuse the parent's apiKey for downstream auth flows
+      // (signed JWTs, internal-fetch helpers). Override before mapping so
+      // the slim shape carries the parent's key.
+      return toAuthenticated({
         ...environment,
         apiKey: environment.parentEnvironment.apiKey,
-        organization: environment.organization,
-        project: environment.project,
-      };
+      });
     }
     case "organizationAccessToken": {
       const organization = await $replica.organization.findUnique({
@@ -579,17 +576,14 @@ export async function authenticatedEnvironmentForAuthentication(
             projectId: project.id,
             slug: slug,
           },
-          include: {
-            project: true,
-            organization: true,
-          },
+          include: authIncludeBase,
         });
 
         if (!environment) {
           throw json({ error: "Environment not found" }, { status: 404 });
         }
 
-        return environment;
+        return toAuthenticated(environment);
       }
 
       const environment = await $replica.runtimeEnvironment.findFirst({
@@ -599,11 +593,7 @@ export async function authenticatedEnvironmentForAuthentication(
           branchName: sanitizedBranch,
           archivedAt: null,
         },
-        include: {
-          project: true,
-          organization: true,
-          parentEnvironment: true,
-        },
+        include: authIncludeWithParent,
       });
 
       if (!environment) {
@@ -614,12 +604,10 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
       }
 
-      return {
+      return toAuthenticated({
         ...environment,
         apiKey: environment.parentEnvironment.apiKey,
-        organization: environment.organization,
-        project: environment.project,
-      };
+      });
     }
     default: {
       auth satisfies never;

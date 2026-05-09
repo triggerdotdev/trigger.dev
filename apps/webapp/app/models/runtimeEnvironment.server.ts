@@ -11,7 +11,7 @@ export type { RuntimeEnvironment };
 // Use this everywhere we fetch an env that flows to handlers — keeps the
 // returned shape consistent (and the Decimal coercion in toAuthenticated()
 // strips Prisma's Decimal class from the public surface).
-const authIncludeBase = {
+export const authIncludeBase = {
   project: true,
   organization: true,
   orgMember: {
@@ -22,7 +22,7 @@ const authIncludeBase = {
   },
 } satisfies Prisma.RuntimeEnvironmentInclude;
 
-const authIncludeWithParent = {
+export const authIncludeWithParent = {
   ...authIncludeBase,
   parentEnvironment: { select: { id: true, apiKey: true } },
 } satisfies Prisma.RuntimeEnvironmentInclude;
@@ -37,7 +37,7 @@ type PrismaEnvWithAuthAndParent = Prisma.RuntimeEnvironmentGetPayload<{
 // and converts `concurrencyLimitBurstFactor` from Prisma's Decimal to a
 // plain number (lossless at this scale). The optional union accepts both
 // query shapes — with parentEnvironment loaded, or without it.
-function toAuthenticated(
+export function toAuthenticated(
   env: PrismaEnvWithAuth | PrismaEnvWithAuthAndParent,
 ): AuthenticatedEnvironment {
   return {
