@@ -1,0 +1,151 @@
+name: Dependabot Weekly Summary
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"  # Mon 08:00 UTC
+  workflow_dispatch:
+
+# Single-purpose monitoring workflow; serialise on workflow name only - we never
+# want two concurrent summary runs racing to post the same digest.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read       # gh CLI baseline
+  pull-requests: read  # gh pr list (open dependabot PRs)
+  actions: read        # gh run list / view (parse latest dependabot run logs)
+
+jobs:
+  summary:
+    name: Post weekly Dependabot summary
+    runs-on: ubuntu-latest
+    environment: dependabot-summary
+    steps:
+      - name: Fetch alerts and compute summaries
+        id: alerts
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! gh api -X GET "/repos/$REPO/dependabot/alerts" --paginate > pages.json 2> err.txt; then
+            echo "total=?" >> "$GITHUB_OUTPUT"
+            ERR=$(head -c 200 err.txt | tr '\n' ' ')
+            echo "by_severity=:x: _failed to fetch alerts: ${ERR}_" >> "$GITHUB_OUTPUT"
+            echo "actions=:x: _alerts unavailable_" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          jq -s '[.[][] | select(.state == "open")]' pages.json > open.json
+
+          TOTAL=$(jq 'length' open.json)
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+
+          if [ "$TOTAL" = "0" ]; then
+            echo "by_severity=:white_check_mark: No open alerts." >> "$GITHUB_OUTPUT"
+            echo "actions=_None_" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Severity breakdown - single-line output with \n escapes for JSON safety
+          BY_SEV=$(jq -r '
+            group_by(.security_advisory.severity)
+            | map({sev: .[0].security_advisory.severity,
+                   count: length,
+                   weight: ({"critical":0,"high":1,"medium":2,"low":3}[.[0].security_advisory.severity])})
+            | sort_by(.weight)
+            | map("• *\(.count)* \(.sev)")
+            | join("\\n")
+          ' open.json)
+          echo "by_severity=$BY_SEV" >> "$GITHUB_OUTPUT"
+
+          # Actions: alerts with <7d to TTR (P0=7d, P1=30d, P2=90d, P3=no deadline)
+          # Grouped by (package, severity); shows earliest deadline per group.
+          ACTIONS=$(jq -r '
+            [.[]
+              | (.security_advisory.severity) as $sev
+              | ({"critical":7,"high":30,"medium":90,"low":null}[$sev]) as $ttr
+              | select($ttr != null)
+              | ((now - (.created_at | fromdateiso8601)) / 86400 | floor) as $age
+              | {pkg: .dependency.package.name, sev: $sev, remaining: ($ttr - $age)}
+            ]
+            | group_by([.pkg, .sev])
+            | map({pkg: .[0].pkg, sev: .[0].sev, count: length, min_remaining: ([.[].remaining] | min)})
+            | map(select(.min_remaining < 7))
+            | sort_by(.min_remaining)
+            | if length == 0 then "_None_"
+              else (map(
+                "• *\(.pkg)* (\(.sev))" +
+                (if .count > 1 then " ×\(.count)" else "" end) + " - " +
+                (if .min_remaining < 0 then "*OVERDUE* by \(-.min_remaining)d"
+                 else "\(.min_remaining)d remaining" end)
+              ) | join("\\n"))
+              end
+          ' open.json)
+          echo "actions=$ACTIONS" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch open dependabot PRs
+        id: prs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          REPO_URL: https://github.com/${{ github.repository }}
+        run: |
+          if ! PR_JSON=$(gh pr list --repo "$REPO" --state open --author "app/dependabot" --json number,title 2> err.txt); then
+            ERR=$(head -c 200 err.txt | tr '\n' ' ')
+            echo "list=:x: _failed to fetch PRs: ${ERR}_" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LIST=$(echo "$PR_JSON" | jq -r --arg url "$REPO_URL" '
+            if length == 0 then "_None_"
+            else (map("• <\($url)/pull/\(.number)|#\(.number)> \(.title)") | join("\\n"))
+            end
+          ')
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
+
+      - name: Find latest npm dependabot run
+        id: latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          RUN_ID=$(gh run list --repo "$REPO" --workflow "Dependabot Updates" --status success --limit 30 --json databaseId,name --jq '[.[] | select(.name | startswith("npm_and_yarn"))][0].databaseId')
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Extract stuck deps (only if actions pending)
+        id: stuck
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ steps.latest.outputs.run_id }}
+          ACTIONS: ${{ steps.alerts.outputs.actions }}
+        run: |
+          # Skip the stuck section entirely when nothing in the actions list
+          # - keeps the digest tidy when there's nothing to actually act on.
+          if [ "$ACTIONS" = "_None_" ]; then
+            echo "section=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HEADER="\\n\\n*Couldn't auto-fix (need manual \`pnpm.overrides\`):*\\n"
+          if [ -z "$RUN_ID" ]; then
+            echo "section=${HEADER}_(no recent npm run found)_" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh run view "$RUN_ID" --repo "$REPO" --log > log.txt 2>&1 || true
+          STUCK=$(grep -oE "No update possible for [^[:space:]]+ [0-9][^[:space:]]*" log.txt | sed 's/No update possible for //' | sort -u || true)
+          if [ -z "$STUCK" ]; then
+            echo "section=${HEADER}_None_" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LIST=$(echo "$STUCK" | awk 'NR>1{printf "\\n"} {printf "• *%s* %s", $1, $2}')
+          echo "section=${HEADER}${LIST}" >> "$GITHUB_OUTPUT"
+
+      - name: Post Slack summary
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            {
+              "channel": "${{ vars.SLACK_CHANNEL_ID }}",
+              "text": ":calendar: *Weekly Dependabot summary* - `${{ github.repository }}`\n\n*Open alerts (${{ steps.alerts.outputs.total }}):*\n${{ steps.alerts.outputs.by_severity }}\n\n*Open Dependabot PRs:*\n${{ steps.prs.outputs.list }}\n\n*Actions needed (<7d remaining):*\n${{ steps.alerts.outputs.actions }}${{ steps.stuck.outputs.section }}\n\n<https://github.com/${{ github.repository }}/security/dependabot|Dependabot alerts>"
+            }
