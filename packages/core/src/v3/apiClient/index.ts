@@ -72,6 +72,7 @@ import {
   SendInputStreamResponseBody,
   StreamBatchItemsResponse,
   TaskRunExecutionResult,
+  ReadSessionStreamRecordsResponseBody,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
@@ -1254,6 +1255,40 @@ export class ApiClient {
         body: part,
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /**
+   * Non-SSE drain of a Session channel's tail. Returns whatever records
+   * exist after `afterEventId` (or from the head of the stream) and closes
+   * — `wait=0` semantics, no long-poll. Used by `replaySessionOutTail` at
+   * run boot, where the SSE long-poll's ~1s tax on empty streams is the
+   * dominant cost on every fresh chat.
+   *
+   * `afterEventId` is the same cursor format as the SSE Last-Event-ID
+   * (the S2 sequence number, stringified) — pass `lastOutEventId` from a
+   * persisted snapshot to resume.
+   */
+  async readSessionStreamRecords(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    options?: { afterEventId?: string; baseUrl?: string }
+  ) {
+    const qs = new URLSearchParams();
+    if (options?.afterEventId !== undefined) {
+      qs.set("afterEventId", options.afterEventId);
+    }
+    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(
+      sessionIdOrExternalId
+    )}/${io}/records${qs.toString() ? `?${qs.toString()}` : ""}`;
+    return zodfetch(
+      ReadSessionStreamRecordsResponseBody,
+      url,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, undefined)
     );
   }
 

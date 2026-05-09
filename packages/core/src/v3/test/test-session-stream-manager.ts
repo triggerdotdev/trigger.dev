@@ -51,13 +51,20 @@ export class TestSessionStreamManager implements SessionStreamManager {
     }
     set.add(handler);
 
-    const buffered = this.buffer.get(key);
-    if (buffered && buffered.length > 0) {
-      for (const data of buffered) {
-        this.invoke(handler, data);
-      }
-      this.buffer.delete(key);
-    }
+    // Note: we intentionally do NOT replay buffered records into the
+    // newly-registered handler, and we do NOT drain the buffer. The
+    // buffer is owned by `once()` — registering a passive observer
+    // (`on`) must not consume records destined for a future `once`
+    // waiter. This matches production SSE semantics where handlers
+    // observe records as they arrive, not retroactively.
+    //
+    // Earlier versions drained the buffer here, which caused user
+    // messages buffered during the runtime's `runFn` boot phase to be
+    // silently swallowed by the `stopInput.on()` handler registered at
+    // ai.ts:4806 (the stop handler ignores `kind: "message"` chunks).
+    // The next `messagesInput.waitWithIdleTimeout` then waited 30s for
+    // a record that had already been "delivered" to a handler that
+    // didn't want it.
 
     return {
       off: () => {

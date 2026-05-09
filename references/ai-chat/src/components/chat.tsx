@@ -357,6 +357,7 @@ export function Chat({
     stop: aiStop,
     addToolApprovalResponse,
     addToolOutput,
+    regenerate,
     status,
     error,
   } = useChat({
@@ -435,8 +436,28 @@ export function Chat({
 
   // Expose test helpers for automated testing via Chrome DevTools.
   // All actions go through refs so closures always call the latest version.
-  const stateRef = useRef({ status, messages, pending: pending.pending });
-  stateRef.current = { status, messages, pending: pending.pending };
+  const stateRef = useRef({ status, messages, pending: pending.pending, error });
+  stateRef.current = { status, messages, pending: pending.pending, error };
+
+  // Diagnostic: when the AI SDK transitions into an error state, log the
+  // root cause once. Useful for catching transient mid-flow errors that
+  // surface as `status: "error"` but leave no obvious clue otherwise.
+  const prevErrorRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (error && error !== prevErrorRef.current) {
+      // eslint-disable-next-line no-console
+      console.error("[chat.error]", {
+        message: error.message,
+        name: error.name,
+        stack: error.stack?.split("\n").slice(0, 6).join("\n"),
+        chatId,
+        status,
+        msgCount: messages.length,
+        lastEventId: transport.getSession(chatId)?.lastEventId ?? null,
+      });
+    }
+    prevErrorRef.current = error;
+  }, [error, chatId, status, messages.length, transport]);
 
   const actionsRef = useRef({
     steer: pending.steer,
@@ -554,6 +575,17 @@ export function Chat({
       get lastEventId() {
         return transport.getSession(chatId)?.lastEventId ?? null;
       },
+      get error() {
+        // Surface the AI SDK's last error so smoke tests can capture the
+        // root cause when status flips to "error" mid-flow.
+        const err = stateRef.current.error;
+        if (!err) return null;
+        return {
+          message: (err as Error).message,
+          name: (err as Error).name,
+          stack: (err as Error).stack?.split("\n").slice(0, 6).join("\n"),
+        };
+      },
       chatId,
       /** True when the transport is configured to route first-turn through `chat.handover`. */
       handoverEnabled,
@@ -565,6 +597,7 @@ export function Chat({
       send: (text: string) => actionsRef.current.send(text),
       stop: () => actionsRef.current.stop(),
       sendAction: (action: unknown) => transport.sendAction(chatId, action),
+      regenerate: () => regenerate(),
 
       // ── Waiters ───────────────────────────────────────────────────
       waitForStatus: (target: string, timeoutMs = DEFAULT_TIMEOUT_MS) =>

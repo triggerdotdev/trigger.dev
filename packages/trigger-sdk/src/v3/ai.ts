@@ -51,6 +51,7 @@ import {
   isToolUIPart,
   jsonSchema,
   JSONSchema7,
+  readUIMessageStream,
   Schema,
   tool as aiTool,
   Tool,
@@ -182,6 +183,478 @@ async function findLatestTurnCompleteTimestamp(
     // intentionally empty
   }
   return latestTs;
+}
+
+/**
+ * Versioned blob written to S3 after every turn completes (when no
+ * `hydrateMessages` hook is registered). Read at run boot to seed the
+ * accumulator with prior conversation state, replacing the old wire-borne
+ * full-history seed. Only the runtime owns this format — customers never
+ * touch it.
+ *
+ * `lastOutEventId` is the SSE Last-Event-ID after the snapshot's final
+ * chunk, used to resume `session.out` replay from precisely after the
+ * snapshot. `lastOutTimestamp` is the same chunk's timestamp, used to
+ * skip `findLatestTurnCompleteTimestamp` on OOM retry boot.
+ *
+ * @internal
+ */
+export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
+  version: 1;
+  savedAt: number;
+  messages: TUIMessage[];
+  lastOutEventId?: string;
+  lastOutTimestamp?: number;
+};
+
+/**
+ * S3 key suffix for a session's snapshot blob. The webapp's presigned-URL
+ * routes prefix this with `packets/{projectRef}/{envSlug}/` server-side, so
+ * the final S3 key lands at
+ * `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json`.
+ *
+ * Stable per session: the friendlyId persists across `chat.requestUpgrade`
+ * continuations and idle-suspend restarts.
+ * @internal
+ */
+function snapshotFilename(sessionId: string): string {
+  return `sessions/${sessionId}/snapshot.json`;
+}
+
+/**
+ * Test-only override hook — `mockChatAgent` installs a fake to return
+ * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
+ * pattern in `sessions.ts`. Not part of the public API.
+ * @internal
+ */
+type ReadChatSnapshotImpl = <TUIMessage extends UIMessage>(
+  sessionId: string
+) => Promise<ChatSnapshotV1<TUIMessage> | undefined> | ChatSnapshotV1<TUIMessage> | undefined;
+let readChatSnapshotImpl: ReadChatSnapshotImpl | undefined;
+
+export function __setReadChatSnapshotImplForTests(impl: ReadChatSnapshotImpl | undefined): void {
+  readChatSnapshotImpl = impl;
+}
+
+/**
+ * Test-only override hook — see `__setReadChatSnapshotImplForTests`. The
+ * mock harness records writes for assertion via this setter. Not public.
+ * @internal
+ */
+type WriteChatSnapshotImpl = <TUIMessage extends UIMessage>(
+  sessionId: string,
+  snapshot: ChatSnapshotV1<TUIMessage>
+) => Promise<void> | void;
+let writeChatSnapshotImpl: WriteChatSnapshotImpl | undefined;
+
+export function __setWriteChatSnapshotImplForTests(impl: WriteChatSnapshotImpl | undefined): void {
+  writeChatSnapshotImpl = impl;
+}
+
+/**
+ * Read the persisted snapshot for a session. Returns `undefined` on:
+ *   - missing object (404 from the presigned GET — fresh session, never
+ *     persisted)
+ *   - presign failure (network/auth issue)
+ *   - malformed JSON
+ *   - version mismatch (forward-compat — older runtimes ignore newer blobs)
+ *
+ * Always swallows errors via `logger.warn`. The agent boot loop must stay
+ * available even if S3 hiccups; the worst case is replaying more of
+ * `session.out` than strictly necessary.
+ * @internal
+ */
+async function readChatSnapshot<TUIMessage extends UIMessage>(
+  sessionId: string
+): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
+  if (readChatSnapshotImpl) {
+    return (await readChatSnapshotImpl<TUIMessage>(sessionId)) ?? undefined;
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  let presignedUrl: string;
+  try {
+    const resp = await apiClient.getPayloadUrl(snapshotFilename(sessionId));
+    presignedUrl = resp.presignedUrl;
+  } catch (error) {
+    logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return undefined;
+  }
+  let response: Response;
+  try {
+    response = await fetch(presignedUrl, { method: "GET" });
+  } catch (error) {
+    logger.warn("chat.agent: snapshot fetch failed; continuing without snapshot", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return undefined;
+  }
+  if (response.status === 404) {
+    // First-ever boot for this session — no snapshot yet. Caller falls
+    // through to replay-only.
+    return undefined;
+  }
+  if (!response.ok) {
+    logger.warn("chat.agent: snapshot fetch returned non-OK; continuing without snapshot", {
+      status: response.status,
+      sessionId,
+    });
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (error) {
+    logger.warn("chat.agent: snapshot JSON parse failed; continuing without snapshot", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const candidate = parsed as Partial<ChatSnapshotV1<TUIMessage>>;
+  if (candidate.version !== 1 || !Array.isArray(candidate.messages)) {
+    logger.warn("chat.agent: snapshot version/shape mismatch; ignoring", {
+      version: candidate.version,
+      sessionId,
+    });
+    return undefined;
+  }
+  return candidate as ChatSnapshotV1<TUIMessage>;
+}
+
+/**
+ * Persist the snapshot for a session. Awaited by callers immediately after
+ * `onTurnComplete` — the agent may suspend right after this point, and
+ * fire-and-forget promises don't reliably complete on suspend.
+ *
+ * Errors are swallowed via `logger.warn`. A failed write means the next
+ * boot replays slightly more of `session.out` (back to the previous
+ * snapshot's cursor) instead of failing — the conversation stays
+ * coherent, only the boot path does marginally more work.
+ * @internal
+ */
+async function writeChatSnapshot<TUIMessage extends UIMessage>(
+  sessionId: string,
+  snapshot: ChatSnapshotV1<TUIMessage>
+): Promise<void> {
+  if (writeChatSnapshotImpl) {
+    await writeChatSnapshotImpl<TUIMessage>(sessionId, snapshot);
+    return;
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  let presignedUrl: string;
+  try {
+    const resp = await apiClient.createUploadPayloadUrl(snapshotFilename(sessionId));
+    presignedUrl = resp.presignedUrl;
+  } catch (error) {
+    logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return;
+  }
+  let response: Response;
+  try {
+    response = await fetch(presignedUrl, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(snapshot),
+    });
+  } catch (error) {
+    logger.warn("chat.agent: snapshot upload failed; next run will replay further", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return;
+  }
+  if (!response.ok) {
+    logger.warn("chat.agent: snapshot upload returned non-OK; next run will replay further", {
+      status: response.status,
+      sessionId,
+    });
+  }
+}
+
+/**
+ * Test-only entry point that bypasses `__setReadChatSnapshotImplForTests`
+ * and reaches the real `apiClient.getPayloadUrl` + `fetch` + JSON-parse path.
+ * Used by `chat-snapshot.test.ts` to verify 404 / 500 / malformed JSON /
+ * version-mismatch / network-error behavior end-to-end. Tests mock global
+ * `fetch` and the api-client config; this wrapper lets them drive the
+ * production code without the override hook short-circuiting.
+ *
+ * Not part of the public API. The `__` prefix and `ForTests` suffix mirror
+ * the override-hook setters above.
+ * @internal
+ */
+export async function __readChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
+  sessionId: string
+): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
+  const saved = readChatSnapshotImpl;
+  readChatSnapshotImpl = undefined;
+  try {
+    return await readChatSnapshot<TUIMessage>(sessionId);
+  } finally {
+    readChatSnapshotImpl = saved;
+  }
+}
+
+/**
+ * Test-only entry point that bypasses `__setWriteChatSnapshotImplForTests`
+ * and reaches the real `apiClient.createUploadPayloadUrl` + `fetch` PUT
+ * path. Pairs with `__readChatSnapshotProductionPathForTests` — see that
+ * function's note for the rationale.
+ *
+ * Not part of the public API.
+ * @internal
+ */
+export async function __writeChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
+  sessionId: string,
+  snapshot: ChatSnapshotV1<TUIMessage>
+): Promise<void> {
+  const saved = writeChatSnapshotImpl;
+  writeChatSnapshotImpl = undefined;
+  try {
+    await writeChatSnapshot<TUIMessage>(sessionId, snapshot);
+  } finally {
+    writeChatSnapshotImpl = saved;
+  }
+}
+
+/**
+ * Merge two `UIMessage[]` lists by `id`, with the second list winning on
+ * collision. Used at run boot to combine the snapshot's persisted history
+ * with the replayed `session.out` tail — replay produces the freshest
+ * representation of any assistant message that landed after the snapshot's
+ * cursor, so it should overwrite the older copy from the snapshot.
+ *
+ * Order: items unique to `a` keep their original positions; items unique to
+ * `b` are appended at the end in their `b` order; collisions take `b`'s
+ * value but keep the position they had in `a`.
+ *
+ * @internal
+ */
+function mergeByIdReplaceWins<TUIMessage extends UIMessage>(
+  a: TUIMessage[],
+  b: TUIMessage[]
+): TUIMessage[] {
+  if (b.length === 0) return [...a];
+  if (a.length === 0) return [...b];
+  const indexById = new Map<string, number>();
+  for (let i = 0; i < a.length; i++) {
+    const id = a[i]!.id;
+    if (typeof id === "string" && id.length > 0) indexById.set(id, i);
+  }
+  const result = [...a];
+  for (const next of b) {
+    const id = next.id;
+    if (typeof id === "string" && id.length > 0 && indexById.has(id)) {
+      result[indexById.get(id)!] = next;
+    } else {
+      const newIdx = result.length;
+      result.push(next);
+      if (typeof id === "string" && id.length > 0) indexById.set(id, newIdx);
+    }
+  }
+  return result;
+}
+
+/**
+ * Test-only entry point for `mergeByIdReplaceWins`. The merge helper is the
+ * one piece of slim-wire boot logic that's purely functional, so it earns a
+ * direct unit test that exercises empty inputs, id collisions, no-id append,
+ * order preservation, and the replay-wins-on-collision invariant. Mirrors
+ * the `__*ProductionPathForTests` pattern used for the snapshot/replay
+ * helpers above.
+ *
+ * Not part of the public API.
+ * @internal
+ */
+export function __mergeByIdReplaceWinsForTests<TUIMessage extends UIMessage>(
+  a: TUIMessage[],
+  b: TUIMessage[]
+): TUIMessage[] {
+  return mergeByIdReplaceWins<TUIMessage>(a, b);
+}
+
+/**
+ * Test-only override hook — `mockChatAgent` installs a fake replay that
+ * returns a synthetic `UIMessage[]` so unit tests can drive the boot loop
+ * without an SSE subscription. Mirrors the snapshot setters above. Not
+ * part of the public API.
+ * @internal
+ */
+type ReplaySessionOutTailImpl = <TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+) => Promise<TUIMessage[]>;
+let replaySessionOutTailImpl: ReplaySessionOutTailImpl | undefined;
+
+export function __setReplaySessionOutTailImplForTests(
+  impl: ReplaySessionOutTailImpl | undefined
+): void {
+  replaySessionOutTailImpl = impl;
+}
+
+/**
+ * Drain `session.out` from `lastEventId` (or the start) and reduce the
+ * remaining `UIMessageChunk`s back into `UIMessage[]`. Used at run boot to
+ * catch any chunks that landed AFTER the last persisted snapshot — typically
+ * the chunks from the turn whose `onTurnComplete` ran but whose snapshot
+ * write didn't make it to S3 before the run crashed / suspended.
+ *
+ * Implementation:
+ *   1. `apiClient.readSessionStreamRecords` — non-SSE, `wait=0` drain.
+ *      Returns immediately with whatever records exist after the cursor.
+ *      The previous SSE-subscribe path paid a fixed ~1s long-poll tax on
+ *      every fresh chat (timeout duration on empty streams) — unacceptable
+ *      for the first-message TTFC budget.
+ *   2. Filter out the agent's control chunks (`type: "trigger:*"`) — they
+ *      ride on the same stream as the user-visible UIMessageChunks.
+ *   3. Split chunks at `start`/`finish` boundaries so each segment is a
+ *      single message, then feed each segment through the AI SDK's
+ *      `readUIMessageStream` reducer (the same one `useChat` uses on the
+ *      browser side) and grab the final emitted snapshot.
+ *   4. The trailing message — if it never received a `finish` chunk —
+ *      goes through `cleanupAbortedParts` so partial in-flight parts
+ *      don't leak into the next turn's accumulator. Drop it entirely
+ *      if cleanup empties it.
+ *
+ * Errors are propagated to the caller (the boot loop wraps in try/catch and
+ * `logger.warn`s); we don't swallow here so test code can observe failures
+ * directly.
+ * @internal
+ */
+async function replaySessionOutTail<TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<TUIMessage[]> {
+  if (replaySessionOutTailImpl) {
+    return await replaySessionOutTailImpl<TUIMessage>(sessionId, options);
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(sessionId, "out", {
+    afterEventId: options?.lastEventId,
+  });
+  const collected: UIMessageChunk[] = [];
+  for (const record of response.records) {
+    // Each record's `data` is the JSON-encoded chunk body the agent
+    // wrote at append time. The records endpoint returns it as an
+    // opaque string so the parsing cost is paid here, not on the
+    // server's hot path.
+    let chunk: unknown;
+    try {
+      chunk = JSON.parse(record.data);
+    } catch {
+      continue;
+    }
+    if (!chunk || typeof chunk !== "object") continue;
+    const type = (chunk as { type?: unknown }).type;
+    if (typeof type !== "string") continue;
+    // Drop agent control chunks (`trigger:turn-complete`, `trigger:upgrade-required`,
+    // session-state telemetry, etc.). They ride the same stream but aren't part
+    // of the UIMessageChunk discriminated union and would confuse the reducer.
+    if (type.startsWith("trigger:")) continue;
+    collected.push(chunk as UIMessageChunk);
+  }
+  if (collected.length === 0) return [];
+
+  // Split chunks into per-message segments. A `start` chunk demarcates the
+  // beginning of an assistant message; chunks before any `start` (rare —
+  // but possible if the stream begins mid-message after a resume) get
+  // bundled into a leading "implicit" segment so we don't drop them silently.
+  type Segment = { chunks: UIMessageChunk[]; closed: boolean };
+  const segments: Segment[] = [];
+  let current: Segment | undefined;
+  for (const chunk of collected) {
+    if (chunk.type === "start") {
+      current = { chunks: [chunk], closed: false };
+      segments.push(current);
+      continue;
+    }
+    if (!current) {
+      // Chunk arrived before any `start`. Synthesize a segment so the reducer
+      // has something to work with — `readUIMessageStream` tolerates a missing
+      // `start` because we pass `message: undefined`.
+      current = { chunks: [], closed: false };
+      segments.push(current);
+    }
+    current.chunks.push(chunk);
+    if (chunk.type === "finish") {
+      current.closed = true;
+      current = undefined;
+    }
+  }
+
+  const messages: TUIMessage[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const isTrailing = i === segments.length - 1 && !seg.closed;
+    const segmentStream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const c of seg.chunks) controller.enqueue(c);
+        controller.close();
+      },
+    });
+    let last: UIMessage | undefined;
+    try {
+      for await (const snapshot of readUIMessageStream({ stream: segmentStream })) {
+        last = snapshot;
+      }
+    } catch (error) {
+      // Reducer error — the segment is malformed. Skip it and keep going so a
+      // single corrupt chunk doesn't sink the entire replay.
+      logger.warn("chat.agent: replay reducer failed for segment; skipping", {
+        sessionId,
+        segmentIndex: i,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+    if (!last) continue;
+    if (isTrailing) {
+      const cleaned = cleanupAbortedParts(last as TUIMessage);
+      if (cleaned.parts.length === 0) continue;
+      messages.push(cleaned);
+    } else {
+      messages.push(last as TUIMessage);
+    }
+  }
+  return messages;
+}
+
+/**
+ * Test-only entry point that bypasses `__setReplaySessionOutTailImplForTests`
+ * and reaches the real `apiClient.subscribeToSessionStream` + chunk-segment
+ * splitter + `readUIMessageStream` reducer. Pairs with the snapshot
+ * production-path wrappers above. Lets `replay-session-out.test.ts` drive
+ * synthetic chunk sequences through the real reducer to lock down chunk-
+ * stream → `UIMessage[]` correctness — if the AI SDK's chunk semantics
+ * shift in a future version, the test catches it before customers do.
+ *
+ * Tests should mock `apiClient.subscribeToSessionStream` (e.g. via
+ * `vi.spyOn(apiClient, ...)`) to feed a `ReadableStream<UIMessageChunk>`.
+ *
+ * Not part of the public API.
+ * @internal
+ */
+export async function __replaySessionOutTailProductionPathForTests<
+  TUIMessage extends UIMessage,
+>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<TUIMessage[]> {
+  const saved = replaySessionOutTailImpl;
+  replaySessionOutTailImpl = undefined;
+  try {
+    return await replaySessionOutTail<TUIMessage>(sessionId, options);
+  } finally {
+    replaySessionOutTailImpl = saved;
+  }
 }
 
 /**
@@ -3118,7 +3591,16 @@ export type ChatStartEvent<TClientData = unknown> = {
   ctx: TaskRunContext;
   /** The unique identifier for the chat session. */
   chatId: string;
-  /** The initial model-ready messages for this conversation. */
+  /**
+   * The initial model-ready messages for this conversation.
+   *
+   * On a fresh chat this is empty (or just the seed-message for head-start).
+   * On a continuation — including idle-suspend resume and OOM retry — this
+   * already reflects the FULL prior conversation history loaded from the
+   * runtime's durable snapshot + `session.out` replay (or whatever
+   * `hydrateMessages` returned). The wire never re-ships that history; the
+   * runtime rebuilds it before `onChatStart` fires.
+   */
   messages: ModelMessage[];
   /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
   clientData: TClientData;
@@ -4188,44 +4670,150 @@ function chatAgent<
       const previousRunId = payload.previousRunId;
       const preloaded = payload.trigger === "preload";
 
-      // Accumulated model messages across turns. Turn 1 initialises from the
-      // full history the frontend sends; subsequent turns append only the new
-      // user message(s) and the captured assistant response.
+      // Accumulated model messages across turns. Seeded at boot from a
+      // durable snapshot + `session.out` replay (or `hydrateMessages` if
+      // registered) — the wire is delta-only now, no longer a seed.
       let accumulatedMessages: ModelMessage[] = [];
 
       // Accumulated UI messages for persistence. Mirrors the model accumulator
       // but in frontend-friendly UIMessage format (with parts, id, etc.).
       let accumulatedUIMessages: TUIMessage[] = [];
 
-      // OOM-retry boot: a fresh worker subscribes to `session.in` from
-      // seq 0 and would re-deliver every record ever appended to that
-      // session — including the messages from turns that already
-      // completed on the prior attempt. Without dedup, the loop would
-      // re-process them as fresh turns.
+      // ── Snapshot + replay (gated on prior-state signals) ─────────────
       //
-      // We derive the cutoff from `session.out`: the latest
-      // `trigger:turn-complete` chunk's timestamp is the high-water
-      // mark of completed work. Any session.in record with a timestamp
-      // at or below that mark belongs to a completed turn and is
-      // dropped by the SessionStreamManager filter before dispatch.
+      // With `hydrateMessages` registered the customer owns history — the
+      // hook fires per-turn and produces the canonical chain from their DB.
+      // Skip both reads entirely: no need to load a blob the customer's
+      // hook will overwrite.
       //
-      // No customer setup required. With `hydrateMessages` configured,
-      // the OOM'd turn re-runs against the full prior conversation (the
-      // common pattern). Without it, the OOM'd turn re-runs against
-      // whatever the chat.agent's default accumulator can rebuild from
-      // `payload.messages` — degraded continuity but no duplicate work.
-      if (ctx.attempt.number > 1) {
+      // Without it, both reads are gated on `couldHavePriorState`. A fresh
+      // chat (no continuation, attempt 1) can't have a snapshot OR replay
+      // records by definition — `readChatSnapshot` would 404 and
+      // `replaySessionOutTail` would return [], and the round-trips
+      // collectively cost ~600ms on every first-message TTFC. Both reads
+      // swallow errors internally; the agent stays available either way.
+      const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
+      let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+      let replayed: TUIMessage[] = [];
+      const couldHavePriorState =
+        payload.continuation === true || ctx.attempt.number > 1;
+
+      if (!hydrateMessages && couldHavePriorState) {
         try {
-          const cutoff = await findLatestTurnCompleteTimestamp(payload.chatId);
+          bootSnapshot = await tracer.startActiveSpan(
+            "chat.boot.snapshot.read",
+            async () => readChatSnapshot<TUIMessage>(sessionIdForSnapshot)
+          );
+        } catch (error) {
+          // `readChatSnapshot` already swallows + warns internally; this catch
+          // is just belt-and-suspenders against tracer/span errors.
+          logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: sessionIdForSnapshot,
+          });
+        }
+
+        try {
+          replayed = await tracer.startActiveSpan("chat.boot.replay", async () =>
+            replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
+              lastEventId: bootSnapshot?.lastOutEventId,
+            })
+          );
+        } catch (error) {
+          logger.warn("chat.agent: session.out replay failed; using snapshot only", {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: sessionIdForSnapshot,
+          });
+        }
+      }
+
+      // ── session.in dedup cutoff ────────────────────────────────────
+      //
+      // A fresh worker subscribes to `session.in` from seq 0 and would
+      // re-deliver every record ever appended — including user messages
+      // from turns already completed on a prior run. Without dedup, the
+      // loop would re-process them as fresh turns and the slim-wire merge
+      // would replace-by-id against the snapshot-restored copies, yielding
+      // no-op replaces while the customer's actual new message waits in
+      // the queue.
+      //
+      // The cutoff is the timestamp of the last `trigger:turn-complete`
+      // chunk on `session.out`. When we have a snapshot, that timestamp is
+      // already in `lastOutTimestamp` — use it directly to skip the
+      // O(stream-length) scan. Fall back to the scan only when no snapshot
+      // is available (first-ever OOM retry, or `hydrateMessages`
+      // short-circuited the snapshot read).
+      //
+      // Applies in three cases (any of which means session.in has records
+      // belonging to completed turns the new run should skip):
+      //  - OOM retry (`ctx.attempt.number > 1`)
+      //  - Continuation run (`payload.continuation === true`) — prior run
+      //    crashed / was canceled / requested upgrade
+      //  - Snapshot exists at all (catches edge cases where the wire
+      //    didn't set `continuation` but a snapshot indicates prior turns)
+      const needsDedupCutoff =
+        ctx.attempt.number > 1 ||
+        payload.continuation === true ||
+        bootSnapshot !== undefined;
+
+      if (needsDedupCutoff) {
+        try {
+          let cutoff = bootSnapshot?.lastOutTimestamp;
+          if (cutoff === undefined) {
+            cutoff = await findLatestTurnCompleteTimestamp(payload.chatId);
+          }
           if (cutoff !== undefined) {
             sessionStreams.setMinTimestamp(payload.chatId, "in", cutoff);
           }
         } catch (error) {
           logger.warn(
-            "chat.agent OOM-retry session.out scan failed; session.in dedup not applied",
+            "chat.agent: session.in dedup cutoff lookup failed; old messages may replay",
             { error: error instanceof Error ? error.message : String(error) }
           );
         }
+      }
+
+      // ── Merge + head-start bootstrap ────────────────────────────────
+      if (!hydrateMessages) {
+        accumulatedUIMessages = mergeByIdReplaceWins<TUIMessage>(
+          (bootSnapshot?.messages as TUIMessage[]) ?? [],
+          replayed
+        );
+
+        // ── Head-start bootstrap ─────────────────────────────────────
+        //
+        // The very-first turn of a head-start handover has no snapshot
+        // (it doesn't exist yet) and no `session.out` history (the run
+        // just woke up). The customer's HTTP route handler ships full
+        // UIMessage history via `headStartMessages` — that's the only
+        // path where wire-borne UIMessage[] still seeds the accumulator,
+        // and it's safe because the route handler isn't subject to the
+        // `/in/append` 512 KiB cap.
+        if (
+          accumulatedUIMessages.length === 0 &&
+          payload.trigger === "handover-prepare" &&
+          Array.isArray(payload.headStartMessages) &&
+          payload.headStartMessages.length > 0
+        ) {
+          accumulatedUIMessages = [...(payload.headStartMessages as TUIMessage[])];
+        }
+
+        if (accumulatedUIMessages.length > 0) {
+          try {
+            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+          } catch (error) {
+            logger.warn("chat.agent: toModelMessages failed at boot; starting empty", {
+              error: error instanceof Error ? error.message : String(error),
+              sessionId: sessionIdForSnapshot,
+            });
+            accumulatedMessages = [];
+          }
+        }
+
+        // Make the seeded UI accumulator visible to `chat.history.*`
+        // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
+        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
       }
 
       // Token usage tracking across turns
@@ -4236,10 +4824,16 @@ function chatAgent<
       // stop input stream listener (registered once) can abort the right turn.
       let currentStopController: AbortController | undefined;
 
-      // Listen for stop signals for the lifetime of the run
-      const stopSub = stopInput.on((data) => {
-        currentStopController?.abort(data?.message || "stopped");
-      });
+      // Stop-input subscription is registered AFTER preload's wait resolves
+      // (see the post-preload block below). Registering it earlier would
+      // cause it to drain any session.in records buffered before the runtime
+      // started — including the customer's first user message arriving on
+      // `kind: "message"`. The persistent-listener semantics of session.in
+      // pop the buffer when a handler attaches; the stop listener filters
+      // out anything that isn't `kind: "stop"` and silently swallows the
+      // user message instead of leaving it for `messagesInput.waitWithIdleTimeout`
+      // to pick up.
+      let stopSub: { off: () => void } | undefined;
 
       try {
         // Handle preloaded runs — fire onPreload, then wait for the first real message
@@ -4387,6 +4981,17 @@ function chatAgent<
           }
         }
 
+        // Listen for stop signals for the rest of the run. Registered AFTER
+        // the preload wait resolves (or skipped immediately for non-preload
+        // triggers) so the persistent-listener semantics on session.in
+        // don't drain the buffered user message before
+        // `messagesInput.waitWithIdleTimeout` can pick it up. A stop signal
+        // that lands during the preload window is dropped — acceptable, the
+        // customer can't reasonably stop a chat that hasn't started.
+        stopSub = stopInput.on((data) => {
+          currentStopController?.abort(data?.message || "stopped");
+        });
+
         // Handle handover-prepare runs — wait on session.in for the
         // customer's `chat.handover` route handler to either hand off
         // mid-turn (tool calls) or signal pure-text completion.
@@ -4440,23 +5045,44 @@ function chatAgent<
           locals.set(chatHandoverIsFinalKey, handoverResult.output.isFinal);
 
           // Synthesize a wire payload that the turn loop treats as a
-          // normal first-turn message. The original user-history
-          // messages came in via `payload.messages` at trigger time;
-          // reuse them.
+          // normal first-turn message. The accumulator was already seeded
+          // at boot from `payload.headStartMessages` (see B.3 head-start
+          // bootstrap), so the rewritten `submit-message` carries no
+          // delta — the loop runs streamText against the seeded state.
           currentWirePayload = {
             ...payload,
             trigger: "submit-message",
+            message: undefined,
+            headStartMessages: undefined,
           } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
           try {
-              // Extract turn-level context before entering the span
-              const { metadata: wireMetadata, messages: uiMessages, ...restWire } = currentWirePayload;
+              // Extract turn-level context before entering the span. Slim
+              // wire: at most one delta message per record. `headStartMessages`
+              // is consumed at boot only (via `payload.headStartMessages`)
+              // and intentionally discarded here.
+              const {
+                metadata: wireMetadata,
+                message: incomingMessage,
+                headStartMessages: _hsm,
+                ...restWire
+              } = currentWirePayload;
+              void _hsm;
+              const incomingMessages: TUIMessage[] = incomingMessage
+                ? [incomingMessage as TUIMessage]
+                : [];
+              // Cleaning happens once here so `extractLastUserMessageText` and
+              // every downstream consumer see the same message shape — and
+              // `cleanupAbortedParts` no longer has to be re-applied below.
+              const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
+                msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+              );
               const clientData = (
                 parseClientData ? await parseClientData(wireMetadata) : wireMetadata
               ) as inferSchemaOut<TClientDataSchema>;
-              const lastUserMessage = extractLastUserMessageText(uiMessages);
+              const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
 
               // Actions are not turns. They use a different span name
               // and don't carry a turn.number. Branched on at `isAction`.
@@ -4614,7 +5240,12 @@ function chatAgent<
                     // instead of the wire buffer. The frontend handles re-sending
                     // non-injected messages via sendMessage on turn complete.
                     if (pmConfig) {
-                      const lastUIMessage = msg.messages?.[msg.messages.length - 1];
+                      // Slim wire: at most one delta message per record. The
+                      // pendingMessages handler reads `msg.message` directly
+                      // instead of slicing an array — a wire record arrives
+                      // with the new user message in `.message`, or no message
+                      // at all (regenerate / preload / close / handover-prepare).
+                      const lastUIMessage = msg.message as TUIMessage | undefined;
                       if (lastUIMessage) {
                         if (pmConfig.onReceived) {
                           try {
@@ -4749,21 +5380,23 @@ function chatAgent<
                   }
 
                   // ── Message handling (non-action turns) ───────────────────
-                  // Clean up any incomplete tool parts in the incoming history.
-                  // When a previous run was stopped mid-tool-call, the frontend's
-                  // useChat state may still contain assistant messages with tool parts
-                  // in partial/input-available state. These cause API errors (e.g.
-                  // Anthropic requires every tool_use to have a matching tool_result).
+                  //
+                  // Slim wire: at most one delta message arrives per record.
+                  // The accumulator was already seeded at boot from a durable
+                  // snapshot + `session.out` replay (or `hydrateMessages`,
+                  // which also fires per-turn below). Per-turn handling is
+                  // therefore a delta merge, not a full-history reset.
                   if (currentWirePayload.trigger !== "action") {
 
-                  let cleanedUIMessages = uiMessages.map((msg) =>
-                    msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
-                  );
+                  let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Validate/transform UIMessages before conversion — catches malformed
                   // messages from storage or untrusted input before they reach the model.
-                  if (onValidateMessages) {
-                    cleanedUIMessages = await tracer.startActiveSpan(
+                  // Slim wire: triggers like `regenerate-message` carry no incoming
+                  // message; nothing to validate, so skip the hook to avoid feeding
+                  // `[]` to validators (AI SDK's `validateUIMessages` rejects empty).
+                  if (onValidateMessages && cleanedUIMessages.length > 0) {
+                    cleanedUIMessages = (await tracer.startActiveSpan(
                       "onValidateMessages()",
                       async () => {
                         return onValidateMessages({
@@ -4782,12 +5415,15 @@ function chatAgent<
                           "chat.messages.count": cleanedUIMessages.length,
                         },
                       }
-                    );
+                    )) as TUIMessage[];
                   }
 
                   if (hydrateMessages) {
                     // Backend hydration: load the full message history from the user's
-                    // backend, replacing the built-in linear accumulator entirely.
+                    // backend, replacing the built-in accumulator entirely. With slim
+                    // wire, `incomingMessages` is consistently 0-or-1-length — what
+                    // was always true for `submit-message` is now true for every
+                    // trigger.
                     const hydrated = await tracer.startActiveSpan(
                       "hydrateMessages()",
                       async () => {
@@ -4843,79 +5479,38 @@ function chatAgent<
                       if (lastModel) turnNewModelMessages.push(lastModel);
                     }
                   } else {
-                    // Default linear accumulation.
-                    // Turn 1: full history from the frontend → replaces the accumulator.
-                    // Turn 2+: only the new message(s) → appended to the accumulator.
-                    const incomingModelMessages = await toModelMessages(cleanedUIMessages);
-
-                    if (turn === 0) {
-                      accumulatedMessages = incomingModelMessages;
-                      accumulatedUIMessages = [...cleanedUIMessages];
-                      // On first turn, the "new" messages are just the last user message
-                      // (the rest is history). We'll add the response after streaming.
-                      if (cleanedUIMessages.length > 0) {
-                        turnNewUIMessages.push(
-                          cleanedUIMessages[cleanedUIMessages.length - 1]!
-                        );
-                        const lastModel =
-                          incomingModelMessages[incomingModelMessages.length - 1];
-                        if (lastModel) turnNewModelMessages.push(lastModel);
+                    // Default delta-merge accumulation.
+                    //
+                    // The accumulator was seeded at boot from snapshot+replay,
+                    // so it already reflects prior history. Per-turn handling
+                    // appends/replaces the single incoming delta message and
+                    // (for regenerate) trims the tail.
+                    if (currentWirePayload.trigger === "regenerate-message") {
+                      // Regenerate: trim trailing assistant messages from the
+                      // accumulator until the tail is a user message. AI SDK's
+                      // frontend `regenerate()` already removed the trailing
+                      // assistant from its local store; the wire signals "do
+                      // the same here", and the agent re-runs from the new
+                      // tail. No incoming message accompanies this trigger.
+                      while (
+                        accumulatedUIMessages.length > 0 &&
+                        accumulatedUIMessages[accumulatedUIMessages.length - 1]!.role !== "user"
+                      ) {
+                        accumulatedUIMessages.pop();
                       }
-                      // If a `chat.handover` route handler signalled a
-                      // mid-turn handover, splice its partial assistant
-                      // response (text + pending tool-calls + the
-                      // synthesized tool-approval round) onto the
-                      // accumulator. `streamText` will hit AI SDK's
-                      // initial-tool-execution branch, run the
-                      // agent-side tool executes, and resume from step 2
-                      // — skipping the first model call (already done
-                      // by the handler).
+                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                    } else if (cleanedUIMessages.length > 0) {
+                      // Submit-message (and the special-cased
+                      // handover-prepare → submit-message rewrite earlier in
+                      // this scope): append-or-replace-by-id for the single
+                      // delta message.
                       //
-                      // We also synthesize a UIMessage form of the
-                      // partial assistant and push it to
-                      // `accumulatedUIMessages`. AI SDK's
-                      // `processUIMessageStream` (invoked when our
-                      // run-loop calls `runResult.toUIMessageStream({
-                      // onFinish })`) initializes `state.message` from
-                      // the trailing assistant in `originalMessages`.
-                      // Without that, the `tool-output-available`
-                      // chunks emitted by the initial-tool-execution
-                      // branch can't find their matching tool-call in
-                      // state and AI SDK throws
-                      // `UIMessageStreamError: No tool invocation found`.
-                      const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
-                      if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
-                        accumulatedMessages.push(...pendingHandoverPartial);
-                        const handoverMessageId = locals.get(chatHandoverMessageIdKey);
-                        const partialUI = synthesizeHandoverUIMessage(
-                          pendingHandoverPartial,
-                          handoverMessageId
-                        );
-                        if (partialUI) {
-                          accumulatedUIMessages.push(partialUI as TUIMessage);
-                        }
-                        locals.set(chatHandoverPartialKey, []); // consume once
-                      }
-                    } else if (currentWirePayload.trigger === "regenerate-message") {
-                      // Regenerate: frontend sent full history with last assistant message
-                      // removed. Reset the accumulator to match.
-                      accumulatedMessages = incomingModelMessages;
-                      accumulatedUIMessages = [...cleanedUIMessages];
-                      // No new user messages for regenerate — just the response (added below)
-                    } else {
-                      // Submit: check if any incoming message updates an existing one (by ID).
-                      // This handles tool approval responses, where the frontend resends the
-                      // assistant message with updated tool parts (approval-responded).
-                      // IDs match because we always pass generateMessageId + originalMessages
-                      // to toUIMessageStream, so the backend's start chunk carries the same
-                      // messageId that the frontend uses.
-                      //
-                      // Fallback for HITL `addToolOutput` continuations where the AI SDK
-                      // regenerates the assistant id (Arena AI report, TRI-9137): if the
-                      // id-match fails, look up the head messageId via toolCallId and
-                      // rewrite the incoming id before retrying. The mapping is
-                      // populated whenever an assistant containing tool parts lands in
-                      // the accumulator.
+                      // Tool approval responses arrive as a single assistant
+                      // message whose id collides with the existing assistant
+                      // in the accumulator — we replace by id. The fallback
+                      // for HITL `addToolOutput` continuations where AI SDK
+                      // regenerates the id (TRI-9137) still applies via
+                      // `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
@@ -4941,9 +5536,11 @@ function chatAgent<
                         recordToolCallIdsFromMessage(incoming);
                       }
                       if (replaced) {
-                        // Reconvert all model messages since a replacement changes the structure
+                        // Replacement changes structure — reconvert all model
+                        // messages instead of appending.
                         accumulatedMessages = await toModelMessages(accumulatedUIMessages);
                       } else {
+                        const incomingModelMessages = await toModelMessages(cleanedUIMessages);
                         accumulatedMessages.push(...incomingModelMessages);
                       }
                       if (turnNewUIMessages.length > 0) {
@@ -4952,6 +5549,46 @@ function chatAgent<
                         );
                       }
                     }
+                    // `preload` / `close` / `handover-prepare` and submits
+                    // with no incoming message fall through with the boot-
+                    // seeded accumulator unchanged.
+
+                    if (turn === 0) {
+                      // Head-start handover splice (turn 0 only): the
+                      // `chat.handover` route handler signalled a mid-turn
+                      // handover, so splice its partial assistant response
+                      // (text + pending tool-calls + the synthesized
+                      // tool-approval round) onto the accumulator.
+                      // `streamText` then hits AI SDK's initial-tool-
+                      // execution branch, runs the agent-side tool executes,
+                      // and resumes from step 2 — skipping the first model
+                      // call (already done by the handler).
+                      //
+                      // We also synthesize a UIMessage form of the partial
+                      // assistant and push it to `accumulatedUIMessages` so
+                      // AI SDK's `processUIMessageStream` (invoked when the
+                      // run loop calls `runResult.toUIMessageStream({
+                      // onFinish })`) can initialize `state.message` from
+                      // the trailing assistant in `originalMessages`. Without
+                      // that, the `tool-output-available` chunks emitted by
+                      // the initial-tool-execution branch can't find their
+                      // matching tool-call in state and AI SDK throws
+                      // `UIMessageStreamError: No tool invocation found`.
+                      const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
+                      if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                        accumulatedMessages.push(...pendingHandoverPartial);
+                        const handoverMessageId = locals.get(chatHandoverMessageIdKey);
+                        const partialUI = synthesizeHandoverUIMessage(
+                          pendingHandoverPartial,
+                          handoverMessageId
+                        );
+                        if (partialUI) {
+                          accumulatedUIMessages.push(partialUI as TUIMessage);
+                        }
+                        locals.set(chatHandoverPartialKey, []); // consume once
+                      }
+                    }
+
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
 
@@ -5175,9 +5812,10 @@ function chatAgent<
                       // Don't call userRun. Don't pipe. Skip directly
                       // to the post-turn flow below.
                     } else {
+                      const preparedMessages = await applyPrepareMessages(accumulatedMessages, "run");
                       runResult = await userRun({
                         ...restWire,
-                        messages: await applyPrepareMessages(accumulatedMessages, "run"),
+                        messages: preparedMessages,
                         clientData,
                         continuation,
                         previousRunId,
@@ -5709,6 +6347,66 @@ function chatAgent<
                     );
                   }
 
+                  // ── Snapshot write ─────────────────────────────────────
+                  //
+                  // Persist the post-turn accumulator so the next run boot
+                  // can replay history without the wire shipping it. Skipped
+                  // when `hydrateMessages` is registered — those customers
+                  // own persistence and would never read this blob.
+                  //
+                  // AWAITED, not fire-and-forget: the agent may suspend (idle
+                  // timeout) immediately after this point, and in-flight
+                  // promises don't reliably complete on suspend. The user-
+                  // visible turn already finished (the turn-complete chunk
+                  // closed the response stream above), so the await delay
+                  // only affects "when can the NEXT turn start," gated by
+                  // user typing — not TTFC.
+                  //
+                  // `writeChatSnapshot` swallows errors internally; this
+                  // outer try/catch is just belt-and-suspenders against
+                  // tracer/span failures.
+                  if (!hydrateMessages) {
+                    try {
+                      await tracer.startActiveSpan(
+                        "snapshot.write",
+                        async () => {
+                          await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                            version: 1,
+                            savedAt: Date.now(),
+                            messages: accumulatedUIMessages,
+                            // `StreamWriteResult` exposes `lastEventId` only;
+                            // use the snapshot save time as the
+                            // `lastOutTimestamp` cutoff hint. The OOM-retry
+                            // optimization compares this to SSE chunk
+                            // timestamps (ms epoch on the server) — Date.now()
+                            // here is the closest cheap approximation
+                            // available client-side and is consistent with
+                            // the existing turn-complete chunk emission.
+                            lastOutEventId: turnCompleteResult?.lastEventId,
+                            lastOutTimestamp: Date.now(),
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.turn": turn + 1,
+                            "chat.messages.count": accumulatedUIMessages.length,
+                          },
+                        }
+                      );
+                    } catch (error) {
+                      logger.warn(
+                        "chat.agent: snapshot write failed; next run will replay further",
+                        {
+                          error: error instanceof Error ? error.message : String(error),
+                          sessionId: sessionIdForSnapshot,
+                        }
+                      );
+                    }
+                  }
+
                   } // end if (!isAction)
 
                   // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
@@ -5891,7 +6589,10 @@ function chatAgent<
             }
           }
         } finally {
-          stopSub.off();
+          // `stopSub` is registered post-preload so the close-during-preload
+          // early-return path may exit before it ever attached. Guard the
+          // cleanup so a missing subscription doesn't throw.
+          stopSub?.off();
         }
     }
   });
@@ -7140,7 +7841,9 @@ function createChatSession(
             sessionPendingWire.push(msg);
 
             if (sessionPendingMessages) {
-              const lastUIMessage = msg.messages?.[msg.messages.length - 1];
+              // Slim wire: at most one delta message per record. Read
+              // `msg.message` directly — no array slicing needed.
+              const lastUIMessage = msg.message;
               if (lastUIMessage) {
                 if (sessionPendingMessages.onReceived) {
                   try {
@@ -7163,9 +7866,14 @@ function createChatSession(
             }
           });
 
-          // Accumulate messages
+          // Accumulate messages. Slim wire: pass the single delta message as
+          // a 0-or-1-length array. The accumulator's behavior is unchanged —
+          // it still appends user messages and reconverts on regenerate.
+          const incomingForAccumulator: UIMessage[] = currentPayload.message
+            ? [currentPayload.message]
+            : [];
           const messages = await accumulator.addIncoming(
-            currentPayload.messages,
+            incomingForAccumulator,
             currentPayload.trigger,
             turn
           );

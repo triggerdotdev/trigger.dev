@@ -123,6 +123,49 @@ export const askUser = tool({
   // No execute by design — round-tripped through the frontend's addToolOutput.
 });
 
+export const getCurrentTime = tool({
+  description:
+    "Get the current wall-clock date and time. Returns ISO timestamp, " +
+    "human-readable strings, and the system timezone. Use when the user " +
+    "asks 'what time is it', for date math, or to anchor 'recent' / 'today'.",
+  inputSchema: z.object({}),
+  // execute → src/trigger/chat-tools.ts
+});
+
+export const searchHackerNews = tool({
+  description:
+    "Search Hacker News for stories matching a query, or fetch the current top stories. " +
+    "Returns title, points, comment count, author, posted-at, and URL for up to 10 results. " +
+    "Use for tech news, trending topics, or 'what's everyone talking about'.",
+  inputSchema: z.object({
+    query: z
+      .string()
+      .optional()
+      .describe(
+        "Search query. If omitted, returns the current top stories instead of doing a search."
+      ),
+    limit: z.number().int().min(1).max(10).optional().describe("Max results (1-10, default 5)"),
+  }),
+  // execute → src/trigger/chat-tools.ts
+});
+
+export const createGithubIssue = tool({
+  description:
+    "Create a GitHub issue tracking action items, bugs, or follow-ups. " +
+    "Requires human approval before creation. Use when the user asks " +
+    "to file an issue, track a bug, or open a ticket.",
+  inputSchema: z.object({
+    repo: z
+      .string()
+      .describe("Repository in 'owner/name' form (e.g. 'triggerdotdev/trigger.dev')"),
+    title: z.string().describe("Issue title"),
+    body: z.string().describe("Issue body in Markdown"),
+    labels: z.array(z.string()).optional().describe("Labels to apply (e.g. ['bug', 'p1'])"),
+  }),
+  needsApproval: true,
+  // execute → src/trigger/chat-tools.ts
+});
+
 /**
  * The schema-only tool set passed to `chat.headStart`'s `streamText`
  * call. The agent task imports each schema individually and adds the
@@ -136,6 +179,9 @@ export const headStartTools = {
   executeCode,
   sendEmail,
   askUser,
+  getCurrentTime,
+  searchHackerNews,
+  createGithubIssue,
 };
 
 type ChatToolSet = typeof headStartTools;

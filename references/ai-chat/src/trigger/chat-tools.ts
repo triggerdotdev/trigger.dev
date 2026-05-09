@@ -27,6 +27,9 @@ import {
   executeCode as executeCodeSchema,
   sendEmail as sendEmailSchema,
   askUser as askUserSchema,
+  getCurrentTime as getCurrentTimeSchema,
+  searchHackerNews as searchHackerNewsSchema,
+  createGithubIssue as createGithubIssueSchema,
 } from "@/lib/chat-tools-schemas";
 
 const turndown = new TurndownService();
@@ -285,6 +288,105 @@ export const sendEmail = tool({
 // askUser has no execute by design — round-tripped via addToolOutput.
 export const askUser = askUserSchema;
 
+export const getCurrentTime = tool({
+  ...getCurrentTimeSchema,
+  execute: async () => {
+    const now = new Date();
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return {
+      iso: now.toISOString(),
+      unixMs: now.getTime(),
+      timezone: tz,
+      local: now.toLocaleString("en-US", { timeZone: tz, dateStyle: "full", timeStyle: "long" }),
+      utc: now.toUTCString(),
+      dayOfWeek: now.toLocaleDateString("en-US", { weekday: "long" }),
+    };
+  },
+});
+
+export const searchHackerNews = tool({
+  ...searchHackerNewsSchema,
+  execute: async ({ query, limit = 5 }) => {
+    if (query) {
+      // Algolia HN search — story type only, sorted by points
+      const url = new URL("https://hn.algolia.com/api/v1/search");
+      url.searchParams.set("query", query);
+      url.searchParams.set("tags", "story");
+      url.searchParams.set("hitsPerPage", String(limit));
+      const res = await fetch(url);
+      if (!res.ok) return { error: `Algolia error ${res.status}` };
+      const json = (await res.json()) as {
+        hits: Array<{
+          objectID: string;
+          title?: string;
+          url?: string;
+          author: string;
+          points?: number;
+          num_comments?: number;
+          created_at: string;
+        }>;
+      };
+      return {
+        query,
+        results: json.hits.map((h) => ({
+          title: h.title ?? "(no title)",
+          url: h.url ?? `https://news.ycombinator.com/item?id=${h.objectID}`,
+          author: h.author,
+          points: h.points ?? 0,
+          comments: h.num_comments ?? 0,
+          createdAt: h.created_at,
+        })),
+      };
+    }
+    // Top stories — first /topstories.json then per-item lookups
+    const idsRes = await fetch("https://hacker-news.firebaseio.com/v0/topstories.json");
+    if (!idsRes.ok) return { error: `HN error ${idsRes.status}` };
+    const ids = (await idsRes.json()) as number[];
+    const top = ids.slice(0, limit);
+    const items = await Promise.all(
+      top.map(async (id) => {
+        const r = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);
+        if (!r.ok) return null;
+        const it = (await r.json()) as {
+          id: number;
+          title?: string;
+          url?: string;
+          by: string;
+          score?: number;
+          descendants?: number;
+          time: number;
+        };
+        return {
+          title: it.title ?? "(no title)",
+          url: it.url ?? `https://news.ycombinator.com/item?id=${it.id}`,
+          author: it.by,
+          points: it.score ?? 0,
+          comments: it.descendants ?? 0,
+          createdAt: new Date(it.time * 1000).toISOString(),
+        };
+      })
+    );
+    return { topStories: items.filter((x) => x !== null) };
+  },
+});
+
+export const createGithubIssue = tool({
+  ...createGithubIssueSchema,
+  execute: async ({ repo, title, body, labels }) => {
+    // Simulated — in a real app this would call the GitHub API
+    const issueNumber = Math.floor(Math.random() * 9000) + 1000;
+    return {
+      created: true,
+      repo,
+      issueNumber,
+      url: `https://github.com/${repo}/issues/${issueNumber}`,
+      title,
+      labels: labels ?? [],
+      preview: body.slice(0, 120),
+    };
+  },
+});
+
 /** Tool set passed to `streamText` for the main `chat.agent` run. */
 export const chatTools = {
   inspectEnvironment,
@@ -294,4 +396,7 @@ export const chatTools = {
   executeCode,
   sendEmail,
   askUser,
+  getCurrentTime,
+  searchHackerNews,
+  createGithubIssue,
 };

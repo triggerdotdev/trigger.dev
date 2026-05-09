@@ -349,12 +349,25 @@ export class AgentChat<TAgent = unknown> {
     // re-triggers if needed — so we don't need to track runId here.
     await this.ensureStarted();
 
+    // Slim wire — at most ONE message per record. The agent rebuilds prior
+    // history from its durable S3 snapshot + session.out replay at run
+    // boot. `regenerate-message` omits `message` (the agent slices its own
+    // history). See plan vivid-humming-bonbon.
+    if (triggerType === "submit-message" && messages.length === 0) {
+      throw new Error(
+        "AgentChat.sendRaw: 'submit-message' trigger requires at least one message"
+      );
+    }
+    const lastIfSubmit =
+      triggerType === "submit-message"
+        ? (messages.at(-1) as UIMessage | undefined)
+        : undefined;
     const payload: ChatTaskWirePayload = {
-      messages: triggerType === "submit-message" ? messages.slice(-1) : messages,
+      ...(lastIfSubmit ? { message: lastIfSubmit } : {}),
       chatId: this.chatId,
       trigger: triggerType,
       metadata: this.clientData,
-    } as unknown as ChatTaskWirePayload;
+    } as ChatTaskWirePayload;
 
     const api = this.createApiClient();
     await api.appendToSessionStream(
@@ -370,10 +383,12 @@ export class AgentChat<TAgent = unknown> {
   async steer(text: string): Promise<boolean> {
     if (!this.state.started) return false;
 
-    const payload = {
-      messages: [
-        { id: `steer-${Date.now()}`, role: "user", parts: [{ type: "text", text }] },
-      ],
+    const payload: ChatTaskWirePayload = {
+      message: {
+        id: `steer-${Date.now()}`,
+        role: "user",
+        parts: [{ type: "text", text }],
+      } as unknown as UIMessage,
       chatId: this.chatId,
       trigger: "submit-message" as const,
       metadata: this.clientData,
@@ -386,7 +401,7 @@ export class AgentChat<TAgent = unknown> {
         "in",
         serializeInputChunk({
           kind: "message",
-          payload: payload as ChatTaskWirePayload,
+          payload,
         })
       );
       return true;
@@ -499,8 +514,7 @@ export class AgentChat<TAgent = unknown> {
   ): Promise<ChatStream> {
     await this.ensureStarted();
 
-    const payload = {
-      messages: [] as never[],
+    const payload: ChatTaskWirePayload = {
       chatId: this.chatId,
       trigger: "action" as const,
       action,
@@ -514,7 +528,7 @@ export class AgentChat<TAgent = unknown> {
         "in",
         serializeInputChunk({
           kind: "message",
-          payload: payload as unknown as ChatTaskWirePayload,
+          payload,
         })
       );
     } catch {
@@ -537,10 +551,9 @@ export class AgentChat<TAgent = unknown> {
         serializeInputChunk({
           kind: "message",
           payload: {
-            messages: [],
             chatId: this.chatId,
             trigger: "close",
-          } as unknown as ChatTaskWirePayload,
+          } satisfies ChatTaskWirePayload,
         })
       );
       this.state = { ...this.state, started: false };
@@ -576,12 +589,12 @@ export class AgentChat<TAgent = unknown> {
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
-        // `trigger: "preload"` + empty `messages` mirror the browser-mediated
+        // `trigger: "preload"` mirrors the browser-mediated
         // `chat.createStartSessionAction` shape so the agent runtime fires
         // `onPreload` (not `onChatStart` with `preloaded: true`). Without
         // this, AgentChat's first run skips both preload and start hooks,
         // which is where customer apps typically upsert their Chat row.
-        messages: [],
+        // Slim wire — preload carries no message body.
         trigger: "preload",
         ...(this.triggerConfigDefault?.basePayload ?? {}),
         chatId: this.chatId,
