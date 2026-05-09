@@ -151,9 +151,13 @@ export const action = dashboardAction(
       return orgId ? { organizationId: orgId } : {};
     },
     // No top-level authorization — different intents have different
-    // requirements (set-role needs manage:members; remove/leave is
-    // gated by the existing model layer; purchase-seats by the
-    // SetSeatsAddOnService). Per-intent ability checks happen inside.
+    // requirements. Each branch inside checks the right ability:
+    //   set-role        → manage:members
+    //   purchase-seats  → manage:billing
+    //   remove-member   → manage:members (skipped for self-leave)
+    // Don't rely on the model-layer (removeTeamMember /
+    // SetSeatsAddOnService) for enforcement — those are defense in
+    // depth; the route layer is where the ability gate belongs.
   },
   async ({ user, ability, request, params, context }) => {
     const userId = user.id;
@@ -187,6 +191,15 @@ export const action = dashboardAction(
     }
 
     if (formType === "purchase-seats") {
+      // Adjusting seat count is a billing operation. Pre-RBAC the team
+      // page's loader gated the entire route on Owner/Admin, so reaching
+      // this action implied authority. Post-RBAC the loader requires
+      // `read:members` (broader audience), so gate the seat purchase
+      // explicitly here against the right ability rather than relying
+      // on the SetSeatsAddOnService for enforcement at the model layer.
+      if (!ability.can("manage", { type: "billing" })) {
+        return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+      }
       const org = await $replica.organization.findFirst({
         where: { slug: organizationSlug },
         select: { id: true },
@@ -229,6 +242,21 @@ export const action = dashboardAction(
 
     if (!submission.value || submission.intent !== "submit") {
       return json(submission);
+    }
+
+    // Default intent: remove a member or leave the org. Self-leave (the
+    // actor removing their own membership) is always allowed. Removing
+    // another member requires `manage:members` — pre-RBAC the
+    // `removeTeamMember` model fn only verified the actor was a member
+    // of the target org, so any org member could remove any other
+    // member by id; this gate fixes that latent permissions hole.
+    const targetMember = await $replica.orgMember.findFirst({
+      where: { id: submission.value.memberId },
+      select: { userId: true },
+    });
+    const isSelfLeave = targetMember?.userId === userId;
+    if (!isSelfLeave && !ability.can("manage", { type: "members" })) {
+      return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
     }
 
     try {
