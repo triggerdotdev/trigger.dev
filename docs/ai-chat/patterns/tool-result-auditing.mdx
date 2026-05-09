@@ -1,0 +1,145 @@
+---
+title: "Tool result auditing"
+sidebarTitle: "Tool result auditing"
+description: "Fire side effects exactly once per resolved tool call — audit logs, billing, notifications — using extractNewToolResults inside hydrateMessages or onTurnComplete."
+---
+
+When a chat agent uses tools (especially [human-in-the-loop](/ai-chat/patterns/human-in-the-loop) tools that wait on `addToolOutput` from the frontend), you often need to fire side effects exactly once per resolved tool call:
+
+- **Audit logs** — record every tool result for compliance.
+- **Billing** — charge per tool invocation.
+- **Notifications** — alert downstream systems when a specific tool resolves.
+- **Search-index updates** — reflect tool outputs into a derived store.
+
+The naive approach — "log every tool part you see" — over-counts. The same assistant message gets re-shown across re-renders, replays, and retries. You want a function of the form **"is this tool result one I haven't already logged?"** That's exactly what [`chat.history.extractNewToolResults`](/ai-chat/backend#chat-history) returns.
+
+## The pattern
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { auditLog } from "@/lib/audit";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  hydrateMessages: async ({ chatId, incomingMessages }) => {
+    for (const msg of incomingMessages) {
+      for (const r of chat.history.extractNewToolResults(msg)) {
+        await auditLog.record({
+          chatId,
+          toolCallId: r.toolCallId,
+          toolName: r.toolName,
+          output: r.output,
+          errorText: r.errorText,
+        });
+      }
+    }
+    return await db.getMessages(chatId);
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+The hook fires per turn. `incomingMessages` is the new wire message (0-or-1-length, see [v4.5 wire format change](/ai-chat/upgrade-guide#v45-wire-format-change)). For each new tool result on that message, write one audit row. Then return the canonical chain from your DB.
+
+`extractNewToolResults` compares the message against the current `chat.history` chain and returns only tool parts whose `toolCallId` is **not** already resolved. That's what makes the call exactly-once:
+
+- A re-emitted message (same id, same toolCallId) returns `[]` — no duplicate log.
+- A genuinely new tool result on a known assistant message returns just the new ones.
+- A first-time tool result returns the full set.
+
+## Why `hydrateMessages` is the right hook
+
+The pattern works in any pre-merge callback, but `hydrateMessages` is the canonical spot for two reasons:
+
+1. **It fires before the runtime merges** the incoming message into the accumulator. Once merged, the tool results are already on the chain, and `extractNewToolResults` returns `[]` for them.
+2. **It always fires per turn** — including HITL turns where the user resolved a tool with `addToolOutput`, which is the highest-volume audit event in most apps.
+
+By the time `onTurnComplete` fires, the chain already contains `responseMessage`, so calling `extractNewToolResults(responseMessage)` there returns `[]`. Don't put audit logging there for the resolution path.
+
+## Without `hydrateMessages` — `onTurnComplete` for self-emitted tool calls
+
+If you don't use `hydrateMessages`, the runtime's snapshot+replay path handles persistence. You can still audit the agent's **own** tool executions in `onTurnComplete` — but compare against the prior message rather than the just-emitted one:
+
+```ts
+onTurnComplete: async ({ chatId, newUIMessages }) => {
+  // The assistant message from this turn is in newUIMessages.
+  for (const msg of newUIMessages) {
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts) {
+      if (
+        typeof part.type === "string" &&
+        part.type.startsWith("tool-") &&
+        ((part as any).state === "output-available" ||
+         (part as any).state === "output-error")
+      ) {
+        await auditLog.record({
+          chatId,
+          toolCallId: (part as any).toolCallId,
+          toolName: (part as any).type.slice("tool-".length),
+          output: (part as any).output,
+          errorText: (part as any).errorText,
+        });
+      }
+    }
+  }
+},
+```
+
+`newUIMessages` is just the messages this turn produced — no prior-chain noise. Each tool part shows up exactly once.
+
+This works for tools the agent itself calls (no HITL pause). For HITL flows where the user resolves a tool with `addToolOutput`, the resolution arrives on the **next** turn's wire message, not in `newUIMessages` of the resolving turn — use `hydrateMessages` for those.
+
+## Idempotency at the storage layer
+
+Even with `extractNewToolResults`, transient failures (e.g. an audit-log POST that times out and is retried) can produce duplicates. Make the audit-log writer idempotent on `toolCallId`:
+
+```ts
+await auditLog.upsert({
+  where: { toolCallId: r.toolCallId },
+  create: { /* ... */ },
+  update: { /* timestamp, retry count, etc. */ },
+});
+```
+
+`toolCallId` is unique per tool invocation (assigned by the AI SDK when the model emits the tool call) and stable across retries — perfect for an idempotency key.
+
+## What `extractNewToolResults` returns
+
+```ts
+type ExtractedToolResult = {
+  toolCallId: string;
+  toolName: string;
+  input: unknown;       // The arguments the model passed when calling the tool
+  output?: unknown;     // The tool's return value (output-available state)
+  errorText?: string;   // Error message (output-error state)
+};
+```
+
+Tool parts in `input-available` state (the model called the tool but it hasn't resolved yet) are not returned — only **resolved** results count.
+
+## Combining with HITL
+
+[Human-in-the-loop](/ai-chat/patterns/human-in-the-loop) tools pause the turn waiting for `addToolOutput` from the frontend. When the user submits, the wire message carries an updated assistant message with the tool now in `output-available` state. `extractNewToolResults` against that message returns the just-resolved tool — exactly one audit row per user resolution:
+
+```ts
+hydrateMessages: async ({ chatId, incomingMessages }) => {
+  for (const msg of incomingMessages) {
+    for (const r of chat.history.extractNewToolResults(msg)) {
+      // Fires once per ask_user / approval / similar resolution
+      await auditLog.record({ chatId, /* ... */ });
+    }
+  }
+  return await db.getMessages(chatId);
+}
+```
+
+This is the original motivator for the helper — see the [HITL pattern's net-new-tool-result section](/ai-chat/patterns/human-in-the-loop#acting-once-per-net-new-tool-result).
+
+## See also
+
+- [`chat.history`](/ai-chat/backend#chat-history) — full reference for `extractNewToolResults`, `getPendingToolCalls`, `getResolvedToolCalls`
+- [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop) — the pattern this auditing hook complements
+- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — where pre-merge auditing lives
+- [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — how the runtime rebuilds chains, and why `extractNewToolResults` works against them

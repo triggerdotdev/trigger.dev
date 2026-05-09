@@ -126,9 +126,11 @@
                       "ai-chat/patterns/sub-agents",
                       "ai-chat/patterns/version-upgrades",
                       "ai-chat/patterns/database-persistence",
+                      "ai-chat/patterns/persistence-and-replay",
                       "ai-chat/patterns/branching-conversations",
                       "ai-chat/patterns/code-sandbox",
                       "ai-chat/patterns/human-in-the-loop",
+                      "ai-chat/patterns/tool-result-auditing",
                       "ai-chat/patterns/large-payloads",
                       "ai-chat/patterns/skills",
                       "ai-chat/patterns/oom-resilience"

@@ -67,6 +67,10 @@ Fires once on the first turn (turn 0) before `run()` executes. Use it to create 
 
 The `continuation` field tells you whether this is a brand new chat or a continuation of an existing one (where the previous run timed out or was cancelled). The `preloaded` field tells you whether `onPreload` already ran.
 
+<Note>
+  On a continuation (`continuation: true`), the `messages` field reflects the **full prior conversation** — the runtime rebuilds it from a durable snapshot plus a `session.out` replay before `onChatStart` runs. On a brand-new chat or a preloaded run that hasn't received its first turn yet, `messages` is empty. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay) for the underlying mechanism.
+</Note>
+
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
@@ -135,7 +139,7 @@ Use this when the backend should be the source of truth for message history: abu
 | `chatId`           | `string`                                              | Chat session ID                                           |
 | `turn`             | `number`                                              | Turn number (0-indexed)                                   |
 | `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
-| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend (empty for actions) |
+| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend — 0-or-1-length (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses) |
 | `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
 | `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
 | `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
@@ -172,6 +176,14 @@ After the hook returns, any incoming wire message whose ID matches a hydrated me
 
 <Note>
   `hydrateMessages` also fires for [action](/ai-chat/actions) turns (`trigger: "action"`) with empty `incomingMessages`. This lets the action handler work with the latest DB state.
+</Note>
+
+<Tip>
+  Registering `hydrateMessages` short-circuits the runtime's [snapshot + replay](/ai-chat/patterns/persistence-and-replay) reconstruction at run boot — your hook is the single source of truth for history, so the runtime skips reading or writing the snapshot entirely. No object storage traffic, no replay cost. The trade-off is that you own persistence end-to-end.
+</Tip>
+
+<Note>
+  `incomingMessages` is **0-or-1-length** consistently. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array and the loop runs zero or one times.
 </Note>
 
 ## onTurnStart
