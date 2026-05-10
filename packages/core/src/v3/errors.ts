@@ -631,6 +631,26 @@ export class GracefulExitTimeoutError extends Error {
   }
 }
 
+export class ChatChunkTooLargeError extends Error {
+  constructor(
+    public readonly chunkSize: number,
+    public readonly maxSize: number,
+    public readonly chunkType?: string
+  ) {
+    super(
+      `chat.agent chunk${chunkType ? ` of type "${chunkType}"` : ""} is ${chunkSize} bytes, ` +
+        `over the realtime stream's per-record cap of ${maxSize} bytes. ` +
+        `For oversized payloads (e.g. large tool outputs), write the value to your own store and ` +
+        `emit only an id/url through the chat stream — see https://trigger.dev/docs/ai-chat/patterns/large-payloads.`
+    );
+    this.name = "ChatChunkTooLargeError";
+  }
+}
+
+export function isChatChunkTooLargeError(error: unknown): error is ChatChunkTooLargeError {
+  return error instanceof Error && error.name === "ChatChunkTooLargeError";
+}
+
 export class MaxDurationExceededError extends Error {
   constructor(
     public readonly maxDurationInSeconds: number,

@@ -87,7 +87,7 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      return $replica.taskRun.findFirst({
+      const run = await $replica.taskRun.findFirst({
         where: {
           friendlyId: params.runId,
           runtimeEnvironmentId: auth.environment.id,
@@ -106,6 +106,7 @@ export const loader = createLoaderApiRoute(
           },
         },
       });
+      return run;
     },
     authorization: {
       action: "read",
