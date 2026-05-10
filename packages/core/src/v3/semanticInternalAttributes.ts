@@ -13,6 +13,7 @@ export const SemanticInternalAttributes = {
   RUN_ID: "ctx.run.id",
   RUN_IS_TEST: "ctx.run.isTest",
   RUN_IS_REPLAY: "ctx.run.isReplay",
+  GEN_AI_CONVERSATION_ID: "gen_ai.conversation.id",
   ORIGINAL_RUN_ID: "$original_run_id",
   BATCH_ID: "ctx.batch.id",
   TASK_SLUG: "ctx.task.id",
