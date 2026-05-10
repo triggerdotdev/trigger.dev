@@ -53,6 +53,17 @@ describe("buildJwtAbility", () => {
     expect(ability.can("read", { type: "runs" })).toBe(false);
   });
 
+  it("preserves colons in the resource id (everything after the 2nd colon)", () => {
+    // Resource ids can contain colons (e.g. user-provided tags like
+    // `env:staging`). The naive `[a, b, c] = scope.split(":")` form
+    // truncated `read:tags:env:staging` → scopeId="env" and silently
+    // mis-matched. Regression coverage for the multi-colon id path.
+    const ability = buildJwtAbility(["read:tags:env:staging"]);
+    expect(ability.can("read", { type: "tags", id: "env:staging" })).toBe(true);
+    expect(ability.can("read", { type: "tags", id: "env" })).toBe(false);
+    expect(ability.can("read", { type: "tags", id: "env:prod" })).toBe(false);
+  });
+
   it("allows any read with read:all scope", () => {
     const ability = buildJwtAbility(["read:all"]);
     expect(ability.can("read", { type: "runs" })).toBe(true);

@@ -26,7 +26,15 @@ export function buildFallbackAbility(isAdmin: boolean): RbacAbility {
 export function buildJwtAbility(scopes: string[]): RbacAbility {
   const matches = (action: string, r: RbacResource): boolean =>
     scopes.some((scope) => {
-      const [scopeAction, scopeType, scopeId] = scope.split(":");
+      // Only the first two colons are delimiters — everything after the
+      // second colon is the resource id (which may itself contain colons,
+      // e.g. user-provided tags like "env:staging"). Naive
+      // `split(":")` + 3-tuple destructuring truncated such ids to the
+      // first segment and silently failed to match.
+      const parts = scope.split(":");
+      const scopeAction = parts[0];
+      const scopeType = parts[1];
+      const scopeId = parts.length > 2 ? parts.slice(2).join(":") : undefined;
       // Bare `admin` is the universal wildcard. `admin:<type>` is *not* —
       // it falls through to normal matching as action="admin" against
       // resources of that type. Pre-RBAC, the legacy checkAuthorization
