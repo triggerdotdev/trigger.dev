@@ -15,7 +15,7 @@ import { DiscordIcon } from "@trigger.dev/companyicons";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import type { PanelHandle } from "react-window-splitter";
+import type { PanelHandle } from "@window-splitter/react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
