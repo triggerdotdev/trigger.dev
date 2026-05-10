@@ -45,7 +45,7 @@ export function nodeOptionsWithMaxOldSpaceSize(
   let options = existingOptions ?? "";
 
   //remove existing max-old-space-size flag
-  options = options.replace(/--max-old-space-size=\d+/g, "").trim();
+  options = options.replace(/--max[-_]old[-_]space[-_]size=\d+/g, "").trim();
 
   //get max-old-space-size flag
   const flag = maxOldSpaceSizeFlag(machine, overhead);

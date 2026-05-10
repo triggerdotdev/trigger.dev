@@ -36,6 +36,14 @@ describe("nodeOptionsWithMaxOldSpaceSize", () => {
     expect(result).toBe(`--inspect ${expectedFlag}`);
   });
 
+  it("replaces existing max_old_space_size flag", () => {
+    const result = nodeOptionsWithMaxOldSpaceSize(
+      "--max_old_space_size=4096 --inspect",
+      testMachine
+    );
+    expect(result).toBe(`--inspect ${expectedFlag}`);
+  });
+
   it("handles multiple existing max-old-space-size flags", () => {
     const result = nodeOptionsWithMaxOldSpaceSize(
       "--max-old-space-size=4096 --inspect --max-old-space-size=8192",
