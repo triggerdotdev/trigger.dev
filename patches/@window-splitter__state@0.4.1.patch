@@ -1,5 +1,5 @@
 diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
-index acb542b1b71a7e808173d938d16f45a484334f94..0b5fcfbd57ea015ace3cc5f255f39f71dccf9f73 100644
+index acb542b1b71a7e808173d938d16f45a484334f94..532ab3e4d9adf98ba4a451e423895a1b982c8ded 100644
 --- a/dist/commonjs/index.js
 +++ b/dist/commonjs/index.js
 @@ -107,6 +107,9 @@ function prepareSnapshot(snapshot) {
@@ -12,27 +12,44 @@ index acb542b1b71a7e808173d938d16f45a484334f94..0b5fcfbd57ea015ace3cc5f255f39f71
          }
          else {
              item.size.value = new big_js_1.default(item.size.value);
-@@ -648,15 +651,13 @@ function updateLayout(context, dragEvent) {
+@@ -646,28 +649,14 @@ function updateLayout(context, dragEvent) {
+             panelAfter.onCollapseChange.current(false);
+         }
      }
-     const panelBeforeIsAboutToCollapse = panelBefore.currentValue.value.eq(getUnitPixelValue(context, panelBefore.min));
-     // If the panel was expanded and now is at it's min size, collapse it
-+    // Skip auto-collapse-on-drag for controlled panels: the parent owns the
-+    // `collapsed` prop and an empty/no-op handler would otherwise leave the
-+    // state machine wedged with accumulating dragOvershoot.
-     if (!dragEvent.disregardCollapseBuffer &&
-         panelBefore.collapsible &&
-+        !panelBefore.collapseIsControlled &&
-         panelBeforeIsAboutToCollapse) {
+-    const panelBeforeIsAboutToCollapse = panelBefore.currentValue.value.eq(getUnitPixelValue(context, panelBefore.min));
+-    // If the panel was expanded and now is at it's min size, collapse it
+-    if (!dragEvent.disregardCollapseBuffer &&
+-        panelBefore.collapsible &&
+-        panelBeforeIsAboutToCollapse) {
 -        if (panelBefore.onCollapseChange?.current &&
 -            panelBefore.collapseIsControlled &&
 -            !dragEvent.controlled) {
 -            panelBefore.onCollapseChange.current(true);
 -            return { dragOvershoot: newDragOvershoot };
 -        }
-         // Make it collapsed
-         panelBefore.collapsed = true;
-         panelBeforeNewValue = getUnitPixelValue(context, panelBefore.collapsedSize);
-@@ -693,7 +694,10 @@ function commitLayout(context) {
+-        // Make it collapsed
+-        panelBefore.collapsed = true;
+-        panelBeforeNewValue = getUnitPixelValue(context, panelBefore.collapsedSize);
+-        // Add the extra space created to the before panel
+-        panelAfterNewValue = panelAfterNewValue.add(panelBeforePreviousValue.minus(panelBeforeNewValue));
+-        if (panelBefore.onCollapseChange?.current &&
+-            !panelBefore.collapseIsControlled &&
+-            !dragEvent.controlled) {
+-            panelBefore.onCollapseChange.current(true);
+-        }
+-    }
++    // Drag-to-collapse is disabled in this fork: every consumer of the
++    // library uses controlled `collapsed` props and triggers collapse
++    // explicitly (close button, ESC, URL change, etc.). The original auto-
++    // collapse-on-drag logic that lived here would notify the parent when a
++    // collapsible panel reached its min during a drag — keeping it for our
++    // (controlled-only) case caused state-machine deadlocks when handlers
++    // were no-ops, so the block is removed entirely. Panels just clamp at
++    // `min` during drag now.
+     panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
+     panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
+     const leftoverSpace = new big_js_1.default(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new big_js_1.default(0)));
+@@ -693,7 +682,10 @@ function commitLayout(context) {
      });
      const staticWidth = getStaticWidth({ ...context, items: newItems });
      newItems.forEach((item, index) => {
@@ -44,7 +61,7 @@ index acb542b1b71a7e808173d938d16f45a484334f94..0b5fcfbd57ea015ace3cc5f255f39f71
              return;
          }
          newItems[index] = {
-@@ -821,7 +825,12 @@ function clearLastKnownSize(items) {
+@@ -821,7 +813,12 @@ function clearLastKnownSize(items) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -59,7 +76,7 @@ index acb542b1b71a7e808173d938d16f45a484334f94..0b5fcfbd57ea015ace3cc5f255f39f71
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index 8891ac0141135a3a885bd704d9d443458c7a01bf..cb00de4b543d2974a4afcd8999fa2e3e4e392fe8 100644
+index 8891ac0141135a3a885bd704d9d443458c7a01bf..13426f6ef9290af0dcaf3ee1d416fb54f8e42745 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
 @@ -81,6 +81,9 @@ export function prepareSnapshot(snapshot) {
@@ -72,27 +89,44 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..cb00de4b543d2974a4afcd8999fa2e3e
          }
          else {
              item.size.value = new Big(item.size.value);
-@@ -622,15 +625,13 @@ function updateLayout(context, dragEvent) {
+@@ -620,28 +623,14 @@ function updateLayout(context, dragEvent) {
+             panelAfter.onCollapseChange.current(false);
+         }
      }
-     const panelBeforeIsAboutToCollapse = panelBefore.currentValue.value.eq(getUnitPixelValue(context, panelBefore.min));
-     // If the panel was expanded and now is at it's min size, collapse it
-+    // Skip auto-collapse-on-drag for controlled panels: the parent owns the
-+    // `collapsed` prop and an empty/no-op handler would otherwise leave the
-+    // state machine wedged with accumulating dragOvershoot.
-     if (!dragEvent.disregardCollapseBuffer &&
-         panelBefore.collapsible &&
-+        !panelBefore.collapseIsControlled &&
-         panelBeforeIsAboutToCollapse) {
+-    const panelBeforeIsAboutToCollapse = panelBefore.currentValue.value.eq(getUnitPixelValue(context, panelBefore.min));
+-    // If the panel was expanded and now is at it's min size, collapse it
+-    if (!dragEvent.disregardCollapseBuffer &&
+-        panelBefore.collapsible &&
+-        panelBeforeIsAboutToCollapse) {
 -        if (panelBefore.onCollapseChange?.current &&
 -            panelBefore.collapseIsControlled &&
 -            !dragEvent.controlled) {
 -            panelBefore.onCollapseChange.current(true);
 -            return { dragOvershoot: newDragOvershoot };
 -        }
-         // Make it collapsed
-         panelBefore.collapsed = true;
-         panelBeforeNewValue = getUnitPixelValue(context, panelBefore.collapsedSize);
-@@ -667,7 +668,10 @@ function commitLayout(context) {
+-        // Make it collapsed
+-        panelBefore.collapsed = true;
+-        panelBeforeNewValue = getUnitPixelValue(context, panelBefore.collapsedSize);
+-        // Add the extra space created to the before panel
+-        panelAfterNewValue = panelAfterNewValue.add(panelBeforePreviousValue.minus(panelBeforeNewValue));
+-        if (panelBefore.onCollapseChange?.current &&
+-            !panelBefore.collapseIsControlled &&
+-            !dragEvent.controlled) {
+-            panelBefore.onCollapseChange.current(true);
+-        }
+-    }
++    // Drag-to-collapse is disabled in this fork: every consumer of the
++    // library uses controlled `collapsed` props and triggers collapse
++    // explicitly (close button, ESC, URL change, etc.). The original auto-
++    // collapse-on-drag logic that lived here would notify the parent when a
++    // collapsible panel reached its min during a drag — keeping it for our
++    // (controlled-only) case caused state-machine deadlocks when handlers
++    // were no-ops, so the block is removed entirely. Panels just clamp at
++    // `min` during drag now.
+     panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
+     panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
+     const leftoverSpace = new Big(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new Big(0)));
+@@ -667,7 +656,10 @@ function commitLayout(context) {
      });
      const staticWidth = getStaticWidth({ ...context, items: newItems });
      newItems.forEach((item, index) => {
@@ -104,7 +138,7 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..cb00de4b543d2974a4afcd8999fa2e3e
              return;
          }
          newItems[index] = {
-@@ -795,7 +799,12 @@ function clearLastKnownSize(items) {
+@@ -795,7 +787,12 @@ function clearLastKnownSize(items) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
