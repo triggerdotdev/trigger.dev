@@ -1,5 +1,5 @@
 diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
-index acb542b1b71a7e808173d938d16f45a484334f94..532ab3e4d9adf98ba4a451e423895a1b982c8ded 100644
+index acb542b1b71a7e808173d938d16f45a484334f94..09c80f9756c75eace8ca530dbd21502c3e22b3ab 100644
 --- a/dist/commonjs/index.js
 +++ b/dist/commonjs/index.js
 @@ -107,6 +107,9 @@ function prepareSnapshot(snapshot) {
@@ -49,19 +49,7 @@ index acb542b1b71a7e808173d938d16f45a484334f94..532ab3e4d9adf98ba4a451e423895a1b
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new big_js_1.default(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new big_js_1.default(0)));
-@@ -693,7 +682,10 @@ function commitLayout(context) {
-     });
-     const staticWidth = getStaticWidth({ ...context, items: newItems });
-     newItems.forEach((item, index) => {
--        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest) {
-+        // Skip collapsible panels: they need to stay in pixel form so a fully
-+        // collapsed (0px) state doesn't get floored back up to `min` by the
-+        // CSS minmax() that buildTemplate emits for percent-typed panels.
-+        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest || item.collapsible) {
-             return;
-         }
-         newItems[index] = {
-@@ -821,7 +813,12 @@ function clearLastKnownSize(items) {
+@@ -821,7 +810,12 @@ function clearLastKnownSize(items) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -76,7 +64,7 @@ index acb542b1b71a7e808173d938d16f45a484334f94..532ab3e4d9adf98ba4a451e423895a1b
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index 8891ac0141135a3a885bd704d9d443458c7a01bf..13426f6ef9290af0dcaf3ee1d416fb54f8e42745 100644
+index 8891ac0141135a3a885bd704d9d443458c7a01bf..8ad04a353fc0b2980e71ac2148c0cb71961857ff 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
 @@ -81,6 +81,9 @@ export function prepareSnapshot(snapshot) {
@@ -126,19 +114,7 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..13426f6ef9290af0dcaf3ee1d416fb54
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new Big(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new Big(0)));
-@@ -667,7 +656,10 @@ function commitLayout(context) {
-     });
-     const staticWidth = getStaticWidth({ ...context, items: newItems });
-     newItems.forEach((item, index) => {
--        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest) {
-+        // Skip collapsible panels: they need to stay in pixel form so a fully
-+        // collapsed (0px) state doesn't get floored back up to `min` by the
-+        // CSS minmax() that buildTemplate emits for percent-typed panels.
-+        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest || item.collapsible) {
-             return;
-         }
-         newItems[index] = {
-@@ -795,7 +787,12 @@ function clearLastKnownSize(items) {
+@@ -795,7 +784,12 @@ function clearLastKnownSize(items) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
