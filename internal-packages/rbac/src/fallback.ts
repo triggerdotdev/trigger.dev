@@ -60,6 +60,10 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     this.replica = clients.replica;
   }
 
+  async isUsingPlugin(): Promise<boolean> {
+    return false;
+  }
+
   async authenticateBearer(
     request: Request,
     options?: { allowJWT?: boolean }

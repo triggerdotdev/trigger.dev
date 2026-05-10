@@ -118,6 +118,13 @@ export type PatAuthResult =
     };
 
 export interface RoleBaseAccessController {
+  // True when a real RBAC plugin is loaded (i.e. cloud); false when the
+  // OSS fallback is in use. Hosts gate behaviour that's only meaningful
+  // when the plugin is present (e.g. skipping role-attachment writes,
+  // hiding role-pickers in the UI, branching on whether ability checks
+  // are authoritative or permissive).
+  isUsingPlugin(): Promise<boolean>;
+
   // API routes (Bearer token): one DB query → identity + pre-built ability
   // options.allowJWT: when true, accepts PUBLIC_JWT tokens in addition to environment API keys
   authenticateBearer(request: Request, options?: { allowJWT?: boolean }): Promise<BearerAuthResult>;

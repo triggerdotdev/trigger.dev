@@ -113,6 +113,10 @@ class LazyController implements RoleBaseAccessController {
     return this._init;
   }
 
+  async isUsingPlugin(): Promise<boolean> {
+    return (await this.c()).isUsingPlugin();
+  }
+
   async authenticateBearer(...args: Parameters<RoleBaseAccessController["authenticateBearer"]>) {
     const result = await (await this.c()).authenticateBearer(...args);
     return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;

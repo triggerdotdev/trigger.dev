@@ -17,17 +17,6 @@ const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", toke
 // staleness is fine.
 export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 
-// The OSS fallback's setTokenRole returns this exact string when no
-// enterprise plugin is loaded. We treat that as "no role attached" —
-// the PAT is still valid; auth just falls through to legacy permissive
-// behaviour. Any other error is treated as a real failure and triggers
-// the compensating delete below.
-// Must match the OSS fallback's exact error string (see
-// `internal-packages/rbac/src/fallback.ts`'s `setTokenRole`). The
-// match is how we detect "no plugin installed" and skip the
-// compensating delete.
-const FALLBACK_NOT_INSTALLED_ERROR = "RBAC plugin not installed";
-
 type CreatePersonalAccessTokenOptions = {
   name: string;
   userId: string;
@@ -380,34 +369,34 @@ export async function createPersonalAccessToken({
   // so a brief orphan window between the two writes is harmless. The
   // compensating delete narrows that window from "until manual cleanup"
   // to "until the request returns".
-  if (roleId) {
+  //
+  // Skip the call entirely when no RBAC plugin is loaded — the OSS
+  // fallback has no TokenRole table to write to. Gating on
+  // `rbac.isUsingPlugin()` (rather than parsing the fallback's error
+  // string) keeps the OSS-vs-cloud branch explicit and decoupled from
+  // any specific error message.
+  if (roleId && (await rbac.isUsingPlugin())) {
     const roleResult = await rbac.setTokenRole({
       tokenId: personalAccessToken.id,
       roleId,
     });
     if (!roleResult.ok) {
-      // The default fallback always returns ok=false with this exact
-      // message. That isn't a failure — there's no plugin to write to,
-      // so the PAT just runs without an explicit role (matches the
-      // pre-RBAC behaviour). Don't compensating-delete in that case.
-      if (roleResult.error === FALLBACK_NOT_INSTALLED_ERROR) {
-        logger.debug("createPersonalAccessToken: no RBAC plugin, skipping role assignment", {
-          patId: personalAccessToken.id,
-          userId,
-        });
-      } else {
-        await prisma.personalAccessToken
-          .delete({ where: { id: personalAccessToken.id } })
-          .catch((err) => {
-            logger.error("Failed to compensating-delete PAT after TokenRole insert failed", {
-              patId: personalAccessToken.id,
-              roleResultError: roleResult.error,
-              deleteError: err instanceof Error ? err.message : String(err),
-            });
+      await prisma.personalAccessToken
+        .delete({ where: { id: personalAccessToken.id } })
+        .catch((err) => {
+          logger.error("Failed to compensating-delete PAT after TokenRole insert failed", {
+            patId: personalAccessToken.id,
+            roleResultError: roleResult.error,
+            deleteError: err instanceof Error ? err.message : String(err),
           });
-        throw new Error(`Failed to assign role to access token: ${roleResult.error}`);
-      }
+        });
+      throw new Error(`Failed to assign role to access token: ${roleResult.error}`);
     }
+  } else if (roleId) {
+    logger.debug("createPersonalAccessToken: no RBAC plugin, skipping role assignment", {
+      patId: personalAccessToken.id,
+      userId,
+    });
   }
 
   return {
