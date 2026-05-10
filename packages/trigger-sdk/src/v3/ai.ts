@@ -1,38 +1,837 @@
 import {
+  accessoryAttributes,
   AnyTask,
+  apiClientManager,
+  getSchemaParseFn,
+  InputStreamOncePromise,
+  type InputStreamOnceOptions,
+  type InputStreamWaitOptions,
+  type InputStreamWaitWithIdleTimeoutOptions,
   isSchemaZodEsque,
+  logger,
+  type MachinePresetName,
+  ManualWaitpointPromise,
+  OutOfMemoryError,
+  sessionStreams,
+  type PipeStreamResult,
+  type RealtimeDefinedInputStream,
+  type RealtimeDefinedStream,
+  type ReadStreamOptions,
+  SemanticInternalAttributes,
+  type SendInputStreamOptions,
   Task,
+  taskContext,
+  type AppendStreamOptions,
+  type InputStreamOnceResult,
   type inferSchemaIn,
+  type inferSchemaOut,
+  type PipeStreamOptions,
+  type TaskIdentifier,
+  type TaskOptions,
   type TaskSchema,
+  type TaskRunContext,
   type TaskWithSchema,
+  type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
-import { dynamicTool, jsonSchema, JSONSchema7, Schema, Tool, ToolCallOptions, zodSchema } from "ai";
+import type {
+  FinishReason,
+  ModelMessage,
+  ToolSet,
+  UIMessage,
+  UIMessageChunk,
+  UIMessageStreamOptions,
+  LanguageModelUsage,
+} from "ai";
+import type { StreamWriteResult } from "@trigger.dev/core/v3";
+import {
+  convertToModelMessages,
+  dynamicTool,
+  generateId as generateMessageId,
+  getToolName,
+  isToolUIPart,
+  jsonSchema,
+  JSONSchema7,
+  readUIMessageStream,
+  Schema,
+  tool as aiTool,
+  Tool,
+  ToolCallOptions,
+  zodSchema,
+} from "ai";
+import { type Attributes, trace } from "@opentelemetry/api";
+import { auth } from "./auth.js";
+import { locals } from "./locals.js";
 import { metadata } from "./metadata.js";
+import type { ResolvedPrompt } from "./prompt.js";
+import type { ResolvedSkill } from "./skill.js";
+// Bash-skill runtime lives in `./agentSkillsRuntime.ts` (exposed as
+// the `@trigger.dev/sdk/ai/skills-runtime` subpath). It's a normal
+// static import — `ai.ts` is server-only by reachability now that
+// browser-side primitives (PENDING_MESSAGE_INJECTED_TYPE and the
+// chat-task wire types) live in `./ai-shared.ts`. Any browser bundle
+// that wants those primitives imports `./ai-shared.js` directly and
+// never touches `ai.ts`'s module graph, so the `node:*` builtins
+// pulled in transitively here never reach a client chunk.
+import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
+import { streams } from "./streams.js";
+import {
+  sessions,
+  type SessionHandle,
+  type SessionInputChannel,
+  type SessionOutputChannel,
+  type SessionPipeStreamOptions,
+  type SessionSubscribeOptions,
+} from "./sessions.js";
+import { createTask } from "./shared.js";
+import { resourceCatalog, type SessionTriggerConfig } from "@trigger.dev/core/v3";
+import { tracer } from "./tracer.js";
+
+/** Re-export for typing `ctx` in `chat.agent` hooks without importing `@trigger.dev/core`. */
+export type { TaskRunContext } from "@trigger.dev/core/v3";
+import {
+  applyChatStorePatch,
+  type ChatStoreChunk,
+  type ChatStoreDeltaChunk,
+  type ChatStorePatchOperation,
+  type ChatStoreSnapshotChunk,
+} from "@trigger.dev/core/v3/chat-client";
 
 const METADATA_KEY = "tool.execute.options";
 
-export type ToolCallExecutionOptions = Omit<ToolCallOptions, "abortSignal">;
+/**
+ * Wrapper around `convertToModelMessages` that always passes
+ * `ignoreIncompleteToolCalls: true` to prevent failures from
+ * stopped/aborted conversations with partial tool parts.
+ */
+function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
+  return convertToModelMessages(messages, { ignoreIncompleteToolCalls: true });
+}
+
+export type ToolCallExecutionOptions = {
+  toolCallId: string;
+  experimental_context?: unknown;
+  /** Chat context — only present when the tool runs inside a chat.agent turn. */
+  chatId?: string;
+  turn?: number;
+  continuation?: boolean;
+  clientData?: unknown;
+  /** Serialized chat.local values from the parent run. @internal */
+  chatLocals?: Record<string, unknown>;
+};
+
+/** Chat context stored in locals during each chat.agent turn for auto-detection. */
+type ChatTurnContext<TClientData = unknown> = {
+  chatId: string;
+  turn: number;
+  continuation: boolean;
+  clientData?: TClientData;
+};
+const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
+
+/**
+ * Per-run slot holding the Session handle that backs this chat's `.in` /
+ * `.out` channels. Populated at the top of `chatAgent`'s run function from
+ * `payload.sessionId`; read by every module-level helper (`chatStream`,
+ * `messagesInput`, `stopInput`) so the chat.agent internals can remain
+ * the same module-level shape they were when the I/O was run-scoped.
+ * @internal
+ */
+const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
+
+/**
+ * Scan `session.out` for the latest `trigger:turn-complete` chunk and
+ * return its SSE timestamp. Used at OOM-retry boot to derive a
+ * lower-bound timestamp for the `session.in` filter — records older
+ * than `T_last_complete` belong to turns that already completed on the
+ * prior attempt and are dropped before they reach the turn loop.
+ *
+ * Implementation is a streaming scan: subscribes via the existing SSE
+ * endpoint with a short `timeoutInSeconds`, processes each part inline,
+ * and discards the chunk body so memory stays O(1) regardless of how
+ * many records are on `session.out`. Bandwidth scales linearly with
+ * stream length but the scan only fires on retry — a rare event.
+ *
+ * Returns `undefined` if no `trigger:turn-complete` chunk has been
+ * written yet (first-turn OOM, no completed turns to dedup against).
+ * @internal
+ */
+async function findLatestTurnCompleteTimestamp(
+  chatId: string
+): Promise<number | undefined> {
+  const apiClient = apiClientManager.clientOrThrow();
+  let latestTs: number | undefined;
+  const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
+    timeoutInSeconds: 1,
+    onPart: (part) => {
+      let chunk: unknown = part.chunk;
+      if (typeof chunk === "string") {
+        try {
+          chunk = JSON.parse(chunk);
+        } catch {
+          return;
+        }
+      }
+      if (chunk && typeof chunk === "object" && (chunk as { type?: unknown }).type === "trigger:turn-complete") {
+        latestTs = part.timestamp;
+      }
+    },
+  });
+  // Drain the stream to drive `onPart`. We don't accumulate the chunks —
+  // each iteration discards the data immediately, so a long session.out
+  // doesn't blow memory on the retry-boot worker.
+  for await (const _ of stream) {
+    // intentionally empty
+  }
+  return latestTs;
+}
+
+/**
+ * Versioned blob written to S3 after every turn completes (when no
+ * `hydrateMessages` hook is registered). Read at run boot to seed the
+ * accumulator with prior conversation state, replacing the old wire-borne
+ * full-history seed. Only the runtime owns this format — customers never
+ * touch it.
+ *
+ * `lastOutEventId` is the SSE Last-Event-ID after the snapshot's final
+ * chunk, used to resume `session.out` replay from precisely after the
+ * snapshot. `lastOutTimestamp` is the same chunk's timestamp, used to
+ * skip `findLatestTurnCompleteTimestamp` on OOM retry boot.
+ *
+ * @internal
+ */
+export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
+  version: 1;
+  savedAt: number;
+  messages: TUIMessage[];
+  lastOutEventId?: string;
+  lastOutTimestamp?: number;
+};
+
+/**
+ * S3 key suffix for a session's snapshot blob. The webapp's presigned-URL
+ * routes prefix this with `packets/{projectRef}/{envSlug}/` server-side, so
+ * the final S3 key lands at
+ * `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json`.
+ *
+ * Stable per session: the friendlyId persists across `chat.requestUpgrade`
+ * continuations and idle-suspend restarts.
+ * @internal
+ */
+function snapshotFilename(sessionId: string): string {
+  return `sessions/${sessionId}/snapshot.json`;
+}
+
+/**
+ * Test-only override hook — `mockChatAgent` installs a fake to return
+ * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
+ * pattern in `sessions.ts`. Not part of the public API.
+ * @internal
+ */
+type ReadChatSnapshotImpl = <TUIMessage extends UIMessage>(
+  sessionId: string
+) => Promise<ChatSnapshotV1<TUIMessage> | undefined> | ChatSnapshotV1<TUIMessage> | undefined;
+let readChatSnapshotImpl: ReadChatSnapshotImpl | undefined;
+
+export function __setReadChatSnapshotImplForTests(impl: ReadChatSnapshotImpl | undefined): void {
+  readChatSnapshotImpl = impl;
+}
+
+/**
+ * Test-only override hook — see `__setReadChatSnapshotImplForTests`. The
+ * mock harness records writes for assertion via this setter. Not public.
+ * @internal
+ */
+type WriteChatSnapshotImpl = <TUIMessage extends UIMessage>(
+  sessionId: string,
+  snapshot: ChatSnapshotV1<TUIMessage>
+) => Promise<void> | void;
+let writeChatSnapshotImpl: WriteChatSnapshotImpl | undefined;
+
+export function __setWriteChatSnapshotImplForTests(impl: WriteChatSnapshotImpl | undefined): void {
+  writeChatSnapshotImpl = impl;
+}
+
+/**
+ * Read the persisted snapshot for a session. Returns `undefined` on:
+ *   - missing object (404 from the presigned GET — fresh session, never
+ *     persisted)
+ *   - presign failure (network/auth issue)
+ *   - malformed JSON
+ *   - version mismatch (forward-compat — older runtimes ignore newer blobs)
+ *
+ * Always swallows errors via `logger.warn`. The agent boot loop must stay
+ * available even if S3 hiccups; the worst case is replaying more of
+ * `session.out` than strictly necessary.
+ * @internal
+ */
+async function readChatSnapshot<TUIMessage extends UIMessage>(
+  sessionId: string
+): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
+  if (readChatSnapshotImpl) {
+    return (await readChatSnapshotImpl<TUIMessage>(sessionId)) ?? undefined;
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  let presignedUrl: string;
+  try {
+    const resp = await apiClient.getPayloadUrl(snapshotFilename(sessionId));
+    presignedUrl = resp.presignedUrl;
+  } catch (error) {
+    logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return undefined;
+  }
+  let response: Response;
+  try {
+    response = await fetch(presignedUrl, { method: "GET" });
+  } catch (error) {
+    logger.warn("chat.agent: snapshot fetch failed; continuing without snapshot", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return undefined;
+  }
+  if (response.status === 404) {
+    // First-ever boot for this session — no snapshot yet. Caller falls
+    // through to replay-only.
+    return undefined;
+  }
+  if (!response.ok) {
+    logger.warn("chat.agent: snapshot fetch returned non-OK; continuing without snapshot", {
+      status: response.status,
+      sessionId,
+    });
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (error) {
+    logger.warn("chat.agent: snapshot JSON parse failed; continuing without snapshot", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const candidate = parsed as Partial<ChatSnapshotV1<TUIMessage>>;
+  if (candidate.version !== 1 || !Array.isArray(candidate.messages)) {
+    logger.warn("chat.agent: snapshot version/shape mismatch; ignoring", {
+      version: candidate.version,
+      sessionId,
+    });
+    return undefined;
+  }
+  return candidate as ChatSnapshotV1<TUIMessage>;
+}
+
+/**
+ * Persist the snapshot for a session. Awaited by callers immediately after
+ * `onTurnComplete` — the agent may suspend right after this point, and
+ * fire-and-forget promises don't reliably complete on suspend.
+ *
+ * Errors are swallowed via `logger.warn`. A failed write means the next
+ * boot replays slightly more of `session.out` (back to the previous
+ * snapshot's cursor) instead of failing — the conversation stays
+ * coherent, only the boot path does marginally more work.
+ * @internal
+ */
+async function writeChatSnapshot<TUIMessage extends UIMessage>(
+  sessionId: string,
+  snapshot: ChatSnapshotV1<TUIMessage>
+): Promise<void> {
+  if (writeChatSnapshotImpl) {
+    await writeChatSnapshotImpl<TUIMessage>(sessionId, snapshot);
+    return;
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  let presignedUrl: string;
+  try {
+    const resp = await apiClient.createUploadPayloadUrl(snapshotFilename(sessionId));
+    presignedUrl = resp.presignedUrl;
+  } catch (error) {
+    logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return;
+  }
+  let response: Response;
+  try {
+    response = await fetch(presignedUrl, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(snapshot),
+    });
+  } catch (error) {
+    logger.warn("chat.agent: snapshot upload failed; next run will replay further", {
+      error: error instanceof Error ? error.message : String(error),
+      sessionId,
+    });
+    return;
+  }
+  if (!response.ok) {
+    logger.warn("chat.agent: snapshot upload returned non-OK; next run will replay further", {
+      status: response.status,
+      sessionId,
+    });
+  }
+}
+
+/**
+ * Test-only entry point that bypasses `__setReadChatSnapshotImplForTests`
+ * and reaches the real `apiClient.getPayloadUrl` + `fetch` + JSON-parse path.
+ * Used by `chat-snapshot.test.ts` to verify 404 / 500 / malformed JSON /
+ * version-mismatch / network-error behavior end-to-end. Tests mock global
+ * `fetch` and the api-client config; this wrapper lets them drive the
+ * production code without the override hook short-circuiting.
+ *
+ * Not part of the public API. The `__` prefix and `ForTests` suffix mirror
+ * the override-hook setters above.
+ * @internal
+ */
+export async function __readChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
+  sessionId: string
+): Promise<ChatSnapshotV1<TUIMessage> | undefined> {
+  const saved = readChatSnapshotImpl;
+  readChatSnapshotImpl = undefined;
+  try {
+    return await readChatSnapshot<TUIMessage>(sessionId);
+  } finally {
+    readChatSnapshotImpl = saved;
+  }
+}
+
+/**
+ * Test-only entry point that bypasses `__setWriteChatSnapshotImplForTests`
+ * and reaches the real `apiClient.createUploadPayloadUrl` + `fetch` PUT
+ * path. Pairs with `__readChatSnapshotProductionPathForTests` — see that
+ * function's note for the rationale.
+ *
+ * Not part of the public API.
+ * @internal
+ */
+export async function __writeChatSnapshotProductionPathForTests<TUIMessage extends UIMessage>(
+  sessionId: string,
+  snapshot: ChatSnapshotV1<TUIMessage>
+): Promise<void> {
+  const saved = writeChatSnapshotImpl;
+  writeChatSnapshotImpl = undefined;
+  try {
+    await writeChatSnapshot<TUIMessage>(sessionId, snapshot);
+  } finally {
+    writeChatSnapshotImpl = saved;
+  }
+}
+
+/**
+ * Merge two `UIMessage[]` lists by `id`, with the second list winning on
+ * collision. Used at run boot to combine the snapshot's persisted history
+ * with the replayed `session.out` tail — replay produces the freshest
+ * representation of any assistant message that landed after the snapshot's
+ * cursor, so it should overwrite the older copy from the snapshot.
+ *
+ * Order: items unique to `a` keep their original positions; items unique to
+ * `b` are appended at the end in their `b` order; collisions take `b`'s
+ * value but keep the position they had in `a`.
+ *
+ * @internal
+ */
+function mergeByIdReplaceWins<TUIMessage extends UIMessage>(
+  a: TUIMessage[],
+  b: TUIMessage[]
+): TUIMessage[] {
+  if (b.length === 0) return [...a];
+  if (a.length === 0) return [...b];
+  const indexById = new Map<string, number>();
+  for (let i = 0; i < a.length; i++) {
+    const id = a[i]!.id;
+    if (typeof id === "string" && id.length > 0) indexById.set(id, i);
+  }
+  const result = [...a];
+  for (const next of b) {
+    const id = next.id;
+    if (typeof id === "string" && id.length > 0 && indexById.has(id)) {
+      result[indexById.get(id)!] = next;
+    } else {
+      const newIdx = result.length;
+      result.push(next);
+      if (typeof id === "string" && id.length > 0) indexById.set(id, newIdx);
+    }
+  }
+  return result;
+}
+
+/**
+ * Test-only entry point for `mergeByIdReplaceWins`. The merge helper is the
+ * one piece of slim-wire boot logic that's purely functional, so it earns a
+ * direct unit test that exercises empty inputs, id collisions, no-id append,
+ * order preservation, and the replay-wins-on-collision invariant. Mirrors
+ * the `__*ProductionPathForTests` pattern used for the snapshot/replay
+ * helpers above.
+ *
+ * Not part of the public API.
+ * @internal
+ */
+export function __mergeByIdReplaceWinsForTests<TUIMessage extends UIMessage>(
+  a: TUIMessage[],
+  b: TUIMessage[]
+): TUIMessage[] {
+  return mergeByIdReplaceWins<TUIMessage>(a, b);
+}
+
+/**
+ * Test-only override hook — `mockChatAgent` installs a fake replay that
+ * returns a synthetic `UIMessage[]` so unit tests can drive the boot loop
+ * without an SSE subscription. Mirrors the snapshot setters above. Not
+ * part of the public API.
+ * @internal
+ */
+type ReplaySessionOutTailImpl = <TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+) => Promise<TUIMessage[]>;
+let replaySessionOutTailImpl: ReplaySessionOutTailImpl | undefined;
+
+export function __setReplaySessionOutTailImplForTests(
+  impl: ReplaySessionOutTailImpl | undefined
+): void {
+  replaySessionOutTailImpl = impl;
+}
+
+/**
+ * Drain `session.out` from `lastEventId` (or the start) and reduce the
+ * remaining `UIMessageChunk`s back into `UIMessage[]`. Used at run boot to
+ * catch any chunks that landed AFTER the last persisted snapshot — typically
+ * the chunks from the turn whose `onTurnComplete` ran but whose snapshot
+ * write didn't make it to S3 before the run crashed / suspended.
+ *
+ * Implementation:
+ *   1. `apiClient.readSessionStreamRecords` — non-SSE, `wait=0` drain.
+ *      Returns immediately with whatever records exist after the cursor.
+ *      The previous SSE-subscribe path paid a fixed ~1s long-poll tax on
+ *      every fresh chat (timeout duration on empty streams) — unacceptable
+ *      for the first-message TTFC budget.
+ *   2. Filter out the agent's control chunks (`type: "trigger:*"`) — they
+ *      ride on the same stream as the user-visible UIMessageChunks.
+ *   3. Split chunks at `start`/`finish` boundaries so each segment is a
+ *      single message, then feed each segment through the AI SDK's
+ *      `readUIMessageStream` reducer (the same one `useChat` uses on the
+ *      browser side) and grab the final emitted snapshot.
+ *   4. The trailing message — if it never received a `finish` chunk —
+ *      goes through `cleanupAbortedParts` so partial in-flight parts
+ *      don't leak into the next turn's accumulator. Drop it entirely
+ *      if cleanup empties it.
+ *
+ * Errors are propagated to the caller (the boot loop wraps in try/catch and
+ * `logger.warn`s); we don't swallow here so test code can observe failures
+ * directly.
+ * @internal
+ */
+async function replaySessionOutTail<TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<TUIMessage[]> {
+  if (replaySessionOutTailImpl) {
+    return await replaySessionOutTailImpl<TUIMessage>(sessionId, options);
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(sessionId, "out", {
+    afterEventId: options?.lastEventId,
+  });
+  const collected: UIMessageChunk[] = [];
+  for (const record of response.records) {
+    // Each record's `data` is the JSON-encoded chunk body the agent
+    // wrote at append time. The records endpoint returns it as an
+    // opaque string so the parsing cost is paid here, not on the
+    // server's hot path.
+    let chunk: unknown;
+    try {
+      chunk = JSON.parse(record.data);
+    } catch {
+      continue;
+    }
+    if (!chunk || typeof chunk !== "object") continue;
+    const type = (chunk as { type?: unknown }).type;
+    if (typeof type !== "string") continue;
+    // Drop agent control chunks (`trigger:turn-complete`, `trigger:upgrade-required`,
+    // session-state telemetry, etc.). They ride the same stream but aren't part
+    // of the UIMessageChunk discriminated union and would confuse the reducer.
+    if (type.startsWith("trigger:")) continue;
+    collected.push(chunk as UIMessageChunk);
+  }
+  if (collected.length === 0) return [];
+
+  // Split chunks into per-message segments. A `start` chunk demarcates the
+  // beginning of an assistant message; chunks before any `start` (rare —
+  // but possible if the stream begins mid-message after a resume) get
+  // bundled into a leading "implicit" segment so we don't drop them silently.
+  type Segment = { chunks: UIMessageChunk[]; closed: boolean };
+  const segments: Segment[] = [];
+  let current: Segment | undefined;
+  for (const chunk of collected) {
+    if (chunk.type === "start") {
+      current = { chunks: [chunk], closed: false };
+      segments.push(current);
+      continue;
+    }
+    if (!current) {
+      // Chunk arrived before any `start`. Synthesize a segment so the reducer
+      // has something to work with — `readUIMessageStream` tolerates a missing
+      // `start` because we pass `message: undefined`.
+      current = { chunks: [], closed: false };
+      segments.push(current);
+    }
+    current.chunks.push(chunk);
+    if (chunk.type === "finish") {
+      current.closed = true;
+      current = undefined;
+    }
+  }
+
+  const messages: TUIMessage[] = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const isTrailing = i === segments.length - 1 && !seg.closed;
+    const segmentStream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const c of seg.chunks) controller.enqueue(c);
+        controller.close();
+      },
+    });
+    let last: UIMessage | undefined;
+    try {
+      for await (const snapshot of readUIMessageStream({ stream: segmentStream })) {
+        last = snapshot;
+      }
+    } catch (error) {
+      // Reducer error — the segment is malformed. Skip it and keep going so a
+      // single corrupt chunk doesn't sink the entire replay.
+      logger.warn("chat.agent: replay reducer failed for segment; skipping", {
+        sessionId,
+        segmentIndex: i,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
+    if (!last) continue;
+    if (isTrailing) {
+      const cleaned = cleanupAbortedParts(last as TUIMessage);
+      if (cleaned.parts.length === 0) continue;
+      messages.push(cleaned);
+    } else {
+      messages.push(last as TUIMessage);
+    }
+  }
+  return messages;
+}
+
+/**
+ * Test-only entry point that bypasses `__setReplaySessionOutTailImplForTests`
+ * and reaches the real `apiClient.subscribeToSessionStream` + chunk-segment
+ * splitter + `readUIMessageStream` reducer. Pairs with the snapshot
+ * production-path wrappers above. Lets `replay-session-out.test.ts` drive
+ * synthetic chunk sequences through the real reducer to lock down chunk-
+ * stream → `UIMessage[]` correctness — if the AI SDK's chunk semantics
+ * shift in a future version, the test catches it before customers do.
+ *
+ * Tests should mock `apiClient.subscribeToSessionStream` (e.g. via
+ * `vi.spyOn(apiClient, ...)`) to feed a `ReadableStream<UIMessageChunk>`.
+ *
+ * Not part of the public API.
+ * @internal
+ */
+export async function __replaySessionOutTailProductionPathForTests<
+  TUIMessage extends UIMessage,
+>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<TUIMessage[]> {
+  const saved = replaySessionOutTailImpl;
+  replaySessionOutTailImpl = undefined;
+  try {
+    return await replaySessionOutTail<TUIMessage>(sessionId, options);
+  } finally {
+    replaySessionOutTailImpl = saved;
+  }
+}
+
+/**
+ * Resolve the Session handle for the current chat.agent run. Throws if
+ * called outside of a chat.agent `run()` — every internal consumer is
+ * inside the run, and every external consumer goes through the public
+ * `sessions.open(id)` entry point.
+ * @internal
+ */
+function getChatSession(): SessionHandle {
+  const handle = locals.get(chatSessionHandleKey);
+  if (!handle) {
+    throw new Error(
+      "chat.agent session handle is not initialized. This indicates a chat.agent helper was used outside of a chat.agent run, or the transport did not send a sessionId."
+    );
+  }
+  return handle;
+}
+
+/**
+ * Stamp `gen_ai.conversation.id` on the active span at chat-run boot.
+ * The run-level span is already alive when the run callback fires, so
+ * `TaskContextSpanProcessor.onStart` (which stamps subsequent spans
+ * automatically) won't catch it — set explicitly here.
+ */
+function stampConversationIdOnActiveSpan(
+  conversationId: string | undefined,
+  span = trace.getActiveSpan()
+): void {
+  if (!span || !conversationId) return;
+  span.setAttribute(SemanticInternalAttributes.GEN_AI_CONVERSATION_ID, conversationId);
+}
 
 type ToolResultContent = Array<
   | {
-      type: "text";
-      text: string;
-    }
+    type: "text";
+    text: string;
+  }
   | {
-      type: "image";
-      data: string;
-      mimeType?: string;
-    }
+    type: "image";
+    data: string;
+    mimeType?: string;
+  }
 >;
 
 export type ToolOptions<TResult> = {
   experimental_toToolResultContent?: (result: TResult) => ToolResultContent;
 };
 
+/** Satisfies AI SDK `ToolSet` index signature alongside concrete `Tool` input/output types. */
+type ToolSetCompatible<T extends Tool<any, any>> = T & NonNullable<ToolSet[string]>;
+
+function assertTaskUsableAsTool(task: AnyTask): void {
+  if (("schema" in task && !task.schema) || ("jsonSchema" in task && !task.jsonSchema)) {
+    throw new Error(
+      "Cannot convert this task to to a tool because the task has no schema. Make sure to either use schemaTask or a task with an input jsonSchema."
+    );
+  }
+}
+
+/**
+ * Shared implementation: run a task as a tool invocation (`triggerAndSubscribe` + tool metadata).
+ * Used by {@link toolExecute} and the deprecated `ai.tool()` wrapper.
+ */
+function createTaskToolExecuteHandler<
+  TIdentifier extends string,
+  TTaskSchema extends TaskSchema | undefined = undefined,
+  TInput = void,
+  TOutput = unknown,
+>(
+  task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput> | Task<TIdentifier, TInput, TOutput>
+): (input: unknown, toolOpts: ToolCallOptions | undefined) => Promise<TOutput> {
+  assertTaskUsableAsTool(task);
+
+  return async function taskToolExecuteHandler(
+    input: unknown,
+    toolOpts: ToolCallOptions | undefined
+  ): Promise<TOutput> {
+    const toolMeta: ToolCallExecutionOptions = {
+      toolCallId: toolOpts?.toolCallId ?? "",
+    };
+    if (toolOpts?.experimental_context !== undefined) {
+      try {
+        toolMeta.experimental_context = JSON.parse(JSON.stringify(toolOpts.experimental_context));
+      } catch {
+        /* non-serializable */
+      }
+    }
+
+    const chatCtx = locals.get(chatTurnContextKey);
+    if (chatCtx) {
+      toolMeta.chatId = chatCtx.chatId;
+      toolMeta.turn = chatCtx.turn;
+      toolMeta.continuation = chatCtx.continuation;
+      toolMeta.clientData = chatCtx.clientData;
+    }
+
+    const chatLocals: Record<string, unknown> = {};
+    for (const entry of chatLocalRegistry) {
+      const value = locals.get(entry.key);
+      if (value !== undefined) {
+        chatLocals[entry.id] = value;
+      }
+    }
+    if (Object.keys(chatLocals).length > 0) {
+      toolMeta.chatLocals = chatLocals;
+    }
+
+    return await task
+      .triggerAndSubscribe(input as inferSchemaIn<TTaskSchema>, {
+        metadata: {
+          [METADATA_KEY]: toolMeta as any,
+        },
+        tags: toolOpts?.toolCallId ? [`toolCallId:${toolOpts.toolCallId}`] : undefined,
+        signal: toolOpts?.abortSignal,
+      })
+      .unwrap();
+  };
+}
+
+/**
+ * Returns an `execute` function for the AI SDK `tool()` helper (or any compatible tool definition).
+ * Preferred API for task-backed tools: the same Trigger wiring as the deprecated `ai.tool()`
+ * (`triggerAndSubscribe`, tool-call metadata, chat context, `chat.local` serialization) without
+ * building the tool object. You supply `description`, `inputSchema`, and any AI-SDK-only options
+ * (e.g. `experimental_toToolResultContent`) on `tool()` yourself.
+ *
+ * @example
+ * ```ts
+ * import { tool } from "ai";
+ * import { z } from "zod";
+ * import { ai } from "@trigger.dev/sdk/ai";
+ * import { myTask } from "./trigger/myTask";
+ *
+ * export const myTool = tool({
+ *   description: myTask.description ?? "",
+ *   inputSchema: z.object({ id: z.string() }),
+ *   execute: ai.toolExecute(myTask),
+ * });
+ * ```
+ */
+function toolExecute<TIdentifier extends string, TInput = void, TOutput = unknown>(
+  task: Task<TIdentifier, TInput, TOutput>
+): (input: TInput, toolOpts: ToolCallOptions) => Promise<TOutput>;
+function toolExecute<
+  TIdentifier extends string,
+  TTaskSchema extends TaskSchema | undefined = undefined,
+  TOutput = unknown,
+>(
+  task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput>
+): (input: inferSchemaIn<TTaskSchema>, toolOpts: ToolCallOptions) => Promise<TOutput>;
+function toolExecute<
+  TIdentifier extends string,
+  TTaskSchema extends TaskSchema | undefined = undefined,
+  TInput = void,
+  TOutput = unknown,
+>(
+  task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput> | Task<TIdentifier, TInput, TOutput>
+): (
+  input: TTaskSchema extends TaskSchema ? inferSchemaIn<TTaskSchema> : TInput,
+  toolOpts: ToolCallOptions
+) => Promise<TOutput> {
+  return createTaskToolExecuteHandler(task) as (
+    input: TTaskSchema extends TaskSchema ? inferSchemaIn<TTaskSchema> : TInput,
+    toolOpts: ToolCallOptions
+  ) => Promise<TOutput>;
+}
+
+/**
+ * @deprecated Use `tool()` from the `ai` package with `execute: ai.toolExecute(task)` instead.
+ * This helper may be removed in a future major release.
+ */
 function toolFromTask<TIdentifier extends string, TInput = void, TOutput = unknown>(
   task: Task<TIdentifier, TInput, TOutput>,
   options?: ToolOptions<TOutput>
-): Tool<TInput, TOutput>;
+): ToolSetCompatible<Tool<TInput, TOutput>>;
+/** @deprecated Use `tool()` from `ai` with `execute: ai.toolExecute(task)`. */
 function toolFromTask<
   TIdentifier extends string,
   TTaskSchema extends TaskSchema | undefined = undefined,
@@ -40,7 +839,8 @@ function toolFromTask<
 >(
   task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput>,
   options?: ToolOptions<TOutput>
-): Tool<inferSchemaIn<TTaskSchema>, TOutput>;
+): ToolSetCompatible<Tool<inferSchemaIn<TTaskSchema>, TOutput>>;
+/** @deprecated Use `tool()` from `ai` with `execute: ai.toolExecute(task)`. */
 function toolFromTask<
   TIdentifier extends string,
   TTaskSchema extends TaskSchema | undefined = undefined,
@@ -49,35 +849,41 @@ function toolFromTask<
 >(
   task: TaskWithSchema<TIdentifier, TTaskSchema, TOutput> | Task<TIdentifier, TInput, TOutput>,
   options?: ToolOptions<TOutput>
-): TTaskSchema extends TaskSchema
-  ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
-  : Tool<TInput, TOutput> {
-  if (("schema" in task && !task.schema) || ("jsonSchema" in task && !task.jsonSchema)) {
-    throw new Error(
-      "Cannot convert this task to to a tool because the task has no schema. Make sure to either use schemaTask or a task with an input jsonSchema."
-    );
+): ToolSetCompatible<
+  TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+> {
+  const executeFromTaskInput = createTaskToolExecuteHandler(task);
+
+  // Zod-backed tasks: use static `tool()` so runtime shape matches `ToolSet`. Generic task context
+  // prevents `tool()` overloads from inferring input; `as any` is localized to this call only.
+  if ("schema" in task && task.schema && isSchemaZodEsque(task.schema)) {
+    const staticTool = aiTool({
+      description: task.description ?? "",
+      inputSchema: zodSchema(task.schema as any),
+      execute: async (input: unknown, toolOpts: ToolCallOptions) =>
+        executeFromTaskInput(input, toolOpts),
+      ...(options?.experimental_toToolResultContent !== undefined
+        ? { experimental_toToolResultContent: options.experimental_toToolResultContent }
+        : {}),
+    } as any);
+    return staticTool as unknown as ToolSetCompatible<
+      TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+    >;
   }
 
   const toolDefinition = dynamicTool({
     description: task.description,
     inputSchema: convertTaskSchemaToToolParameters(task),
-    execute: async (input, options) => {
-      const serializedOptions = options ? JSON.parse(JSON.stringify(options)) : undefined;
-
-      return await task
-        .triggerAndWait(input as inferSchemaIn<TTaskSchema>, {
-          metadata: {
-            [METADATA_KEY]: serializedOptions,
-          },
-        })
-        .unwrap();
-    },
-    ...options,
+    ...(options?.experimental_toToolResultContent !== undefined
+      ? { experimental_toToolResultContent: options.experimental_toToolResultContent }
+      : {}),
+    execute: async (input: unknown, toolOpts: ToolCallOptions) =>
+      executeFromTaskInput(input, toolOpts),
   });
 
-  return toolDefinition as TTaskSchema extends TaskSchema
-    ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
-    : Tool<TInput, TOutput>;
+  return toolDefinition as unknown as ToolSetCompatible<
+    TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+  >;
 }
 
 function getToolOptionsFromMetadata(): ToolCallExecutionOptions | undefined {
@@ -86,6 +892,61 @@ function getToolOptionsFromMetadata(): ToolCallExecutionOptions | undefined {
     return undefined;
   }
   return tool as ToolCallExecutionOptions;
+}
+
+/**
+ * Get the current tool call ID from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`).
+ * Returns `undefined` if not running as a tool subtask.
+ */
+function getToolCallId(): string | undefined {
+  return getToolOptionsFromMetadata()?.toolCallId;
+}
+
+/**
+ * Get the chat context from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`) within a `chat.agent`.
+ * Pass `typeof yourChatTask` as the type parameter to get typed `clientData`.
+ * Returns `undefined` if the parent is not a chat task.
+ *
+ * @example
+ * ```ts
+ * const ctx = ai.chatContext<typeof myChat>();
+ * // ctx?.clientData is typed based on myChat's clientDataSchema
+ * ```
+ */
+function getToolChatContext<TChatTask extends AnyTask = AnyTask>():
+  | ChatTurnContext<InferChatClientData<TChatTask>>
+  | undefined {
+  const opts = getToolOptionsFromMetadata();
+  if (!opts?.chatId) return undefined;
+  return {
+    chatId: opts.chatId,
+    turn: opts.turn ?? 0,
+    continuation: opts.continuation ?? false,
+    clientData: opts.clientData as InferChatClientData<TChatTask>,
+  };
+}
+
+/**
+ * Get the chat context from inside a subtask, throwing if not in a chat context.
+ * Pass `typeof yourChatTask` as the type parameter to get typed `clientData`.
+ *
+ * @example
+ * ```ts
+ * const ctx = ai.chatContextOrThrow<typeof myChat>();
+ * // ctx.chatId, ctx.clientData are guaranteed non-null
+ * ```
+ */
+function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatTurnContext<
+  InferChatClientData<TChatTask>
+> {
+  const ctx = getToolChatContext<TChatTask>();
+  if (!ctx) {
+    throw new Error(
+      "ai.chatContextOrThrow() called outside of a chat.agent context. " +
+      "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.agent."
+    );
+  }
+  return ctx;
 }
 
 function convertTaskSchemaToToolParameters(
@@ -113,6 +974,7805 @@ function convertTaskSchemaToToolParameters(
 }
 
 export const ai = {
+  /**
+   * @deprecated Use `tool()` from the `ai` package with `execute: ai.toolExecute(task)` instead.
+   */
   tool: toolFromTask,
+  /**
+   * Preferred: return value for the `execute` field of AI SDK `tool()`. Keeps Trigger subtask and
+   * metadata behavior without coupling to a specific `ai` version’s `Tool` / `ToolSet` types.
+   */
+  toolExecute,
   currentToolOptions: getToolOptionsFromMetadata,
+  /** Get the tool call ID from inside a subtask invoked via `ai.toolExecute()` (or legacy `ai.tool()`). */
+  toolCallId: getToolCallId,
+  /** Get chat context (chatId, turn, clientData, etc.) from inside a subtask of a `chat.agent`. Returns undefined if not in a chat context. */
+  chatContext: getToolChatContext,
+  /** Get chat context or throw if not in a chat context. Pass `typeof yourChatTask` for typed clientData. */
+  chatContextOrThrow: getToolChatContextOrThrow,
 };
+
+/**
+ * Creates a public access token for a chat task.
+ *
+ * This is a convenience helper that creates a multi-use trigger public token
+ * scoped to the given task. Use it in a server action to provide the frontend
+ * `TriggerChatTransport` with an `accessToken`.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
+ *
+ * export const getChatToken = () => chat.createAccessToken<typeof myChat>("my-chat");
+ * ```
+ */
+function createChatAccessToken<TTask extends AnyTask>(
+  taskId: TaskIdentifier<TTask>
+): Promise<string> {
+  return auth.createTriggerPublicToken(taskId as string, { expirationTime: "24h" });
+}
+
+// ---------------------------------------------------------------------------
+// Chat transport helpers — backend side
+// ---------------------------------------------------------------------------
+
+/**
+ * Typed chat output stream — `.writer()`, `.pipe()`, `.append()`, and
+ * `.read()` methods pre-bound to this run's Session `.out` channel and
+ * typed to `UIMessageChunk`.
+ *
+ * Use from within a `chat.agent` run to write custom chunks:
+ * ```ts
+ * const { waitUntilComplete } = chat.stream.writer({
+ *   execute: ({ write }) => {
+ *     write({ type: "text-start", id: "status-1" });
+ *     write({ type: "text-delta", id: "status-1", delta: "Processing..." });
+ *     write({ type: "text-end", id: "status-1" });
+ *   },
+ * });
+ * await waitUntilComplete();
+ * ```
+ *
+ * Backed by the Session primitive so a chat's output outlives any single
+ * run — subscribers (browser transport, server-side `ChatStream`) read
+ * the session's `.out`, not a per-run stream. Run-scoped `target`
+ * options on `.pipe()` are honoured as no-ops; the session is the target.
+ */
+const chatStream: RealtimeDefinedStream<UIMessageChunk> = {
+  // Stable opaque label for the run-scoped `RealtimeDefinedStream` shape.
+  // `chatStream` is backed by the Session's `.out` channel — this id is
+  // not the real addressing key (the session is). Kept as a literal so
+  // the facade type stays satisfied without re-introducing a top-level
+  // constant; dashboards/telemetry that already read "chat" keep working.
+  id: "chat",
+  pipe(value, options) {
+    const { target: _target, ...sessionOptions } = (options ?? {}) as PipeStreamOptions;
+    return getChatSession().out.pipe<UIMessageChunk>(
+      value,
+      sessionOptions as SessionPipeStreamOptions
+    );
+  },
+  async read(_runId, options) {
+    // Session channels don't need a runId — the session is the address.
+    // Keep the signature for backward compatibility with the run-scoped
+    // RealtimeDefinedStream shape, but ignore the argument.
+    return getChatSession().out.read<UIMessageChunk>(
+      options as SessionSubscribeOptions<UIMessageChunk> | undefined
+    );
+  },
+  async append(value, options) {
+    const { target: _target, ...sessionOptions } = (options ?? {}) as AppendStreamOptions;
+    return getChatSession().out.append(value, sessionOptions as SessionPipeStreamOptions);
+  },
+  writer(options) {
+    return getChatSession().out.writer<UIMessageChunk>(options);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// chat.response — write data parts that persist to the response message
+// ---------------------------------------------------------------------------
+
+/**
+ * Write data parts that both stream to the frontend AND persist in
+ * `onTurnComplete`'s `responseMessage` and `uiMessages`.
+ *
+ * Non-transient data chunks (`type` starts with `data-`, no `transient: true`)
+ * are queued for accumulation into the assistant response message.
+ * Transient or non-data chunks are streamed only (same as `chat.stream`).
+ *
+ * @example
+ * ```ts
+ * // Persists to responseMessage.parts
+ * chat.response.write({ type: "data-handover", data: { context: summary } });
+ *
+ * // Transient — streams only, not in responseMessage
+ * chat.response.write({ type: "data-progress", data: { percent: 50 }, transient: true });
+ * ```
+ */
+const chatResponse = {
+  /**
+   * Write a single chunk. Non-transient data parts are accumulated into the
+   * response message; everything else is stream-only.
+   */
+  write(part: UIMessageChunk): void {
+    queueResponsePart(part);
+    const { waitUntilComplete } = chatStream.writer({
+      spanName: "chat.response.write",
+      collapsed: true,
+      execute: ({ write }) => {
+        write(part);
+      },
+    });
+    waitUntilComplete().catch(() => {});
+  },
+};
+
+// ---------------------------------------------------------------------------
+// chat.store — typed, bidirectional shared data between agent and clients
+// ---------------------------------------------------------------------------
+
+/**
+ * Listener fired when the store value changes. `operations` is present for
+ * `patch()` updates and absent for `set()` (which is a full snapshot).
+ */
+export type ChatStoreChangeListener<TStore = unknown> = (
+  value: TStore,
+  operations?: ChatStorePatchOperation[]
+) => void;
+
+/**
+ * @internal Holder for the current store value. We wrap in an object so
+ * `undefined` (cleared) is distinguishable from "never set".
+ */
+type ChatStoreSlot = { value: unknown };
+
+/** @internal */
+const chatStoreSlotKey = locals.create<ChatStoreSlot>("chat.store.slot");
+
+/** @internal */
+const chatStoreListenersKey = locals.create<Set<ChatStoreChangeListener>>(
+  "chat.store.listeners"
+);
+
+/** @internal — write a store chunk onto the chat output stream. */
+function writeStoreChunk(chunk: ChatStoreChunk): void {
+  const { waitUntilComplete } = chatStream.writer({
+    spanName: chunk.type === "store-snapshot" ? "chat.store.set" : "chat.store.patch",
+    collapsed: true,
+    execute: ({ write }) => {
+      write(chunk as unknown as UIMessageChunk);
+    },
+  });
+  waitUntilComplete().catch(() => {});
+}
+
+/** @internal — fire all listeners, swallowing per-listener errors. */
+function fireStoreListeners(
+  value: unknown,
+  operations?: ChatStorePatchOperation[]
+): void {
+  const listeners = locals.get(chatStoreListenersKey);
+  if (!listeners || listeners.size === 0) return;
+  for (const listener of listeners) {
+    try {
+      listener(value, operations);
+    } catch {
+      // non-fatal — listener errors don't break the agent
+    }
+  }
+}
+
+/**
+ * Replace the entire store value with `value`. Emits a `store-snapshot`
+ * chunk on the chat output stream and fires all `onChange` listeners.
+ */
+function chatStoreSet<TStore = unknown>(value: TStore): void {
+  locals.set(chatStoreSlotKey, { value });
+  writeStoreChunk({ type: "store-snapshot", value } satisfies ChatStoreSnapshotChunk);
+  fireStoreListeners(value);
+}
+
+/**
+ * Apply RFC 6902 JSON Patch operations to the current store value.
+ * Emits a `store-delta` chunk on the chat output stream and fires all
+ * `onChange` listeners with the new value and the operations.
+ */
+function chatStorePatch(operations: ChatStorePatchOperation[]): void {
+  const slot = locals.get(chatStoreSlotKey);
+  const current = slot?.value;
+  const next = applyChatStorePatch(current, operations);
+  locals.set(chatStoreSlotKey, { value: next });
+  writeStoreChunk({
+    type: "store-delta",
+    operations,
+  } satisfies ChatStoreDeltaChunk);
+  fireStoreListeners(next, operations);
+}
+
+/** Get the current store value. Returns `undefined` if no value has been set. */
+function chatStoreGet<TStore = unknown>(): TStore | undefined {
+  return locals.get(chatStoreSlotKey)?.value as TStore | undefined;
+}
+
+/**
+ * Subscribe to store changes for the current run. Returns an
+ * unsubscribe function.
+ */
+function chatStoreOnChange<TStore = unknown>(
+  listener: ChatStoreChangeListener<TStore>
+): () => void {
+  let listeners = locals.get(chatStoreListenersKey);
+  if (!listeners) {
+    listeners = new Set();
+    locals.set(chatStoreListenersKey, listeners);
+  }
+  listeners.add(listener as ChatStoreChangeListener);
+  return () => {
+    listeners!.delete(listener as ChatStoreChangeListener);
+  };
+}
+
+/**
+ * @internal — set the value without emitting a chunk. Used when applying
+ * `hydrateStore` results / `incomingStore` at turn start; the emitted
+ * snapshot is written separately so we don't double-emit.
+ */
+function chatStoreSetSilent(value: unknown): void {
+  locals.set(chatStoreSlotKey, { value });
+}
+
+/**
+ * @internal — emit the current value as a snapshot without touching the
+ * slot. Used at turn start after hydration so clients observing the stream
+ * see the initial value.
+ */
+function chatStoreEmitSnapshot(value: unknown): void {
+  writeStoreChunk({ type: "store-snapshot", value } satisfies ChatStoreSnapshotChunk);
+}
+
+// ---------------------------------------------------------------------------
+// ChatWriter — stream writer for callbacks
+// ---------------------------------------------------------------------------
+
+/**
+ * A stream writer passed to chat lifecycle callbacks (`onPreload`, `onChatStart`,
+ * `onTurnStart`, `onTurnComplete`, `onCompacted`).
+ *
+ * Write custom `UIMessageChunk` parts (e.g. `data-*` parts) directly to the chat
+ * stream without the ceremony of `chat.stream.writer({ execute })`.
+ *
+ * The writer is lazy — no stream overhead if you don't call `write()` or `merge()`.
+ *
+ * @example
+ * ```ts
+ * onTurnStart: async ({ writer }) => {
+ *   writer.write({ type: "data-status", data: { loading: true } });
+ * },
+ * onTurnComplete: async ({ writer, uiMessages }) => {
+ *   writer.write({ type: "data-analytics", data: { messageCount: uiMessages.length } });
+ * },
+ * ```
+ */
+export type ChatWriter = {
+  /** Write a single UIMessageChunk to the chat stream. */
+  write(part: UIMessageChunk): void;
+  /** Merge another stream's chunks into the chat stream. */
+  merge(stream: ReadableStream<UIMessageChunk>): void;
+};
+
+/**
+ * Creates a lazy ChatWriter that only opens a realtime stream on first use.
+ * Call `flush()` after the callback returns to await stream completion.
+ * @internal
+ */
+function createLazyChatWriter(): { writer: ChatWriter; flush: () => Promise<void> } {
+  let writeImpl: ((part: UIMessageChunk) => void) | null = null;
+  let mergeImpl: ((stream: ReadableStream<UIMessageChunk>) => void) | null = null;
+  let waitPromise: (() => Promise<unknown>) | null = null;
+  let resolveExecute: (() => void) | null = null;
+
+  function ensureInitialized() {
+    if (writeImpl) return;
+
+    const executePromise = new Promise<void>((resolve) => {
+      resolveExecute = resolve;
+    });
+
+    const { waitUntilComplete } = chatStream.writer({
+      collapsed: true,
+      spanName: "callback writer",
+      execute: ({ write, merge }) => {
+        writeImpl = write;
+        mergeImpl = merge;
+        return executePromise; // Keep execute alive until flush()
+      },
+    });
+    waitPromise = waitUntilComplete;
+  }
+
+  return {
+    writer: {
+      write(part: UIMessageChunk) {
+        ensureInitialized();
+        queueResponsePart(part);
+        writeImpl!(part);
+      },
+      merge(stream: ReadableStream<UIMessageChunk>) {
+        ensureInitialized();
+        mergeImpl!(stream);
+      },
+    },
+    async flush() {
+      if (resolveExecute) {
+        resolveExecute(); // Signal execute to complete
+        await waitPromise!(); // Wait for stream to finish piping
+      }
+    },
+  };
+}
+
+/**
+ * Runs a callback with a lazy ChatWriter, flushing the stream after completion.
+ * @internal
+ */
+async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Promise<T> {
+  const { writer, flush } = createLazyChatWriter();
+  const result = await fn(writer);
+  await flush();
+  return result;
+}
+
+// `ChatTaskWirePayload` and `ChatInputChunk` live in `./ai-shared.ts` so
+// browser bundles (which import them via `chat-client.ts` / `chat.ts`)
+// can pull the types without dragging `ai.ts` into the client graph.
+// Re-exported here so `@trigger.dev/sdk/ai` consumers see them.
+import type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
+export type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
+
+/**
+ * The payload shape passed to the `chatAgent` run function.
+ *
+ * - `messages` contains model-ready messages (converted via `convertToModelMessages`) —
+ *   pass these directly to `streamText`.
+ * - `clientData` contains custom data from the frontend (the `metadata` field from `sendMessage()`).
+ *
+ * The backend accumulates the full conversation history across turns, so the frontend
+ * only needs to send new messages after the first turn.
+ */
+export type ChatTaskPayload<TClientData = unknown> = {
+  /** Model-ready messages — pass directly to `streamText({ messages })`. */
+  messages: ModelMessage[];
+
+  /** The unique identifier for the chat session */
+  chatId: string;
+
+  /**
+   * The trigger type:
+   * - `"submit-message"`: A new user message
+   * - `"regenerate-message"`: Regenerate the last assistant response
+   * - `"preload"`: Run was preloaded before the first message (only on turn 0)
+   * - `"action"`: A typed action from the frontend (see `actionSchema` + `onAction`).
+   *   The action has already been applied before `run()` fires — check `trigger === "action"`
+   *   to short-circuit the LLM call when an action doesn't need a response.
+   * - `"close"`: The chat session is being closed (internal; `run()` is not called).
+   */
+  trigger: "submit-message" | "regenerate-message" | "preload" | "action" | "close";
+
+  /** The ID of the message to regenerate (only for `"regenerate-message"`) */
+  messageId?: string;
+
+  /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
+  clientData?: TClientData;
+
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
+  /**
+   * The friendlyId of the Session primitive backing this chat. Use with
+   * `sessions.open(sessionId)` when you need direct access to the session's
+   * `.in` / `.out` channels outside the hooks the agent already wires for
+   * you. Undefined only for legacy transports that predate the sessions
+   * migration.
+   */
+  sessionId?: string;
+};
+
+/**
+ * Abort signals provided to the `chatAgent` run function.
+ */
+export type ChatTaskSignals = {
+  /** Combined signal — fires on run cancel OR stop generation. Pass to `streamText`. */
+  signal: AbortSignal;
+  /** Fires only when the run is cancelled, expired, or exceeds maxDuration. */
+  cancelSignal: AbortSignal;
+  /** Fires only when the frontend stops generation for this turn (per-turn, reset each turn). */
+  stopSignal: AbortSignal;
+};
+
+/**
+ * The full payload passed to a `chatAgent` run function.
+ * Extends `ChatTaskPayload` (the wire payload) with abort signals.
+ */
+export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> &
+  ChatTaskSignals & {
+    /**
+     * Task run context — same object as the `ctx` passed to a standard `task({ run })` handler’s second argument.
+     * Use for tags, metadata, parent run links, or any API that needs the full run record.
+     */
+    ctx: TaskRunContext;
+    /** Token usage from the previous turn. Undefined on turn 0. */
+    previousTurnUsage?: LanguageModelUsage;
+    /** Cumulative token usage across all completed turns so far. */
+    totalUsage: LanguageModelUsage;
+  };
+
+// Input streams for bidirectional chat communication
+//
+// Both `messagesInput` and `stopInput` are thin facades over the current
+// run's Session `.in` channel. The Session carries a single tagged stream
+// (`ChatInputChunk`); these facades filter by `kind` so existing call
+// sites (both internal and exposed via `chat.messages` / `chat.createStopSignal`)
+// keep their original shape. Each accessor resolves the session handle
+// lazily via `getChatSession()` so the module-level references stay
+// compatible with the pre-migration wiring.
+const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
+  id: "chat-messages",
+  on(handler) {
+    return getChatSession().in.on<ChatInputChunk>((chunk) => {
+      if (chunk.kind === "message") {
+        return handler(chunk.payload);
+      }
+    });
+  },
+  once(options) {
+    const ctx = taskContext.ctx;
+    const runId = ctx?.run.id;
+
+    return new InputStreamOncePromise<ChatTaskWirePayload>((resolve, reject) => {
+      tracer
+        .startActiveSpan(
+          options?.spanName ?? `chat.messages.once()`,
+          async () => {
+            while (true) {
+              const result = await getChatSession().in.once<ChatInputChunk>(options);
+              if (!result.ok) {
+                resolve(result as InputStreamOnceResult<ChatTaskWirePayload>);
+                return;
+              }
+              if (result.output.kind === "message") {
+                resolve({ ok: true, output: result.output.payload });
+                return;
+              }
+              // Non-message chunks (stops) are handled by the stopInput
+              // facade's persistent listener; loop and wait for the next.
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "streams",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+              ...(runId
+                ? {
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-messages`,
+                  }
+                : {}),
+              streamId: "chat-messages",
+              ...accessoryAttributes({
+                items: [{ text: "chat-messages", variant: "normal" }],
+                style: "codepath",
+              }),
+            },
+          }
+        )
+        .catch(reject);
+    });
+  },
+  peek() {
+    const chunk = getChatSession().in.peek<ChatInputChunk>();
+    if (chunk && chunk.kind === "message") return chunk.payload;
+    return undefined;
+  },
+  wait(options) {
+    return new ManualWaitpointPromise<ChatTaskWirePayload>(async (resolve, reject) => {
+      try {
+        while (true) {
+          const result = await getChatSession().in.wait<ChatInputChunk>(options);
+          if (!result.ok) {
+            resolve(result);
+            return;
+          }
+          if (result.output.kind === "message") {
+            resolve({ ok: true, output: result.output.payload });
+            return;
+          }
+          // Stop chunks are handled by the stopInput facade's persistent
+          // listener; loop back into the suspending wait.
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+  async waitWithIdleTimeout(options) {
+    while (true) {
+      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
+      if (!result.ok) return result;
+      if (result.output.kind === "message") {
+        return { ok: true, output: result.output.payload };
+      }
+      // Swallow stop-kind chunks — persistent stop listener already handled
+      // the abort; we just loop for the next message.
+    }
+  },
+  async send(_runId, data, options) {
+    // The `runId` argument is kept for signature parity with
+    // `RealtimeDefinedInputStream` but ignored — sessions are addressed
+    // by sessionId, not runId. Callers producing messages from outside
+    // the run should prefer the transport's `session.in.send(...)` path.
+    await getChatSession().in.send(
+      { kind: "message", payload: data } satisfies ChatInputChunk,
+      options?.requestOptions
+    );
+  },
+};
+
+const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = {
+  id: "chat-stop",
+  on(handler) {
+    return getChatSession().in.on<ChatInputChunk>((chunk) => {
+      if (chunk.kind === "stop") {
+        return handler({ stop: true, message: chunk.message });
+      }
+    });
+  },
+  once(options) {
+    const ctx = taskContext.ctx;
+    const runId = ctx?.run.id;
+
+    return new InputStreamOncePromise<{ stop: true; message?: string }>((resolve, reject) => {
+      tracer
+        .startActiveSpan(
+          options?.spanName ?? `chat.stop.once()`,
+          async () => {
+            while (true) {
+              const result = await getChatSession().in.once<ChatInputChunk>(options);
+              if (!result.ok) {
+                resolve(result as InputStreamOnceResult<{ stop: true; message?: string }>);
+                return;
+              }
+              if (result.output.kind === "stop") {
+                resolve({
+                  ok: true,
+                  output: { stop: true, message: result.output.message },
+                });
+                return;
+              }
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "streams",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
+              ...(runId
+                ? {
+                    [SemanticInternalAttributes.ENTITY_ID]: `${runId}:chat-stop`,
+                  }
+                : {}),
+              streamId: "chat-stop",
+              ...accessoryAttributes({
+                items: [{ text: "chat-stop", variant: "normal" }],
+                style: "codepath",
+              }),
+            },
+          }
+        )
+        .catch(reject);
+    });
+  },
+  peek() {
+    const chunk = getChatSession().in.peek<ChatInputChunk>();
+    if (chunk && chunk.kind === "stop") {
+      return { stop: true, message: chunk.message };
+    }
+    return undefined;
+  },
+  wait(options) {
+    return new ManualWaitpointPromise<{ stop: true; message?: string }>(async (resolve, reject) => {
+      try {
+        while (true) {
+          const result = await getChatSession().in.wait<ChatInputChunk>(options);
+          if (!result.ok) {
+            resolve(result);
+            return;
+          }
+          if (result.output.kind === "stop") {
+            resolve({
+              ok: true,
+              output: { stop: true, message: result.output.message },
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+  async waitWithIdleTimeout(options) {
+    while (true) {
+      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
+      if (!result.ok) return result;
+      if (result.output.kind === "stop") {
+        return { ok: true, output: { stop: true, message: result.output.message } };
+      }
+    }
+  },
+  async send(_runId, data, options) {
+    await getChatSession().in.send(
+      { kind: "stop", message: data?.message } satisfies ChatInputChunk,
+      options?.requestOptions
+    );
+  },
+};
+
+/**
+ * Signal received by a `handover-prepare` agent run waiting on
+ * `session.in`. Either the customer's first-turn `streamText` finished
+ * with pending tool calls (`"handover"` — agent picks up from tool
+ * execution), or it finished pure-text (`"handover-skip"` — agent
+ * exits cleanly without making an LLM call).
+ * @internal
+ */
+type HandoverSignal =
+  | {
+      kind: "handover";
+      partialAssistantMessage: ModelMessage[];
+      messageId?: string;
+      /**
+       * Whether the customer's step 1 is the final response. When
+       * true, the agent's turn loop runs hooks but skips the LLM
+       * call (the partial IS the response). When false, the agent
+       * runs `streamText` which executes pending tool-calls via the
+       * approval round and continues from step 2.
+       */
+      isFinal: boolean;
+    }
+  | { kind: "handover-skip" };
+
+/**
+ * Internal facade for waiting on the handover signal. Mirrors
+ * `messagesInput` / `stopInput` so the wait paths and tracing
+ * attributes stay consistent across all input-stream branches.
+ * @internal
+ */
+const handoverInput = {
+  async waitWithIdleTimeout(options: {
+    idleTimeoutInSeconds: number;
+    timeout?: string;
+    spanName?: string;
+    skipSuspend?: boolean;
+  }) {
+    while (true) {
+      const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
+      if (!result.ok) return result;
+      if (
+        result.output.kind === "handover" ||
+        result.output.kind === "handover-skip"
+      ) {
+        return { ok: true as const, output: result.output as HandoverSignal };
+      }
+      // Other kinds (message, stop) are not expected during handover-prepare.
+      // Loop back; the message and stop facades have their own listeners
+      // running so signals on those kinds aren't lost.
+    }
+  },
+};
+
+/**
+ * Per-turn deferred promises. Registered via `chat.defer()`, awaited
+ * before `onTurnComplete` fires. Reset each turn.
+ * @internal
+ */
+const chatDeferKey = locals.create<Set<Promise<unknown>>>("chat.defer");
+
+/**
+ * Run-scoped slot holding the partial assistant message handed over by
+ * `chat.handover` from a customer's first-turn `streamText`. Appended
+ * to `accumulatedMessages` during turn 0 setup so `streamText` resumes
+ * at tool execution. Cleared (read once) after consumption.
+ * @internal
+ */
+const chatHandoverPartialKey = locals.create<ModelMessage[]>("chat.handoverPartial");
+
+/**
+ * Run-scoped slot holding the assistant `messageId` the customer's
+ * `chat.handover` handler used for its step-1 stream. The agent reuses
+ * it on the agent-side `toUIMessageStream` (and the synthesized
+ * partial UIMessage in `originalMessages`) so all chunks merge into a
+ * single assistant message on the browser side.
+ * @internal
+ */
+const chatHandoverMessageIdKey = locals.create<string>("chat.handoverMessageId");
+
+/**
+ * Run-scoped slot indicating that the customer's step-1 head-start
+ * response is the FINAL turn response. When true, turn 0 runs through
+ * the full turn-loop hooks but SKIPS the `userRun` / `streamText`
+ * call — the customer's partial already IS the response. The agent's
+ * `onTurnComplete` fires with that partial so persistence + any
+ * post-turn work happens normally. Cleared after consumption.
+ * @internal
+ */
+const chatHandoverIsFinalKey = locals.create<boolean>("chat.handoverIsFinal");
+
+/**
+ * Build a UIMessage representation of a `chat.handover` partial so AI
+ * SDK's `processUIMessageStream` can transition `tool-output-available`
+ * chunks (emitted by the initial-tool-execution branch when the
+ * approval round runs) onto the existing tool-call. Without this,
+ * `state.message.parts` is empty when the agent's `streamText`
+ * finishes, and AI SDK throws
+ * `UIMessageStreamError: No tool invocation found`.
+ *
+ * Only the assistant message matters — the synthesized
+ * `tool-approval-response` rows are AI-SDK-internal and don't need a
+ * UIMessage representation. We map:
+ *   - `text` parts → `{ type: "text", text }`
+ *   - `tool-call` parts → `{ type: "tool-${name}", toolCallId,
+ *      state: "input-available", input }`
+ *   - `tool-approval-request` parts → skipped (AI SDK derives the
+ *      approval state from chunks during processing)
+ *
+ * @internal
+ */
+function synthesizeHandoverUIMessage(
+  partial: ModelMessage[],
+  messageId?: string
+): UIMessage | undefined {
+  const assistant = partial.find((m) => m.role === "assistant");
+  if (!assistant || typeof assistant.content === "string") return undefined;
+
+  const parts: UIMessage["parts"] = [];
+  for (const part of assistant.content as Array<{
+    type: string;
+    text?: string;
+    toolCallId?: string;
+    toolName?: string;
+    input?: unknown;
+  }>) {
+    if (part.type === "text" && typeof part.text === "string") {
+      parts.push({ type: "text", text: part.text } as UIMessage["parts"][number]);
+    } else if (part.type === "tool-call" && part.toolCallId && part.toolName) {
+      parts.push({
+        type: `tool-${part.toolName}`,
+        toolCallId: part.toolCallId,
+        state: "input-available",
+        input: part.input,
+      } as unknown as UIMessage["parts"][number]);
+    }
+    // tool-approval-request parts intentionally skipped — they're an
+    // AI-SDK protocol detail, not a UI surface.
+  }
+
+  if (parts.length === 0) return undefined;
+
+  // Use the customer's step-1 messageId if provided (so the agent's
+  // post-handover chunks merge into the same assistant message on the
+  // browser). Fall back to a fresh id only if the handover signal
+  // didn't carry one.
+  return {
+    id: messageId ?? generateMessageId(),
+    role: "assistant",
+    parts,
+  } as UIMessage;
+}
+
+/**
+ * Per-turn background context queue. Messages added via `chat.backgroundWork.inject()`
+ * are drained at the next `prepareStep` boundary and appended to the model messages.
+ * @internal
+ */
+const chatBackgroundQueueKey = locals.create<ModelMessage[]>("chat.backgroundQueue");
+
+/**
+ * Run-scoped pipe counter. Stored in locals so concurrent runs in the
+ * same worker don't share state.
+ * @internal
+ */
+const chatPipeCountKey = locals.create<number>("chat.pipeCount");
+const chatStopControllerKey = locals.create<AbortController>("chat.stopController");
+/** Static (task-level) UIMessageStream options, set once during chatAgent setup. @internal */
+const chatUIStreamStaticKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
+  "chat.uiMessageStreamOptions.static"
+);
+/** Per-turn UIMessageStream options, set via chat.setUIMessageStreamOptions(). @internal */
+const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions<UIMessage>>(
+  "chat.uiMessageStreamOptions.perTurn"
+);
+
+/**
+ * Run-scoped `toolCallId → assistant messageId` map. Records the head
+ * assistant id whenever the accumulator absorbs an assistant message
+ * containing tool parts. Used as a fallback in the id-merge for
+ * incoming tool-answer messages — if the AI SDK regenerates the
+ * assistant id on a HITL `addToolOutput` resume, we look up the
+ * original head id by `toolCallId` and rewrite it before the merge.
+ *
+ * Customer-side workaround for the same case is documented in Arena
+ * AI's chat-agent task; lifting it into the SDK so customers don't
+ * have to. See TRI-9137.
+ * @internal
+ */
+const chatToolCallToMessageIdKey = locals.create<Map<string, string>>(
+  "chat.toolCallToMessageId"
+);
+
+function recordToolCallIdsFromMessage(message: { id?: string; role?: string; parts?: unknown[] } | undefined) {
+  if (!message || message.role !== "assistant" || !message.id) return;
+  let map = locals.get(chatToolCallToMessageIdKey);
+  if (!map) {
+    map = new Map();
+    locals.set(chatToolCallToMessageIdKey, map);
+  }
+  for (const part of message.parts ?? []) {
+    if (typeof part !== "object" || part == null) continue;
+    const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
+    if (typeof toolCallId === "string" && toolCallId.length > 0) {
+      map.set(toolCallId, message.id);
+    }
+  }
+}
+
+function rewriteIncomingIdViaToolCallMap<T extends { id?: string; parts?: unknown[] }>(
+  incoming: T
+): T {
+  const map = locals.get(chatToolCallToMessageIdKey);
+  if (!map || map.size === 0) return incoming;
+  for (const part of incoming.parts ?? []) {
+    if (typeof part !== "object" || part == null) continue;
+    const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    const headId = map.get(toolCallId);
+    if (headId && headId !== incoming.id) {
+      return { ...incoming, id: headId };
+    }
+  }
+  return incoming;
+}
+
+// ---------------------------------------------------------------------------
+// Token usage helpers (internal)
+// ---------------------------------------------------------------------------
+
+/** Convenience re-export of the AI SDK's `LanguageModelUsage` type. */
+export type ChatTurnUsage = LanguageModelUsage;
+
+function emptyUsage(): LanguageModelUsage {
+  return {
+    inputTokens: undefined,
+    outputTokens: undefined,
+    totalTokens: undefined,
+    inputTokenDetails: {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+  };
+}
+
+function addUsage(a: LanguageModelUsage, b: LanguageModelUsage): LanguageModelUsage {
+  const add = (x: number | undefined, y: number | undefined) =>
+    x != null || y != null ? (x ?? 0) + (y ?? 0) : undefined;
+  return {
+    inputTokens: add(a.inputTokens, b.inputTokens),
+    outputTokens: add(a.outputTokens, b.outputTokens),
+    totalTokens: add(a.totalTokens, b.totalTokens),
+    inputTokenDetails: {
+      noCacheTokens: add(a.inputTokenDetails?.noCacheTokens, b.inputTokenDetails?.noCacheTokens),
+      cacheReadTokens: add(
+        a.inputTokenDetails?.cacheReadTokens,
+        b.inputTokenDetails?.cacheReadTokens
+      ),
+      cacheWriteTokens: add(
+        a.inputTokenDetails?.cacheWriteTokens,
+        b.inputTokenDetails?.cacheWriteTokens
+      ),
+    },
+    outputTokenDetails: {
+      textTokens: add(a.outputTokenDetails?.textTokens, b.outputTokenDetails?.textTokens),
+      reasoningTokens: add(
+        a.outputTokenDetails?.reasoningTokens,
+        b.outputTokenDetails?.reasoningTokens
+      ),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// chat.setMessages — replace accumulated messages for compaction
+// ---------------------------------------------------------------------------
+
+/** @internal */
+const chatOverrideMessagesKey = locals.create<UIMessage[]>("chat.overrideMessages");
+
+/**
+ * Tracks the current accumulated UI messages so chat.history.all() can
+ * read them from outside the chatAgent closure.
+ * @internal
+ */
+const chatCurrentUIMessagesKey = locals.create<UIMessage[]>("chat.currentUIMessages");
+
+/**
+ * Replace the accumulated conversation messages for the current run.
+ *
+ * Call from `onTurnStart` to compact before `run()` executes, or from
+ * `onTurnComplete` to compact before the next turn. Takes `UIMessage[]`
+ * and converts to `ModelMessage[]` internally.
+ */
+function setChatMessages<TUIM extends UIMessage = UIMessage>(uiMessages: TUIM[]): void {
+  locals.set(chatOverrideMessagesKey, uiMessages);
+}
+
+// ---------------------------------------------------------------------------
+// chat.history — imperative message history mutations
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the current message history state, accounting for pending overrides.
+ * @internal
+ */
+function getChatHistoryState(): UIMessage[] {
+  const pending = locals.get(chatOverrideMessagesKey);
+  if (pending) return pending;
+  return locals.get(chatCurrentUIMessagesKey) ?? [];
+}
+
+/**
+ * A tool call surfaced by `chat.history.getPendingToolCalls()` /
+ * `getResolvedToolCalls()`. Identifies the call by its `toolCallId` plus
+ * the `messageId` of the assistant message that hosts it, so callers can
+ * locate the part precisely without re-walking the chain.
+ */
+export type ChatToolCallRef = {
+  toolCallId: string;
+  toolName: string;
+  messageId: string;
+};
+
+/**
+ * A new tool result surfaced by `chat.history.extractNewToolResults()`.
+ * `errorText` is set iff the part is in `output-error` state; otherwise
+ * `output` carries the resolved value.
+ */
+export type ChatNewToolResult = {
+  toolCallId: string;
+  toolName: string;
+  output: unknown;
+  errorText?: string;
+};
+
+/**
+ * Tool parts that are "done" — either succeeded with a value or failed
+ * with an error. Excludes pending (`input-streaming`/`input-available`)
+ * and approval (`approval-requested`/`approval-responded`) states.
+ * @internal
+ */
+function isResolvedToolState(state: unknown): state is "output-available" | "output-error" {
+  return state === "output-available" || state === "output-error";
+}
+
+/** @internal */
+function isPendingToolState(state: unknown): state is "input-available" {
+  return state === "input-available";
+}
+
+/**
+ * Walk an assistant message and yield each tool part with its callId,
+ * name, and state. Skips non-assistant messages and non-tool parts.
+ * @internal
+ */
+function* iterateToolParts(
+  message: UIMessage
+): Generator<{ part: any; toolCallId: string; toolName: string; state: unknown }> {
+  if (message.role !== "assistant") return;
+  for (const part of (message.parts ?? []) as any[]) {
+    if (!isToolUIPart(part)) continue;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    yield {
+      part,
+      toolCallId,
+      toolName: getToolName(part),
+      state: part.state,
+    };
+  }
+}
+
+/**
+ * Tool parts on the *leaf* assistant message that are still waiting on
+ * an answer (`input-available` state). Used to gate fresh user turns
+ * during HITL flows.
+ * @internal
+ */
+function getPendingToolCallsFromHistory(messages: UIMessage[]): ChatToolCallRef[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]!;
+    if (msg.role !== "assistant") continue;
+    const pending: ChatToolCallRef[] = [];
+    for (const { toolCallId, toolName, state } of iterateToolParts(msg)) {
+      if (isPendingToolState(state)) {
+        pending.push({ toolCallId, toolName, messageId: msg.id });
+      }
+    }
+    return pending;
+  }
+  return [];
+}
+
+/**
+ * All tool parts across the chain that have already produced an output
+ * (`output-available` or `output-error`). Used to dedup re-saves when
+ * the AI SDK resends an assistant with progressively more answered
+ * parts.
+ * @internal
+ */
+function getResolvedToolCallsFromHistory(messages: UIMessage[]): ChatToolCallRef[] {
+  const out: ChatToolCallRef[] = [];
+  for (const msg of messages) {
+    for (const { toolCallId, toolName, state } of iterateToolParts(msg)) {
+      if (isResolvedToolState(state)) {
+        out.push({ toolCallId, toolName, messageId: msg.id });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Pure helper: tool parts in `message` that have a fresh result not
+ * already represented by the resolved toolCallIds in `messages`. The
+ * `errorText` field is present only for `output-error` parts.
+ *
+ * Within a single `message`, duplicate `toolCallId`s emit only once
+ * (first occurrence wins). This guards against malformed assistants
+ * with repeated tool parts.
+ * @internal
+ */
+function extractNewToolResultsFromHistory(
+  message: UIMessage,
+  messages: UIMessage[]
+): ChatNewToolResult[] {
+  const resolved = new Set(
+    getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId)
+  );
+  const seen = new Set<string>();
+  const out: ChatNewToolResult[] = [];
+  for (const { part, toolCallId, toolName, state } of iterateToolParts(message)) {
+    if (!isResolvedToolState(state)) continue;
+    if (resolved.has(toolCallId)) continue;
+    if (seen.has(toolCallId)) continue;
+    seen.add(toolCallId);
+    if (state === "output-error") {
+      out.push({ toolCallId, toolName, output: undefined, errorText: part.errorText });
+    } else {
+      out.push({ toolCallId, toolName, output: part.output });
+    }
+  }
+  return out;
+}
+
+/**
+ * Imperative API for reading and modifying the accumulated message history.
+ *
+ * Mutations use the same deferred override mechanism as `chat.setMessages()`:
+ * they are applied at lifecycle checkpoints (after hooks return). Reads are
+ * synchronous against the current accumulator state.
+ *
+ * Can be called from `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`,
+ * `run()`, `onAction`, or AI SDK tools.
+ */
+const chatHistory = {
+  /** Read the current accumulated UI messages (copy). */
+  all(): UIMessage[] {
+    return [...getChatHistoryState()];
+  },
+
+  /**
+   * Read the current chain as an ordered `UIMessage[]`. Identical to
+   * `all()`; use whichever name reads better in context.
+   */
+  getChain(): UIMessage[] {
+    return chatHistory.all();
+  },
+
+  /**
+   * Find a message by id. Returns `undefined` if no message with that id
+   * is present in the current chain.
+   */
+  findMessage(messageId: string): UIMessage | undefined {
+    return getChatHistoryState().find((m) => m.id === messageId);
+  },
+
+  /**
+   * Tool calls on the *most recent* assistant message that are still in
+   * `input-available` state (waiting on an `addToolOutput` answer). The
+   * scan walks back from the tail and stops at the first assistant
+   * message it finds, so a trailing user message does not change the
+   * result — pending tool calls remain pending until they're resolved
+   * on that assistant or the assistant is removed.
+   *
+   * Use this to gate fresh user turns or actions during HITL flows: if
+   * `getPendingToolCalls().length > 0`, an `addToolOutput` is expected.
+   *
+   * Returns `[]` if there is no assistant message yet, or if the most
+   * recent assistant has no pending tool calls.
+   *
+   * Approval flows (`approval-requested` / `approval-responded` states)
+   * are not surfaced here. Those are about the user authorizing a tool
+   * to run; "pending" is about the user *answering* a tool call.
+   */
+  getPendingToolCalls(): ChatToolCallRef[] {
+    return getPendingToolCallsFromHistory(getChatHistoryState());
+  },
+
+  /**
+   * Tool calls across the chain with a final result (`output-available`
+   * or `output-error`). Use this to dedup re-saves when the AI SDK
+   * resends an assistant message with progressively more answered parts.
+   */
+  getResolvedToolCalls(): ChatToolCallRef[] {
+    return getResolvedToolCallsFromHistory(getChatHistoryState());
+  },
+
+  /**
+   * Pure helper: returns the tool parts in `message` whose results are
+   * not already represented in the current chain. Use this when
+   * persisting tool results to your own store: each call surfaces only
+   * the *new* answers, so writes stay idempotent across re-streams.
+   * Duplicate `toolCallId`s within `message` itself are also collapsed
+   * to a single entry.
+   */
+  extractNewToolResults(message: UIMessage): ChatNewToolResult[] {
+    return extractNewToolResultsFromHistory(message, getChatHistoryState());
+  },
+
+  /** Replace all accumulated messages. Same as `chat.setMessages()`. */
+  set(messages: UIMessage[]): void {
+    locals.set(chatOverrideMessagesKey, messages);
+  },
+
+  /** Remove a specific message by ID. */
+  remove(messageId: string): void {
+    chatHistory.set(getChatHistoryState().filter((m) => m.id !== messageId));
+  },
+
+  /** Keep messages up to and including the given ID (undo/rollback). */
+  rollbackTo(messageId: string): void {
+    const current = getChatHistoryState();
+    const idx = current.findIndex((m) => m.id === messageId);
+    if (idx !== -1) {
+      chatHistory.set(current.slice(0, idx + 1));
+    }
+  },
+
+  /** Replace a specific message by ID (edit). */
+  replace(messageId: string, message: UIMessage): void {
+    chatHistory.set(getChatHistoryState().map((m) => (m.id === messageId ? message : m)));
+  },
+
+  /** Keep only messages in the given range. */
+  slice(start: number, end?: number): void {
+    chatHistory.set(getChatHistoryState().slice(start, end));
+  },
+};
+
+/**
+ * Model-only message override. Set by compaction to replace only the model
+ * messages (what goes to the LLM) without affecting UI messages (what gets
+ * persisted and displayed). This preserves full conversation history for the
+ * user while keeping LLM context compact.
+ * @internal
+ */
+const chatOverrideModelMessagesKey = locals.create<ModelMessage[]>("chat.overrideModelMessages");
+
+// ---------------------------------------------------------------------------
+// chat.compaction — prepareStep compaction API
+// ---------------------------------------------------------------------------
+
+/** State stored in locals during prepareStep compaction. */
+interface CompactionState {
+  summary: string;
+  baseResponseMessageCount: number;
+}
+
+/** @internal */
+const chatCompactionStateKey = locals.create<CompactionState>("chat.compaction");
+const chatOnCompactedKey =
+  locals.create<(event: CompactedEvent) => Promise<void> | void>("chat.onCompacted");
+/** @internal Full task `ctx` for the active `chat.agent` run (for hooks invoked from nested compaction). */
+const chatAgentRunContextKey = locals.create<TaskRunContext>("chat.agentRunContext");
+const chatPrepareMessagesKey =
+  locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
+    "chat.prepareMessages"
+  );
+
+/** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
+const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
+
+/**
+ * @internal Flag set by `chat.endRun()` to exit the loop after the current
+ * turn completes, without any upgrade semantics. Checked at the same
+ * post-turn / pre-wait sites as `chatUpgradeRequestedKey`.
+ */
+const chatEndRunRequestedKey = locals.create<boolean>("chat.endRunRequested");
+
+/**
+ * Event passed to `summarize` callbacks.
+ */
+export type SummarizeEvent = {
+  /** The current model messages to summarize. */
+  messages: ModelMessage[];
+  /** Full usage object from the triggering step/turn. */
+  usage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns. Present in chat.agent contexts. */
+  totalUsage?: LanguageModelUsage;
+  /** The chat session ID (if running inside a chat.agent). */
+  chatId?: string;
+  /** The current turn number (0-indexed, if inside a chat.agent). */
+  turn?: number;
+  /** Custom data from the frontend (if inside a chat.agent). */
+  clientData?: unknown;
+  /**
+   * Where compaction is running:
+   * - `"inner"` — between tool-call steps (prepareStep)
+   * - `"outer"` — between turns
+   */
+  source?: "inner" | "outer";
+  /** The step number (0-indexed). Only present when `source` is `"inner"`. */
+  stepNumber?: number;
+};
+
+/**
+ * Event passed to `compactUIMessages` and `compactModelMessages` callbacks.
+ */
+export type CompactMessagesEvent<TUIM extends UIMessage = UIMessage> = {
+  /** The generated summary text. */
+  summary: string;
+  /** The current UI messages (full conversation). */
+  uiMessages: TUIM[];
+  /** The current model messages (full conversation). */
+  modelMessages: ModelMessage[];
+  /** The chat session ID. */
+  chatId: string;
+  /** The current turn number (0-indexed). */
+  turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
+  /**
+   * Where compaction is running:
+   * - `"inner"` — between tool-call steps (prepareStep)
+   * - `"outer"` — between turns
+   */
+  source: "inner" | "outer";
+};
+
+/**
+ * Options for the `compaction` field on `chat.agent()`.
+ *
+ * Handles compaction automatically in both the inner loop (prepareStep, between
+ * tool-call steps) and the outer loop (between turns, for single-step responses
+ * where prepareStep never fires).
+ */
+export type ChatAgentCompactionOptions<TUIM extends UIMessage = UIMessage> = {
+  /** Decide whether to compact. Return true to trigger compaction. */
+  shouldCompact: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+  /** Generate a summary from the current messages. Return the summary text. */
+  summarize: (event: SummarizeEvent) => Promise<string>;
+  /**
+   * Transform UI messages after compaction (what gets persisted and displayed).
+   * Default: preserve all UI messages unchanged.
+   *
+   * @example
+   * ```ts
+   * // Flatten to summary
+   * compactUIMessages: ({ summary }) => [{
+   *   id: generateId(), role: "assistant",
+   *   parts: [{ type: "text", text: `[Summary]\n\n${summary}` }],
+   * }],
+   *
+   * // Summary + keep last 4 messages
+   * compactUIMessages: ({ uiMessages, summary }) => [
+   *   { id: generateId(), role: "assistant",
+   *     parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+   *   ...uiMessages.slice(-4),
+   * ],
+   * ```
+   */
+  compactUIMessages?: (event: CompactMessagesEvent<TUIM>) => TUIM[] | Promise<TUIM[]>;
+  /**
+   * Transform model messages after compaction (what gets sent to the LLM).
+   * Default: replace all with a single summary message.
+   *
+   * @example
+   * ```ts
+   * // Summary + keep last 2 model messages
+   * compactModelMessages: ({ modelMessages, summary }) => [
+   *   { role: "user", content: summary },
+   *   ...modelMessages.slice(-2),
+   * ],
+   * ```
+   */
+  compactModelMessages?: (
+    event: CompactMessagesEvent<TUIM>
+  ) => ModelMessage[] | Promise<ModelMessage[]>;
+};
+
+/** @internal */
+const chatAgentCompactionKey =
+  locals.create<ChatAgentCompactionOptions<UIMessage>>("chat.agentCompaction");
+
+// ---------------------------------------------------------------------------
+// Pending messages — mid-execution message injection via prepareStep
+// ---------------------------------------------------------------------------
+
+/**
+ * Event passed to `shouldInject` and `prepareMessages` callbacks.
+ */
+export type PendingMessagesBatchEvent<TUIM extends UIMessage = UIMessage> = {
+  /** All pending UI messages that arrived during streaming (batch). */
+  messages: TUIM[];
+  /** Current model messages in the conversation. */
+  modelMessages: ModelMessage[];
+  /** Completed steps so far. */
+  steps: CompactionStep[];
+  /** Current step number (0-indexed). */
+  stepNumber: number;
+  /** Chat session ID. */
+  chatId: string;
+  /** Current turn number (0-indexed). */
+  turn: number;
+  /** Custom data from the frontend. */
+  clientData?: unknown;
+};
+
+/**
+ * Event passed to `onReceived` callback (per-message, as they arrive).
+ */
+export type PendingMessageReceivedEvent<TUIM extends UIMessage = UIMessage> = {
+  /** The UI message that arrived during streaming. */
+  message: TUIM;
+  /** Chat session ID. */
+  chatId: string;
+  /** Current turn number (0-indexed). */
+  turn: number;
+};
+
+/**
+ * Event passed to `onInjected` callback (batch, after injection).
+ */
+export type PendingMessagesInjectedEvent<TUIM extends UIMessage = UIMessage> = {
+  /** All UI messages that were injected. */
+  messages: TUIM[];
+  /** The model messages that were injected. */
+  injectedModelMessages: ModelMessage[];
+  /** Chat session ID. */
+  chatId: string;
+  /** Current turn number (0-indexed). */
+  turn: number;
+  /** Step number where injection occurred. */
+  stepNumber: number;
+};
+
+/**
+ * Options for the `pendingMessages` field on `chat.agent()`, `chat.createSession()`,
+ * or `ChatMessageAccumulator`.
+ *
+ * Configures how messages that arrive during streaming are handled. When
+ * `shouldInject` is provided and returns `true`, the full batch of pending
+ * messages is injected between tool-call steps via `prepareStep`.
+ * Otherwise, messages queue for the next turn.
+ */
+export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
+  /**
+   * Decide whether to inject pending messages between tool-call steps.
+   * Called once per step boundary with the full batch of pending messages.
+   * If absent, no injection happens — messages only queue for the next turn.
+   */
+  shouldInject?: (event: PendingMessagesBatchEvent<TUIM>) => boolean | Promise<boolean>;
+  /**
+   * Transform the batch of pending messages before injection.
+   * Return the model messages to inject.
+   * Default: convert each UI message via `convertToModelMessages`.
+   */
+  prepare?: (event: PendingMessagesBatchEvent<TUIM>) => ModelMessage[] | Promise<ModelMessage[]>;
+  /** Called when a message arrives during streaming (per-message). */
+  onReceived?: (event: PendingMessageReceivedEvent<TUIM>) => void | Promise<void>;
+  /** Called after a batch of messages is injected via `prepareStep`. */
+  onInjected?: (event: PendingMessagesInjectedEvent<TUIM>) => void | Promise<void>;
+};
+
+/**
+ * The data part type used to signal that pending messages were injected
+ * between tool-call steps. The frontend can match on this to render
+ * injection points inline in the assistant response.
+ */
+// `PENDING_MESSAGE_INJECTED_TYPE` lives in `./ai-shared.ts` so the chat
+// React hooks (`@trigger.dev/sdk/chat/react`) can import it without
+// dragging `ai.ts` into the browser graph. Re-exported here so
+// `@trigger.dev/sdk/ai` consumers still see it.
+export { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+
+/** @internal */
+type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
+/** @internal */
+const chatPendingMessagesKey = locals.create<PendingMessagesOptions>("chat.pendingMessages");
+/** @internal */
+const chatSteeringQueueKey = locals.create<SteeringQueueEntry[]>("chat.steeringQueue");
+/** @internal — IDs of messages that were successfully injected via prepareStep */
+const chatInjectedMessageIdsKey = locals.create<Set<string>>("chat.injectedMessageIds");
+/** @internal — non-transient data parts queued via chat.response or writer.write() for accumulation into the response message */
+const chatResponsePartsKey = locals.create<unknown[]>("chat.responseParts");
+
+/**
+ * Check if a chunk is a non-transient data part that should persist to the response message.
+ * @internal
+ */
+function isNonTransientDataPart(part: unknown): boolean {
+  if (typeof part !== "object" || part === null) return false;
+  const p = part as Record<string, unknown>;
+  return typeof p.type === "string" && p.type.startsWith("data-") && p.transient !== true;
+}
+
+/**
+ * Queue a chunk for accumulation into the response message (if it's a non-transient data part).
+ * Called by `chat.response.write()` and `ChatWriter.write()`.
+ * @internal
+ */
+function queueResponsePart(part: unknown): void {
+  if (!isNonTransientDataPart(part)) return;
+  const parts = locals.get(chatResponsePartsKey) ?? [];
+  parts.push(part);
+  locals.set(chatResponsePartsKey, parts);
+}
+
+/**
+ * Event passed to the `prepareMessages` hook.
+ */
+export type PrepareMessagesEvent<TClientData = unknown> = {
+  /** The messages to transform. Return the transformed array. */
+  messages: ModelMessage[];
+  /** Why messages are being prepared. */
+  reason:
+  | "run" // Messages being passed to run() for streamText
+  | "compaction-rebuild" // Rebuilding from a previous compaction summary
+  | "compaction-result"; // Fresh compaction just produced these messages
+  /** The chat session ID. */
+  chatId: string;
+  /** The current turn number (0-indexed). */
+  turn: number;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+};
+
+/**
+ * Data shape for `data-compaction` stream chunks emitted during compaction.
+ * Use to type the `data` field when rendering compaction parts in the frontend.
+ */
+export type CompactionChunkData = {
+  status: "compacting" | "complete";
+  totalTokens: number | undefined;
+};
+
+/**
+ * Event passed to the `onCompacted` callback.
+ */
+export type CompactedEvent = {
+  /** Task run context — same as `task` lifecycle hooks and `chat.agent` `run({ ctx })`. */
+  ctx: TaskRunContext;
+  /** The generated summary text. */
+  summary: string;
+  /** The messages that were compacted (pre-compaction). */
+  messages: ModelMessage[];
+  /** Number of messages before compaction. */
+  messageCount: number;
+  /** Token usage from the step that triggered compaction. */
+  usage: LanguageModelUsage;
+  /** Total token count that triggered compaction. */
+  totalTokens: number | undefined;
+  /** Input token count from the triggering step. */
+  inputTokens: number | undefined;
+  /** Output token count from the triggering step. */
+  outputTokens: number | undefined;
+  /** The step number where compaction occurred (0-indexed). */
+  stepNumber: number;
+  /** The chat session ID (if running inside a chat.agent). */
+  chatId?: string;
+  /** The current turn number (if running inside a chat.agent). */
+  turn?: number;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
+};
+
+/**
+ * Event passed to `shouldCompact` callbacks.
+ */
+export type ShouldCompactEvent = {
+  /** The current model messages (full conversation). */
+  messages: ModelMessage[];
+  /** Total token count from the triggering step/turn. */
+  totalTokens: number | undefined;
+  /** Input token count from the triggering step/turn. */
+  inputTokens: number | undefined;
+  /** Output token count from the triggering step/turn. */
+  outputTokens: number | undefined;
+  /** Full usage object from the triggering step/turn. */
+  usage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns. Present in chat.agent contexts. */
+  totalUsage?: LanguageModelUsage;
+  /** The chat session ID (if running inside a chat.agent). */
+  chatId?: string;
+  /** The current turn number (0-indexed, if inside a chat.agent). */
+  turn?: number;
+  /** Custom data from the frontend (if inside a chat.agent). */
+  clientData?: unknown;
+  /**
+   * Where this check is running:
+   * - `"inner"` — between tool-call steps (prepareStep)
+   * - `"outer"` — between turns (after response, before onBeforeTurnComplete)
+   */
+  source?: "inner" | "outer";
+  /** The step number (0-indexed). Only present when `source` is `"inner"`. */
+  stepNumber?: number;
+  /** The steps array from prepareStep. Only present when `source` is `"inner"`. */
+  steps?: CompactionStep[];
+};
+
+/**
+ * Options for `chat.compaction()` — the high-level prepareStep factory.
+ */
+export type CompactionOptions = {
+  /** Generate a summary from the current messages. Return the summary text. */
+  summarize: (messages: ModelMessage[]) => Promise<string>;
+  /** Token threshold — compact when totalTokens exceeds this. Ignored if `shouldCompact` is provided. */
+  threshold?: number;
+  /** Custom compaction trigger. When provided, used instead of `threshold`. */
+  shouldCompact?: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+};
+
+/** A step object as received in prepareStep's `steps` array. */
+export type CompactionStep = {
+  usage: LanguageModelUsage;
+  finishReason: string;
+  content: Array<{ type: string; toolCallId?: string }>;
+  response: { messages: Array<any> };
+};
+
+/**
+ * Result of `chat.compact()`. Discriminated union so you can inspect
+ * what happened, but also directly compatible with prepareStep's return type.
+ *
+ * - `"skipped"` — no compaction needed (first step, boundary unsafe, or under threshold). Return `undefined` to prepareStep.
+ * - `"rebuilt"` — previous compaction exists, messages rebuilt from summary + new response messages.
+ * - `"compacted"` — compaction just happened, includes the generated summary.
+ */
+export type CompactResult =
+  | { type: "skipped" }
+  | { type: "rebuilt"; messages: ModelMessage[] }
+  | { type: "compacted"; messages: ModelMessage[]; summary: string };
+
+/**
+ * Options for `chat.compact()` — the low-level compaction function.
+ */
+export type CompactOptions = {
+  /** Generate a summary from the current messages. Return the summary text. */
+  summarize: (messages: ModelMessage[]) => Promise<string>;
+  /** Token threshold — compact when totalTokens exceeds this. Ignored if `shouldCompact` is provided. */
+  threshold?: number;
+  /** Custom compaction trigger. When provided, used instead of `threshold`. */
+  shouldCompact?: (event: ShouldCompactEvent) => boolean | Promise<boolean>;
+};
+
+/**
+ * Check that no tool calls are in-flight in a step's content.
+ * Used before compaction to avoid losing tool state mid-execution.
+ * @internal
+ */
+function isStepBoundarySafe(step: {
+  finishReason: string;
+  content: Array<{ type: string; toolCallId?: string }>;
+}): boolean {
+  if (step.finishReason === "error") return false;
+  const callIds = new Set(
+    step.content.filter((p) => p.type === "tool-call").map((p) => p.toolCallId)
+  );
+  const settledIds = new Set(
+    step.content
+      .filter((p) => p.type === "tool-result" || p.type === "tool-error")
+      .map((p) => p.toolCallId)
+  );
+  return ![...callIds].some((id) => !settledIds.has(id));
+}
+
+/**
+ * Apply the prepareMessages hook if one is set in locals.
+ * @internal
+ */
+async function applyPrepareMessages(
+  messages: ModelMessage[],
+  reason: PrepareMessagesEvent["reason"]
+): Promise<ModelMessage[]> {
+  const hook = locals.get(chatPrepareMessagesKey);
+  if (!hook) return messages;
+
+  const turnCtx = locals.get(chatTurnContextKey);
+
+  return tracer.startActiveSpan(
+    "prepareMessages()",
+    async () => {
+      return hook({
+        messages,
+        reason,
+        chatId: turnCtx?.chatId ?? "",
+        turn: turnCtx?.turn ?? 0,
+        clientData: turnCtx?.clientData,
+      });
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+        [SemanticInternalAttributes.COLLAPSED]: true,
+        "chat.prepareMessages.reason": reason,
+        "chat.prepareMessages.messageCount": messages.length,
+      },
+    }
+  );
+}
+
+/**
+ * Read the current compaction state. Returns the summary and base message count
+ * if compaction has occurred in this turn, or `undefined` if not.
+ *
+ * Use in a custom `prepareStep` to rebuild from a previous compaction:
+ * ```ts
+ * const state = chat.getCompactionState();
+ * if (state) {
+ *   return { messages: [{ role: "user", content: state.summary }, ...newMsgs] };
+ * }
+ * ```
+ */
+function getCompactionState(): CompactionState | undefined {
+  return locals.get(chatCompactionStateKey);
+}
+
+/**
+ * Low-level compaction for use inside a custom `prepareStep`.
+ *
+ * Handles the full decision tree: first step, already-compacted rebuild,
+ * boundary safety, threshold check, summarization, stream chunks, state
+ * storage, and accumulator update.
+ *
+ * Returns a `CompactResult` — inspect `result.type` to see what happened,
+ * or convert to a prepareStep return with `result.type === "skipped" ? undefined : result`.
+ *
+ * @example
+ * ```ts
+ * prepareStep: async ({ messages, steps }) => {
+ *   // your custom logic here...
+ *   const result = await chat.compact(messages, steps, {
+ *     threshold: 80_000,
+ *     summarize: async (msgs) => generateText({ model, messages: msgs }).then(r => r.text),
+ *   });
+ *   if (result.type === "compacted") {
+ *     logger.info("Compacted!", { summary: result.summary });
+ *   }
+ *   return result.type === "skipped" ? undefined : result;
+ * },
+ * ```
+ */
+async function chatCompact(
+  messages: ModelMessage[],
+  steps: CompactionStep[],
+  options: CompactOptions
+): Promise<CompactResult> {
+  const currentStep = steps.at(-1);
+
+  // First step — nothing to check
+  if (!currentStep) {
+    return { type: "skipped" };
+  }
+
+  // Already compacted — rebuild from summary + new response messages
+  const state = locals.get(chatCompactionStateKey);
+  if (state && isStepBoundarySafe(currentStep)) {
+    return {
+      type: "rebuilt",
+      messages: await applyPrepareMessages(
+        [
+          { role: "user" as const, content: state.summary },
+          ...currentStep.response.messages.slice(state.baseResponseMessageCount),
+        ],
+        "compaction-rebuild"
+      ),
+    };
+  }
+
+  // Boundary unsafe — skip
+  if (!isStepBoundarySafe(currentStep)) {
+    return { type: "skipped" };
+  }
+
+  const totalTokens = currentStep.usage.totalTokens;
+  const inputTokens = currentStep.usage.inputTokens;
+  const outputTokens = currentStep.usage.outputTokens;
+
+  const turnCtx = locals.get(chatTurnContextKey);
+  const stepNumber = steps.length - 1;
+
+  const shouldTrigger = options.shouldCompact
+    ? await options.shouldCompact({
+      messages,
+      totalTokens,
+      inputTokens,
+      outputTokens,
+      usage: currentStep.usage,
+      source: "inner",
+      stepNumber,
+      steps,
+      chatId: turnCtx?.chatId,
+      turn: turnCtx?.turn,
+      clientData: turnCtx?.clientData,
+    })
+    : totalTokens != null && options.threshold != null && totalTokens > options.threshold;
+
+  if (!shouldTrigger) {
+    return { type: "skipped" };
+  }
+
+  const result = await tracer.startActiveSpan(
+    "context compaction",
+    async (span) => {
+      const compactionId = generateMessageId();
+      let summary!: string;
+
+      const { waitUntilComplete } = chatStream.writer({
+        spanName: "stream compaction chunks",
+        collapsed: true,
+        execute: async ({ write, merge }) => {
+          // Control chunks aren't part of UIMessageChunk's discriminated
+          // union but flow on the same session.out so subscribers can
+          // intercept them — cast on the way out.
+          write({ type: "step-start" } as unknown as UIMessageChunk);
+          write({
+            type: "data-compaction",
+            id: compactionId,
+            data: { status: "compacting", totalTokens },
+            transient: true,
+          });
+
+          // Generate summary
+          summary = await options.summarize(messages);
+
+          // Store state in locals for subsequent steps
+          locals.set(chatCompactionStateKey, {
+            summary,
+            baseResponseMessageCount: currentStep.response.messages.length,
+          });
+
+          // Set model-only override — UI messages stay intact for persistence.
+          // The summary becomes the model message history for the next turn,
+          // while accumulatedUIMessages keeps the full conversation for display.
+          locals.set(chatOverrideModelMessagesKey, [
+            {
+              role: "assistant" as const,
+              content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+            },
+          ]);
+
+          // Fire onCompacted hook — pass the existing writer so the callback
+          // can write custom chunks without creating a separate stream.
+          const onCompactedHook = locals.get(chatOnCompactedKey);
+          if (onCompactedHook) {
+            await onCompactedHook({
+              ctx: locals.get(chatAgentRunContextKey)!,
+              summary,
+              messages,
+              messageCount: messages.length,
+              usage: currentStep.usage,
+              totalTokens,
+              inputTokens,
+              outputTokens,
+              stepNumber,
+              chatId: turnCtx?.chatId,
+              turn: turnCtx?.turn,
+              writer: { write, merge },
+            });
+          }
+
+          write({
+            type: "data-compaction",
+            id: compactionId,
+            data: { status: "complete", totalTokens },
+            transient: true,
+          });
+          write({ type: "finish-step" });
+        },
+      });
+      await waitUntilComplete();
+
+      // Set attributes after we have the summary
+      span.setAttribute("compaction.summary_length", summary.length);
+
+      return {
+        type: "compacted" as const,
+        messages: await applyPrepareMessages(
+          [{ role: "user" as const, content: summary }],
+          "compaction-result"
+        ),
+        summary,
+      };
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "tabler-scissors",
+        "compaction.threshold": options.threshold,
+        "compaction.total_tokens": totalTokens ?? 0,
+        "compaction.input_tokens": inputTokens ?? 0,
+        "compaction.message_count": messages.length,
+        "compaction.step_number": stepNumber,
+        ...(turnCtx?.chatId ? { "compaction.chat_id": turnCtx.chatId } : {}),
+        ...(turnCtx?.turn != null ? { "compaction.turn": turnCtx.turn } : {}),
+        ...accessoryAttributes({
+          items: [
+            { text: `${totalTokens ?? 0} tokens`, variant: "normal" },
+            { text: `${messages.length} msgs`, variant: "normal" },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+
+  return result;
+}
+
+/**
+ * Returns a `prepareStep` function that handles context compaction automatically.
+ *
+ * Monitors token usage between tool-call steps. When `totalTokens` exceeds
+ * the threshold, generates a summary via `summarize()`, replaces the message
+ * history, and emits `data-compaction` stream chunks for the frontend.
+ *
+ * @example
+ * ```ts
+ * return streamText({
+ *   ...chat.toStreamTextOptions({ registry }),
+ *   messages: chat.addCacheBreaks(messages),
+ *   prepareStep: chat.compactionStep({
+ *     threshold: 80_000,
+ *     summarize: async (messages) => {
+ *       return generateText({ model, messages: [...messages, { role: "user", content: "Summarize." }] })
+ *         .then((r) => r.text);
+ *     },
+ *   }),
+ *   tools: { ... },
+ * });
+ * ```
+ */
+function chatCompactionStep(
+  options: CompactionOptions
+): (args: {
+  messages: ModelMessage[];
+  steps: CompactionStep[];
+}) => Promise<{ messages: ModelMessage[] } | undefined> {
+  return async ({ messages, steps }) => {
+    const result = await chatCompact(messages, steps, options);
+    return result.type === "skipped" ? undefined : result;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Steering queue drain — shared by toStreamTextOptions, session, accumulator
+// ---------------------------------------------------------------------------
+
+/**
+ * Drain the steering queue as a batch. Calls `shouldInject` once with all
+ * pending messages. If it returns true, calls `prepareMessages` once to
+ * transform the batch, then clears the queue.
+ * Returns the model messages to inject (empty if none).
+ * @internal
+ */
+async function drainSteeringQueue(
+  config: PendingMessagesOptions,
+  messages: ModelMessage[],
+  steps: CompactionStep[],
+  queueOverride?: SteeringQueueEntry[]
+): Promise<ModelMessage[]> {
+  const queue = queueOverride ?? locals.get(chatSteeringQueueKey);
+  if (!queue || queue.length === 0) return [];
+
+  const ctx = locals.get(chatTurnContextKey);
+  const stepNumber = steps.length - 1;
+  const uiMessages = queue.map((e) => e.uiMessage);
+
+  const batchEvent: PendingMessagesBatchEvent = {
+    messages: uiMessages,
+    modelMessages: messages,
+    steps,
+    stepNumber,
+    chatId: ctx?.chatId ?? "",
+    turn: ctx?.turn ?? 0,
+    clientData: ctx?.clientData,
+  };
+
+  // Call shouldInject once for the whole batch
+  const shouldInject = config.shouldInject ? await config.shouldInject(batchEvent) : false;
+
+  if (!shouldInject) return [];
+
+  // Extract message texts for span attributes
+  const messageTexts = uiMessages.map(
+    (m) =>
+      (m.parts ?? [])
+        .filter((p: any) => p.type === "text")
+        .map((p: any) => p.text)
+        .join("") || ""
+  );
+  const previewText =
+    messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
+
+  return tracer.startActiveSpan(
+    "pending message injected",
+    async () => {
+      // Transform the batch — default: concatenate all pre-converted model messages
+      const injected = config.prepare
+        ? await config.prepare(batchEvent)
+        : queue.flatMap((e) => e.modelMessages);
+
+      // Clear the queue and record injected IDs
+      queue.length = 0;
+      const injectedIds = locals.get(chatInjectedMessageIdsKey);
+      if (injectedIds) {
+        for (const m of uiMessages) injectedIds.add(m.id);
+      }
+
+      // Write injection confirmation chunk to the stream so the frontend
+      // knows which messages were injected and where in the response.
+      if (injected.length > 0) {
+        try {
+          const { waitUntilComplete } = chatStream.writer({
+            collapsed: true,
+            execute: ({ write }) => {
+              write({
+                type: PENDING_MESSAGE_INJECTED_TYPE,
+                id: generateMessageId(),
+                data: {
+                  messageIds: uiMessages.map((m) => m.id),
+                  messages: uiMessages.map((m, idx) => ({
+                    id: m.id,
+                    text: messageTexts[idx] ?? "",
+                  })),
+                },
+              });
+            },
+          });
+          await waitUntilComplete();
+        } catch {
+          /* non-fatal — stream write failed */
+        }
+      }
+
+      // Fire onInjected callback
+      if (config.onInjected && injected.length > 0) {
+        try {
+          await config.onInjected({
+            messages: uiMessages,
+            injectedModelMessages: injected,
+            chatId: ctx?.chatId ?? "",
+            turn: ctx?.turn ?? 0,
+            stepNumber,
+          });
+        } catch {
+          /* non-fatal */
+        }
+      }
+
+      return injected;
+    },
+    {
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "tabler-message-forward",
+        "pending.message_count": uiMessages.length,
+        "pending.step_number": stepNumber,
+        "pending.messages": messageTexts,
+        ...(ctx?.chatId ? { "pending.chat_id": ctx.chatId } : {}),
+        ...(ctx?.turn != null ? { "pending.turn": ctx.turn } : {}),
+        ...accessoryAttributes({
+          items: [
+            {
+              text: `${uiMessages.length} message${uiMessages.length === 1 ? "" : "s"}`,
+              variant: "normal",
+            },
+            { text: `between steps ${stepNumber} and ${stepNumber + 1}`, variant: "normal" },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// chat.isCompactionSafe — check if it's safe to compact messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Checks whether it's safe to compact the message history. Returns `false`
+ * if any tool calls are in-flight (incomplete tool invocations without results).
+ *
+ * Call before `chat.setMessages()` to avoid corrupting tool-call state.
+ */
+function isCompactionSafe(messages: UIMessage[]): boolean {
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts as any[]) {
+      if (part.type === "tool-invocation") {
+        const state = part.toolInvocation?.state ?? part.state;
+        if (state !== "result" && state !== "error") {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// chat.prompt — store and retrieve a resolved prompt for the current run
+// ---------------------------------------------------------------------------
+
+/**
+ * A resolved prompt stored via `chat.prompt.set()`. Either a full `ResolvedPrompt`
+ * from `prompts.define().resolve()`, or a lightweight wrapper around a plain string.
+ */
+export type ChatPromptValue =
+  | ResolvedPrompt
+  | {
+    text: string;
+    model: undefined;
+    config: undefined;
+    promptId: string;
+    version: number;
+    labels: string[];
+    toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
+      experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+    };
+  };
+
+/** @internal */
+const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
+
+/**
+ * Store a resolved prompt (or plain string) for the current run.
+ * Call from any hook (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
+ */
+function setChatPrompt(resolved: ResolvedPrompt | string): void {
+  if (typeof resolved === "string") {
+    locals.set(chatPromptKey, {
+      text: resolved,
+      model: undefined,
+      config: undefined,
+      promptId: "",
+      version: 0,
+      labels: [],
+      toAISDKTelemetry: () => ({
+        experimental_telemetry: { isEnabled: true, metadata: {} },
+      }),
+    });
+  } else {
+    locals.set(chatPromptKey, resolved);
+  }
+}
+
+/**
+ * Read the stored prompt. Throws if `chat.prompt.set()` has not been called.
+ */
+function getChatPrompt(): ChatPromptValue {
+  const prompt = locals.get(chatPromptKey);
+  if (!prompt) {
+    throw new Error(
+      "chat.prompt() called before chat.prompt.set(). Set a prompt in onPreload, onChatStart, onTurnStart, or run() first."
+    );
+  }
+  return prompt;
+}
+
+// ---------------------------------------------------------------------------
+// chat.skills — store resolved agent skills and inject them into streamText
+// ---------------------------------------------------------------------------
+
+/** @internal */
+const chatSkillsKey = locals.create<ResolvedSkill[]>("chat.skills");
+
+/**
+ * Store resolved skills for the current run. Call from any hook
+ * (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
+ */
+function setChatSkills(skills: ResolvedSkill[]): void {
+  locals.set(chatSkillsKey, skills);
+}
+
+/** Read the stored skills. Returns `undefined` if none set. */
+function getChatSkills(): ResolvedSkill[] | undefined {
+  return locals.get(chatSkillsKey);
+}
+
+/**
+ * Build the system-prompt preamble advertising available skills. Only the
+ * frontmatter description surfaces here — full SKILL.md body is loaded
+ * on-demand via the `loadSkill` tool.
+ */
+function buildSkillsSystemPrompt(skills: ResolvedSkill[]): string {
+  if (skills.length === 0) return "";
+  const lines = skills.map(
+    (s) => `- ${s.frontmatter.name}: ${s.frontmatter.description}`
+  );
+  return [
+    "Available skills (call `loadSkill` to read the full instructions before using one):",
+    ...lines,
+  ].join("\n");
+}
+
+/** Resolve a skill by its frontmatter `name`. */
+function findSkillByName(skills: ResolvedSkill[], name: string): ResolvedSkill | undefined {
+  return skills.find((s) => s.frontmatter.name === name);
+}
+
+/**
+ * Build the three tools we auto-inject into `streamText` when skills are
+ * set: `loadSkill`, `readFile`, `bash`. Scoped per-skill by name.
+ *
+ * Exported so callers can use the same tools outside the auto-wired path
+ * (e.g. in a `chat.createSession` loop with custom streamText).
+ */
+export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
+  const loadSkill = aiTool({
+    description:
+      "Load the full instructions for a skill by its name. Call this first before using a skill.",
+    inputSchema: jsonSchema<{ name: string }>({
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "The `name` field from the skill's frontmatter.",
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    } as JSONSchema7),
+    execute: async ({ name }: { name: string }) => {
+      const skill = findSkillByName(skills, name);
+      if (!skill) {
+        return {
+          error: `Skill "${name}" not found. Available: ${skills
+            .map((s) => s.frontmatter.name)
+            .join(", ")}`,
+        };
+      }
+      return {
+        name: skill.frontmatter.name,
+        description: skill.frontmatter.description,
+        body: skill.body,
+        path: skill.path,
+      };
+    },
+  });
+
+  const readFile = aiTool({
+    description:
+      "Read a file from a skill's bundled folder. Paths must be relative to the skill's root.",
+    inputSchema: jsonSchema<{ skill: string; path: string }>({
+      type: "object",
+      properties: {
+        skill: { type: "string", description: "The skill's name (from frontmatter)." },
+        path: {
+          type: "string",
+          description: "Relative path inside the skill folder (e.g. `references/citation-style.md`).",
+        },
+      },
+      required: ["skill", "path"],
+      additionalProperties: false,
+    } as JSONSchema7),
+    execute: async ({ skill: skillName, path: relPath }: { skill: string; path: string }) => {
+      const skill = findSkillByName(skills, skillName);
+      if (!skill) {
+        return { error: `Skill "${skillName}" not found.` };
+      }
+      try {
+        return await readFileInSkill({
+          skillPath: skill.path,
+          relativePath: relPath,
+        });
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
+    },
+  });
+
+  const bash = aiTool({
+    description:
+      "Run a bash command inside a skill's bundled folder. Use this to invoke the skill's scripts. The working directory is the skill's root.",
+    inputSchema: jsonSchema<{ skill: string; command: string }>({
+      type: "object",
+      properties: {
+        skill: { type: "string", description: "The skill's name (from frontmatter)." },
+        command: {
+          type: "string",
+          description: "Bash command to run. Relative script paths resolve against the skill's root.",
+        },
+      },
+      required: ["skill", "command"],
+      additionalProperties: false,
+    } as JSONSchema7),
+    execute: async (
+      { skill: skillName, command }: { skill: string; command: string },
+      { abortSignal }: { abortSignal?: AbortSignal } = {}
+    ) => {
+      const skill = findSkillByName(skills, skillName);
+      if (!skill) {
+        return { error: `Skill "${skillName}" not found.` };
+      }
+      try {
+        return await runBashInSkill({
+          skillPath: skill.path,
+          command,
+          abortSignal,
+        });
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
+    },
+  });
+
+  return { loadSkill, readFile, bash };
+}
+
+/**
+ * Options for {@link toStreamTextOptions}.
+ */
+export type ToStreamTextOptionsOptions = {
+  /** Additional telemetry metadata merged into `experimental_telemetry.metadata`. */
+  telemetry?: Record<string, string>;
+  /**
+   * An AI SDK provider registry (from `createProviderRegistry`) or any object
+   * with a `languageModel(id)` method. When provided and the stored prompt has
+   * a `model` string, the resolved `LanguageModel` is included in the returned
+   * options so `streamText` uses it directly.
+   *
+   * The model string should use the `"provider:model-id"` format
+   * (e.g. `"openai:gpt-4o"`, `"anthropic:claude-sonnet-4-6"`).
+   */
+  registry?: { languageModel(modelId: string): unknown };
+  /**
+   * User-defined tools to merge alongside the auto-injected skill tools
+   * (`loadSkill`, `readFile`, `bash`). User tools win on name conflicts.
+   *
+   * If you don't pass `tools` here and skills are set, the returned options
+   * will include just the skill tools — spread after any `tools` you pass
+   * directly to `streamText` and they'll be replaced. Easiest: pass all
+   * your tools here.
+   */
+  tools?: Record<string, Tool>;
+};
+
+/**
+ * Returns an options object ready to spread into `streamText()`.
+ *
+ * Includes `system`, `experimental_telemetry`, and any config fields
+ * (temperature, maxTokens, etc.) from the stored prompt.
+ *
+ * When a `registry` is provided and the prompt has a `model` string,
+ * the resolved `LanguageModel` is included as `model`.
+ *
+ * If no prompt has been set, returns `{}` (no-op spread).
+ */
+function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<string, unknown> {
+  const prompt = locals.get(chatPromptKey);
+  const skills = locals.get(chatSkillsKey);
+  const result: Record<string, unknown> = {};
+
+  // Build the combined system prompt: stored prompt + skills preamble.
+  const promptText = prompt?.text ?? "";
+  const skillsText = skills && skills.length > 0 ? buildSkillsSystemPrompt(skills) : "";
+  if (promptText || skillsText) {
+    result.system = [promptText, skillsText].filter(Boolean).join("\n\n");
+  }
+
+  // Prompt-related options (only if chat.prompt.set() was called)
+  if (prompt) {
+    // Resolve model via registry if both are present
+    if (options?.registry && prompt.model) {
+      result.model = options.registry.languageModel(prompt.model);
+    }
+
+    // Spread config (temperature, maxTokens, etc.)
+    if (prompt.config) {
+      Object.assign(result, prompt.config);
+    }
+
+    // Add telemetry (forward additional metadata from caller)
+    const telemetry = prompt.toAISDKTelemetry(options?.telemetry);
+    Object.assign(result, telemetry);
+  }
+
+  // Skills: merge auto-injected tools with any user-provided tools.
+  // User tools override on name conflict (though we namespace ours).
+  if (skills && skills.length > 0) {
+    const skillTools = buildSkillTools(skills);
+    result.tools = { ...skillTools, ...(options?.tools ?? {}) };
+  } else if (options?.tools) {
+    result.tools = options.tools;
+  }
+
+  // Auto-inject prepareStep for compaction, pending messages, and background context injection.
+  // This runs regardless of whether a prompt is set — these features are independent.
+  const taskCompaction = locals.get(chatAgentCompactionKey);
+  const taskPendingMessages = locals.get(chatPendingMessagesKey);
+
+  {
+    result.prepareStep = async ({
+      messages,
+      steps,
+    }: {
+      messages: ModelMessage[];
+      steps: CompactionStep[];
+    }) => {
+      let resultMessages: ModelMessage[] | undefined;
+
+      // 1. Compaction
+      if (taskCompaction) {
+        const compactResult = await chatCompact(messages, steps, {
+          shouldCompact: taskCompaction.shouldCompact,
+          summarize: (msgs) => {
+            const ctx = locals.get(chatTurnContextKey);
+            const lastStep = steps.at(-1);
+            return taskCompaction.summarize({
+              messages: msgs,
+              usage: lastStep?.usage,
+              source: "inner",
+              stepNumber: steps.length - 1,
+              chatId: ctx?.chatId,
+              turn: ctx?.turn,
+              clientData: ctx?.clientData,
+            });
+          },
+        });
+        if (compactResult.type !== "skipped") {
+          resultMessages = compactResult.messages;
+        }
+      }
+
+      // 2. Pending message injection (steering)
+      if (taskPendingMessages) {
+        const injected = await drainSteeringQueue(
+          taskPendingMessages,
+          resultMessages ?? messages,
+          steps
+        );
+        if (injected.length > 0) {
+          resultMessages = [...(resultMessages ?? messages), ...injected];
+        }
+      }
+
+      // 3. Background context injection
+      const bgQueue = locals.get(chatBackgroundQueueKey);
+      if (bgQueue && bgQueue.length > 0) {
+        const injected = bgQueue.splice(0); // drain
+        resultMessages = [...(resultMessages ?? messages), ...injected];
+      }
+
+      return resultMessages ? { messages: resultMessages } : undefined;
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Options for `pipeChat`.
+ */
+export type PipeChatOptions = {
+  /**
+   * Override the stream key. Must match the `streamKey` on `TriggerChatTransport`.
+   * @default "chat"
+   */
+  streamKey?: string;
+
+  /** An AbortSignal to cancel the stream. */
+  signal?: AbortSignal;
+
+  /**
+   * The target run ID to pipe to.
+   * @default "self" (current run)
+   */
+  target?: string;
+
+  /** Override the default span name for this operation. */
+  spanName?: string;
+};
+
+/**
+ * Options for customizing the `toUIMessageStream()` call used when piping
+ * `streamText` results to the frontend.
+ *
+ * Set static defaults via `uiMessageStreamOptions` on `chat.agent()`, or
+ * override per-turn via `chat.setUIMessageStreamOptions()`.
+ *
+ * `onFinish` is omitted because it is managed internally for response capture.
+ * Use `streamText`'s `onFinish` for custom finish handling, or drop down to
+ * raw task mode with `chat.pipe()` for full control.
+ *
+ * `originalMessages` is omitted because it is automatically set from the
+ * accumulated conversation history, ensuring message IDs are reused across
+ * turns (e.g. for tool approval continuations).
+ *
+ * `generateMessageId` can be set to control ID generation for response
+ * messages (e.g. UUID-v7). If not set, the AI SDK's default `generateId` is used.
+ */
+export type ChatUIMessageStreamOptions<TUIM extends UIMessage = UIMessage> = Omit<
+  UIMessageStreamOptions<TUIM>,
+  "onFinish" | "originalMessages"
+>;
+
+/**
+ * An object with a `toUIMessageStream()` method (e.g. `StreamTextResult` from `streamText()`).
+ */
+type UIMessageStreamable = {
+  toUIMessageStream: (...args: any[]) => AsyncIterable<unknown> | ReadableStream<unknown>;
+};
+
+function isUIMessageStreamable(value: unknown): value is UIMessageStreamable {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "toUIMessageStream" in value &&
+    typeof (value as any).toUIMessageStream === "function"
+  );
+}
+
+let warnedMissingOnAction = false;
+function warnMissingOnActionOnce() {
+  if (warnedMissingOnAction) return;
+  warnedMissingOnAction = true;
+  console.warn(
+    "[chat.agent] Received an action but no `onAction` handler is configured. " +
+      "The action is being ignored. Define `onAction` (and optionally `actionSchema`) on " +
+      "your agent to handle it."
+  );
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
+
+function isReadableStream(value: unknown): value is ReadableStream<unknown> {
+  return (
+    typeof value === "object" && value !== null && typeof (value as any).getReader === "function"
+  );
+}
+
+/**
+ * Pipes a chat stream to the realtime stream, making it available to the
+ * `TriggerChatTransport` on the frontend.
+ *
+ * Accepts:
+ * - A `StreamTextResult` from `streamText()` (has `.toUIMessageStream()`)
+ * - An `AsyncIterable` of `UIMessageChunk`s
+ * - A `ReadableStream` of `UIMessageChunk`s
+ *
+ * Must be called from inside a Trigger.dev task's `run` function.
+ *
+ * @example
+ * ```ts
+ * import { task } from "@trigger.dev/sdk";
+ * import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
+ * import { streamText, convertToModelMessages } from "ai";
+ *
+ * export const myChatTask = task({
+ *   id: "my-chat-task",
+ *   run: async (payload: ChatTaskPayload) => {
+ *     const result = streamText({
+ *       model: openai("gpt-4o"),
+ *       messages: payload.messages,
+ *     });
+ *
+ *     await chat.pipe(result);
+ *   },
+ * });
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Works from anywhere inside a task — even deep in your agent code
+ * async function runAgentLoop(messages: CoreMessage[]) {
+ *   const result = streamText({ model, messages });
+ *   await chat.pipe(result);
+ * }
+ * ```
+ */
+async function pipeChat(
+  source: UIMessageStreamable | AsyncIterable<unknown> | ReadableStream<unknown>,
+  options?: PipeChatOptions
+): Promise<void> {
+  locals.set(chatPipeCountKey, (locals.get(chatPipeCountKey) ?? 0) + 1);
+
+  let stream: AsyncIterable<unknown> | ReadableStream<unknown>;
+
+  if (isUIMessageStreamable(source)) {
+    stream = source.toUIMessageStream();
+  } else if (isAsyncIterable(source) || isReadableStream(source)) {
+    stream = source;
+  } else {
+    throw new Error(
+      "pipeChat: source must be a StreamTextResult (with .toUIMessageStream()), " +
+      "an AsyncIterable, or a ReadableStream"
+    );
+  }
+
+  const pipeOptions: SessionPipeStreamOptions = {};
+  if (options?.signal) {
+    pipeOptions.signal = options.signal;
+  }
+  if (options?.spanName) {
+    pipeOptions.spanName = options.spanName;
+  }
+  // `options.target` / `options.streamKey` are accepted for API parity
+  // with the pre-migration run-scoped pipe but no longer have meaning —
+  // sessions are the address (single stream per session, no sub-run
+  // targeting). Sub-agents that need to write into a parent's chat now
+  // open that session explicitly via `sessions.open(parentSessionId).out.pipe`.
+
+  // The generic is typed for `UIMessageChunk`, but `pipeChat` also
+  // accepts opaque UIMessageStreamable / raw iterables whose element
+  // type we don't know at compile time. Cast — runtime behaviour is
+  // identical (bytes go to session.out either way).
+  const { waitUntilComplete } = chatStream.pipe(
+    stream as ReadableStream<UIMessageChunk> | AsyncIterable<UIMessageChunk>,
+    pipeOptions
+  );
+  await waitUntilComplete();
+}
+
+/**
+ * Options for defining a chat task.
+ *
+ * Extends the standard `TaskOptions` but pre-types the payload as `ChatTaskPayload`
+ * and overrides `run` to accept `ChatTaskRunPayload` (with abort signals).
+ *
+ * **Auto-piping:** If the `run` function returns a value with `.toUIMessageStream()`
+ * (like a `StreamTextResult`), the stream is automatically piped to the frontend.
+ *
+ * **Single-run mode:** By default, the task uses input streams so that the
+ * entire conversation lives inside one run. After each AI response, the task
+ * emits a control chunk and suspends via `messagesInput.wait()`. The frontend
+ * transport resumes the same run by sending the next message via input streams.
+ */
+/**
+ * Event passed to the `onPreload` callback.
+ */
+export type PreloadEvent<TClientData = unknown> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A scoped access token for this chat run. */
+  chatAccessToken: string;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
+};
+
+/**
+ * Event passed to the `onChatStart` callback.
+ */
+export type ChatStartEvent<TClientData = unknown> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /**
+   * The initial model-ready messages for this conversation.
+   *
+   * On a fresh chat this is empty (or just the seed-message for head-start).
+   * On a continuation — including idle-suspend resume and OOM retry — this
+   * already reflects the FULL prior conversation history loaded from the
+   * runtime's durable snapshot + `session.out` replay (or whatever
+   * `hydrateMessages` returned). The wire never re-ships that history; the
+   * runtime rebuilds it before `onChatStart` fires.
+   */
+  messages: ModelMessage[];
+  /** Custom data from the frontend (passed via `metadata` on `sendMessage()` or the transport). */
+  clientData: TClientData;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A scoped access token for this chat run. Persist this for frontend reconnection. */
+  chatAccessToken: string;
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
+};
+
+/**
+ * Event passed to the `hydrateMessages` callback.
+ */
+export type HydrateMessagesEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The trigger type for this turn. */
+  trigger: "submit-message" | "regenerate-message" | "action";
+  /** Validated incoming UI messages from the wire payload (what the frontend sent). Empty for actions. */
+  incomingMessages: TUIM[];
+  /** The accumulated UI messages before this turn (empty on turn 0). */
+  previousMessages: TUIM[];
+  /** Parsed client data from the transport metadata. */
+  clientData?: TClientData;
+  /** Whether this run is continuing from a previous run. */
+  continuation: boolean;
+  /** The ID of the previous run (if continuation). */
+  previousRunId?: string;
+};
+
+/**
+ * Event passed to the `hydrateStore` callback.
+ *
+ * Called at turn start — before `run()` fires and before any incoming store
+ * from the wire payload is applied. Return the authoritative store value
+ * for this turn; it becomes the initial value `chat.store.get()` sees.
+ */
+export type HydrateStoreEvent<TClientData = unknown, TStore = unknown> = {
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The trigger type for this turn. */
+  trigger: "submit-message" | "regenerate-message" | "action" | "preload";
+  /**
+   * The in-memory store value from the previous turn of this run
+   * (`undefined` on turn 0 and after continuations).
+   */
+  previousStore: TStore | undefined;
+  /**
+   * The store value the transport sent with this turn, if any.
+   * Usually set by client-side `setStore` / `applyStorePatch`.
+   */
+  incomingStore: TStore | undefined;
+  /** Parsed client data from the transport metadata. */
+  clientData?: TClientData;
+  /** Whether this run is continuing from a previous run. */
+  continuation: boolean;
+  /** The ID of the previous run (if continuation). */
+  previousRunId?: string;
+};
+
+/**
+ * Event passed to the `onValidateMessages` callback.
+ */
+export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
+  /** The incoming UI messages for this turn (after cleanup of aborted tool parts). */
+  messages: TUIM[];
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The trigger type for this turn. */
+  trigger: "submit-message" | "regenerate-message" | "preload" | "close";
+};
+
+/**
+ * Event passed to the `onAction` callback.
+ */
+export type ActionEvent<
+  TAction = unknown,
+  TClientData = unknown,
+  TUIM extends UIMessage = UIMessage,
+> = {
+  /** The parsed and validated action payload. */
+  action: TAction;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** Parsed client data from the transport metadata. */
+  clientData?: TClientData;
+  /** The accumulated UI messages (after hydration, if set). */
+  uiMessages: TUIM[];
+  /** The accumulated model messages (after hydration, if set). */
+  messages: ModelMessage[];
+};
+
+/**
+ * Event passed to the `onTurnStart` callback.
+ */
+export type TurnStartEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The accumulated model-ready messages (all turns so far, including new user message). */
+  messages: ModelMessage[];
+  /** The accumulated UI messages (all turns so far, including new user message). */
+  uiMessages: TUIM[];
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A scoped access token for this chat run. */
+  chatAccessToken: string;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
+  /** Token usage from the previous turn. Undefined on turn 0. */
+  previousTurnUsage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns so far. */
+  totalUsage: LanguageModelUsage;
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
+};
+
+/**
+ * Event passed to the `onTurnComplete` callback.
+ */
+export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The full accumulated conversation in model format (all turns so far). */
+  messages: ModelMessage[];
+  /**
+   * The full accumulated conversation in UI format (all turns so far).
+   * This is the format expected by `useChat` — store this for persistence.
+   */
+  uiMessages: TUIM[];
+  /**
+   * Only the new model messages from this turn (user message(s) + assistant response).
+   * Useful for appending to an existing conversation record.
+   */
+  newMessages: ModelMessage[];
+  /**
+   * Only the new UI messages from this turn (user message(s) + assistant response).
+   * Useful for inserting individual message records instead of overwriting the full history.
+   */
+  newUIMessages: TUIM[];
+  /** The assistant's response for this turn, with aborted parts cleaned up when `stopped` is true. Undefined if `pipeChat` was used manually. */
+  responseMessage: TUIM | undefined;
+  /**
+   * The raw assistant response before abort cleanup. Includes incomplete tool parts
+   * (`input-available`, `partial-call`) and streaming reasoning/text parts.
+   * Use this if you need custom cleanup logic. Same as `responseMessage` when not stopped.
+   */
+  rawResponseMessage: TUIM | undefined;
+  /** The turn number (0-indexed). */
+  turn: number;
+  /** The Trigger.dev run ID for this conversation. */
+  runId: string;
+  /** A fresh scoped access token for this chat run (renewed each turn). Persist this for frontend reconnection. */
+  chatAccessToken: string;
+  /** The last event ID from the stream writer. Use this with `resume: true` to avoid replaying events after refresh. */
+  lastEventId?: string;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+  /** Whether the user stopped generation during this turn. */
+  stopped: boolean;
+  /** Whether this run is continuing an existing chat (previous run timed out or was cancelled). False for brand new chats. */
+  continuation: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Whether this run was preloaded before the first message. */
+  preloaded: boolean;
+  /** Token usage for this turn. Undefined if usage couldn't be captured (e.g. manual pipeChat). */
+  usage?: LanguageModelUsage;
+  /** Cumulative token usage across all turns in this run (including this turn). */
+  totalUsage: LanguageModelUsage;
+  /**
+   * Why the LLM stopped generating this turn:
+   * - `"stop"` — model generated a stop sequence (normal completion)
+   * - `"tool-calls"` — model stopped on one or more tool calls. If any tool
+   *   has no `execute` function (e.g. an `ask_user` HITL tool), the turn is
+   *   paused awaiting user input; inspect `responseMessage.parts` for tool
+   *   parts in `input-available` state to distinguish.
+   * - `"length"` — max tokens reached
+   * - `"content-filter"` — content filter stopped the model
+   * - `"error"` — model errored
+   * - `"other"` — provider-specific reason
+   *
+   * Undefined if the underlying stream didn't provide a finish reason (e.g.
+   * manual `pipeChat()` or an aborted stream).
+   */
+  finishReason?: FinishReason;
+};
+
+/**
+ * Event passed to the `onBeforeTurnComplete` callback.
+ * Same as `TurnCompleteEvent` but includes a `writer` since the stream is still open.
+ */
+export type BeforeTurnCompleteEvent<
+  TClientData = unknown,
+  TUIM extends UIMessage = UIMessage,
+> = TurnCompleteEvent<TClientData, TUIM> & {
+  /** Stream writer — write custom `UIMessageChunk` parts to the chat stream. Lazy: no overhead if unused. */
+  writer: ChatWriter;
+};
+
+/**
+ * Discriminated event passed to the `onChatSuspend` callback.
+ * Use `phase` to distinguish preload vs turn suspension.
+ */
+export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
+  | {
+    /** Suspend is happening after onPreload, before the first message. */
+    phase: "preload";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  }
+  | {
+    /** Suspend is happening after a completed turn, waiting for the next message. */
+    phase: "turn";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** The turn number (0-indexed) that just completed. */
+    turn: number;
+    /** The accumulated model messages after the completed turn. */
+    messages: ModelMessage[];
+    /** The accumulated UI messages after the completed turn. */
+    uiMessages: TUIM[];
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  };
+
+/**
+ * Discriminated event passed to the `onChatResume` callback.
+ * Use `phase` to distinguish preload vs turn resumption.
+ */
+export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
+  | {
+    /** First message arrived after preload suspension. */
+    phase: "preload";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  }
+  | {
+    /** Next message arrived after turn suspension. */
+    phase: "turn";
+    /** Task run context. */
+    ctx: TaskRunContext;
+    /** The chat session ID. */
+    chatId: string;
+    /** The Trigger.dev run ID. */
+    runId: string;
+    /** The turn number that was completed before suspension. */
+    turn: number;
+    /** The accumulated model messages (from before suspension). */
+    messages: ModelMessage[];
+    /** The accumulated UI messages (from before suspension). */
+    uiMessages: TUIM[];
+    /** Custom data from the frontend. */
+    clientData?: TClientData;
+  };
+
+export type ChatAgentOptions<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
+  TActionSchema extends TaskSchema | undefined = undefined,
+> = Omit<
+  TaskOptions<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >,
+  "run" | "retry"
+> & {
+  /**
+   * Fallback machine preset to use when an attempt fails with an
+   * out-of-memory (OOM) error. Setting this enables a single OOM retry:
+   * the next attempt boots on the larger machine, and the chat picks
+   * up via the standard continuation path (same `chatId` / Session,
+   * accumulator rebuilds via `hydrateMessages` or post-`onTurnStart`
+   * persisted state).
+   *
+   * Set `machine` (top-level `TaskOptions`) to control the *default*
+   * machine the agent runs on. `oomMachine` is the *retry-only* swap.
+   *
+   * Note: an OOM retry restarts the entire turn from the top — the
+   * model call and any in-flight tool executes re-run on the larger
+   * machine. Make tool executes idempotent or persist results before
+   * returning if you can't tolerate re-execution.
+   *
+   * Generic `retry` options are not exposed on `chat.agent` because
+   * arbitrary retries against an LLM-driven loop tend to be expensive
+   * and side-effecting. If you need richer retry semantics, drop down
+   * to `chat.task` (the raw primitive).
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   machine: "small-1x",
+   *   oomMachine: "medium-2x",
+   *   run: async ({ messages, signal }) =>
+   *     streamText({ model, messages, abortSignal: signal }),
+   * });
+   * ```
+   */
+  oomMachine?: MachinePresetName;
+
+  /**
+   * Schema for validating `clientData` from the frontend.
+   * Accepts Zod, ArkType, Valibot, or any supported schema library.
+   * When provided, `clientData` is parsed and typed in all hooks and `run`.
+   *
+   * @example
+   * ```ts
+   * import { z } from "zod";
+   *
+   * chat.agent({
+   *   id: "my-chat",
+   *   clientDataSchema: z.object({ model: z.string().optional(), userId: z.string() }),
+   *   run: async ({ messages, clientData, ctx, signal }) => {
+   *     // clientData is typed as { model?: string; userId: string }
+   *     // ctx is the same TaskRunContext as in task({ run: (payload, { ctx }) => ... })
+   *   },
+   * });
+   * ```
+   */
+  clientDataSchema?: TClientDataSchema;
+
+  /**
+   * Schema for validating custom actions sent via `transport.sendAction()`.
+   *
+   * When the frontend sends `trigger: "action"`, the `action` payload is
+   * parsed against this schema before reaching `onAction`. Invalid actions
+   * throw and abort the turn.
+   *
+   * @example
+   * ```ts
+   * import { z } from "zod";
+   *
+   * chat.agent({
+   *   id: "my-chat",
+   *   actionSchema: z.discriminatedUnion("type", [
+   *     z.object({ type: z.literal("undo") }),
+   *     z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
+   *   ]),
+   *   onAction: async ({ action }) => {
+   *     if (action.type === "undo") chat.history.slice(0, -2);
+   *     if (action.type === "rollback") chat.history.rollbackTo(action.targetMessageId);
+   *   },
+   *   run: async ({ messages, signal }) => { ... },
+   * });
+   * ```
+   */
+  actionSchema?: TActionSchema;
+
+  /**
+   * Called when the frontend sends a custom action via `transport.sendAction()`.
+   *
+   * Actions are not turns. They fire `hydrateMessages` (if configured) and
+   * `onAction` only — no `onTurnStart` / `prepareMessages` /
+   * `onBeforeTurnComplete` / `onTurnComplete`, no `run()`. Use
+   * `chat.history.*` inside `onAction` to mutate state.
+   *
+   * To produce a model response from an action, return a
+   * `StreamTextResult` (auto-piped), `string`, or `UIMessage`. Returning
+   * `void` or nothing is the side-effect-only default.
+   */
+  onAction?: (
+    event: ActionEvent<
+      [TActionSchema] extends [TaskSchema] ? inferSchemaOut<TActionSchema> : unknown,
+      inferSchemaOut<TClientDataSchema>,
+      TUIMessage
+    >
+  ) => Promise<unknown> | unknown;
+
+  /**
+   * The run function for the chat task.
+   *
+   * Receives a `ChatTaskRunPayload` with the conversation messages, chat session ID,
+   * trigger type, task `ctx` (same as `task({ run })`’s second argument), and abort signals
+   * (`signal`, `cancelSignal`, `stopSignal`).
+   *
+   * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
+   * the stream is automatically piped to the frontend.
+   */
+  run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>>) => Promise<unknown>;
+
+  /**
+   * Called when a preloaded run starts, before the first message arrives.
+   *
+   * Use this to initialize state, create DB records, and load context early —
+   * so everything is ready when the user's first message comes through.
+   *
+   * @example
+   * ```ts
+   * onPreload: async ({ ctx, chatId, clientData }) => {
+   *   await db.chat.create({ data: { id: chatId } });
+   *   userContext.init(await loadUser(clientData.userId));
+   * }
+   * ```
+   */
+  onPreload?: (event: PreloadEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+
+  /**
+   * Called on the first turn (turn 0) of a new run, before the `run` function executes.
+   *
+   * Use this to create the chat record in your database when a new conversation starts.
+   *
+   * @example
+   * ```ts
+   * onChatStart: async ({ ctx, chatId, messages, clientData }) => {
+   *   await db.chat.create({ data: { id: chatId, userId: clientData.userId } });
+   * }
+   * ```
+   */
+  onChatStart?: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
+
+  /**
+   * Validate or transform incoming UI messages before they are converted to model
+   * messages and accumulated. Fires once per turn with the raw `UIMessage[]` from
+   * the wire payload (after cleanup of aborted tool parts).
+   *
+   * Return the validated messages array. Throw to abort the turn with an error.
+   *
+   * This is the right place to call the AI SDK's `validateUIMessages` to catch
+   * malformed messages from storage or untrusted input before they reach the model.
+   *
+   * @example
+   * ```ts
+   * import { validateUIMessages } from "ai";
+   *
+   * chat.agent({
+   *   id: "my-chat",
+   *   onValidateMessages: async ({ messages }) => {
+   *     return validateUIMessages({ messages, tools: chatTools });
+   *   },
+   *   run: async ({ messages }) => {
+   *     return streamText({ model, messages, tools: chatTools });
+   *   },
+   * });
+   * ```
+   */
+  onValidateMessages?: (
+    event: ValidateMessagesEvent<TUIMessage>
+  ) => TUIMessage[] | Promise<TUIMessage[]>;
+
+  /**
+   * Load the full message history from your backend on every turn,
+   * replacing the built-in linear accumulator.
+   *
+   * When set, the returned messages become the accumulated state for this turn.
+   * The normal accumulation logic (append for submit, replace for regenerate)
+   * is skipped entirely — the hook is the source of truth.
+   *
+   * After the hook returns, any incoming wire messages with matching IDs are
+   * auto-merged (handles tool approval responses transparently).
+   *
+   * Use cases:
+   * - Backend trust: prevent clients from injecting fabricated history
+   * - Branching conversations (DAGs): load only the active branch
+   * - Rollback/undo: exclude undone messages from history
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+   *     // Persist the new message
+   *     const newMsg = incomingMessages[incomingMessages.length - 1];
+   *     if (newMsg && trigger === "submit-message") {
+   *       await db.chatMessages.create({ chatId, message: newMsg });
+   *     }
+   *     // Return the full authoritative history
+   *     return db.chatMessages.findMany({ where: { chatId } });
+   *   },
+   *   run: async ({ messages, signal }) => {
+   *     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+   *   },
+   * });
+   * ```
+   */
+  hydrateMessages?: (
+    event: HydrateMessagesEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => TUIMessage[] | Promise<TUIMessage[]>;
+
+  /**
+   * Load the `chat.store` value for this turn from your backend.
+   *
+   * The store lives in memory on the agent instance for the lifetime of
+   * the run. After a continuation (idle timeout, `chat.requestUpgrade`,
+   * max turns), a new run starts with an empty store — this hook lets
+   * you restore it from your own persistence layer.
+   *
+   * Runs at turn start, before `run()` fires. The returned value replaces
+   * the in-memory store and is emitted as a `store-snapshot` chunk so the
+   * frontend sees the initial value.
+   *
+   * If both `hydrateStore` and `incomingStore` (from the wire payload) are
+   * present, `incomingStore` wins — it represents the client's latest
+   * local state and follows AG-UI's last-write-wins policy.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   hydrateStore: async ({ chatId, previousRunId }) => {
+   *     return db.chatStore.findUnique({ where: { chatId } })?.value;
+   *   },
+   *   onTurnComplete: async ({ chatId }) => {
+   *     await db.chatStore.upsert({
+   *       where: { chatId },
+   *       update: { value: chat.store.get() },
+   *       create: { chatId, value: chat.store.get() },
+   *     });
+   *   },
+   *   run: async ({ messages, signal }) => {
+   *     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+   *   },
+   * });
+   * ```
+   */
+  hydrateStore?: (
+    event: HydrateStoreEvent<inferSchemaOut<TClientDataSchema>>
+  ) => unknown | Promise<unknown>;
+
+  /**
+   * Called at the start of every turn, after message accumulation and `onChatStart` (turn 0),
+   * but before the `run` function executes.
+   *
+   * Use this to persist messages before streaming begins, so a mid-stream page refresh
+   * still shows the user's message.
+   *
+   * @example
+   * ```ts
+   * onTurnStart: async ({ ctx, chatId, uiMessages }) => {
+   *   await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+   * }
+   * ```
+   */
+  onTurnStart?: (
+    event: TurnStartEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * Called after the response is captured but before the stream closes.
+   * The stream is still open, so you can write custom chunks to the frontend
+   * (e.g. compaction progress). Use this for compaction, post-processing,
+   * or any work where the user should see real-time status updates.
+   *
+   * @example
+   * ```ts
+   * onBeforeTurnComplete: async ({ ctx, writer, usage }) => {
+   *   if (usage?.inputTokens && usage.inputTokens > 5000) {
+   *     writer.write({ type: "data-compaction", id: generateId(), data: { status: "compacting" } });
+   *     // ... compact messages ...
+   *     chat.setMessages(compactedMessages);
+   *     writer.write({ type: "data-compaction", id: generateId(), data: { status: "complete" } });
+   *   }
+   * }
+   * ```
+   */
+  onBeforeTurnComplete?: (
+    event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * Called when conversation compaction occurs (via `chat.compact()` or
+   * `chat.compactionStep()`). Use for logging, billing, or persisting the summary.
+   *
+   * @example
+   * ```ts
+   * onCompacted: async ({ ctx, summary, totalTokens, chatId }) => {
+   *   logger.info("Compacted", { totalTokens, chatId });
+   *   await db.compactionLog.create({ data: { chatId, summary } });
+   * }
+   * ```
+   */
+  onCompacted?: (event: CompactedEvent) => Promise<void> | void;
+
+  /**
+   * Automatic context compaction. When provided, compaction runs automatically
+   * in both the inner loop (prepareStep, between tool-call steps) and the
+   * outer loop (between turns, for single-step responses where prepareStep
+   * never fires).
+   *
+   * The `shouldCompact` callback decides when to compact, and `summarize`
+   * generates the summary. The prepareStep is auto-injected into
+   * `chat.toStreamTextOptions()` — if you provide your own `prepareStep`
+   * after spreading, it overrides the auto-injected one.
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   compaction: {
+   *     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+   *     summarize: async (messages) =>
+   *       generateText({ model, messages: [...messages, { role: "user", content: "Summarize." }] })
+   *         .then((r) => r.text),
+   *   },
+   *   run: async ({ messages, signal }) => {
+   *     return streamText({ ...chat.toStreamTextOptions({ registry }), messages });
+   *   },
+   * });
+   * ```
+   */
+  compaction?: ChatAgentCompactionOptions<TUIMessage>;
+
+  /**
+   * Configure how messages that arrive during streaming are handled.
+   *
+   * By default, messages queue for the next turn. When `shouldInject` is provided
+   * and returns `true`, messages are injected between tool-call steps via
+   * `prepareStep` — allowing users to steer the agent mid-execution.
+   *
+   * @example
+   * ```ts
+   * pendingMessages: {
+   *   shouldInject: ({ steps }) => steps.length > 0,
+   *   onReceived: ({ message }) => logger.info("Steering message received"),
+   * },
+   * ```
+   */
+  pendingMessages?: PendingMessagesOptions<TUIMessage>;
+
+  /**
+   * Called after each assistant response completes. Use to persist the
+   * conversation to your database after each assistant response.
+   *
+   * @example
+   * ```ts
+   * onTurnComplete: async ({ ctx, chatId, messages }) => {
+   *   await db.chat.update({ where: { id: chatId }, data: { messages } });
+   * }
+   * ```
+   */
+  onTurnComplete?: (
+    event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * Maximum number of conversational turns (message round-trips) a single run
+   * will handle before ending. After this many turns the run completes
+   * normally and the next message will start a fresh run.
+   *
+   * @default 100
+   */
+  maxTurns?: number;
+
+  /**
+   * How long to wait for the next message before timing out and ending the run.
+   * Accepts any duration string (e.g. `"1h"`, `"30m"`).
+   *
+   * @default "1h"
+   */
+  turnTimeout?: string;
+
+  /**
+   * How long (in seconds) the run stays idle (active, using compute) after each
+   * turn, waiting for the next message. During this window responses are instant.
+   * After this timeout the run suspends (frees compute) and waits via
+   * `inputStream.wait()`.
+   *
+   * Set to `0` to suspend immediately after each turn.
+   *
+   * @default 30
+   */
+  idleTimeoutInSeconds?: number;
+
+  /**
+   * How long the `chatAccessToken` (scoped to this run) remains valid.
+   * A fresh token is minted after each turn, so this only needs to cover
+   * the gap between turns.
+   *
+   * Accepts a duration string (e.g. `"1h"`, `"30m"`, `"2h"`).
+   *
+   * @default "1h"
+   */
+  chatAccessTokenTTL?: string;
+
+  /**
+   * How long (in seconds) the run stays idle after `onPreload` fires,
+   * waiting for the first message before suspending.
+   *
+   * Only applies to preloaded runs (triggered via `transport.preload()`).
+   * Takes precedence over `transport.preload(..., { idleTimeoutInSeconds })`
+   * and over {@link ChatAgentOptions.idleTimeoutInSeconds}.
+   *
+   * @default Same as `idleTimeoutInSeconds`
+   */
+  preloadIdleTimeoutInSeconds?: number;
+
+  /**
+   * How long to wait (suspended) for the first message after a preloaded run starts.
+   * If no message arrives within this time, the run ends.
+   *
+   * Only applies to preloaded runs.
+   *
+   * @default Same as `turnTimeout`
+   */
+  preloadTimeout?: string;
+
+  /**
+   * Transform model messages before they're used anywhere — in `run()`,
+   * in compaction rebuilds, and in compaction results.
+   *
+   * Define once, applied everywhere. Use for Anthropic cache breaks,
+   * injecting system context, stripping PII, etc.
+   *
+   * @example
+   * ```ts
+   * prepareMessages: async ({ messages, reason }) => {
+   *   // Add Anthropic cache breaks to the last message
+   *   if (messages.length === 0) return messages;
+   *   const last = messages[messages.length - 1];
+   *   return [...messages.slice(0, -1), {
+   *     ...last,
+   *     providerOptions: { ...last.providerOptions, anthropic: { cacheControl: { type: "ephemeral" } } },
+   *   }];
+   * }
+   * ```
+   */
+  prepareMessages?: (
+    event: PrepareMessagesEvent<inferSchemaOut<TClientDataSchema>>
+  ) => ModelMessage[] | Promise<ModelMessage[]>;
+
+  /**
+   * Default options for `toUIMessageStream()` when auto-piping or using
+   * `turn.complete()` / `chat.pipeAndCapture()`.
+   *
+   * Controls how the `StreamTextResult` is converted to a `UIMessageChunk`
+   * stream — error handling, reasoning/source visibility, metadata, etc.
+   *
+   * Can be overridden per-turn by calling `chat.setUIMessageStreamOptions()`
+   * inside `run()` or lifecycle hooks. Per-turn values are merged on top
+   * of these defaults (per-turn wins on conflicts).
+   *
+   * `onFinish` and `originalMessages` are managed internally and cannot be
+   * overridden here. Use `streamText`'s `onFinish` for custom finish
+   * handling. `generateMessageId` can be set to control response message
+   * ID generation (e.g. UUID-v7).
+   *
+   * @example
+   * ```ts
+   * chat.agent({
+   *   id: "my-chat",
+   *   uiMessageStreamOptions: {
+   *     sendReasoning: true,
+   *     onError: (error) => error instanceof Error ? error.message : "An error occurred.",
+   *   },
+   *   run: async ({ messages, signal }) => { ... },
+   * });
+   * ```
+   */
+  uiMessageStreamOptions?: ChatUIMessageStreamOptions<TUIMessage>;
+
+  /**
+   * Called right before the run suspends to wait for a message.
+   *
+   * The `phase` discriminator tells you when the suspend happened:
+   * - `"preload"`: after `onPreload`, waiting for the first message
+   * - `"turn"`: after `onTurnComplete`, waiting for the next message
+   *
+   * Use this for cleanup before suspension (e.g. disposing sandboxes, closing connections).
+   *
+   * @example
+   * ```ts
+   * onChatSuspend: async (event) => {
+   *   await disposeExpensiveResources(event.ctx.run.id);
+   *   if (event.phase === "turn") {
+   *     logger.info("Suspending after turn", { turn: event.turn });
+   *   }
+   * }
+   * ```
+   */
+  onChatSuspend?: (
+    event: ChatSuspendEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * Called right after the run resumes from suspension with a new message.
+   *
+   * The `phase` discriminator tells you when the resume happened:
+   * - `"preload"`: first message arrived after preload suspension
+   * - `"turn"`: next message arrived after turn suspension
+   *
+   * Use this for re-initialization after wake (e.g. warming caches, reconnecting).
+   *
+   * @example
+   * ```ts
+   * onChatResume: async (event) => {
+   *   warmCache(event.ctx.run.id);
+   *   if (event.phase === "turn") {
+   *     logger.info("Resumed after turn", { turn: event.turn });
+   *   }
+   * }
+   * ```
+   */
+  onChatResume?: (
+    event: ChatResumeEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+  ) => Promise<void> | void;
+
+  /**
+   * When `true`, the run exits successfully after the preload idle timeout
+   * instead of suspending and waiting. The run completes with no turn executed.
+   *
+   * Use this for "fire and forget" preloads where you only want to do eager
+   * initialization. If the user doesn't send a message during the idle window,
+   * the run ends cleanly.
+   *
+   * Only applies to preloaded runs (triggered via `transport.preload()`).
+   *
+   * @default false
+   */
+  exitAfterPreloadIdle?: boolean;
+};
+
+/**
+ * Creates a Trigger.dev task pre-configured for AI SDK chat.
+ *
+ * - **Pre-types the payload** as `ChatTaskRunPayload` — includes abort signals
+ * - **Auto-pipes the stream** if `run` returns a `StreamTextResult`
+ * - **Multi-turn**: keeps the conversation in a single run using input streams
+ * - **Stop support**: frontend can stop generation mid-stream via the stop input stream
+ * - For complex flows, use `pipeChat()` from anywhere inside your task code
+ *
+ * @example
+ * ```ts
+ * import { chat } from "@trigger.dev/sdk/ai";
+ * import { streamText, convertToModelMessages } from "ai";
+ * import { openai } from "@ai-sdk/openai";
+ *
+ * export const myChat = chat.agent({
+ *   id: "my-chat",
+ *   run: async ({ messages, signal }) => {
+ *     return streamText({
+ *       model: openai("gpt-4o"),
+ *       messages, // already converted via convertToModelMessages
+ *       abortSignal: signal,
+ *     });
+ *   },
+ * });
+ * ```
+ */
+// ─── chat.customAgent ──────────────────────────────────────────────
+// A thin wrapper around createTask that marks the task as an agent
+// (triggerSource: "agent") so it appears in the playground, but does
+// NOT implement the managed lifecycle (no turn loop, no preload, etc.).
+// The user's run function receives the raw ChatTaskWirePayload and
+// uses composable primitives (chat.messages, chat.MessageAccumulator, etc.).
+// ────────────────────────────────────────────────────────────────────
+
+type ChatCustomAgentOptions<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
+> = Omit<
+  TaskOptions<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >,
+  "triggerSource" | "agentConfig"
+> & {
+  clientDataSchema?: TClientDataSchema;
+};
+
+function chatCustomAgent<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
+>(
+  options: ChatCustomAgentOptions<TIdentifier, TClientDataSchema, TUIMessage>
+): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
+  const { clientDataSchema, run: userRun, ...restOptions } = options;
+
+  const task = createTask<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >({
+    ...restOptions,
+    triggerSource: "agent",
+    agentConfig: { type: "ai-sdk-chat" },
+    run: async (
+      payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+      runOptions
+    ) => {
+      // Bind the run to its backing Session so module-level helpers
+      // (chat.messages, chat.stream, chat.createStopSignal, chat.createSession)
+      // resolve to this chat's `.in` / `.out` channels. Address
+      // everywhere by `payload.chatId` (the session externalId) so the
+      // agent's writes and the transport's reads converge on the same
+      // S2 stream key + waitpoint key.
+      //
+      // The Session row is created server-side by `POST /sessions` (or
+      // `chat.createStartSessionAction`) before this run is triggered.
+      // No client-side upsert needed.
+      locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatAgentRunContextKey, runOptions.ctx);
+      taskContext.setConversationId(payload.chatId);
+      stampConversationIdOnActiveSpan(payload.chatId);
+      return userRun(payload, runOptions);
+    },
+  });
+
+  // Register clientDataSchema so the CLI converts it to JSONSchema
+  // and stores it as payloadSchema — used by the Playground UI
+  if (clientDataSchema) {
+    resourceCatalog.updateTaskMetadata(options.id, {
+      schema: clientDataSchema as any,
+    });
+  }
+
+  return task;
+}
+
+function chatAgent<
+  TIdentifier extends string,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+  TUIMessage extends UIMessage = UIMessage,
+  TActionSchema extends TaskSchema | undefined = undefined,
+>(
+  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema>
+): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
+  const {
+    run: userRun,
+    clientDataSchema,
+    onPreload,
+    onChatStart,
+    onValidateMessages,
+    hydrateMessages,
+    hydrateStore,
+    actionSchema,
+    onAction,
+    onTurnStart,
+    onBeforeTurnComplete,
+    onCompacted,
+    compaction,
+    pendingMessages: pendingMessagesConfig,
+    prepareMessages,
+    onTurnComplete,
+    maxTurns = 100,
+    turnTimeout = "1h",
+    idleTimeoutInSeconds = 30,
+    chatAccessTokenTTL = "1h",
+    preloadIdleTimeoutInSeconds,
+    preloadTimeout,
+    uiMessageStreamOptions,
+    onChatSuspend,
+    onChatResume,
+    exitAfterPreloadIdle = false,
+    oomMachine,
+    ...restOptions
+  } = options;
+
+  const parseClientData = clientDataSchema ? getSchemaParseFn(clientDataSchema) : undefined;
+  const parseAction = actionSchema ? getSchemaParseFn(actionSchema) : undefined;
+
+  // chat.agent does not expose generic retry options (see docstring on
+  // `oomMachine`). The only opt-in is an OOM-triggered machine swap. If
+  // `oomMachine` is set we allow one retry on a larger machine; otherwise
+  // we keep the historical no-retry default.
+  const retry = oomMachine
+    ? { maxAttempts: 2, outOfMemory: { machine: oomMachine } }
+    : { maxAttempts: 1 };
+
+  const task = createTask<
+    TIdentifier,
+    ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+    unknown
+  >({
+    ...restOptions,
+    retry,
+    triggerSource: "agent",
+    agentConfig: { type: "ai-sdk-chat" },
+    run: async (
+      payload: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>,
+      { signal: runSignal, ctx }
+    ) => {
+      locals.set(chatAgentRunContextKey, ctx);
+
+      // Bind the run to its backing Session so every module-level helper
+      // (chat.stream, chat.messages, chat.stopSignal) resolves to this
+      // chat's `.in` / `.out` channels.
+      //
+      // Address everywhere by `payload.chatId` (the session externalId):
+      // matches what the transport puts in URL paths and waitpoint keys,
+      // and what the server-side trigger flow uses as the session
+      // identity. The Session row is created by `POST /sessions` (via
+      // `chat.createStartSessionAction` or browser-direct) before this
+      // run is triggered — no client-side upsert needed here.
+      locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      taskContext.setConversationId(payload.chatId);
+
+      // Stamp `gen_ai.conversation.id` on the run-level span. Every
+      // nested span inherits the same attribute via
+      // `TaskContextSpanProcessor.onStart`.
+      const activeSpan = trace.getActiveSpan();
+      stampConversationIdOnActiveSpan(payload.chatId, activeSpan);
+
+      // Store static UIMessageStream options in locals so resolveUIMessageStreamOptions() can read them
+      if (uiMessageStreamOptions) {
+        locals.set(chatUIStreamStaticKey, uiMessageStreamOptions);
+      }
+
+      // Store onCompacted hook in locals so chat.compact() can call it
+      if (onCompacted) {
+        locals.set(chatOnCompactedKey, onCompacted);
+      }
+
+      if (prepareMessages) {
+        locals.set(chatPrepareMessagesKey, prepareMessages);
+      }
+
+      if (compaction) {
+        locals.set(
+          chatAgentCompactionKey,
+          compaction as unknown as ChatAgentCompactionOptions<UIMessage>
+        );
+      }
+
+      if (pendingMessagesConfig) {
+        locals.set(chatPendingMessagesKey, pendingMessagesConfig);
+      }
+
+      let currentWirePayload = payload;
+      const continuation = payload.continuation ?? false;
+      const previousRunId = payload.previousRunId;
+      const preloaded = payload.trigger === "preload";
+
+      // Accumulated model messages across turns. Seeded at boot from a
+      // durable snapshot + `session.out` replay (or `hydrateMessages` if
+      // registered) — the wire is delta-only now, no longer a seed.
+      let accumulatedMessages: ModelMessage[] = [];
+
+      // Accumulated UI messages for persistence. Mirrors the model accumulator
+      // but in frontend-friendly UIMessage format (with parts, id, etc.).
+      let accumulatedUIMessages: TUIMessage[] = [];
+
+      // ── Snapshot + replay (gated on prior-state signals) ─────────────
+      //
+      // With `hydrateMessages` registered the customer owns history — the
+      // hook fires per-turn and produces the canonical chain from their DB.
+      // Skip both reads entirely: no need to load a blob the customer's
+      // hook will overwrite.
+      //
+      // Without it, both reads are gated on `couldHavePriorState`. A fresh
+      // chat (no continuation, attempt 1) can't have a snapshot OR replay
+      // records by definition — `readChatSnapshot` would 404 and
+      // `replaySessionOutTail` would return [], and the round-trips
+      // collectively cost ~600ms on every first-message TTFC. Both reads
+      // swallow errors internally; the agent stays available either way.
+      const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
+      let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
+      let replayed: TUIMessage[] = [];
+      const couldHavePriorState =
+        payload.continuation === true || ctx.attempt.number > 1;
+
+      if (!hydrateMessages && couldHavePriorState) {
+        try {
+          bootSnapshot = await tracer.startActiveSpan(
+            "chat.boot.snapshot.read",
+            async () => readChatSnapshot<TUIMessage>(sessionIdForSnapshot)
+          );
+        } catch (error) {
+          // `readChatSnapshot` already swallows + warns internally; this catch
+          // is just belt-and-suspenders against tracer/span errors.
+          logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: sessionIdForSnapshot,
+          });
+        }
+
+        try {
+          replayed = await tracer.startActiveSpan("chat.boot.replay", async () =>
+            replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
+              lastEventId: bootSnapshot?.lastOutEventId,
+            })
+          );
+        } catch (error) {
+          logger.warn("chat.agent: session.out replay failed; using snapshot only", {
+            error: error instanceof Error ? error.message : String(error),
+            sessionId: sessionIdForSnapshot,
+          });
+        }
+      }
+
+      // ── session.in dedup cutoff ────────────────────────────────────
+      //
+      // A fresh worker subscribes to `session.in` from seq 0 and would
+      // re-deliver every record ever appended — including user messages
+      // from turns already completed on a prior run. Without dedup, the
+      // loop would re-process them as fresh turns and the slim-wire merge
+      // would replace-by-id against the snapshot-restored copies, yielding
+      // no-op replaces while the customer's actual new message waits in
+      // the queue.
+      //
+      // The cutoff is the timestamp of the last `trigger:turn-complete`
+      // chunk on `session.out`. When we have a snapshot, that timestamp is
+      // already in `lastOutTimestamp` — use it directly to skip the
+      // O(stream-length) scan. Fall back to the scan only when no snapshot
+      // is available (first-ever OOM retry, or `hydrateMessages`
+      // short-circuited the snapshot read).
+      //
+      // Applies in three cases (any of which means session.in has records
+      // belonging to completed turns the new run should skip):
+      //  - OOM retry (`ctx.attempt.number > 1`)
+      //  - Continuation run (`payload.continuation === true`) — prior run
+      //    crashed / was canceled / requested upgrade
+      //  - Snapshot exists at all (catches edge cases where the wire
+      //    didn't set `continuation` but a snapshot indicates prior turns)
+      const needsDedupCutoff =
+        ctx.attempt.number > 1 ||
+        payload.continuation === true ||
+        bootSnapshot !== undefined;
+
+      if (needsDedupCutoff) {
+        try {
+          let cutoff = bootSnapshot?.lastOutTimestamp;
+          if (cutoff === undefined) {
+            cutoff = await findLatestTurnCompleteTimestamp(payload.chatId);
+          }
+          if (cutoff !== undefined) {
+            sessionStreams.setMinTimestamp(payload.chatId, "in", cutoff);
+          }
+        } catch (error) {
+          logger.warn(
+            "chat.agent: session.in dedup cutoff lookup failed; old messages may replay",
+            { error: error instanceof Error ? error.message : String(error) }
+          );
+        }
+      }
+
+      // ── Merge + head-start bootstrap ────────────────────────────────
+      if (!hydrateMessages) {
+        accumulatedUIMessages = mergeByIdReplaceWins<TUIMessage>(
+          (bootSnapshot?.messages as TUIMessage[]) ?? [],
+          replayed
+        );
+
+        // ── Head-start bootstrap ─────────────────────────────────────
+        //
+        // The very-first turn of a head-start handover has no snapshot
+        // (it doesn't exist yet) and no `session.out` history (the run
+        // just woke up). The customer's HTTP route handler ships full
+        // UIMessage history via `headStartMessages` — that's the only
+        // path where wire-borne UIMessage[] still seeds the accumulator,
+        // and it's safe because the route handler isn't subject to the
+        // `/in/append` 512 KiB cap.
+        if (
+          accumulatedUIMessages.length === 0 &&
+          payload.trigger === "handover-prepare" &&
+          Array.isArray(payload.headStartMessages) &&
+          payload.headStartMessages.length > 0
+        ) {
+          accumulatedUIMessages = [...(payload.headStartMessages as TUIMessage[])];
+        }
+
+        if (accumulatedUIMessages.length > 0) {
+          try {
+            accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+          } catch (error) {
+            logger.warn("chat.agent: toModelMessages failed at boot; starting empty", {
+              error: error instanceof Error ? error.message : String(error),
+              sessionId: sessionIdForSnapshot,
+            });
+            accumulatedMessages = [];
+          }
+        }
+
+        // Make the seeded UI accumulator visible to `chat.history.*`
+        // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
+        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
+      }
+
+      // Token usage tracking across turns
+      let previousTurnUsage: LanguageModelUsage | undefined;
+      let cumulativeUsage: LanguageModelUsage = emptyUsage();
+
+      // Mutable reference to the current turn's stop controller so the
+      // stop input stream listener (registered once) can abort the right turn.
+      let currentStopController: AbortController | undefined;
+
+      // Stop-input subscription is registered AFTER preload's wait resolves
+      // (see the post-preload block below). Registering it earlier would
+      // cause it to drain any session.in records buffered before the runtime
+      // started — including the customer's first user message arriving on
+      // `kind: "message"`. The persistent-listener semantics of session.in
+      // pop the buffer when a handler attaches; the stop listener filters
+      // out anything that isn't `kind: "stop"` and silently swallows the
+      // user message instead of leaving it for `messagesInput.waitWithIdleTimeout`
+      // to pick up.
+      let stopSub: { off: () => void } | undefined;
+
+      try {
+        // Handle preloaded runs — fire onPreload, then wait for the first real message
+        if (preloaded) {
+          if (activeSpan) {
+            activeSpan.setAttribute("chat.preloaded", true);
+          }
+
+          const currentRunId = ctx.run.id;
+          let preloadAccessToken = "";
+          if (currentRunId) {
+            try {
+              preloadAccessToken = await auth.createPublicToken({
+                scopes: {
+                  read: {
+                    runs: currentRunId,
+                    sessions: payload.chatId,
+                  },
+                  write: {
+                    inputStreams: currentRunId,
+                    sessions: payload.chatId,
+                  },
+                },
+                expirationTime: chatAccessTokenTTL,
+              });
+            } catch {
+              // Token creation failed
+            }
+          }
+
+          // Parse client data for the preload hook
+          const preloadClientData = (
+            parseClientData ? await parseClientData(payload.metadata) : payload.metadata
+          ) as inferSchemaOut<TClientDataSchema>;
+
+          // Fire onPreload hook
+          if (onPreload) {
+            await tracer.startActiveSpan(
+              "onPreload()",
+              async () => {
+                await withChatWriter(async (writer) => {
+                  await onPreload({
+                    ctx,
+                    chatId: payload.chatId,
+                    runId: currentRunId,
+                    chatAccessToken: preloadAccessToken,
+                    clientData: preloadClientData,
+                    writer,
+                  });
+                });
+              },
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  "chat.id": payload.chatId,
+                  "chat.preloaded": true,
+                },
+              }
+            );
+          }
+
+          // Wait for the first real message — task-level idle settings win over
+          // `transport.preload(..., { idleTimeoutInSeconds })` / wire payload so
+          // `chat.agent({ idleTimeoutInSeconds, preloadIdleTimeoutInSeconds })` is authoritative.
+          const effectivePreloadIdleTimeout =
+            preloadIdleTimeoutInSeconds ??
+            idleTimeoutInSeconds ??
+            payload.idleTimeoutInSeconds;
+
+          const effectivePreloadTimeout =
+            (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ??
+            preloadTimeout ??
+            turnTimeout;
+
+          const preloadResult = await messagesInput.waitWithIdleTimeout({
+            idleTimeoutInSeconds: effectivePreloadIdleTimeout,
+            timeout: effectivePreloadTimeout,
+            spanName: "waiting for first message",
+            skipSuspend: exitAfterPreloadIdle,
+            onSuspend: onChatSuspend
+              ? async () => {
+                await tracer.startActiveSpan(
+                  "onChatSuspend()",
+                  async () => {
+                    await onChatSuspend({
+                      phase: "preload",
+                      ctx,
+                      chatId: payload.chatId,
+                      runId: currentRunId,
+                      clientData: preloadClientData,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": payload.chatId,
+                      "chat.suspend.phase": "preload",
+                    },
+                  }
+                );
+              }
+              : undefined,
+            onResume: onChatResume
+              ? async () => {
+                await tracer.startActiveSpan(
+                  "onChatResume()",
+                  async () => {
+                    await onChatResume({
+                      phase: "preload",
+                      ctx,
+                      chatId: payload.chatId,
+                      runId: currentRunId,
+                      clientData: preloadClientData,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": payload.chatId,
+                      "chat.resume.phase": "preload",
+                    },
+                  }
+                );
+              }
+              : undefined,
+          });
+
+          if (!preloadResult.ok) {
+            return; // Timed out waiting for first message — end run
+          }
+
+          let firstMessage = preloadResult.output;
+
+          currentWirePayload = firstMessage as ChatTaskWirePayload<
+            TUIMessage,
+            inferSchemaIn<TClientDataSchema>
+          >;
+
+          // Close signal during preload — exit before first turn
+          if (currentWirePayload.trigger === "close") {
+            return;
+          }
+        }
+
+        // Listen for stop signals for the rest of the run. Registered AFTER
+        // the preload wait resolves (or skipped immediately for non-preload
+        // triggers) so the persistent-listener semantics on session.in
+        // don't drain the buffered user message before
+        // `messagesInput.waitWithIdleTimeout` can pick it up. A stop signal
+        // that lands during the preload window is dropped — acceptable, the
+        // customer can't reasonably stop a chat that hasn't started.
+        stopSub = stopInput.on((data) => {
+          currentStopController?.abort(data?.message || "stopped");
+        });
+
+        // Handle handover-prepare runs — wait on session.in for the
+        // customer's `chat.handover` route handler to either hand off
+        // mid-turn (tool calls) or signal pure-text completion.
+        if (payload.trigger === "handover-prepare") {
+          if (activeSpan) {
+            activeSpan.setAttribute("chat.handoverPreparing", true);
+          }
+
+          const handoverResult = await handoverInput.waitWithIdleTimeout({
+            idleTimeoutInSeconds: idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds ?? 60,
+            spanName: "waiting for handover signal",
+          });
+
+          if (!handoverResult.ok) {
+            // Handler crashed before signaling — exit cleanly.
+            return;
+          }
+
+          if (handoverResult.output.kind === "handover-skip") {
+            // Sent only when the customer's handler aborts before
+            // producing a finishReason. Normal pure-text and
+            // tool-call finishes go through `kind: "handover"` with
+            // `isFinal: true | false`. Exit without firing any turn
+            // hooks.
+            return;
+          }
+
+          // kind === "handover": stash the partial assistant message
+          // so turn-0 setup can append it after loading user
+          // messages. Two branches downstream, switched by `isFinal`:
+          //   - `false`: customer's step 1 ended with `tool-calls`.
+          //     The agent's `streamText` sees pending tool-calls (via
+          //     the approval round in the partial) and executes them,
+          //     then runs step 2's LLM call.
+          //   - `true`: customer's step 1 ended pure-text. The agent
+          //     runs the turn-loop hooks but SKIPS the `streamText`
+          //     call entirely (the response is already complete).
+          //     `onTurnComplete` fires with the partial as
+          //     `responseMessage` so persistence works normally.
+          locals.set(
+            chatHandoverPartialKey,
+            handoverResult.output.partialAssistantMessage
+          );
+          // Stash the customer-side step-1 messageId. Turn-0 setup
+          // uses it to seed the synthesized partial UIMessage with the
+          // SAME id, so the agent's post-handover chunks merge into
+          // the same assistant message on the browser side.
+          if (handoverResult.output.messageId) {
+            locals.set(chatHandoverMessageIdKey, handoverResult.output.messageId);
+          }
+          locals.set(chatHandoverIsFinalKey, handoverResult.output.isFinal);
+
+          // Synthesize a wire payload that the turn loop treats as a
+          // normal first-turn message. The accumulator was already seeded
+          // at boot from `payload.headStartMessages` (see B.3 head-start
+          // bootstrap), so the rewritten `submit-message` carries no
+          // delta — the loop runs streamText against the seeded state.
+          currentWirePayload = {
+            ...payload,
+            trigger: "submit-message",
+            message: undefined,
+            headStartMessages: undefined,
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>;
+        }
+
+        for (let turn = 0; turn < maxTurns; turn++) {
+          try {
+              // Extract turn-level context before entering the span. Slim
+              // wire: at most one delta message per record. `headStartMessages`
+              // is consumed at boot only (via `payload.headStartMessages`)
+              // and intentionally discarded here.
+              const {
+                metadata: wireMetadata,
+                message: incomingMessage,
+                headStartMessages: _hsm,
+                ...restWire
+              } = currentWirePayload;
+              void _hsm;
+              const incomingMessages: TUIMessage[] = incomingMessage
+                ? [incomingMessage as TUIMessage]
+                : [];
+              // Cleaning happens once here so `extractLastUserMessageText` and
+              // every downstream consumer see the same message shape — and
+              // `cleanupAbortedParts` no longer has to be re-applied below.
+              const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
+                msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+              );
+              const clientData = (
+                parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+              ) as inferSchemaOut<TClientDataSchema>;
+              const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
+
+              // Actions are not turns. They use a different span name
+              // and don't carry a turn.number. Branched on at `isAction`.
+              const isAction = currentWirePayload.trigger === "action";
+              const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
+
+              const turnAttributes: Attributes = {
+                ...(isAction ? {} : { "turn.number": turn + 1 }),
+                "gen_ai.conversation.id": currentWirePayload.chatId,
+                "gen_ai.operation.name": "chat",
+                "chat.trigger": currentWirePayload.trigger,
+                [SemanticInternalAttributes.STYLE_ICON]: isAction
+                  ? "tabler-bolt"
+                  : "tabler-message-chatbot",
+                [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
+              };
+
+              if (lastUserMessage) {
+                turnAttributes["chat.user_message"] = lastUserMessage;
+
+                // Show a truncated preview of the user message as an accessory
+                const preview =
+                  lastUserMessage.length > 80 ? lastUserMessage.slice(0, 80) + "..." : lastUserMessage;
+                Object.assign(
+                  turnAttributes,
+                  accessoryAttributes({
+                    items: [{ text: preview, variant: "normal" }],
+                    style: "codepath",
+                  })
+                );
+              }
+
+              if (wireMetadata !== undefined) {
+                turnAttributes["chat.client_data"] =
+                  typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
+              }
+
+              const turnResult = await tracer.startActiveSpan(
+                spanName,
+                async (turnSpan) => {
+                  // (errors are caught by the outer try/catch which writes an error chunk)
+                  locals.set(chatPipeCountKey, 0);
+                  locals.set(chatDeferKey, new Set());
+                  locals.set(chatCompactionStateKey, undefined);
+                  locals.set(chatSteeringQueueKey, []);
+                  locals.set(chatResponsePartsKey, []);
+                  // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
+                  // by deferred work from the previous turn's onTurnComplete need to
+                  // survive into the next turn. The queue is drained before run().
+                  locals.set(chatInjectedMessageIdsKey, new Set());
+
+                  // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
+                  locals.set(chatTurnContextKey, {
+                    chatId: currentWirePayload.chatId,
+                    turn,
+                    continuation,
+                    clientData,
+                  });
+
+                  // ── chat.store hydration ─────────────────────────────────
+                  // Apply `hydrateStore` (if configured) and `incomingStore`
+                  // from the wire payload before `run()` fires. Order:
+                  //
+                  //   1. `previousStore` = what's in memory from the prior turn.
+                  //   2. `hydrateStore` returns authoritative value from backend.
+                  //   3. `incomingStore` (client-side) wins if present
+                  //      (AG-UI last-write-wins).
+                  //
+                  // Emit a snapshot chunk after hydration so the frontend
+                  // observing the stream sees the initial value.
+                  {
+                    const previousStoreValue = locals.get(chatStoreSlotKey)?.value;
+                    const incomingStoreValue =
+                      "incomingStore" in currentWirePayload
+                        ? (currentWirePayload as { incomingStore?: unknown }).incomingStore
+                        : undefined;
+
+                    let nextStoreValue: unknown = previousStoreValue;
+                    let storeChanged = false;
+
+                    if (hydrateStore) {
+                      try {
+                        const hydratedValue = await tracer.startActiveSpan(
+                          "hydrateStore()",
+                          async () => {
+                            return hydrateStore({
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                              trigger: currentWirePayload.trigger as
+                                | "submit-message"
+                                | "regenerate-message"
+                                | "action"
+                                | "preload",
+                              previousStore: previousStoreValue,
+                              incomingStore: incomingStoreValue,
+                              clientData,
+                              continuation,
+                              previousRunId,
+                            });
+                          },
+                          {
+                            attributes: {
+                              [SemanticInternalAttributes.STYLE_ICON]:
+                                "task-hook-onStart",
+                              [SemanticInternalAttributes.COLLAPSED]: true,
+                              "chat.id": currentWirePayload.chatId,
+                              "chat.turn": turn + 1,
+                            },
+                          }
+                        );
+                        nextStoreValue = hydratedValue;
+                        storeChanged = true;
+                      } catch (err) {
+                        // Surface hydration failures as a turn error — users
+                        // rely on `chat.store.get()` reflecting authoritative
+                        // state, so silently continuing with stale data is
+                        // worse than failing loudly.
+                        throw err;
+                      }
+                    }
+
+                    if (incomingStoreValue !== undefined) {
+                      // Last-write-wins: the client-sent value overrides
+                      // whatever we hydrated. The client may have made local
+                      // updates the backend hasn't seen yet.
+                      nextStoreValue = incomingStoreValue;
+                      storeChanged = true;
+                    }
+
+                    if (storeChanged) {
+                      chatStoreSetSilent(nextStoreValue);
+                      chatStoreEmitSnapshot(nextStoreValue);
+                      fireStoreListeners(nextStoreValue);
+                    }
+                  }
+
+                  // Per-turn stop controller (reset each turn)
+                  const stopController = new AbortController();
+                  currentStopController = stopController;
+                  locals.set(chatStopControllerKey, stopController);
+
+                  // Three signals for the user's run function
+                  const stopSignal = stopController.signal;
+                  const cancelSignal = runSignal;
+                  const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
+
+                  // Buffer messages that arrive during streaming
+                  const pendingMessages: ChatTaskWirePayload<
+                    TUIMessage,
+                    inferSchemaIn<TClientDataSchema>
+                  >[] = [];
+                  const pmConfig = locals.get(chatPendingMessagesKey);
+                  const msgSub = messagesInput.on(async (msg) => {
+                    // If pendingMessages is configured, route to the steering queue
+                    // instead of the wire buffer. The frontend handles re-sending
+                    // non-injected messages via sendMessage on turn complete.
+                    if (pmConfig) {
+                      // Slim wire: at most one delta message per record. The
+                      // pendingMessages handler reads `msg.message` directly
+                      // instead of slicing an array — a wire record arrives
+                      // with the new user message in `.message`, or no message
+                      // at all (regenerate / preload / close / handover-prepare).
+                      const lastUIMessage = msg.message as TUIMessage | undefined;
+                      if (lastUIMessage) {
+                        if (pmConfig.onReceived) {
+                          try {
+                            await pmConfig.onReceived({
+                              message: lastUIMessage as TUIMessage,
+                              chatId: currentWirePayload.chatId,
+                              turn,
+                            });
+                          } catch {
+                            /* non-fatal */
+                          }
+                        }
+
+                        try {
+                          const queue = locals.get(chatSteeringQueueKey) ?? [];
+                          // Deduplicate by message ID — guards against double-sends
+                          if (
+                            lastUIMessage.id &&
+                            queue.some((e) => e.uiMessage.id === lastUIMessage.id)
+                          ) {
+                            return;
+                          }
+                          const modelMsgs = await toModelMessages([lastUIMessage]);
+                          queue.push({
+                            uiMessage: lastUIMessage as UIMessage,
+                            modelMessages: modelMsgs,
+                          });
+                          locals.set(chatSteeringQueueKey, queue);
+                        } catch {
+                          /* conversion failed — skip steering queue */
+                        }
+                      }
+                      return; // Don't add to wire buffer — frontend handles non-injected case
+                    }
+
+                    // No pendingMessages config — standard wire buffer for next turn
+                    pendingMessages.push(
+                      msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+                    );
+                  });
+
+                  // Track new messages for this turn (user input + assistant response).
+                  const turnNewModelMessages: ModelMessage[] = [];
+                  const turnNewUIMessages: TUIMessage[] = [];
+
+                  // ── Action handling ──────────────────────────────────────
+                  // Actions arrive on the same input stream but with
+                  // trigger === "action". They are NOT turns — only
+                  // `hydrateMessages` and `onAction` fire. No turn lifecycle
+                  // hooks (`onTurnStart` / `prepareMessages` /
+                  // `onBeforeTurnComplete` / `onTurnComplete`) and no
+                  // `run()` invocation. To produce a model response from
+                  // an action, return a `StreamTextResult` (auto-piped),
+                  // string, or UIMessage from `onAction`. Turn counter
+                  // does not advance.
+                  let actionStreamResult: unknown = undefined;
+                  if (isAction) {
+                    // Parse and validate the action payload
+                    const parsedAction = parseAction
+                      ? await parseAction(currentWirePayload.action)
+                      : currentWirePayload.action;
+
+                    // Hydrate messages from backend if configured
+                    if (hydrateMessages) {
+                      const hydrated = await tracer.startActiveSpan(
+                        "hydrateMessages()",
+                        async () => {
+                          return hydrateMessages({
+                            chatId: currentWirePayload.chatId,
+                            turn,
+                            trigger: "action",
+                            incomingMessages: [] as TUIMessage[],
+                            previousMessages: [...accumulatedUIMessages],
+                            clientData,
+                            continuation,
+                            previousRunId,
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.trigger": "action",
+                          },
+                        }
+                      );
+                      accumulatedUIMessages = [...hydrated] as TUIMessage[];
+                      accumulatedMessages = await toModelMessages(hydrated);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
+
+                    // Fire onAction — handler may mutate state via
+                    // `chat.history.*` and / or return a model response.
+                    if (onAction) {
+                      actionStreamResult = await tracer.startActiveSpan(
+                        "onAction()",
+                        async () => {
+                          return await onAction({
+                            action: parsedAction as any,
+                            chatId: currentWirePayload.chatId,
+                            turn,
+                            clientData,
+                            uiMessages: accumulatedUIMessages,
+                            messages: accumulatedMessages,
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.action":
+                              typeof parsedAction === "object" && parsedAction !== null
+                                ? JSON.stringify(parsedAction)
+                                : String(parsedAction),
+                          },
+                        }
+                      );
+
+                      // Apply chat.history mutations from onAction
+                      const actionOverride = locals.get(chatOverrideMessagesKey);
+                      if (actionOverride) {
+                        locals.set(chatOverrideMessagesKey, undefined);
+                        accumulatedUIMessages = [...actionOverride] as TUIMessage[];
+                        accumulatedMessages = await toModelMessages(actionOverride);
+                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                      }
+                    } else {
+                      warnMissingOnActionOnce();
+                    }
+                  }
+
+                  // ── Message handling (non-action turns) ───────────────────
+                  //
+                  // Slim wire: at most one delta message arrives per record.
+                  // The accumulator was already seeded at boot from a durable
+                  // snapshot + `session.out` replay (or `hydrateMessages`,
+                  // which also fires per-turn below). Per-turn handling is
+                  // therefore a delta merge, not a full-history reset.
+                  if (currentWirePayload.trigger !== "action") {
+
+                  let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
+
+                  // Validate/transform UIMessages before conversion — catches malformed
+                  // messages from storage or untrusted input before they reach the model.
+                  // Slim wire: triggers like `regenerate-message` carry no incoming
+                  // message; nothing to validate, so skip the hook to avoid feeding
+                  // `[]` to validators (AI SDK's `validateUIMessages` rejects empty).
+                  if (onValidateMessages && cleanedUIMessages.length > 0) {
+                    cleanedUIMessages = (await tracer.startActiveSpan(
+                      "onValidateMessages()",
+                      async () => {
+                        return onValidateMessages({
+                          messages: cleanedUIMessages as TUIMessage[],
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          trigger: currentWirePayload.trigger as ValidateMessagesEvent["trigger"],
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.messages.count": cleanedUIMessages.length,
+                        },
+                      }
+                    )) as TUIMessage[];
+                  }
+
+                  if (hydrateMessages) {
+                    // Backend hydration: load the full message history from the user's
+                    // backend, replacing the built-in accumulator entirely. With slim
+                    // wire, `incomingMessages` is consistently 0-or-1-length — what
+                    // was always true for `submit-message` is now true for every
+                    // trigger.
+                    const hydrated = await tracer.startActiveSpan(
+                      "hydrateMessages()",
+                      async () => {
+                        return hydrateMessages({
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          trigger: currentWirePayload.trigger as
+                            | "submit-message"
+                            | "regenerate-message",
+                          incomingMessages: cleanedUIMessages as TUIMessage[],
+                          previousMessages: [...accumulatedUIMessages],
+                          clientData,
+                          continuation,
+                          previousRunId,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.trigger": currentWirePayload.trigger,
+                          "chat.incoming_messages.count": cleanedUIMessages.length,
+                        },
+                      }
+                    );
+
+                    // Auto-merge tool approval updates: if any incoming wire message
+                    // has an ID that matches a hydrated message, replace it. This makes
+                    // tool approvals work transparently with backend hydration.
+                    const merged = [...hydrated] as TUIMessage[];
+                    for (const incoming of cleanedUIMessages) {
+                      if (!incoming.id) continue;
+                      const idx = merged.findIndex((m) => m.id === incoming.id);
+                      if (idx !== -1) {
+                        merged[idx] = incoming as TUIMessage;
+                      }
+                    }
+
+                    accumulatedUIMessages = merged;
+                    accumulatedMessages = await toModelMessages(merged);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+
+                    // Track new messages for onTurnComplete.newUIMessages
+                    if (
+                      currentWirePayload.trigger === "submit-message" &&
+                      cleanedUIMessages.length > 0
+                    ) {
+                      const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
+                      turnNewUIMessages.push(lastUI);
+                      const lastModel = (await toModelMessages([lastUI]))[0];
+                      if (lastModel) turnNewModelMessages.push(lastModel);
+                    }
+                  } else {
+                    // Default delta-merge accumulation.
+                    //
+                    // The accumulator was seeded at boot from snapshot+replay,
+                    // so it already reflects prior history. Per-turn handling
+                    // appends/replaces the single incoming delta message and
+                    // (for regenerate) trims the tail.
+                    if (currentWirePayload.trigger === "regenerate-message") {
+                      // Regenerate: trim trailing assistant messages from the
+                      // accumulator until the tail is a user message. AI SDK's
+                      // frontend `regenerate()` already removed the trailing
+                      // assistant from its local store; the wire signals "do
+                      // the same here", and the agent re-runs from the new
+                      // tail. No incoming message accompanies this trigger.
+                      while (
+                        accumulatedUIMessages.length > 0 &&
+                        accumulatedUIMessages[accumulatedUIMessages.length - 1]!.role !== "user"
+                      ) {
+                        accumulatedUIMessages.pop();
+                      }
+                      accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                    } else if (cleanedUIMessages.length > 0) {
+                      // Submit-message (and the special-cased
+                      // handover-prepare → submit-message rewrite earlier in
+                      // this scope): append-or-replace-by-id for the single
+                      // delta message.
+                      //
+                      // Tool approval responses arrive as a single assistant
+                      // message whose id collides with the existing assistant
+                      // in the accumulator — we replace by id. The fallback
+                      // for HITL `addToolOutput` continuations where AI SDK
+                      // regenerates the id (TRI-9137) still applies via
+                      // `rewriteIncomingIdViaToolCallMap`.
+                      let replaced = false;
+                      for (const raw of cleanedUIMessages) {
+                        let incoming = raw;
+                        let idx = accumulatedUIMessages.findIndex(
+                          (m) => m.id === incoming.id
+                        );
+                        if (idx === -1) {
+                          const rewritten = rewriteIncomingIdViaToolCallMap(incoming);
+                          if (rewritten.id !== incoming.id) {
+                            incoming = rewritten as typeof raw;
+                            idx = accumulatedUIMessages.findIndex(
+                              (m) => m.id === incoming.id
+                            );
+                          }
+                        }
+                        if (idx !== -1) {
+                          accumulatedUIMessages[idx] = incoming as TUIMessage;
+                          replaced = true;
+                        } else {
+                          accumulatedUIMessages.push(incoming as TUIMessage);
+                          turnNewUIMessages.push(incoming as TUIMessage);
+                        }
+                        recordToolCallIdsFromMessage(incoming);
+                      }
+                      if (replaced) {
+                        // Replacement changes structure — reconvert all model
+                        // messages instead of appending.
+                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      } else {
+                        const incomingModelMessages = await toModelMessages(cleanedUIMessages);
+                        accumulatedMessages.push(...incomingModelMessages);
+                      }
+                      if (turnNewUIMessages.length > 0) {
+                        turnNewModelMessages.push(
+                          ...(await toModelMessages(turnNewUIMessages))
+                        );
+                      }
+                    }
+                    // `preload` / `close` / `handover-prepare` and submits
+                    // with no incoming message fall through with the boot-
+                    // seeded accumulator unchanged.
+
+                    if (turn === 0) {
+                      // Head-start handover splice (turn 0 only): the
+                      // `chat.handover` route handler signalled a mid-turn
+                      // handover, so splice its partial assistant response
+                      // (text + pending tool-calls + the synthesized
+                      // tool-approval round) onto the accumulator.
+                      // `streamText` then hits AI SDK's initial-tool-
+                      // execution branch, runs the agent-side tool executes,
+                      // and resumes from step 2 — skipping the first model
+                      // call (already done by the handler).
+                      //
+                      // We also synthesize a UIMessage form of the partial
+                      // assistant and push it to `accumulatedUIMessages` so
+                      // AI SDK's `processUIMessageStream` (invoked when the
+                      // run loop calls `runResult.toUIMessageStream({
+                      // onFinish })`) can initialize `state.message` from
+                      // the trailing assistant in `originalMessages`. Without
+                      // that, the `tool-output-available` chunks emitted by
+                      // the initial-tool-execution branch can't find their
+                      // matching tool-call in state and AI SDK throws
+                      // `UIMessageStreamError: No tool invocation found`.
+                      const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
+                      if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                        accumulatedMessages.push(...pendingHandoverPartial);
+                        const handoverMessageId = locals.get(chatHandoverMessageIdKey);
+                        const partialUI = synthesizeHandoverUIMessage(
+                          pendingHandoverPartial,
+                          handoverMessageId
+                        );
+                        if (partialUI) {
+                          accumulatedUIMessages.push(partialUI as TUIMessage);
+                        }
+                        locals.set(chatHandoverPartialKey, []); // consume once
+                      }
+                    }
+
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                  }
+
+                  } // end if (trigger !== "action")
+
+                  // ── Action result handling ──────────────────────────────
+                  // For action turns, skip the turn machinery entirely.
+                  // If `onAction` returned a stream / string / UIMessage,
+                  // pipe it as the response. Either way, emit
+                  // `trigger:turn-complete` and then fall through to the
+                  // wait-for-next-message logic (shared with message turns).
+                  // The turn counter is decremented so the next iteration
+                  // sees the same `turn` value — actions don't count.
+                  if (isAction) {
+                    msgSub.off();
+
+                    if (
+                      (locals.get(chatPipeCountKey) ?? 0) === 0 &&
+                      isUIMessageStreamable(actionStreamResult)
+                    ) {
+                      try {
+                        const resolvedOptions = resolveUIMessageStreamOptions();
+                        const uiStream = (
+                          actionStreamResult as UIMessageStreamable
+                        ).toUIMessageStream({
+                          ...resolvedOptions,
+                          generateMessageId:
+                            resolvedOptions.generateMessageId ?? generateMessageId,
+                        });
+                        await pipeChat(uiStream, {
+                          signal: combinedSignal,
+                          spanName: "stream response",
+                        });
+                      } catch (error) {
+                        if (
+                          error instanceof Error &&
+                          error.name === "AbortError" &&
+                          runSignal.aborted
+                        ) {
+                          return "exit";
+                        }
+                        throw error;
+                      }
+                    }
+
+                    await writeTurnCompleteChunk(currentWirePayload.chatId);
+
+                    // Don't consume a turn iteration — actions aren't turns.
+                    turn--;
+                  }
+
+                  if (!isAction) {
+
+                  // Mint a scoped public access token once per turn, reused for
+                  // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
+                  const currentRunId = ctx.run.id;
+                  let turnAccessToken = "";
+                  if (currentRunId) {
+                    try {
+                      turnAccessToken = await auth.createPublicToken({
+                        scopes: {
+                          read: {
+                            runs: currentRunId,
+                            sessions: payload.chatId,
+                          },
+                          write: {
+                            inputStreams: currentRunId,
+                            sessions: payload.chatId,
+                          },
+                        },
+                        expirationTime: chatAccessTokenTTL,
+                      });
+                    } catch {
+                      // Token creation failed
+                    }
+                  }
+
+                  // Fire onChatStart on the first turn
+                  if (turn === 0 && onChatStart) {
+                    await tracer.startActiveSpan(
+                      "onChatStart()",
+                      async () => {
+                        await withChatWriter(async (writer) => {
+                          await onChatStart({
+                            ctx,
+                            chatId: currentWirePayload.chatId,
+                            messages: accumulatedMessages,
+                            clientData,
+                            runId: currentRunId,
+                            chatAccessToken: turnAccessToken,
+                            continuation,
+                            previousRunId,
+                            preloaded,
+                            writer,
+                          });
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.messages.count": accumulatedMessages.length,
+                          "chat.continuation": continuation,
+                          "chat.preloaded": preloaded,
+                          ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                        },
+                      }
+                    );
+                  }
+
+                  // Fire onTurnStart before running user code — persist messages
+                  // so a mid-stream page refresh still shows the user's message.
+                  if (onTurnStart) {
+                    await tracer.startActiveSpan(
+                      "onTurnStart()",
+                      async () => {
+                        await withChatWriter(async (writer) => {
+                          await onTurnStart({
+                            ctx,
+                            chatId: currentWirePayload.chatId,
+                            messages: accumulatedMessages,
+                            uiMessages: accumulatedUIMessages,
+                            turn,
+                            runId: currentRunId,
+                            chatAccessToken: turnAccessToken,
+                            clientData,
+                            continuation,
+                            previousRunId,
+                            preloaded,
+                            previousTurnUsage,
+                            totalUsage: cumulativeUsage,
+                            writer,
+                          });
+                        });
+
+                        // Check if onTurnStart replaced messages (compaction or chat.history)
+                        const turnStartOverride = locals.get(chatOverrideMessagesKey);
+                        if (turnStartOverride) {
+                          locals.set(chatOverrideMessagesKey, undefined);
+                          accumulatedUIMessages = [...turnStartOverride] as TUIMessage[];
+                          accumulatedMessages = await toModelMessages(turnStartOverride);
+                          locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                        }
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.messages.count": accumulatedMessages.length,
+                          "chat.trigger": currentWirePayload.trigger,
+                          "chat.continuation": continuation,
+                          "chat.preloaded": preloaded,
+                          ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                        },
+                      }
+                    );
+                  }
+
+                  // chat.requestUpgrade() called in onTurnStart (or onValidateMessages) —
+                  // skip run() and signal the transport to re-trigger the same message
+                  // on the new version.
+                  if (locals.get(chatUpgradeRequestedKey)) {
+                    await writeUpgradeRequiredChunk();
+                    return "exit";
+                  }
+
+                  // Captured by the onFinish callback below — works even on abort/stop.
+                  let capturedResponseMessage: TUIMessage | undefined;
+                  let capturedFinishReason: FinishReason | undefined;
+
+                  // Promise that resolves when the AI SDK's onFinish fires.
+                  // On abort, the stream's cancel() handler calls onFinish
+                  // asynchronously AFTER pipeChat resolves, so we must await
+                  // this to avoid a race where we check capturedResponseMessage
+                  // before it's been set.
+                  let resolveOnFinish: () => void;
+                  const onFinishPromise = new Promise<void>((r) => {
+                    resolveOnFinish = r;
+                  });
+                  let onFinishAttached = false;
+                  let runResult: unknown;
+
+                  // Pure-text head-start: customer's step 1 IS the
+                  // final response. Skip the user's `run` callback
+                  // (no LLM call) and use the synthesized partial
+                  // UIMessage as `capturedResponseMessage`. The post-
+                  // turn flow (`onBeforeTurnComplete` →
+                  // `onTurnComplete` → trigger:turn-complete) fires
+                  // normally so persistence works.
+                  const headStartIsFinal = locals.get(chatHandoverIsFinalKey);
+                  const isHeadStartFinalTurn = turn === 0 && headStartIsFinal === true;
+                  if (isHeadStartFinalTurn) {
+                    locals.set(chatHandoverIsFinalKey, undefined); // consume once
+                  }
+
+                  try {
+                    // Drain any messages injected by background work (e.g. self-review from previous turn).
+                    // Skip if the last message is a tool message — appending after it would
+                    // prevent streamText from finding pending tool approvals (it checks
+                    // the last message). The queued messages will be picked up by prepareStep
+                    // at the next step boundary instead.
+                    const lastAccumulated = accumulatedMessages[accumulatedMessages.length - 1];
+                    const bgQueue = locals.get(chatBackgroundQueueKey);
+                    if (bgQueue && bgQueue.length > 0 && lastAccumulated?.role !== "tool") {
+                      accumulatedMessages.push(...bgQueue.splice(0));
+                    }
+
+                    if (isHeadStartFinalTurn) {
+                      // The synthesized partial UIMessage IS the response.
+                      // It was pushed to `accumulatedUIMessages` during the
+                      // submit-message branch's splice; recover it as the
+                      // last assistant.
+                      const lastUI = accumulatedUIMessages[accumulatedUIMessages.length - 1];
+                      if (lastUI && lastUI.role === "assistant") {
+                        capturedResponseMessage = lastUI;
+                        capturedFinishReason = "stop";
+                      }
+                      // Don't call userRun. Don't pipe. Skip directly
+                      // to the post-turn flow below.
+                    } else {
+                      const preparedMessages = await applyPrepareMessages(accumulatedMessages, "run");
+                      runResult = await userRun({
+                        ...restWire,
+                        messages: preparedMessages,
+                        clientData,
+                        continuation,
+                        previousRunId,
+                        preloaded,
+                        previousTurnUsage,
+                        totalUsage: cumulativeUsage,
+                        ctx,
+                        signal: combinedSignal,
+                        cancelSignal,
+                        stopSignal,
+                      } as any);
+                    }
+
+                    // Auto-pipe if the run function returned a StreamTextResult or similar,
+                    // but only if pipeChat() wasn't already called manually during this turn.
+                    // We call toUIMessageStream ourselves to attach onFinish for response capture.
+                    // Pass originalMessages so the AI SDK reuses message IDs across turns
+                    // (e.g. for tool approval continuations / HITL flows).
+                    if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
+                      onFinishAttached = true;
+                      const resolvedOptions = resolveUIMessageStreamOptions();
+                      // For action turns, don't pass originalMessages: the response
+                      // should always be a fresh assistant message, not a continuation
+                      // of whatever trailing assistant was left after chat.history
+                      // mutations.
+                      const isActionTurn = currentWirePayload.trigger === "action";
+                      const uiStream = runResult.toUIMessageStream({
+                        ...resolvedOptions,
+                        // Pass originalMessages so the AI SDK reuses message IDs across
+                        // turns (e.g. for tool approval continuations / HITL flows).
+                        // Omit for action turns to force a fresh response ID.
+                        ...(isActionTurn
+                          ? {}
+                          : { originalMessages: accumulatedUIMessages }),
+                        // Always provide generateMessageId so the start chunk carries a
+                        // messageId. Without this, the frontend and backend generate IDs
+                        // independently and they won't match for ID-based dedup.
+                        generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
+                        onFinish: ({
+                          responseMessage,
+                          finishReason,
+                        }: {
+                          responseMessage: UIMessage;
+                          finishReason?: FinishReason;
+                        }) => {
+                          capturedResponseMessage = responseMessage as TUIMessage;
+                          capturedFinishReason = finishReason;
+                          resolveOnFinish!();
+                        },
+                      });
+                      await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
+                    }
+                  } catch (error) {
+                    // Handle AbortError from streamText gracefully
+                    if (error instanceof Error && error.name === "AbortError") {
+                      if (runSignal.aborted) {
+                        return "exit"; // Full run cancellation — exit
+                      }
+                      // Stop generation — fall through to continue the loop
+                    } else {
+                      throw error;
+                    }
+                  } finally {
+                    msgSub.off();
+                  }
+
+                  // Wait for onFinish to fire — on abort this may resolve slightly
+                  // after pipeChat, since the stream's cancel() handler is async.
+                  // Race with a timeout so a stop-abort that prevents onFinish from
+                  // firing doesn't hang the turn loop indefinitely.
+                  if (onFinishAttached) {
+                    await Promise.race([
+                      onFinishPromise,
+                      new Promise<void>((r) => setTimeout(r, 2_000)),
+                    ]);
+                  }
+
+                  // Capture token usage from the streamText result (if available).
+                  // totalUsage is a PromiseLike that resolves after the stream is consumed.
+                  // Race with a 2s timeout — on stop-abort the AI SDK's totalUsage
+                  // promise can hang indefinitely (the underlying provider stream
+                  // never reports final usage), which would block the turn loop
+                  // from ever firing onTurnComplete / writeTurnComplete.
+                  let turnUsage: LanguageModelUsage | undefined;
+                  if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
+                    try {
+                      turnUsage = (await Promise.race([
+                        (runResult as any).totalUsage,
+                        new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+                      ])) as LanguageModelUsage | undefined;
+                    } catch {
+                      /* non-fatal — usage capture failed */
+                    }
+                  }
+                  if (turnUsage) {
+                    cumulativeUsage = addUsage(cumulativeUsage, turnUsage);
+                    previousTurnUsage = turnUsage;
+
+                    // Add usage attributes to the turn span
+                    if (turnUsage.inputTokens != null) {
+                      turnSpan.setAttribute("gen_ai.usage.input_tokens", turnUsage.inputTokens);
+                    }
+                    if (turnUsage.outputTokens != null) {
+                      turnSpan.setAttribute("gen_ai.usage.output_tokens", turnUsage.outputTokens);
+                    }
+                    if (turnUsage.totalTokens != null) {
+                      turnSpan.setAttribute("gen_ai.usage.total_tokens", turnUsage.totalTokens);
+                    }
+                    if (cumulativeUsage.totalTokens != null) {
+                      turnSpan.setAttribute(
+                        "gen_ai.usage.cumulative_total_tokens",
+                        cumulativeUsage.totalTokens
+                      );
+                    }
+                    if (cumulativeUsage.inputTokens != null) {
+                      turnSpan.setAttribute(
+                        "gen_ai.usage.cumulative_input_tokens",
+                        cumulativeUsage.inputTokens
+                      );
+                    }
+                    if (cumulativeUsage.outputTokens != null) {
+                      turnSpan.setAttribute(
+                        "gen_ai.usage.cumulative_output_tokens",
+                        cumulativeUsage.outputTokens
+                      );
+                    }
+                  }
+
+                  // Check if run() (e.g. via prepareStep or chat.history) replaced messages
+                  // during this turn. The updated messages become the new base, and the
+                  // response gets appended on top.
+                  const runOverride = locals.get(chatOverrideMessagesKey);
+                  if (runOverride) {
+                    locals.set(chatOverrideMessagesKey, undefined);
+                    accumulatedUIMessages = [...runOverride] as TUIMessage[];
+                    accumulatedMessages = await toModelMessages(runOverride);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                  }
+
+                  // Check if compaction set a model-only override (preserves UI messages).
+                  // Apply compactUIMessages/compactModelMessages callbacks if configured.
+                  const modelOnlyOverride = locals.get(chatOverrideModelMessagesKey);
+                  if (modelOnlyOverride) {
+                    const compactionSummary = locals.get(chatCompactionStateKey)?.summary ?? "";
+                    const taskCompactionConfig = locals.get(chatAgentCompactionKey);
+                    locals.set(chatOverrideModelMessagesKey, undefined);
+
+                    const compactEvent: CompactMessagesEvent<TUIMessage> = {
+                      summary: compactionSummary,
+                      uiMessages: accumulatedUIMessages,
+                      modelMessages: accumulatedMessages,
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      clientData,
+                      source: "inner",
+                    };
+
+                    // Apply model messages: callback or default (use override)
+                    accumulatedMessages = taskCompactionConfig?.compactModelMessages
+                      ? await taskCompactionConfig.compactModelMessages(compactEvent)
+                      : modelOnlyOverride;
+
+                    // Apply UI messages: callback or default (preserve all)
+                    if (taskCompactionConfig?.compactUIMessages) {
+                      accumulatedUIMessages = (await taskCompactionConfig.compactUIMessages(
+                        compactEvent
+                      )) as TUIMessage[];
+                    }
+                  }
+
+                  // Determine if the user stopped generation this turn (not a full run cancel).
+                  const wasStopped = stopController.signal.aborted && !runSignal.aborted;
+
+                  // Append the assistant's response (partial or complete) to the accumulator.
+                  // The onFinish callback fires even on abort/stop, so partial responses
+                  // from stopped generation are captured correctly.
+                  let rawResponseMessage: TUIMessage | undefined;
+                  if (capturedResponseMessage) {
+                    // Keep the raw message before cleanup for users who want custom handling
+                    rawResponseMessage = capturedResponseMessage;
+                    // Clean up aborted parts (streaming tool calls, reasoning) when stopped
+                    if (wasStopped) {
+                      capturedResponseMessage = cleanupAbortedParts(capturedResponseMessage);
+                    }
+                    // Ensure the response message has an ID (the stream's onFinish
+                    // may produce a message with an empty ID since IDs are normally
+                    // assigned by the frontend's useChat).
+                    if (!capturedResponseMessage.id) {
+                      capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
+                    }
+                    // Append any non-transient data parts queued via chat.response or writer.write()
+                    const queuedParts = locals.get(chatResponsePartsKey);
+                    if (queuedParts && queuedParts.length > 0) {
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        parts: [...capturedResponseMessage.parts, ...queuedParts],
+                      } as TUIMessage;
+                      locals.set(chatResponsePartsKey, []);
+                    }
+                    // Tool-approval continuations: the AI SDK reuses the trailing
+                    // assistant's ID (via originalMessages) so the captured response
+                    // carries the same ID as an existing message. Replace in place
+                    // instead of pushing a duplicate. For action turns this never
+                    // matches because originalMessages is omitted (fresh ID).
+                    const existingIdx = capturedResponseMessage.id
+                      ? accumulatedUIMessages.findIndex(
+                          (m) => m.id === capturedResponseMessage!.id
+                        )
+                      : -1;
+                    if (existingIdx !== -1) {
+                      accumulatedUIMessages[existingIdx] = capturedResponseMessage;
+                    } else {
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                    }
+                    turnNewUIMessages.push(capturedResponseMessage);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    // Record toolCallId → head messageId so a HITL
+                    // continuation next turn can recover the head id
+                    // even if the AI SDK regenerates it. See
+                    // `chatToolCallToMessageIdKey` for the full
+                    // rationale (TRI-9137).
+                    recordToolCallIdsFromMessage(capturedResponseMessage);
+                    try {
+                      const responseModelMessages = await toModelMessages([
+                        stripProviderMetadata(capturedResponseMessage),
+                      ]);
+                      if (existingIdx !== -1) {
+                        // Reconvert all model messages since we replaced rather than appended
+                        accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                      } else {
+                        accumulatedMessages.push(...responseModelMessages);
+                      }
+                      turnNewModelMessages.push(...responseModelMessages);
+                    } catch {
+                      // Conversion failed — skip accumulation for this turn
+                    }
+                  }
+                  // If there's no captured response (manual pipe mode) but there are
+                  // queued data parts, create a minimal response message to hold them.
+                  if (!capturedResponseMessage) {
+                    const remainingParts = locals.get(chatResponsePartsKey);
+                    if (remainingParts && remainingParts.length > 0) {
+                      capturedResponseMessage = {
+                        id: generateMessageId(),
+                        role: "assistant" as const,
+                        parts: [...remainingParts],
+                      } as TUIMessage;
+                      locals.set(chatResponsePartsKey, []);
+                      accumulatedUIMessages.push(capturedResponseMessage);
+                      turnNewUIMessages.push(capturedResponseMessage);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
+                  }
+
+                  if (runSignal.aborted) return "exit";
+
+                  // Await deferred background work (e.g. DB writes from onTurnStart)
+                  // before firing hooks so they can rely on the work being done.
+                  const deferredWork = locals.get(chatDeferKey);
+                  if (deferredWork && deferredWork.size > 0) {
+                    await Promise.race([
+                      Promise.allSettled(deferredWork),
+                      new Promise<void>((r) => setTimeout(r, 5_000)),
+                    ]);
+                  }
+
+                  // Outer-loop compaction: runs between turns for single-step responses
+                  // where prepareStep never fires (no tool calls = no step boundaries).
+                  // Only triggers when: task has compaction configured, prepareStep didn't
+                  // already compact this turn, and shouldCompact returns true.
+                  const outerCompaction = locals.get(chatAgentCompactionKey);
+                  const innerCompactionState = locals.get(chatCompactionStateKey);
+
+                  if (outerCompaction && !innerCompactionState && turnUsage && !wasStopped) {
+                    const shouldTrigger = await outerCompaction.shouldCompact({
+                      messages: accumulatedMessages,
+                      totalTokens: turnUsage.totalTokens,
+                      inputTokens: turnUsage.inputTokens,
+                      outputTokens: turnUsage.outputTokens,
+                      usage: turnUsage,
+                      totalUsage: cumulativeUsage,
+                      chatId: currentWirePayload.chatId,
+                      turn,
+                      clientData,
+                      source: "outer",
+                    });
+
+                    if (shouldTrigger) {
+                      await tracer.startActiveSpan(
+                        "context compaction (outer loop)",
+                        async (compactionSpan) => {
+                          const compactionId = generateMessageId();
+
+                          const { waitUntilComplete } = chatStream.writer({
+                            spanName: "stream compaction chunks",
+                            collapsed: true,
+                            execute: async ({ write, merge }) => {
+                              write({
+                                type: "data-compaction",
+                                id: compactionId,
+                                data: { status: "compacting", totalTokens: turnUsage.totalTokens },
+                                transient: true,
+                              });
+
+                              const summary = await outerCompaction.summarize({
+                                messages: accumulatedMessages,
+                                usage: turnUsage,
+                                totalUsage: cumulativeUsage,
+                                chatId: currentWirePayload.chatId,
+                                turn,
+                                clientData,
+                                source: "outer",
+                              });
+
+                              // Apply compactModelMessages/compactUIMessages callbacks, or defaults.
+
+                              const outerCompactEvent: CompactMessagesEvent<TUIMessage> = {
+                                summary,
+                                uiMessages: accumulatedUIMessages,
+                                modelMessages: accumulatedMessages,
+                                chatId: currentWirePayload.chatId,
+                                turn,
+                                clientData,
+                                source: "outer",
+                              };
+
+                              // Model messages: callback or default (replace with summary)
+                              accumulatedMessages = outerCompaction.compactModelMessages
+                                ? await outerCompaction.compactModelMessages(outerCompactEvent)
+                                : [
+                                  {
+                                    role: "assistant" as const,
+                                    content: [
+                                      {
+                                        type: "text" as const,
+                                        text: `[Conversation summary]\n\n${summary}`,
+                                      },
+                                    ],
+                                  },
+                                ];
+
+                              // UI messages: callback or default (preserve all)
+                              if (outerCompaction.compactUIMessages) {
+                                accumulatedUIMessages = (await outerCompaction.compactUIMessages(
+                                  outerCompactEvent
+                                )) as TUIMessage[];
+                              }
+
+                              // Fire onCompacted hook
+                              const onCompactedHook = locals.get(chatOnCompactedKey);
+                              if (onCompactedHook) {
+                                await onCompactedHook({
+                                  ctx,
+                                  summary,
+                                  messages: accumulatedMessages,
+                                  messageCount: accumulatedMessages.length,
+                                  usage: turnUsage,
+                                  totalTokens: turnUsage.totalTokens,
+                                  inputTokens: turnUsage.inputTokens,
+                                  outputTokens: turnUsage.outputTokens,
+                                  stepNumber: -1, // outer loop, not a step
+                                  chatId: currentWirePayload.chatId,
+                                  turn,
+                                  writer: { write, merge },
+                                });
+                              }
+
+                              compactionSpan.setAttribute("compaction.summary_length", summary.length);
+
+                              write({
+                                type: "data-compaction",
+                                id: compactionId,
+                                data: { status: "complete", totalTokens: turnUsage.totalTokens },
+                                transient: true,
+                              });
+                            },
+                          });
+                          await waitUntilComplete();
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "tabler-scissors",
+                            "compaction.total_tokens": turnUsage.totalTokens ?? 0,
+                            "compaction.input_tokens": turnUsage.inputTokens ?? 0,
+                            "compaction.message_count": accumulatedMessages.length,
+                            "compaction.outer_loop": true,
+                            "compaction.turn": turn,
+                            ...(currentWirePayload.chatId
+                              ? { "compaction.chat_id": currentWirePayload.chatId }
+                              : {}),
+                            ...accessoryAttributes({
+                              items: [
+                                { text: `${turnUsage.totalTokens ?? 0} tokens`, variant: "normal" },
+                                { text: `${accumulatedMessages.length} msgs`, variant: "normal" },
+                                { text: "outer loop", variant: "normal" },
+                              ],
+                              style: "codepath",
+                            }),
+                          },
+                        }
+                      );
+                    }
+                  }
+
+                  const turnCompleteEvent = {
+                    ctx,
+                    chatId: currentWirePayload.chatId,
+                    messages: accumulatedMessages,
+                    uiMessages: accumulatedUIMessages,
+                    newMessages: turnNewModelMessages,
+                    newUIMessages: turnNewUIMessages,
+                    responseMessage: capturedResponseMessage,
+                    rawResponseMessage,
+                    turn,
+                    runId: currentRunId,
+                    chatAccessToken: turnAccessToken,
+                    clientData,
+                    stopped: wasStopped,
+                    continuation,
+                    previousRunId,
+                    preloaded,
+                    usage: turnUsage,
+                    totalUsage: cumulativeUsage,
+                    finishReason: capturedFinishReason,
+                  };
+
+                  // Fire onBeforeTurnComplete — stream is still open so the hook
+                  // can write custom chunks to the frontend (e.g. compaction progress).
+                  if (onBeforeTurnComplete) {
+                    await tracer.startActiveSpan(
+                      "onBeforeTurnComplete()",
+                      async () => {
+                        await withChatWriter(async (writer) => {
+                          await onBeforeTurnComplete({ ...turnCompleteEvent, writer });
+                        });
+
+                        // Check if the hook replaced messages (compaction or chat.history)
+                        const override = locals.get(chatOverrideMessagesKey);
+                        if (override) {
+                          locals.set(chatOverrideMessagesKey, undefined);
+                          accumulatedUIMessages = [...override] as TUIMessage[];
+                          accumulatedMessages = await toModelMessages(override);
+                          locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                          // Update event so onTurnComplete sees compacted messages
+                          turnCompleteEvent.messages = accumulatedMessages;
+                          turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                        }
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                        },
+                      }
+                    );
+                  }
+
+                  // Drain any late response parts added during onBeforeTurnComplete
+                  const lateParts = locals.get(chatResponsePartsKey);
+                  if (lateParts && lateParts.length > 0 && capturedResponseMessage) {
+                    const idx = accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id);
+                    if (idx !== -1) {
+                      const msg = accumulatedUIMessages[idx]!;
+                      accumulatedUIMessages[idx] = {
+                        ...msg,
+                        parts: [...(msg.parts ?? []), ...lateParts],
+                      } as TUIMessage;
+                      capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
+                      turnCompleteEvent.responseMessage = capturedResponseMessage;
+                      turnCompleteEvent.uiMessages = accumulatedUIMessages;
+                    }
+                    locals.set(chatResponsePartsKey, []);
+                  }
+
+                  // Write turn-complete control chunk — closes the frontend stream.
+                  const turnCompleteResult = await writeTurnCompleteChunk(
+                    currentWirePayload.chatId,
+                    turnAccessToken
+                  );
+
+                  // Fire onTurnComplete — stream is closed, use for persistence.
+                  if (onTurnComplete) {
+                    await tracer.startActiveSpan(
+                      "onTurnComplete()",
+                      async () => {
+                        await onTurnComplete({
+                          ...turnCompleteEvent,
+                          lastEventId: turnCompleteResult?.lastEventId,
+                        });
+
+                        // Check if onTurnComplete replaced messages (compaction or chat.history)
+                        const turnCompleteOverride = locals.get(chatOverrideMessagesKey);
+                        if (turnCompleteOverride) {
+                          locals.set(chatOverrideMessagesKey, undefined);
+                          accumulatedUIMessages = [...turnCompleteOverride] as TUIMessage[];
+                          accumulatedMessages = await toModelMessages(turnCompleteOverride);
+                          locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                        }
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.turn": turn + 1,
+                          "chat.stopped": wasStopped,
+                          "chat.continuation": continuation,
+                          "chat.preloaded": preloaded,
+                          ...(previousRunId ? { "chat.previous_run_id": previousRunId } : {}),
+                          "chat.messages.count": accumulatedMessages.length,
+                          "chat.response.parts.count": capturedResponseMessage?.parts?.length ?? 0,
+                          "chat.new_messages.count": turnNewUIMessages.length,
+                          ...(turnUsage?.inputTokens != null
+                            ? { "gen_ai.usage.input_tokens": turnUsage.inputTokens }
+                            : {}),
+                          ...(turnUsage?.outputTokens != null
+                            ? { "gen_ai.usage.output_tokens": turnUsage.outputTokens }
+                            : {}),
+                          ...(turnUsage?.totalTokens != null
+                            ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens }
+                            : {}),
+                          ...(cumulativeUsage.totalTokens != null
+                            ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens }
+                            : {}),
+                        },
+                      }
+                    );
+                  }
+
+                  // ── Snapshot write ─────────────────────────────────────
+                  //
+                  // Persist the post-turn accumulator so the next run boot
+                  // can replay history without the wire shipping it. Skipped
+                  // when `hydrateMessages` is registered — those customers
+                  // own persistence and would never read this blob.
+                  //
+                  // AWAITED, not fire-and-forget: the agent may suspend (idle
+                  // timeout) immediately after this point, and in-flight
+                  // promises don't reliably complete on suspend. The user-
+                  // visible turn already finished (the turn-complete chunk
+                  // closed the response stream above), so the await delay
+                  // only affects "when can the NEXT turn start," gated by
+                  // user typing — not TTFC.
+                  //
+                  // `writeChatSnapshot` swallows errors internally; this
+                  // outer try/catch is just belt-and-suspenders against
+                  // tracer/span failures.
+                  if (!hydrateMessages) {
+                    try {
+                      await tracer.startActiveSpan(
+                        "snapshot.write",
+                        async () => {
+                          await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                            version: 1,
+                            savedAt: Date.now(),
+                            messages: accumulatedUIMessages,
+                            // `StreamWriteResult` exposes `lastEventId` only;
+                            // use the snapshot save time as the
+                            // `lastOutTimestamp` cutoff hint. The OOM-retry
+                            // optimization compares this to SSE chunk
+                            // timestamps (ms epoch on the server) — Date.now()
+                            // here is the closest cheap approximation
+                            // available client-side and is consistent with
+                            // the existing turn-complete chunk emission.
+                            lastOutEventId: turnCompleteResult?.lastEventId,
+                            lastOutTimestamp: Date.now(),
+                          });
+                        },
+                        {
+                          attributes: {
+                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                            [SemanticInternalAttributes.COLLAPSED]: true,
+                            "chat.id": currentWirePayload.chatId,
+                            "chat.turn": turn + 1,
+                            "chat.messages.count": accumulatedUIMessages.length,
+                          },
+                        }
+                      );
+                    } catch (error) {
+                      logger.warn(
+                        "chat.agent: snapshot write failed; next run will replay further",
+                        {
+                          error: error instanceof Error ? error.message : String(error),
+                          sessionId: sessionIdForSnapshot,
+                        }
+                      );
+                    }
+                  }
+
+                  } // end if (!isAction)
+
+                  // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
+                  // Promises deferred in onTurnComplete (e.g. background self-review via
+                  // chat.defer + chat.inject) run during the idle wait. If they complete
+                  // before the next message, their injected context is picked up in prepareStep.
+                  // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
+
+                  // If messages arrived during streaming (without pendingMessages config),
+                  // use the first one immediately as the next turn.
+                  if (pendingMessages.length > 0) {
+                    currentWirePayload = pendingMessages[0]!;
+                    return "continue";
+                  }
+
+                  // chat.requestUpgrade() was called — exit the loop so the
+                  // transport triggers a new run on the latest version.
+                  // chat.endRun() — same exit, no upgrade semantics.
+                  if (
+                    locals.get(chatUpgradeRequestedKey) ||
+                    locals.get(chatEndRunRequestedKey)
+                  ) {
+                    return "exit";
+                  }
+
+                  // Wait for the next message — stay idle briefly, then suspend
+                  const effectiveIdleTimeout =
+                    (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+                    idleTimeoutInSeconds;
+                  const effectiveTurnTimeout =
+                    (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
+
+                  const next = await messagesInput.waitWithIdleTimeout({
+                    idleTimeoutInSeconds: effectiveIdleTimeout,
+                    timeout: effectiveTurnTimeout,
+                    spanName: "waiting for next message",
+                    onSuspend: onChatSuspend
+                      ? async () => {
+                        await tracer.startActiveSpan(
+                          "onChatSuspend()",
+                          async () => {
+                            await onChatSuspend({
+                              phase: "turn",
+                              ctx,
+                              chatId: currentWirePayload.chatId,
+                              runId: ctx.run.id,
+                              turn,
+                              messages: accumulatedMessages,
+                              uiMessages: accumulatedUIMessages,
+                              clientData,
+                            });
+                          },
+                          {
+                            attributes: {
+                              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                              [SemanticInternalAttributes.COLLAPSED]: true,
+                              "chat.id": currentWirePayload.chatId,
+                              "chat.suspend.phase": "turn",
+                              "chat.turn": turn + 1,
+                            },
+                          }
+                        );
+                      }
+                      : undefined,
+                    onResume: onChatResume
+                      ? async () => {
+                        await tracer.startActiveSpan(
+                          "onChatResume()",
+                          async () => {
+                            await onChatResume({
+                              phase: "turn",
+                              ctx,
+                              chatId: currentWirePayload.chatId,
+                              runId: ctx.run.id,
+                              turn,
+                              messages: accumulatedMessages,
+                              uiMessages: accumulatedUIMessages,
+                              clientData,
+                            });
+                          },
+                          {
+                            attributes: {
+                              [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                              [SemanticInternalAttributes.COLLAPSED]: true,
+                              "chat.id": currentWirePayload.chatId,
+                              "chat.resume.phase": "turn",
+                              "chat.turn": turn + 1,
+                            },
+                          }
+                        );
+                      }
+                      : undefined,
+                  });
+
+                  if (!next.ok) {
+                    return "exit";
+                  }
+
+                  currentWirePayload = next.output as ChatTaskWirePayload<
+                    TUIMessage,
+                    inferSchemaIn<TClientDataSchema>
+                  >;
+
+                  // Close signal — exit the loop gracefully
+                  if (currentWirePayload.trigger === "close") {
+                    return "exit";
+                  }
+
+                  return "continue";
+                },
+                {
+                  attributes: turnAttributes,
+                }
+              );
+
+              if (turnResult === "exit") return;
+              // "continue" means proceed to next iteration
+            } catch (turnError) {
+              // Turn error handler: write an error chunk + turn-complete to the stream
+              // so the client sees the error, then wait for the next message instead
+              // of killing the entire run. This keeps the conversation alive.
+              if (turnError instanceof Error && turnError.name === "AbortError" && runSignal.aborted) {
+                // Full run cancellation — exit immediately
+                throw turnError;
+              }
+
+              // OOM errors must escape the turn loop so the task runtime can
+              // honor `retry.outOfMemory.machine` (set on chat.agent via
+              // `oomMachine`). Catching them here would keep the dead worker
+              // alive and defeat the machine swap. Re-throw and let the
+              // runtime dispatch the retry on a larger machine; recovery on
+              // attempt 2 picks up via the standard continuation path
+              // (same chatId / Session, accumulator rehydrates).
+              if (turnError instanceof OutOfMemoryError) {
+                throw turnError;
+              }
+
+              try {
+                await withChatWriter(async (writer) => {
+                  const errorText =
+                    turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+                  writer.write({ type: "error", errorText } as any);
+                });
+                // Signal turn complete so the client knows this turn is done
+                await writeTurnCompleteChunk(currentWirePayload.chatId);
+              } catch {
+                // Best-effort — if stream write fails, let the run continue anyway
+              }
+
+              // chat.requestUpgrade() / chat.endRun() — exit after error turn too
+              if (
+                locals.get(chatUpgradeRequestedKey) ||
+                locals.get(chatEndRunRequestedKey)
+              ) {
+                return;
+              }
+
+              // Wait for the next message — same as after a successful turn
+              const effectiveIdleTimeout =
+                (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+                idleTimeoutInSeconds;
+              const effectiveTurnTimeout =
+                (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
+
+              const next = await messagesInput.waitWithIdleTimeout({
+                idleTimeoutInSeconds: effectiveIdleTimeout,
+                timeout: effectiveTurnTimeout,
+                spanName: "waiting for next message (after error)",
+              });
+
+              if (!next.ok) {
+                return; // Timed out — end run gracefully
+              }
+
+              currentWirePayload = next.output as ChatTaskWirePayload<
+                TUIMessage,
+                inferSchemaIn<TClientDataSchema>
+              >;
+              // Continue to next iteration of the for loop
+            }
+          }
+        } finally {
+          // `stopSub` is registered post-preload so the close-during-preload
+          // early-return path may exit before it ever attached. Guard the
+          // cleanup so a missing subscription doesn't throw.
+          stopSub?.off();
+        }
+    }
+  });
+
+  // Register clientDataSchema so the CLI converts it to JSONSchema
+  // and stores it as payloadSchema — used by the Playground UI
+  if (clientDataSchema) {
+    resourceCatalog.updateTaskMetadata(options.id, {
+      schema: clientDataSchema as any,
+    });
+  }
+
+  return task;
+}
+
+/**
+ * Optional config for {@link chat.withUIMessage}. `streamOptions` become default
+ * static `toUIMessageStream()` settings; inner `chat.agent({ uiMessageStreamOptions })`
+ * shallow-merges on top (task wins on conflicts).
+ */
+export type ChatWithUIMessageConfig<TUIM extends UIMessage = UIMessage> = {
+  streamOptions?: ChatUIMessageStreamOptions<TUIM>;
+};
+
+// ---------------------------------------------------------------------------
+// Chat builder
+// ---------------------------------------------------------------------------
+
+/**
+ * A chainable builder for configuring chat tasks with fixed UI message types,
+ * client data schemas, and builder-level hooks that compose with task-level hooks.
+ *
+ * Obtain a builder via {@link chat.withUIMessage} or {@link chat.withClientData}.
+ *
+ * @example
+ * ```ts
+ * export const myChat = chat
+ *   .withUIMessage<AgentUiMessage>({ streamOptions: { sendReasoning: true } })
+ *   .withClientData({ schema: z.object({ userId: z.string() }) })
+ *   .onChatSuspend(async ({ ctx }) => { await disposeResources(ctx.run.id) })
+ *   .task({
+ *     id: "my-chat",
+ *     run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+ *   });
+ * ```
+ */
+export interface ChatBuilder<
+  TUIMessage extends UIMessage = UIMessage,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+> {
+  /** Fix the UI message type. Returns a new builder preserving all accumulated state. */
+  withUIMessage<TUIM extends UIMessage = UIMessage>(
+    config?: ChatWithUIMessageConfig<TUIM>
+  ): ChatBuilder<TUIM, TClientDataSchema>;
+
+  /** Fix the client data schema. Returns a new builder preserving all accumulated state. */
+  withClientData<TSchema extends TaskSchema>(config: {
+    schema: TSchema;
+  }): ChatBuilder<TUIMessage, TSchema>;
+
+  /** Register a builder-level `onPreload` hook. Runs before the task-level hook if both are set. */
+  onPreload(
+    fn: (event: PreloadEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onChatStart` hook. Runs before the task-level hook if both are set. */
+  onChatStart(
+    fn: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onTurnStart` hook. Runs before the task-level hook if both are set. */
+  onTurnStart(
+    fn: (
+      event: TurnStartEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onBeforeTurnComplete` hook. Runs before the task-level hook if both are set. */
+  onBeforeTurnComplete(
+    fn: (
+      event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onTurnComplete` hook. Runs before the task-level hook if both are set. */
+  onTurnComplete(
+    fn: (
+      event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onCompacted` hook. Runs before the task-level hook if both are set. */
+  onCompacted(fn: (event: CompactedEvent) => Promise<void> | void): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onChatSuspend` hook. Runs before the task-level hook if both are set. */
+  onChatSuspend(
+    fn: (
+      event: ChatSuspendEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /** Register a builder-level `onChatResume` hook. Runs before the task-level hook if both are set. */
+  onChatResume(
+    fn: (
+      event: ChatResumeEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+    ) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
+
+  /**
+   * Create the chat agent with the accumulated builder configuration.
+   *
+   * When `withClientData` was called, `clientDataSchema` is injected automatically
+   * and omitted from options. Otherwise, it can still be set directly in options
+   * (backwards compatible).
+   */
+  agent: [TClientDataSchema] extends [undefined]
+  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined>(
+    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction>
+  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
+  : <TId extends string, TAction extends TaskSchema | undefined = undefined>(
+    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction>, "clientDataSchema">
+  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+
+  /**
+   * Create a custom agent with manual lifecycle control.
+   *
+   * The agent appears in the playground but you manage the turn loop,
+   * message waiting, and streaming yourself using composable primitives
+   * (`chat.messages`, `chat.MessageAccumulator`, `chat.pipeAndCapture`, etc.).
+   *
+   * Builder hooks (`onPreload`, `onChatStart`, etc.) are not applied —
+   * those are managed-lifecycle concepts handled by `.agent()`.
+   */
+  customAgent: [TClientDataSchema] extends [undefined]
+    ? <TId extends string>(
+        options: ChatCustomAgentOptions<TId, undefined, TUIMessage>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, undefined>, unknown>
+    : <TId extends string>(
+        options: ChatCustomAgentOptions<TId, TClientDataSchema, TUIMessage>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+}
+
+/** @internal */
+type ChatBuilderHooks = {
+  onPreload?: (event: any) => Promise<void> | void;
+  onChatStart?: (event: any) => Promise<void> | void;
+  onTurnStart?: (event: any) => Promise<void> | void;
+  onBeforeTurnComplete?: (event: any) => Promise<void> | void;
+  onTurnComplete?: (event: any) => Promise<void> | void;
+  onCompacted?: (event: any) => Promise<void> | void;
+  onChatSuspend?: (event: any) => Promise<void> | void;
+  onChatResume?: (event: any) => Promise<void> | void;
+};
+
+/** @internal */
+type ChatBuilderConfig = {
+  uiStreamOptions?: ChatUIMessageStreamOptions<any>;
+  clientDataSchema?: TaskSchema;
+  hooks: ChatBuilderHooks;
+};
+
+function composeHooks<T>(
+  builderHook: ((event: T) => Promise<void> | void) | undefined,
+  taskHook: ((event: T) => Promise<void> | void) | undefined
+): ((event: T) => Promise<void>) | undefined {
+  if (!builderHook) return taskHook as any;
+  if (!taskHook) return builderHook as any;
+  return async (event: T) => {
+    await builderHook(event);
+    await taskHook(event);
+  };
+}
+
+function createChatBuilder<
+  TUIMessage extends UIMessage = UIMessage,
+  TClientDataSchema extends TaskSchema | undefined = undefined,
+>(config: ChatBuilderConfig): ChatBuilder<TUIMessage, TClientDataSchema> {
+  return {
+    withUIMessage<TUIM extends UIMessage = UIMessage>(uimConfig?: ChatWithUIMessageConfig<TUIM>) {
+      return createChatBuilder<TUIM, TClientDataSchema>({
+        ...config,
+        uiStreamOptions: uimConfig?.streamOptions ?? config.uiStreamOptions,
+      });
+    },
+
+    withClientData<TSchema extends TaskSchema>(cdConfig: { schema: TSchema }) {
+      return createChatBuilder<TUIMessage, TSchema>({
+        ...config,
+        clientDataSchema: cdConfig.schema,
+      });
+    },
+
+    onPreload(
+      fn: (event: PreloadEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onPreload: fn },
+      });
+    },
+    onChatStart(
+      fn: (event: ChatStartEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onChatStart: fn },
+      });
+    },
+    onTurnStart(
+      fn: (
+        event: TurnStartEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onTurnStart: fn },
+      });
+    },
+    onBeforeTurnComplete(
+      fn: (
+        event: BeforeTurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onBeforeTurnComplete: fn },
+      });
+    },
+    onTurnComplete(
+      fn: (
+        event: TurnCompleteEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onTurnComplete: fn },
+      });
+    },
+    onCompacted(fn: (event: CompactedEvent) => Promise<void> | void) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onCompacted: fn },
+      });
+    },
+    onChatSuspend(
+      fn: (
+        event: ChatSuspendEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onChatSuspend: fn },
+      });
+    },
+    onChatResume(
+      fn: (
+        event: ChatResumeEvent<inferSchemaOut<TClientDataSchema>, TUIMessage>
+      ) => Promise<void> | void
+    ) {
+      return createChatBuilder<TUIMessage, TClientDataSchema>({
+        ...config,
+        hooks: { ...config.hooks, onChatResume: fn },
+      });
+    },
+
+    agent(options: any) {
+      const mergedUiStream =
+        config.uiStreamOptions && options.uiMessageStreamOptions
+          ? { ...config.uiStreamOptions, ...options.uiMessageStreamOptions }
+          : options.uiMessageStreamOptions ?? config.uiStreamOptions;
+
+      return chatAgent({
+        ...options,
+        ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
+        uiMessageStreamOptions: mergedUiStream,
+        onPreload: composeHooks(config.hooks.onPreload, options.onPreload),
+        onChatStart: composeHooks(config.hooks.onChatStart, options.onChatStart),
+        onTurnStart: composeHooks(config.hooks.onTurnStart, options.onTurnStart),
+        onBeforeTurnComplete: composeHooks(
+          config.hooks.onBeforeTurnComplete,
+          options.onBeforeTurnComplete
+        ),
+        onTurnComplete: composeHooks(config.hooks.onTurnComplete, options.onTurnComplete),
+        onCompacted: composeHooks(config.hooks.onCompacted, options.onCompacted),
+        onChatSuspend: composeHooks(config.hooks.onChatSuspend, options.onChatSuspend),
+        onChatResume: composeHooks(config.hooks.onChatResume, options.onChatResume),
+      });
+    },
+
+    customAgent(options: any) {
+      return chatCustomAgent({
+        ...options,
+        ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
+      });
+    },
+  } as unknown as ChatBuilder<TUIMessage, TClientDataSchema>;
+}
+
+/**
+ * Fix the UI message type for a chat task (AI SDK `UIMessage` generics) while
+ * keeping `id` and `clientDataSchema` inference on the inner {@link chat.agent} call.
+ *
+ * Returns a {@link ChatBuilder} that supports chaining `.withClientData()`,
+ * hook methods (`.onPreload()`, `.onChatSuspend()`, etc.), and `.task()`.
+ *
+ * @example
+ * ```ts
+ * type AgentUiMessage = UIMessage<unknown, UIDataTypes, UITools>;
+ *
+ * export const myChat = chat.withUIMessage<AgentUiMessage>({
+ *   streamOptions: { sendReasoning: true },
+ * }).task({
+ *   id: "my-chat",
+ *   run: async ({ messages, signal }) => { ... },
+ * });
+ * ```
+ */
+function withUIMessage<TUIM extends UIMessage = UIMessage>(
+  config?: ChatWithUIMessageConfig<TUIM>
+): ChatBuilder<TUIM, undefined> {
+  return createChatBuilder<TUIM, undefined>({
+    uiStreamOptions: config?.streamOptions,
+    hooks: {},
+  });
+}
+
+/**
+ * Fix the client data schema for a chat task, providing typed `clientData`
+ * in all hooks and the `run` function.
+ *
+ * Returns a {@link ChatBuilder} that supports chaining `.withUIMessage()`,
+ * hook methods (`.onPreload()`, `.onChatSuspend()`, etc.), and `.task()`.
+ *
+ * @example
+ * ```ts
+ * export const myChat = chat
+ *   .withClientData({ schema: z.object({ userId: z.string() }) })
+ *   .task({
+ *     id: "my-chat",
+ *     onPreload: async ({ clientData }) => {
+ *       // clientData is typed as { userId: string }
+ *     },
+ *     run: async ({ messages, signal }) => { ... },
+ *   });
+ * ```
+ */
+function withClientData<TSchema extends TaskSchema>(config: {
+  schema: TSchema;
+}): ChatBuilder<UIMessage, TSchema> {
+  return createChatBuilder<UIMessage, TSchema>({
+    clientDataSchema: config.schema,
+    hooks: {},
+  });
+}
+
+/**
+ * Namespace for AI SDK chat integration.
+ *
+ * @example
+ * ```ts
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * // Define a chat task
+ * export const myChat = chat.agent({
+ *   id: "my-chat",
+ *   run: async ({ messages, signal }) => {
+ *     return streamText({ model, messages, abortSignal: signal });
+ *   },
+ * });
+ *
+ * // Pipe a stream manually (from inside a task)
+ * await chat.pipe(streamTextResult);
+ *
+ * // Create an access token (from a server action)
+ * const token = await chat.createAccessToken("my-chat");
+ * ```
+ */
+// ---------------------------------------------------------------------------
+// Runtime configuration helpers
+// ---------------------------------------------------------------------------
+
+const TURN_TIMEOUT_METADATA_KEY = "chat.turnTimeout";
+const IDLE_TIMEOUT_METADATA_KEY = "chat.idleTimeout";
+
+/**
+ * Override the turn timeout for subsequent turns in the current run.
+ *
+ * The turn timeout controls how long the run stays suspended (freeing compute)
+ * waiting for the next user message. When it expires, the run completes
+ * gracefully and the next message starts a fresh run.
+ *
+ * Call from inside a `chatAgent` run function to adjust based on context.
+ *
+ * @param duration - A duration string (e.g. `"5m"`, `"1h"`, `"30s"`)
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setTurnTimeout("2h");
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setTurnTimeout(duration: string): void {
+  metadata.set(TURN_TIMEOUT_METADATA_KEY, duration);
+}
+
+/**
+ * Override the turn timeout in seconds for subsequent turns in the current run.
+ *
+ * @param seconds - Number of seconds to wait for the next message before ending the run
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setTurnTimeoutInSeconds(3600); // 1 hour
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setTurnTimeoutInSeconds(seconds: number): void {
+  metadata.set(TURN_TIMEOUT_METADATA_KEY, `${seconds}s`);
+}
+
+/**
+ * Override the idle timeout for subsequent turns in the current run.
+ *
+ * The idle timeout controls how long the run stays active (using compute)
+ * after each turn, waiting for the next message. During this window,
+ * responses are instant. After it expires, the run suspends.
+ *
+ * @param seconds - Number of seconds to stay idle (0 to suspend immediately)
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setIdleTimeoutInSeconds(60);
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setIdleTimeoutInSeconds(seconds: number): void {
+  metadata.set(IDLE_TIMEOUT_METADATA_KEY, seconds);
+}
+
+/**
+ * Override the `toUIMessageStream()` options for the current turn.
+ *
+ * These options control how the `StreamTextResult` is converted to a
+ * `UIMessageChunk` stream — error handling, reasoning/source visibility,
+ * message metadata, etc.
+ *
+ * Per-turn options are merged on top of the static `uiMessageStreamOptions`
+ * set on `chat.agent()`. Per-turn values win on conflicts.
+ *
+ * @example
+ * ```ts
+ * run: async ({ messages, signal }) => {
+ *   chat.setUIMessageStreamOptions({
+ *     sendReasoning: true,
+ *     onError: (error) => error instanceof Error ? error.message : "An error occurred.",
+ *   });
+ *   return streamText({ model, messages, abortSignal: signal });
+ * }
+ * ```
+ */
+function setUIMessageStreamOptions(options: ChatUIMessageStreamOptions<UIMessage>): void {
+  locals.set(chatUIStreamPerTurnKey, options);
+}
+
+/**
+ * Resolve the effective UIMessageStream options by merging:
+ * 1. Static task-level options (from `chat.agent({ uiMessageStreamOptions })`)
+ * 2. Per-turn overrides (from `chat.setUIMessageStreamOptions()`)
+ *
+ * Per-turn values win on conflicts. Clears the per-turn override after reading
+ * so it doesn't leak into subsequent turns.
+ * @internal
+ */
+function resolveUIMessageStreamOptions(): ChatUIMessageStreamOptions<UIMessage> {
+  const staticOptions = locals.get(chatUIStreamStaticKey) ?? {};
+  const perTurnOptions = locals.get(chatUIStreamPerTurnKey) ?? {};
+  // Clear per-turn override so it doesn't leak into subsequent turns
+  locals.set(chatUIStreamPerTurnKey, undefined);
+  return { ...staticOptions, ...perTurnOptions };
+}
+
+// ---------------------------------------------------------------------------
+// Stop detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether the user stopped generation during the current turn.
+ *
+ * Works from **anywhere** inside a `chat.agent` run — including inside
+ * `streamText`'s `onFinish` callback — without needing to thread the
+ * `stopSignal` through closures.
+ *
+ * This is especially useful when the AI SDK's `isAborted` flag is unreliable
+ * (e.g. when using `createUIMessageStream` + `writer.merge()`).
+ *
+ * @example
+ * ```ts
+ * onFinish: ({ isAborted }) => {
+ *   const wasStopped = isAborted || chat.isStopped();
+ *   if (wasStopped) {
+ *     // handle stop
+ *   }
+ * }
+ * ```
+ */
+function isStopped(): boolean {
+  const controller = locals.get(chatStopControllerKey);
+  return controller?.signal.aborted ?? false;
+}
+
+// ---------------------------------------------------------------------------
+// Version upgrade
+// ---------------------------------------------------------------------------
+
+/**
+ * Request that the current run exits so the next message starts on the latest
+ * deployed version (via the standard continuation mechanism).
+ *
+ * When called from `onTurnStart` or `onValidateMessages`, `run()` is skipped
+ * entirely — the run exits immediately and the transport re-triggers the
+ * same message on the new version.
+ *
+ * When called from `run()` or `chat.defer()`, the current turn completes
+ * normally and the run exits afterward instead of waiting for the next message.
+ *
+ * Call from `onTurnStart`, `onValidateMessages`, `onChatResume`, `run()`,
+ * or inside `chat.defer()`.
+ *
+ * @example
+ * ```ts
+ * const SUPPORTED_VERSIONS = new Set(["v2", "v3"]);
+ *
+ * chat.agent({
+ *   id: "my-chat",
+ *   onTurnStart: async ({ clientData }) => {
+ *     if (clientData?.protocolVersion && !SUPPORTED_VERSIONS.has(clientData.protocolVersion)) {
+ *       chat.requestUpgrade();
+ *     }
+ *   },
+ *   run: async ({ messages }) => { ... },
+ * });
+ * ```
+ */
+function requestUpgrade(): void {
+  locals.set(chatUpgradeRequestedKey, true);
+}
+
+/**
+ * Exit the run after the current turn completes, without waiting for the
+ * next message. Unlike {@link requestUpgrade}, no upgrade-required signal
+ * is sent to the client — the turn finishes normally, `onTurnComplete`
+ * fires, and the loop exits instead of going idle.
+ *
+ * Call from `run()`, `chat.defer()`, `onBeforeTurnComplete`, or
+ * `onTurnComplete` to end the run on your own terms (budget exhausted,
+ * task complete, goal achieved, etc.).
+ *
+ * The next user message on the same `chatId` starts a fresh run via the
+ * normal continuation mechanism.
+ *
+ * @example
+ * ```ts
+ * chat.agent({
+ *   id: "one-shot-agent",
+ *   run: async ({ messages, signal }) => {
+ *     const result = streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+ *     // Single-response agent — exit after this turn.
+ *     chat.endRun();
+ *     return result;
+ *   },
+ * });
+ * ```
+ */
+function endRun(): void {
+  locals.set(chatEndRunRequestedKey, true);
+}
+
+// ---------------------------------------------------------------------------
+// Per-turn deferred work
+// ---------------------------------------------------------------------------
+
+/**
+ * Register a promise that runs in the background during the current turn.
+ *
+ * Use this to move non-blocking work (DB writes, analytics, etc.) out of
+ * the critical path. The promise runs in parallel with streaming and is
+ * awaited (with a 5 s timeout) before `onTurnComplete` fires.
+ *
+ * @example
+ * ```ts
+ * onTurnStart: async ({ chatId, uiMessages }) => {
+ *   // Pass a promise directly
+ *   chat.defer(db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } }));
+ *
+ *   // Or pass an async function — cleaner for multi-step work
+ *   chat.defer(async () => {
+ *     const flags = await getFeatureFlags();
+ *     if (flags.forceUpgrade) chat.requestUpgrade();
+ *   });
+ * },
+ * ```
+ */
+function chatDefer(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+  const promises = locals.get(chatDeferKey);
+  if (promises) {
+    promises.add(typeof promiseOrFn === "function" ? promiseOrFn() : promiseOrFn);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Background context injection
+// ---------------------------------------------------------------------------
+
+/**
+ * Queue model messages for injection at the next `prepareStep` boundary.
+ *
+ * Use this to inject context from background work into the agent's conversation.
+ * Messages are appended to the model messages before the next LLM inference call.
+ *
+ * Combine with `chat.defer()` to run background analysis and inject results:
+ *
+ * @example
+ * ```ts
+ * onTurnComplete: async ({ messages }) => {
+ *   chat.defer((async () => {
+ *     const review = await generateObject({
+ *       model: openai("gpt-4o-mini"),
+ *       messages: [...messages, { role: "user", content: "Review the last response." }],
+ *       schema: z.object({ suggestions: z.array(z.string()) }),
+ *     });
+ *     if (review.object.suggestions.length > 0) {
+ *       chat.inject([{
+ *         role: "system",
+ *         content: `Improvements for next response:\n${review.object.suggestions.join("\n")}`,
+ *       }]);
+ *     }
+ *   })());
+ * },
+ * ```
+ */
+function injectBackgroundContext(messages: ModelMessage[]): void {
+  const queue = locals.get(chatBackgroundQueueKey) ?? [];
+  queue.push(...messages);
+  locals.set(chatBackgroundQueueKey, queue);
+}
+
+// ---------------------------------------------------------------------------
+// Aborted message cleanup
+// ---------------------------------------------------------------------------
+
+/**
+ * Clean up a UIMessage that was captured during an aborted/stopped turn.
+ *
+ * When generation is stopped mid-stream, the captured message may contain:
+ * - Tool parts stuck in incomplete states (`partial-call`, `input-available`,
+ *   `input-streaming`) that cause permanent UI spinners
+ * - Reasoning parts with `state: "streaming"` instead of `"done"`
+ * - Text parts with `state: "streaming"` instead of `"done"`
+ *
+ * This function returns a cleaned copy with:
+ * - Incomplete tool parts removed entirely
+ * - Reasoning and text parts marked as `"done"`
+ *
+ * `chat.agent` calls this automatically when stop is detected before passing
+ * the response to `onTurnComplete`. Use this manually when calling `pipeChat`
+ * directly and capturing response messages yourself.
+ *
+ * @example
+ * ```ts
+ * onTurnComplete: async ({ responseMessage, stopped }) => {
+ *   // Already cleaned automatically by chat.agent — but if you captured
+ *   // your own message via pipeChat, clean it manually:
+ *   const cleaned = chat.cleanupAbortedParts(myMessage);
+ *   await db.messages.save(cleaned);
+ * }
+ * ```
+ */
+function cleanupAbortedParts<TUIM extends UIMessage>(message: TUIM): TUIM {
+  if (!message.parts) return message;
+
+  const isToolPart = (part: any) =>
+    part.type === "tool-invocation" ||
+    part.type?.startsWith("tool-") ||
+    part.type === "dynamic-tool";
+
+  return {
+    ...message,
+    parts: message.parts
+      .filter((part: any) => {
+        if (!isToolPart(part)) return true;
+        // Remove tool parts that never completed execution.
+        // partial-call: input was still streaming when aborted.
+        // input-available: input was complete but tool never ran.
+        // input-streaming: input was mid-stream.
+        const state = part.toolInvocation?.state ?? part.state;
+        return (
+          state !== "partial-call" && state !== "input-available" && state !== "input-streaming"
+        );
+      })
+      .map((part: any) => {
+        // Mark streaming reasoning as done
+        if (part.type === "reasoning" && part.state === "streaming") {
+          return { ...part, state: "done" };
+        }
+        // Mark streaming text as done
+        if (part.type === "text" && part.state === "streaming") {
+          return { ...part, state: "done" };
+        }
+        return part;
+      }),
+  } as TUIM;
+}
+
+// ---------------------------------------------------------------------------
+// Composable primitives for raw task chat
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a managed stop signal wired to the chat stop input stream.
+ *
+ * Call once at the start of your run. Use `signal` as the abort signal for
+ * `streamText`. Call `reset()` at the start of each turn to get a fresh
+ * per-turn signal. Call `cleanup()` when the run ends.
+ *
+ * @example
+ * ```ts
+ * const stop = chat.createStopSignal();
+ * for (let turn = 0; turn < 100; turn++) {
+ *   stop.reset();
+ *   const result = streamText({ model, messages, abortSignal: stop.signal });
+ *   await chat.pipe(result);
+ *   // ...
+ * }
+ * stop.cleanup();
+ * ```
+ */
+function createStopSignal(): {
+  readonly signal: AbortSignal;
+  reset: () => void;
+  cleanup: () => void;
+} {
+  let controller = new AbortController();
+  const sub = stopInput.on((data) => {
+    controller.abort(data?.message || "stopped");
+  });
+  return {
+    get signal() {
+      return controller.signal;
+    },
+    reset() {
+      controller = new AbortController();
+    },
+    cleanup() {
+      sub.off();
+    },
+  };
+}
+
+/**
+ * Signal the frontend that the current turn is complete.
+ *
+ * The `TriggerChatTransport` intercepts this to close the ReadableStream
+ * for the current turn. Call after piping the response stream.
+ *
+ * @example
+ * ```ts
+ * await chat.pipe(result);
+ * await chat.writeTurnComplete();
+ * ```
+ */
+async function chatWriteTurnComplete(options?: { publicAccessToken?: string }): Promise<void> {
+  await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
+}
+
+/**
+ * Pipe a `StreamTextResult` (or similar) to the chat stream and capture
+ * the assistant's response message via `onFinish`.
+ *
+ * Combines `toUIMessageStream()` + `onFinish` callback + `chat.pipe()`.
+ * Returns the captured `UIMessage`, or `undefined` if capture failed.
+ *
+ * @example
+ * ```ts
+ * const result = streamText({ model, messages, abortSignal: signal });
+ * const response = await chat.pipeAndCapture(result, { signal });
+ * if (response) conversation.addResponse(response);
+ * ```
+ */
+async function pipeChatAndCapture(
+  source: UIMessageStreamable,
+  options?: { signal?: AbortSignal; spanName?: string }
+): Promise<UIMessage | undefined> {
+  let captured: UIMessage | undefined;
+  let resolveOnFinish: () => void;
+  const onFinishPromise = new Promise<void>((r) => {
+    resolveOnFinish = r;
+  });
+
+  const uiStream = source.toUIMessageStream({
+    ...resolveUIMessageStreamOptions(),
+    onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
+      captured = responseMessage;
+      resolveOnFinish!();
+    },
+  });
+
+  await pipeChat(uiStream, {
+    signal: options?.signal,
+    spanName: options?.spanName ?? "stream response",
+  });
+  await onFinishPromise;
+
+  return captured;
+}
+
+/**
+ * Accumulates conversation messages across turns.
+ *
+ * Handles the transport protocol: turn 0 sends full history (replace),
+ * subsequent turns send only new messages (append), regenerate sends
+ * full history minus last assistant message (replace).
+ *
+ * @example
+ * ```ts
+ * const conversation = new chat.MessageAccumulator();
+ * for (let turn = 0; turn < 100; turn++) {
+ *   const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+ *   const result = streamText({ model, messages });
+ *   const response = await chat.pipeAndCapture(result);
+ *   if (response) await conversation.addResponse(response);
+ * }
+ * ```
+ */
+class ChatMessageAccumulator {
+  modelMessages: ModelMessage[] = [];
+  uiMessages: UIMessage[] = [];
+  private _compaction?: ChatAgentCompactionOptions;
+  private _pendingMessages?: PendingMessagesOptions;
+  private _steeringQueue: SteeringQueueEntry[] = [];
+
+  constructor(options?: {
+    compaction?: ChatAgentCompactionOptions;
+    pendingMessages?: PendingMessagesOptions;
+  }) {
+    this._compaction = options?.compaction;
+    this._pendingMessages = options?.pendingMessages;
+  }
+
+  /**
+   * Add incoming messages from the transport payload.
+   * Returns the full accumulated model messages for `streamText`.
+   */
+  async addIncoming(messages: UIMessage[], trigger: string, turn: number): Promise<ModelMessage[]> {
+    const cleaned = messages.map((m) => (m.role === "assistant" ? cleanupAbortedParts(m) : m));
+    const model = await toModelMessages(cleaned);
+
+    if (turn === 0 || trigger === "regenerate-message") {
+      this.modelMessages = model;
+      this.uiMessages = [...cleaned];
+    } else {
+      this.modelMessages.push(...model);
+      this.uiMessages.push(...cleaned);
+    }
+    return this.modelMessages;
+  }
+
+  /**
+   * Add the assistant's response to the accumulator.
+   * Call after `pipeAndCapture` with the captured response.
+   */
+  /**
+   * Replace all accumulated messages (for compaction).
+   * Converts UIMessages to ModelMessages internally.
+   */
+  async setMessages(uiMessages: UIMessage[]): Promise<void> {
+    this.uiMessages = [...uiMessages];
+    this.modelMessages = await toModelMessages(uiMessages);
+  }
+
+  async addResponse(response: UIMessage): Promise<void> {
+    if (!response.id) {
+      response = { ...response, id: generateMessageId() };
+    }
+    this.uiMessages.push(response);
+    try {
+      const msgs = await toModelMessages([stripProviderMetadata(response)]);
+      this.modelMessages.push(...msgs);
+    } catch {
+      // Conversion failed — skip model message accumulation for this response
+    }
+  }
+
+  /**
+   * Queue a message for injection via `prepareStep`. Call from a
+   * `messagesInput.on()` listener when a message arrives during streaming.
+   */
+  steer(message: UIMessage, modelMessages?: ModelMessage[]): void {
+    if (modelMessages) {
+      this._steeringQueue.push({ uiMessage: message, modelMessages });
+    } else {
+      // Defer conversion — will be done in prepareStep if needed
+      this._steeringQueue.push({ uiMessage: message, modelMessages: [] });
+    }
+  }
+
+  /**
+   * Queue a message for injection, converting to model messages automatically.
+   */
+  async steerAsync(message: UIMessage): Promise<void> {
+    const modelMsgs = await toModelMessages([message]);
+    this._steeringQueue.push({ uiMessage: message, modelMessages: modelMsgs });
+  }
+
+  /**
+   * Get and clear unconsumed steering messages.
+   */
+  drainSteering(): UIMessage[] {
+    const result = this._steeringQueue.map((e) => e.uiMessage);
+    this._steeringQueue = [];
+    return result;
+  }
+
+  /**
+   * Returns a `prepareStep` function that handles both compaction and
+   * pending message injection. Pass to `streamText({ prepareStep: conversation.prepareStep() })`.
+   */
+  prepareStep():
+    | ((args: {
+      messages: ModelMessage[];
+      steps: CompactionStep[];
+    }) => Promise<{ messages: ModelMessage[] } | undefined>)
+    | undefined {
+    if (!this._compaction && !this._pendingMessages) return undefined;
+    const comp = this._compaction;
+    const pm = this._pendingMessages;
+    const queue = this._steeringQueue;
+
+    return async ({ messages, steps }) => {
+      let resultMessages: ModelMessage[] | undefined;
+
+      // 1. Compaction
+      if (comp) {
+        const result = await chatCompact(messages, steps, {
+          shouldCompact: comp.shouldCompact,
+          summarize: (msgs) => comp.summarize({ messages: msgs, source: "inner" }),
+        });
+        if (result.type !== "skipped") {
+          resultMessages = result.messages;
+        }
+      }
+
+      // 2. Pending message injection
+      if (pm && queue.length > 0) {
+        const injected = await drainSteeringQueue(pm, resultMessages ?? messages, steps, queue);
+        if (injected.length > 0) {
+          resultMessages = [...(resultMessages ?? messages), ...injected];
+        }
+      }
+
+      return resultMessages ? { messages: resultMessages } : undefined;
+    };
+  }
+
+  /**
+   * Run outer-loop compaction if needed. Call after adding the response
+   * and capturing usage. Applies `compactModelMessages` and `compactUIMessages`
+   * callbacks if configured.
+   *
+   * @returns `true` if compaction was performed, `false` otherwise.
+   */
+  async compactIfNeeded(
+    usage: LanguageModelUsage | undefined,
+    context?: {
+      chatId?: string;
+      turn?: number;
+      clientData?: unknown;
+      totalUsage?: LanguageModelUsage;
+    }
+  ): Promise<boolean> {
+    if (!this._compaction || !usage) return false;
+
+    const shouldTrigger = await this._compaction.shouldCompact({
+      messages: this.modelMessages,
+      totalTokens: usage.totalTokens,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      usage,
+      totalUsage: context?.totalUsage,
+      chatId: context?.chatId,
+      turn: context?.turn,
+      clientData: context?.clientData,
+      source: "outer",
+    });
+
+    if (!shouldTrigger) return false;
+
+    const summary = await this._compaction.summarize({
+      messages: this.modelMessages,
+      usage,
+      totalUsage: context?.totalUsage,
+      chatId: context?.chatId,
+      turn: context?.turn,
+      clientData: context?.clientData,
+      source: "outer",
+    });
+
+    const compactEvent: CompactMessagesEvent = {
+      summary,
+      uiMessages: this.uiMessages,
+      modelMessages: this.modelMessages,
+      chatId: context?.chatId ?? "",
+      turn: context?.turn ?? 0,
+      clientData: context?.clientData,
+      source: "outer",
+    };
+
+    this.modelMessages = this._compaction.compactModelMessages
+      ? await this._compaction.compactModelMessages(compactEvent)
+      : [
+        {
+          role: "assistant" as const,
+          content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+        },
+      ];
+
+    if (this._compaction.compactUIMessages) {
+      this.uiMessages = await this._compaction.compactUIMessages(compactEvent);
+    }
+
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// chat.createSession — async iterator for chat turns
+// ---------------------------------------------------------------------------
+
+export type ChatSessionOptions = {
+  /** Run-level cancel signal (from task context). */
+  signal: AbortSignal;
+  /** Seconds to stay idle between turns before suspending. @default 30 */
+  idleTimeoutInSeconds?: number;
+  /** Duration string for suspend timeout. @default "1h" */
+  timeout?: string;
+  /** Max turns before ending. @default 100 */
+  maxTurns?: number;
+  /** Automatic context compaction — same options as `chat.agent({ compaction })`. */
+  compaction?: ChatAgentCompactionOptions;
+  /** Configure mid-execution message injection — same options as `chat.agent({ pendingMessages })`. */
+  pendingMessages?: PendingMessagesOptions;
+};
+
+export type ChatTurn = {
+  /** Turn number (0-indexed). */
+  number: number;
+  /** Chat session ID. */
+  chatId: string;
+  /** What triggered this turn. */
+  trigger: string;
+  /** Client data from the transport (`metadata` field on the wire payload). */
+  clientData: unknown;
+  /** Full accumulated model messages — pass directly to `streamText`. */
+  readonly messages: ModelMessage[];
+  /** Full accumulated UI messages — use for persistence. */
+  readonly uiMessages: UIMessage[];
+  /** Combined stop+cancel AbortSignal (fresh each turn). */
+  signal: AbortSignal;
+  /** Whether the user stopped generation this turn. */
+  readonly stopped: boolean;
+  /** Whether this is a continuation run. */
+  continuation: boolean;
+  /** Token usage from the previous turn. Undefined on turn 0. */
+  previousTurnUsage?: LanguageModelUsage;
+  /** Cumulative token usage across all completed turns so far. */
+  totalUsage: LanguageModelUsage;
+
+  /**
+   * Replace accumulated messages (for compaction). Takes UIMessages and
+   * converts to ModelMessages internally. After calling this, `turn.messages`
+   * reflects the compacted history.
+   */
+  setMessages(uiMessages: UIMessage[]): Promise<void>;
+
+  /**
+   * Easy path: pipe stream, capture response, accumulate it,
+   * clean up aborted parts if stopped, and write turn-complete chunk.
+   */
+  complete(source: UIMessageStreamable): Promise<UIMessage | undefined>;
+
+  /**
+   * Manual path: just write turn-complete chunk.
+   * Use when you've already piped and accumulated manually.
+   */
+  done(): Promise<void>;
+
+  /**
+   * Add the response to the accumulator manually.
+   * Use with `chat.pipeAndCapture` when you need control between pipe and done.
+   */
+  addResponse(response: UIMessage): Promise<void>;
+
+  /**
+   * Returns a `prepareStep` function that handles both compaction and
+   * pending message injection. Pass to `streamText({ prepareStep: turn.prepareStep() })`.
+   * Only needed when not using `chat.toStreamTextOptions()` (which auto-injects it).
+   */
+  prepareStep():
+    | ((args: {
+      messages: ModelMessage[];
+      steps: CompactionStep[];
+    }) => Promise<{ messages: ModelMessage[] } | undefined>)
+    | undefined;
+};
+
+/**
+ * Create a chat session that yields turns as an async iterator.
+ *
+ * Handles: preload wait, stop signals, message accumulation, turn-complete
+ * signaling, and idle/suspend between turns. You control: initialization,
+ * model/tool selection, persistence, and any custom per-turn logic.
+ *
+ * @example
+ * ```ts
+ * import { task } from "@trigger.dev/sdk";
+ * import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+ * import { streamText } from "ai";
+ * import { openai } from "@ai-sdk/openai";
+ *
+ * export const myChat = task({
+ *   id: "my-chat",
+ *   run: async (payload: ChatTaskWirePayload, { signal }) => {
+ *     const session = chat.createSession(payload, { signal });
+ *
+ *     for await (const turn of session) {
+ *       const result = streamText({
+ *         model: openai("gpt-4o"),
+ *         messages: turn.messages,
+ *         abortSignal: turn.signal,
+ *       });
+ *       await turn.complete(result);
+ *     }
+ *   },
+ * });
+ * ```
+ */
+function createChatSession(
+  payload: ChatTaskWirePayload,
+  options: ChatSessionOptions
+): AsyncIterable<ChatTurn> {
+  const {
+    signal: runSignal,
+    idleTimeoutInSeconds: sessionIdleTimeoutOpt,
+    timeout = "1h",
+    maxTurns = 100,
+    compaction: sessionCompaction,
+    pendingMessages: sessionPendingMessages,
+  } = options;
+
+  const idleTimeoutInSeconds = sessionIdleTimeoutOpt ?? 30;
+
+  return {
+    [Symbol.asyncIterator]() {
+      let currentPayload = payload;
+      let turn = -1;
+      const stop = createStopSignal();
+      const accumulator = new ChatMessageAccumulator();
+      let previousTurnUsage: LanguageModelUsage | undefined;
+      let cumulativeUsage: LanguageModelUsage = emptyUsage();
+
+      return {
+        async next(): Promise<IteratorResult<ChatTurn>> {
+          turn++;
+
+          // First turn: handle preload — wait for the first real message
+          if (turn === 0 && currentPayload.trigger === "preload") {
+            const result = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds:
+                sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? 30,
+              timeout,
+              spanName: "waiting for first message",
+            });
+            if (!result.ok || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            currentPayload = result.output;
+          }
+
+          // Subsequent turns: wait for the next message
+          if (turn > 0) {
+            // chat.requestUpgrade() / chat.endRun() — exit before waiting
+            if (
+              locals.get(chatUpgradeRequestedKey) ||
+              locals.get(chatEndRunRequestedKey)
+            ) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+
+            const next = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds,
+              timeout,
+              spanName: "waiting for next message",
+            });
+            if (!next.ok || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            currentPayload = next.output;
+          }
+
+          // Check limits
+          if (turn >= maxTurns || runSignal.aborted) {
+            stop.cleanup();
+            return { done: true, value: undefined };
+          }
+
+          // Reset stop signal for this turn
+          stop.reset();
+
+          // Reset per-turn state
+          locals.set(chatResponsePartsKey, []);
+          // Set up steering queue and pending messages config in locals
+          // so toStreamTextOptions() auto-injects prepareStep for steering
+          const turnSteeringQueue: SteeringQueueEntry[] = [];
+          locals.set(chatSteeringQueueKey, turnSteeringQueue);
+          if (sessionPendingMessages) {
+            locals.set(chatPendingMessagesKey, sessionPendingMessages);
+          }
+          locals.set(chatTurnContextKey, {
+            chatId: currentPayload.chatId,
+            turn,
+            continuation: currentPayload.continuation ?? false,
+            clientData: currentPayload.metadata,
+          });
+
+          // Listen for messages during streaming (steering + next-turn buffer)
+          const sessionPendingWire: ChatTaskWirePayload[] = [];
+          const sessionMsgSub = messagesInput.on(async (msg) => {
+            sessionPendingWire.push(msg);
+
+            if (sessionPendingMessages) {
+              // Slim wire: at most one delta message per record. Read
+              // `msg.message` directly — no array slicing needed.
+              const lastUIMessage = msg.message;
+              if (lastUIMessage) {
+                if (sessionPendingMessages.onReceived) {
+                  try {
+                    await sessionPendingMessages.onReceived({
+                      message: lastUIMessage,
+                      chatId: currentPayload.chatId,
+                      turn,
+                    });
+                  } catch {
+                    /* non-fatal */
+                  }
+                }
+                try {
+                  const modelMsgs = await toModelMessages([lastUIMessage]);
+                  turnSteeringQueue.push({ uiMessage: lastUIMessage, modelMessages: modelMsgs });
+                } catch {
+                  /* non-fatal */
+                }
+              }
+            }
+          });
+
+          // Accumulate messages. Slim wire: pass the single delta message as
+          // a 0-or-1-length array. The accumulator's behavior is unchanged —
+          // it still appends user messages and reconverts on regenerate.
+          const incomingForAccumulator: UIMessage[] = currentPayload.message
+            ? [currentPayload.message]
+            : [];
+          const messages = await accumulator.addIncoming(
+            incomingForAccumulator,
+            currentPayload.trigger,
+            turn
+          );
+
+          // chat.requestUpgrade() called before this turn — signal transport and exit
+          if (locals.get(chatUpgradeRequestedKey)) {
+            await writeUpgradeRequiredChunk();
+            sessionMsgSub.off();
+            stop.cleanup();
+            return { done: true, value: undefined };
+          }
+
+          const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
+
+          const turnObj: ChatTurn = {
+            number: turn,
+            chatId: currentPayload.chatId,
+            trigger: currentPayload.trigger,
+            clientData: currentPayload.metadata,
+            get messages() {
+              return accumulator.modelMessages;
+            },
+            get uiMessages() {
+              return accumulator.uiMessages;
+            },
+            signal: combinedSignal,
+            get stopped() {
+              return stop.signal.aborted && !runSignal.aborted;
+            },
+            continuation: currentPayload.continuation ?? false,
+            previousTurnUsage,
+            totalUsage: cumulativeUsage,
+
+            async setMessages(uiMessages: UIMessage[]) {
+              await accumulator.setMessages(uiMessages);
+            },
+
+            async complete(source: UIMessageStreamable) {
+              let response: UIMessage | undefined;
+              try {
+                response = await pipeChatAndCapture(source, { signal: combinedSignal });
+              } catch (error) {
+                if (error instanceof Error && error.name === "AbortError") {
+                  if (runSignal.aborted) {
+                    // Full cancel — don't accumulate
+                    sessionMsgSub.off();
+                    await chatWriteTurnComplete();
+                    return undefined;
+                  }
+                  // Stop — fall through to accumulate partial response
+                } else {
+                  throw error;
+                }
+              }
+
+              if (response) {
+                const cleaned =
+                  stop.signal.aborted && !runSignal.aborted
+                    ? cleanupAbortedParts(response)
+                    : response;
+                // Append any non-transient data parts queued via chat.response or writer.write()
+                const queuedParts = locals.get(chatResponsePartsKey);
+                if (queuedParts && queuedParts.length > 0) {
+                  (cleaned as any).parts = [...(cleaned.parts ?? []), ...queuedParts];
+                  locals.set(chatResponsePartsKey, []);
+                }
+                await accumulator.addResponse(cleaned);
+              } else {
+                // No response (manual pipe mode) but there are queued data parts
+                const queuedParts = locals.get(chatResponsePartsKey);
+                if (queuedParts && queuedParts.length > 0) {
+                  await accumulator.addResponse({
+                    id: generateMessageId(),
+                    role: "assistant" as const,
+                    parts: queuedParts as UIMessage["parts"],
+                  });
+                  locals.set(chatResponsePartsKey, []);
+                }
+              }
+
+              // Capture token usage from the streamText result
+              let turnUsage: LanguageModelUsage | undefined;
+              if (typeof (source as any).totalUsage?.then === "function") {
+                try {
+                  const usage: LanguageModelUsage = await (source as any).totalUsage;
+                  turnUsage = usage;
+                  previousTurnUsage = usage;
+                  cumulativeUsage = addUsage(cumulativeUsage, usage);
+                } catch {
+                  /* non-fatal */
+                }
+              }
+
+              // Outer-loop compaction (same logic as chat.agent)
+              if (sessionCompaction && turnUsage && !turnObj.stopped) {
+                const shouldTrigger = await sessionCompaction.shouldCompact({
+                  messages: accumulator.modelMessages,
+                  totalTokens: turnUsage.totalTokens,
+                  inputTokens: turnUsage.inputTokens,
+                  outputTokens: turnUsage.outputTokens,
+                  usage: turnUsage,
+                  totalUsage: cumulativeUsage,
+                  chatId: currentPayload.chatId,
+                  turn,
+                  clientData: currentPayload.metadata,
+                  source: "outer",
+                });
+
+                if (shouldTrigger) {
+                  const summary = await sessionCompaction.summarize({
+                    messages: accumulator.modelMessages,
+                    usage: turnUsage,
+                    totalUsage: cumulativeUsage,
+                    chatId: currentPayload.chatId,
+                    turn,
+                    clientData: currentPayload.metadata,
+                    source: "outer",
+                  });
+
+                  const compactEvent: CompactMessagesEvent = {
+                    summary,
+                    uiMessages: accumulator.uiMessages,
+                    modelMessages: accumulator.modelMessages,
+                    chatId: currentPayload.chatId,
+                    turn,
+                    clientData: currentPayload.metadata,
+                    source: "outer",
+                  };
+
+                  accumulator.modelMessages = sessionCompaction.compactModelMessages
+                    ? await sessionCompaction.compactModelMessages(compactEvent)
+                    : [
+                      {
+                        role: "assistant" as const,
+                        content: [
+                          { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
+                        ],
+                      },
+                    ];
+
+                  if (sessionCompaction.compactUIMessages) {
+                    accumulator.uiMessages = await sessionCompaction.compactUIMessages(
+                      compactEvent
+                    );
+                  }
+                }
+              }
+
+              sessionMsgSub.off();
+              await chatWriteTurnComplete();
+              return response;
+            },
+
+            async addResponse(response: UIMessage) {
+              // Append any non-transient data parts queued via chat.response or writer.write()
+              const queuedParts = locals.get(chatResponsePartsKey);
+              if (queuedParts && queuedParts.length > 0) {
+                response = { ...response, parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])] };
+                locals.set(chatResponsePartsKey, []);
+              }
+              await accumulator.addResponse(response);
+            },
+
+            async done() {
+              sessionMsgSub.off();
+              await chatWriteTurnComplete();
+            },
+
+            prepareStep() {
+              const hasCompaction = !!sessionCompaction;
+              const hasPending = !!sessionPendingMessages;
+              if (!hasCompaction && !hasPending) return undefined;
+
+              return async ({
+                messages: stepMsgs,
+                steps,
+              }: {
+                messages: ModelMessage[];
+                steps: CompactionStep[];
+              }) => {
+                let resultMessages: ModelMessage[] | undefined;
+
+                if (sessionCompaction) {
+                  const compactResult = await chatCompact(stepMsgs, steps, {
+                    shouldCompact: sessionCompaction.shouldCompact,
+                    summarize: (msgs) =>
+                      sessionCompaction.summarize({ messages: msgs, source: "inner" }),
+                  });
+                  if (compactResult.type !== "skipped") {
+                    resultMessages = compactResult.messages;
+                  }
+                }
+
+                if (sessionPendingMessages) {
+                  const injected = await drainSteeringQueue(
+                    sessionPendingMessages,
+                    resultMessages ?? stepMsgs,
+                    steps,
+                    turnSteeringQueue
+                  );
+                  if (injected.length > 0) {
+                    resultMessages = [...(resultMessages ?? stepMsgs), ...injected];
+                  }
+                }
+
+                return resultMessages ? { messages: resultMessages } : undefined;
+              };
+            },
+          };
+
+          return { done: false, value: turnObj };
+        },
+
+        async return() {
+          stop.cleanup();
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// chat.local — per-run typed data with Proxy access
+// ---------------------------------------------------------------------------
+
+/** @internal Symbol for storing the locals key on the proxy target. */
+const CHAT_LOCAL_KEY: unique symbol = Symbol("chatLocalKey");
+/** @internal Symbol for storing the dirty-tracking locals key. */
+const CHAT_LOCAL_DIRTY_KEY: unique symbol = Symbol("chatLocalDirtyKey");
+
+// ---------------------------------------------------------------------------
+// chat.local registry — tracks all declared locals for serialization
+// ---------------------------------------------------------------------------
+
+type ChatLocalEntry = { key: ReturnType<typeof locals.create>; id: string };
+const chatLocalRegistry = new Set<ChatLocalEntry>();
+
+/** @internal Run-scoped flag to ensure hydration happens at most once per run. */
+const chatLocalsHydratedKey = locals.create<boolean>("chat.locals.hydrated");
+
+/**
+ * Hydrate chat.local values from subtask metadata (set by `ai.toolExecute()` or legacy `ai.tool()`).
+ * Runs once per run — subsequent calls are no-ops.
+ * @internal
+ */
+function hydrateLocalsFromMetadata(): void {
+  if (locals.get(chatLocalsHydratedKey)) return;
+  locals.set(chatLocalsHydratedKey, true);
+  const opts = metadata.get(METADATA_KEY) as ToolCallExecutionOptions | undefined;
+  if (!opts?.chatLocals) return;
+  for (const [id, value] of Object.entries(opts.chatLocals)) {
+    locals.set(locals.create(id), value);
+  }
+}
+
+/**
+ * A Proxy-backed, run-scoped data object that appears as `T` to users.
+ * Includes helper methods for initialization, dirty tracking, and serialization.
+ * Internal metadata is stored behind Symbols and invisible to
+ * `Object.keys()`, `JSON.stringify()`, and spread.
+ */
+export type ChatLocal<T extends Record<string, unknown>> = T & {
+  /** Initialize the local with a value. Call in `onChatStart` or `run()`. */
+  init(value: T): void;
+  /** Returns `true` if any property was set since the last check. Resets the dirty flag. */
+  hasChanged(): boolean;
+  /** Returns a plain object copy of the current value. Useful for persistence. */
+  get(): T;
+  readonly [CHAT_LOCAL_KEY]: ReturnType<typeof locals.create<T>>;
+  readonly [CHAT_LOCAL_DIRTY_KEY]: ReturnType<typeof locals.create<boolean>>;
+};
+
+/**
+ * Creates a per-run typed data object accessible from anywhere during task execution.
+ *
+ * Declare at module level, then initialize inside a lifecycle hook (e.g. `onChatStart`)
+ * using `chat.initLocal()`. Properties are accessible directly via the Proxy.
+ *
+ * Multiple locals can coexist — each gets its own isolated run-scoped storage.
+ *
+ * The `id` is required and must be unique across all `chat.local()` calls in
+ * your project. It's used to serialize values into subtask metadata so that
+ * `ai.toolExecute()` (or legacy `ai.tool()`) subtasks can auto-hydrate parent locals (read-only).
+ *
+ * @example
+ * ```ts
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * const userPrefs = chat.local<{ theme: string; language: string }>({ id: "userPrefs" });
+ * const gameState = chat.local<{ score: number; streak: number }>({ id: "gameState" });
+ *
+ * export const myChat = chat.agent({
+ *   id: "my-chat",
+ *   onChatStart: async ({ clientData }) => {
+ *     const prefs = await db.prefs.findUnique({ where: { userId: clientData.userId } });
+ *     userPrefs.init(prefs ?? { theme: "dark", language: "en" });
+ *     gameState.init({ score: 0, streak: 0 });
+ *   },
+ *   onTurnComplete: async ({ chatId }) => {
+ *     if (gameState.hasChanged()) {
+ *       await db.save({ where: { chatId }, data: gameState.get() });
+ *     }
+ *   },
+ *   run: async ({ messages }) => {
+ *     gameState.score++;
+ *     return streamText({
+ *       system: `User prefers ${userPrefs.theme} theme. Score: ${gameState.score}`,
+ *       messages,
+ *     });
+ *   },
+ * });
+ * ```
+ */
+function chatLocal<T extends Record<string, unknown>>(options: { id: string }): ChatLocal<T> {
+  const id = `chat.local.${options.id}`;
+  const localKey = locals.create<T>(id);
+  const dirtyKey = locals.create<boolean>(`${id}.dirty`);
+
+  chatLocalRegistry.add({ key: localKey, id });
+
+  const target = {} as any;
+  target[CHAT_LOCAL_KEY] = localKey;
+  target[CHAT_LOCAL_DIRTY_KEY] = dirtyKey;
+
+  return new Proxy(target, {
+    get(_target, prop, _receiver) {
+      // Internal Symbol properties
+      if (prop === CHAT_LOCAL_KEY) return _target[CHAT_LOCAL_KEY];
+      if (prop === CHAT_LOCAL_DIRTY_KEY) return _target[CHAT_LOCAL_DIRTY_KEY];
+
+      // Instance methods
+      if (prop === "init") {
+        return (value: T) => {
+          locals.set(localKey, value);
+          locals.set(dirtyKey, false);
+        };
+      }
+      if (prop === "hasChanged") {
+        return () => {
+          const dirty = locals.get(dirtyKey) ?? false;
+          locals.set(dirtyKey, false);
+          return dirty;
+        };
+      }
+      if (prop === "get") {
+        return () => {
+          let current = locals.get(localKey);
+          if (current === undefined) {
+            hydrateLocalsFromMetadata();
+            current = locals.get(localKey);
+          }
+          if (current === undefined) {
+            throw new Error("local.get() called before initialization. Call local.init() first.");
+          }
+          return { ...current };
+        };
+      }
+      // toJSON for serialization (JSON.stringify(local))
+      if (prop === "toJSON") {
+        return () => {
+          let current = locals.get(localKey);
+          if (current === undefined) {
+            hydrateLocalsFromMetadata();
+            current = locals.get(localKey);
+          }
+          return current ? { ...current } : undefined;
+        };
+      }
+
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        // Auto-hydrate from parent metadata in subtask context
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
+      if (current === undefined) return undefined;
+      return (current as any)[prop];
+    },
+
+    set(_target, prop, value) {
+      // Don't allow setting internal Symbols
+      if (typeof prop === "symbol") return false;
+
+      const current = locals.get(localKey);
+      if (current === undefined) {
+        throw new Error(
+          "chat.local can only be modified after initialization. " +
+          "Call local.init() in onChatStart or run() first."
+        );
+      }
+      locals.set(localKey, { ...current, [prop]: value });
+      locals.set(dirtyKey, true);
+      return true;
+    },
+
+    has(_target, prop) {
+      if (typeof prop === "symbol") return prop in _target;
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
+      return current !== undefined && prop in current;
+    },
+
+    ownKeys() {
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
+      return current ? Reflect.ownKeys(current) : [];
+    },
+
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop === "symbol") return undefined;
+      let current = locals.get(localKey);
+      if (current === undefined) {
+        hydrateLocalsFromMetadata();
+        current = locals.get(localKey);
+      }
+      if (current === undefined || !(prop in current)) return undefined;
+      return {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: (current as any)[prop],
+      };
+    },
+  }) as ChatLocal<T>;
+}
+
+/**
+ * Extracts the client data (metadata) type from a chat task.
+ * Use this to type the `metadata` option on the transport.
+ *
+ * @example
+ * ```ts
+ * import type { InferChatClientData } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
+ *
+ * type MyClientData = InferChatClientData<typeof myChat>;
+ * // { model?: string; userId: string }
+ * ```
+ */
+// `InferChatClientData` and `InferChatUIMessage` live in `./ai-shared.ts`
+// so the chat React hooks can import them without dragging `ai.ts` into
+// the browser graph. Re-exported here so `@trigger.dev/sdk/ai` consumers
+// still see them.
+import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
+export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
+
+/**
+ * Options for {@link createChatStartSessionAction}.
+ */
+export type CreateChatStartSessionActionOptions = {
+  /** TTL for the session-scoped public access token. @default "1h" */
+  tokenTTL?: string | number | Date;
+  /**
+   * Default trigger config used when starting a new session for a chat.
+   * Per-call `params.triggerConfig` shallow-merges on top.
+   */
+  triggerConfig?: Partial<SessionTriggerConfig>;
+};
+
+/**
+ * Params for the function returned by {@link createChatStartSessionAction}.
+ */
+export type ChatStartSessionParams = {
+  /** Conversation id (mapped to the Session's `externalId`). */
+  chatId: string;
+  /**
+   * Per-call trigger config. Shallow-merged over the action's default
+   * `triggerConfig`. `basePayload` is the customer's wire payload (for
+   * `chat.agent`: anything beyond `chatId`/`messages`/`trigger`/`metadata`,
+   * which the runtime injects automatically).
+   */
+  triggerConfig?: Partial<SessionTriggerConfig>;
+  /** Pass-through metadata folded into the session row. */
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * Result from {@link createChatStartSessionAction}'s returned function.
+ */
+export type ChatStartSessionResult = {
+  /**
+   * Session-scoped public access token (`read:sessions:{chatId} +
+   * write:sessions:{chatId}`). Pass this to the browser; the transport
+   * uses it to call `.in/append`, `.out`, `end-and-continue`.
+   */
+  publicAccessToken: string;
+  /** Friendly id of the run triggered alongside session create. */
+  runId: string;
+  /** Session friendlyId — informational. */
+  sessionId: string;
+};
+
+/**
+ * Creates a server-side helper that starts (or resumes) a Session for a
+ * given chatId — atomically creating the row, triggering the first run,
+ * and returning a session-scoped PAT for the browser to use.
+ *
+ * Wrap in a Next.js server action (or any server-side handler) so the
+ * customer's secret key never crosses to the browser.
+ *
+ * @example
+ * ```ts
+ * // actions.ts
+ * "use server";
+ * import { chat } from "@trigger.dev/sdk/ai";
+ *
+ * export const startChatSession = chat.createStartSessionAction("my-chat", {
+ *   triggerConfig: { machine: "small-1x" },
+ * });
+ * ```
+ *
+ * Then in the browser:
+ * ```tsx
+ * const transport = useTriggerChatTransport({
+ *   task: "my-chat",
+ *   accessToken: async ({ chatId }) => {
+ *     const { publicAccessToken } = await startChatSession({ chatId });
+ *     return publicAccessToken;
+ *   },
+ * });
+ * ```
+ */
+function createChatStartSessionAction(
+  taskId: string,
+  options?: CreateChatStartSessionActionOptions
+): (params: ChatStartSessionParams) => Promise<ChatStartSessionResult> {
+  return async (params: ChatStartSessionParams): Promise<ChatStartSessionResult> => {
+    if (!params.chatId) {
+      throw new Error(
+        "chat.createStartSessionAction: params.chatId is required — used as the session externalId."
+      );
+    }
+
+    // The first run boots before the user's first message lands on
+    // `.in/append`, so it sees an empty `messages` array and `trigger:
+    // "preload"`. This matches the pre-Sessions preload semantics:
+    // `onPreload` fires, the runtime opens its `.in` subscription, the
+    // first user message arrives moments later via `.in/append`.
+    //
+    // `metadata` is the customer's transport-level `clientData`,
+    // threaded through so the agent's `clientDataSchema` validates on
+    // the very first turn (the typical schema requires `userId` etc.).
+    // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
+    // run-list filter by chat works without the customer having to wire it
+    // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
+    const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
+    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+
+    const triggerConfig: SessionTriggerConfig = {
+      basePayload: {
+        messages: [],
+        trigger: "preload",
+        ...(options?.triggerConfig?.basePayload ?? {}),
+        ...(params.triggerConfig?.basePayload ?? {}),
+        chatId: params.chatId,
+      },
+      ...(options?.triggerConfig?.machine || params.triggerConfig?.machine
+        ? { machine: params.triggerConfig?.machine ?? options?.triggerConfig?.machine }
+        : {}),
+      ...(options?.triggerConfig?.queue || params.triggerConfig?.queue
+        ? { queue: params.triggerConfig?.queue ?? options?.triggerConfig?.queue }
+        : {}),
+      tags,
+      ...(options?.triggerConfig?.maxAttempts !== undefined ||
+      params.triggerConfig?.maxAttempts !== undefined
+        ? {
+            maxAttempts:
+              params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
+          }
+        : {}),
+      ...(options?.triggerConfig?.idleTimeoutInSeconds !== undefined ||
+      params.triggerConfig?.idleTimeoutInSeconds !== undefined
+        ? {
+            idleTimeoutInSeconds:
+              params.triggerConfig?.idleTimeoutInSeconds ??
+              options?.triggerConfig?.idleTimeoutInSeconds!,
+          }
+        : {}),
+    };
+
+    const created = await sessions.start({
+      type: "chat.agent",
+      externalId: params.chatId,
+      taskIdentifier: taskId,
+      triggerConfig,
+      metadata: params.metadata,
+    });
+
+    // Session create returns a session PAT directly when called with a
+    // start token, but when the SDK call goes via the secret key we still
+    // need to mint our own (the server returns a PAT regardless, but
+    // re-minting here lets the customer override `tokenTTL`).
+    const publicAccessToken =
+      options?.tokenTTL !== undefined
+        ? await auth.createPublicToken({
+            scopes: {
+              read: { sessions: params.chatId },
+              write: { sessions: params.chatId },
+            },
+            expirationTime: options.tokenTTL,
+          })
+        : created.publicAccessToken;
+
+    return {
+      publicAccessToken,
+      runId: created.runId,
+      sessionId: created.id,
+    };
+  };
+}
+
+export const chat = {
+  /** Create a chat agent. See {@link chatAgent}. */
+  agent: chatAgent,
+  /** Create a custom agent with manual lifecycle control. See {@link chatCustomAgent}. */
+  customAgent: chatCustomAgent,
+  /** Create a chat task with a fixed {@link UIMessage} subtype and optional default stream options. See {@link withUIMessage}. */
+  withUIMessage,
+  /** Create a chat task with a fixed client data schema. See {@link withClientData}. */
+  withClientData,
+  /** Create a server-side helper for starting (or resuming) a Session for a chatId. See {@link createChatStartSessionAction}. */
+  createStartSessionAction: createChatStartSessionAction,
+  /** Pipe a stream to the chat transport. See {@link pipeChat}. */
+  pipe: pipeChat,
+  /** Create a per-run typed local. See {@link chatLocal}. */
+  local: chatLocal,
+  /** Create a public access token for a chat task. See {@link createChatAccessToken}. */
+  createAccessToken: createChatAccessToken,
+  /** Override the turn timeout at runtime (duration string). See {@link setTurnTimeout}. */
+  setTurnTimeout,
+  /** Override the turn timeout at runtime (seconds). See {@link setTurnTimeoutInSeconds}. */
+  setTurnTimeoutInSeconds,
+  /** Override the idle timeout at runtime. See {@link setIdleTimeoutInSeconds}. */
+  setIdleTimeoutInSeconds,
+  /** Override toUIMessageStream() options for the current turn. See {@link setUIMessageStreamOptions}. */
+  setUIMessageStreamOptions,
+  /** Check if the current turn was stopped by the user. See {@link isStopped}. */
+  isStopped,
+  /** Request that the run exits after the current turn so the next message starts on the latest version. See {@link requestUpgrade}. */
+  requestUpgrade,
+  /** Exit the run after the current turn completes, without any upgrade signal. See {@link endRun}. */
+  endRun,
+  /** Clean up aborted parts from a UIMessage. See {@link cleanupAbortedParts}. */
+  cleanupAbortedParts,
+  /** Register background work that runs in parallel with streaming. See {@link chatDefer}. */
+  defer: chatDefer,
+  /** Queue model messages for injection at the next `prepareStep` boundary. See {@link injectBackgroundContext}. */
+  inject: injectBackgroundContext,
+  /** Typed chat output stream for writing custom chunks or piping from subtasks. */
+  stream: chatStream,
+  /** Write data parts that persist to the response message. See {@link chatResponse}. */
+  response: chatResponse,
+  /**
+   * Typed, bidirectional shared data slot for the chat.
+   *
+   * Use from `chat.agent` hooks and `run()` to share state with the client.
+   * Setting emits a `store-snapshot` chunk; patching emits `store-delta`.
+   * The value persists across turns within the same run, and can be
+   * restored after continuations via the `hydrateStore` config option.
+   *
+   * ```ts
+   * chat.store.set({ plan: ["research", "draft", "review"] });
+   * chat.store.patch([{ op: "replace", path: "/status", value: "done" }]);
+   * const current = chat.store.get();
+   * const off = chat.store.onChange((value, ops) => { ... });
+   * ```
+   */
+  store: {
+    /** Replace the store value. Emits a `store-snapshot` chunk. */
+    set: chatStoreSet,
+    /**
+     * Apply RFC 6902 JSON Patch operations to the current value.
+     * Emits a `store-delta` chunk.
+     */
+    patch: chatStorePatch,
+    /** Read the current store value. Returns `undefined` if never set. */
+    get: chatStoreGet,
+    /** Subscribe to store changes. Returns an unsubscribe function. */
+    onChange: chatStoreOnChange,
+  },
+  /** Pre-built input stream for receiving messages from the transport. */
+  messages: messagesInput,
+  /** Create a managed stop signal wired to the stop input stream. See {@link createStopSignal}. */
+  createStopSignal,
+  /** Signal the frontend that the current turn is complete. See {@link chatWriteTurnComplete}. */
+  writeTurnComplete: chatWriteTurnComplete,
+  /** Pipe a stream and capture the response message. See {@link pipeChatAndCapture}. */
+  pipeAndCapture: pipeChatAndCapture,
+  /** Message accumulator class for raw task chat. See {@link ChatMessageAccumulator}. */
+  MessageAccumulator: ChatMessageAccumulator,
+  /** Create a chat session (async iterator). See {@link createChatSession}. */
+  createSession: createChatSession,
+  /**
+   * Store and retrieve a resolved prompt for the current run.
+   *
+   * - `chat.prompt.set(resolved)` — store a `ResolvedPrompt` or plain string
+   * - `chat.prompt()` — read the stored prompt (throws if not set)
+   */
+  prompt: Object.assign(getChatPrompt, { set: setChatPrompt }),
+  /**
+   * Store and retrieve resolved agent skills for the current run.
+   *
+   * - `chat.skills.set([...])` — store an array of `ResolvedSkill`s
+   * - `chat.skills()` — read the stored skills (returns undefined if none)
+   *
+   * Skills set here are automatically injected into `streamText` by
+   * `chat.toStreamTextOptions()`: skill descriptions land in the system
+   * prompt and `loadSkill` / `readFile` / `bash` tools are added to the
+   * tool set.
+   */
+  skills: Object.assign(getChatSkills, { set: setChatSkills }),
+  /**
+   * Returns an options object ready to spread into `streamText()`.
+   * Reads the stored prompt and returns `{ system, experimental_telemetry, ...config }`.
+   * Returns `{}` if no prompt has been set.
+   */
+  toStreamTextOptions,
+  /**
+   * Replace the accumulated conversation messages for compaction.
+   * Call from `onTurnStart` or `onTurnComplete`. Takes `UIMessage[]` and
+   * converts to `ModelMessage[]` internally.
+   */
+  setMessages: setChatMessages,
+  /**
+   * Imperative API for modifying the accumulated message history.
+   * Supports rollback, remove, replace, slice, and full replacement.
+   * Can be called from any hook or `run()`.
+   */
+  history: chatHistory,
+  /** Check if it's safe to compact messages (no in-flight tool calls). */
+  isCompactionSafe,
+  /** Returns a `prepareStep` function that handles context compaction automatically. */
+  compactionStep: chatCompactionStep,
+  /** Low-level compaction for use inside a custom `prepareStep`. */
+  compact: chatCompact,
+  /** Read the current compaction state (summary + base message count). */
+  getCompactionState,
+  /**
+   * The friendlyId (`session_*`) of the backing Session for the current chat.agent run.
+   * Useful for persisting alongside `runId` so reloads can resume the same session.
+   * Throws if called outside a chat.agent `run()` or hook.
+   */
+  get sessionId(): string {
+    return getChatSession().id;
+  },
+};
+
+/**
+ * Writes a turn-complete control chunk to the chat output stream.
+ * The frontend transport intercepts this to close the ReadableStream for the current turn.
+ * @internal
+ */
+async function writeTurnCompleteChunk(
+  chatId?: string,
+  publicAccessToken?: string
+): Promise<StreamWriteResult> {
+  const { waitUntilComplete } = chatStream.writer({
+    spanName: "turn complete",
+    collapsed: true,
+    execute: ({ write }) => {
+      // Transport-intercepted control chunk — not a valid UIMessageChunk
+      // type but travels on the same session.out stream.
+      write({
+        type: "trigger:turn-complete",
+        ...(publicAccessToken ? { publicAccessToken } : {}),
+      } as unknown as UIMessageChunk);
+    },
+  });
+  return await waitUntilComplete();
+}
+
+/**
+ * Hand off the session to a fresh run on the latest version and emit a
+ * telemetry chunk on `.out` so the transport can hide it from the
+ * consumer.
+ *
+ * Server-side flow (in `POST /sessions/:id/end-and-continue`):
+ *   1. Trigger a new run with the session's `triggerConfig`
+ *   2. Atomically swap `Session.currentRunId` to the new run's id
+ *      (via optimistic claim keyed on the calling run's id)
+ *   3. Return the new runId
+ *
+ * The transport keeps its `.out` SSE open across the swap — v1's last
+ * chunks land, v2's new chunks land on the same stream (S2 keys on
+ * the session, not the run). The transport filters
+ * `trigger:upgrade-required` for cleanliness; consumers see no gap.
+ *
+ * If the swap fails (no current run, no env auth, etc.) we still emit
+ * the chunk and exit. The next `.in/append` will trigger a new run via
+ * the probe path; it just won't be quite as seamless.
+ *
+ * @internal
+ */
+async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
+  const ctx = taskContext.ctx;
+  const chatId = ctx?.run.id ? getChatIdFromContext() : undefined;
+  const callingRunId = ctx?.run.id;
+
+  if (chatId && callingRunId) {
+    const apiClient = apiClientManager.clientOrThrow();
+    try {
+      await apiClient.endAndContinueSession(chatId, {
+        callingRunId,
+        reason: "upgrade",
+      });
+    } catch (error) {
+      // Non-fatal: the next `.in/append` re-triggers via the probe.
+      // Swallow rather than throw so we still emit the chunk + exit.
+      logger.warn("end-and-continue failed; falling back to probe-on-append", {
+        chatId,
+        callingRunId,
+        error,
+      });
+    }
+  }
+
+  const { waitUntilComplete } = chatStream.writer({
+    spanName: "upgrade required",
+    collapsed: true,
+    execute: ({ write }) => {
+      write({
+        type: "trigger:upgrade-required",
+      } as unknown as UIMessageChunk);
+    },
+  });
+  return await waitUntilComplete();
+}
+
+/**
+ * Resolves the current chat's `chatId` (used as session externalId) from
+ * the bound session handle. Returns `undefined` if no agent is bound —
+ * shouldn't happen at the call sites that invoke
+ * `writeUpgradeRequiredChunk`, but defensive against misuse.
+ * @internal
+ */
+function getChatIdFromContext(): string | undefined {
+  return locals.get(chatSessionHandleKey)?.id;
+}
+
+/**
+ * Extracts the text content of the last user message from a UIMessage array.
+ * Returns undefined if no user message is found.
+ * @internal
+ */
+function extractLastUserMessageText(messages: UIMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i]!;
+    if (msg.role !== "user") continue;
+
+    // UIMessage uses parts array
+    if (msg.parts) {
+      const textParts = msg.parts
+        .filter((p: any) => p.type === "text" && p.text)
+        .map((p: any) => p.text as string);
+      if (textParts.length > 0) {
+        return textParts.join("\n");
+      }
+    }
+
+    break;
+  }
+
+  return undefined;
+}
+
+/**
+ * Strips ephemeral OpenAI Responses API `itemId` from a UIMessage's parts.
+ *
+ * The OpenAI Responses provider attaches `itemId` to message parts via
+ * `providerMetadata.openai.itemId`. These IDs are ephemeral — sending them
+ * back in a subsequent `streamText` call causes 404s because the provider
+ * can't find the referenced item (especially for stopped/partial responses).
+ *
+ * @internal
+ */
+function stripProviderMetadata(message: UIMessage): UIMessage {
+  if (!message.parts) return message;
+  return {
+    ...message,
+    parts: message.parts.map((part: any) => {
+      const openai = part.providerMetadata?.openai;
+      if (!openai?.itemId) return part;
+
+      const { itemId, ...restOpenai } = openai;
+      const { openai: _, ...restProviders } = part.providerMetadata;
+      return {
+        ...part,
+        providerMetadata: {
+          ...restProviders,
+          ...(Object.keys(restOpenai).length > 0 ? { openai: restOpenai } : {}),
+        },
+      };
+    }),
+  };
+}
