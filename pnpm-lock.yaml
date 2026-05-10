@@ -52,6 +52,9 @@ patchedDependencies:
   '@upstash/ratelimit@1.1.3':
     hash: e5922e50fbefb7b2b24950c4b1c5c9ddc4cd25464439c9548d2298c432debe74
     path: patches/@upstash__ratelimit.patch
+  '@window-splitter/state@1.1.3':
+    hash: ecf02927f78361c14d8f8347604fd355ba36f2fc4f9ba9a08cd63adc101b7327
+    path: patches/@window-splitter__state@1.1.3.patch
   antlr4ts@0.5.0-alpha.4:
     hash: b5d41129ddbf7c4cbb0288244b2c8d041ee0803c5102c1181c180408d3b579f4
     path: patches/antlr4ts@0.5.0-alpha.4.patch
@@ -30418,17 +30421,17 @@ snapshots:
 
   '@window-splitter/interface@1.1.3':
     dependencies:
-      '@window-splitter/state': 1.1.3
+      '@window-splitter/state': 1.1.3(patch_hash=ecf02927f78361c14d8f8347604fd355ba36f2fc4f9ba9a08cd63adc101b7327)
 
   '@window-splitter/react@1.1.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
     dependencies:
       '@react-aria/utils': 3.34.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@window-splitter/interface': 1.1.3
-      '@window-splitter/state': 1.1.3
+      '@window-splitter/state': 1.1.3(patch_hash=ecf02927f78361c14d8f8347604fd355ba36f2fc4f9ba9a08cd63adc101b7327)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@window-splitter/state@1.1.3':
+  '@window-splitter/state@1.1.3(patch_hash=ecf02927f78361c14d8f8347604fd355ba36f2fc4f9ba9a08cd63adc101b7327)':
     dependencies:
       big.js: 6.2.2
 
