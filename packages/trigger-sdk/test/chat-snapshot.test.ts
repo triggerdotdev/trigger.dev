@@ -39,12 +39,15 @@ function buildSnapshot(count = 1): ChatSnapshotV1 {
  * presigned URLs the test wants. Returns spies for assertion.
  */
 function stubApiClient(opts: {
-  getPayloadUrl?: () => Promise<{ presignedUrl: string }>;
-  createUploadPayloadUrl?: () => Promise<{ presignedUrl: string }>;
+  getPayloadUrl?: (filename: string) => Promise<{ presignedUrl: string }>;
+  createUploadPayloadUrl?: (filename: string) => Promise<{ presignedUrl: string }>;
 }) {
-  const getPayloadUrl = vi.fn(opts.getPayloadUrl ?? (async () => ({ presignedUrl: "https://example.invalid/get" })));
+  const getPayloadUrl = vi.fn(
+    opts.getPayloadUrl ?? (async (_filename: string) => ({ presignedUrl: "https://example.invalid/get" }))
+  );
   const createUploadPayloadUrl = vi.fn(
-    opts.createUploadPayloadUrl ?? (async () => ({ presignedUrl: "https://example.invalid/put" }))
+    opts.createUploadPayloadUrl ??
+      (async (_filename: string) => ({ presignedUrl: "https://example.invalid/put" }))
   );
   const fakeClient = {
     getPayloadUrl,

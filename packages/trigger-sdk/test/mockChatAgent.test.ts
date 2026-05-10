@@ -238,7 +238,6 @@ describe("mockChatAgent", () => {
 
     const agent = chat.agent({
       id: "mockChatAgent.hitl-id-regen",
-      tools: { askUser: askUserTool },
       onTurnComplete: async ({ turn, uiMessages }) => {
         turnsSeen.push({
           turn,
@@ -677,7 +676,6 @@ describe("mockChatAgent", () => {
       let pending: any;
       const agent = chat.agent({
         id: "mockChatAgent.history.pending",
-        tools: { askUser },
         onTurnComplete: async () => {
           pending = chat.history.getPendingToolCalls();
         },
@@ -746,7 +744,6 @@ describe("mockChatAgent", () => {
       const turnsResolved: any[] = [];
       const agent = chat.agent({
         id: "mockChatAgent.history.resolved",
-        tools: { askUser },
         onTurnComplete: async () => {
           turnsResolved.push(chat.history.getResolvedToolCalls());
         },
@@ -928,7 +925,6 @@ describe("mockChatAgent", () => {
       let extractedAgainstRealChain: any;
       const agent = chat.agent({
         id: "mockChatAgent.history.extract-real",
-        tools: { askUser },
         onTurnComplete: async () => {
           // After the HITL answer turn, the chain has TC resolved. An
           // incoming "echo" message carrying TC again should yield [].
@@ -1016,7 +1012,6 @@ describe("mockChatAgent", () => {
       let extracted: any;
       const agent = chat.agent({
         id: "mockChatAgent.history.extract-error",
-        tools: { search },
         onTurnComplete: async () => {
           resolved = chat.history.getResolvedToolCalls();
           // An echo carrying the same error toolCallId — should NOT surface
