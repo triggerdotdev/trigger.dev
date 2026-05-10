@@ -101,17 +101,32 @@ export function RealtimeStreamViewer({
   streamKey,
   metadata,
   displayName,
+  resourcePath: resourcePathOverride,
+  headerLabel,
+  headerLeft,
 }: {
-  runId: string;
-  streamKey: string;
-  metadata: Record<string, unknown> | undefined;
+  runId?: string;
+  streamKey?: string;
+  metadata?: Record<string, unknown> | undefined;
   displayName?: string;
+  /** Pre-built resource path. When provided, `runId`/`streamKey` are unused. */
+  resourcePath?: string;
+  /** Override the "Stream:" / "Input stream:" prefix in the header. */
+  headerLabel?: string;
+  /**
+   * Replaces the default "Stream: <name>" content next to the connection
+   * icon. Use to inline tabs or other navigation in place of a static
+   * label.
+   */
+  headerLeft?: React.ReactNode;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const resourcePath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runId}/streams/${streamKey}`;
+  const resourcePath =
+    resourcePathOverride ??
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runId}/streams/${streamKey}`;
 
   const startIndex = typeof metadata?.startIndex === "number" ? metadata.startIndex : undefined;
   const { chunks, error, isConnected } = useRealtimeStream(resourcePath, startIndex);
@@ -229,7 +244,7 @@ export function RealtimeStreamViewer({
       {/* Header */}
       <div className="border-b border-grid-bright bg-background-bright @container">
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 @[300px]:flex-nowrap">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-3">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
@@ -244,13 +259,17 @@ export function RealtimeStreamViewer({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <Paragraph
-              variant="small/bright"
-              className="mb-0 flex min-w-0 items-center gap-1 truncate whitespace-nowrap"
-            >
-              <span>{displayName ? "Input stream:" : "Stream:"}</span>
-              <span className="truncate font-mono text-text-dimmed">{displayName ?? streamKey}</span>
-            </Paragraph>
+            {headerLeft ?? (
+              <Paragraph
+                variant="small/bright"
+                className="mb-0 flex min-w-0 items-center gap-1 truncate whitespace-nowrap"
+              >
+                <span>{headerLabel ?? (displayName ? "Input stream:" : "Stream:")}</span>
+                <span className="truncate font-mono text-text-dimmed">
+                  {displayName ?? streamKey ?? ""}
+                </span>
+              </Paragraph>
+            )}
           </div>
           <div className="flex w-full flex-wrap items-center justify-between gap-3 @[300px]:w-auto @[300px]:flex-nowrap">
             <Paragraph variant="small" className="mb-0 whitespace-nowrap">
