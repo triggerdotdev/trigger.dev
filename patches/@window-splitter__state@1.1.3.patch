@@ -1,18 +1,8 @@
 diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
-index acb542b1b71a7e808173d938d16f45a484334f94..09c80f9756c75eace8ca530dbd21502c3e22b3ab 100644
+index e3bdcf702702392e9a06c981545f659ee7c5970e..d88ae6b2dc5b4cf1970cb693f58a926bd12a8f45 100644
 --- a/dist/commonjs/index.js
 +++ b/dist/commonjs/index.js
-@@ -107,6 +107,9 @@ function prepareSnapshot(snapshot) {
-             if (item.max && item.max !== "1fr") {
-                 item.max.value = new big_js_1.default(item.max.value);
-             }
-+            if (item.default && typeof item.default === "object" && item.default.value !== undefined) {
-+                item.default.value = new big_js_1.default(item.default.value);
-+            }
-         }
-         else {
-             item.size.value = new big_js_1.default(item.size.value);
-@@ -646,28 +649,14 @@ function updateLayout(context, dragEvent) {
+@@ -757,30 +757,14 @@ function updateLayout(context, dragEvent) {
              panelAfter.onCollapseChange.current(false);
          }
      }
@@ -23,7 +13,8 @@ index acb542b1b71a7e808173d938d16f45a484334f94..09c80f9756c75eace8ca530dbd21502c
 -        panelBeforeIsAboutToCollapse) {
 -        if (panelBefore.onCollapseChange?.current &&
 -            panelBefore.collapseIsControlled &&
--            !dragEvent.controlled) {
+-            !dragEvent.controlled &&
+-            !dragEvent.isVirtual) {
 -            panelBefore.onCollapseChange.current(true);
 -            return { dragOvershoot: newDragOvershoot };
 -        }
@@ -31,10 +22,11 @@ index acb542b1b71a7e808173d938d16f45a484334f94..09c80f9756c75eace8ca530dbd21502c
 -        panelBefore.collapsed = true;
 -        panelBeforeNewValue = getUnitPixelValue(context, panelBefore.collapsedSize);
 -        // Add the extra space created to the before panel
--        panelAfterNewValue = panelAfterNewValue.add(panelBeforePreviousValue.minus(panelBeforeNewValue));
+-        panelAfterNewValue = panelAfter.currentValue.value.add(panelBeforePreviousValue.minus(panelBeforeNewValue));
 -        if (panelBefore.onCollapseChange?.current &&
 -            !panelBefore.collapseIsControlled &&
--            !dragEvent.controlled) {
+-            !dragEvent.controlled &&
+-            !dragEvent.isVirtual) {
 -            panelBefore.onCollapseChange.current(true);
 -        }
 -    }
@@ -49,7 +41,7 @@ index acb542b1b71a7e808173d938d16f45a484334f94..09c80f9756c75eace8ca530dbd21502c
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new big_js_1.default(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new big_js_1.default(0)));
-@@ -821,7 +810,12 @@ function clearLastKnownSize(items) {
+@@ -940,7 +924,12 @@ function setCookie(name, jsonData) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {
@@ -64,20 +56,10 @@ index acb542b1b71a7e808173d938d16f45a484334f94..09c80f9756c75eace8ca530dbd21502c
      const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
      return panel.currentValue.value.minus(collapsedSize);
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index 8891ac0141135a3a885bd704d9d443458c7a01bf..8ad04a353fc0b2980e71ac2148c0cb71961857ff 100644
+index f8fddd70c0f1aaed29f2fb0ca0d8093d8ce66335..d1dae8beb1447afca47b91e796b8279135f50c36 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
-@@ -81,6 +81,9 @@ export function prepareSnapshot(snapshot) {
-             if (item.max && item.max !== "1fr") {
-                 item.max.value = new Big(item.max.value);
-             }
-+            if (item.default && typeof item.default === "object" && item.default.value !== undefined) {
-+                item.default.value = new Big(item.default.value);
-+            }
-         }
-         else {
-             item.size.value = new Big(item.size.value);
-@@ -620,28 +623,14 @@ function updateLayout(context, dragEvent) {
+@@ -728,30 +728,14 @@ function updateLayout(context, dragEvent) {
              panelAfter.onCollapseChange.current(false);
          }
      }
@@ -88,7 +70,8 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..8ad04a353fc0b2980e71ac2148c0cb71
 -        panelBeforeIsAboutToCollapse) {
 -        if (panelBefore.onCollapseChange?.current &&
 -            panelBefore.collapseIsControlled &&
--            !dragEvent.controlled) {
+-            !dragEvent.controlled &&
+-            !dragEvent.isVirtual) {
 -            panelBefore.onCollapseChange.current(true);
 -            return { dragOvershoot: newDragOvershoot };
 -        }
@@ -96,10 +79,11 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..8ad04a353fc0b2980e71ac2148c0cb71
 -        panelBefore.collapsed = true;
 -        panelBeforeNewValue = getUnitPixelValue(context, panelBefore.collapsedSize);
 -        // Add the extra space created to the before panel
--        panelAfterNewValue = panelAfterNewValue.add(panelBeforePreviousValue.minus(panelBeforeNewValue));
+-        panelAfterNewValue = panelAfter.currentValue.value.add(panelBeforePreviousValue.minus(panelBeforeNewValue));
 -        if (panelBefore.onCollapseChange?.current &&
 -            !panelBefore.collapseIsControlled &&
--            !dragEvent.controlled) {
+-            !dragEvent.controlled &&
+-            !dragEvent.isVirtual) {
 -            panelBefore.onCollapseChange.current(true);
 -        }
 -    }
@@ -114,7 +98,7 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..8ad04a353fc0b2980e71ac2148c0cb71
      panelBefore.currentValue = { type: "pixel", value: panelBeforeNewValue };
      panelAfter.currentValue = { type: "pixel", value: panelAfterNewValue };
      const leftoverSpace = new Big(getGroupSize(context)).minus(newItems.reduce((acc, b) => acc.add(isPanelData(b) ? b.currentValue.value : b.size.value), new Big(0)));
-@@ -795,7 +784,12 @@ function clearLastKnownSize(items) {
+@@ -911,7 +895,12 @@ function setCookie(name, jsonData) {
  function getDeltaForEvent(context, event) {
      const panel = getPanelWithId(context, event.panelId);
      if (event.type === "expandPanel") {

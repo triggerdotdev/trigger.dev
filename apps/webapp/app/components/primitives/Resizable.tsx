@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
-import { PanelGroup, Panel, PanelResizer } from "react-window-splitter";
+import { PanelGroup, Panel, PanelResizer } from "@window-splitter/react";
 import { cn } from "~/utils/cn";
 
 const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeof PanelGroup>) => (
