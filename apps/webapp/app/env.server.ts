@@ -1427,6 +1427,14 @@ const EnvironmentSchema = z
     // LLM cost tracking
     LLM_COST_TRACKING_ENABLED: BoolEnv.default(true),
     LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
+    LLM_PRICING_RELOAD_CHANNEL: z.string().default("llm-registry:reload"),
+    LLM_PRICING_RELOAD_DEBOUNCE_MS: z.coerce.number().int().default(1000),
+    // Whether to subscribe this process to the LLM_PRICING_RELOAD_CHANNEL.
+    // Default off — only OTel-ingesting services need real-time pricing
+    // freshness; dashboard/worker processes are fine on the existing
+    // 5-minute periodic reload. In multi-service deployments, set this to
+    // true on the span-ingesting services.
+    LLM_PRICING_RELOAD_PUBSUB_ENABLED: BoolEnv.default(false),
     LLM_PRICING_SEED_ON_STARTUP: BoolEnv.default(false),
     LLM_PRICING_READY_TIMEOUT_MS: z.coerce.number().int().default(500),
     LLM_METRICS_BATCH_SIZE: z.coerce.number().int().default(5000),

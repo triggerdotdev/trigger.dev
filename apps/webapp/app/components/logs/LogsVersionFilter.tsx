@@ -22,8 +22,9 @@ export function LogsVersionFilter() {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by version"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Versions</span>
+                <span className="ml-1">Versions</span>
               </SelectTrigger>
             }
             searchValue={search}

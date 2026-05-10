@@ -295,8 +295,9 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
     convertedOptions.runId = options.runId.map((r) => RunId.toFriendlyId(r));
   }
 
-  // Show all runs if we are filtering by batchId or runId
-  if (options.batchId || options.runId?.length || options.scheduleId || options.tasks?.length) {
+  // batchId/runId/scheduleId target specific runs, so rootOnly is meaningless and forced off.
+  // tasks is intentionally excluded so rootOnly can narrow a task filter to root runs only.
+  if (options.batchId || options.runId?.length || options.scheduleId) {
     convertedOptions.rootOnly = false;
   }
 

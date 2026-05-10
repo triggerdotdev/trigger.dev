@@ -403,7 +403,7 @@ export function UpsertScheduleForm({
         <div className="flex items-center gap-4">
           <LinkButton
             to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
-            variant="tertiary/medium"
+            variant="secondary/medium"
           >
             Cancel
           </LinkButton>

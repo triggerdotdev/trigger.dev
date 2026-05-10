@@ -94,8 +94,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ...filters,
   });
 
-  const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
-  const cookieValue = await uiPreferencesStorage.commitSession(session);
+  // Only persist rootOnly when no tasks are filtered. While a task filter is active,
+  // the toggle's URL value can be a temporary auto-flip (or a user override scoped to
+  // the current task filter), and we don't want either bleeding into the saved
+  // session preference. Clearing the task filter restores the saved preference.
+  const shouldPersistRootOnly = !filters.tasks || filters.tasks.length === 0;
+  const headers = shouldPersistRootOnly
+    ? {
+        "Set-Cookie": await uiPreferencesStorage.commitSession(
+          await setRootOnlyFilterPreference(filters.rootOnly, request)
+        ),
+      }
+    : undefined;
 
   return typeddefer(
     {
@@ -103,11 +113,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       rootOnlyDefault: filters.rootOnly,
       filters,
     },
-    {
-      headers: {
-        "Set-Cookie": cookieValue,
-      },
-    }
+    headers ? { headers } : undefined
   );
 };
 
