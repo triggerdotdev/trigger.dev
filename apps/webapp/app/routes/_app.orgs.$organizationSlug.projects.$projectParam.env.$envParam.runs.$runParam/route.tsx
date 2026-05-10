@@ -115,7 +115,7 @@ import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectP
 
 const resizableSettings = {
   parent: {
-    autosaveId: "panel-run-parent-v2",
+    autosaveId: "panel-run-parent-v3",
     handleId: "parent-handle",
     main: {
       id: "run",
@@ -124,7 +124,7 @@ const resizableSettings = {
     inspector: {
       id: "inspector",
       default: "500px" as const,
-      min: "50px" as const,
+      min: "250px" as const,
     },
   },
   tree: {

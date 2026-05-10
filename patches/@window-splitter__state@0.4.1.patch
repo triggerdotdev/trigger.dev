@@ -1,5 +1,5 @@
 diff --git a/dist/commonjs/index.js b/dist/commonjs/index.js
-index acb542b1b71a7e808173d938d16f45a484334f94..dc9289461b761f8f0d5c72919f48f94e394addfd 100644
+index acb542b1b71a7e808173d938d16f45a484334f94..fd21cccca33c34fdd3563c279aefbd4bb54eef50 100644
 --- a/dist/commonjs/index.js
 +++ b/dist/commonjs/index.js
 @@ -107,6 +107,9 @@ function prepareSnapshot(snapshot) {
@@ -12,8 +12,47 @@ index acb542b1b71a7e808173d938d16f45a484334f94..dc9289461b761f8f0d5c72919f48f94e
          }
          else {
              item.size.value = new big_js_1.default(item.size.value);
+@@ -648,8 +651,12 @@ function updateLayout(context, dragEvent) {
+     }
+     const panelBeforeIsAboutToCollapse = panelBefore.currentValue.value.eq(getUnitPixelValue(context, panelBefore.min));
+     // If the panel was expanded and now is at it's min size, collapse it
++    // Skip auto-collapse-on-drag for controlled panels: the parent owns the
++    // `collapsed` prop and an empty/no-op handler would otherwise leave the
++    // state machine wedged with accumulating dragOvershoot.
+     if (!dragEvent.disregardCollapseBuffer &&
+         panelBefore.collapsible &&
++        !panelBefore.collapseIsControlled &&
+         panelBeforeIsAboutToCollapse) {
+         if (panelBefore.onCollapseChange?.current &&
+             panelBefore.collapseIsControlled &&
+@@ -693,7 +700,10 @@ function commitLayout(context) {
+     });
+     const staticWidth = getStaticWidth({ ...context, items: newItems });
+     newItems.forEach((item, index) => {
+-        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest) {
++        // Skip collapsible panels: they need to stay in pixel form so a fully
++        // collapsed (0px) state doesn't get floored back up to `min` by the
++        // CSS minmax() that buildTemplate emits for percent-typed panels.
++        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest || item.collapsible) {
+             return;
+         }
+         newItems[index] = {
+@@ -821,7 +831,12 @@ function clearLastKnownSize(items) {
+ function getDeltaForEvent(context, event) {
+     const panel = getPanelWithId(context, event.panelId);
+     if (event.type === "expandPanel") {
+-        return new big_js_1.default(panel.sizeBeforeCollapse ?? getUnitPixelValue(context, panel.min)).minus(panel.currentValue.value);
++        // Fall back to `default` before `min` so the first-ever expand of a
++        // panel that started life collapsed lands at its configured default
++        // size rather than getting stuck at `min`.
++        const defaultPx = panel.default ? getUnitPixelValue(context, panel.default) : undefined;
++        const target = panel.sizeBeforeCollapse ?? defaultPx ?? getUnitPixelValue(context, panel.min);
++        return new big_js_1.default(target).minus(panel.currentValue.value);
+     }
+     const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
+     return panel.currentValue.value.minus(collapsedSize);
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index 8891ac0141135a3a885bd704d9d443458c7a01bf..34cd7251f2298e7f9bfedfe4cadb797aa790b59a 100644
+index 8891ac0141135a3a885bd704d9d443458c7a01bf..80032b5a852c0117959808cff58b4cbf2b2eee11 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
 @@ -81,6 +81,9 @@ export function prepareSnapshot(snapshot) {
@@ -26,3 +65,42 @@ index 8891ac0141135a3a885bd704d9d443458c7a01bf..34cd7251f2298e7f9bfedfe4cadb797a
          }
          else {
              item.size.value = new Big(item.size.value);
+@@ -622,8 +625,12 @@ function updateLayout(context, dragEvent) {
+     }
+     const panelBeforeIsAboutToCollapse = panelBefore.currentValue.value.eq(getUnitPixelValue(context, panelBefore.min));
+     // If the panel was expanded and now is at it's min size, collapse it
++    // Skip auto-collapse-on-drag for controlled panels: the parent owns the
++    // `collapsed` prop and an empty/no-op handler would otherwise leave the
++    // state machine wedged with accumulating dragOvershoot.
+     if (!dragEvent.disregardCollapseBuffer &&
+         panelBefore.collapsible &&
++        !panelBefore.collapseIsControlled &&
+         panelBeforeIsAboutToCollapse) {
+         if (panelBefore.onCollapseChange?.current &&
+             panelBefore.collapseIsControlled &&
+@@ -667,7 +674,10 @@ function commitLayout(context) {
+     });
+     const staticWidth = getStaticWidth({ ...context, items: newItems });
+     newItems.forEach((item, index) => {
+-        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest) {
++        // Skip collapsible panels: they need to stay in pixel form so a fully
++        // collapsed (0px) state doesn't get floored back up to `min` by the
++        // CSS minmax() that buildTemplate emits for percent-typed panels.
++        if (item.type !== "panel" || item.collapsed || item.isStaticAtRest || item.collapsible) {
+             return;
+         }
+         newItems[index] = {
+@@ -795,7 +805,12 @@ function clearLastKnownSize(items) {
+ function getDeltaForEvent(context, event) {
+     const panel = getPanelWithId(context, event.panelId);
+     if (event.type === "expandPanel") {
+-        return new Big(panel.sizeBeforeCollapse ?? getUnitPixelValue(context, panel.min)).minus(panel.currentValue.value);
++        // Fall back to `default` before `min` so the first-ever expand of a
++        // panel that started life collapsed lands at its configured default
++        // size rather than getting stuck at `min`.
++        const defaultPx = panel.default ? getUnitPixelValue(context, panel.default) : undefined;
++        const target = panel.sizeBeforeCollapse ?? defaultPx ?? getUnitPixelValue(context, panel.min);
++        return new Big(target).minus(panel.currentValue.value);
+     }
+     const collapsedSize = getUnitPixelValue(context, panel.collapsedSize);
+     return panel.currentValue.value.minus(collapsedSize);

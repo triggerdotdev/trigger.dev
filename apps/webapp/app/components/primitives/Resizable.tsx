@@ -4,85 +4,15 @@ import React, { useRef } from "react";
 import { PanelGroup, Panel, PanelResizer } from "react-window-splitter";
 import { cn } from "~/utils/cn";
 
-const ResizablePanelGroup = ({
-  className,
-  autosaveId,
-  snapshot: snapshotProp,
-  ...props
-}: React.ComponentProps<typeof PanelGroup>) => {
-  return (
-    <PanelGroup
-      className={cn(
-        "flex w-full overflow-hidden data-[panel-group-direction=vertical]:flex-col",
-        className
-      )}
-      autosaveId={autosaveId}
-      snapshot={getSafeSnapshot(autosaveId, snapshotProp)}
-      {...props}
-    />
-  );
-};
-
-// react-window-splitter reads the persisted snapshot from localStorage during
-// render and feeds it straight into prepareSnapshot + the state machine. If the
-// value is corrupt (extension interference, JSON parse failure) or in a shape
-// the library can't safely consume on restore — notably items committed with
-// percent-typed currentValues, which trip a `panelHasSpace only works with
-// number values` invariant on the next expand — the panel locks at min size
-// with no working drag.
-//
-// We read the snapshot ourselves with try/catch + structural validation. On
-// failure we pass `true` (the library's sentinel for "snapshot already
-// resolved") so it skips its own localStorage read and falls back to defaults.
-// Pure read — safe to call on every render. PanelGroup captures via useState
-// on first render, so later calls are wasted work but never wrong.
-function getSafeSnapshot(
-  autosaveId: string | undefined,
-  ssrSnapshot: React.ComponentProps<typeof PanelGroup>["snapshot"]
-) {
-  if (typeof window === "undefined") return ssrSnapshot;
-  if (ssrSnapshot && isValidSnapshot(ssrSnapshot)) return ssrSnapshot;
-  if (!autosaveId) return undefined;
-
-  try {
-    const raw = window.localStorage.getItem(autosaveId);
-    if (!raw) return SNAPSHOT_RESOLVED;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isValidSnapshot(parsed)) return SNAPSHOT_RESOLVED;
-    return parsed as React.ComponentProps<typeof PanelGroup>["snapshot"];
-  } catch {
-    return SNAPSHOT_RESOLVED;
-  }
-}
-
-const SNAPSHOT_RESOLVED = true as unknown as React.ComponentProps<typeof PanelGroup>["snapshot"];
-
-function isValidSnapshot(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const obj = value as Record<string, unknown>;
-  if (!("status" in obj) || !("context" in obj)) return false;
-  const ctx = obj.context as Record<string, unknown> | null;
-  if (!ctx || typeof ctx !== "object" || !Array.isArray(ctx.items)) return false;
-
-  for (const item of ctx.items) {
-    if (!item || typeof item !== "object") return false;
-    const it = item as Record<string, unknown>;
-    if (it.type !== "panel") continue;
-    const cv = it.currentValue as Record<string, unknown> | null;
-    if (!cv || typeof cv !== "object" || cv.type !== "pixel") return false;
-    // value must parse as a finite number so prepareSnapshot's
-    // `new Big(value)` rehydration can't throw — guards against strings
-    // like "50%" or "" that satisfy typeof but break Big.
-    if (!isFiniteNumeric(cv.value)) return false;
-  }
-  return true;
-}
-
-function isFiniteNumeric(v: unknown): boolean {
-  if (typeof v === "number") return Number.isFinite(v);
-  if (typeof v === "string" && v.trim() !== "") return Number.isFinite(Number(v));
-  return false;
-}
+const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeof PanelGroup>) => (
+  <PanelGroup
+    className={cn(
+      "flex w-full overflow-hidden data-[panel-group-direction=vertical]:flex-col",
+      className
+    )}
+    {...props}
+  />
+);
 
 const ResizablePanel = Panel;
 
@@ -139,10 +69,14 @@ const ResizableHandle = ({
   </PanelResizer>
 );
 
-const RESIZABLE_PANEL_ANIMATION = {
-  easing: "ease-in-out" as const,
-  duration: 300,
-};
+// react-window-splitter drives the collapse animation through @react-spring/rafz,
+// which has timing/interaction issues with Firefox that produce visual glitches
+// (alternating frames, panels stuck at min, panelHasSpace invariant violations).
+// Disable the animation on Firefox; it works correctly in Chromium and Safari.
+const RESIZABLE_PANEL_ANIMATION =
+  typeof navigator !== "undefined" && /firefox/i.test(navigator.userAgent)
+    ? undefined
+    : ({ easing: "ease-in-out", duration: 300 } as const);
 
 const COLLAPSIBLE_HANDLE_CLASSNAME = "transition-opacity duration-200";
 
