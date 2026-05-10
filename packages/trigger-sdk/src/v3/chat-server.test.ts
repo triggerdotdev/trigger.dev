@@ -191,7 +191,7 @@ describe("chat.headStart (route handler)", () => {
         makeRequest({
           chatId: "chat-1",
           trigger: "submit-message",
-          messages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
         })
       )
     );
@@ -254,7 +254,10 @@ describe("chat.headStart (route handler)", () => {
         makeRequest({
           chatId: "chat-final",
           trigger: "submit-message",
-          messages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+          // Slim wire: head-start ships full history via `headStartMessages`
+          // (not `messages` / `message`). The route handler reads that field
+          // off the request body before invoking the customer's run().
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
         })
       )
     );
@@ -336,7 +339,7 @@ describe("chat.headStart (route handler)", () => {
         makeRequest({
           chatId: "chat-tool",
           trigger: "submit-message",
-          messages: [
+          headStartMessages: [
             { id: "m1", role: "user", parts: [{ type: "text", text: "weather in tokyo?" }] },
           ],
         })

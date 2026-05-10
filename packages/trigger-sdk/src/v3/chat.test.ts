@@ -569,6 +569,10 @@ describe("TriggerChatTransport", () => {
     });
 
     it("for submit-message, only the latest message is delivered to .in", async () => {
+      // Slim wire: each `.in/append` carries at most ONE new message in
+      // `payload.message` (singular). Even if the caller hands sendMessages
+      // an array of three, only the last element flows to the wire — the
+      // agent rebuilds prior history at run boot from snapshot + replay.
       let appendBody: any;
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -599,11 +603,16 @@ describe("TriggerChatTransport", () => {
       });
       await drainChunks(stream);
 
-      expect(appendBody.payload.messages).toHaveLength(1);
-      expect(appendBody.payload.messages[0].parts[0].text).toBe("third");
+      expect(appendBody.payload.message).toBeDefined();
+      expect(appendBody.payload.message.parts[0].text).toBe("third");
+      expect(appendBody.payload.messages).toBeUndefined();
     });
 
-    it("for regenerate-message, the full message array is delivered to .in", async () => {
+    it("for regenerate-message, no message is delivered to .in (server slices its own tail)", async () => {
+      // Slim wire: the regenerate trigger ships NO message — the agent
+      // trims the trailing assistant from its accumulator and re-runs from
+      // the prior user turn. The wire payload only carries the trigger
+      // discriminator + chatId + metadata.
       let appendBody: any;
       global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -630,7 +639,9 @@ describe("TriggerChatTransport", () => {
       });
       await drainChunks(stream);
 
-      expect(appendBody.payload.messages).toHaveLength(2);
+      expect(appendBody.payload.trigger).toBe("regenerate-message");
+      expect(appendBody.payload.message).toBeUndefined();
+      expect(appendBody.payload.messages).toBeUndefined();
     });
 
     it("merges transport-level clientData into per-call metadata (per-call wins)", async () => {
@@ -969,12 +980,18 @@ describe("TriggerChatTransport", () => {
       expect(requests.some((r) => isSessionStreamAppendUrl(r.url))).toBe(false);
       expect(requests.some((r) => isSessionOutSubscribeUrl(r.url))).toBe(false);
 
-      // Body shape: full wire payload — chatId, trigger, messageId, messages.
+      // Body shape: head-start wire payload. Full UIMessage history is
+      // shipped via `headStartMessages` (this is the one path that still
+      // ships full history — the route handler runs against the customer's
+      // own HTTP endpoint, not /in/append, so the 512 KiB cap doesn't
+      // apply). The `message` field is omitted on this path.
       const body = JSON.parse(endpointPosts[0]!.init!.body as string);
       expect(body.chatId).toBe("chat-handover-1");
       expect(body.trigger).toBe("submit-message");
       expect(body.messageId).toBe("m1");
-      expect(body.messages).toHaveLength(1);
+      expect(body.headStartMessages).toHaveLength(1);
+      expect(body.message).toBeUndefined();
+      expect(body.messages).toBeUndefined();
     });
 
     it("hydrates session state from response headers so subsequent turns bypass the endpoint", async () => {

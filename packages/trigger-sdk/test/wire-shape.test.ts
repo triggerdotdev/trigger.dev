@@ -231,7 +231,9 @@ describe("ChatInputChunk envelope", () => {
   it("supports `kind: \"handover\"` records (with partialAssistantMessage)", () => {
     const chunk: ChatInputChunk = {
       kind: "handover",
-      partialAssistantMessage: [{ type: "text", text: "partial" }],
+      partialAssistantMessage: [
+        { role: "assistant", content: [{ type: "text", text: "partial" }] },
+      ],
       messageId: "a-1",
       isFinal: false,
     };

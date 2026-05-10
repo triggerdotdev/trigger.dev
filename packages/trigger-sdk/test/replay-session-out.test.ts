@@ -177,8 +177,8 @@ describe("replaySessionOutTail", () => {
       ...textTurn("a-1", "previous-turn-finished"),
       // Trailing turn: starts a tool call but never resolves it.
       { type: "start", messageId: "a-2", messageMetadata: { role: "assistant" } } as UIMessageChunk,
-      { type: "tool-input-start", id: "tc-cut", toolName: "search" } as UIMessageChunk,
-      { type: "tool-input-delta", id: "tc-cut", delta: '{"q":"x"}' } as UIMessageChunk,
+      { type: "tool-input-start", toolCallId: "tc-cut", toolName: "search" } as UIMessageChunk,
+      { type: "tool-input-delta", toolCallId: "tc-cut", inputTextDelta: '{"q":"x"}' } as UIMessageChunk,
       // No tool-input-end, no tool-call, no finish → orphaned.
     ]);
 
@@ -205,7 +205,7 @@ describe("replaySessionOutTail", () => {
     stubReadRecordsWithChunks([
       ...textTurn("a-1", "complete"),
       { type: "start", messageId: "a-orphan", messageMetadata: { role: "assistant" } } as UIMessageChunk,
-      { type: "tool-input-start", id: "tc-orph", toolName: "search" } as UIMessageChunk,
+      { type: "tool-input-start", toolCallId: "tc-orph", toolName: "search" } as UIMessageChunk,
       // No tool-input-end, no tool-call, no finish.
     ]);
 
