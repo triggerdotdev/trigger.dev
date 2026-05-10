@@ -52,7 +52,6 @@ export type ApiAuthenticationResultSuccess = {
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
   environment: AuthenticatedEnvironment;
-  scopes?: string[];
   oneTimeUse?: boolean;
   realtime?: {
     skipColumns?: string[];
@@ -163,7 +162,6 @@ export async function authenticateApiKey(
         ok: true,
         ...result,
         environment: validationResults.environment,
-        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
       };
@@ -246,7 +244,6 @@ async function authenticateApiKeyWithFailure(
         ok: true,
         ...result,
         environment: validationResults.environment,
-        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
       };
