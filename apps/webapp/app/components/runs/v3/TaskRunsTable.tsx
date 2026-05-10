@@ -55,8 +55,10 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import type { TaskTriggerSource } from "@trigger.dev/database";
 
 type RunsTableProps = {
   total: number;
@@ -352,6 +354,10 @@ export function TaskRunsTable({
                 </TableCell>
                 <TableCell to={path}>
                   <span className="flex items-center gap-x-1">
+                    <TaskTriggerSourceIcon
+                      source={run.taskKind as TaskTriggerSource}
+                      className="size-3.5 flex-none"
+                    />
                     {run.taskIdentifier}
                     {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
                   </span>

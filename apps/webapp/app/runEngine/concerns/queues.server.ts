@@ -79,6 +79,7 @@ export class DefaultQueueManager implements QueueManager {
     let queueName: string;
     let lockedQueueId: string | undefined;
     let taskTtl: string | null | undefined;
+    let taskKind: string | undefined;
 
     // Determine queue name based on lockToVersion and provided options
     if (lockedBackgroundWorker) {
@@ -106,19 +107,26 @@ export class DefaultQueueManager implements QueueManager {
         queueName = specifiedQueue.name;
         lockedQueueId = specifiedQueue.id;
 
-        // Only fetch task for TTL if caller didn't provide a per-trigger TTL
-        if (request.body.options?.ttl === undefined) {
-          const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
-            where: {
-              workerId: lockedBackgroundWorker.id,
-              runtimeEnvironmentId: request.environment.id,
-              slug: request.taskId,
-            },
-            select: { ttl: true },
-          });
+        // Always fetch the task so we can resolve `triggerSource` (which
+        // becomes `taskKind` on annotations and replicates to ClickHouse).
+        // Without this, AGENT/SCHEDULED runs triggered with
+        // `lockToVersion` + a queue override would be annotated as
+        // STANDARD and disappear from the run-list "Source" filter.
+        // `ttl` is read from the same row but only used when the caller
+        // didn't specify a per-trigger TTL.
+        const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
+          where: {
+            workerId: lockedBackgroundWorker.id,
+            runtimeEnvironmentId: request.environment.id,
+            slug: request.taskId,
+          },
+          select: { ttl: true, triggerSource: true },
+        });
 
+        if (request.body.options?.ttl === undefined) {
           taskTtl = lockedTask?.ttl;
         }
+        taskKind = lockedTask?.triggerSource;
       } else {
         // No queue override - fetch task with queue to get both default queue and TTL
         const lockedTask = await this.replicaPrisma.backgroundWorkerTask.findFirst({
@@ -158,6 +166,7 @@ export class DefaultQueueManager implements QueueManager {
         // Use the task's default queue name
         queueName = lockedTask.queue.name;
         lockedQueueId = lockedTask.queue.id;
+        taskKind = lockedTask.triggerSource;
       }
     } else {
       // Task is not locked to a specific version, use regular logic
@@ -172,6 +181,7 @@ export class DefaultQueueManager implements QueueManager {
       const taskInfo = await this.getTaskQueueInfo(request);
       queueName = taskInfo.queueName;
       taskTtl = taskInfo.taskTtl;
+      taskKind = taskInfo.taskKind;
     }
 
     // Sanitize the final determined queue name once
@@ -188,12 +198,13 @@ export class DefaultQueueManager implements QueueManager {
       queueName,
       lockedQueueId,
       taskTtl,
+      taskKind,
     };
   }
 
   private async getTaskQueueInfo(
     request: TriggerTaskRequest
-  ): Promise<{ queueName: string; taskTtl?: string | null }> {
+  ): Promise<{ queueName: string; taskTtl?: string | null; taskKind?: string | undefined }> {
     const { taskId, environment, body } = request;
     const { queue } = body.options ?? {};
 
@@ -228,10 +239,10 @@ export class DefaultQueueManager implements QueueManager {
           runtimeEnvironmentId: environment.id,
           slug: taskId,
         },
-        select: { ttl: true },
+        select: { ttl: true, triggerSource: true },
       });
 
-      return { queueName: overriddenQueueName, taskTtl: task?.ttl };
+      return { queueName: overriddenQueueName, taskTtl: task?.ttl, taskKind: task?.triggerSource };
     }
 
     const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
@@ -261,10 +272,10 @@ export class DefaultQueueManager implements QueueManager {
         queueConfig: task.queueConfig,
       });
 
-      return { queueName: defaultQueueName, taskTtl: task.ttl };
+      return { queueName: defaultQueueName, taskTtl: task.ttl, taskKind: task.triggerSource };
     }
 
-    return { queueName: task.queue.name ?? defaultQueueName, taskTtl: task.ttl };
+    return { queueName: task.queue.name ?? defaultQueueName, taskTtl: task.ttl, taskKind: task.triggerSource };
   }
 
   async validateQueueLimits(
