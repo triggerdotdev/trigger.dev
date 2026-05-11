@@ -48,27 +48,25 @@ export function NotificationCard({
     setIsExpanded((v) => !v);
   };
 
-  const Wrapper = actionUrl ? "a" : "div";
-  const wrapperProps = actionUrl
-    ? {
-        href: actionUrl,
-        target: "_blank" as const,
-        rel: "noopener noreferrer" as const,
-        ...(onCardClick ? { onClick: onCardClick } : {}),
-      }
-    : {};
-
   return (
-    <Wrapper
-      {...wrapperProps}
-      className="group/card block overflow-hidden rounded border border-charcoal-650 bg-charcoal-700/50 no-underline shadow-lg"
-    >
+    <div className="group/card relative overflow-hidden rounded border border-charcoal-650 bg-charcoal-700/50 shadow-lg">
+      {actionUrl && (
+        <a
+          href={actionUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={title}
+          onClick={onCardClick}
+          className="absolute inset-0 z-10"
+        />
+      )}
+
       <div className="flex items-start gap-1 px-2.5 pt-2">
         <p className="flex-1 text-[13px] font-medium leading-normal text-text-bright">{title}</p>
         <button
           type="button"
           onClick={handleDismiss}
-          className="-mr-1 shrink-0 rounded p-0.5 text-text-dimmed opacity-0 transition group-hover/card:opacity-100 hover:bg-charcoal-700 hover:text-text-bright"
+          className="relative z-20 -mr-1 shrink-0 rounded p-0.5 text-text-dimmed opacity-0 transition group-hover/card:opacity-100 hover:bg-charcoal-700 hover:text-text-bright"
         >
           <XMarkIcon className="size-3.5" />
         </button>
@@ -84,7 +82,7 @@ export function NotificationCard({
           <button
             type="button"
             onClick={handleToggleExpand}
-            className="mt-0.5 text-xs text-indigo-400 hover:text-indigo-300"
+            className="relative z-20 mt-0.5 text-xs text-indigo-400 hover:text-indigo-300"
           >
             {isExpanded ? "Show less" : "Show more"}
           </button>
@@ -92,7 +90,7 @@ export function NotificationCard({
 
         {image && <img src={sanitizeImageUrl(image)} alt="" className="mt-1.5 rounded" />}
       </div>
-    </Wrapper>
+    </div>
   );
 }
 
@@ -106,7 +104,7 @@ function getMarkdownComponents(onLinkClick?: () => void) {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-indigo-400 underline transition-colors hover:text-indigo-300"
+        className="relative z-20 text-indigo-400 underline transition-colors hover:text-indigo-300"
         onClick={(e) => {
           e.stopPropagation();
           onLinkClick?.();
