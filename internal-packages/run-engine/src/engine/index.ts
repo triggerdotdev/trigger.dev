@@ -797,10 +797,6 @@ export class RunEngine {
           }
         } else {
           try {
-            if (taskRun.ttl) {
-              await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
-            }
-
             await this.enqueueSystem.enqueueRun({
               run: taskRun,
               env: environment,
@@ -812,7 +808,7 @@ export class RunEngine {
               enableFastPath,
             });
           } catch (enqueueError) {
-            this.logger.error("engine.trigger(): failed to schedule TTL or enqueue run", {
+            this.logger.error("engine.trigger(): failed to enqueue run", {
               runId: taskRun.id,
               friendlyId: taskRun.friendlyId,
               taskIdentifier: taskRun.taskIdentifier,
