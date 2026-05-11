@@ -1,4 +1,5 @@
 import Redis, { type RedisOptions } from "ioredis";
+import { defaultReconnectOnError } from "@internal/redis";
 import { env } from "~/env.server";
 
 const PRESENCE_KEY_PREFIX = "dev-presence:connection:";
@@ -7,7 +8,7 @@ export class DevPresence {
   private redis: Redis;
 
   constructor(options: RedisOptions) {
-    this.redis = new Redis(options);
+    this.redis = new Redis({ reconnectOnError: defaultReconnectOnError, ...options });
   }
 
   async isConnected(environmentId: string) {

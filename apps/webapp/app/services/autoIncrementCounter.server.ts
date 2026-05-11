@@ -1,4 +1,5 @@
 import Redis, { RedisOptions } from "ioredis";
+import { defaultReconnectOnError } from "@internal/redis";
 import { Prisma, PrismaClientOrTransaction, PrismaTransactionOptions, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -11,7 +12,7 @@ export class AutoIncrementCounter {
   private _redis: Redis;
 
   constructor(private options: AutoIncrementCounterOptions) {
-    this._redis = new Redis(options.redis);
+    this._redis = new Redis({ reconnectOnError: defaultReconnectOnError, ...options.redis });
   }
 
   async incrementInTransaction<T>(
