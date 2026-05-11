@@ -992,7 +992,9 @@ function NotificationForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label variant="small">Starts at (UTC)</Label>
+          <Label variant="small">
+            Starts at (UTC) {isEdit && <span className="text-red-400">*</span>}
+          </Label>
           <input
             name="startsAt"
             type="datetime-local"
@@ -1000,6 +1002,7 @@ function NotificationForm({
               n?.startsAt ? toDatetimeLocalUTC(new Date(n.startsAt)) : defaultStartsAt()
             }
             className="mt-1 block h-8 w-full rounded border border-charcoal-800 bg-charcoal-750 px-2 text-sm text-text-bright transition hover:border-charcoal-600 hover:bg-charcoal-650"
+            required={isEdit}
           />
         </div>
         <div>
