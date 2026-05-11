@@ -87,7 +87,7 @@ export function NotificationCard({
         <button
           type="button"
           onClick={handleDismiss}
-          className="relative z-20 -mr-1 shrink-0 rounded p-0.5 text-text-dimmed opacity-0 transition group-hover/card:opacity-100 hover:bg-charcoal-700 hover:text-text-bright"
+          className="relative z-20 -mr-1 shrink-0 rounded p-0.5 text-text-dimmed opacity-0 transition group-hover/card:opacity-100 hover:bg-charcoal-700 hover:text-text-bright focus-visible:opacity-100"
         >
           <XMarkIcon className="size-3.5" />
         </button>
