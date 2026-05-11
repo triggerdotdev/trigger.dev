@@ -19,6 +19,7 @@ export function runStatusFromError(
     case "TASK_INPUT_ERROR":
     case "TASK_OUTPUT_ERROR":
     case "TASK_MIDDLEWARE_ERROR":
+    case "TASK_RUN_UNCAUGHT_EXCEPTION":
       return "COMPLETED_WITH_ERRORS";
     case "TASK_RUN_CANCELLED":
       return "CANCELED";

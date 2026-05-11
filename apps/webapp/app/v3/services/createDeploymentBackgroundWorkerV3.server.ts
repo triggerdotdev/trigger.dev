@@ -1,5 +1,5 @@
 import { CreateBackgroundWorkerRequestBody, tryCatch } from "@trigger.dev/core/v3";
-import type { BackgroundWorker, Prisma } from "@trigger.dev/database";
+import type { BackgroundWorker } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
@@ -7,7 +7,11 @@ import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService } from "./baseService.server";
-import { createWorkerResources, syncDeclarativeSchedules } from "./createBackgroundWorker.server";
+import {
+  createWorkerResources,
+  stripBackgroundWorkerMetadataForStorage,
+  syncDeclarativeSchedules,
+} from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { projectPubSub } from "./projectPubSub.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -49,8 +53,7 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
           version: deployment.version,
           runtimeEnvironmentId: environment.id,
           projectId: environment.projectId,
-          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
-          metadata: body.metadata as Prisma.InputJsonValue,
+          metadata: stripBackgroundWorkerMetadataForStorage(body.metadata),
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,

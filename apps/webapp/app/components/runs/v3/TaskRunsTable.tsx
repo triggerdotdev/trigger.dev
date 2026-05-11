@@ -31,7 +31,7 @@ import {
   type NextRunListItem,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath,v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -102,7 +102,7 @@ export function TaskRunsTable({
   }
   const search = params.toString();
   /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
-  const tableStateParam = disableAdjacentRows ? '' : encodeURIComponent(search);
+  const tableStateParam = disableAdjacentRows ? "" : encodeURIComponent(search);
 
   const showCompute = isManagedCloud;
 
@@ -162,6 +162,7 @@ export function TaskRunsTable({
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell
+            disableTooltipHoverableContent
             tooltip={
               <div className="flex flex-col divide-y divide-grid-dimmed">
                 {filterableTaskRunStatuses.map((status) => (
@@ -185,6 +186,7 @@ export function TaskRunsTable({
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell
             colSpan={3}
+            disableTooltipHoverableContent
             tooltip={
               <div className="flex max-w-xs flex-col gap-4 p-1">
                 <div>
@@ -319,9 +321,16 @@ export function TaskRunsTable({
             if (tableStateParam) {
               searchParams.set("tableState", tableStateParam);
             }
-            const path = v3RunSpanPath(organization, project, run.environment, run, {
-              spanId: run.spanId,
-            }, searchParams);
+            const path = v3RunSpanPath(
+              organization,
+              project,
+              run.environment,
+              run,
+              {
+                spanId: run.spanId,
+              },
+              searchParams
+            );
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
@@ -427,7 +436,11 @@ export function TaskRunsTable({
                   </span>
                 </TableCell>
                 <TableCell to={path}>
-                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
+                  {run.isTest ? (
+                    <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
@@ -449,7 +462,7 @@ export function TaskRunsTable({
         {isLoading && (
           <TableBlankRow
             colSpan={15}
-            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
           </TableBlankRow>
@@ -592,7 +605,9 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
 
   const { tasks, from, to, ...otherFilters } = filters;
   const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
-  const testPath = singleTaskFromFilters ? v3TestTaskPath(organization, project, environment, {taskIdentifier: singleTaskFromFilters}) : v3TestPath(organization, project, environment);
+  const testPath = singleTaskFromFilters
+    ? v3TestTaskPath(organization, project, environment, { taskIdentifier: singleTaskFromFilters })
+    : v3TestPath(organization, project, environment);
 
   if (
     filters.tasks.length === 1 &&
@@ -645,11 +660,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
             Refresh
           </Button>
           <Paragraph>or</Paragraph>
-          <LinkButton
-            LeadingIcon={BeakerIcon}
-            variant="tertiary/medium"
-            to={testPath}
-          >
+          <LinkButton LeadingIcon={BeakerIcon} variant="tertiary/medium" to={testPath}>
             Run a test
           </LinkButton>
         </div>

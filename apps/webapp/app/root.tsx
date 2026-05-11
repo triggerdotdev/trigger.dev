@@ -58,9 +58,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     websiteId: env.KAPA_AI_WEBSITE_ID,
   };
 
+  const user = await getUser(request);
+
+  const headers = new Headers();
+  headers.append("Set-Cookie", await commitSession(session));
+
   return typedjson(
     {
-      user: await getUser(request),
+      user,
       toastMessage,
       posthogProjectKey,
       features,
@@ -70,7 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       kapa,
       timezone,
     },
-    { headers: { "Set-Cookie": await commitSession(session) } }
+    { headers }
   );
 };
 

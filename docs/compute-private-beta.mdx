@@ -14,6 +14,14 @@ hidden: true
 
 MicroVM compute is a new runtime for your tasks, designed for fast cold starts via boot snapshots. For most tasks the migration is transparent - the same task code runs unchanged.
 
+## What's new
+
+### May 1, 2026
+
+- **Cold starts are faster across all machine sizes.** Every preset starts faster, including `micro` and `small-1x` - there's no longer a cold-start penalty for picking a smaller machine.
+- **First runs after a deploy are faster on every preset.** Boot snapshot creation is significantly quicker across the board, so the cold path is consistently snappier.
+- **`large-1x` and `large-2x` no longer hard-fail.** They're still not recommended - cold-start performance trails the smaller presets and we're ironing out reliability issues.
+
 ## Getting access
 
 You can't opt in yourself. Once we've enabled the private beta for your org, the `us-east-1-next` region becomes available on the **Regions** page in the dashboard. If you'd like access, ping us on Slack.
@@ -48,14 +56,26 @@ Set `USE_COMPUTE_BETA=1` in the staging environment of the app that calls `trigg
 
 Open the **Regions** page in the dashboard and set `us-east-1-next` as the project-wide default. This applies to **all environments in the project**, so only do this on a project that is running staging traffic only.
 
-## Cold start expectations
+<Note>
+  Switching the default region doesn't move runs that are already in the queue - they stay in the previous region until they execute. To make a switch take effect for in-flight work, [cancel those runs](/bulk-actions) and re-trigger them after changing the default. This applies whenever you change regions, not just when moving on or off `us-east-1-next`.
+</Note>
+
+<Warning>
+  Setting `us-east-1-next` as your project default makes boot snapshot creation a required step at deploy time. Two things to expect:
+
+  - Deploys take a bit longer (up to ~30 seconds extra) while the snapshot is built.
+  - Deploys can fail if the snapshot step fails. This is by design - boot snapshot creation is what proves your deploy image can actually run on microVM compute. Retrying may succeed, but if it doesn't please switch your default region back for a quick unblock and reach out to us on Slack.
+</Warning>
+
+## Machine sizes
 
 A few things to be aware of during the beta:
 
-- **`small-1x` is the default and what we've optimized for.** Boot snapshots are precreated for `small-1x` only. Other machine sizes will have a slower first run after each deploy while we generate the snapshot - subsequent runs use it.
-- **Avoid `micro` during the beta.** Cold starts on `micro` are noticeably slower than other sizes.
+- **`small-1x` is the default and what we've optimized for.** Boot snapshots are precreated for `small-1x` only - other sizes generate the snapshot lazily on first run after a deploy.
+- **`large-1x` and `large-2x` aren't recommended yet.** They run, but cold-start times trail the smaller presets and we're still ironing out reliability issues. Stick to other machine types for now and expect rough edges if you do try the large sizes.
+- **All sizes are capped at 1GB of disk during the beta.** The [machine size table](/machines) lists 10GB as the target, but every preset is currently provisioned with 1GB regardless.
 
-We'll be shipping CLI and SDK changes during the beta to make cold start times more consistent across machine sizes. Compute-specific prereleases will be announced on this page as we go, and we'll also reach out on Slack.
+We'll continue shipping fixes, performance, and reliability improvements during the beta. Compute-specific prereleases will be announced on this page as we go, and we'll also reach out on Slack.
 
 ## Reporting issues
 

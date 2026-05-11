@@ -54,6 +54,18 @@ model User {
   /// Hash of the last used code to prevent replay attacks
   mfaLastUsedCode      String?
 
+  /// Maximum session lifetime in seconds for this user. Default = 1 year (Gregorian).
+  /// May be further restricted by Organization.maxSessionDuration on any of the user's orgs.
+  sessionDuration Int @default(31556952)
+
+  /// Absolute timestamp at which the user's current session must end. Written
+  /// at login (and any time the effective duration is recomputed) and shortened
+  /// when an admin lowers an org cap. Read on requireUser / getUser; null is
+  /// treated as "no enforced deadline" (legacy sessions from before this
+  /// shipped). Read-on-demand has zero per-request DB cost — the value
+  /// piggybacks on the User fetch that requireUser already does.
+  nextSessionEnd DateTime?
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
@@ -220,6 +232,11 @@ model Organization {
 
   maximumProjectCount Int @default(25)
 
+  /// Maximum session lifetime in seconds for members of this organization.
+  /// When set, caps each member's User.sessionDuration. The most restrictive cap across
+  /// all of a user's orgs (excluding nulls) wins.
+  maxSessionDuration Int?
+
   projects                 Project[]
   members                  OrgMember[]
   invites                  OrgMemberInvite[]
@@ -234,6 +251,13 @@ model Organization {
 
   platformNotifications PlatformNotification[]
   errorGroupStates      ErrorGroupState[]
+
+  /// S2 basin that holds this org's realtime streams. Null until the
+  /// per-org basin has been provisioned (OSS / s2-lite installs leave
+  /// it null forever; reads fall back to the global basin env var).
+  /// Set once at provisioning time; retention is reconfigured in-place
+  /// when the org's plan changes.
+  streamBasinName String?
 }
 
 model OrgMember {
@@ -741,6 +765,12 @@ model Session {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// S2 basin where this session's stream pair lives. Stamped at create
+  /// time from `Organization.streamBasinName` so reads can resolve the
+  /// basin without joining org. Null when the org has no per-org basin
+  /// (OSS, or pre-backfill); reads fall back to the global basin.
+  streamBasinName String?
+
   runs SessionRun[]
 
   /// Idempotency: `(env, externalId)` uniquely identifies a session.
@@ -975,6 +1005,11 @@ model TaskRun {
   realtimeStreamsVersion String   @default("v1")
   /// Store the stream keys that are being used by the run
   realtimeStreams        String[] @default([])
+  /// S2 basin where this run's realtime streams live. Stamped at create
+  /// time from `Organization.streamBasinName` so reads can resolve the
+  /// basin without joining org. Null when the org has no per-org basin
+  /// (OSS, or pre-backfill); reads fall back to the global basin.
+  streamBasinName        String?
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
@@ -2128,6 +2163,7 @@ model TaskSchedule {
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]
 
+  /// @deprecated stop writing 2026-04-30; reads moved out of code (UI now derives from cron's previous slot). Drop in follow-up.
   lastRunTriggeredAt DateTime?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2173,7 +2209,9 @@ model TaskScheduleInstance {
 
   active Boolean @default(true)
 
+  /// @deprecated stop writing 2026-04-30; engine derives from cron + exactScheduleTime. Drop in follow-up.
   lastScheduledTimestamp DateTime?
+  /// @deprecated stop writing 2026-04-30; engine derives from cron + now(). Drop in follow-up.
   nextScheduledTimestamp DateTime?
 
   //you can only have a schedule attached to each environment once

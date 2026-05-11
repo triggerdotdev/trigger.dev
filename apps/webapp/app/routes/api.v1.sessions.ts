@@ -96,13 +96,39 @@ const { action } = createActionApiRoute(
     body: CreateSessionRequestBody,
     method: "POST",
     maxContentLength: 1024 * 32, // 32KB — metadata is the only thing that grows
-    // Secret-key only. Customer's server (typically wrapping
+    // Customer's server (typically wrapping
     // `chat.createStartSessionAction`) owns session creation so any
     // authorization decision (per-user/plan/quota) sits server-side
     // alongside whatever DB write the customer pairs with the create.
     // The session-scoped PAT returned in the response body is what the
     // browser uses thereafter against `.in/append`, `.out` SSE,
     // `end-and-continue`, etc.
+    //
+    // JWT is allowed when the caller holds an explicit `write:sessions` /
+    // `admin` super-scope plus a `tasks:<taskIdentifier>` scope — gates
+    // server-side surfaces like the cli-v3 MCP from creating sessions on
+    // behalf of the developer without weakening the browser model.
+    allowJWT: true,
+    authorization: {
+      // Per-task scoping via `body.taskIdentifier` (action-route resource
+      // callbacks receive the parsed body as the 4th arg — see
+      // `apiBuilder.server.ts:710`). A JWT scoped only to `write:tasks:foo`
+      // can only create sessions whose `taskIdentifier` is `"foo"`. Broad
+      // callers (cli-v3 MCP, customer servers wrapping their own auth)
+      // hold the `write:sessions` super-scope and bypass the per-task
+      // check entirely.
+      //
+      // Note: the auth check is OR across resource types, so listing both
+      // `sessions` and `tasks` here would let a `write:sessions`-scoped
+      // JWT pass for *any* task — defeating the per-task narrowing. Keep
+      // it task-only and let the super-scope path handle session-level
+      // wildcard access.
+      action: "write",
+      resource: (_params, _searchParams, _headers, body) => ({
+        tasks: body.taskIdentifier,
+      }),
+      superScopes: ["write:sessions", "admin"],
+    },
     corsStrategy: "all",
   },
   async ({ authentication, body }) => {
@@ -141,6 +167,7 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            streamBasinName: authentication.environment.organization.streamBasinName,
           },
           update: { triggerConfig: triggerConfigJson },
         });
@@ -160,6 +187,7 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            streamBasinName: authentication.environment.organization.streamBasinName,
           },
         });
       }

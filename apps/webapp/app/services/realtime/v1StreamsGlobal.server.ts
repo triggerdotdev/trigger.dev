@@ -29,41 +29,69 @@ function initializeRedisRealtimeStreams() {
 
 export const v1RealtimeStreams = singleton("realtimeStreams", initializeRedisRealtimeStreams);
 
+/**
+ * Resolve a stream's basin. Precedence: run → session → org → global env.
+ * Pre-migration rows have `streamBasinName: null` and fall through to
+ * the global basin (where their streams actually live), so only pass
+ * `organization` when no run/session row exists at all — otherwise a
+ * null column would short-circuit to the org's *current* basin.
+ */
+export type StreamBasinContext = {
+  run?: { streamBasinName: string | null } | null;
+  session?: { streamBasinName: string | null } | null;
+  organization?: { streamBasinName: string | null } | null;
+};
+
+export function resolveStreamBasin(ctx: StreamBasinContext): string | undefined {
+  return (
+    ctx.run?.streamBasinName ??
+    ctx.session?.streamBasinName ??
+    ctx.organization?.streamBasinName ??
+    env.REALTIME_STREAMS_S2_BASIN ??
+    undefined
+  );
+}
+
 export function getRealtimeStreamInstance(
   environment: AuthenticatedEnvironment,
-  streamVersion: string
+  streamVersion: string,
+  basinContext?: StreamBasinContext
 ): StreamIngestor & StreamResponder {
   if (streamVersion === "v1") {
     return v1RealtimeStreams;
-  } else {
-    if (
-      env.REALTIME_STREAMS_S2_BASIN &&
-      (env.REALTIME_STREAMS_S2_ACCESS_TOKEN ||
-        env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
-    ) {
-      return new S2RealtimeStreams({
-        basin: env.REALTIME_STREAMS_S2_BASIN,
-        accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
-        endpoint: env.REALTIME_STREAMS_S2_ENDPOINT,
-        skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
-        streamPrefix: [
-          "org",
-          environment.organization.id,
-          "env",
-          environment.slug,
-          environment.id,
-        ].join("/"),
-        logLevel: env.REALTIME_STREAMS_S2_LOG_LEVEL,
-        flushIntervalMs: env.REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS,
-        maxRetries: env.REALTIME_STREAMS_S2_MAX_RETRIES,
-        s2WaitSeconds: env.REALTIME_STREAMS_S2_WAIT_SECONDS,
-        accessTokenExpirationInMs: env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS,
-        cache: s2RealtimeStreamsCache,
-      });
-    }
-
-    throw new Error("Realtime streams v2 is required for this run but S2 configuration is missing");
   }
+
+  const resolvedBasin = resolveStreamBasin(basinContext ?? {});
+  if (
+    resolvedBasin &&
+    (env.REALTIME_STREAMS_S2_ACCESS_TOKEN || env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true")
+  ) {
+    return new S2RealtimeStreams({
+      basin: resolvedBasin,
+      accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
+      endpoint: env.REALTIME_STREAMS_S2_ENDPOINT,
+      skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
+      streamPrefix: streamPrefixFor(environment, resolvedBasin),
+      logLevel: env.REALTIME_STREAMS_S2_LOG_LEVEL,
+      flushIntervalMs: env.REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS,
+      maxRetries: env.REALTIME_STREAMS_S2_MAX_RETRIES,
+      s2WaitSeconds: env.REALTIME_STREAMS_S2_WAIT_SECONDS,
+      accessTokenExpirationInMs: env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS,
+      cache: s2RealtimeStreamsCache,
+    });
+  }
+
+  throw new Error("Realtime streams v2 is required for this run but S2 configuration is missing");
+}
+
+// Shared basin needs `org/{orgId}` to namespace; per-org basin already
+// isolates so the segment drops.
+function streamPrefixFor(environment: AuthenticatedEnvironment, basin: string): string {
+  const isPerOrgBasin = basin !== env.REALTIME_STREAMS_S2_BASIN;
+  const segments = isPerOrgBasin
+    ? ["env", environment.slug, environment.id]
+    : ["org", environment.organization.id, "env", environment.slug, environment.id];
+  return segments.join("/");
 }
 
 export function determineRealtimeStreamsVersion(streamVersion?: string): "v1" | "v2" {

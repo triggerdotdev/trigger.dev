@@ -1,11 +1,12 @@
 import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
 import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
-import type { BackgroundWorker, Prisma, WorkerDeployment } from "@trigger.dev/database";
+import type { BackgroundWorker, WorkerDeployment } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import {
   createBackgroundFiles,
   createWorkerResources,
+  stripBackgroundWorkerMetadataForStorage,
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
@@ -65,8 +66,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           version: deployment.version,
           runtimeEnvironmentId: environment.id,
           projectId: environment.projectId,
-          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
-          metadata: body.metadata as Prisma.InputJsonValue,
+          metadata: stripBackgroundWorkerMetadataForStorage(body.metadata),
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
@@ -139,14 +139,26 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       );
 
       if (schedulesError) {
+        if (schedulesError instanceof ServiceValidationError) {
+          // Customer schedule config (typically invalid cron). Surface to
+          // client via the rethrow; system returns gracefully.
+          logger.warn("Error syncing declarative schedules", {
+            error: schedulesError.message,
+          });
+
+          await this.#failBackgroundWorkerDeployment(deployment, schedulesError);
+          throw schedulesError;
+        }
+
+        // Wrapping the underlying error into a ServiceValidationError below
+        // would otherwise hide it once the SDK-level filter drops SVEs; log at
+        // error so the underlying cause stays visible. Mirrors the
+        // waitpointCompletionPacket.server.ts pattern from dac9c83bd.
         logger.error("Error syncing declarative schedules", {
           error: schedulesError,
         });
 
-        const serviceError =
-          schedulesError instanceof ServiceValidationError
-            ? schedulesError
-            : new ServiceValidationError("Error syncing declarative schedules");
+        const serviceError = new ServiceValidationError("Error syncing declarative schedules");
 
         await this.#failBackgroundWorkerDeployment(deployment, serviceError);
 

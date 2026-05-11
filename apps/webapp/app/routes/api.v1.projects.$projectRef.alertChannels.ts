@@ -5,6 +5,7 @@ import {
   ApiAlertChannelPresenter,
   ApiCreateAlertChannel,
 } from "~/presenters/v3/ApiAlertChannelPresenter.server";
+import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChannel.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -88,9 +89,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: 422 });
     }
 
-    return json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 }
-    );
+    logger.error("Failed to create alert channel", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

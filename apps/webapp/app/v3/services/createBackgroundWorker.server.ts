@@ -29,6 +29,32 @@ import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
 import { scheduleEngine } from "../scheduleEngine.server";
 
+/**
+ * Strip BackgroundWorkerMetadata down to the slice that's actually read after
+ * storage. Everything else is duplicated to dedicated columns/tables
+ * (BackgroundWorker.{contentHash,cliVersion,sdkVersion,runtime,runtimeVersion},
+ * BackgroundWorkerTask, BackgroundWorkerFile, TaskQueue, Prompt). Today the
+ * only post-write reader is changeCurrentDeployment.server.ts, which feeds
+ * tasks[].schedule into syncDeclarativeSchedules. packageVersion, contentHash,
+ * and tasks[].filePath are kept solely to satisfy BackgroundWorkerMetadata's
+ * required fields when the column is parsed back.
+ */
+export function stripBackgroundWorkerMetadataForStorage(
+  metadata: BackgroundWorkerMetadata
+): Prisma.InputJsonValue {
+  return {
+    packageVersion: metadata.packageVersion,
+    contentHash: metadata.contentHash,
+    tasks: metadata.tasks
+      .filter((t) => t.schedule)
+      .map((t) => ({
+        id: t.id,
+        filePath: t.filePath,
+        schedule: t.schedule,
+      })),
+  };
+}
+
 export class CreateBackgroundWorkerService extends BaseService {
   public async call(
     projectRef: string,
@@ -79,8 +105,7 @@ export class CreateBackgroundWorkerService extends BaseService {
           version: nextVersion,
           runtimeEnvironmentId: environment.id,
           projectId: project.id,
-          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
-          metadata: body.metadata as Prisma.InputJsonValue,
+          metadata: stripBackgroundWorkerMetadataForStorage(body.metadata),
           contentHash: body.metadata.contentHash,
           cliVersion: body.metadata.cliPackageVersion,
           sdkVersion: body.metadata.packageVersion,
@@ -146,15 +171,26 @@ export class CreateBackgroundWorkerService extends BaseService {
       );
 
       if (schedulesError) {
+        if (schedulesError instanceof ServiceValidationError) {
+          // Customer schedule config (typically invalid cron). Surface to
+          // client via the rethrow; system returns gracefully.
+          logger.warn("Error syncing declarative schedules", {
+            error: schedulesError.message,
+            backgroundWorker,
+            environment,
+          });
+          throw schedulesError;
+        }
+
+        // Wrapping the underlying error into a ServiceValidationError below
+        // would otherwise hide it once the SDK-level filter drops SVEs; log at
+        // error so the underlying cause stays visible. Mirrors the
+        // waitpointCompletionPacket.server.ts pattern from dac9c83bd.
         logger.error("Error syncing declarative schedules", {
           error: schedulesError,
           backgroundWorker,
           environment,
         });
-
-        if (schedulesError instanceof ServiceValidationError) {
-          throw schedulesError;
-        }
 
         throw new ServiceValidationError("Error syncing declarative schedules");
       }

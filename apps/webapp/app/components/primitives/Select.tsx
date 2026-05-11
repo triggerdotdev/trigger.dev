@@ -104,6 +104,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   open?: boolean;
   setOpen?: (open: boolean) => void;
   shortcut?: ShortcutDefinition;
+  tooltipTitle?: string;
   allowItemShortcuts?: boolean;
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
@@ -127,6 +128,7 @@ export function Select<TValue extends string | string[], TItem>({
   open,
   setOpen,
   shortcut,
+  tooltipTitle,
   allowItemShortcuts = true,
   disabled,
   clearSearchOnSelection = true,
@@ -206,6 +208,7 @@ export function Select<TValue extends string | string[], TItem>({
         text={text}
         placeholder={placeholder}
         shortcut={shortcut}
+        tooltipTitle={tooltipTitle}
         disabled={disabled}
         dropdownIcon={dropdownIcon}
         {...props}
@@ -354,7 +357,7 @@ export function SelectTrigger({
       </Ariakit.TooltipAnchor>
       {showTooltip && (
         <Ariakit.Tooltip
-          disabled={shortcut === undefined}
+          disabled={!tooltipTitle && !shortcut}
           className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
         >
           <div className="flex items-center gap-2">

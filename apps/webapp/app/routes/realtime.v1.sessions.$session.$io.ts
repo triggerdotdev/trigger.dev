@@ -59,7 +59,13 @@ const { action } = createActionApiRoute(
       });
     }
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    // No-row form: resolve via the org so the stream initialised here
+    // matches what later appends/subscribes will land on once the row
+    // is created.
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session: maybeSession,
+      organization: maybeSession ? null : authentication.environment.organization,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return new Response("Session channels require the S2 realtime backend", {
@@ -122,7 +128,11 @@ const loader = createLoaderApiRoute(
     },
   },
   async ({ params, request, authentication, resource }) => {
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    // Same no-row fallback as PUT above.
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session: resource.row,
+      organization: resource.row ? null : authentication.environment.organization,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return new Response("Session channels require the S2 realtime backend", {

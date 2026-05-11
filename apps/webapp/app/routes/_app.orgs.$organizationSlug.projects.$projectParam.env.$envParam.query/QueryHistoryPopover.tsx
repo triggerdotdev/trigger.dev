@@ -5,7 +5,6 @@ import { Popover, PopoverTrigger } from "~/components/primitives/Popover";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import type { QueryHistoryItem } from "~/presenters/v3/QueryPresenter.server";
 import { timeFilterRenderValues } from "~/components/runs/v3/SharedFilters";
-import { ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { cn } from "~/utils/cn";
 
 const SQL_KEYWORDS = [
@@ -97,8 +96,9 @@ export function QueryHistoryPopover({
           variant="secondary/small"
           LeadingIcon={ClockRotateLeftIcon}
           leadingIconClassName="-mr-1.5"
-          TrailingIcon={ChevronUpDownIcon}
           disabled={history.length === 0}
+          tooltip="Query history"
+          shortcut={{ key: "h" }}
         >
           History
         </Button>

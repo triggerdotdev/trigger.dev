@@ -61,10 +61,16 @@ const { action, loader } = createActionApiRoute(
     });
 
     if (!queryResult.success) {
-      const message =
-        queryResult.error instanceof QueryError
-          ? queryResult.error.message
-          : "An unexpected error occurred while executing the query.";
+      // QueryError surfaces customer SQL problems (invalid syntax,
+      // unsupported construct). Returned to the caller as 400; system
+      // handles it gracefully, no alert needed.
+      if (queryResult.error instanceof QueryError) {
+        logger.warn("Query API error", {
+          error: queryResult.error.message,
+          query,
+        });
+        return json({ error: queryResult.error.message }, { status: 400 });
+      }
 
       logger.error("Query API error", {
         error: queryResult.error,
@@ -72,8 +78,8 @@ const { action, loader } = createActionApiRoute(
       });
 
       return json(
-        { error: message },
-        { status: queryResult.error instanceof QueryError ? 400 : 500 }
+        { error: "An unexpected error occurred while executing the query." },
+        { status: 500 }
       );
     }
 

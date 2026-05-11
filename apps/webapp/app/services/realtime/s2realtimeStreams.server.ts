@@ -464,7 +464,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       return this.s2IssueAccessToken(id);
     }
 
-    const result = await this.cache.accessToken.swr(this.streamPrefix, async () => {
+    // Cache key includes basin so per-org basins never collide on
+    // cached tokens. `${basin}:${prefix}` is unique per (org-basin, env).
+    const cacheKey = `${this.basin}:${this.streamPrefix}`;
+    const result = await this.cache.accessToken.swr(cacheKey, async () => {
       return this.s2IssueAccessToken(id);
     });
 

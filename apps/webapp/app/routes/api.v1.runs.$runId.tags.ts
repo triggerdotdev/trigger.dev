@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -85,9 +86,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
   } catch (error) {
-    return json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 }
-    );
+    logger.error("Failed to add run tags", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

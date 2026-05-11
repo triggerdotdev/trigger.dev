@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiBatchResultsPresenter } from "~/presenters/v3/ApiBatchResultsPresenter.server";
 import { ApiRunResultPresenter } from "~/presenters/v3/ApiRunResultPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   /* This is the batch friendly ID */
@@ -36,10 +37,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     return json(result);
   } catch (error) {
-    if (error instanceof Error) {
-      return json({ error: error.message }, { status: 500 });
-    } else {
-      return json({ error: JSON.stringify(error) }, { status: 500 });
-    }
+    logger.error("Failed to load batch results", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

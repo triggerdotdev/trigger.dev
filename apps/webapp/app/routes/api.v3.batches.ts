@@ -172,6 +172,18 @@ const { action, loader } = createActionApiRoute(
         );
       }
 
+      // Customer-facing validation/quota failures (invalid batch shape,
+      // entitlements exhausted). The handler returns 422 with the message;
+      // system handles it gracefully, no alert needed.
+      if (error instanceof ServiceValidationError) {
+        logger.warn("Create batch error", { error: error.message });
+        return json({ error: error.message }, { status: error.status ?? 422 });
+      }
+      if (error instanceof OutOfEntitlementError) {
+        logger.warn("Create batch error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+
       logger.error("Create batch error", {
         error: {
           message: (error as Error).message,
@@ -179,11 +191,7 @@ const { action, loader } = createActionApiRoute(
         },
       });
 
-      if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof OutOfEntitlementError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
+      if (error instanceof Error) {
         return json(
           { error: error.message },
           { status: 500, headers: { "x-should-retry": "false" } }

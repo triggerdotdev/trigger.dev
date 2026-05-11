@@ -87,7 +87,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const realtimeStream = getRealtimeStreamInstance(
     run.runtimeEnvironment,
-    run.realtimeStreamsVersion
+    run.realtimeStreamsVersion,
+    { run }
   );
 
   return realtimeStream.streamResponse(request, run.friendlyId, streamKey, getRequestAbortSignal(), {
