@@ -1,0 +1,106 @@
+# Durable Execution Lifecycle in Trigger.dev v3
+
+Understanding the Durable Execution lifecycle is critical for building resilient, long-running distributed systems. In Trigger.dev v3, tasks are not just executed; their state is managed across a complex lifecycle that allows them to pause, yield resources, and resume exactly where they left off.
+
+Below is the state machine detailing how a task transitions between TaskRunStatus (the high-level run state) and TaskRunExecutionStatus (the low-level execution state), with a specific focus on the Suspension Loop.
+
+## State Diagram: The Suspension Loop
+
+```mermaid
+stateDiagram-v2
+ direction TB
+
+ %% Initial States
+ [*] --> PENDING : Task Triggered
+ PENDING --> DEQUEUED : Worker Picks Up Task
+
+ %% Execution Block
+ state "Active Execution Phase" as ActivePhase {
+ DEQUEUED --> EXECUTING : Start / Restore Attempt
+ 
+ %% The Suspension Loop
+ state "The Suspension Loop" as SuspensionLoop {
+ direction LR
+ EXECUTING --> SUSPENDED : Waitpoint Reached\n(Create Checkpoint)
+ SUSPENDED --> WAITING_TO_RESUME : Task Paused\n(Resources Freed)
+ WAITING_TO_RESUME --> DEQUEUED : Waitpoint Resolved\n(Ready to Resume)
+ }
+ }
+
+ %% Terminal States
+ EXECUTING --> COMPLETED_SUCCESSFULLY : Task Finishes Cleanly
+ EXECUTING --> COMPLETED_WITH_ERRORS : Task Fails / Throws
+ EXECUTING --> RETRYING_AFTER_FAILURE : Task Fails (Retry Scheduled)
+ 
+ RETRYING_AFTER_FAILURE --> DEQUEUED : Retry Backoff Complete
+
+ COMPLETED_SUCCESSFULLY --> [*]
+ COMPLETED_WITH_ERRORS --> [*]
+
+ classDef highlight fill:#f9f,stroke:#333,stroke-width:2px;
+ class SuspensionLoop highlight
+
+The Suspension Loop Explained
+
+The Suspension Loop (EXECUTING -> SUSPENDED -> WAITING_TO_RESUME -> DEQUEUED) is
+the heart of Trigger.dev's durable execution model.
+
+When a running task (EXECUTING) encounters an asynchronous operation that
+requires waiting (a "Waitpoint"), the engine does not block the thread or keep
+the server running. Instead:
+
+1.  Suspend: The execution status transitions to SUSPENDED.
+2.  Checkpoint: The engine takes a snapshot of the current execution state
+    (memory, call stack, etc.).
+3.  Wait: The run status transitions to WAITING_TO_RESUME, and the worker
+    process is terminated or reassigned.
+4.  Resume: Once the wait condition is met, the task is pushed back to the queue
+    (DEQUEUED), a worker picks it up, restores the checkpoint, and execution
+    continues exactly where it left off.
+
+The Role of WaitpointType
+
+A task enters the Suspension Loop by hitting a Waitpoint. The engine evaluates
+the WaitpointType to determine the exact logic required to resolve the wait
+state and trigger the resume logic:
+
+  - RUN: The task is waiting for a single child task to complete. The
+    coordinator monitors the child's TaskRunStatus. Once the child reaches a
+    terminal state (e.g., COMPLETED_SUCCESSFULLY), the parent task is queued for
+    resumption.
+  - BATCH: Similar to RUN, but the task is waiting for a collection (batch) of
+    child tasks. The resume logic is only triggered when all tasks in the batch
+    have resolved.
+  - DATETIME: The task is sleeping or delaying execution until a specific
+    timestamp (e.g., await delay("1 hour")). The engine's scheduler sets a timer
+    and triggers the resume logic once the clock passes the specified
+    completedAfter datetime.
+  - MANUAL: The task is paused indefinitely pending an external callback or
+    manual intervention (e.g., waiting for a human to approve a workflow via an
+    API call). The resume logic is triggered via an explicit API request
+    containing the required idempotency key or attempt ID.
+
+CheckpointType and Infrastructure Cost-Saving
+
+When a task is suspended, the engine must serialize its state. This is defined
+by the CheckpointType (DOCKER, KUBERNETES, or COMPUTE).
+
+Why is this critical for cost-saving?
+
+In traditional serverless or worker-based architectures, if a task needs to wait
+for 3 days (e.g., a drip email campaign), the compute instance must remain
+active, consuming CPU and memory. You pay for 72 hours of idle compute time.
+
+With Trigger.dev's Checkpointing:
+
+1.  State Serialization: Using container checkpointing technologies (like CRIU
+    for DOCKER/KUBERNETES), the exact memory footprint of the Node.js process is
+    frozen and saved to persistent storage.
+2.  Zero-Scale: The underlying container or pod is completely destroyed. CPU and
+    Memory usage drops to zero.
+3.  Cost Efficiency: You are only billed for the milliseconds the task is
+    actively EXECUTING. During the WAITING_TO_RESUME phase, you incur zero
+    compute costs, regardless of whether the wait is 5 minutes or 5 months.
+4.  Instant Restoration: When the task resumes, the container is re-provisioned,
+    and the memory state is injected back in. The code continues executing the
+    next line as if it never went to sleep.
