@@ -3,23 +3,6 @@ import { useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "~/utils/cn";
 
-function sanitizeActionUrl(url?: string): string | undefined {
-  if (!url) return undefined;
-  const trimmed = url.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    const parsed = new URL(trimmed, window.location.origin);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return parsed.toString();
-    }
-  } catch {
-    return undefined;
-  }
-
-  return undefined;
-}
-
 export function NotificationCard({
   title,
   description,
@@ -40,7 +23,6 @@ export function NotificationCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const descriptionRef = useRef<HTMLDivElement>(null);
-  const safeActionUrl = sanitizeActionUrl(actionUrl);
 
   useLayoutEffect(() => {
     const el = descriptionRef.current;
