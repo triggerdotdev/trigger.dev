@@ -237,11 +237,10 @@ function EmptyState({ isUsingPlugin }: { isUsingPlugin: boolean }) {
   if (!isUsingPlugin) {
     return (
       <div className="flex flex-col items-center gap-2 p-8 text-center">
-        <Header3>Roles aren't available in this deployment.</Header3>
+        <Header3>Roles aren't available in this self-hosted deployment.</Header3>
         <Paragraph variant="small" className="text-text-dimmed">
-          Self-hosted Trigger.dev uses a simplified permission model where every member of an
-          organization has full access. Role-based access control is part of Trigger.dev Cloud
-          (Pro plan and above).
+          All members have full access. Role-Based Access Controls are available in Trigger.dev
+          Cloud or with an enterprise self-hosted license.
         </Paragraph>
       </div>
     );
