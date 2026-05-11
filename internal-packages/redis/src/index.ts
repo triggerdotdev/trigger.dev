@@ -9,6 +9,12 @@ export { Redis, type Callback, type RedisOptions, type Result, type RedisCommand
  * reply errors to caller code over a healthy TCP/TLS connection (the
  * client keeps talking to a node whose role swapped underneath it).
  *
+ * UNBLOCKED is the BLPOP-shaped case: the Redis primary forcibly
+ * unblocks any blocking command on a connection whose node is about
+ * to be demoted, returning an UNBLOCKED reply. Surfaced 65 times on
+ * engine/v1/worker-actions/dequeue at the cutover instant during the
+ * TRI-8873 test-cloud scale-up dry-run.
+ *
  * Returning 2 tells ioredis to disconnect, reconnect, and retry the
  * command that triggered the error. After reconnect, DNS / SG routing
  * should land on a writable primary.
@@ -18,7 +24,13 @@ export { Redis, type Callback, type RedisOptions, type Result, type RedisCommand
  */
 export function defaultReconnectOnError(err: Error): boolean | 1 | 2 {
   const msg = err.message ?? "";
-  if (msg.startsWith("READONLY") || msg.startsWith("LOADING")) return 2;
+  if (
+    msg.startsWith("READONLY") ||
+    msg.startsWith("LOADING") ||
+    msg.startsWith("UNBLOCKED")
+  ) {
+    return 2;
+  }
   return false;
 }
 
