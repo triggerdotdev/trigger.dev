@@ -1,5 +1,6 @@
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import Redis, { RedisOptions } from "ioredis";
+import { defaultReconnectOnError } from "@internal/redis";
 import { env } from "~/env.server";
 import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
 
@@ -35,6 +36,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
   private get sharedRedis(): Redis {
     if (!this._sharedRedis) {
       this._sharedRedis = new Redis({
+        reconnectOnError: defaultReconnectOnError,
         ...this.options.redis,
         connectionName: "realtime:shared",
       });
@@ -56,7 +58,11 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
     signal: AbortSignal,
     options?: StreamResponseOptions
   ): Promise<Response> {
-    const redis = new Redis({ ...this.options.redis, connectionName: "realtime:streamResponse" });
+    const redis = new Redis({
+      reconnectOnError: defaultReconnectOnError,
+      ...this.options.redis,
+      connectionName: "realtime:streamResponse",
+    });
     const streamKey = `stream:${runId}:${streamId}`;
     let isCleanedUp = false;
 

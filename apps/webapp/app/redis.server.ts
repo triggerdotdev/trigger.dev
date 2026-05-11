@@ -1,4 +1,5 @@
 import { Cluster, Redis, type ClusterNode, type ClusterOptions } from "ioredis";
+import { defaultReconnectOnError } from "@internal/redis";
 import { logger } from "./services/logger.server";
 
 export type RedisWithClusterOptions = {
@@ -42,6 +43,7 @@ export function createRedisClient(
         username: options.username,
         password: options.password,
         enableAutoPipelining: true,
+        reconnectOnError: defaultReconnectOnError,
         ...(options.tlsDisabled
           ? {
               checkServerIdentity: () => {
@@ -69,6 +71,7 @@ export function createRedisClient(
       password: options.password,
       enableAutoPipelining: true,
       keyPrefix: options.keyPrefix,
+      reconnectOnError: defaultReconnectOnError,
       ...(options.tlsDisabled ? {} : { tls: {} }),
     });
   }
