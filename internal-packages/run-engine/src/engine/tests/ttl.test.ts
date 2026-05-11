@@ -432,6 +432,103 @@ describe("RunEngine ttl", () => {
     }
   );
 
+  containerTest(
+    "DEV runs sitting on worker queue still expire via legacy per-run job",
+    async ({ prisma, redisOptions }) => {
+      // The batch TTL path only expires runs still in the queue sorted set.
+      // In DEV, runs are fast-pathed straight to the worker queue, and if the
+      // dev CLI isn't running they can sit there forever. The legacy per-run
+      // expireRun job is kept for DEV specifically to cover this case.
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "DEVELOPMENT");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          // TTL batch path is enabled but should never see this run: it goes
+          // straight to the worker queue via fast-path. The legacy per-run
+          // job is what should expire it.
+          ttlSystem: {
+            pollIntervalMs: 100,
+            batchSize: 10,
+            batchMaxWaitMs: 100,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        let expiredEventData: EventBusEventArgs<"runExpired">[0] | undefined;
+        engine.eventBus.on("runExpired", (result) => {
+          expiredEventData = result;
+        });
+
+        // Trigger a DEV run with fast-path enabled and a short TTL. The run
+        // should land in the worker queue without entering the TTL set.
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_devttl1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "tdevttl1",
+            spanId: "sdevttl1",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+            enableFastPath: true,
+          },
+          prisma
+        );
+
+        // Wait past the TTL. The legacy per-run job should fire and expire it.
+        await setTimeout(1_500);
+
+        assertNonNullable(expiredEventData);
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   containerTest("Multiple runs expiring via TTL batch", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 

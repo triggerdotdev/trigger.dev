@@ -2,6 +2,7 @@ import { startSpan } from "@internal/tracing";
 import { SystemResources } from "./systems.js";
 import { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { EnqueueSystem } from "./enqueueSystem.js";
 import { ServiceValidationError } from "../errors.js";
 
@@ -141,6 +142,22 @@ export class DelayedRunSystem {
           }
         );
         return;
+      }
+
+      // The batch TTL path only expires runs still in the queue sorted set.
+      // For DEV environments where the dev CLI may not be running, fast-pathed
+      // runs can sit on the worker queue indefinitely. Keep the legacy per-run
+      // expireRun job armed for DEV so those runs still expire.
+      if (run.ttl && run.runtimeEnvironment.type === "DEVELOPMENT") {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+        if (expireAt) {
+          await this.$.worker.enqueue({
+            id: `expireRun:${runId}`,
+            job: "expireRun",
+            payload: { runId },
+            availableAt: expireAt,
+          });
+        }
       }
 
       // Now we need to enqueue the run into the RunQueue
