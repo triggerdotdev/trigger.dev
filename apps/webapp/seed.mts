@@ -67,11 +67,35 @@ async function seed() {
       name: "realtime-streams",
       externalRef: "proj_klxlzjnzxmbgiwuuwhvb",
     },
+    {
+      name: "stress-tasks",
+      externalRef: "proj_stresstaskslocaldevx",
+      // Stress-tasks fan-outs need a much higher concurrency ceiling than the
+      // default 300 — at 1000+ children per parent, runs would otherwise queue
+      // and the local repro wouldn't track the production fan-out signature.
+      environmentConcurrencyLimit: 25000,
+    },
   ];
 
   // Create or find each project
   for (const projectConfig of referenceProjects) {
-    await findOrCreateProject(projectConfig.name, organization, user.id, projectConfig.externalRef);
+    const result = await findOrCreateProject(
+      projectConfig.name,
+      organization,
+      user.id,
+      projectConfig.externalRef,
+    );
+
+    if (projectConfig.environmentConcurrencyLimit) {
+      const updated = await prisma.runtimeEnvironment.updateMany({
+        where: { projectId: result.project.id },
+        data: { maximumConcurrencyLimit: projectConfig.environmentConcurrencyLimit },
+      });
+      console.log(
+        `   Updated ${updated.count} environment(s) on ${projectConfig.name} ` +
+          `to maximumConcurrencyLimit=${projectConfig.environmentConcurrencyLimit}`,
+      );
+    }
   }
 
   await createBatchLimitOrgs(user);
