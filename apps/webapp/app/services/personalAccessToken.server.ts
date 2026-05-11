@@ -112,6 +112,43 @@ export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
 };
 
+/**
+ * Smart-skip the `lastAccessedAt` write when the cached value is already
+ * within the throttle window. Saves one DB roundtrip per "fresh" auth.
+ *
+ * Two layers of throttling: JS-side (`Date.now() - lastAccessedAt.getTime()`)
+ * elides the SQL entirely when the caller already has a recent timestamp;
+ * SQL-side `WHERE` clause inside the `updateMany` guards against concurrent
+ * auths racing to a double-write when the JS check decides to fire.
+ *
+ * Called from both the legacy PAT flow (`authenticatePersonalAccessToken`)
+ * and the apiBuilder's RBAC-routed PAT flow (which gets `lastAccessedAt`
+ * from `rbac.authenticatePat`'s result). Keeps the throttle policy in one
+ * place rather than expecting every plugin implementer to re-implement it.
+ */
+export async function updateLastAccessedAtIfStale(
+  tokenId: string,
+  lastAccessedAt: Date | null
+): Promise<void> {
+  if (
+    lastAccessedAt &&
+    Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS
+  ) {
+    return; // fresh — no roundtrip
+  }
+  await prisma.personalAccessToken.updateMany({
+    where: {
+      id: tokenId,
+      revokedAt: null,
+      OR: [
+        { lastAccessedAt: null },
+        { lastAccessedAt: { lt: new Date(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
+      ],
+    },
+    data: { lastAccessedAt: new Date() },
+  });
+}
+
 const EncryptedSecretValueSchema = z.object({
   nonce: z.string(),
   ciphertext: z.string(),
@@ -218,24 +255,7 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
-  // Conditional updateMany — only writes if the existing lastAccessedAt is
-  // null or older than the throttle window. The WHERE runs inside the UPDATE
-  // so concurrent auths don't race into a double-write. `revokedAt: null`
-  // matches the findFirst guard above so a token revoked between the read
-  // and write doesn't get a stale lastAccessedAt update.
-  await prisma.personalAccessToken.updateMany({
-    where: {
-      id: personalAccessToken.id,
-      revokedAt: null,
-      OR: [
-        { lastAccessedAt: null },
-        { lastAccessedAt: { lt: new Date(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
-      ],
-    },
-    data: {
-      lastAccessedAt: new Date(),
-    },
-  });
+  await updateLastAccessedAtIfStale(personalAccessToken.id, personalAccessToken.lastAccessedAt);
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 

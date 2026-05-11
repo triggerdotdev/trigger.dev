@@ -113,6 +113,15 @@ export type PatAuthResult =
       ok: true;
       tokenId: string;
       userId: string;
+      // The token's stored `lastAccessedAt`, returned alongside the
+      // identity so the host can throttle the per-request update in JS
+      // (skip the DB roundtrip when the value is fresh). Plugins must
+      // include this column in their auth lookup; the host owns the
+      // throttle window + the UPDATE itself. Null on a never-accessed
+      // token. The plugin contract requires this so the apiBuilder can
+      // collapse PAT auth + lastAccessedAt update from 2 queries to 1
+      // in the fresh-cache case — matching pre-RBAC main's query count.
+      lastAccessedAt: Date | null;
       subject: RbacSubject;
       ability: RbacAbility;
     };

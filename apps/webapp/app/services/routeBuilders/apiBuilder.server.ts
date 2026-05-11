@@ -7,8 +7,8 @@ import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import {
-  authenticateApiRequestWithPersonalAccessToken,
   PersonalAccessTokenAuthenticationResult,
+  updateLastAccessedAtIfStale,
 } from "../personalAccessToken.server";
 import { safeJsonParse } from "~/utils/json";
 import {
@@ -79,15 +79,6 @@ async function authenticateRequestForApiBuilder(
 }
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
-
-// Sentinel ability for routes that don't opt into the cap-and-floor PAT
-// model — preserves pre-RBAC behaviour where PATs were pure user-identity
-// tokens. New routes that want gated PAT auth declare a `context` and
-// `authorization` block; the actual ability comes from `rbac.authenticatePat`.
-const PERMISSIVE_ABILITY: RbacAbility = {
-  can: () => true,
-  canSuper: () => false,
-};
 
 // A multi-resource auth check has two possible directions, and route authors
 // have to pick one explicitly:
@@ -165,8 +156,8 @@ function checkAuth(
   }
   if (isAnyResource(resource)) {
     // Symmetric guard: anyResource([]) is benign for most abilities
-    // (.some() is false on empty), but PERMISSIVE_ABILITY would still
-    // grant. Treat empty as "no resource declared" → deny.
+    // (.some() is false on empty), but the permissive ability would
+    // still grant. Treat empty as "no resource declared" → deny.
     if (resource.resources.length === 0) return false;
     return ability.can(action, [...resource.resources]);
   }
@@ -485,16 +476,6 @@ export function createLoaderPATApiRoute<
     }
 
     try {
-      const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-      if (!authenticationResult) {
-        return await wrapResponse(
-          request,
-          json({ error: "Invalid or Missing API key" }, { status: 401 }),
-          corsStrategy !== "none"
-        );
-      }
-
       let parsedParams: any = undefined;
       if (paramsSchema) {
         const parsed = paramsSchema.safeParse(params);
@@ -547,44 +528,61 @@ export function createLoaderPATApiRoute<
 
       const apiVersion = getApiVersion(request);
 
-      // Resolve ability via the rbac plugin. When neither `context` nor
-      // `authorization` is declared, the legacy permissive ability stands
-      // in — preserves the pre-RBAC PAT behaviour for routes that
-      // haven't opted into the cap-and-floor model yet.
-      let ability: RbacAbility = PERMISSIVE_ABILITY;
-      if (contextFn || authorization) {
-        const ctx = contextFn ? await contextFn(parsedParams, request) : {};
-        const patAuth = await rbac.authenticatePat(request, ctx);
-        if (!patAuth.ok) {
+      // Single PAT auth roundtrip. `rbac.authenticatePat` validates the
+      // token AND computes the cap-and-floor ability in one DB query
+      // (the OSS fallback does the validation only and returns a
+      // permissive ability; the cloud plugin returns the joined
+      // cap/floor result). We previously called
+      // `authenticateApiRequestWithPersonalAccessToken` here first as
+      // belt-and-braces, but that meant two PAT lookups per request
+      // for routes with `context`/`authorization` declared. Routes
+      // without those still get a working `authentication` object —
+      // we pass an empty ctx and the fallback validates fine.
+      //
+      // `lastAccessedAt` is plumbed through the plugin result so the
+      // host can decide whether to fire the update (smart-skip in
+      // `updateLastAccessedAtIfStale` — no DB roundtrip when the
+      // cached timestamp is fresher than the throttle window).
+      const ctx = contextFn ? await contextFn(parsedParams, request) : {};
+      const patAuth = await rbac.authenticatePat(request, ctx);
+      if (!patAuth.ok) {
+        return await wrapResponse(
+          request,
+          json({ error: patAuth.error }, { status: patAuth.status }),
+          corsStrategy !== "none"
+        );
+      }
+
+      const authenticationResult: PersonalAccessTokenAuthenticationResult = {
+        userId: patAuth.userId,
+      };
+      const ability: RbacAbility = patAuth.ability;
+
+      // Fire the `lastAccessedAt` write conditionally. Two-layer throttle:
+      // JS skips the SQL when the value is fresh (most requests); the
+      // SQL `WHERE` clause inside the helper is race-safe for concurrent
+      // auths that both decide to fire. Don't `await` it from the
+      // critical path? — it's a one-row update on a small hot table and
+      // we want to surface failures, so it's awaited (same shape as the
+      // legacy `authenticatePersonalAccessToken`).
+      await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+
+      if (authorization) {
+        const $resource = authorization.resource(parsedParams, parsedSearchParams, parsedHeaders);
+        if (!checkAuth(ability, authorization.action, $resource)) {
           return await wrapResponse(
             request,
-            json({ error: patAuth.error }, { status: patAuth.status }),
+            json(
+              {
+                error: "Unauthorized",
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
             corsStrategy !== "none"
           );
-        }
-        ability = patAuth.ability;
-
-        if (authorization) {
-          const $resource = authorization.resource(
-            parsedParams,
-            parsedSearchParams,
-            parsedHeaders
-          );
-          if (!checkAuth(ability, authorization.action, $resource)) {
-            return await wrapResponse(
-              request,
-              json(
-                {
-                  error: "Unauthorized",
-                  code: "unauthorized",
-                  param: "access_token",
-                  type: "authorization",
-                },
-                { status: 403 }
-              ),
-              corsStrategy !== "none"
-            );
-          }
         }
       }
 

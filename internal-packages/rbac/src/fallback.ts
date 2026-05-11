@@ -287,7 +287,11 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     const hashedToken = createHash("sha256").update(rawToken).digest("hex");
     const pat = await this.replica.personalAccessToken.findFirst({
       where: { hashedToken, revokedAt: null },
-      select: { id: true, userId: true },
+      // Include `lastAccessedAt` so the host can throttle its own write
+      // (see `PatAuthResult.lastAccessedAt` jsdoc). Without this the host
+      // would need a second findFirst just to decide whether to fire the
+      // updateMany, turning 1 DB roundtrip into 2.
+      select: { id: true, userId: true, lastAccessedAt: true },
     });
     if (!pat) {
       return { ok: false, status: 401, error: "Invalid PAT" };
@@ -297,6 +301,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       ok: true,
       tokenId: pat.id,
       userId: pat.userId,
+      lastAccessedAt: pat.lastAccessedAt,
       subject: {
         type: "personalAccessToken",
         tokenId: pat.id,
