@@ -66,6 +66,9 @@ export function NotificationCard({
     setIsExpanded((v) => !v);
   };
 
+  const safeActionUrl = sanitizeUrl(actionUrl);
+  const safeImage = sanitizeUrl(image);
+
   return (
     <div className="group/card relative overflow-hidden rounded border border-charcoal-650 bg-charcoal-700/50 shadow-lg">
       {safeActionUrl && (
@@ -106,7 +109,7 @@ export function NotificationCard({
           </button>
         )}
 
-        {image && <img src={sanitizeImageUrl(image)} alt="" className="mt-1.5 rounded" />}
+        {safeImage && <img src={safeImage} alt="" className="mt-1.5 rounded" />}
       </div>
     </div>
   );
@@ -141,14 +144,14 @@ function getMarkdownComponents(onLinkClick?: () => void) {
   };
 }
 
-/** Sanitize image URL to prevent XSS via javascript: or data: URIs. */
-function sanitizeImageUrl(url: string): string {
+const SAFE_URL_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+
+/** Sanitize a URL to prevent XSS via javascript: or data: URIs. Returns "" if invalid. */
+function sanitizeUrl(url: string | undefined): string {
+  if (!url) return "";
   try {
     const parsed = new URL(url);
-    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
-      return parsed.href;
-    }
-    return "";
+    return SAFE_URL_PROTOCOLS.has(parsed.protocol) ? parsed.href : "";
   } catch {
     return "";
   }
