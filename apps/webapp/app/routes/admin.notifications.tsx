@@ -59,6 +59,10 @@ const PAGE_SIZE = 20;
 const WEBAPP_TYPES = ["card", "changelog"] as const;
 const CLI_TYPES = ["info", "warn", "error", "success"] as const;
 
+/** Sentinel for the discovery "match behavior" select meaning "none / not configured". */
+const DISCOVERY_MATCH_NONE = "";
+const DISCOVERY_MATCH_LABEL = "— none —";
+
 const SearchParams = z.object({
   page: z.coerce.number().optional(),
   hideInactive: z.coerce.boolean().optional(),
@@ -143,10 +147,11 @@ function parseNotificationFormData(formData: FormData) {
 
   const discoveryFilePatterns = (formData.get("discoveryFilePatterns") as string) || "";
   const discoveryContentPattern = (formData.get("discoveryContentPattern") as string) || undefined;
-  const discoveryMatchBehavior = (formData.get("discoveryMatchBehavior") as string) || "";
+  const discoveryMatchBehavior =
+    (formData.get("discoveryMatchBehavior") as string) || DISCOVERY_MATCH_NONE;
 
   const discovery =
-    discoveryFilePatterns && discoveryMatchBehavior
+    discoveryFilePatterns && discoveryMatchBehavior !== DISCOVERY_MATCH_NONE
       ? {
           filePatterns: discoveryFilePatterns
             .split(",")
@@ -693,7 +698,7 @@ function NotificationForm({
   const [actionUrl, setActionUrl] = useState(n?.payloadActionUrl ?? "");
   const [image, setImage] = useState(n?.payloadImage ?? "");
   const [discoveryMatchBehavior, setDiscoveryMatchBehavior] = useState<string>(
-    n?.payloadDiscovery?.matchBehavior ?? ""
+    n?.payloadDiscovery?.matchBehavior ?? DISCOVERY_MATCH_NONE
   );
 
   const typeOptions = surface === "WEBAPP" ? WEBAPP_TYPES : CLI_TYPES;
@@ -1099,15 +1104,18 @@ function NotificationForm({
                   value={discoveryMatchBehavior}
                   setValue={setDiscoveryMatchBehavior}
                   variant="tertiary/medium"
-                  items={["", "show-if-found", "show-if-not-found"]}
-                  placeholder="— none —"
-                  text={(v) => v || "— none —"}
+                  items={[DISCOVERY_MATCH_NONE, "show-if-found", "show-if-not-found"]}
+                  placeholder={DISCOVERY_MATCH_LABEL}
+                  text={(v) => (v === DISCOVERY_MATCH_NONE ? DISCOVERY_MATCH_LABEL : v)}
                   className="mt-1 w-full"
                 >
                   {(items) =>
                     items.map((item) => (
-                      <SelectItem key={item || "none"} value={item}>
-                        {item || "— none —"}
+                      <SelectItem
+                        key={item === DISCOVERY_MATCH_NONE ? "none" : item}
+                        value={item}
+                      >
+                        {item === DISCOVERY_MATCH_NONE ? DISCOVERY_MATCH_LABEL : item}
                       </SelectItem>
                     ))
                   }
