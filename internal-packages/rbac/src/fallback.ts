@@ -68,6 +68,18 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     request: Request,
     options?: { allowJWT?: boolean }
   ): Promise<BearerAuthResult> {
+    // Deprecated public API keys (`pk_*` minted long before public JWTs
+    // landed) are intentionally NOT handled here. The legacy
+    // `findEnvironmentByPublicApiKey` path looked them up via the
+    // `pkApiKey` column, but that token format hasn't been issued for
+    // years and no live client should be sending one. Any `pk_*` bearer
+    // on a route that goes through the apiBuilder now returns 401 —
+    // public access goes through the JWT path (`isPublicJWT(rawToken)`
+    // below) instead. The deprecated lookup is still exported from
+    // `apps/webapp/app/models/runtimeEnvironment.server.ts` for the
+    // pre-RBAC routes that haven't been migrated, but it's a dead
+    // code path for any route that uses `createLoaderApiRoute` /
+    // `createActionApiRoute`.
     const rawToken = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
     if (!rawToken) return { ok: false, status: 401, error: "Invalid or Missing API key" };
 

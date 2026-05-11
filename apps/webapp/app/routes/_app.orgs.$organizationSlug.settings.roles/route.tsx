@@ -62,18 +62,25 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions, systemRoles] = await Promise.all([
-      rbac.allRoles(orgId),
-      rbac.getAssignableRoleIds(orgId),
-      rbac.allPermissions(orgId),
-      rbac.systemRoles(orgId),
-    ]);
+    const [roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin] =
+      await Promise.all([
+        rbac.allRoles(orgId),
+        rbac.getAssignableRoleIds(orgId),
+        rbac.allPermissions(orgId),
+        rbac.systemRoles(orgId),
+        // OSS self-host: no enterprise plugin → no role infrastructure to
+        // show. Render a "roles aren't available" layout in that case
+        // rather than the plan-upsell empty state (which assumes a cloud
+        // plan and would be misleading).
+        rbac.isUsingPlugin(),
+      ]);
 
     return typedjson({
       roles,
       assignableRoleIds,
       allPermissions,
       systemRoles,
+      isUsingPlugin,
     });
   }
 );
@@ -89,7 +96,7 @@ type RolePermission = LoaderRole["permissions"][number];
 const FALLBACK_GROUP = "Other";
 
 export default function Page() {
-  const { roles, assignableRoleIds, allPermissions, systemRoles } =
+  const { roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const plan = useCurrentPlan();
@@ -127,7 +134,12 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Roles" />
-        {!isEnterprise ? <CreateRoleUpsell /> : null}
+        {/* Suppress the Enterprise-upsell button on OSS — there's no
+            plan to upgrade to in a self-hosted deployment, and the
+            dialog copy ("Available on the Enterprise plan") doesn't
+            apply. The not-supported empty state below makes the
+            absence of role infrastructure clear instead. */}
+        {isUsingPlugin && !isEnterprise ? <CreateRoleUpsell /> : null}
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[auto_1fr]">
@@ -140,7 +152,7 @@ export default function Page() {
           </div>
           <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             {columns.length === 0 ? (
-              <EmptyState />
+              <EmptyState isUsingPlugin={isUsingPlugin} />
             ) : (
               <Table containerClassName="border-t-0">
                 <TableHeader>
@@ -211,7 +223,29 @@ export default function Page() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ isUsingPlugin }: { isUsingPlugin: boolean }) {
+  // Two distinct empty states:
+  //
+  // 1. Plugin loaded, but rbac.allRoles returned nothing the org can
+  //    use under its plan tier. The plan-upsell copy is correct —
+  //    upgrade unlocks the role infrastructure.
+  // 2. No plugin loaded (OSS self-host). There's no "plan" to upgrade
+  //    to. RBAC simply isn't part of this deployment; we use a
+  //    permissive ability for every authenticated user and rely on
+  //    org-membership for access control. Surface that honestly
+  //    instead of dangling a fake upgrade carrot.
+  if (!isUsingPlugin) {
+    return (
+      <div className="flex flex-col items-center gap-2 p-8 text-center">
+        <Header3>Roles aren't available in this deployment.</Header3>
+        <Paragraph variant="small" className="text-text-dimmed">
+          Self-hosted Trigger.dev uses a simplified permission model where every member of an
+          organization has full access. Role-based access control is part of Trigger.dev Cloud
+          (Pro plan and above).
+        </Paragraph>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-2 p-8 text-center">
       <Header3>No roles available on this plan.</Header3>

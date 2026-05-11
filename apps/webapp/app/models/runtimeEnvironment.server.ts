@@ -165,7 +165,17 @@ export async function findEnvironmentByApiKey(
   return toAuthenticated(environment);
 }
 
-/** @deprecated We don't use public api keys anymore */
+/**
+ * @deprecated We don't use public API keys (`pk_*` tokens) anymore — public
+ * access goes through public JWTs (see `isPublicJWT` / `validatePublicJwtKey`).
+ *
+ * Still exported because a handful of pre-RBAC routes that haven't been
+ * migrated to the apiBuilder still wire this lookup into their
+ * `authenticateApiKey` / `authenticateApiKeyWithFailure` flow. The new RBAC
+ * fallback (`internal-packages/rbac/src/fallback.ts`) intentionally does NOT
+ * call this — any pk_*-authenticated request that hits an apiBuilder route
+ * returns 401. That's a deliberate cutover, not an oversight.
+ */
 export async function findEnvironmentByPublicApiKey(
   apiKey: string,
   branchName: string | undefined

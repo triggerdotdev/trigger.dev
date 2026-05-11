@@ -200,12 +200,13 @@ export const action = dashboardAction(
       if (!ability.can("manage", { type: "billing" })) {
         return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
       }
-      const org = await $replica.organization.findFirst({
-        where: { slug: organizationSlug },
-        select: { id: true },
-      });
-
-      if (!org) {
+      // Reuse the orgId the dashboardBuilder already resolved in the
+      // context callback (single slug → orgId lookup per request,
+      // regardless of whether the OSS fallback or cloud plugin
+      // services the auth — the plugin takes `organizationId` as
+      // input and doesn't re-resolve from a slug).
+      const orgId = context.organizationId;
+      if (!orgId) {
         return json({ ok: false, error: "Organization not found" } as const);
       }
 
@@ -219,7 +220,7 @@ export const action = dashboardAction(
       const [error, result] = await tryCatch(
         service.call({
           userId,
-          organizationId: org.id,
+          organizationId: orgId,
           action: submission.value.action,
           amount: submission.value.amount,
         })

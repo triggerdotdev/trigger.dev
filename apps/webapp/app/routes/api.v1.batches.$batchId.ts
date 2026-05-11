@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   batchId: z.string(),
@@ -25,7 +25,19 @@ export const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (batch) => ({ type: "batch", id: batch.friendlyId }),
+      // Pre-RBAC, this route's `superScopes` included `read:runs`, so a
+      // JWT minted with `read:runs` could read batches. The new strict
+      // scope-type match means `read:runs` no longer trivially matches
+      // `{type: "batch"}`. Include `{type: "runs"}` (alongside the
+      // batch-id-scoped element) to preserve that semantic for any
+      // SDK-issued tokens in the wild — a `read:runs` JWT still passes
+      // batch retrieval. Per-id `read:batch:<id>` and type-level
+      // `read:batch` still grant via the first element.
+      resource: (batch) =>
+        anyResource([
+          { type: "batch", id: batch.friendlyId },
+          { type: "runs" },
+        ]),
     },
   },
   async ({ resource: batch }) => {
