@@ -369,19 +369,31 @@ export class TracingSDK {
   }
 
   public async flush() {
-    await Promise.all([
+    const results = await Promise.allSettled([
       this._traceProvider.forceFlush(),
       this._logProvider.forceFlush(),
       this._meterProvider.forceFlush(),
     ]);
+    const providerNames = ["trace", "log", "meter"] as const;
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Failed to flush ${providerNames[index]} provider:`, result.reason);
+      }
+    });
   }
 
   public async shutdown() {
-    await Promise.all([
+    const results = await Promise.allSettled([
       this._traceProvider.shutdown(),
       this._logProvider.shutdown(),
       this._meterProvider.shutdown(),
     ]);
+    const providerNames = ["trace", "log", "meter"] as const;
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(`Failed to shutdown ${providerNames[index]} provider:`, result.reason);
+      }
+    });
   }
 }
 
