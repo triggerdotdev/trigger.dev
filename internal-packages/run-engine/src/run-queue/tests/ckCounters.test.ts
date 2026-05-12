@@ -317,7 +317,9 @@ describe("CK base-queue counters", () => {
           testOptions.keys.queueCurrentDequeuedKeyFromQueue(variantA),
           testOptions.keys.envCurrentDequeuedKey(authenticatedEnvDev),
           runningCounterKey,
-          "phantom-message"
+          testOptions.keys.ckIndexKeyFromQueue(variantA),
+          "phantom-message",
+          "runqueue:test:"
         );
 
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(0);
@@ -344,8 +346,8 @@ describe("CK base-queue counters", () => {
           "task/my-task"
         );
         const ttl = await queue.redis.ttl(counterKey);
-        // Expect roughly 86400; allow slack for test scheduling.
-        expect(ttl).toBeGreaterThan(86000);
+        // Expect roughly 86400; allow only a few seconds of slack for test scheduling.
+        expect(ttl).toBeGreaterThanOrEqual(86390);
         expect(ttl).toBeLessThanOrEqual(86400);
       } finally {
         await queue.quit();
@@ -377,6 +379,74 @@ describe("CK base-queue counters", () => {
         });
 
         expect(await queue.lengthOfQueue(authenticatedEnvDev, msg.queue)).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "duplicate nack (runId already in variant zset) does not inflate lengthCounter",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const msg = makeMessage({ runId: "r1", concurrencyKey: "ck-a" });
+
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, msg.queue)).toBe(1);
+
+        // Nack without dequeuing first — the message is still in the variant zset.
+        // ZADD returns 0 (already present), so lengthCounter must not bump.
+        await queue.nackMessage({
+          orgId: msg.orgId,
+          messageId: msg.runId,
+          skipDequeueProcessing: true,
+          incrementAttemptCount: false,
+        });
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, msg.queue)).toBe(1);
+
+        // A second nack on the same runId must still be a no-op for the counter.
+        await queue.nackMessage({
+          orgId: msg.orgId,
+          messageId: msg.runId,
+          skipDequeueProcessing: true,
+          incrementAttemptCount: false,
+        });
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, msg.queue)).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "duplicate dequeueMessageFromKey (same runId) does not inflate runningCounter",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const msg = makeMessage({ runId: "r1", concurrencyKey: "ck-a" });
+        const queueKey = testOptions.keys.queueKey(authenticatedEnvDev, msg.queue, "ck-a");
+        const messageKey = testOptions.keys.messageKey(msg.orgId, msg.runId);
+        const runningCounterKey =
+          testOptions.keys.queueRunningCounterKeyFromQueue(queueKey);
+
+        await queue.redis.set(
+          messageKey,
+          JSON.stringify({ ...msg, queue: queueKey, version: "2", workerQueue: "wq" })
+        );
+
+        // First call: SADD returns 1, runningCounter goes 0 -> 1.
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:");
+        expect(Number(await queue.redis.get(runningCounterKey))).toBe(1);
+
+        // Second call on the same messageKey: SADD returns 0, runningCounter must stay at 1.
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:");
+        expect(Number(await queue.redis.get(runningCounterKey))).toBe(1);
       } finally {
         await queue.quit();
       }

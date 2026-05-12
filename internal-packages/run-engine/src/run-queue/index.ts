@@ -986,7 +986,9 @@ export class RunQueue {
             this.keys.queueCurrentDequeuedKeyFromQueue(message.queue),
             this.keys.envCurrentDequeuedKeyFromQueue(message.queue),
             this.keys.queueRunningCounterKeyFromQueue(message.queue),
-            messageId
+            this.keys.ckIndexKeyFromQueue(message.queue),
+            messageId,
+            this.options.redis.keyPrefix ?? ""
           );
         }
 
@@ -2508,7 +2510,9 @@ export class RunQueue {
         queueCurrentDequeuedKey,
         envCurrentDequeuedKey,
         this.keys.queueRunningCounterKeyFromQueue(queue),
-        messageId
+        this.keys.ckIndexKeyFromQueue(queue),
+        messageId,
+        this.options.redis.keyPrefix ?? ""
       );
     }
 
@@ -4335,6 +4339,9 @@ local envCurrentDequeuedKey = keyPrefix .. string.match(queue, "(.+):queue:") ..
 
 -- SADD first so we know if this dequeue is new (return 1) or a duplicate (return 0).
 -- INCR runningCounter is gated on the new-membership result so re-dequeues don't inflate.
+-- The alternative (lazy-init before SADD) was rejected because we need the SADD return
+-- value to gate the INCR, and the lazy-init seed under SADD-first already reflects the
+-- new membership. We compensate with the total-1 in the seed math below.
 local addedDeq = redis.call('SADD', queueCurrentDequeuedKey, messageData.runId)
 redis.call('SADD', envCurrentDequeuedKey, messageData.runId)
 
@@ -4932,15 +4939,33 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
     // something. Caller should only invoke this variant for CK queues — non-CK
     // queues should keep calling releaseConcurrency.
     this.redis.defineCommand("releaseConcurrencyTracked", {
-      numberOfKeys: 5,
+      numberOfKeys: 6,
       lua: `
+-- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
 local envCurrentConcurrencyKey = KEYS[2]
 local queueCurrentDequeuedKey = KEYS[3]
 local envCurrentDequeuedKey = KEYS[4]
 local runningCounterKey = KEYS[5]
+local ckIndexKey = KEYS[6]
 
+-- Args:
 local messageId = ARGV[1]
+local keyPrefix = ARGV[2]
+
+-- Lazy-init runningCounter if missing (e.g. expired via 24h TTL). Runs BEFORE
+-- the SREM so the seed captures pre-release state; the subsequent DECR accounts
+-- for the message we're about to release. Without this, a release landing after
+-- counter expiry would silently no-op the DECR and the next dequeue would seed
+-- to post-release truth — bounded drift but inconsistent with nack/enqueue.
+if redis.call('EXISTS', runningCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
+  end
+  redis.call('SET', runningCounterKey, total, 'EX', 86400)
+end
 
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
@@ -5057,15 +5082,29 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
     // Tracked variant of clearMessageFromConcurrencySets — see releaseConcurrencyTracked
     // for the contract. Only invoke for CK queues.
     this.redis.defineCommand("clearMessageFromConcurrencySetsTracked", {
-      numberOfKeys: 5,
+      numberOfKeys: 6,
       lua: `
+-- Keys:
 local queueCurrentConcurrencyKey = KEYS[1]
 local envCurrentConcurrencyKey = KEYS[2]
 local queueCurrentDequeuedKey = KEYS[3]
 local envCurrentDequeuedKey = KEYS[4]
 local runningCounterKey = KEYS[5]
+local ckIndexKey = KEYS[6]
 
+-- Args:
 local messageId = ARGV[1]
+local keyPrefix = ARGV[2]
+
+-- Lazy-init runningCounter if missing — see releaseConcurrencyTracked for rationale.
+if redis.call('EXISTS', runningCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
+  end
+  redis.call('SET', runningCounterKey, total, 'EX', 86400)
+end
 
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
@@ -5608,7 +5647,9 @@ declare module "@internal/redis" {
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
       runningCounterKey: string,
+      ckIndexKey: string,
       messageId: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5618,7 +5659,9 @@ declare module "@internal/redis" {
       queueCurrentDequeuedKey: string,
       envCurrentDequeuedKey: string,
       runningCounterKey: string,
+      ckIndexKey: string,
       messageId: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
   }
