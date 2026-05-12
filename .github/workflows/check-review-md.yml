@@ -39,7 +39,7 @@ jobs:
           allowed_bots: "devin-ai-integration[bot]"
 
           claude_args: |
-            --max-turns 15
+            --max-turns 30
             --allowedTools "Read,Glob,Grep,Bash(git diff:*)"
 
           prompt: |
@@ -49,15 +49,24 @@ jobs:
 
             `.claude/REVIEW.md` is the repo's source of truth for what AI / agent code reviewers should treat as critical findings (rolling-deploy safety, hot-table indexes, recovery-path queries, testcontainers usage, Lua versioning, etc.). It is consumed by review agents to calibrate severity. If REVIEW.md goes stale, every future agent review degrades.
 
-            ## Your task
+            ## Strategy — read this first
 
-            1. Read `.claude/REVIEW.md` in full.
-            2. Run `git diff origin/main...HEAD --name-only` to see which files changed in this PR.
-            3. Sample the diff itself for any of these four signals:
-               - **Stale references** — does any rule cite a file, directory, function, table, Prisma model, or package name that has been removed or renamed in this PR or already gone from `main`?
-               - **Contradictions** — does code in this PR violate a current REVIEW.md rule? (Only flag if one side is clearly wrong — do not re-review the PR.)
-               - **Missing rules** — does this PR introduce a new pattern future reviewers should know about? Examples: a new hot table, a new Lua-script versioning convention, a new safety wrapper, a new "must always check" invariant.
-               - **Obsolete rules** — has the repo moved past a constraint REVIEW.md still asserts (e.g. a deprecated path is gone, a pattern is now linted, V1 code is deleted)?
+            You have a hard turn budget. Spend it on signal, not coverage. The audit is allowed to miss things; it is NOT allowed to time out.
+
+            1. Read `.claude/REVIEW.md` once, in full.
+            2. Run `git diff origin/main...HEAD --name-only` to get the list of changed files. Do NOT read the diff content yet.
+            3. Scan the file-list for relevance to REVIEW.md scope. Relevance signals: changes to Prisma schema, Redis / queue / Lua code, hot tables, recovery / restart loops, new packages, deletions of paths REVIEW.md cites. Skim everything else.
+            4. Open at most **5 files** total — only the ones most likely to surface a real signal. If nothing in the file-list looks relevant to any REVIEW.md rule, do NOT read any files; go straight to the verdict.
+            5. Form a verdict and stop. Do not exhaust the turn budget exploring.
+
+            Large PRs (>50 files changed) are a strong signal to be MORE selective, not more thorough. Pick 3-5 files at most.
+
+            ## What to look for
+
+            - **Stale references** — does any REVIEW.md rule cite a file, directory, function, table, Prisma model, or package name that has been removed or renamed in this PR (or is already gone from `main`)?
+            - **Contradictions** — does code in this PR clearly violate a current REVIEW.md rule? (Don't re-review the PR. Only flag if REVIEW.md and the PR plainly disagree.)
+            - **Missing rules** — does this PR introduce a new pattern future reviewers should know about? Examples: a new hot table, a new Lua-script versioning convention, a new safety wrapper, a new "must always check" invariant.
+            - **Obsolete rules** — has the repo moved past a constraint REVIEW.md still asserts? (e.g. a deprecated path is gone, a pattern is now linted, V1 code is deleted.)
 
             ## Response format
 
@@ -76,8 +85,9 @@ jobs:
 
             ## Rules
 
-            - Keep it tight. Maximum 3 suggestions per audit. Pick the highest-signal ones.
-            - Only flag things that would actually mislead a future reviewer. Style nits and wording preferences do not count.
+            - Maximum 3 suggestions per audit. Pick the highest-signal ones.
+            - Only flag things that would actually mislead a future reviewer. Style and wording do not count.
             - Do NOT review the PR itself. Do NOT propose rules outside REVIEW.md's existing sections.
-            - Do NOT propose adding rules for one-off PR specifics that don't generalize to future PRs.
+            - Do NOT propose rules for one-off PR specifics that don't generalize to future PRs.
             - If REVIEW.md does not exist in the repo, respond with `(skip)` and stop.
+            - When in doubt between "one more file read" and "finish now" — finish now.
