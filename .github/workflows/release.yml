@@ -135,7 +135,7 @@ jobs:
       #     PR #3173 merged but unreleased; hotfix 4.4.6 from release/4.4.x):
       #     4.4.6 > 4.4.5 -> IS latest. Customers running `npm install` get it.
       #
-      # Source of truth: npm's `latest` dist-tag for the canonical package
+# Source of truth: npm's `latest` dist-tag for the canonical package
       # (`@trigger.dev/sdk`). All public packages are version-locked via the
       # `fixed` config, so any one is canonical.
       - name: Compare new version to current latest
@@ -143,8 +143,27 @@ jobs:
         run: |
           set -euo pipefail
           NEW=$(jq -r '.version' packages/cli-v3/package.json)
-          CURRENT=$(npm view @trigger.dev/sdk dist-tags.latest 2>/dev/null || true)
-          if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
+          
+          # Retry npm view to handle transient registry issues. Only fall back
+          # to 0.0.0 on "no latest yet" - not on errors that would incorrectly
+          # promote a lagged hotfix to :latest.
+          RETRY_COUNT=3
+          CURRENT=""
+          for i in $(seq 1 $RETRY_COUNT); do
+            if CURRENT=$(npm view @trigger.dev/sdk dist-tags.latest 2>&1); then
+              break
+            fi
+            echo "npm view failed (attempt $i), retrying..." >&2
+            CURRENT=""
+            sleep $((i * 5))
+          done
+          
+          if [ -z "$CURRENT" ]; then
+            echo "Error: could not read npm dist-tags.latest" >&2
+            exit 1
+          fi
+          
+          if [ "$CURRENT" = "undefined" ]; then
             CURRENT="0.0.0"
           fi
 
