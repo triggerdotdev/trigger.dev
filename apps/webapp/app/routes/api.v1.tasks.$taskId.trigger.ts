@@ -28,7 +28,10 @@ const ParamsSchema = z.object({
 });
 
 export const HeadersSchema = z.object({
-  "idempotency-key": z.string().nullish(),
+  "idempotency-key": z
+    .string()
+    .max(2048, "idempotency-key must be 2048 characters or less")
+    .nullish(),
   "idempotency-key-ttl": z.string().nullish(),
   "trigger-version": z.string().nullish(),
   "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
