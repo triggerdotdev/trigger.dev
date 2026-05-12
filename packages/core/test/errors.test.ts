@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { truncateStack, truncateMessage, parseError, sanitizeError } from "../src/v3/errors.js";
+import {
+  truncateStack,
+  truncateMessage,
+  parseError,
+  sanitizeError,
+  shouldRetryError,
+  shouldLookupRetrySettings,
+} from "../src/v3/errors.js";
+import type { TaskRunError } from "../src/v3/schemas/common.js";
 
 // Helper: build a fake stack with N frames
 function buildStack(messageLines: string[], frameCount: number): string {
@@ -236,5 +244,31 @@ describe("truncateStack message line bounding", () => {
     // Total output should be bounded (not 100KB+)
     expect(result.length).toBeLessThan(5_000);
     expect(result).toContain("...[truncated]");
+  });
+});
+
+describe("shouldRetryError + shouldLookupRetrySettings", () => {
+  const internal = (code: string): TaskRunError =>
+    ({ type: "INTERNAL_ERROR", code } as TaskRunError);
+
+  it("retries SIGSEGV (changed from non-retriable) and looks up retry settings", () => {
+    const err = internal("TASK_PROCESS_SIGSEGV");
+    expect(shouldRetryError(err)).toBe(true);
+    expect(shouldLookupRetrySettings(err)).toBe(true);
+  });
+
+  it("retries SIGTERM via the same path", () => {
+    const err = internal("TASK_PROCESS_SIGTERM");
+    expect(shouldRetryError(err)).toBe(true);
+    expect(shouldLookupRetrySettings(err)).toBe(true);
+  });
+
+  it("still does not retry SIGKILL timeout", () => {
+    expect(shouldRetryError(internal("TASK_PROCESS_SIGKILL_TIMEOUT"))).toBe(false);
+  });
+
+  it("still does not retry OOM kills (handled by the separate machine-bump path)", () => {
+    expect(shouldRetryError(internal("TASK_PROCESS_OOM_KILLED"))).toBe(false);
+    expect(shouldRetryError(internal("TASK_PROCESS_MAYBE_OOM_KILLED"))).toBe(false);
   });
 });
