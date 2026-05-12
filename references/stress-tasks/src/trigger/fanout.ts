@@ -94,6 +94,11 @@ async function asyncPool<T>(
  *           matters once phase 3 wires the buffer write. In phase 1, this still goes
  *           through the existing engine.trigger() path because the gate is no-op.
  * { "count": 500, "concurrency": 500 }
+ *
+ * @example  Shadow-mode trip observation — fire a 500-fan-out and watch the webapp logs
+ *           for `mollifier.would_mollify` entries. Requires the webapp running with
+ *           MOLLIFIER_ENABLED=1 MOLLIFIER_SHADOW_MODE=1.
+ * { "count": 500, "concurrency": 500 }
  */
 export const fanOutTriggerTask = task({
   id: "stress-fan-out-trigger",
