@@ -4825,7 +4825,10 @@ end
 -- Update the message data
 redis.call('SET', messageKey, messageData)
 
--- Update the concurrency keys
+-- Update the concurrency keys. nack only DECRs runningCounter, never INCRs it,
+-- so we skip the eager lazy-init here (unlike releaseConcurrencyTracked, which
+-- mirrors the same DECR pattern with init). A post-TTL nack's floored DECR
+-- no-ops; the next dequeueMessageFromKeyTracked reseeds from current state.
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)

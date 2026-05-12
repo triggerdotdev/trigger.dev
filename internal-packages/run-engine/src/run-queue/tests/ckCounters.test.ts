@@ -8,6 +8,10 @@ import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import { InputPayload } from "../types.js";
 import { Decimal } from "@trigger.dev/database";
 
+// String form of the default counterTtlSeconds (86400). Tracked Lua scripts
+// take TTL as an ARG; tests that invoke the scripts directly pass this.
+const DEFAULT_COUNTER_TTL = "86400";
+
 const testOptions = {
   name: "rq",
   tracer: trace.getTracer("rq"),
@@ -282,7 +286,7 @@ describe("CK base-queue counters", () => {
           await queue.redis.dequeueMessageFromKeyTracked(
             testOptions.keys.messageKey(msg.orgId, `r${i}`),
             "runqueue:test:",
-            "86400"
+            DEFAULT_COUNTER_TTL
           );
         }
 
@@ -321,7 +325,7 @@ describe("CK base-queue counters", () => {
           testOptions.keys.ckIndexKeyFromQueue(variantA),
           "phantom-message",
           "runqueue:test:",
-          "86400"
+          DEFAULT_COUNTER_TTL
         );
 
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(0);
@@ -443,11 +447,11 @@ describe("CK base-queue counters", () => {
         );
 
         // First call: SADD returns 1, runningCounter goes 0 -> 1.
-        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", "86400");
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", DEFAULT_COUNTER_TTL);
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(1);
 
         // Second call on the same messageKey: SADD returns 0, runningCounter must stay at 1.
-        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", "86400");
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", DEFAULT_COUNTER_TTL);
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(1);
       } finally {
         await queue.quit();
@@ -545,7 +549,7 @@ describe("CK base-queue counters", () => {
           messageKey,
           JSON.stringify({ ...msg, queue: fastVariant, version: "2", workerQueue: "wq" })
         );
-        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", "86400");
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", DEFAULT_COUNTER_TTL);
 
         // True running across all variants: 3 (fast prior) + 1 (fast new) + 1 (other) = 5.
         // Without the ownVariantSeen fix, the seed would miss the fast variant entirely
@@ -627,7 +631,9 @@ describe("CK base-queue counters", () => {
           "task/my-task"
         );
         const ttl = await queue.redis.ttl(counterKey);
-        expect(ttl).toBeGreaterThanOrEqual(55);
+        // Generous lower bound — CI workers can occasionally stall multiple
+        // seconds between the lazy-init SET and the TTL read.
+        expect(ttl).toBeGreaterThanOrEqual(50);
         expect(ttl).toBeLessThanOrEqual(60);
       } finally {
         await queue.quit();
