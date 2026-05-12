@@ -213,22 +213,46 @@ export class DefaultQueueManager implements QueueManager {
 
     const defaultQueueName = `task/${taskId}`;
 
-    // When caller provides both a queue override and a per-trigger TTL,
-    // we don't need any DB queries - the per-trigger TTL takes precedence
+// When caller provides both a queue override and a per-trigger TTL,
+    // we still need to fetch taskKind to correctly classify AGENT/SCHEDULED runs
     if (overriddenQueueName && body.options?.ttl !== undefined) {
+      const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
+      if (worker) {
+        const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
+          where: {
+            workerId: worker.id,
+            runtimeEnvironmentId: environment.id,
+            slug: taskId,
+          },
+          select: { triggerSource: true },
+        });
+        return { queueName: overriddenQueueName, taskTtl: undefined, taskKind: task?.triggerSource };
+      }
       return { queueName: overriddenQueueName, taskTtl: undefined };
     }
 
     // Find the current worker for the environment
     const worker = await findCurrentWorkerFromEnvironment(environment, this.prisma);
 
-    if (!worker) {
+if (!worker) {
       logger.debug("Failed to get queue name: No worker found", {
         taskId,
         environmentId: environment.id,
       });
 
-      return { queueName: overriddenQueueName ?? defaultQueueName, taskTtl: undefined };
+      const task = await this.replicaPrisma.backgroundWorkerTask.findFirst({
+        where: {
+          runtimeEnvironmentId: environment.id,
+          slug: taskId,
+        },
+        select: { triggerSource: true },
+      });
+
+      return {
+        queueName: overriddenQueueName ?? defaultQueueName,
+        taskTtl: undefined,
+        taskKind: task?.triggerSource,
+      };
     }
 
     // When queue is overridden, we only need TTL from the task (no queue join needed)
@@ -256,13 +280,13 @@ export class DefaultQueueManager implements QueueManager {
       },
     });
 
-    if (!task) {
+if (!task) {
       console.log("Failed to get queue name: No task found", {
         taskId,
         environmentId: environment.id,
       });
 
-      return { queueName: defaultQueueName, taskTtl: undefined };
+      return { queueName: defaultQueueName, taskTtl: undefined, taskKind: undefined };
     }
 
     if (!task.queue) {
