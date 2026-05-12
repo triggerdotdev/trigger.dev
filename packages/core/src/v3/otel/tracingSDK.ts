@@ -376,14 +376,15 @@ export class TracingSDK {
     ]);
     const providerNames = ["trace", "log", "meter"] as const;
     const errors: Error[] = [];
+    const failedNames: string[] = [];
     results.forEach((result, index) => {
       if (result.status === "rejected") {
-        console.error(`Failed to flush ${providerNames[index]} provider:`, result.reason);
+        failedNames.push(providerNames[index]);
         errors.push(result.reason instanceof Error ? result.reason : new Error(String(result.reason)));
       }
     });
     if (errors.length > 0) {
-      throw new AggregateError(errors, "One or more providers failed to flush");
+      throw new AggregateError(errors, `One or more providers failed to flush: ${failedNames.join(", ")}`);
     }
   }
 
@@ -395,14 +396,15 @@ export class TracingSDK {
     ]);
     const providerNames = ["trace", "log", "meter"] as const;
     const errors: Error[] = [];
+    const failedNames: string[] = [];
     results.forEach((result, index) => {
       if (result.status === "rejected") {
-        console.error(`Failed to shutdown ${providerNames[index]} provider:`, result.reason);
+        failedNames.push(providerNames[index]);
         errors.push(result.reason instanceof Error ? result.reason : new Error(String(result.reason)));
       }
     });
     if (errors.length > 0) {
-      throw new AggregateError(errors, "One or more providers failed to shutdown");
+      throw new AggregateError(errors, `One or more providers failed to shutdown: ${failedNames.join(", ")}`);
     }
   }
 }
