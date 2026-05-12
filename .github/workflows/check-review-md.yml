@@ -1,0 +1,58 @@
+name: 🔎 REVIEW.md drift check
+
+on:
+  pull_request:
+    paths:
+      - ".claude/REVIEW.md"
+      - ".claude/scripts/check-review-md.sh"
+  schedule:
+    # Mondays 09:00 UTC — catches drift introduced by merges that deleted
+    # paths referenced by REVIEW.md without updating it.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: check-review-md-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Run check
+        id: check
+        run: |
+          set +e
+          bash .claude/scripts/check-review-md.sh | tee check-output.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Open / update tracking issue (scheduled runs only)
+        if: github.event_name == 'schedule' && steps.check.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TITLE="REVIEW.md is out of sync with the codebase"
+          BODY=$'The weekly drift check found stale references in `.claude/REVIEW.md`:\n\n```\n'"$(cat check-output.txt)"$'\n```\n\nFix by updating REVIEW.md to remove or correct the stale citations.'
+
+          EXISTING=$(gh issue list --label "review-md-drift" --state open --json number --jq '.[0].number // empty')
+          if [[ -n "$EXISTING" ]]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh label create "review-md-drift" --color "fbca04" --description "REVIEW.md drift detected by scheduled check" 2>/dev/null || true
+            gh issue create --title "$TITLE" --label "review-md-drift" --body "$BODY"
+          fi
+
+      - name: Fail PR if check failed
+        if: github.event_name == 'pull_request' && steps.check.outputs.exit_code != '0'
+        run: |
+          echo "REVIEW.md check failed. See log above."
+          exit 1
