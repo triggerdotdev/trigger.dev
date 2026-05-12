@@ -4673,6 +4673,7 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
     this.redis.defineCommand("acknowledgeMessageCkTracked", {
       numberOfKeys: 12,
       lua: `
+-- Keys:
 local masterQueueKey = KEYS[1]
 local messageKey = KEYS[2]
 local messageQueueKey = KEYS[3]
@@ -4686,6 +4687,7 @@ local ckIndexKey = KEYS[10]
 local lengthCounterKey = KEYS[11]
 local runningCounterKey = KEYS[12]
 
+-- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local messageKeyValue = ARGV[3]
@@ -4698,9 +4700,12 @@ local function decrFloored(key)
   end
 end
 
+-- Remove the message from the message key
 redis.call('DEL', messageKey)
 
--- ZREM from the variant zset (defensive). If it actually removed something, decr lengthCounter.
+-- Remove the message from the CK-specific queue. The ZREM is defensive — by
+-- ack time the message is normally in currentConcurrency, not the zset — but
+-- if it does remove something, the counter was tracking that entry so decr.
 local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 if removedFromZset == 1 then
@@ -4726,6 +4731,8 @@ end
 -- Remove old-format entry from master queue (transition cleanup)
 redis.call('ZREM', masterQueueKey, messageQueueName)
 
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry (the message was in flight).
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
@@ -4734,6 +4741,7 @@ if removedFromDequeued == 1 then
   decrFloored(runningCounterKey)
 end
 
+-- Remove the message from the worker queue
 if removeFromWorkerQueue == '1' then
   redis.call('LREM', workerQueueKey, 0, messageKeyValue)
 end
@@ -4746,6 +4754,7 @@ end
     this.redis.defineCommand("nackMessageCkTracked", {
       numberOfKeys: 11,
       lua: `
+-- Keys:
 local masterQueueKey = KEYS[1]
 local messageKey = KEYS[2]
 local messageQueueKey = KEYS[3]
@@ -4758,6 +4767,7 @@ local ckIndexKey = KEYS[9]
 local lengthCounterKey = KEYS[10]
 local runningCounterKey = KEYS[11]
 
+-- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local messageData = ARGV[3]
@@ -4772,8 +4782,10 @@ local function decrFloored(key)
   end
 end
 
+-- Update the message data
 redis.call('SET', messageKey, messageData)
 
+-- Update the concurrency keys
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
@@ -4795,18 +4807,21 @@ if redis.call('EXISTS', lengthCounterKey) == 0 then
   redis.call('SET', lengthCounterKey, total, 'EX', 86400)
 end
 
--- ZADD back to the variant zset. INCR lengthCounter only if it's a new entry.
+-- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
+-- it's a new entry (ZADD returns 1).
 local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 if added == 1 then
   redis.call('INCR', lengthCounterKey)
 end
 
+-- Rebalance CK index
 local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
 if #earliest > 0 then
   redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
 end
 
+-- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
 if #earliestIdx == 0 then
   redis.call('ZREM', masterQueueKey, ckWildcardName)
@@ -4814,6 +4829,7 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
+-- Remove old-format entry from master queue (transition cleanup)
 redis.call('ZREM', masterQueueKey, messageQueueName)
 `,
     });
@@ -4823,6 +4839,7 @@ redis.call('ZREM', masterQueueKey, messageQueueName)
     this.redis.defineCommand("moveToDeadLetterQueueCkTracked", {
       numberOfKeys: 12,
       lua: `
+-- Keys:
 local masterQueueKey = KEYS[1]
 local messageKey = KEYS[2]
 local messageQueue = KEYS[3]
@@ -4836,6 +4853,7 @@ local ckIndexKey = KEYS[10]
 local lengthCounterKey = KEYS[11]
 local runningCounterKey = KEYS[12]
 
+-- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local ckWildcardName = ARGV[3]
@@ -4846,12 +4864,16 @@ local function decrFloored(key)
   end
 end
 
+-- Remove the message from the CK-specific queue. ZREM may be a no-op if the
+-- message was already moved to currentConcurrency; only decr when it actually
+-- removes something.
 local removedFromZset = redis.call('ZREM', messageQueue, messageId)
 redis.call('ZREM', envQueueKey, messageId)
 if removedFromZset == 1 then
   decrFloored(lengthCounterKey)
 end
 
+-- Rebalance CK index
 local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
 if #earliest == 0 then
   redis.call('ZREM', ckIndexKey, messageQueueName)
@@ -4859,6 +4881,7 @@ else
   redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
 end
 
+-- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
 if #earliestIdx == 0 then
   redis.call('ZREM', masterQueueKey, ckWildcardName)
@@ -4866,10 +4889,14 @@ else
   redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
 end
 
+-- Remove old-format entry from master queue (transition cleanup)
 redis.call('ZREM', masterQueueKey, messageQueueName)
 
+-- Add the message to the dead letter queue
 redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
 
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry.
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
