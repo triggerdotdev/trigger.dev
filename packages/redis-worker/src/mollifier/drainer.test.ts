@@ -310,3 +310,64 @@ describe("MollifierDrainer.start/stop", () => {
     }
   });
 });
+
+describe("MollifierDrainer concurrency cap", () => {
+  redisTest(
+    "runOnce never exceeds configured concurrency in flight",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const concurrency = 3;
+      const envCount = 12;
+      let inflight = 0;
+      let peak = 0;
+      const handler = vi.fn(async () => {
+        inflight++;
+        if (inflight > peak) peak = inflight;
+        // Sleep long enough that handlers definitely overlap if scheduling
+        // allowed it — the assertion is meaningful only if multiple handlers
+        // would be running simultaneously without the cap.
+        await new Promise((r) => setTimeout(r, 75));
+        inflight--;
+      });
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency,
+        maxAttempts: 1,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        // One entry per env so runOnce sees `envCount` candidates and pLimits
+        // them through pLimit(concurrency).
+        for (let i = 0; i < envCount; i++) {
+          await buffer.accept({
+            runId: `run_${i}`,
+            envId: `env_${i}`,
+            orgId: "org_1",
+            payload: "{}",
+          });
+        }
+
+        const result = await drainer.runOnce();
+        expect(result.drained).toBe(envCount);
+        expect(handler).toHaveBeenCalledTimes(envCount);
+        expect(peak).toBeGreaterThan(1); // concurrency is real, not serialised
+        expect(peak).toBeLessThanOrEqual(concurrency);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});

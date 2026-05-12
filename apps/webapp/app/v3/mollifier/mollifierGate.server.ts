@@ -2,10 +2,24 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { flag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { getMollifierBuffer } from "./mollifierBuffer.server";
+import { createRealTripEvaluator } from "./mollifierTripEvaluator.server";
+import { recordDecision, type DecisionOutcome } from "./mollifierTelemetry.server";
 
+// `count` is the *single-instance* sliding-window counter, not a fleet-wide
+// aggregate. Each webapp instance maintains its own Redis key, so the fleet
+// effective ceiling is `instance_count * threshold`. Phase 2 consumers must
+// not treat `count` as a global rate.
 export type TripDecision =
   | { divert: false }
-  | { divert: true; reason: "per_env_rate" };
+  | {
+      divert: true;
+      reason: "per_env_rate";
+      count: number;
+      threshold: number;
+      windowMs: number;
+      holdMs: number;
+    };
 
 export type GateOutcome =
   | { action: "pass_through" }
@@ -15,6 +29,7 @@ export type GateOutcome =
 export type GateInputs = {
   envId: string;
   orgId: string;
+  taskId: string;
 };
 
 export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
@@ -24,23 +39,57 @@ export type GateDependencies = {
   isShadowModeOn: () => boolean;
   resolveOrgFlag: () => Promise<boolean>;
   evaluator: TripEvaluator;
-  logShadow: (inputs: GateInputs, reason: "per_env_rate") => void;
+  logShadow: (
+    inputs: GateInputs,
+    decision: Extract<TripDecision, { divert: true }>,
+  ) => void;
+  logMollified: (
+    inputs: GateInputs,
+    decision: Extract<TripDecision, { divert: true }>,
+  ) => void;
+  recordDecision: (outcome: DecisionOutcome, reason?: string) => void;
 };
 
-const stubTripEvaluator: TripEvaluator = async () => ({ divert: false });
+// `options` is a thunk so env reads happen per-evaluation, not at module load.
+// Don't "simplify" to a plain object — Phase 2 dynamic config relies on the
+// gate observing whichever env values are live at trigger time.
+const defaultEvaluator = createRealTripEvaluator({
+  getBuffer: () => getMollifierBuffer(),
+  options: () => ({
+    windowMs: env.MOLLIFIER_TRIP_WINDOW_MS,
+    threshold: env.MOLLIFIER_TRIP_THRESHOLD,
+    holdMs: env.MOLLIFIER_HOLD_MS,
+  }),
+});
+
+function logDivertDecision(
+  message: "mollifier.would_mollify" | "mollifier.mollified",
+  inputs: GateInputs,
+  decision: Extract<TripDecision, { divert: true }>,
+): void {
+  logger.info(message, {
+    envId: inputs.envId,
+    orgId: inputs.orgId,
+    taskId: inputs.taskId,
+    reason: decision.reason,
+    count: decision.count,
+    threshold: decision.threshold,
+    windowMs: decision.windowMs,
+    holdMs: decision.holdMs,
+  });
+}
 
 export const defaultGateDependencies: GateDependencies = {
   isMollifierEnabled: () => env.MOLLIFIER_ENABLED === "1",
   isShadowModeOn: () => env.MOLLIFIER_SHADOW_MODE === "1",
   resolveOrgFlag: () =>
     flag({ key: FEATURE_FLAG.mollifierEnabled, defaultValue: false }),
-  evaluator: stubTripEvaluator,
-  logShadow: (inputs, reason) =>
-    logger.info("mollifier shadow decision", {
-      envId: inputs.envId,
-      orgId: inputs.orgId,
-      reason,
-    }),
+  evaluator: defaultEvaluator,
+  logShadow: (inputs, decision) =>
+    logDivertDecision("mollifier.would_mollify", inputs, decision),
+  logMollified: (inputs, decision) =>
+    logDivertDecision("mollifier.mollified", inputs, decision),
+  recordDecision,
 };
 
 export async function evaluateGate(
@@ -50,6 +99,7 @@ export async function evaluateGate(
   const d = { ...defaultGateDependencies, ...deps };
 
   if (!d.isMollifierEnabled()) {
+    d.recordDecision("pass_through");
     return { action: "pass_through" };
   }
 
@@ -57,18 +107,23 @@ export async function evaluateGate(
   const shadowOn = d.isShadowModeOn();
 
   if (!orgFlagEnabled && !shadowOn) {
+    d.recordDecision("pass_through");
     return { action: "pass_through" };
   }
 
   const decision = await d.evaluator(inputs);
   if (!decision.divert) {
+    d.recordDecision("pass_through");
     return { action: "pass_through" };
   }
 
   if (orgFlagEnabled) {
+    d.logMollified(inputs, decision);
+    d.recordDecision("mollify", decision.reason);
     return { action: "mollify", decision };
   }
 
-  d.logShadow(inputs, decision.reason);
+  d.logShadow(inputs, decision);
+  d.recordDecision("shadow_log", decision.reason);
   return { action: "shadow_log", decision };
 }
