@@ -76,6 +76,14 @@ export type RunQueueOptions = {
   masterQueueCooloffCountThreshold?: number;
   masterQueueConsumerDequeueCount?: number;
   processWorkerQueueDebounceMs?: number;
+  /**
+   * TTL (seconds) applied to the per-base-queue lengthCounter/runningCounter on
+   * lazy-init. Bounds the maximum window for any drift accumulated during a
+   * rolling-deploy v1/v2 overlap. INCR/DECR do NOT extend the TTL, so the
+   * counter expires this long after init regardless of activity, and the next
+   * CK operation re-anchors from ckIndex. Default: 86400 (24h).
+   */
+  counterTtlSeconds?: number;
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -186,6 +194,7 @@ export class RunQueue {
   public keys: RunQueueKeyProducer;
   private queueSelectionStrategy: RunQueueSelectionStrategy;
   private shardCount: number;
+  private counterTtlSeconds: number;
   private abortController: AbortController;
   private worker: Worker<typeof workerCatalog>;
   private workerQueueResolver: WorkerQueueResolver;
@@ -195,6 +204,7 @@ export class RunQueue {
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
+    this.counterTtlSeconds = options.counterTtlSeconds ?? 86400;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -988,7 +998,8 @@ export class RunQueue {
             this.keys.queueRunningCounterKeyFromQueue(message.queue),
             this.keys.ckIndexKeyFromQueue(message.queue),
             messageId,
-            this.options.redis.keyPrefix ?? ""
+            this.options.redis.keyPrefix ?? "",
+            String(this.counterTtlSeconds)
           );
         }
 
@@ -1913,7 +1924,8 @@ export class RunQueue {
           defaultEnvConcurrencyBurstFactor,
           currentTime,
           enableFastPathArg,
-          ckKeyPrefix
+          ckKeyPrefix,
+          String(this.counterTtlSeconds)
         );
       } else {
         result = await this.redis.enqueueMessageCkTracked(
@@ -1944,7 +1956,8 @@ export class RunQueue {
           defaultEnvConcurrencyBurstFactor,
           currentTime,
           enableFastPathArg,
-          ckKeyPrefix
+          ckKeyPrefix,
+          String(this.counterTtlSeconds)
         );
       }
     } else if (ttlInfo) {
@@ -2512,7 +2525,8 @@ export class RunQueue {
         this.keys.queueRunningCounterKeyFromQueue(queue),
         this.keys.ckIndexKeyFromQueue(queue),
         messageId,
-        this.options.redis.keyPrefix ?? ""
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
       );
     }
 
@@ -2582,7 +2596,8 @@ export class RunQueue {
         JSON.stringify(message),
         String(messageScore),
         ckWildcardName,
-        this.options.redis.keyPrefix ?? ""
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
       );
     } else {
       await this.redis.nackMessage(
@@ -2943,7 +2958,8 @@ export class RunQueue {
 
       const rawMessage = await this.redis.dequeueMessageFromKeyTracked(
         messageKey,
-        this.options.redis.keyPrefix ?? ""
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
       );
 
       if (!rawMessage) {
@@ -3432,6 +3448,8 @@ local currentTime = ARGV[9]
 local enableFastPath = ARGV[10]
 -- keyPrefix for prepending to variant names stored as values in ckIndex
 local keyPrefix = ARGV[11]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[12]
 
 -- Fast path: check if we can skip the queue and go directly to worker queue
 if enableFastPath == '1' then
@@ -3478,7 +3496,7 @@ if redis.call('EXISTS', lengthCounterKey) == 0 then
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
   end
-  redis.call('SET', lengthCounterKey, total, 'EX', 86400)
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
 end
 
 -- INCR is gated on ZADD returning 1 (new entry). A duplicate enqueue (same messageId
@@ -3551,6 +3569,8 @@ local currentTime = ARGV[11]
 local enableFastPath = ARGV[12]
 -- keyPrefix for prepending to variant names stored as values in ckIndex
 local keyPrefix = ARGV[13]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[14]
 
 -- Fast path: check if we can skip the queue and go directly to worker queue
 if enableFastPath == '1' then
@@ -3590,7 +3610,7 @@ if redis.call('EXISTS', lengthCounterKey) == 0 then
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
   end
-  redis.call('SET', lengthCounterKey, total, 'EX', 86400)
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
 end
 
 -- INCR is gated on ZADD returning 1 (new entry).
@@ -4325,6 +4345,8 @@ return message
       lua: `
 local messageKey = KEYS[1]
 local keyPrefix = ARGV[1]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[2]
 
 local message = redis.call('GET', messageKey)
 if not message then
@@ -4355,14 +4377,23 @@ if baseQueue and addedDeq == 1 then
   if redis.call('EXISTS', runningCounterKey) == 0 then
     local ckIndexKey = keyPrefix .. baseQueue .. ':ckIndex'
     local total = 0
+    local ownVariantSeen = false
     local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
     for _, v in ipairs(variants) do
+      if v == queue then
+        ownVariantSeen = true
+      end
       total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
     end
-    -- Subtract 1 because we already SADD'd our own runId above, which the per-variant
-    -- SCARDs now reflect. Without this, the lazy-init seed double-counts the new member
-    -- relative to what the subsequent INCR will add.
-    redis.call('SET', runningCounterKey, math.max(0, total - 1), 'EX', 86400)
+    -- Fast-path messages skip the variant zset and ckIndex entirely (see
+    -- enqueueMessageCkTracked fast path). If our variant isn't in ckIndex, the loop
+    -- missed its SCARD; add it manually. Either way, the SCARD we sum already
+    -- reflects our just-SADD'd member, so subtract 1 before SETting (the INCR
+    -- below will add it back).
+    if not ownVariantSeen then
+      total = total + tonumber(redis.call('SCARD', queueCurrentDequeuedKey) or '0')
+    end
+    redis.call('SET', runningCounterKey, math.max(0, total - 1), 'EX', counterTtl)
   end
   redis.call('INCR', runningCounterKey)
 end
@@ -4782,6 +4813,8 @@ local messageScore = tonumber(ARGV[4])
 local ckWildcardName = ARGV[5]
 -- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
 local keyPrefix = ARGV[6]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[7]
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -4811,7 +4844,7 @@ if redis.call('EXISTS', lengthCounterKey) == 0 then
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
   end
-  redis.call('SET', lengthCounterKey, total, 'EX', 86400)
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
 end
 
 -- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
@@ -4952,6 +4985,8 @@ local ckIndexKey = KEYS[6]
 -- Args:
 local messageId = ARGV[1]
 local keyPrefix = ARGV[2]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[3]
 
 -- Lazy-init runningCounter if missing (e.g. expired via 24h TTL). Runs BEFORE
 -- the SREM so the seed captures pre-release state; the subsequent DECR accounts
@@ -4964,7 +4999,7 @@ if redis.call('EXISTS', runningCounterKey) == 0 then
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
   end
-  redis.call('SET', runningCounterKey, total, 'EX', 86400)
+  redis.call('SET', runningCounterKey, total, 'EX', counterTtl)
 end
 
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -5095,6 +5130,8 @@ local ckIndexKey = KEYS[6]
 -- Args:
 local messageId = ARGV[1]
 local keyPrefix = ARGV[2]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[3]
 
 -- Lazy-init runningCounter if missing — see releaseConcurrencyTracked for rationale.
 if redis.call('EXISTS', runningCounterKey) == 0 then
@@ -5103,7 +5140,7 @@ if redis.call('EXISTS', runningCounterKey) == 0 then
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
   end
-  redis.call('SET', runningCounterKey, total, 'EX', 86400)
+  redis.call('SET', runningCounterKey, total, 'EX', counterTtl)
 end
 
 redis.call('SREM', queueCurrentConcurrencyKey, messageId)
@@ -5506,6 +5543,7 @@ declare module "@internal/redis" {
       currentTime: string,
       enableFastPath: string,
       keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<number>
     ): Result<number, Context>;
 
@@ -5539,6 +5577,7 @@ declare module "@internal/redis" {
       currentTime: string,
       enableFastPath: string,
       keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<number>
     ): Result<number, Context>;
 
@@ -5565,6 +5604,7 @@ declare module "@internal/redis" {
     dequeueMessageFromKeyTracked(
       messageKey: string,
       keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<string | null>
     ): Result<string | null, Context>;
 
@@ -5607,6 +5647,7 @@ declare module "@internal/redis" {
       messageScore: string,
       ckWildcardName: string,
       keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5650,6 +5691,7 @@ declare module "@internal/redis" {
       ckIndexKey: string,
       messageId: string,
       keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
@@ -5662,6 +5704,7 @@ declare module "@internal/redis" {
       ckIndexKey: string,
       messageId: string,
       keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
   }

@@ -281,7 +281,8 @@ describe("CK base-queue counters", () => {
           );
           await queue.redis.dequeueMessageFromKeyTracked(
             testOptions.keys.messageKey(msg.orgId, `r${i}`),
-            "runqueue:test:"
+            "runqueue:test:",
+            "86400"
           );
         }
 
@@ -319,7 +320,8 @@ describe("CK base-queue counters", () => {
           runningCounterKey,
           testOptions.keys.ckIndexKeyFromQueue(variantA),
           "phantom-message",
-          "runqueue:test:"
+          "runqueue:test:",
+          "86400"
         );
 
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(0);
@@ -441,11 +443,11 @@ describe("CK base-queue counters", () => {
         );
 
         // First call: SADD returns 1, runningCounter goes 0 -> 1.
-        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:");
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", "86400");
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(1);
 
         // Second call on the same messageKey: SADD returns 0, runningCounter must stay at 1.
-        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:");
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", "86400");
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(1);
       } finally {
         await queue.quit();
@@ -492,6 +494,141 @@ describe("CK base-queue counters", () => {
         // 3 originals, 1 was dequeued (still re-queued by nack), counter should now reflect all 3.
         const observed = await queue.lengthOfQueue(authenticatedEnvDev, msg.queue);
         expect(observed).toBe(3);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "fast-path-variant dequeue seeds runningCounter without missing its own SCARD",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        // Simulate: a CK variant has 3 running messages from prior fast-path enqueues
+        // (so the variant zset is empty and ckIndex does NOT include this variant).
+        // Another variant of the same base queue IS in ckIndex with 1 running message.
+        // Counter is missing (post-TTL-expiry). A new dequeue lands on the fast-path
+        // variant. The lazy-init must add the fast-path variant's SCARD even though
+        // it's not in ckIndex.
+        const msg = makeMessage({ runId: "fp-new", concurrencyKey: "ck-fastpath" });
+        const fastVariant = testOptions.keys.queueKey(
+          authenticatedEnvDev,
+          msg.queue,
+          "ck-fastpath"
+        );
+        const otherVariant = testOptions.keys.queueKey(
+          authenticatedEnvDev,
+          msg.queue,
+          "ck-other"
+        );
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(fastVariant);
+        const runningCounterKey =
+          testOptions.keys.queueRunningCounterKeyFromQueue(fastVariant);
+
+        // Seed 3 prior fast-path runs into the fast variant's currentDequeued (no zset, no ckIndex).
+        for (let i = 0; i < 3; i++) {
+          await queue.redis.sadd(`${fastVariant}:currentDequeued`, `prior-${i}`);
+        }
+
+        // Seed the other variant: 1 zset entry (so it's in ckIndex) + 1 currentDequeued.
+        await queue.redis.zadd(otherVariant, Date.now(), "other-q-1");
+        await queue.redis.zadd(ckIndexKey, Date.now(), otherVariant);
+        await queue.redis.sadd(`${otherVariant}:currentDequeued`, "other-r-1");
+
+        // Counter is intentionally missing — simulates post-TTL state.
+        expect(await queue.redis.exists(runningCounterKey)).toBe(0);
+
+        // New fast-path dequeue lands on the fast variant.
+        const messageKey = testOptions.keys.messageKey(msg.orgId, msg.runId);
+        await queue.redis.set(
+          messageKey,
+          JSON.stringify({ ...msg, queue: fastVariant, version: "2", workerQueue: "wq" })
+        );
+        await queue.redis.dequeueMessageFromKeyTracked(messageKey, "runqueue:test:", "86400");
+
+        // True running across all variants: 3 (fast prior) + 1 (fast new) + 1 (other) = 5.
+        // Without the ownVariantSeen fix, the seed would miss the fast variant entirely
+        // and counter would end at 1 (other variant SCARD = 1, INCR for new dequeue) — off by 4.
+        const counterVal = Number(await queue.redis.get(runningCounterKey));
+        expect(counterVal).toBe(5);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "release lazy-inits runningCounter when missing",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const msg = makeMessage({ runId: "r1", concurrencyKey: "ck-a" });
+        const variant = testOptions.keys.queueKey(authenticatedEnvDev, msg.queue, "ck-a");
+        const runningCounterKey = testOptions.keys.queueRunningCounterKeyFromQueue(variant);
+
+        // Enqueue so ckIndex picks up the variant.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        // Seed two running messages directly into currentDequeued so release has something to remove.
+        await queue.redis.sadd(`${variant}:currentDequeued`, msg.runId);
+        await queue.redis.sadd(`${variant}:currentDequeued`, "r2");
+
+        // Counter is missing — simulates post-TTL state without waiting.
+        expect(await queue.redis.exists(runningCounterKey)).toBe(0);
+
+        // releaseAllConcurrency calls releaseConcurrencyTracked under the hood for CK queues.
+        await queue.releaseAllConcurrency(msg.orgId, msg.runId);
+
+        // Pre-release truth was 2 in flight; after release one remains. Counter should be 1.
+        const counterVal = Number(await queue.redis.get(runningCounterKey));
+        expect(counterVal).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "counterTtlSeconds option is honored on lazy-init",
+    async ({ redisContainer }) => {
+      // Build a queue with a short TTL and verify the counter is SET with it.
+      const queue = new RunQueue({
+        ...testOptions,
+        counterTtlSeconds: 60,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r1", concurrencyKey: "ck-a" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        const counterKey = testOptions.keys.queueLengthCounterKey(
+          authenticatedEnvDev,
+          "task/my-task"
+        );
+        const ttl = await queue.redis.ttl(counterKey);
+        expect(ttl).toBeGreaterThanOrEqual(55);
+        expect(ttl).toBeLessThanOrEqual(60);
       } finally {
         await queue.quit();
       }
