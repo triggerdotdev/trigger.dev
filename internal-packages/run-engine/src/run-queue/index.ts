@@ -76,6 +76,14 @@ export type RunQueueOptions = {
   masterQueueCooloffCountThreshold?: number;
   masterQueueConsumerDequeueCount?: number;
   processWorkerQueueDebounceMs?: number;
+  /**
+   * TTL (seconds) applied to the per-base-queue lengthCounter/runningCounter on
+   * lazy-init. Bounds the maximum window for any drift accumulated during a
+   * rolling-deploy v1/v2 overlap. INCR/DECR do NOT extend the TTL, so the
+   * counter expires this long after init regardless of activity, and the next
+   * CK operation re-anchors from ckIndex. Default: 86400 (24h).
+   */
+  counterTtlSeconds?: number;
   workerOptions?: {
     pollIntervalMs?: number;
     immediatePollIntervalMs?: number;
@@ -186,6 +194,7 @@ export class RunQueue {
   public keys: RunQueueKeyProducer;
   private queueSelectionStrategy: RunQueueSelectionStrategy;
   private shardCount: number;
+  private counterTtlSeconds: number;
   private abortController: AbortController;
   private worker: Worker<typeof workerCatalog>;
   private workerQueueResolver: WorkerQueueResolver;
@@ -195,6 +204,7 @@ export class RunQueue {
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
+    this.counterTtlSeconds = options.counterTtlSeconds ?? 86400;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -397,7 +407,31 @@ export class RunQueue {
     queue: string,
     concurrencyKey?: string
   ) {
-    return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+    // Per-variant length when caller specifies a concurrency key
+    if (concurrencyKey) {
+      return this.redis.zcard(this.keys.queueKey(env, queue, concurrencyKey));
+    }
+
+    // Aggregate base-queue length = ZCARD(base) + GET(lengthCounter).
+    // The counter is non-existent for queues that have never had a CK enqueue —
+    // in that case it returns null which we treat as 0 and the base ZCARD is
+    // the whole truth.
+    const baseKey = this.keys.queueKey(env, queue);
+    const lengthCounterKey = this.keys.queueLengthCounterKey(env, queue);
+
+    const pipeline = this.redis.pipeline();
+    pipeline.zcard(baseKey);
+    pipeline.get(lengthCounterKey);
+    const results = await pipeline.exec();
+
+    if (!results) {
+      return 0;
+    }
+    const [baseErr, baseVal] = results[0];
+    const [ctrErr, ctrVal] = results[1];
+    const baseCount = baseErr || baseVal == null ? 0 : (baseVal as number);
+    const ctrCount = ctrErr || ctrVal == null ? 0 : Number(ctrVal);
+    return baseCount + ctrCount;
   }
 
   public async lengthOfQueueAvailableMessages(
@@ -481,33 +515,34 @@ export class RunQueue {
     env: MinimalAuthenticatedEnvironment,
     queues: string[]
   ): Promise<Record<string, number>> {
+    // For each queue, SCARD(base:currentDequeued) + GET(runningCounter). Missing
+    // counter is treated as 0 so non-CK queues just see the base SCARD.
     const pipeline = this.redis.pipeline();
-
-    // Queue up all SCARD commands in the pipeline
     queues.forEach((queue) => {
       pipeline.scard(this.keys.queueCurrentDequeuedKey(env, queue));
+      pipeline.get(this.keys.queueRunningCounterKey(env, queue));
     });
 
-    // Execute pipeline and get results
     const results = await pipeline.exec();
 
-    // If results is null, return all queues with 0 concurrency
-    if (!results) {
-      return queues.reduce(
+    const empty = (): Record<string, number> =>
+      queues.reduce(
         (acc, queue) => {
           acc[queue] = 0;
           return acc;
         },
         {} as Record<string, number>
       );
-    }
 
-    // Map results back to queue names, handling potential errors
+    if (!results) return empty();
+
     return queues.reduce(
       (acc, queue, index) => {
-        const [err, value] = results[index];
-        // If there was an error or value is null/undefined, use 0
-        acc[queue] = err || value == null ? 0 : (value as number);
+        const [baseErr, baseVal] = results[index * 2];
+        const [ctrErr, ctrVal] = results[index * 2 + 1];
+        const baseCount = baseErr || baseVal == null ? 0 : (baseVal as number);
+        const ctrCount = ctrErr || ctrVal == null ? 0 : Number(ctrVal);
+        acc[queue] = baseCount + ctrCount;
         return acc;
       },
       {} as Record<string, number>
@@ -518,29 +553,34 @@ export class RunQueue {
     env: MinimalAuthenticatedEnvironment,
     queues: string[]
   ): Promise<Record<string, number>> {
+    // For each queue, ZCARD(base) + GET(lengthCounter). Missing counter is
+    // treated as 0 so non-CK queues just see the base ZCARD.
     const pipeline = this.redis.pipeline();
-
-    // Queue up all ZCARD commands in the pipeline
     queues.forEach((queue) => {
       pipeline.zcard(this.keys.queueKey(env, queue));
+      pipeline.get(this.keys.queueLengthCounterKey(env, queue));
     });
 
     const results = await pipeline.exec();
 
-    if (!results) {
-      return queues.reduce(
+    const empty = (): Record<string, number> =>
+      queues.reduce(
         (acc, queue) => {
           acc[queue] = 0;
           return acc;
         },
         {} as Record<string, number>
       );
-    }
+
+    if (!results) return empty();
 
     return queues.reduce(
       (acc, queue, index) => {
-        const [err, value] = results![index];
-        acc[queue] = err || value == null ? 0 : (value as number);
+        const [baseErr, baseVal] = results[index * 2];
+        const [ctrErr, ctrVal] = results[index * 2 + 1];
+        const baseCount = baseErr || baseVal == null ? 0 : (baseVal as number);
+        const ctrCount = ctrErr || ctrVal == null ? 0 : Number(ctrVal);
+        acc[queue] = baseCount + ctrCount;
         return acc;
       },
       {} as Record<string, number>
@@ -945,6 +985,23 @@ export class RunQueue {
           [SemanticAttributes.RUN_ID]: messageId,
           [SemanticAttributes.CONCURRENCY_KEY]: message.concurrencyKey,
         });
+
+        // CK queues route through the Tracked variant so the base-queue
+        // runningCounter stays in sync. Non-CK queues keep the original
+        // release path — no counter to maintain.
+        if (message.concurrencyKey) {
+          return this.redis.releaseConcurrencyTracked(
+            this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue),
+            this.keys.envCurrentConcurrencyKeyFromQueue(message.queue),
+            this.keys.queueCurrentDequeuedKeyFromQueue(message.queue),
+            this.keys.envCurrentDequeuedKeyFromQueue(message.queue),
+            this.keys.queueRunningCounterKeyFromQueue(message.queue),
+            this.keys.ckIndexKeyFromQueue(message.queue),
+            messageId,
+            this.options.redis.keyPrefix ?? "",
+            String(this.counterTtlSeconds)
+          );
+        }
 
         return this.redis.releaseConcurrency(
           this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue),
@@ -1379,7 +1436,7 @@ export class RunQueue {
     const visibilityTimeoutMs = (ttlSystem.visibilityTimeoutMs ?? 30_000).toString();
 
     // Atomically get and remove expired runs from TTL set, ack them from normal queues, and enqueue to TTL worker
-    const results = await this.redis.expireTtlRuns(
+    const results = await this.redis.expireTtlRunsTracked(
       ttlQueueKey,
       keyPrefix,
       now.toString(),
@@ -1831,9 +1888,12 @@ export class RunQueue {
     if (message.concurrencyKey) {
       const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
       const ckWildcardName = this.keys.toCkWildcard(message.queue);
+      const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
+      const baseQueueKey = this.keys.baseQueueKeyFromQueue(message.queue);
+      const ckKeyPrefix = this.options.redis.keyPrefix ?? "";
 
       if (ttlInfo) {
-        result = await this.redis.enqueueMessageWithTtlCk(
+        result = await this.redis.enqueueMessageWithTtlCkTracked(
           // keys
           masterQueueKey,
           queueKey,
@@ -1849,6 +1909,8 @@ export class RunQueue {
           queueConcurrencyLimitKey,
           envConcurrencyLimitKey,
           envConcurrencyLimitBurstFactorKey,
+          lengthCounterKey,
+          baseQueueKey,
           // args
           queueName,
           messageId,
@@ -1861,10 +1923,12 @@ export class RunQueue {
           defaultEnvConcurrencyLimit,
           defaultEnvConcurrencyBurstFactor,
           currentTime,
-          enableFastPathArg
+          enableFastPathArg,
+          ckKeyPrefix,
+          String(this.counterTtlSeconds)
         );
       } else {
-        result = await this.redis.enqueueMessageCk(
+        result = await this.redis.enqueueMessageCkTracked(
           // keys
           masterQueueKey,
           queueKey,
@@ -1879,6 +1943,8 @@ export class RunQueue {
           queueConcurrencyLimitKey,
           envConcurrencyLimitKey,
           envConcurrencyLimitBurstFactorKey,
+          lengthCounterKey,
+          baseQueueKey,
           // args
           queueName,
           messageId,
@@ -1889,7 +1955,9 @@ export class RunQueue {
           defaultEnvConcurrencyLimit,
           defaultEnvConcurrencyBurstFactor,
           currentTime,
-          enableFastPathArg
+          enableFastPathArg,
+          ckKeyPrefix,
+          String(this.counterTtlSeconds)
         );
       }
     } else if (ttlInfo) {
@@ -2129,7 +2197,9 @@ export class RunQueue {
         maxCount,
       });
 
-      const result = await this.redis.dequeueMessagesFromCkQueue(
+      const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(ckWildcardQueue);
+
+      const result = await this.redis.dequeueMessagesFromCkQueueTracked(
         //keys
         ckIndexKey,
         queueConcurrencyLimitKey,
@@ -2140,6 +2210,7 @@ export class RunQueue {
         envQueueKey,
         masterQueueKey,
         ttlQueueKey,
+        lengthCounterKey,
         //args
         ckWildcardQueue,
         String(Date.now()),
@@ -2374,8 +2445,10 @@ export class RunQueue {
     if (message.concurrencyKey) {
       const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
       const ckWildcardName = this.keys.toCkWildcard(message.queue);
+      const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
+      const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(message.queue);
 
-      return this.redis.acknowledgeMessageCk(
+      return this.redis.acknowledgeMessageCkTracked(
         masterQueueKey,
         messageKey,
         messageQueue,
@@ -2386,6 +2459,8 @@ export class RunQueue {
         envQueueKey,
         workerQueueKey,
         ckIndexKey,
+        lengthCounterKey,
+        runningCounterKey,
         messageId,
         messageQueue,
         messageKeyValue,
@@ -2441,6 +2516,20 @@ export class RunQueue {
       service: this.name,
     });
 
+    if (queue.includes(":ck:")) {
+      return this.redis.clearMessageFromConcurrencySetsTracked(
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        this.keys.queueRunningCounterKeyFromQueue(queue),
+        this.keys.ckIndexKeyFromQueue(queue),
+        messageId,
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
+      );
+    }
+
     return this.redis.clearMessageFromConcurrencySets(
       queueCurrentConcurrencyKey,
       envCurrentConcurrencyKey,
@@ -2485,8 +2574,10 @@ export class RunQueue {
     if (message.concurrencyKey) {
       const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
       const ckWildcardName = this.keys.toCkWildcard(message.queue);
+      const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
+      const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(message.queue);
 
-      await this.redis.nackMessageCk(
+      await this.redis.nackMessageCkTracked(
         //keys
         masterQueueKey,
         messageKey,
@@ -2497,12 +2588,16 @@ export class RunQueue {
         envCurrentDequeuedKey,
         envQueueKey,
         ckIndexKey,
+        lengthCounterKey,
+        runningCounterKey,
         //args
         messageId,
         messageQueue,
         JSON.stringify(message),
         String(messageScore),
-        ckWildcardName
+        ckWildcardName,
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
       );
     } else {
       await this.redis.nackMessage(
@@ -2542,8 +2637,10 @@ export class RunQueue {
     if (message.concurrencyKey) {
       const ckIndexKey = this.keys.ckIndexKeyFromQueue(message.queue);
       const ckWildcardName = this.keys.toCkWildcard(message.queue);
+      const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
+      const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(message.queue);
 
-      await this.redis.moveToDeadLetterQueueCk(
+      await this.redis.moveToDeadLetterQueueCkTracked(
         masterQueueKey,
         messageKey,
         messageQueue,
@@ -2554,6 +2651,8 @@ export class RunQueue {
         envQueueKey,
         deadLetterQueueKey,
         ckIndexKey,
+        lengthCounterKey,
+        runningCounterKey,
         messageId,
         messageQueue,
         ckWildcardName
@@ -2857,9 +2956,10 @@ export class RunQueue {
         messageKey,
       });
 
-      const rawMessage = await this.redis.dequeueMessageFromKey(
+      const rawMessage = await this.redis.dequeueMessageFromKeyTracked(
         messageKey,
-        this.options.redis.keyPrefix ?? ""
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
       );
 
       if (!rawMessage) {
@@ -3306,6 +3406,246 @@ return 0
       `,
     });
 
+    // Tracked variants of the CK enqueue scripts. Identical to the originals except
+    // they maintain a per-base-queue `lengthCounter` so the trigger-time queue-length
+    // cap and the dashboard's "Queued" column can see the true aggregate across all
+    // CK variants. The counter is lazy-initialized inside the script the first time
+    // a CK enqueue touches a base queue by summing ZCARDs across the existing
+    // ckIndex variants + the base queue zset. The runningCounter is touched in the
+    // *Tracked variants of dequeueMessageFromKey and the ack/nack/dlq/release/clear
+    // scripts.
+    this.redis.defineCommand("enqueueMessageCkTracked", {
+      numberOfKeys: 15,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+-- Fast-path keys (KEYS 10-13)
+local workerQueueKey = KEYS[10]
+local queueConcurrencyLimitKey = KEYS[11]
+local envConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitBurstFactorKey = KEYS[13]
+-- Counter keys (KEYS 14-15)
+local lengthCounterKey = KEYS[14]
+local baseQueueKey = KEYS[15]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ckWildcardName = ARGV[5]
+-- Fast-path args (ARGV 6-10)
+local messageKeyValue = ARGV[6]
+local defaultEnvConcurrencyLimit = ARGV[7]
+local defaultEnvConcurrencyBurstFactor = ARGV[8]
+local currentTime = ARGV[9]
+local enableFastPath = ARGV[10]
+-- keyPrefix for prepending to variant names stored as values in ckIndex
+local keyPrefix = ARGV[11]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[12]
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        -- Fast-path skips the CK variant zset entirely; lengthCounter is unchanged.
+        -- runningCounter is bumped later by dequeueMessageFromKeyTracked when the
+        -- worker pulls the message from the worker queue.
+        return 1
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+redis.call('SET', messageKey, messageData)
+
+-- Lazy-init lengthCounter from existing ckIndex variants (once per base queue per 24h).
+-- The 24h TTL means the counter periodically re-anchors to truth, bounding any drift
+-- that accumulated during rolling-deploy overlap windows.
+-- Run BEFORE the ZADD so we capture pre-state; the subsequent INCR accounts for the new message.
+-- The counter tracks ONLY CK-variant messages — the read path adds ZCARD(base) separately,
+-- so the base zset is intentionally excluded here.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- INCR is gated on ZADD returning 1 (new entry). A duplicate enqueue (same messageId
+-- already in the variant zset) returns 0 and must not bump the counter.
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], queueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx > 0 then
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, queueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+return 0
+      `,
+    });
+
+    this.redis.defineCommand("enqueueMessageWithTtlCkTracked", {
+      numberOfKeys: 16,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+-- Fast-path keys (KEYS 11-14)
+local workerQueueKey = KEYS[11]
+local queueConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitKey = KEYS[13]
+local envConcurrencyLimitBurstFactorKey = KEYS[14]
+-- Counter keys (KEYS 15-16)
+local lengthCounterKey = KEYS[15]
+local baseQueueKey = KEYS[16]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ttlMember = ARGV[5]
+local ttlScore = ARGV[6]
+local ckWildcardName = ARGV[7]
+-- Fast-path args (ARGV 8-12)
+local messageKeyValue = ARGV[8]
+local defaultEnvConcurrencyLimit = ARGV[9]
+local defaultEnvConcurrencyBurstFactor = ARGV[10]
+local currentTime = ARGV[11]
+local enableFastPath = ARGV[12]
+-- keyPrefix for prepending to variant names stored as values in ckIndex
+local keyPrefix = ARGV[13]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[14]
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        return 1
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+redis.call('SET', messageKey, messageData)
+
+-- Lazy-init lengthCounter from existing ckIndex variants (once per base queue per 24h).
+-- See enqueueMessageCkTracked for the TTL rationale.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- INCR is gated on ZADD returning 1 (new entry).
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], queueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx > 0 then
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, queueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+return 0
+      `,
+    });
+
     // Expire TTL runs - atomically removes from TTL set, acknowledges from normal queue, and enqueues to TTL worker
     this.redis.defineCommand("expireTtlRuns", {
       numberOfKeys: 1,
@@ -3384,7 +3724,7 @@ for i, member in ipairs(expiredMembers) do
       redis.call('SREM', envDequeuedKey, runId)
 
       -- Rebalance CK index if this is a CK queue
-      local ckMatch = string.match(rawQueueKey, "^(.+):ck:.+$")
+      local ckMatch = string.match(rawQueueKey, "(.-):ck:")
       if ckMatch then
         local ckIndexKey = keyPrefix .. ckMatch .. ":ckIndex"
         local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -3406,6 +3746,118 @@ for i, member in ipairs(expiredMembers) do
       redis.call('HSET', workerItemsKey, runId, serializedItem)
 
       -- Add to results
+      table.insert(results, member)
+    end
+  end
+end
+
+return results
+      `,
+    });
+
+    // Tracked variant: same as expireTtlRuns, with floored DECRs of the
+    // per-base-queue lengthCounter (for every successful ZREM from a CK variant)
+    // and runningCounter (when SREM from currentDequeued actually removed something).
+    this.redis.defineCommand("expireTtlRunsTracked", {
+      numberOfKeys: 1,
+      lua: `
+local ttlQueueKey = KEYS[1]
+local keyPrefix = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local batchSize = tonumber(ARGV[3])
+local shardCount = tonumber(ARGV[4])
+local workerQueueKey = ARGV[5]
+local workerItemsKey = ARGV[6]
+local visibilityTimeoutMs = tonumber(ARGV[7])
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+local expiredMembers = redis.call('ZRANGEBYSCORE', ttlQueueKey, '-inf', currentTime, 'LIMIT', 0, batchSize)
+
+if #expiredMembers == 0 then
+  return {}
+end
+
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
+local results = {}
+
+for i, member in ipairs(expiredMembers) do
+  local pipePos1 = string.find(member, "|", 1, true)
+  if pipePos1 then
+    local pipePos2 = string.find(member, "|", pipePos1 + 1, true)
+    if pipePos2 then
+      local rawQueueKey = string.sub(member, 1, pipePos1 - 1)
+      local runId = string.sub(member, pipePos1 + 1, pipePos2 - 1)
+      local orgId = string.sub(member, pipePos2 + 1)
+
+      local queueKey = keyPrefix .. rawQueueKey
+
+      redis.call('ZREM', ttlQueueKey, member)
+
+      local orgKeyStart = string.find(rawQueueKey, "{org:", 1, true)
+      local orgKeyEnd = string.find(rawQueueKey, "}", orgKeyStart, true)
+      local orgFromQueue = string.sub(rawQueueKey, orgKeyStart + 5, orgKeyEnd - 1)
+
+      local messageKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:message:" .. runId
+
+      redis.call('DEL', messageKey)
+
+      -- ZREM from queue; if successful AND this is a CK variant, DECR lengthCounter.
+      local removedFromZset = redis.call('ZREM', queueKey, runId)
+
+      local envMatch = string.match(rawQueueKey, ":env:([^:]+)")
+      if envMatch then
+        local envQueueKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:env:" .. envMatch
+        redis.call('ZREM', envQueueKey, runId)
+      end
+
+      local concurrencyKey = queueKey .. ":currentConcurrency"
+      local dequeuedKey = queueKey .. ":currentDequeued"
+      redis.call('SREM', concurrencyKey, runId)
+      local removedFromDequeued = redis.call('SREM', dequeuedKey, runId)
+
+      local projMatch = string.match(rawQueueKey, ":proj:([^:]+):env:")
+      local envConcurrencyKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentConcurrency"
+      local envDequeuedKey = keyPrefix .. "{org:" .. orgFromQueue .. "}:proj:" .. (projMatch or "") .. ":env:" .. (envMatch or "") .. ":currentDequeued"
+      redis.call('SREM', envConcurrencyKey, runId)
+      redis.call('SREM', envDequeuedKey, runId)
+
+      -- Rebalance CK index AND update counters if this is a CK queue
+      local ckMatch = string.match(rawQueueKey, "(.-):ck:")
+      if ckMatch then
+        local lengthCounterKey = keyPrefix .. ckMatch .. ":lengthCounter"
+        local runningCounterKey = keyPrefix .. ckMatch .. ":runningCounter"
+        if removedFromZset == 1 then
+          decrFloored(lengthCounterKey)
+        end
+        if removedFromDequeued == 1 then
+          decrFloored(runningCounterKey)
+        end
+
+        local ckIndexKey = keyPrefix .. ckMatch .. ":ckIndex"
+        local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+        if #earliest == 0 then
+          redis.call('ZREM', ckIndexKey, rawQueueKey)
+        else
+          redis.call('ZADD', ckIndexKey, earliest[2], rawQueueKey)
+        end
+      end
+
+      local serializedItem = cjson.encode({
+        job = "expireTtlRun",
+        item = { runId = runId, orgId = orgId, queueKey = rawQueueKey },
+        visibilityTimeoutMs = visibilityTimeoutMs,
+        attempt = 0
+      })
+      redis.call('ZADD', workerQueueKey, nowMs, runId)
+      redis.call('HSET', workerItemsKey, runId, serializedItem)
+
       table.insert(results, member)
     end
   end
@@ -3684,6 +4136,151 @@ return results
       `,
     });
 
+    // Tracked variant: same as dequeueMessagesFromCkQueue plus DECR of the
+    // per-base-queue lengthCounter for every message removed from a CK variant
+    // (normal dequeue, TTL-expired, or stale-orphan path — all of which were
+    // counted at enqueue time).
+    this.redis.defineCommand("dequeueMessagesFromCkQueueTracked", {
+      numberOfKeys: 10,
+      lua: `
+local ckIndexKey = KEYS[1]
+local queueConcurrencyLimitKey = KEYS[2]
+local envConcurrencyLimitKey = KEYS[3]
+local envConcurrencyLimitBurstFactorKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local messageKeyPrefix = KEYS[6]
+local envQueueKey = KEYS[7]
+local masterQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+local lengthCounterKey = KEYS[10]
+
+local ckWildcardName = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local defaultEnvConcurrencyLimit = ARGV[3]
+local defaultEnvConcurrencyBurstFactor = ARGV[4]
+local keyPrefix = ARGV[5]
+local maxCount = tonumber(ARGV[6] or '1')
+
+local function decrLengthCounter()
+  if tonumber(redis.call('GET', lengthCounterKey) or '0') > 0 then
+    redis.call('DECR', lengthCounterKey)
+  end
+end
+
+-- Check env concurrency
+local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+local envConcurrencyLimitBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+local envConcurrencyLimitWithBurstFactor = math.floor(envConcurrencyLimit * envConcurrencyLimitBurstFactor)
+
+if envCurrentConcurrency >= envConcurrencyLimitWithBurstFactor then
+  return nil
+end
+
+local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+
+local envAvailableCapacity = envConcurrencyLimitWithBurstFactor - envCurrentConcurrency
+local actualMaxCount = math.min(maxCount, envAvailableCapacity)
+
+if actualMaxCount <= 0 then
+  return nil
+end
+
+local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, actualMaxCount * 3)
+
+if #ckQueues == 0 then
+  local anyIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+  if #anyIdx == 0 then
+    redis.call('ZREM', masterQueueKey, ckWildcardName)
+  else
+    redis.call('ZADD', masterQueueKey, anyIdx[2], ckWildcardName)
+  end
+  return nil
+end
+
+local results = {}
+local dequeuedCount = 0
+
+for _, ckQueueName in ipairs(ckQueues) do
+  if dequeuedCount >= actualMaxCount then
+    break
+  end
+
+  local fullQueueKey = keyPrefix .. ckQueueName
+
+  local ckConcurrencyKey = fullQueueKey .. ':currentConcurrency'
+  local ckCurrentConcurrency = tonumber(redis.call('SCARD', ckConcurrencyKey) or '0')
+
+  if ckCurrentConcurrency < queueConcurrencyLimit then
+    local messages = redis.call('ZRANGEBYSCORE', fullQueueKey, '-inf', tostring(currentTime), 'WITHSCORES', 'LIMIT', 0, 1)
+
+    if #messages >= 2 then
+      local messageId = messages[1]
+      local messageScore = messages[2]
+
+      local messageKey = messageKeyPrefix .. messageId
+      local messagePayload = redis.call('GET', messageKey)
+
+      if messagePayload then
+        local messageData = cjson.decode(messagePayload)
+        local ttlExpiresAt = messageData and messageData.ttlExpiresAt
+
+        if ttlExpiresAt and ttlExpiresAt <= currentTime then
+          redis.call('ZREM', fullQueueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+          decrLengthCounter()
+        else
+          redis.call('ZREM', fullQueueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+          decrLengthCounter()
+          redis.call('SADD', ckConcurrencyKey, messageId)
+          redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+          if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+            redis.call('ZREM', ttlQueueKey, ttlMember)
+          end
+
+          table.insert(results, messageId)
+          table.insert(results, messageScore)
+          table.insert(results, messagePayload)
+
+          dequeuedCount = dequeuedCount + 1
+        end
+      else
+        redis.call('ZREM', fullQueueKey, messageId)
+        redis.call('ZREM', envQueueKey, messageId)
+        decrLengthCounter()
+      end
+
+      local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+      if #earliest == 0 then
+        redis.call('ZREM', ckIndexKey, ckQueueName)
+      else
+        redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
+      end
+    else
+      local any = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+      if #any == 0 then
+        redis.call('ZREM', ckIndexKey, ckQueueName)
+      else
+        redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
+      end
+    end
+  end
+end
+
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+return results
+      `,
+    });
+
     this.redis.defineCommand("dequeueMessageFromWorkerQueueNonBlocking", {
       numberOfKeys: 1,
       lua: `
@@ -3732,6 +4329,75 @@ redis.call('SADD', queueCurrentDequeuedKey, messageData.runId)
 redis.call('SADD', envCurrentDequeuedKey, messageData.runId)
 
 -- Return the message data
+return message
+      `,
+    });
+
+    // Tracked variant: same as dequeueMessageFromKey, plus runningCounter INCR
+    // when the message lives on a CK variant queue. The runningCounter is
+    // lazy-initialized from the existing ckIndex variants' currentDequeued sets.
+    // Note: ckIndex only tracks variants that currently have queued messages,
+    // so the init misses any variant that's "running-only" (all messages
+    // dequeued, none queued). Those are reabsorbed naturally as messages ack
+    // (floored DECR) and new dequeues land.
+    this.redis.defineCommand("dequeueMessageFromKeyTracked", {
+      numberOfKeys: 1,
+      lua: `
+local messageKey = KEYS[1]
+local keyPrefix = ARGV[1]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[2]
+
+local message = redis.call('GET', messageKey)
+if not message then
+  return nil
+end
+
+local messageData = cjson.decode(message)
+local queue = messageData.queue
+
+local queueCurrentDequeuedKey = keyPrefix .. queue .. ':currentDequeued'
+local envCurrentDequeuedKey = keyPrefix .. string.match(queue, "(.+):queue:") .. ':currentDequeued'
+
+-- SADD first so we know if this dequeue is new (return 1) or a duplicate (return 0).
+-- INCR runningCounter is gated on the new-membership result so re-dequeues don't inflate.
+-- The alternative (lazy-init before SADD) was rejected because we need the SADD return
+-- value to gate the INCR, and the lazy-init seed under SADD-first already reflects the
+-- new membership. We compensate with the total-1 in the seed math below.
+local addedDeq = redis.call('SADD', queueCurrentDequeuedKey, messageData.runId)
+redis.call('SADD', envCurrentDequeuedKey, messageData.runId)
+
+-- If CK + new addition, bump the runningCounter for the base queue (lazy init from ckIndex).
+-- The counter tracks ONLY CK-variant currentDequeued — the read path adds the base
+-- SCARD separately, so we exclude the base currentDequeued here. 24h TTL on init
+-- bounds any drift from rolling-deploy v1/v2 overlap.
+local baseQueue = string.match(queue, "(.-):ck:")
+if baseQueue and addedDeq == 1 then
+  local runningCounterKey = keyPrefix .. baseQueue .. ':runningCounter'
+  if redis.call('EXISTS', runningCounterKey) == 0 then
+    local ckIndexKey = keyPrefix .. baseQueue .. ':ckIndex'
+    local total = 0
+    local ownVariantSeen = false
+    local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+    for _, v in ipairs(variants) do
+      if v == queue then
+        ownVariantSeen = true
+      end
+      total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
+    end
+    -- Fast-path messages skip the variant zset and ckIndex entirely (see
+    -- enqueueMessageCkTracked fast path). If our variant isn't in ckIndex, the loop
+    -- missed its SCARD; add it manually. Either way, the SCARD we sum already
+    -- reflects our just-SADD'd member, so subtract 1 before SETting (the INCR
+    -- below will add it back).
+    if not ownVariantSeen then
+      total = total + tonumber(redis.call('SCARD', queueCurrentDequeuedKey) or '0')
+    end
+    redis.call('SET', runningCounterKey, math.max(0, total - 1), 'EX', counterTtl)
+  end
+  redis.call('INCR', runningCounterKey)
+end
+
 return message
       `,
     });
@@ -4038,6 +4704,252 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 `,
     });
 
+    // Tracked variant: same as acknowledgeMessageCk, plus floored DECRs of the
+    // per-base-queue lengthCounter (defensive — only fires when the ZREM actually
+    // removed something) and runningCounter (when SREM currentDequeued actually
+    // removed something).
+    this.redis.defineCommand("acknowledgeMessageCkTracked", {
+      numberOfKeys: 12,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local workerQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageKeyValue = ARGV[3]
+local removeFromWorkerQueue = ARGV[4]
+local ckWildcardName = ARGV[5]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Remove the message from the message key
+redis.call('DEL', messageKey)
+
+-- Remove the message from the CK-specific queue. The ZREM is defensive — by
+-- ack time the message is normally in currentConcurrency, not the zset — but
+-- if it does remove something, the counter was tracking that entry so decr.
+local removedFromZset = redis.call('ZREM', messageQueueKey, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+if removedFromZset == 1 then
+  decrFloored(lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliestInCkQueue = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliestInCkQueue == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)
+else
+  redis.call('ZADD', ckIndexKey, earliestInCkQueue[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestInCkIndex = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestInCkIndex == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestInCkIndex[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry (the message was in flight).
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+-- Remove the message from the worker queue
+if removeFromWorkerQueue == '1' then
+  redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+end
+`,
+    });
+
+    // Tracked variant: same as nackMessageCk. SREM currentDequeued may DECR
+    // runningCounter (floored); ZADD back to the variant zset INCRs
+    // lengthCounter only when ZADD reported a new entry.
+    this.redis.defineCommand("nackMessageCkTracked", {
+      numberOfKeys: 11,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+local lengthCounterKey = KEYS[10]
+local runningCounterKey = KEYS[11]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = tonumber(ARGV[4])
+local ckWildcardName = ARGV[5]
+-- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
+local keyPrefix = ARGV[6]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[7]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Update the message data
+redis.call('SET', messageKey, messageData)
+
+-- Update the concurrency keys. nack only DECRs runningCounter, never INCRs it,
+-- so we skip the eager lazy-init here (unlike releaseConcurrencyTracked, which
+-- mirrors the same DECR pattern with init). A post-TTL nack's floored DECR
+-- no-ops; the next dequeueMessageFromKeyTracked reseeds from current state.
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+-- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
+-- message, which means lengthCounter must be present before we INCR. Without this,
+-- a nack after counter expiry would create the counter at 1 and stay drifted until
+-- next reset.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
+-- it's a new entry (ZADD returns 1).
+local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+`,
+    });
+
+    // Tracked variant: same as moveToDeadLetterQueueCk. ZREM may DECR
+    // lengthCounter (defensive); SREM currentDequeued may DECR runningCounter.
+    this.redis.defineCommand("moveToDeadLetterQueueCkTracked", {
+      numberOfKeys: 12,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueue = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local deadLetterQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local ckWildcardName = ARGV[3]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Remove the message from the CK-specific queue. ZREM may be a no-op if the
+-- message was already moved to currentConcurrency; only decr when it actually
+-- removes something.
+local removedFromZset = redis.call('ZREM', messageQueue, messageId)
+redis.call('ZREM', envQueueKey, messageId)
+if removedFromZset == 1 then
+  decrFloored(lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueue, 0, 0, 'WITHSCORES')
+if #earliest == 0 then
+  redis.call('ZREM', ckIndexKey, messageQueueName)
+else
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+
+-- Add the message to the dead letter queue
+redis.call('ZADD', deadLetterQueueKey, tonumber(redis.call('TIME')[1]), messageId)
+
+-- Update the concurrency keys. DECR runningCounter only when SREM
+-- currentDequeued actually removed an entry.
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+`,
+    });
+
     this.redis.defineCommand("releaseConcurrency", {
       numberOfKeys: 4,
       lua: `
@@ -4055,6 +4967,54 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+`,
+    });
+
+    // Tracked variant: same as releaseConcurrency, with a floored DECR of the
+    // base-queue runningCounter when SREM currentDequeued actually removed
+    // something. Caller should only invoke this variant for CK queues — non-CK
+    // queues should keep calling releaseConcurrency.
+    this.redis.defineCommand("releaseConcurrencyTracked", {
+      numberOfKeys: 6,
+      lua: `
+-- Keys:
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local queueCurrentDequeuedKey = KEYS[3]
+local envCurrentDequeuedKey = KEYS[4]
+local runningCounterKey = KEYS[5]
+local ckIndexKey = KEYS[6]
+
+-- Args:
+local messageId = ARGV[1]
+local keyPrefix = ARGV[2]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[3]
+
+-- Lazy-init runningCounter if missing (e.g. expired via 24h TTL). Runs BEFORE
+-- the SREM so the seed captures pre-release state; the subsequent DECR accounts
+-- for the message we're about to release. Without this, a release landing after
+-- counter expiry would silently no-op the DECR and the next dequeue would seed
+-- to post-release truth — bounded drift but inconsistent with nack/enqueue.
+if redis.call('EXISTS', runningCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
+  end
+  redis.call('SET', runningCounterKey, total, 'EX', counterTtl)
+end
+
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+if removedFromDequeued == 1 then
+  if tonumber(redis.call('GET', runningCounterKey) or '0') > 0 then
+    redis.call('DECR', runningCounterKey)
+  end
+end
 `,
     });
 
@@ -4154,6 +5114,48 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+`,
+    });
+
+    // Tracked variant of clearMessageFromConcurrencySets — see releaseConcurrencyTracked
+    // for the contract. Only invoke for CK queues.
+    this.redis.defineCommand("clearMessageFromConcurrencySetsTracked", {
+      numberOfKeys: 6,
+      lua: `
+-- Keys:
+local queueCurrentConcurrencyKey = KEYS[1]
+local envCurrentConcurrencyKey = KEYS[2]
+local queueCurrentDequeuedKey = KEYS[3]
+local envCurrentDequeuedKey = KEYS[4]
+local runningCounterKey = KEYS[5]
+local ckIndexKey = KEYS[6]
+
+-- Args:
+local messageId = ARGV[1]
+local keyPrefix = ARGV[2]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[3]
+
+-- Lazy-init runningCounter if missing — see releaseConcurrencyTracked for rationale.
+if redis.call('EXISTS', runningCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
+  end
+  redis.call('SET', runningCounterKey, total, 'EX', counterTtl)
+end
+
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+if removedFromDequeued == 1 then
+  if tonumber(redis.call('GET', runningCounterKey) or '0') > 0 then
+    redis.call('DECR', runningCounterKey)
+  end
+end
 `,
     });
   }
@@ -4512,6 +5514,200 @@ declare module "@internal/redis" {
       messageId: string,
       messageQueueName: string,
       ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    // Tracked variants: maintain per-base-queue lengthCounter / runningCounter
+    // for CK queues. See defineCommand bodies for details.
+    enqueueMessageCkTracked(
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ckIndexKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      lengthCounterKey: string,
+      baseQueueKey: string,
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ckWildcardName: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      keyPrefix: string,
+      counterTtl: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    enqueueMessageWithTtlCkTracked(
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ttlQueueKey: string,
+      ckIndexKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      lengthCounterKey: string,
+      baseQueueKey: string,
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ttlMember: string,
+      ttlScore: string,
+      ckWildcardName: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      keyPrefix: string,
+      counterTtl: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    dequeueMessagesFromCkQueueTracked(
+      ckIndexKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      envCurrentConcurrencyKey: string,
+      messageKeyPrefix: string,
+      envQueueKey: string,
+      masterQueueKey: string,
+      ttlQueueKey: string,
+      lengthCounterKey: string,
+      ckWildcardName: string,
+      currentTime: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      keyPrefix: string,
+      maxCount: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+
+    dequeueMessageFromKeyTracked(
+      messageKey: string,
+      keyPrefix: string,
+      counterTtl: string,
+      callback?: Callback<string | null>
+    ): Result<string | null, Context>;
+
+    acknowledgeMessageCkTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      workerQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      messageId: string,
+      messageQueueName: string,
+      messageKeyValue: string,
+      removeFromWorkerQueue: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    nackMessageCkTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      messageId: string,
+      messageQueueName: string,
+      messageData: string,
+      messageScore: string,
+      ckWildcardName: string,
+      keyPrefix: string,
+      counterTtl: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    moveToDeadLetterQueueCkTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      deadLetterQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      messageId: string,
+      messageQueueName: string,
+      ckWildcardName: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    expireTtlRunsTracked(
+      ttlQueueKey: string,
+      keyPrefix: string,
+      currentTime: string,
+      batchSize: string,
+      shardCount: string,
+      workerQueueKey: string,
+      workerItemsKey: string,
+      visibilityTimeoutMs: string,
+      callback?: Callback<string[]>
+    ): Result<string[], Context>;
+
+    releaseConcurrencyTracked(
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      runningCounterKey: string,
+      ckIndexKey: string,
+      messageId: string,
+      keyPrefix: string,
+      counterTtl: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    clearMessageFromConcurrencySetsTracked(
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      runningCounterKey: string,
+      ckIndexKey: string,
+      messageId: string,
+      keyPrefix: string,
+      counterTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
   }

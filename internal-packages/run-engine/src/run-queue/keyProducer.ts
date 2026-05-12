@@ -18,6 +18,8 @@ const constants = {
   MASTER_QUEUE_PART: "masterQueue",
   WORKER_QUEUE_PART: "workerQueue",
   CK_INDEX_PART: "ckIndex",
+  LENGTH_COUNTER_PART: "lengthCounter",
+  RUNNING_COUNTER_PART: "runningCounter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -313,6 +315,22 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   baseQueueKeyFromQueue(queue: string): string {
     return queue.replace(/:ck:.+$/, "");
+  }
+
+  queueLengthCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.LENGTH_COUNTER_PART}`;
+  }
+
+  queueLengthCounterKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.LENGTH_COUNTER_PART}`;
+  }
+
+  queueRunningCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.RUNNING_COUNTER_PART}`;
+  }
+
+  queueRunningCounterKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.RUNNING_COUNTER_PART}`;
   }
 
   isCkWildcard(queue: string): boolean {
