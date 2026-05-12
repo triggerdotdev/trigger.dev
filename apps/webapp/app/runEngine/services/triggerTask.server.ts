@@ -40,6 +40,7 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
+import { evaluateGate } from "~/v3/mollifier/mollifierGate.server";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
@@ -314,6 +315,16 @@ export class RunEngineTriggerTaskService {
         rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
         rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
       };
+
+      const mollifierOutcome = await evaluateGate({
+        envId: environment.id,
+        orgId: environment.organizationId,
+      });
+      if (mollifierOutcome.action === "mollify") {
+        throw new Error(
+          "MollifierGate.mollify reached in phase 1 — should be unreachable until phase 3 wiring lands",
+        );
+      }
 
       try {
         return await this.traceEventConcern.traceRun(

@@ -1030,6 +1030,34 @@ const EnvironmentSchema = z
     COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    MOLLIFIER_ENABLED: z.string().default("0"),
+    MOLLIFIER_SHADOW_MODE: z.string().default("0"),
+    MOLLIFIER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    MOLLIFIER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined),
+      ),
+    MOLLIFIER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    MOLLIFIER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    MOLLIFIER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
+    MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
+    MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
+    MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
+    MOLLIFIER_ENTRY_TTL_S: z.coerce.number().int().positive().default(600),
+    MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()
       .int()
