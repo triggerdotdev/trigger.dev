@@ -26,6 +26,7 @@ import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
 import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
+import { getMollifierDrainer } from "~/v3/mollifier/mollifierDrainer.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 import { sendEmail } from "./email.server";
 import { logger } from "./logger.server";
@@ -128,6 +129,8 @@ export async function init() {
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
   }
+
+  getMollifierDrainer();
 }
 
 function getWorkerQueue() {
