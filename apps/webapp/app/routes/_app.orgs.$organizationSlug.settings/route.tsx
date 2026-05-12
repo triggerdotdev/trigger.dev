@@ -19,10 +19,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       gitRefName: process.env.BUILD_GIT_REF_NAME,
       buildTimestampSeconds: process.env.BUILD_TIMESTAMP_SECONDS,
     } satisfies BuildInfo,
-    // Plugin presence is the right gate for role-management UI — covers
-    // both triggerdotdev cloud AND self-hosted enterprise installs, where
-    // the deploy-config `isManagedCloud` flag would wrongly hide the
-    // Roles link.
     isUsingPlugin: await rbac.isUsingPlugin(),
   });
 };

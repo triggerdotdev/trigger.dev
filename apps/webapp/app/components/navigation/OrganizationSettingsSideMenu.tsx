@@ -132,11 +132,6 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
-          {/* Gate on plugin presence rather than the deploy-config
-              `isManagedCloud` flag — self-hosted enterprise installs
-              load the same plugin and should see role management too.
-              OSS without the plugin has no role infrastructure to
-              manage, so the page would just dead-end. */}
           {isUsingPlugin && (
             <SideMenuItem
               name="Roles"
