@@ -98,6 +98,11 @@ export class PendingVersionSystem {
           run: updatedRun,
           env: backgroundWorker.runtimeEnvironment,
           tx,
+          // PENDING_VERSION re-enqueue is the first time this run is actually
+          // entering the run queue (the original enqueue was held back waiting
+          // for a worker version). Arm TTL here so the TTL system can expire it
+          // if it sits queued waiting on a concurrency slot.
+          includeTtl: true,
         });
       });
 

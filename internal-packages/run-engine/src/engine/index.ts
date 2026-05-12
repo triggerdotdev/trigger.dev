@@ -797,7 +797,13 @@ export class RunEngine {
           }
         } else {
           try {
-            if (taskRun.ttl) {
+            // The new batch TTL path only expires runs still in the queue
+            // sorted set (waiting on a concurrency slot). For DEV
+            // environments where the dev CLI may not be running, fast-pathed
+            // runs can sit on the worker queue indefinitely and never get
+            // claimed for expiration. Keep the legacy per-run expireRun job
+            // armed for DEV so those runs still expire.
+            if (taskRun.ttl && environment.type === "DEVELOPMENT") {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
 
@@ -812,7 +818,7 @@ export class RunEngine {
               enableFastPath,
             });
           } catch (enqueueError) {
-            this.logger.error("engine.trigger(): failed to schedule TTL or enqueue run", {
+            this.logger.error("engine.trigger(): failed to enqueue run", {
               runId: taskRun.id,
               friendlyId: taskRun.friendlyId,
               taskIdentifier: taskRun.taskIdentifier,
