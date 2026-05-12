@@ -4,7 +4,8 @@ import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 
 export const InputPayload = z.object({
   runId: z.string(),
-  taskIdentifier: z.string(),
+  /** Deprecated: not read on the V2 dequeue path; will stop being written in a follow-up. Optional to keep new readers compatible with old payloads that still include it, and vice versa. */
+  taskIdentifier: z.string().optional(),
   orgId: z.string(),
   projectId: z.string(),
   environmentId: z.string(),
