@@ -2,7 +2,6 @@ import { redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "vitest";
-import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
@@ -322,6 +321,107 @@ describe("CK base-queue counters", () => {
         );
 
         expect(Number(await queue.redis.get(runningCounterKey))).toBe(0);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "lengthCounter has 24h TTL after lazy-init",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r1", concurrencyKey: "ck-a" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        const counterKey = testOptions.keys.queueLengthCounterKey(
+          authenticatedEnvDev,
+          "task/my-task"
+        );
+        const ttl = await queue.redis.ttl(counterKey);
+        // Expect roughly 86400; allow slack for test scheduling.
+        expect(ttl).toBeGreaterThan(86000);
+        expect(ttl).toBeLessThanOrEqual(86400);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "duplicate CK enqueue (same runId) does not inflate lengthCounter",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const msg = makeMessage({ runId: "r1", concurrencyKey: "ck-a" });
+
+        // First enqueue: counter goes 0 -> 1
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        // Same runId again: ZADD returns 0 (already in zset), counter must stay at 1
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, msg.queue)).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "nack lazy-inits lengthCounter when it expired",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const msg = makeMessage({ runId: "r1", concurrencyKey: "ck-a" });
+        // Seed three messages on the CK variant so the lazy-init has a non-trivial floor.
+        for (let i = 0; i < 3; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `seed-${i}`, concurrencyKey: "ck-a" }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        // Simulate counter expiry (the 24h TTL kicked in).
+        const counterKey = testOptions.keys.queueLengthCounterKey(
+          authenticatedEnvDev,
+          "task/my-task"
+        );
+        await queue.redis.del(counterKey);
+        expect(await queue.redis.exists(counterKey)).toBe(0);
+
+        // Dequeue one to currentConcurrency so we have something to nack back.
+        const shard = testOptions.keys.masterQueueShardForEnvironment(msg.environmentId, 2);
+        await queue.testDequeueFromMasterQueue(shard, msg.environmentId, 1);
+
+        // Nack a CK message. nackMessageCkTracked should lazy-init the counter
+        // (find 2 already in zset + 1 we're re-queuing) rather than starting from 1.
+        await queue.nackMessage({
+          orgId: msg.orgId,
+          messageId: "seed-0",
+          skipDequeueProcessing: true,
+        });
+
+        // 3 originals, 1 was dequeued (still re-queued by nack), counter should now reflect all 3.
+        const observed = await queue.lengthOfQueue(authenticatedEnvDev, msg.queue);
+        expect(observed).toBe(3);
       } finally {
         await queue.quit();
       }

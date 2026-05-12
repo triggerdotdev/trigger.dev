@@ -2577,7 +2577,8 @@ export class RunQueue {
         messageQueue,
         JSON.stringify(message),
         String(messageScore),
-        ckWildcardName
+        ckWildcardName,
+        this.options.redis.keyPrefix ?? ""
       );
     } else {
       await this.redis.nackMessage(
@@ -3461,7 +3462,9 @@ end
 -- Slow path: normal enqueue
 redis.call('SET', messageKey, messageData)
 
--- Lazy-init lengthCounter from existing ckIndex variants (once per base queue, ever).
+-- Lazy-init lengthCounter from existing ckIndex variants (once per base queue per 24h).
+-- The 24h TTL means the counter periodically re-anchors to truth, bounding any drift
+-- that accumulated during rolling-deploy overlap windows.
 -- Run BEFORE the ZADD so we capture pre-state; the subsequent INCR accounts for the new message.
 -- The counter tracks ONLY CK-variant messages — the read path adds ZCARD(base) separately,
 -- so the base zset is intentionally excluded here.
@@ -3471,12 +3474,16 @@ if redis.call('EXISTS', lengthCounterKey) == 0 then
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
   end
-  redis.call('SET', lengthCounterKey, total)
+  redis.call('SET', lengthCounterKey, total, 'EX', 86400)
 end
 
-redis.call('ZADD', queueKey, messageScore, messageId)
+-- INCR is gated on ZADD returning 1 (new entry). A duplicate enqueue (same messageId
+-- already in the variant zset) returns 0 and must not bump the counter.
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
-redis.call('INCR', lengthCounterKey)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
 
 -- Rebalance CK index
 local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -3571,23 +3578,24 @@ end
 -- Slow path: normal enqueue
 redis.call('SET', messageKey, messageData)
 
--- Lazy-init lengthCounter from existing ckIndex variants (once per base queue, ever).
--- Run BEFORE the ZADD so we capture pre-state; the subsequent INCR accounts for the new message.
--- The counter tracks ONLY CK-variant messages — the read path adds ZCARD(base) separately,
--- so the base zset is intentionally excluded here.
+-- Lazy-init lengthCounter from existing ckIndex variants (once per base queue per 24h).
+-- See enqueueMessageCkTracked for the TTL rationale.
 if redis.call('EXISTS', lengthCounterKey) == 0 then
   local total = 0
   local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
   for _, v in ipairs(variants) do
     total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
   end
-  redis.call('SET', lengthCounterKey, total)
+  redis.call('SET', lengthCounterKey, total, 'EX', 86400)
 end
 
-redis.call('ZADD', queueKey, messageScore, messageId)
+-- INCR is gated on ZADD returning 1 (new entry).
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
-redis.call('INCR', lengthCounterKey)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
 
 -- Rebalance CK index
 local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -3692,7 +3700,7 @@ for i, member in ipairs(expiredMembers) do
       redis.call('SREM', envDequeuedKey, runId)
 
       -- Rebalance CK index if this is a CK queue
-      local ckMatch = string.match(rawQueueKey, "^(.+):ck:.+$")
+      local ckMatch = string.match(rawQueueKey, "(.-):ck:")
       if ckMatch then
         local ckIndexKey = keyPrefix .. ckMatch .. ":ckIndex"
         local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
@@ -3797,7 +3805,7 @@ for i, member in ipairs(expiredMembers) do
       redis.call('SREM', envDequeuedKey, runId)
 
       -- Rebalance CK index AND update counters if this is a CK queue
-      local ckMatch = string.match(rawQueueKey, "^(.+):ck:.+$")
+      local ckMatch = string.match(rawQueueKey, "(.-):ck:")
       if ckMatch then
         local lengthCounterKey = keyPrefix .. ckMatch .. ":lengthCounter"
         local runningCounterKey = keyPrefix .. ckMatch .. ":runningCounter"
@@ -4325,11 +4333,17 @@ local queue = messageData.queue
 local queueCurrentDequeuedKey = keyPrefix .. queue .. ':currentDequeued'
 local envCurrentDequeuedKey = keyPrefix .. string.match(queue, "(.+):queue:") .. ':currentDequeued'
 
--- If CK, bump the runningCounter for the base queue (lazy init from ckIndex).
+-- SADD first so we know if this dequeue is new (return 1) or a duplicate (return 0).
+-- INCR runningCounter is gated on the new-membership result so re-dequeues don't inflate.
+local addedDeq = redis.call('SADD', queueCurrentDequeuedKey, messageData.runId)
+redis.call('SADD', envCurrentDequeuedKey, messageData.runId)
+
+-- If CK + new addition, bump the runningCounter for the base queue (lazy init from ckIndex).
 -- The counter tracks ONLY CK-variant currentDequeued — the read path adds the base
--- SCARD separately, so we exclude the base currentDequeued here.
+-- SCARD separately, so we exclude the base currentDequeued here. 24h TTL on init
+-- bounds any drift from rolling-deploy v1/v2 overlap.
 local baseQueue = string.match(queue, "(.-):ck:")
-if baseQueue then
+if baseQueue and addedDeq == 1 then
   local runningCounterKey = keyPrefix .. baseQueue .. ':runningCounter'
   if redis.call('EXISTS', runningCounterKey) == 0 then
     local ckIndexKey = keyPrefix .. baseQueue .. ':ckIndex'
@@ -4338,13 +4352,13 @@ if baseQueue then
     for _, v in ipairs(variants) do
       total = total + tonumber(redis.call('SCARD', keyPrefix .. v .. ':currentDequeued') or '0')
     end
-    redis.call('SET', runningCounterKey, total)
+    -- Subtract 1 because we already SADD'd our own runId above, which the per-variant
+    -- SCARDs now reflect. Without this, the lazy-init seed double-counts the new member
+    -- relative to what the subsequent INCR will add.
+    redis.call('SET', runningCounterKey, math.max(0, total - 1), 'EX', 86400)
   end
   redis.call('INCR', runningCounterKey)
 end
-
-redis.call('SADD', queueCurrentDequeuedKey, messageData.runId)
-redis.call('SADD', envCurrentDequeuedKey, messageData.runId)
 
 return message
       `,
@@ -4749,6 +4763,8 @@ local messageQueueName = ARGV[2]
 local messageData = ARGV[3]
 local messageScore = tonumber(ARGV[4])
 local ckWildcardName = ARGV[5]
+-- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
+local keyPrefix = ARGV[6]
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -4764,6 +4780,19 @@ local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageI
 redis.call('SREM', envCurrentDequeuedKey, messageId)
 if removedFromDequeued == 1 then
   decrFloored(runningCounterKey)
+end
+
+-- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
+-- message, which means lengthCounter must be present before we INCR. Without this,
+-- a nack after counter expiry would create the counter at 1 and stay drifted until
+-- next reset.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', 86400)
 end
 
 -- ZADD back to the variant zset. INCR lengthCounter only if it's a new entry.
@@ -5511,6 +5540,7 @@ declare module "@internal/redis" {
       messageData: string,
       messageScore: string,
       ckWildcardName: string,
+      keyPrefix: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
