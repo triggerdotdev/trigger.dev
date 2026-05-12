@@ -88,6 +88,12 @@ async function asyncPool<T>(
  *
  * @example  Combined contention — fan-out + tags + child work
  * { "count": 1000, "concurrency": 250, "childSleepMs": 500, "tags": ["combined"] }
+ *
+ * @example  Mollifier end-to-end smoke — enough volume to trip the proposed defaults
+ *           (MOLLIFIER_TRIP_THRESHOLD=100 / MOLLIFIER_TRIP_WINDOW_MS=200), but only
+ *           matters once phase 3 wires the buffer write. In phase 1, this still goes
+ *           through the existing engine.trigger() path because the gate is no-op.
+ * { "count": 500, "concurrency": 500 }
  */
 export const fanOutTriggerTask = task({
   id: "stress-fan-out-trigger",
