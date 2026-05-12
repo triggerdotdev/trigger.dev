@@ -442,25 +442,26 @@ hydrateMessages: async ({ incomingMessages }) => {
 
 2. **Registering `hydrateMessages` short-circuits snapshot+replay.** The runtime trusts your hook to be the source of truth, so it doesn't read or write the JSON snapshot or replay `session.out`. Zero object-store traffic. Trade-off: you own persistence end-to-end.
 
-### `onChatStart` consumers
+### `onChatStart` is now once-per-chat
 
-`onChatStart.messages` reflects the **full prior conversation** on a continuation now (was empty-or-tiny before). The runtime loads the accumulator from snapshot+replay before `onChatStart` runs. If you used `messages.length === 0` as a proxy for "this is a new chat," switch to the explicit `continuation: false` flag — `messages` may be non-empty even on an unrelated continuation path.
+`onChatStart` no longer fires on continuation runs (post-`endRun`, post-waitpoint-timeout, post-`chat.requestUpgrade`) or on OOM-retry attempts. It fires **exactly once per chat**, on the very first user message of the chat's lifetime. The `continuation` and `previousRunId` fields on `ChatStartEvent` are now `@deprecated` (always `false` / `undefined` when the hook fires).
+
+This makes once-per-chat setup code (create the Chat DB row, init user context) safe to write without continuation gates. Drop any `if (continuation) return;` checks from `onChatStart`:
 
 ```ts before
-onChatStart: async ({ messages, chatId, clientData }) => {
-  if (messages.length === 0) {        // ❌ unreliable on continuations now
-    await db.chat.create({ /* ... */ });
-  }
+onChatStart: async ({ continuation, chatId, clientData }) => {
+  if (continuation) return;           // ❌ no longer needed — fires only on first message ever
+  await db.chat.create({ /* ... */ });
 }
 ```
 
 ```ts after
-onChatStart: async ({ continuation, chatId, clientData }) => {
-  if (!continuation) {                // ✅ explicit
-    await db.chat.create({ /* ... */ });
-  }
+onChatStart: async ({ chatId, clientData }) => {
+  await db.chat.create({ /* ... */ });  // ✅ guaranteed first-message-of-chat
 }
 ```
+
+If you need per-turn setup that **does** run on continuations, move it to [`onTurnStart`](/ai-chat/lifecycle-hooks#onturnstart) — that hook still fires on every turn, including the first turn of a continuation run.
 
 ### Client-side `setMessages` doesn't round-trip
 

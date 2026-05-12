@@ -6,7 +6,7 @@ description: "Hook into every stage of a chat agent's run: preload, turn start, 
 
 `chat.agent({ ... })` accepts a set of lifecycle hooks for persisting state, validating input, transforming messages, and reacting to suspension and resumption. They fire in a fixed order around each turn.
 
-**Per-turn order:** `onValidateMessages` → `hydrateMessages` → `onChatStart` (turn 0 only) → `onTurnStart` → `run()` → `onBeforeTurnComplete` → `onTurnComplete`.
+**Per-turn order:** `onValidateMessages` → `hydrateMessages` → `onChatStart` (chat's first message only) → `onTurnStart` → `run()` → `onBeforeTurnComplete` → `onTurnComplete`.
 
 **Suspend / resume:** `onChatSuspend` fires when the run transitions from idle to suspended (waiting on the next message); `onChatResume` fires on wake.
 
@@ -63,20 +63,26 @@ Every lifecycle callback receives a `writer`, a lazy stream writer that lets you
 
 ## onChatStart
 
-Fires once on the first turn (turn 0) before `run()` executes. Use it to create a chat record in your database.
+Fires **exactly once per chat**, on the very first user message of the chat's lifetime, before `run()` executes. Use it for one-time chat setup — create the Chat DB row, initialize per-chat in-memory state, mint resources tied to the chat's lifetime.
 
-The `continuation` field tells you whether this is a brand new chat or a continuation of an existing one (where the previous run timed out or was cancelled). The `preloaded` field tells you whether `onPreload` already ran.
+`onChatStart` does **not** fire on:
+
+- **Continuation runs** — a new run picking up an existing session after the prior run ended (`chat.endRun`, waitpoint timeout, `chat.requestUpgrade`). The chat already started.
+- **OOM-retry attempts** — same chat, same conversation, just on a larger machine.
+
+If you need per-turn setup that runs on every turn including continuations, use [`onTurnStart`](#onturnstart) instead.
+
+The `preloaded` field tells you whether [`onPreload`](#onpreload) already ran for this chat — useful for skipping setup work that's already done.
 
 <Note>
-  On a continuation (`continuation: true`), the `messages` field reflects the **full prior conversation** — the runtime rebuilds it from a durable snapshot plus a `session.out` replay before `onChatStart` runs. On a brand-new chat or a preloaded run that hasn't received its first turn yet, `messages` is empty. See [Persistence and replay](/ai-chat/patterns/persistence-and-replay) for the underlying mechanism.
+  Because `onChatStart` fires only on the chat's first ever message, `messages` is either empty (when no message exists yet — e.g. a preloaded run that hasn't received its first turn) or contains just the first user message. There's no prior history to load here.
 </Note>
 
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
-  onChatStart: async ({ chatId, clientData, continuation, preloaded }) => {
+  onChatStart: async ({ chatId, clientData, preloaded }) => {
     if (preloaded) return; // Already set up in onPreload
-    if (continuation) return; // Chat record already exists
 
     const { userId } = clientData as { userId: string };
     await db.chat.create({
@@ -170,7 +176,7 @@ export const myChat = chat.agent({
 });
 ```
 
-**Lifecycle position:** `onValidateMessages` → **`hydrateMessages`** → `onChatStart` (turn 0) → `onTurnStart` → `run()`
+**Lifecycle position:** `onValidateMessages` → **`hydrateMessages`** → `onChatStart` (chat's first message only) → `onTurnStart` → `run()`
 
 After the hook returns, any incoming wire message whose ID matches a hydrated message is auto-merged. This makes [tool approvals](/ai-chat/frontend#tool-approvals) work transparently with hydration.
 
@@ -188,7 +194,7 @@ After the hook returns, any incoming wire message whose ID matches a hydrated me
 
 ## onTurnStart
 
-Fires at the start of every turn, after message accumulation and `onChatStart` (turn 0), but **before** `run()` executes. Use it to persist messages before streaming begins so a mid-stream page refresh still shows the user's message.
+Fires at the start of **every turn** — including the first turn of a continuation run, where `onChatStart` doesn't fire. Runs after message accumulation and (when applicable) `onChatStart`, but **before** `run()` executes. Use it to persist messages before streaming begins so a mid-stream page refresh still shows the user's message.
 
 | Field             | Type                                          | Description                                     |
 | ----------------- | --------------------------------------------- | ----------------------------------------------- |

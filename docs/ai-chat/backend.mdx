@@ -93,7 +93,7 @@ async function runAgentLoop(messages: ModelMessage[]) {
 
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — `onPreload`, `onChatStart`, `onValidateMessages`, `hydrateMessages`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`, `onChatSuspend` / `onChatResume`, `exitAfterPreloadIdle`, plus how `ctx` plumbs through every callback.
 
-**Per-turn order:** `onValidateMessages` → `hydrateMessages` → `onChatStart` (turn 0 only) → `onTurnStart` → `run()` → `onBeforeTurnComplete` → `onTurnComplete`.
+**Per-turn order:** `onValidateMessages` → `hydrateMessages` → `onChatStart` (chat's first message only) → `onTurnStart` → `run()` → `onBeforeTurnComplete` → `onTurnComplete`.
 
 ### Using prompts
 

@@ -40,11 +40,13 @@ When the user triggers [preload](/ai-chat/fast-starts#preload), the run starts *
 
 If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`** is false.
 
-### `onChatStart` (turn 0, non-preloaded path)
+### `onChatStart` (chat's first message, non-preloaded path)
 
+- Fires **once per chat**, on the very first user message. Does NOT fire on continuation runs (post-`endRun`, post-waitpoint-timeout, post-`chat.requestUpgrade`) or on OOM-retry attempts.
 - If **`preloaded`** is true, return early — **`onPreload`** already ran.
 - Otherwise mirror preload: user/context, conversation create, session upsert.
-- If **`continuation`** is true, the conversation row usually **already exists** (previous run ended or timed out); only update **session** fields so the **new** PAT and `lastEventId` are stored.
+- No need to gate the conversation create on `continuation` — it's always a brand-new chat at this point.
+- For continuation runs that need to refresh per-run state (new PAT, new `lastEventId`), do it in **`onTurnStart`** / **`onTurnComplete`** — both fire on every turn including the first turn of a continuation run.
 
 ### `onTurnStart`
 
@@ -135,12 +137,11 @@ chat.agent({
     await upsertSession({ chatId, publicAccessToken: chatAccessToken });
   },
 
-  onChatStart: async ({ chatId, chatAccessToken, clientData, continuation, preloaded }) => {
+  onChatStart: async ({ chatId, chatAccessToken, clientData, preloaded }) => {
     if (preloaded) return;
+    // Fires once per chat — no continuation gate needed.
     await ensureUser(clientData.userId);
-    if (!continuation) {
-      await upsertConversation({ id: chatId, userId: clientData.userId /* ... */ });
-    }
+    await upsertConversation({ id: chatId, userId: clientData.userId /* ... */ });
     await upsertSession({ chatId, publicAccessToken: chatAccessToken });
   },
 
