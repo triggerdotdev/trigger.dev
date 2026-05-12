@@ -1,0 +1,83 @@
+name: 🔎 REVIEW.md Drift Audit
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    paths-ignore:
+      - "docs/**"
+      - ".changeset/**"
+      - ".server-changes/**"
+      - "references/**"
+
+concurrency:
+  group: review-md-drift-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@fefa07e9c665b7320f08c3b525980457f22f58aa # v1.0.111
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: true
+          allowed_bots: "devin-ai-integration[bot]"
+
+          claude_args: |
+            --max-turns 15
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*)"
+
+          prompt: |
+            You are auditing this PR for drift against `.claude/REVIEW.md`.
+
+            ## Context
+
+            `.claude/REVIEW.md` is the repo's source of truth for what AI / agent code reviewers should treat as critical findings (rolling-deploy safety, hot-table indexes, recovery-path queries, testcontainers usage, Lua versioning, etc.). It is consumed by review agents to calibrate severity. If REVIEW.md goes stale, every future agent review degrades.
+
+            ## Your task
+
+            1. Read `.claude/REVIEW.md` in full.
+            2. Run `git diff origin/main...HEAD --name-only` to see which files changed in this PR.
+            3. Sample the diff itself for any of these four signals:
+               - **Stale references** — does any rule cite a file, directory, function, table, Prisma model, or package name that has been removed or renamed in this PR or already gone from `main`?
+               - **Contradictions** — does code in this PR violate a current REVIEW.md rule? (Only flag if one side is clearly wrong — do not re-review the PR.)
+               - **Missing rules** — does this PR introduce a new pattern future reviewers should know about? Examples: a new hot table, a new Lua-script versioning convention, a new safety wrapper, a new "must always check" invariant.
+               - **Obsolete rules** — has the repo moved past a constraint REVIEW.md still asserts (e.g. a deprecated path is gone, a pattern is now linted, V1 code is deleted)?
+
+            ## Response format
+
+            If nothing needs changing:
+
+            ✅ REVIEW.md looks current for this PR.
+
+            Otherwise:
+
+            📝 **REVIEW.md updates suggested:**
+
+            - **[stale]** `<rule excerpt>` — <what's stale and why>
+            - **[contradiction]** `<rule excerpt>` — <what in this PR disagrees>
+            - **[missing]** under `## <section>` — <one-sentence draft rule>
+            - **[obsolete]** `<rule excerpt>` — <why this rule no longer applies>
+
+            ## Rules
+
+            - Keep it tight. Maximum 3 suggestions per audit. Pick the highest-signal ones.
+            - Only flag things that would actually mislead a future reviewer. Style nits and wording preferences do not count.
+            - Do NOT review the PR itself. Do NOT propose rules outside REVIEW.md's existing sections.
+            - Do NOT propose adding rules for one-off PR specifics that don't generalize to future PRs.
+            - If REVIEW.md does not exist in the repo, respond with `(skip)` and stop.
