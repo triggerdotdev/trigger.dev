@@ -1542,6 +1542,9 @@ const EnvironmentSchema = z
     // Private connections
     PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
     PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
+
+    // Force RBAC to not use the plugin
+    RBAC_FORCE_FALLBACK: BoolEnv.default(false),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)

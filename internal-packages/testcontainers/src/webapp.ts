@@ -37,13 +37,29 @@ export interface WebappInstance {
   fetch(path: string, init?: RequestInit): Promise<Response>;
 }
 
+export interface StartWebappOptions {
+  /**
+   * When true (default), the spawned webapp runs with `RBAC_FORCE_FALLBACK=1`
+   * so the default fallback handles all auth checks. The comprehensive
+   * suite (`*.e2e.full.test.ts`) relies on this — it's pinned to the
+   * fallback so results don't depend on whether `@triggerdotdev/plugins/rbac`
+   * happens to be installed in the local node_modules.
+   *
+   * Set to false to spawn a webapp that loads any installed RBAC
+   * plugin instead, for testing the plugin path.
+   */
+  forceRbacFallback?: boolean;
+}
+
 export async function startWebapp(
   databaseUrl: string,
-  redis: { host: string; port: number }
+  redis: { host: string; port: number },
+  options: StartWebappOptions = {}
 ): Promise<{
   instance: WebappInstance;
   stop: () => Promise<void>;
 }> {
+  const forceRbacFallback = options.forceRbacFallback ?? true;
   const port = await findFreePort();
 
   // Merge NODE_PATH so transitive pnpm deps (hoisted to .pnpm/node_modules) are resolvable
@@ -56,7 +72,12 @@ export async function startWebapp(
     cwd: WEBAPP_ROOT,
     env: {
       ...process.env,
-      NODE_ENV: "test",
+      // Match `pnpm run start` (production-mode boot). NODE_ENV=test
+      // surfaces a circular-init regression in the production bundle
+      // — see TRI-8731 — that production-mode dodges by initialising
+      // modules in a different order. Tests don't depend on test-mode
+      // semantics; they only need an isolated webapp + DB.
+      NODE_ENV: "production",
       DATABASE_URL: databaseUrl,
       DIRECT_URL: databaseUrl,
       PORT: String(port),
@@ -81,6 +102,11 @@ export async function startWebapp(
       RUN_ENGINE_TTL_SYSTEM_DISABLED: "true",     // disables TTL expiry system (BoolEnv)
       RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true",  // disables TTL consumers (BoolEnv)
       RUN_REPLICATION_ENABLED: "0",
+      // Force the RBAC loader to use the default fallback in e2e tests
+      // so auth behaviour is deterministic regardless of whether a
+      // plugin is installed in the local node_modules. Set to "0" /
+      // undefined to spawn a webapp that loads any installed plugin.
+      ...(forceRbacFallback ? { RBAC_FORCE_FALLBACK: "1" } : {}),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -147,15 +173,21 @@ export async function startWebapp(
 export interface TestServer {
   webapp: WebappInstance;
   prisma: PrismaClient;
+  // Postgres connection string. Useful when test workers run in separate
+  // processes and need to construct their own clients against the same DB.
+  databaseUrl: string;
   stop: () => Promise<void>;
 }
 
 /** Convenience helper: starts a postgres + redis container + webapp and returns both for testing. */
-export async function startTestServer(): Promise<TestServer> {
+export async function startTestServer(
+  options: StartWebappOptions = {}
+): Promise<TestServer> {
   const network = await new Network().start();
 
   // Track each resource as we acquire it so we can tear it down if a later step fails.
   let pgContainer: Awaited<ReturnType<typeof createPostgresContainer>>["container"] | undefined;
+  let pgUrl: string | undefined;
   let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
   let prisma: PrismaClient | undefined;
   let stopWebapp: (() => Promise<void>) | undefined;
@@ -164,13 +196,18 @@ export async function startTestServer(): Promise<TestServer> {
   try {
     const pg = await createPostgresContainer(network);
     pgContainer = pg.container;
+    pgUrl = pg.url;
 
     const { container: rc } = await createRedisContainer({ network });
     redisContainer = rc;
 
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
     await prisma.$connect(); // pre-warm pool; surface connection failures before tests start
-    const started = await startWebapp(pg.url, { host: rc.getHost(), port: rc.getPort() });
+    const started = await startWebapp(
+      pg.url,
+      { host: rc.getHost(), port: rc.getPort() },
+      options
+    );
     webapp = started.instance;
     stopWebapp = started.stop;
   } catch (err) {
@@ -190,5 +227,5 @@ export async function startTestServer(): Promise<TestServer> {
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
-  return { webapp, prisma: prisma!, stop };
+  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, stop };
 }

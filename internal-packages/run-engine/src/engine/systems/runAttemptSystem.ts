@@ -63,6 +63,7 @@ import {
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import type { AuthenticatedEnvironment } from "../../shared/index.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -1055,7 +1056,16 @@ export class RunAttemptSystem {
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
                 },
-                environment: run.runtimeEnvironment,
+                // The Prisma payload structurally satisfies the slim
+                // AuthenticatedEnvironment except for `concurrencyLimitBurstFactor`
+                // (Decimal vs number). Coerce that one field; cast away
+                // the excess-property mismatch (the rest of Prisma's
+                // RuntimeEnvironment columns are extra, not missing).
+                environment: {
+                  ...run.runtimeEnvironment,
+                  concurrencyLimitBurstFactor:
+                    run.runtimeEnvironment.concurrencyLimitBurstFactor.toNumber(),
+                } as unknown as AuthenticatedEnvironment,
                 retryAt,
               });
 

@@ -1,6 +1,5 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -17,8 +16,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { adminGetUsers } from "~/models/admin.server";
-import { requireUserId } from "~/services/session.server";
+import { adminGetUsers, redirectWithImpersonation } from "~/models/admin.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -28,17 +27,34 @@ export const SearchParams = z.object({
 
 export type SearchParams = z.infer<typeof SearchParams>;
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ user, request }) => {
+    const searchParams = createSearchParams(request.url, SearchParams);
+    if (!searchParams.success) {
+      throw new Error(searchParams.error);
+    }
+    const result = await adminGetUsers(user.id, searchParams.params.getAll());
 
-  const searchParams = createSearchParams(request.url, SearchParams);
-  if (!searchParams.success) {
-    throw new Error(searchParams.error);
+    return typedjson(result);
   }
-  const result = await adminGetUsers(userId, searchParams.params.getAll());
+);
 
-  return typedjson(result);
-};
+const FormSchema = z.object({ id: z.string() });
+
+export const action = dashboardAction(
+  { authorization: { requireSuper: true } },
+  async ({ request }) => {
+    if (request.method.toLowerCase() !== "post") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    const payload = Object.fromEntries(await request.formData());
+    const { id } = FormSchema.parse(payload);
+
+    return redirectWithImpersonation(request, id, "/");
+  }
+);
 
 export default function AdminDashboardRoute() {
   const { users, filters, page, pageCount } = useTypedLoaderData<typeof loader>();

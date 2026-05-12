@@ -10,8 +10,7 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1,
     authorization: {
       action: "read",
-      resource: () => ({ prompts: "all" }),
-      superScopes: ["read:prompts", "admin"],
+      resource: () => ({ type: "prompts", id: "all" }),
     },
   },
   async ({ authentication }) => {

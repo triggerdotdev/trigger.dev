@@ -5,7 +5,7 @@ import {
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunAttemptStartResponseBody,
 } from "@trigger.dev/core/v3/workers";
-import { RuntimeEnvironment } from "@trigger.dev/database";
+import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { z } from "zod";
 import { prisma } from "~/db.server";
@@ -76,7 +76,7 @@ const { action } = createActionApiRoute(
 );
 
 async function getEnvVars(
-  environment: RuntimeEnvironment,
+  environment: AuthenticatedEnvironment,
   runId: string,
   machinePreset: MachinePreset,
   taskEventStore?: string

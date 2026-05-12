@@ -51,8 +51,7 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "trigger",
-      resource: (params) => ({ tasks: params.taskId }),
-      superScopes: ["write:tasks", "admin"],
+      resource: (params) => ({ type: "tasks", id: params.taskId }),
     },
     corsStrategy: "all",
   },

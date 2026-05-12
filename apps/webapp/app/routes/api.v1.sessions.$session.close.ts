@@ -25,8 +25,7 @@ const { action, loader } = createActionApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "admin",
-      resource: (params) => ({ sessions: params.session }),
-      superScopes: ["admin:sessions", "admin:all", "admin"],
+      resource: (params) => ({ type: "sessions", id: params.session }),
     },
   },
   async ({ authentication, params, body }) => {

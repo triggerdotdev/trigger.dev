@@ -126,9 +126,7 @@ export function isPublicJWT(token: string): boolean {
   }
 }
 
-export function extractJwtSigningSecretKey(
-  environment: AuthenticatedEnvironment & { parentEnvironment?: { apiKey: string } }
-) {
+export function extractJwtSigningSecretKey(environment: AuthenticatedEnvironment) {
   return environment.parentEnvironment?.apiKey ?? environment.apiKey;
 }
 

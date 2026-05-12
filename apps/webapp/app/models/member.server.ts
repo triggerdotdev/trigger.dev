@@ -1,6 +1,8 @@
 import { type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
+import { logger } from "~/services/logger.server";
+import { rbac } from "~/services/rbac.server";
 
 const tokenValueLength = 40;
 const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
@@ -86,10 +88,19 @@ export async function inviteMembers({
   slug,
   emails,
   userId,
+  rbacRoleId,
 }: {
   slug: string;
   emails: string[];
   userId: string;
+  /**
+   * Optional RBAC role to attach to the invite. When set, accepted
+   * invites trigger `rbac.setUserRole(rbacRoleId)` after the OrgMember
+   * is created.
+   *
+   * `OrgMemberInvite.role` is still set if the plugin isn't installed.
+   */
+  rbacRoleId?: string | null;
 }) {
   const org = await prisma.organization.findFirst({
     where: { slug, members: { some: { userId } } },
@@ -107,6 +118,7 @@ export async function inviteMembers({
         organizationId: org.id,
         inviterId: userId,
         role: "MEMBER",
+        rbacRoleId: rbacRoleId ?? null,
       } satisfies Prisma.OrgMemberInviteCreateManyInput)
   );
 
@@ -163,7 +175,7 @@ export async function acceptInvite({
   user: { id: string; email: string };
   inviteId: string;
 }) {
-  return await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // 1. Delete the invite and get the invite details
     const invite = await tx.orgMemberInvite.delete({
       where: {
@@ -207,8 +219,32 @@ export async function acceptInvite({
       },
     });
 
-    return { remainingInvites, organization: invite.organization };
+    return {
+      remainingInvites,
+      organization: invite.organization,
+      inviteRole: invite.role,
+      rbacRoleId: invite.rbacRoleId,
+    };
   });
+
+  // If the invite carried an explicit RBAC role. Errors are logged, not fatal.
+  if (result.rbacRoleId) {
+    const roleResult = await rbac.setUserRole({
+      userId: user.id,
+      organizationId: result.organization.id,
+      roleId: result.rbacRoleId,
+    });
+    if (!roleResult.ok) {
+      logger.error("acceptInvite: skipped RBAC role assignment", {
+        organizationId: result.organization.id,
+        userId: user.id,
+        rbacRoleId: result.rbacRoleId,
+        reason: roleResult.error,
+      });
+    }
+  }
+
+  return { remainingInvites: result.remainingInvites, organization: result.organization };
 }
 
 export async function declineInvite({

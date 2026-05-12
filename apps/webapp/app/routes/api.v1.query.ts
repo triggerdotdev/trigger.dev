@@ -1,7 +1,10 @@
 import { json } from "@remix-run/server-runtime";
 import { QueryError } from "@internal/clickhouse";
 import { z } from "zod";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  createActionApiRoute,
+  everyResource,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { executeQuery, type QueryScope } from "~/services/queryService.server";
 import { logger } from "~/services/logger.server";
 import { rowsToCSV } from "~/utils/dataExport";
@@ -34,11 +37,16 @@ const { action, loader } = createActionApiRoute(
     findResource: async () => 1,
     authorization: {
       action: "read",
+      // A multi-table query reads from every detected table. Wrap with
+      // everyResource so a JWT scoped to one table can't pass auth for
+      // a query that also reads tables it isn't scoped to (would be the
+      // same OR-loophole the batch trigger route had pre-fix).
       resource: (_, __, ___, body) => {
         const tables = detectTables(body.query);
-        return { query: tables.length > 0 ? tables : "all" };
+        return tables.length > 0
+          ? everyResource(tables.map((id) => ({ type: "query", id })))
+          : { type: "query", id: "all" };
       },
-      superScopes: ["read:query", "read:all", "admin"],
     },
   },
   async ({ body, authentication }) => {

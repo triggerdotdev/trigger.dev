@@ -463,7 +463,15 @@ export function SelectItem({
   ...props
 }: SelectItemProps) {
   const combobox = Ariakit.useComboboxContext();
-  const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : undefined;
+  // In a Combobox context we wrap the caller's render in ComboboxItem
+  // so combobox keyboard nav still works. Outside a Combobox we pass
+  // the render through verbatim — without this, callers like
+  // SelectLinkItem (which uses render to swap in a <Link>) get their
+  // render prop silently dropped, which is why those rows looked
+  // clickable but didn't navigate.
+  const render = combobox
+    ? <Ariakit.ComboboxItem render={props.render} />
+    : props.render;
   const ref = React.useRef<HTMLDivElement>(null);
   const select = Ariakit.useSelectContext();
   const selectValue = select?.useState("value");
