@@ -1681,7 +1681,7 @@ describe("API", () => {
       expect(res.status).not.toBe(403);
     });
 
-    it("JWT read:runs: 403 (resource type is 'batch', not 'runs')", async () => {
+    it("JWT read:runs: auth passes (backwards-compat for legacy SDKs)", async () => {
       const { batchFriendlyId, apiKey, environment } = await seedRunWithBatch();
       const jwt = await generateJWT({
         secretKey: apiKey,
@@ -1689,13 +1689,16 @@ describe("API", () => {
         expirationTime: "15m",
       });
       const res = await get(pathFor(batchFriendlyId), { Authorization: `Bearer ${jwt}` });
-      // Pre-TRI-8719 the legacy literal-match escape granted
-      // read:runs access to batch endpoints. Post-migration the
-      // resource type is strictly { type: "batch" } and read:runs
-      // doesn't match. Lock this in — if SDKs were issuing
-      // read:runs:* JWTs for batch lookups, that's a regression to
-      // catch.
-      expect(res.status).toBe(403);
+      // Pre-RBAC the batch-retrieve route's superScopes included
+      // `read:runs`, so JWTs minted with read:runs could read batches.
+      // The post-migration backwards-compat fix adds a `{type: "runs"}`
+      // element to the route's anyResource(...) list so those
+      // SDK-issued JWTs in the wild keep working — avoids a silent
+      // 401/403 regression for callers we never told to switch scopes.
+      // Per-id `read:batch:<id>` and type-level `read:batch` still
+      // grant via the route's first resource element.
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
     });
 
     it("JWT read:all super-scope: auth passes", async () => {
