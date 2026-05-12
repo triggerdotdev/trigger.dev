@@ -47,9 +47,11 @@ export type BuildInfo = {
 export function OrganizationSettingsSideMenu({
   organization,
   buildInfo,
+  isUsingPlugin,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
+  isUsingPlugin: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -130,17 +132,20 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
-          {isManagedCloud && (
-            <>
-              <SideMenuItem
-                name="Roles"
-                icon={ShieldCheckIcon}
-                activeIconColor="text-sky-500"
-                inactiveIconColor="text-sky-500"
-                to={organizationRolesPath(organization)}
-                data-action="roles"
-              />
-            </>
+          {/* Gate on plugin presence rather than the deploy-config
+              `isManagedCloud` flag — self-hosted enterprise installs
+              load the same plugin and should see role management too.
+              OSS without the plugin has no role infrastructure to
+              manage, so the page would just dead-end. */}
+          {isUsingPlugin && (
+            <SideMenuItem
+              name="Roles"
+              icon={ShieldCheckIcon}
+              activeIconColor="text-sky-500"
+              inactiveIconColor="text-sky-500"
+              to={organizationRolesPath(organization)}
+              data-action="roles"
+            />
           )}
           <SideMenuItem
             name="Settings"
