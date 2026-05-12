@@ -189,7 +189,7 @@ Pick `"preload"` when the UI has rendered but the user hasn't typed (warms the a
 | --- | --- | --- |
 | `type` | `string` | Discriminator. Use `"chat.agent"`. |
 | `taskIdentifier` | `string` | The `id` you passed to `chat.agent({ id: ... })` — e.g. `"ai-chat"`. |
-| `triggerConfig.basePayload` | `object` | The wire payload sent to **every run** triggered by this session — both the first run (created by this call) and any continuation runs. Same shape as [`ChatTaskWirePayload`](#chattaskwirepayload) in Step 3 (the type used by `.in/append`). See [What goes in `basePayload`](#what-goes-in-basepayload) below. |
+| `triggerConfig.basePayload` | `object` | The wire payload sent to the **first run** created by this call. Same shape as [`ChatTaskWirePayload`](#chattaskwirepayload) in Step 3. Durable fields (`chatId`, `metadata`, `idleTimeoutInSeconds`, `sessionId`) flow through to continuation runs too; first-turn-only fields (`message`, `trigger`) are stripped on continuations — those are session-create concerns and don't replay. See [What goes in `basePayload`](#what-goes-in-basepayload) below. |
 
 ### Optional fields
 
@@ -515,7 +515,7 @@ Signals that the agent cannot handle this message on its current version and a n
 
 When you receive this chunk:
 1. Close the stream reader.
-2. Re-send the user's message on `.in/append` with `continuation: true` and `previousRunId` in the payload (see [Continuations](#continuations)). The append handler triggers a fresh run on the same session — `sessionId` and `publicAccessToken` are reused, only `runId` changes.
+2. Re-send the user's message on `.in/append` as a normal `submit-message` (no extra fields needed — see [Continuations](#continuations)). The append handler triggers a fresh run on the same session — `sessionId` and `publicAccessToken` are reused, only `runId` changes.
 3. Resubscribe to `/realtime/v1/sessions/{sessionId}/out`.
 
 The user's message is not lost — the agent processes it on the new version. The built-in clients handle this transparently.
@@ -642,7 +642,18 @@ type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unk
    */
   metadata?: TMetadata;
   action?: unknown;
+  /**
+   * Informational — the server sets this automatically on continuation
+   * runs (when the prior run is dead). Clients don't need to send it.
+   * Read by the agent's boot gate to skip `onChatStart` and trigger
+   * snapshot read + replay.
+   */
   continuation?: boolean;
+  /**
+   * Informational — paired with `continuation: true`, set by the server
+   * from the prior run's friendly ID. Surfaced to the agent in
+   * `ctx.previousRunId`. Clients don't need to send it.
+   */
   previousRunId?: string;
   idleTimeoutInSeconds?: number;
   sessionId?: string;
@@ -843,7 +854,7 @@ See [Pending Messages](/ai-chat/pending-messages) for how to configure the agent
 
 A run can end for several reasons: idle timeout, max turns reached, `chat.requestUpgrade()`, crash, or cancellation. When this happens, the session row stays alive — only the run is gone. The next message you append to `.in` automatically triggers a fresh run on the same session.
 
-The wire shape is identical to a normal `submit-message`, plus a `continuation: true` flag so the agent's `onChatStart` hook can distinguish from a brand-new conversation:
+**Clients send the wire shape exactly as a normal `submit-message`** — the server detects the absent run and handles the continuation itself:
 
 ```json
 {
@@ -856,14 +867,20 @@ The wire shape is identical to a normal `submit-message`, plus a `continuation: 
     },
     "chatId": "conversation-123",
     "trigger": "submit-message",
-    "metadata": { "userId": "user-456" },
-    "continuation": true,
-    "previousRunId": "run_abc123"
+    "metadata": { "userId": "user-456" }
   }
 }
 ```
 
 POST to the same `/realtime/v1/sessions/{sessionId}/in/append` URL with the same `publicAccessToken` you've been using — both stay valid across runs. The server detects the absent run, triggers a new one on the session's `triggerConfig`, and the agent boots, reads the snapshot from the prior run's last turn, replays any tail, and continues. Only `runId` (which you can read from later `trigger:turn-complete` chunks if you need it) changes.
+
+<Note>
+  **You don't need to track `runId` or set `continuation: true` / `previousRunId` yourself.** The server detects continuation when the prior run is in a terminal state and sets those fields on the new run's boot payload automatically. The `continuation` and `previousRunId` fields on `ChatTaskWirePayload` are informational — used internally by the agent's boot path, never required from the client.
+</Note>
+
+<Note>
+  **`onChatStart` does NOT fire on continuation runs.** The hook is once-per-chat — it fires only on the chat's very first user message. Customers who want per-turn setup that also runs on continuation turns should use `onTurnStart` instead.
+</Note>
 
 <Tip>
   This is how [version upgrades](/ai-chat/patterns/version-upgrades) work transparently — the agent calls `chat.requestUpgrade()`, the run exits, and the client's next message triggers a continuation on the new version. Same session, new run, same snapshot.
