@@ -360,6 +360,21 @@ For production clusters we recommend deploying [NodeLocal DNSCache](https://kube
 
 The default `ndots: 5` setting also forces every cluster search domain to be tried before resolving hostnames with fewer dots (the case for most external database hosts). Lowering `ndots` to `1` on the webapp and supervisor pods avoids those extra round-trips.
 
+## Task events
+
+By default, task events (timeline, logs, spans) are stored in PostgreSQL. For production deployments we recommend storing them in ClickHouse instead, it scales to much higher volumes and avoids unbounded growth of the `TaskEvent` table.
+
+ClickHouse is already deployed by the chart, so no extra services are required. To enable, set `EVENT_REPOSITORY_DEFAULT_STORE` on the webapp via `extraEnvVars`:
+
+```yaml
+webapp:
+  extraEnvVars:
+    - name: EVENT_REPOSITORY_DEFAULT_STORE
+      value: "clickhouse_v2"
+```
+
+This only affects new runs; existing runs continue to read from wherever their events were originally stored.
+
 ## Worker token
 
 When using the default bootstrap configuration, worker creation and authentication is handled automatically. The webapp generates a worker token and makes it available to the supervisor via a shared volume.
