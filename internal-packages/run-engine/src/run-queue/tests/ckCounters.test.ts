@@ -1,7 +1,7 @@
 import { redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { describe } from "node:test";
+import { describe } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
