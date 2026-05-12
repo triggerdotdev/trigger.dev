@@ -1,6 +1,6 @@
 # REVIEW.md — Trigger.dev OSS
 
-Injected by `/code-review` as the highest-priority block in the reviewer's prompt. Repo-specific signal only; generic review rules live in the skill.
+Repo-specific signal for anyone (human or agent) reviewing a PR in this codebase. Calibrates what counts as critical, what to always check, and what to skip.
 
 ## What makes a 🔴 Important finding here
 
