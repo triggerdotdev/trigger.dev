@@ -1,3 +1,4 @@
+/** Documents apps/docker-provider/src/index.ts module purpose and public usage context */
 import { $, type ExecaChildProcess, execa } from "execa";
 import {
   ProviderShell,
