@@ -1330,6 +1330,16 @@ const EnvironmentSchema = z
     RUN_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
     RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
+    // What to do when the runs replication client errors (e.g. after a
+    // Postgres failover). `reconnect` (default) re-subscribes in-process with
+    // exponential backoff; `exit` exits the process so a supervisor restarts
+    // it; `log` preserves the old no-op behaviour. Reconnect tuning is
+    // shared across both replication services via REPLICATION_RECONNECT_*.
+    RUN_REPLICATION_ERROR_STRATEGY: z
+      .enum(["reconnect", "exit", "log"])
+      .default("reconnect"),
+    RUN_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().default(5_000),
+    RUN_REPLICATION_EXIT_CODE: z.coerce.number().int().default(1),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and
@@ -1362,6 +1372,19 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
     SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
     SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+    // Error recovery — same semantics as RUN_REPLICATION_ERROR_STRATEGY.
+    SESSION_REPLICATION_ERROR_STRATEGY: z
+      .enum(["reconnect", "exit", "log"])
+      .default("reconnect"),
+    SESSION_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().default(5_000),
+    SESSION_REPLICATION_EXIT_CODE: z.coerce.number().int().default(1),
+
+    // Reconnect tuning shared across both replication services. Only
+    // applies when error strategy is `reconnect`. Max attempts of 0 means
+    // unlimited (default).
+    REPLICATION_RECONNECT_INITIAL_DELAY_MS: z.coerce.number().int().default(1_000),
+    REPLICATION_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().default(60_000),
+    REPLICATION_RECONNECT_MAX_ATTEMPTS: z.coerce.number().int().default(0),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),

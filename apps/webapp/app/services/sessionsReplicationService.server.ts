@@ -23,6 +23,11 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { type Session } from "@trigger.dev/database";
 import EventEmitter from "node:events";
 import { ConcurrentFlushScheduler } from "./runsReplicationService.server";
+import {
+  createReplicationErrorRecovery,
+  type ReplicationErrorRecovery,
+  type ReplicationErrorRecoveryStrategy,
+} from "./replicationErrorRecovery.server";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -65,6 +70,9 @@ export type SessionsReplicationServiceOptions = {
   insertMaxRetries?: number;
   insertBaseDelayMs?: number;
   insertMaxDelayMs?: number;
+  // What to do when the replication client errors (e.g. after a Postgres
+  // failover). Defaults to in-process reconnect with exponential backoff.
+  errorRecovery?: ReplicationErrorRecoveryStrategy;
 };
 
 type SessionInsert = {
@@ -105,6 +113,7 @@ export class SessionsReplicationService {
   private _insertBaseDelayMs: number;
   private _insertMaxDelayMs: number;
   private _insertStrategy: "insert" | "insert_async";
+  private _errorRecovery: ReplicationErrorRecovery;
 
   // Metrics
   private _replicationLagHistogram: Histogram;
@@ -231,14 +240,25 @@ export class SessionsReplicationService {
       }
     });
 
+    this._errorRecovery = createReplicationErrorRecovery({
+      strategy: options.errorRecovery ?? { type: "reconnect" },
+      logger: this.logger,
+      reconnect: async () => {
+        await this._replicationClient.subscribe(this._latestCommitEndLsn ?? undefined);
+      },
+      isShuttingDown: () => this._isShuttingDown || this._isShutDownComplete,
+    });
+
     this._replicationClient.events.on("error", (error) => {
       this.logger.error("Replication client error", {
         error,
       });
+      this._errorRecovery.handle(error);
     });
 
     this._replicationClient.events.on("start", () => {
       this.logger.info("Replication client started");
+      this._errorRecovery.notifyStreamStarted();
     });
 
     this._replicationClient.events.on("acknowledge", ({ lsn }) => {
@@ -259,6 +279,7 @@ export class SessionsReplicationService {
     if (this._isShuttingDown) return;
 
     this._isShuttingDown = true;
+    this._errorRecovery.dispose();
 
     this.logger.info("Initiating shutdown of sessions replication service");
 
