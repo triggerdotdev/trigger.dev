@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/podCleaner.test.ts module purpose and public usage context */
 import { PodCleaner } from "./podCleaner.js";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
 import { setTimeout } from "timers/promises";
