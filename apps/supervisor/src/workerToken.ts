@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/workerToken.ts module purpose and public usage context */
 import { readFileSync } from "fs";
 import { env } from "./env.js";
 
