@@ -1,3 +1,4 @@
+<!-- Documents .claude/rules/server-apps.md module purpose and public usage context -->
 ---
 paths:
   - "apps/**"
