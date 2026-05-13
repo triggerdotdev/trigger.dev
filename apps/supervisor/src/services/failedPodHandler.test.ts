@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/failedPodHandler.test.ts module purpose and public usage context */
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { FailedPodHandler } from "./failedPodHandler.js";
 import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
