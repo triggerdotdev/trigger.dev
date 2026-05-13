@@ -1,3 +1,4 @@
+/** Documents apps/coordinator/src/checkpointer.ts module purpose and public usage context */
 import { ExponentialBackoff } from "@trigger.dev/core/v3/apps";
 import { testDockerCheckpoint } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
