@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/workloadManager/docker.ts module purpose and public usage context */
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import {
   type WorkloadManager,
