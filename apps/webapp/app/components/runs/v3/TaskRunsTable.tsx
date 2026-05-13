@@ -47,6 +47,7 @@ import {
   type TableVariant,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
+import { RegionLabel } from "./RegionLabel";
 import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { RunTag } from "./RunTag";
@@ -72,6 +73,7 @@ type RunsTableProps = {
   variant?: TableVariant;
   disableAdjacentRows?: boolean;
   additionalTableState?: Record<string, string>;
+  regions?: { masterQueue: string; name: string; location?: string }[];
 };
 
 export function TaskRunsTable({
@@ -85,9 +87,14 @@ export function TaskRunsTable({
   allowSelection = false,
   variant = "dimmed",
   additionalTableState,
+  regions,
 }: RunsTableProps) {
+  const regionByMasterQueue = new Map(
+    (regions ?? []).map((r) => [r.masterQueue, r] as const)
+  );
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
@@ -107,6 +114,7 @@ export function TaskRunsTable({
   const tableStateParam = disableAdjacentRows ? "" : encodeURIComponent(search);
 
   const showCompute = isManagedCloud;
+  const showRegion = environment.type !== "DEVELOPMENT";
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -233,6 +241,7 @@ export function TaskRunsTable({
             Machine
           </TableHeaderCell>
           <TableHeaderCell>Queue</TableHeaderCell>
+          {showRegion && <TableHeaderCell>Region</TableHeaderCell>}
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell
@@ -312,11 +321,11 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={15}>
+          <TableBlankRow colSpan={showRegion ? 16 : 15}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
-          <BlankState isLoading={isLoading} filters={filters} />
+          <BlankState isLoading={isLoading} filters={filters} showRegion={showRegion} />
         ) : (
           runs.map((run, index) => {
             const searchParams = new URLSearchParams();
@@ -441,6 +450,20 @@ export function TaskRunsTable({
                     <span>{run.queue.name}</span>
                   </span>
                 </TableCell>
+                {showRegion && (
+                  <TableCell to={path}>
+                    {run.region ? (
+                      <RegionLabel
+                        region={
+                          regionByMasterQueue.get(run.region) ?? { name: run.region }
+                        }
+                        iconClassName="size-4"
+                      />
+                    ) : (
+                      "–"
+                    )}
+                  </TableCell>
+                )}
                 <TableCell to={path}>
                   {run.isTest ? (
                     <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
@@ -467,7 +490,7 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={15}
+            colSpan={showRegion ? 16 : 15}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -603,11 +626,16 @@ function NoRuns({ title }: { title: string }) {
   );
 }
 
-function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "filters">) {
+function BlankState({
+  isLoading,
+  filters,
+  showRegion,
+}: Pick<RunsTableProps, "isLoading" | "filters"> & { showRegion: boolean }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
+  const colSpan = showRegion ? 16 : 15;
+  if (isLoading) return <TableBlankRow colSpan={colSpan}></TableBlankRow>;
 
   const { tasks, from, to, ...otherFilters } = filters;
   const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
@@ -622,7 +650,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
     Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
   ) {
     return (
-      <TableBlankRow colSpan={15}>
+      <TableBlankRow colSpan={colSpan}>
         <Paragraph className="w-auto" variant="base/bright" spacing>
           There are no runs for {filters.tasks[0]}
         </Paragraph>
@@ -650,7 +678,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={15}>
+    <TableBlankRow colSpan={colSpan}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No runs match your filters. Try refreshing, modifying your filters or run a test.

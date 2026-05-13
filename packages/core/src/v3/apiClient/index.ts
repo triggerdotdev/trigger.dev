@@ -2080,6 +2080,13 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
         Array.isArray(query.machine) ? query.machine.join(",") : query.machine
       );
     }
+
+    if (query.region) {
+      searchParams.append(
+        "filter[region]",
+        Array.isArray(query.region) ? query.region.join(",") : query.region
+      );
+    }
   }
 
   return searchParams;

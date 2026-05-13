@@ -42,6 +42,7 @@ const commonRunSelect = {
   isTest: true,
   depth: true,
   scheduleId: true,
+  workerQueue: true,
   lockedToVersion: {
     select: {
       version: true,
@@ -463,6 +464,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
     metadata,
+    region: run.workerQueue || undefined,
   };
 }
 
