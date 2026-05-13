@@ -1,4 +1,4 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, useSearchParams } from "@remix-run/react";
 import { typedjson } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
@@ -10,6 +10,10 @@ export const loader = dashboardLoader(
 );
 
 export default function Page() {
+  const [searchParams] = useSearchParams();
+  const search = searchParams.get("search");
+  const searchSuffix = search ? `?search=${encodeURIComponent(search)}` : "";
+
   return (
     <div className="h-full w-full">
       <div className="flex items-center justify-between p-4">
@@ -17,11 +21,11 @@ export default function Page() {
           tabs={[
             {
               label: "Users",
-              to: "/admin",
+              to: `/admin${searchSuffix}`,
             },
             {
               label: "Organizations",
-              to: "/admin/orgs",
+              to: `/admin/orgs${searchSuffix}`,
             },
             {
               label: "Concurrency",
