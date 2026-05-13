@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/clients/kubernetes.ts module purpose and public usage context */
 import * as k8s from "@kubernetes/client-node";
 import { Informer } from "@kubernetes/client-node";
 import { ListPromise } from "@kubernetes/client-node";
