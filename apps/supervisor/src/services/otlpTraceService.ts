@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/otlpTraceService.ts module purpose and public usage context */
 import { randomBytes } from "crypto";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
