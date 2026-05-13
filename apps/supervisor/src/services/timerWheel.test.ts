@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/timerWheel.test.ts module purpose and public usage context */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { TimerWheel } from "./timerWheel.js";
 
