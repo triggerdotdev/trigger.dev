@@ -1,3 +1,4 @@
+/** Documents apps/kubernetes-provider/src/index.ts module purpose and public usage context */
 import * as k8s from "@kubernetes/client-node";
 import {
   EnvironmentType,
