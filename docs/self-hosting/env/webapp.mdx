@@ -123,6 +123,8 @@ mode: "wide"
 | `TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT`    | No       | 10                    | OTel attribute per link count limit.                                                                               |
 | `TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT`   | No       | 10                    | OTel attribute per event count limit.                                                                              |
 | `SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT`  | No       | 8192                  | OTel span attribute value length limit.                                                                            |
+| **Task events**                                  |          |                       |                                                                                                                    |
+| `EVENT_REPOSITORY_DEFAULT_STORE`                 | No       | postgres              | Where to store task events. Set to `clickhouse_v2` to store in ClickHouse (recommended for production).            |
 | **Realtime**                                     |          |                       |                                                                                                                    |
 | `REALTIME_STREAM_MAX_LENGTH`                     | No       | 1000                  | Realtime stream max length.                                                                                        |
 | `REALTIME_STREAM_TTL`                            | No       | 86400 (1d)            | Realtime stream TTL (s).                                                                                           |
