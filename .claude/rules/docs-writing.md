@@ -1,3 +1,4 @@
+<!-- Documents .claude/rules/docs-writing.md module purpose and public usage context -->
 ---
 paths:
   - "docs/**"
