@@ -1,3 +1,4 @@
+/** Documents apps/webapp/app/bootstrap.ts module purpose and public usage context */
 import { mkdir, writeFile } from "fs/promises";
 import { prisma } from "./db.server";
 import { env } from "./env.server";
