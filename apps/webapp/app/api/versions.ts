@@ -1,3 +1,4 @@
+/** Documents apps/webapp/app/api/versions.ts module purpose and public usage context */
 import {
   API_VERSION_HEADER_NAME,
   API_VERSION as CORE_API_VERSION,
