@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/envUtil.test.ts module purpose and public usage context */
 import { describe, it, expect } from "vitest";
 import { BoolEnv, AdditionalEnvVars } from "./envUtil.js";
 
