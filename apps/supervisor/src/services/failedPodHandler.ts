@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/failedPodHandler.ts module purpose and public usage context */
 import { LogLevel, SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
