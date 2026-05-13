@@ -46,7 +46,8 @@ jobs:
             exit 0
           fi
 
-          # Severity breakdown - single-line output with \n escapes for JSON safety
+          # Severity breakdown - real newlines so jq --arg in the payload
+          # builder encodes them as proper \n in JSON (Slack renders as breaks).
           BY_SEV=$(jq -r '
             group_by(.security_advisory.severity)
             | map({sev: .[0].security_advisory.severity,
@@ -54,9 +55,13 @@ jobs:
                    weight: ({"critical":0,"high":1,"medium":2,"low":3}[.[0].security_advisory.severity])})
             | sort_by(.weight)
             | map("• *\(.count)* \(.sev)")
-            | join("\\n")
+            | join("\n")
           ' open.json)
-          echo "by_severity=$BY_SEV" >> "$GITHUB_OUTPUT"
+          {
+            echo "by_severity<<EOF"
+            echo "$BY_SEV"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
           # Actions: alerts with <7d to TTR (P0=7d, P1=30d, P2=90d, P3=no deadline)
           # Grouped by (package, severity); shows earliest deadline per group.
@@ -78,10 +83,14 @@ jobs:
                 (if .count > 1 then " ×\(.count)" else "" end) + " - " +
                 (if .min_remaining < 0 then "*OVERDUE* by \(-.min_remaining)d"
                  else "\(.min_remaining)d remaining" end)
-              ) | join("\\n"))
+              ) | join("\n"))
               end
           ' open.json)
-          echo "actions=$ACTIONS" >> "$GITHUB_OUTPUT"
+          {
+            echo "actions<<EOF"
+            echo "$ACTIONS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Fetch open dependabot PRs
         id: prs
@@ -97,10 +106,14 @@ jobs:
           fi
           LIST=$(echo "$PR_JSON" | jq -r --arg url "$REPO_URL" '
             if length == 0 then "_None_"
-            else (map("• <\($url)/pull/\(.number)|#\(.number)> \(.title)") | join("\\n"))
+            else (map("• <\($url)/pull/\(.number)|#\(.number)> \(.title)") | join("\n"))
             end
           ')
-          echo "list=$LIST" >> "$GITHUB_OUTPUT"
+          {
+            echo "list<<EOF"
+            echo "$LIST"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Find latest npm dependabot run
         id: latest
@@ -125,19 +138,31 @@ jobs:
             echo "section=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          HEADER="\\n\\n*Couldn't auto-fix (need manual \`pnpm.overrides\`):*\\n"
+          HEADER=$'\n\n*Couldn\'t auto-fix (need manual `pnpm.overrides`):*\n'
           if [ -z "$RUN_ID" ]; then
-            echo "section=${HEADER}_(no recent npm run found)_" >> "$GITHUB_OUTPUT"
+            {
+              echo "section<<EOF"
+              echo "${HEADER}_(no recent npm run found)_"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           gh run view "$RUN_ID" --repo "$REPO" --log > log.txt 2>&1 || true
           STUCK=$(grep -oE "No update possible for [^[:space:]]+ [0-9][^[:space:]]*" log.txt | sed 's/No update possible for //' | sort -u || true)
           if [ -z "$STUCK" ]; then
-            echo "section=${HEADER}_None_" >> "$GITHUB_OUTPUT"
+            {
+              echo "section<<EOF"
+              echo "${HEADER}_None_"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          LIST=$(echo "$STUCK" | awk 'NR>1{printf "\\n"} {printf "• *%s* %s", $1, $2}')
-          echo "section=${HEADER}${LIST}" >> "$GITHUB_OUTPUT"
+          LIST=$(echo "$STUCK" | awk 'NR>1{printf "\n"} {printf "• *%s* %s", $1, $2}')
+          {
+            echo "section<<EOF"
+            echo "${HEADER}${LIST}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build Slack payload
         env:
