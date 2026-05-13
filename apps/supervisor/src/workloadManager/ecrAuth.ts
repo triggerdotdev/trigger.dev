@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/workloadManager/ecrAuth.ts module purpose and public usage context */
 import { ECRClient, GetAuthorizationTokenCommand } from "@aws-sdk/client-ecr";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { tryCatch } from "@trigger.dev/core";
