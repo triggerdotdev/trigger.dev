@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/env.ts module purpose and public usage context */
 import { randomUUID } from "crypto";
 import { env as stdEnv } from "std-env";
 import { z } from "zod";
