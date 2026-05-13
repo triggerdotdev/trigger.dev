@@ -272,9 +272,18 @@ type CommonTaskOptions<
     | MachinePresetName;
 
   /**
+   * The maximum duration in compute-time **seconds** that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * Minimum value is 5 seconds.
+   */
+  maxComputeSeconds?: number;
+
+  /**
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
    *
    * Minimum value is 5 seconds
+   *
+   * @deprecated Use `maxComputeSeconds` instead — same semantics, clearer unit. If both are set, `maxComputeSeconds` wins.
    */
   maxDuration?: number;
 
@@ -877,11 +886,22 @@ export type TriggerOptions = {
   metadata?: Record<string, SerializableJson>;
 
   /**
+   * The maximum duration in compute-time **seconds** that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * This will override the task's `maxComputeSeconds` (or the legacy `maxDuration`).
+   *
+   * Minimum value is 5 seconds.
+   */
+  maxComputeSeconds?: number;
+
+  /**
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
    *
    * This will override the task's maxDuration.
    *
    * Minimum value is 5 seconds
+   *
+   * @deprecated Use `maxComputeSeconds` instead — same semantics, clearer unit. If both are set, `maxComputeSeconds` wins.
    */
   maxDuration?: number;
 
