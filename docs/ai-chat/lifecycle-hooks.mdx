@@ -4,11 +4,23 @@ sidebarTitle: "Lifecycle hooks"
 description: "Hook into every stage of a chat agent's run: preload, turn start, turn complete, suspend, resume, and more."
 ---
 
-`chat.agent({ ... })` accepts a set of lifecycle hooks for persisting state, validating input, transforming messages, and reacting to suspension and resumption. They fire in a fixed order around each turn.
+`chat.agent({ ... })` accepts a set of lifecycle hooks for persisting state, validating input, transforming messages, and reacting to suspension and resumption. They fire at well-defined points in the chat agent's lifetime.
+
+**Once per worker process (every fresh run boot):** `onBoot` → `onPreload` (preloaded runs only).
+
+**Once per chat (first message of the chat's lifetime):** `onChatStart`.
 
 **Per-turn order:** `onValidateMessages` → `hydrateMessages` → `onChatStart` (chat's first message only) → `onTurnStart` → `run()` → `onBeforeTurnComplete` → `onTurnComplete`.
 
 **Suspend / resume:** `onChatSuspend` fires when the run transitions from idle to suspended (waiting on the next message); `onChatResume` fires on wake.
+
+**Three scopes to keep straight:**
+
+| Scope | Fires when | Use for |
+| --- | --- | --- |
+| **Process** ([`onBoot`](#onboot)) | Every fresh worker boots — initial, preloaded, and reactive continuation (post-cancel/crash/`endRun`/upgrade). | Initialize `chat.local`, open per-process resources, re-hydrate state from your DB on continuation. |
+| **Chat** ([`onChatStart`](#onchatstart)) | First message of a chat's lifetime. Does NOT fire on continuation runs or OOM retries. | One-time DB rows for the chat, resources tied to the chat's lifetime. |
+| **Turn** ([`onTurnStart`](#onturnstart), [`onTurnComplete`](#onturncomplete), etc.) | Every turn. | Persist messages, post-process responses. |
 
 ## Task context (`ctx`)
 
@@ -18,21 +30,80 @@ Standard [task lifecycle hooks](/tasks/overview) such as `onWait`, `onResume`, `
 
 Chat agents also have two dedicated suspension hooks, `onChatSuspend` and `onChatResume`, that fire at the idle-to-suspended transition with full chat context. Use them for resource cleanup (e.g. tearing down sandboxes) and re-initialization. See [onChatSuspend / onChatResume](#onchatsuspend--onchatresume) and the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
 
-## onPreload
+## onBoot
 
-Fires when a preloaded run starts, before any messages arrive. Use it to eagerly initialize state (DB records, user context) while the user is still typing.
+Fires **once per worker process picking up the chat** — for the initial run, for preloaded runs, AND for reactive continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry). Does NOT fire when the same run resumes from snapshot via the idle-window suspend/resume path — use [`onChatResume`](#onchatsuspend--onchatresume) for that.
 
-Preloaded runs are triggered by calling `transport.preload(chatId)` on the frontend. See [Preload](/ai-chat/fast-starts#preload) for details.
+This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/reference#chatlocal) state, DB connections, sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
+
+<Warning>
+  If you initialize `chat.local` only in `onChatStart`, your `run()` will crash on continuation runs with `chat.local can only be modified after initialization`. `onChatStart` is once-per-chat by contract; `chat.local` is per-process and needs `onBoot`.
+</Warning>
+
+Branch on `continuation` to decide whether to load existing state from your DB or start fresh:
 
 ```ts
 export const myChat = chat.agent({
   id: "my-chat",
   clientDataSchema: z.object({ userId: z.string() }),
-  onPreload: async ({ ctx, chatId, clientData, runId, chatAccessToken }) => {
-    // Initialize early, before the first message arrives
+  onBoot: async ({ chatId, clientData, continuation, previousRunId }) => {
     const user = await db.user.findUnique({ where: { id: clientData.userId } });
     userContext.init({ name: user.name, plan: user.plan });
 
+    if (continuation) {
+      // Re-hydrate per-chat in-memory state from your DB.
+      // `previousRunId` is the public id of the prior run (use it for
+      // logging or to look up persisted state keyed on run id).
+      const saved = await db.chatState.findUnique({ where: { chatId } });
+      if (saved) {
+        // Re-apply your saved per-chat state into wherever your
+        // run() reads it from (a chat.local slot, an in-memory map, etc.).
+        userContext.applySaved(saved);
+      }
+    }
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+| Field             | Type                          | Description                                                                 |
+| ----------------- | ----------------------------- | --------------------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`              | Full task run context. See [reference](/ai-chat/reference#task-context-ctx). |
+| `chatId`          | `string`                      | Chat session ID                                                             |
+| `runId`           | `string`                      | The Trigger.dev run ID for this run boot                                    |
+| `chatAccessToken` | `string`                      | Scoped access token for this run                                            |
+| `clientData`      | Typed by `clientDataSchema`   | Custom data from the frontend                                               |
+| `continuation`    | `boolean`                     | `true` when this run is taking over from a prior dead run                   |
+| `previousRunId`   | `string \| undefined`         | Public id of the prior run when `continuation` is true                      |
+| `preloaded`       | `boolean`                     | Whether this run was triggered as a preload                                 |
+
+<Tip>
+  `onBoot` and `onChatStart` are complementary — keep DB-row creation in `onChatStart` (it only needs to happen once per chat) and put process-level setup (`chat.local`, connections, caches) in `onBoot` (it needs to happen on every fresh worker).
+</Tip>
+
+## onPreload
+
+Fires when a **preloaded run** starts, before any messages arrive. Use it to eagerly create chat-scoped DB rows (the Chat row, the ChatSession row) while the user is still typing — so the very first message lands fast.
+
+Preloaded runs are triggered by calling `transport.preload(chatId)` on the frontend. See [Preload](/ai-chat/fast-starts#preload) for details.
+
+Per-process state (anything in [`chat.local`](/ai-chat/reference#chatlocal), DB connections, etc.) belongs in [`onBoot`](#onboot) — `onBoot` fires before `onPreload` on every fresh worker, including on continuation runs where `onPreload` never fires.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onBoot: async ({ clientData }) => {
+    // Per-process state — runs on every fresh worker (initial,
+    // preloaded, continuation). See onBoot above.
+    const user = await db.user.findUnique({ where: { id: clientData.userId } });
+    userContext.init({ name: user.name, plan: user.plan });
+  },
+  onPreload: async ({ chatId, clientData, runId, chatAccessToken }) => {
+    // Chat-scoped DB rows — only matters on preload (and onChatStart as
+    // a fallback when not preloaded).
     await db.chat.create({ data: { id: chatId, userId: clientData.userId } });
     await db.chatSession.upsert({
       where: { id: chatId },
@@ -42,7 +113,7 @@ export const myChat = chat.agent({
   },
   onChatStart: async ({ preloaded }) => {
     if (preloaded) return; // Already initialized in onPreload
-    // ... non-preloaded initialization
+    // ... non-preloaded chat-row initialization
   },
   run: async ({ messages, signal }) => {
     return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
@@ -63,14 +134,18 @@ Every lifecycle callback receives a `writer`, a lazy stream writer that lets you
 
 ## onChatStart
 
-Fires **exactly once per chat**, on the very first user message of the chat's lifetime, before `run()` executes. Use it for one-time chat setup — create the Chat DB row, initialize per-chat in-memory state, mint resources tied to the chat's lifetime.
+Fires **exactly once per chat**, on the very first user message of the chat's lifetime, before `run()` executes. Use it for one-time chat-scoped setup — create the Chat DB row, mint resources tied to the chat's lifetime.
 
 `onChatStart` does **not** fire on:
 
-- **Continuation runs** — a new run picking up an existing session after the prior run ended (`chat.endRun`, waitpoint timeout, `chat.requestUpgrade`). The chat already started.
+- **Continuation runs** — a new run picking up an existing session after the prior run ended (`chat.endRun`, waitpoint timeout, `chat.requestUpgrade`, cancel, crash). The chat already started.
 - **OOM-retry attempts** — same chat, same conversation, just on a larger machine.
 
-If you need per-turn setup that runs on every turn including continuations, use [`onTurnStart`](#onturnstart) instead.
+For per-process state that has to be initialized on every fresh worker (including continuation runs), use [`onBoot`](#onboot). For per-turn setup, use [`onTurnStart`](#onturnstart).
+
+<Warning>
+  Do not initialize [`chat.local`](/ai-chat/reference#chatlocal) here. `chat.local` is per-process state that must survive continuation runs, but `onChatStart` only fires on the chat's very first message. Use [`onBoot`](#onboot) instead.
+</Warning>
 
 The `preloaded` field tells you whether [`onPreload`](#onpreload) already ran for this chat — useful for skipping setup work that's already done.
 

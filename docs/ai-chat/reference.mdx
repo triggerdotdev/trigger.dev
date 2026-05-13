@@ -13,6 +13,7 @@ Options for `chat.agent()`.
 | `id`                          | `string`                                                    | required                       | Task identifier                                                                                     |
 | `run`                         | `(payload: ChatTaskRunPayload) => Promise<unknown>`         | required                       | Handler for each turn                                                                               |
 | `clientDataSchema`            | `TaskSchema`                                                | —                              | Schema for validating and typing `clientData`                                                       |
+| `onBoot`                      | `(event: BootEvent) => Promise<void> \| void`               | —                              | Fires once per worker process — initial, preloaded, AND reactive continuation. Use for `chat.local` init and per-process resources. See [onBoot](/ai-chat/lifecycle-hooks#onboot). |
 | `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
 | `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires once per chat, on the very first user message. Does NOT fire on continuation runs or OOM-retries — see [onChatStart](/ai-chat/lifecycle-hooks#onchatstart). |
 | `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/lifecycle-hooks#onvalidatemessages) |
@@ -42,7 +43,7 @@ Plus most standard [TaskOptions](/tasks/overview) — `queue`, `machine`, `maxDu
 
 ## Task context (`ctx`)
 
-All **`chat.agent`** lifecycle events (**`onPreload`**, **`onChatStart`**, **`onTurnStart`**, **`onBeforeTurnComplete`**, **`onTurnComplete`**, **`onCompacted`**) and the object passed to **`run`** include **`ctx`**: the same **`TaskRunContext`** shape as the `ctx` in `task({ run: (payload, { ctx }) => ... })`.
+All **`chat.agent`** lifecycle events (**`onBoot`**, **`onPreload`**, **`onChatStart`**, **`onTurnStart`**, **`onBeforeTurnComplete`**, **`onTurnComplete`**, **`onCompacted`**) and the object passed to **`run`** include **`ctx`**: the same **`TaskRunContext`** shape as the `ctx` in `task({ run: (payload, { ctx }) => ... })`.
 
 <Note>
   **`onValidateMessages`** does not include `ctx` — it fires before message accumulation and is designed for pure validation/transformation of incoming messages.
@@ -79,6 +80,21 @@ The payload passed to the `run` function.
 | `stopSignal`   | `AbortSignal`                              | Stop-only signal (per-turn)                                          |
 | `previousTurnUsage` | `LanguageModelUsage \| undefined`       | Token usage from the previous turn (undefined on turn 0)        |
 | `totalUsage`   | `LanguageModelUsage`                       | Cumulative token usage across completed turns so far              |
+
+## BootEvent
+
+Passed to the `onBoot` callback.
+
+| Field             | Type                        | Description                                                                                          |
+| ----------------- | --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ctx`             | `TaskRunContext`            | Full task run context — see [Task context](#task-context-ctx)                                         |
+| `chatId`          | `string`                    | Chat session ID                                                                                      |
+| `runId`           | `string`                    | The Trigger.dev run ID for this run boot                                                             |
+| `chatAccessToken` | `string`                    | Scoped access token for this run                                                                     |
+| `clientData`      | Typed by `clientDataSchema` | Custom data from the frontend                                                                        |
+| `continuation`    | `boolean`                   | `true` when this run is taking over from a prior dead run (cancel / crash / `endRun` / OOM retry)    |
+| `previousRunId`   | `string \| undefined`       | Public id of the prior run when `continuation` is true                                               |
+| `preloaded`       | `boolean`                   | Whether this run was triggered as a preload                                                          |
 
 ## PreloadEvent
 
