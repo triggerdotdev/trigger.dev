@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/computeSnapshotService.ts module purpose and public usage context */
 import pLimit from "p-limit";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
