@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/services/otlpTraceService.test.ts module purpose and public usage context */
 import { describe, it, expect } from "vitest";
 import { buildPayload } from "./otlpTraceService.js";
 
