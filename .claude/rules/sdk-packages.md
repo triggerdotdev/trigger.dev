@@ -1,3 +1,4 @@
+<!-- Documents .claude/rules/sdk-packages.md module purpose and public usage context -->
 ---
 paths:
   - "packages/**"
