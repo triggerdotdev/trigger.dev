@@ -1,3 +1,4 @@
+/** Documents apps/kubernetes-provider/src/uptimeHeartbeat.ts module purpose and public usage context */
 import * as k8s from "@kubernetes/client-node";
 import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 
