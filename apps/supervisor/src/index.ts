@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/index.ts module purpose and public usage context */
 import { SupervisorSession } from "@trigger.dev/core/v3/workers";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { env } from "./env.js";
