@@ -126,8 +126,10 @@ describe("RunsReplicationService error recovery", () => {
 
         expect(exitSpy).toHaveBeenCalledWith(1);
       } finally {
-        exitSpy.mockRestore();
+        // shutdown() before mockRestore() so any in-flight exit timer can
+        // be disposed without terminating the Vitest worker.
         await service.shutdown();
+        exitSpy.mockRestore();
       }
     }
   );

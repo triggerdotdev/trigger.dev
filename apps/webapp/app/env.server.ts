@@ -1338,8 +1338,8 @@ const EnvironmentSchema = z
     RUN_REPLICATION_ERROR_STRATEGY: z
       .enum(["reconnect", "exit", "log"])
       .default("reconnect"),
-    RUN_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().default(5_000),
-    RUN_REPLICATION_EXIT_CODE: z.coerce.number().int().default(1),
+    RUN_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().min(0).default(5_000),
+    RUN_REPLICATION_EXIT_CODE: z.coerce.number().int().min(0).max(255).default(1),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and
@@ -1376,15 +1376,15 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_ERROR_STRATEGY: z
       .enum(["reconnect", "exit", "log"])
       .default("reconnect"),
-    SESSION_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().default(5_000),
-    SESSION_REPLICATION_EXIT_CODE: z.coerce.number().int().default(1),
+    SESSION_REPLICATION_EXIT_DELAY_MS: z.coerce.number().int().min(0).default(5_000),
+    SESSION_REPLICATION_EXIT_CODE: z.coerce.number().int().min(0).max(255).default(1),
 
     // Reconnect tuning shared across both replication services. Only
     // applies when error strategy is `reconnect`. Max attempts of 0 means
     // unlimited (default).
-    REPLICATION_RECONNECT_INITIAL_DELAY_MS: z.coerce.number().int().default(1_000),
-    REPLICATION_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().default(60_000),
-    REPLICATION_RECONNECT_MAX_ATTEMPTS: z.coerce.number().int().default(0),
+    REPLICATION_RECONNECT_INITIAL_DELAY_MS: z.coerce.number().int().min(0).default(1_000),
+    REPLICATION_RECONNECT_MAX_DELAY_MS: z.coerce.number().int().min(0).default(60_000),
+    REPLICATION_RECONNECT_MAX_ATTEMPTS: z.coerce.number().int().min(0).default(0),
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),

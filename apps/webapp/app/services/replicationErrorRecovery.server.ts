@@ -27,18 +27,18 @@ export type ReplicationErrorRecoveryStrategy =
     }
   | { type: "log" };
 
-export interface ReplicationErrorRecoveryDeps {
+export type ReplicationErrorRecoveryDeps = {
   strategy: ReplicationErrorRecoveryStrategy;
   logger: Logger;
   // Re-subscribe the underlying replication client. Implementations should
-  // call client.subscribe(lastAcknowledgedLsn) and resolve once that returns.
+  // call client.subscribe(...) and resolve once the stream is started.
   reconnect: () => Promise<void>;
   // True once the host service has begun graceful shutdown — recovery
   // suppresses all work in that state.
   isShuttingDown: () => boolean;
-}
+};
 
-export interface ReplicationErrorRecovery {
+export type ReplicationErrorRecovery = {
   // Called from the replication client's "error" event handler.
   handle(error: unknown): void;
   // Called from the replication client's "start" event handler. Resets the
@@ -46,7 +46,7 @@ export interface ReplicationErrorRecovery {
   notifyStreamStarted(): void;
   // Cancel any pending reconnect/exit timer. Called from shutdown().
   dispose(): void;
-}
+};
 
 export function createReplicationErrorRecovery(
   deps: ReplicationErrorRecoveryDeps
@@ -91,13 +91,17 @@ export function createReplicationErrorRecovery(
         // Success path is handled by notifyStreamStarted, which fires from
         // the replication client's "start" event after the stream is live.
       } catch (err) {
-        // subscribe() emits an "error" event of its own on failure, so the
-        // next attempt is scheduled by handle(). Log here anyway so reconnect
-        // failures stay visible even if the error event is suppressed.
+        // subscribe() can throw without first emitting an "error" event —
+        // notably when the initial pg client.connect() fails because Postgres
+        // is still unreachable mid-failover. Schedule the next attempt
+        // ourselves so recovery doesn't silently stop. If subscribe() did
+        // also emit an "error" event, handle() will call scheduleReconnect()
+        // first; the guard on pendingReconnect makes this idempotent.
         logger.error("Replication reconnect attempt failed", {
           attempt,
           error: err,
         });
+        scheduleReconnect(err);
       }
     }, delay);
   }
