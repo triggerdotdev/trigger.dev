@@ -1,3 +1,4 @@
+/** Documents apps/kubernetes-provider/src/labelHelper.ts module purpose and public usage context */
 import { assertExhaustive } from "@trigger.dev/core";
 
 const CREATE_LABEL_ENV_VAR_PREFIX = "DEPLOYMENT_LABEL_";
