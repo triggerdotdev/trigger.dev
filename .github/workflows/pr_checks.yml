@@ -3,11 +3,6 @@ name: 🤖 PR Checks
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths-ignore:
-      - "docs/**"
-      - ".changeset/**"
-      - "hosting/**"
-      - ".github/workflows/helm-prerelease.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -15,21 +10,144 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      webapp: ${{ steps.filter.outputs.webapp }}
+      packages: ${{ steps.filter.outputs.packages }}
+      internal: ${{ steps.filter.outputs.internal }}
+      cli: ${{ steps.filter.outputs.cli }}
+      sdk: ${{ steps.filter.outputs.sdk }}
+    steps:
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!.changeset/**'
+              - '!hosting/**'
+              - '!.github/workflows/helm-prerelease.yml'
+            webapp:
+              - 'apps/webapp/**'
+              - 'packages/**'
+              - 'internal-packages/**'
+              - '.configs/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+            packages:
+              - 'packages/**'
+              - '.configs/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+            internal:
+              - 'internal-packages/**'
+              - 'packages/**'
+              - '.configs/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+            cli:
+              - 'packages/cli-v3/**'
+              - 'packages/build/**'
+              - 'packages/core/**'
+              - 'packages/schema-to-json/**'
+              - '.configs/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+            sdk:
+              - 'packages/trigger-sdk/**'
+              - 'packages/core/**'
+              - '.configs/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'turbo.json'
+
   typecheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/typecheck.yml
 
-  units:
-    uses: ./.github/workflows/unit-tests.yml
+  webapp:
+    needs: changes
+    if: needs.changes.outputs.webapp == 'true'
+    uses: ./.github/workflows/unit-tests-webapp.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  e2e-webapp:
+    needs: changes
+    if: needs.changes.outputs.webapp == 'true'
+    uses: ./.github/workflows/e2e-webapp.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  packages:
+    needs: changes
+    if: needs.changes.outputs.packages == 'true'
+    uses: ./.github/workflows/unit-tests-packages.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  internal:
+    needs: changes
+    if: needs.changes.outputs.internal == 'true'
+    uses: ./.github/workflows/unit-tests-internal.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   e2e:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
     uses: ./.github/workflows/e2e.yml
     with:
       package: cli-v3
 
   sdk-compat:
+    needs: changes
+    if: needs.changes.outputs.sdk == 'true'
     uses: ./.github/workflows/sdk-compat.yml
+
+  all-checks:
+    name: All PR Checks
+    needs:
+      - changes
+      - typecheck
+      - webapp
+      - e2e-webapp
+      - packages
+      - internal
+      - e2e
+      - sdk-compat
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all checks
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more checks failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more checks were cancelled"
+            exit 1
+          fi
+          echo "All checks passed or were skipped due to path filters"
