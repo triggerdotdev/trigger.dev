@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/workloadManager/compute.ts module purpose and public usage context */
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
