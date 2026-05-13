@@ -444,9 +444,9 @@ hydrateMessages: async ({ incomingMessages }) => {
 
 ### `onChatStart` is now once-per-chat
 
-`onChatStart` no longer fires on continuation runs (post-`endRun`, post-waitpoint-timeout, post-`chat.requestUpgrade`) or on OOM-retry attempts. It fires **exactly once per chat**, on the very first user message of the chat's lifetime. The `continuation` and `previousRunId` fields on `ChatStartEvent` are now `@deprecated` (always `false` / `undefined` when the hook fires).
+`onChatStart` no longer fires on continuation runs (post-`endRun`, post-waitpoint-timeout, post-`chat.requestUpgrade`, post-cancel, post-crash) or on OOM-retry attempts. It fires **exactly once per chat**, on the very first user message of the chat's lifetime. The `continuation` and `previousRunId` fields on `ChatStartEvent` are now `@deprecated` (always `false` / `undefined` when the hook fires).
 
-This makes once-per-chat setup code (create the Chat DB row, init user context) safe to write without continuation gates. Drop any `if (continuation) return;` checks from `onChatStart`:
+This makes once-per-chat setup code (create the Chat DB row, mint chat-scoped resources) safe to write without continuation gates. Drop any `if (continuation) return;` checks from `onChatStart`:
 
 ```ts before
 onChatStart: async ({ continuation, chatId, clientData }) => {
@@ -462,6 +462,30 @@ onChatStart: async ({ chatId, clientData }) => {
 ```
 
 If you need per-turn setup that **does** run on continuations, move it to [`onTurnStart`](/ai-chat/lifecycle-hooks#onturnstart) — that hook still fires on every turn, including the first turn of a continuation run.
+
+### Move `chat.local` init from `onChatStart` to `onBoot`
+
+Because `onChatStart` no longer fires on continuation runs, **`chat.local`** state initialized there will be missing when a continuation run starts — `run()` then crashes with `"chat.local can only be modified after initialization"`. The fix is to move per-process initialization to the new [`onBoot`](/ai-chat/lifecycle-hooks#onboot) hook, which fires once per worker boot (initial, preloaded, AND continuation):
+
+```ts before
+const userContext = chat.local<{ name: string; plan: string }>({ id: "userContext" });
+
+onChatStart: async ({ clientData }) => {
+  const user = await db.user.findUnique({ where: { id: clientData.userId } });
+  userContext.init({ name: user.name, plan: user.plan }); // ❌ never runs on continuation
+}
+```
+
+```ts after
+const userContext = chat.local<{ name: string; plan: string }>({ id: "userContext" });
+
+onBoot: async ({ clientData }) => {
+  const user = await db.user.findUnique({ where: { id: clientData.userId } });
+  userContext.init({ name: user.name, plan: user.plan }); // ✅ runs on every fresh worker
+}
+```
+
+Anything else that's per-process (DB connection pools, sandbox handles, in-memory caches) belongs in `onBoot` for the same reason. Branch on `continuation` inside `onBoot` if you need to re-load state from your DB on takeover.
 
 ### Client-side `setMessages` doesn't round-trip
 
