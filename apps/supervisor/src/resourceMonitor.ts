@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/resourceMonitor.ts module purpose and public usage context */
 import type Docker from "dockerode";
 import type { MachineResources } from "@trigger.dev/core/v3";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
