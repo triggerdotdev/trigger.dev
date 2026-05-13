@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/workloadManager/types.ts module purpose and public usage context */
 import type { EnvironmentType, MachinePreset, PlacementTag, RunAnnotations } from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
