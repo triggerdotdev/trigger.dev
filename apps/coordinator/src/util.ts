@@ -1,3 +1,4 @@
+/** Documents apps/coordinator/src/util.ts module purpose and public usage context */
 export const boolFromEnv = (env: string, defaultValue: boolean): boolean => {
   const value = process.env[env];
 
