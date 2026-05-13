@@ -108,7 +108,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          RUN_ID=$(gh run list --repo "$REPO" --workflow "Dependabot Updates" --status success --limit 30 --json databaseId,name --jq '[.[] | select(.name | startswith("npm_and_yarn"))][0].databaseId')
+          RUN_ID=$(gh run list --repo "$REPO" --workflow "Dependabot Updates" --status success --limit 30 --json databaseId,name --jq 'first(.[] | select(.name | startswith("npm_and_yarn")) | .databaseId) // empty')
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Extract stuck deps (only if actions pending)
@@ -139,13 +139,34 @@ jobs:
           LIST=$(echo "$STUCK" | awk 'NR>1{printf "\\n"} {printf "• *%s* %s", $1, $2}')
           echo "section=${HEADER}${LIST}" >> "$GITHUB_OUTPUT"
 
+      - name: Build Slack payload
+        env:
+          REPO: ${{ github.repository }}
+          CHANNEL: ${{ vars.SLACK_CHANNEL_ID }}
+          TOTAL: ${{ steps.alerts.outputs.total }}
+          BY_SEVERITY: ${{ steps.alerts.outputs.by_severity }}
+          PRS_LIST: ${{ steps.prs.outputs.list }}
+          ACTIONS: ${{ steps.alerts.outputs.actions }}
+          STUCK: ${{ steps.stuck.outputs.section }}
+        run: |
+          # Build payload via jq so PR titles or error strings containing
+          # quotes/backslashes/newlines can't break the JSON.
+          jq -n \
+            --arg channel "$CHANNEL" \
+            --arg repo "$REPO" \
+            --arg total "$TOTAL" \
+            --arg by_severity "$BY_SEVERITY" \
+            --arg prs_list "$PRS_LIST" \
+            --arg actions "$ACTIONS" \
+            --arg stuck "$STUCK" \
+            '{
+              channel: $channel,
+              text: ":calendar: *Weekly Dependabot summary* - `\($repo)`\n\n*Open alerts (\($total)):*\n\($by_severity)\n\n*Open Dependabot PRs:*\n\($prs_list)\n\n*Actions needed (<7d remaining):*\n\($actions)\($stuck)\n\n<https://github.com/\($repo)/security/dependabot|Dependabot alerts>"
+            }' > payload.json
+
       - name: Post Slack summary
         uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
         with:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            {
-              "channel": "${{ vars.SLACK_CHANNEL_ID }}",
-              "text": ":calendar: *Weekly Dependabot summary* - `${{ github.repository }}`\n\n*Open alerts (${{ steps.alerts.outputs.total }}):*\n${{ steps.alerts.outputs.by_severity }}\n\n*Open Dependabot PRs:*\n${{ steps.prs.outputs.list }}\n\n*Actions needed (<7d remaining):*\n${{ steps.alerts.outputs.actions }}${{ steps.stuck.outputs.section }}\n\n<https://github.com/${{ github.repository }}/security/dependabot|Dependabot alerts>"
-            }
+          payload-file-path: payload.json
