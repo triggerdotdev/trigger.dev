@@ -1,3 +1,4 @@
+/** Documents apps/coordinator/src/cleaner.ts module purpose and public usage context */
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { Exec } from "./exec";
 import { setTimeout } from "timers/promises";
