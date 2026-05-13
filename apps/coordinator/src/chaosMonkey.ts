@@ -1,3 +1,4 @@
+/** Documents apps/coordinator/src/chaosMonkey.ts module purpose and public usage context */
 import { setTimeout as timeout } from "node:timers/promises";
 
 class ChaosMonkeyError extends Error {
