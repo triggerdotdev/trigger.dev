@@ -1,3 +1,4 @@
+/** Documents apps/coordinator/src/index.ts module purpose and public usage context */
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import {
