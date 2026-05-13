@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/util.ts module purpose and public usage context */
 import { isMacOS, isWindows } from "std-env";
 
 export function normalizeDockerHostUrl(url: string) {
