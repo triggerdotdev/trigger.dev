@@ -1,3 +1,4 @@
+/** Documents apps/kubernetes-provider/src/taskMonitor.ts module purpose and public usage context */
 import * as k8s from "@kubernetes/client-node";
 import { SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core/v3/apps";
