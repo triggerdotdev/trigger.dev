@@ -1,3 +1,4 @@
+/** Documents apps/coordinator/src/exec.ts module purpose and public usage context */
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { randomUUID } from "crypto";
 import { homedir } from "os";
