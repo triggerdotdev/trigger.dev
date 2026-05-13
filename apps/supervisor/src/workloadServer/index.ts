@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/workloadServer/index.ts module purpose and public usage context */
 import { type Namespace, Server, type Socket } from "socket.io";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import EventEmitter from "node:events";
