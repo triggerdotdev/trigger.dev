@@ -1,3 +1,4 @@
+/** Documents apps/supervisor/src/envUtil.ts module purpose and public usage context */
 import { z } from "zod";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 
