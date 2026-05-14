@@ -46,6 +46,16 @@ export type GateInputs = {
   // the pattern used by `canAccessAi`, `canAccessPrivateConnections`, and the
   // compute-template beta gate.
   orgFeatureFlags: Record<string, unknown> | null;
+  // Trigger options that drive C1/C3/F4 bypasses. The mollify path can't
+  // serialise stateful callbacks (debounce), can't safely break OTU's
+  // synchronous-rejection contract, and shouldn't intercept single
+  // triggerAndWait (batchTriggerAndWait still funnels through per item).
+  options?: {
+    debounce?: unknown;
+    oneTimeUseToken?: string;
+    parentTaskRunId?: string;
+    resumeParentOnCompletion?: boolean;
+  };
 };
 
 export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
@@ -140,6 +150,30 @@ export async function evaluateGate(
   deps: Partial<GateDependencies> = {},
 ): Promise<GateOutcome> {
   const d = { ...defaultGateDependencies, ...deps };
+
+  // C1 — debounce bypass. onDebounced is a closure over webapp state and
+  // can't be snapshotted into the buffer for drainer replay. Skip before the
+  // trip evaluator so debounce traffic is never counted against the rate.
+  if (inputs.options?.debounce) {
+    d.recordDecision("pass_through");
+    return { action: "pass_through" };
+  }
+  // C3 — OneTimeUseToken bypass. OTU is a security feature on the PUBLIC_JWT
+  // auth path; its synchronous-rejection contract is materially worse to
+  // break than the idempotency-key contract. Sibling brief:
+  // `_plans/2026-05-13-mollifier-otu-protection.md`.
+  if (inputs.options?.oneTimeUseToken) {
+    d.recordDecision("pass_through");
+    return { action: "pass_through" };
+  }
+  // F4 — single triggerAndWait bypass. batchTriggerAndWait still funnels
+  // through TriggerTaskService.call per item so the dominant burst pattern
+  // remains covered. Sibling brief:
+  // `_plans/2026-05-13-mollifier-trigger-and-wait-protection.md`.
+  if (inputs.options?.parentTaskRunId && inputs.options?.resumeParentOnCompletion) {
+    d.recordDecision("pass_through");
+    return { action: "pass_through" };
+  }
 
   if (!d.isMollifierEnabled()) {
     d.recordDecision("pass_through");

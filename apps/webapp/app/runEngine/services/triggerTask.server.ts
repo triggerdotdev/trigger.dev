@@ -341,6 +341,12 @@ export class RunEngineTriggerTaskService {
         taskId,
         orgFeatureFlags:
           (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
+        options: {
+          debounce: body.options?.debounce,
+          oneTimeUseToken: options.oneTimeUseToken,
+          parentTaskRunId: body.options?.parentRunId,
+          resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+        },
       });
 
       // Phase 2: real divert path. When the gate says mollify, write the

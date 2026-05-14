@@ -432,3 +432,83 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
     expect(unrelatedDeps.spies.evaluatorCalls).toBe(0);
   });
 });
+
+// C1/C3/F4 bypasses: the three categories of trigger that the mollifier never
+// intercepts, regardless of the per-org flag or the trip-evaluator decision.
+// Documented in `_plans/2026-05-13-mollifier-{debounce,otu,trigger-and-wait}-protection.md`.
+describe("evaluateGate — C1/C3/F4 bypasses", () => {
+  it("C1: debounce triggers pass through without invoking the evaluator", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { debounce: { key: "k" } } },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("C3: oneTimeUseToken triggers pass through without invoking the evaluator", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { oneTimeUseToken: "jwt-otu" } },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("F4: single triggerAndWait (parentTaskRunId + resumeParentOnCompletion) passes through", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      {
+        ...inputs,
+        options: { parentTaskRunId: "run_parent", resumeParentOnCompletion: true },
+      },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("parentTaskRunId alone (no resumeParentOnCompletion) does NOT bypass — must be both for F4", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { parentTaskRunId: "run_parent" } },
+      deps,
+    );
+    expect(outcome.action).toBe("mollify");
+    expect(spies.evaluatorCalls).toBe(1);
+  });
+
+  it("bypass records pass_through decision (so observability counters stay accurate)", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    await evaluateGate({ ...inputs, options: { debounce: { key: "k" } } }, deps);
+    expect(spies.recordDecisionCalls).toHaveLength(1);
+    expect(spies.recordDecisionCalls[0].outcome).toBe("pass_through");
+  });
+});
