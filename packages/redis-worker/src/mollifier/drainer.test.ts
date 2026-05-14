@@ -326,6 +326,119 @@ describe("MollifierDrainer resilience to transient buffer errors", () => {
   });
 });
 
+describe("MollifierDrainer per-tick env cap", () => {
+  // Bounding fan-out prevents one runOnce from queuing thousands of
+  // processOneFromEnv jobs when `mollifier:envs` is unexpectedly large.
+  // These tests use a stub buffer so we can drive the env list count
+  // deterministically without provisioning a real Redis with thousands
+  // of envs.
+  type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
+  function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+    const base: StubBuffer = {
+      listEnvs: async () => [],
+      pop: async () => null,
+      ack: async () => {},
+      requeue: async () => {},
+      fail: async () => true,
+      getEntry: async () => null,
+      close: async () => {},
+    };
+    return { ...base, ...overrides } as unknown as MollifierBuffer;
+  }
+
+  it("processes at most maxEnvsPerTick envs per runOnce", async () => {
+    const allEnvs = Array.from({ length: 20 }, (_, i) => `env_${i}`);
+    const popped: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => allEnvs,
+      pop: async (envId: string) => {
+        popped.push(envId);
+        return null; // empty queue — runOnce records this as "empty"
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 5,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: 5,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    await drainer.runOnce();
+    expect(popped).toHaveLength(5);
+  });
+
+  it("rotates through the full set across successive ticks when sliced", async () => {
+    const allEnvs = Array.from({ length: 12 }, (_, i) => `env_${i}`);
+    const popped: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => allEnvs,
+      pop: async (envId: string) => {
+        popped.push(envId);
+        return null;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 4,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: 4,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // Three ticks = 12 / 4 → exactly one full sweep.
+    await drainer.runOnce();
+    await drainer.runOnce();
+    await drainer.runOnce();
+
+    expect(new Set(popped)).toEqual(new Set(allEnvs));
+    expect(popped).toHaveLength(12);
+  });
+
+  it("takes all envs and rotates by 1 when the set fits within the cap", async () => {
+    const allEnvs = ["env_a", "env_b", "env_c"];
+    const popsPerTick: string[][] = [];
+    let tick: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => allEnvs,
+      pop: async (envId: string) => {
+        tick.push(envId);
+        return null;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 3,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: 100, // way above n
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    for (let i = 0; i < 3; i++) {
+      tick = [];
+      await drainer.runOnce();
+      popsPerTick.push(tick);
+    }
+
+    // Every tick covers every env (because cap > n), but the head-of-line
+    // env rotates by 1 each tick — preserves the original fairness behaviour.
+    for (const popped of popsPerTick) {
+      expect(new Set(popped)).toEqual(new Set(allEnvs));
+    }
+    expect(popsPerTick[0][0]).not.toEqual(popsPerTick[1][0]);
+    expect(popsPerTick[1][0]).not.toEqual(popsPerTick[2][0]);
+  });
+});
+
 describe("MollifierDrainer.start/stop", () => {
   redisTest("start polls and processes, stop halts the loop", { timeout: 20_000 }, async ({ redisContainer }) => {
     const buffer = new MollifierBuffer({

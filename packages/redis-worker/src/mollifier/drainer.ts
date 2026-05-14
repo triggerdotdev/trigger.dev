@@ -19,6 +19,15 @@ export type MollifierDrainerOptions<TPayload> = {
   maxAttempts: number;
   isRetryable: (err: unknown) => boolean;
   pollIntervalMs?: number;
+  // Cap on how many envs `runOnce` processes per tick. When the
+  // `mollifier:envs` SET grows large (e.g. an extended drainer outage left
+  // entries piled up across thousands of envs), an uncapped fan-out queues
+  // one `processOneFromEnv` job per env through `pLimit`, ballooning
+  // per-tick latency and event-loop queue depth. With this cap the
+  // drainer rotates through the full set across multiple ticks instead.
+  // Defaults to 500; size for "typical worst-case envs-with-pending-
+  // entries" rather than total system env count.
+  maxEnvsPerTick?: number;
   logger?: Logger;
 };
 
@@ -33,6 +42,7 @@ export class MollifierDrainer<TPayload = unknown> {
   private readonly maxAttempts: number;
   private readonly isRetryable: (err: unknown) => boolean;
   private readonly pollIntervalMs: number;
+  private readonly maxEnvsPerTick: number;
   private readonly logger: Logger;
   private readonly limit: ReturnType<typeof pLimit>;
   private envCursor = 0;
@@ -45,6 +55,7 @@ export class MollifierDrainer<TPayload = unknown> {
     this.maxAttempts = options.maxAttempts;
     this.isRetryable = options.isRetryable;
     this.pollIntervalMs = options.pollIntervalMs ?? 100;
+    this.maxEnvsPerTick = options.maxEnvsPerTick ?? 500;
     this.logger = options.logger ?? new Logger("MollifierDrainer", "debug");
     this.limit = pLimit(options.concurrency);
   }
@@ -53,7 +64,7 @@ export class MollifierDrainer<TPayload = unknown> {
     const envs = await this.buffer.listEnvs();
     if (envs.length === 0) return { drained: 0, failed: 0 };
 
-    const ordered = this.rotate(envs);
+    const ordered = this.takeRotatingSlice(envs);
 
     const inflight: Promise<"drained" | "failed" | "empty">[] = [];
     for (const envId of ordered) {
@@ -131,10 +142,21 @@ export class MollifierDrainer<TPayload = unknown> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private rotate(envs: string[]): string[] {
-    const start = this.envCursor % envs.length;
-    this.envCursor = (this.envCursor + 1) % Math.max(envs.length, 1);
-    return [...envs.slice(start), ...envs.slice(0, start)];
+  // Take up to `maxEnvsPerTick` envs starting at the current cursor, with
+  // wrap-around. When the full set fits within the cap we take everything
+  // and advance the cursor by 1 — preserves the original head-of-line
+  // fairness rotation. When we have to slice, we advance the cursor by the
+  // slice size so successive ticks sweep through the full set rather than
+  // re-processing the same prefix on each tick.
+  private takeRotatingSlice(envs: string[]): string[] {
+    const n = envs.length;
+    const sliceSize = Math.min(this.maxEnvsPerTick, n);
+    const start = this.envCursor % n;
+    const advance = sliceSize < n ? sliceSize : 1;
+    this.envCursor = (this.envCursor + advance) % Math.max(n, 1);
+    const end = start + sliceSize;
+    if (end <= n) return envs.slice(start, end);
+    return [...envs.slice(start), ...envs.slice(0, end - n)];
   }
 
   // A `pop()` failure for one env (e.g. a Redis hiccup mid-batch) must not
