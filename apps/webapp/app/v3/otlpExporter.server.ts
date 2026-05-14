@@ -41,6 +41,12 @@ import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
+import {
+  AI_CONTENT_KEY_OVERRIDES,
+  capAssembledAttributesSize,
+  truncateAttributes,
+  type SpanAttributeLimits,
+} from "./otlpAttributeLimits";
 
 class OTLPExporter {
   private _tracer: Tracer;
@@ -51,7 +57,7 @@ class OTLPExporter {
     private readonly _clickhouseEventRepositoryV2: ClickhouseEventRepository,
     private readonly _metricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>,
     private readonly _verbose: boolean,
-    private readonly _spanAttributeValueLengthLimit: number
+    private readonly _attributeLimits: SpanAttributeLimits
   ) {
     this._tracer = trace.getTracer("otlp-exporter");
   }
@@ -62,7 +68,7 @@ class OTLPExporter {
 
       const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
         (resourceSpan) => {
-          return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
+          return convertSpansToCreateableEvents(resourceSpan, this._attributeLimits);
         }
       );
 
@@ -82,7 +88,7 @@ class OTLPExporter {
         (resourceMetrics) => {
           return convertMetricsToClickhouseRows(
             resourceMetrics,
-            this._spanAttributeValueLengthLimit
+            this._attributeLimits.defaultValueLengthLimit
           );
         }
       );
@@ -103,7 +109,7 @@ class OTLPExporter {
 
       const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
         (resourceLog) => {
-          return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
+          return convertLogsToCreateableEvents(resourceLog, this._attributeLimits);
         }
       );
 
@@ -250,12 +256,13 @@ class OTLPExporter {
 
 function convertLogsToCreateableEvents(
   resourceLog: ResourceLogs,
-  spanAttributeValueLengthLimit: number
+  attributeLimits: SpanAttributeLimits
 ): { events: Array<CreateEventInput>; taskEventStore: string } {
   const resourceAttributes = resourceLog.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
+  // Resource attributes don't carry AI SDK content; no per-key overrides needed.
   const userDefinedResourceAttributes = truncateAttributes(
     convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
       SemanticInternalAttributes.USAGE,
@@ -271,7 +278,7 @@ function convertLogsToCreateableEvents(
       "cli",
       "cloud",
     ]),
-    spanAttributeValueLengthLimit
+    attributeLimits.defaultValueLengthLimit
   );
 
   const taskEventStore =
@@ -292,7 +299,7 @@ function convertLogsToCreateableEvents(
           SemanticInternalAttributes.METADATA
         );
 
-        const properties =
+        const properties = capAssembledAttributesSize(
           truncateAttributes(
             convertKeyValueItemsToMap(log.attributes ?? [], [], undefined, [
               SemanticInternalAttributes.USAGE,
@@ -302,8 +309,11 @@ function convertLogsToCreateableEvents(
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
             ]),
-            spanAttributeValueLengthLimit
-          ) ?? {};
+            attributeLimits.defaultValueLengthLimit,
+            AI_CONTENT_KEY_OVERRIDES(attributeLimits.aiContentValueLengthLimit)
+          ) ?? {},
+          attributeLimits.totalAttributesLengthLimit
+        );
 
         return {
           traceId: binaryToHex(log.traceId),
@@ -351,12 +361,13 @@ function convertLogsToCreateableEvents(
 
 function convertSpansToCreateableEvents(
   resourceSpan: ResourceSpans,
-  spanAttributeValueLengthLimit: number
+  attributeLimits: SpanAttributeLimits
 ): { events: Array<CreateEventInput>; taskEventStore: string } {
   const resourceAttributes = resourceSpan.resource?.attributes ?? [];
 
   const resourceProperties = extractEventProperties(resourceAttributes);
 
+  // Resource attributes don't carry AI SDK content; no per-key overrides needed.
   const userDefinedResourceAttributes = truncateAttributes(
     convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
       SemanticInternalAttributes.USAGE,
@@ -372,7 +383,7 @@ function convertSpansToCreateableEvents(
       "cli",
       "cloud",
     ]),
-    spanAttributeValueLengthLimit
+    attributeLimits.defaultValueLengthLimit
   );
 
   const taskEventStore =
@@ -395,7 +406,7 @@ function convertSpansToCreateableEvents(
 
         const runTags = extractArrayAttribute(span.attributes ?? [], SemanticInternalAttributes.RUN_TAGS);
 
-        const properties =
+        const properties = capAssembledAttributesSize(
           truncateAttributes(
             convertKeyValueItemsToMap(span.attributes ?? [], [], undefined, [
               SemanticInternalAttributes.USAGE,
@@ -405,8 +416,11 @@ function convertSpansToCreateableEvents(
               SemanticInternalAttributes.METRIC_EVENTS,
               SemanticInternalAttributes.TRIGGER,
             ]),
-            spanAttributeValueLengthLimit
-          ) ?? {};
+            attributeLimits.defaultValueLengthLimit,
+            AI_CONTENT_KEY_OVERRIDES(attributeLimits.aiContentValueLengthLimit)
+          ) ?? {},
+          attributeLimits.totalAttributesLengthLimit
+        );
 
         return {
           traceId: binaryToHex(span.traceId),
@@ -425,7 +439,7 @@ function convertSpansToCreateableEvents(
           level: "TRACE" as const,
           status: spanStatusToEventStatus(span.status),
           startTime: span.startTimeUnixNano,
-          events: spanEventsToEventEvents(span.events ?? []),
+          events: spanEventsToEventEvents(span.events ?? [], attributeLimits),
           duration: span.endTimeUnixNano - span.startTimeUnixNano,
           properties,
           resourceProperties: userDefinedResourceAttributes,
@@ -469,7 +483,7 @@ function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
 
 function convertMetricsToClickhouseRows(
   resourceMetrics: ResourceMetrics,
-  spanAttributeValueLengthLimit: number
+  _spanAttributeValueLengthLimit: number
 ): MetricsV1Input[] {
   const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
   const resourceProperties = extractEventProperties(resourceAttributes);
@@ -776,12 +790,29 @@ function detectPrimitiveValue(
   return attributes;
 }
 
-function spanEventsToEventEvents(events: Span_Event[]): CreateEventInput["events"] {
+function spanEventsToEventEvents(
+  events: Span_Event[],
+  attributeLimits: SpanAttributeLimits
+): CreateEventInput["events"] {
   return events.map((event) => {
+    // AI SDK telemetry emits one span event per conversation turn
+    // (`gen_ai.system.message`, `gen_ai.user.message`, etc.) with the message
+    // content carried as event attributes. Without the same truncation we
+    // apply to the main span attributes, those events push the row past
+    // ClickHouse's JSON parse tolerance and fail the whole insert.
+    const properties = capAssembledAttributesSize(
+      truncateAttributes(
+        convertKeyValueItemsToMap(event.attributes ?? []),
+        attributeLimits.defaultValueLengthLimit,
+        AI_CONTENT_KEY_OVERRIDES(attributeLimits.aiContentValueLengthLimit)
+      ) ?? {},
+      attributeLimits.totalAttributesLengthLimit
+    );
+
     return {
       name: event.name,
       time: convertUnixNanoToDate(event.timeUnixNano),
-      properties: convertKeyValueItemsToMap(event.attributes ?? []),
+      properties,
     };
   });
 }
@@ -1100,76 +1131,6 @@ function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
   return Buffer.from(Array.from(buffer)).toString("hex");
 }
 
-function truncateAttributes(
-  attributes: Record<string, string | number | boolean | undefined> | undefined,
-  maximumLength: number = 1024
-): Record<string, string | number | boolean | undefined> | undefined {
-  if (!attributes) return undefined;
-
-  const truncatedAttributes: Record<string, string | number | boolean | undefined> = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (!key) continue;
-
-    if (typeof value === "string") {
-      truncatedAttributes[key] = truncateAndDetectUnpairedSurrogate(value, maximumLength);
-    } else {
-      truncatedAttributes[key] = value;
-    }
-  }
-
-  return truncatedAttributes;
-}
-
-function truncateAndDetectUnpairedSurrogate(str: string, maximumLength: number): string {
-  const truncatedString = smartTruncateString(str, maximumLength);
-
-  if (hasUnpairedSurrogateAtEnd(truncatedString)) {
-    return smartTruncateString(truncatedString, [...truncatedString].length - 1);
-  }
-
-  return truncatedString;
-}
-
-const ASCII_ONLY_REGEX = /^[\p{ASCII}]*$/u;
-
-function smartTruncateString(str: string, maximumLength: number): string {
-  if (!str) return "";
-  if (str.length <= maximumLength) return str;
-
-  const checkLength = Math.min(str.length, maximumLength * 2 + 2);
-
-  if (ASCII_ONLY_REGEX.test(str.slice(0, checkLength))) {
-    return str.slice(0, maximumLength);
-  }
-
-  return [...str.slice(0, checkLength)].slice(0, maximumLength).join("");
-}
-
-function hasUnpairedSurrogateAtEnd(str: string): boolean {
-  if (str.length === 0) return false;
-
-  const lastCode = str.charCodeAt(str.length - 1);
-
-  // Check if last character is an unpaired high surrogate
-  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
-    return true; // High surrogate at end = unpaired
-  }
-
-  // Check if last character is an unpaired low surrogate
-  if (lastCode >= 0xdc00 && lastCode <= 0xdfff) {
-    // Low surrogate is only valid if preceded by high surrogate
-    if (str.length === 1) return true; // Single low surrogate
-
-    const secondLastCode = str.charCodeAt(str.length - 2);
-    if (secondLastCode < 0xd800 || secondLastCode > 0xdbff) {
-      return true; // Low surrogate not preceded by high surrogate
-    }
-  }
-
-  return false;
-}
-
 export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);
 
 function initializeOTLPExporter() {
@@ -1184,14 +1145,18 @@ function initializeOTLPExporter() {
     loadSheddingEnabled: false,
   });
 
+  const attributeLimits: SpanAttributeLimits = {
+    defaultValueLengthLimit: env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT,
+    aiContentValueLengthLimit: env.SERVER_OTEL_AI_CONTENT_ATTRIBUTE_VALUE_LENGTH_LIMIT,
+    totalAttributesLengthLimit: env.SERVER_OTEL_SPAN_TOTAL_ATTRIBUTES_LENGTH_LIMIT,
+  };
+
   return new OTLPExporter(
     eventRepository,
     clickhouseEventRepository,
     clickhouseEventRepositoryV2,
     metricsFlushScheduler,
     process.env.OTLP_EXPORTER_VERBOSE === "1",
-    process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
-      ? parseInt(process.env.SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT, 10)
-      : 8192
+    attributeLimits
   );
 }
