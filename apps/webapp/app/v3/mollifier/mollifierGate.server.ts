@@ -10,15 +10,16 @@ import {
   type DecisionReason,
 } from "./mollifierTelemetry.server";
 
-// `count` is the *single-instance* fixed-window counter (INCR with a PEXPIRE
-// armed on the first tick of each window — see `mollifierEvaluateTrip` in
-// `packages/redis-worker/src/mollifier/buffer.ts`). It is not a fleet-wide
-// aggregate: each webapp instance maintains its own Redis key, so the fleet
-// effective ceiling is `instance_count * threshold`, and at a window boundary
-// the instance can briefly admit up to ~2x threshold before tripping. The
-// tripped marker is refreshed on every overage call, so a sustained burst
-// holds the divert state until the rate falls below threshold within a
-// window. Phase 2 consumers must not treat `count` as a global rate.
+// `count` is the fleet-wide fixed-window counter for the env (INCR with a
+// PEXPIRE armed on the first tick of each window — see
+// `mollifierEvaluateTrip` in `packages/redis-worker/src/mollifier/buffer.ts`).
+// All webapp replicas pointing at the same Redis share the key
+// `mollifier:rate:${envId}`, so the threshold is the fleet-wide ceiling
+// rather than a per-instance one. At a window boundary an env can briefly
+// admit up to ~2x threshold across the fleet before tripping (fixed-window
+// not sliding-window). The tripped marker is refreshed on every overage
+// call, so a sustained burst holds the divert state until the rate falls
+// below threshold within a window.
 export type TripDecision =
   | { divert: false }
   | {
@@ -165,7 +166,23 @@ export async function evaluateGate(
     return { action: "pass_through" };
   }
 
-  const decision = await d.evaluator(inputs);
+  // Fail open on evaluator errors too. The default `createRealTripEvaluator`
+  // catches its own errors and returns `{ divert: false }`, but injected or
+  // future evaluators may not — keep the contract symmetric with the org
+  // flag resolution above so the trigger hot path can never be broken by a
+  // gate-internal failure.
+  let decision: TripDecision;
+  try {
+    decision = await d.evaluator(inputs);
+  } catch (error) {
+    logger.warn("mollifier.evaluator_failed", {
+      envId: inputs.envId,
+      orgId: inputs.orgId,
+      taskId: inputs.taskId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    decision = { divert: false };
+  }
   if (!decision.divert) {
     d.recordDecision("pass_through");
     return { action: "pass_through" };

@@ -254,6 +254,43 @@ describe("resolveMollifierFlag — hot path", () => {
   });
 });
 
+describe("evaluateGate — fail open on evaluator error", () => {
+  it("treats a throwing evaluator as no-divert (pass_through), and never blocks the trigger", async () => {
+    const spies: Spies = {
+      evaluatorCalls: 0,
+      logShadowCalls: [],
+      logMollifiedCalls: [],
+      recordDecisionCalls: [],
+    };
+    const deps: Partial<GateDependencies> = {
+      isMollifierEnabled: () => true,
+      isShadowModeOn: () => false,
+      resolveOrgFlag: async () => true,
+      evaluator: async () => {
+        spies.evaluatorCalls += 1;
+        throw new Error("simulated evaluator failure");
+      },
+      logShadow: (inputs, decision) => {
+        spies.logShadowCalls.push({ inputs, decision });
+      },
+      logMollified: (inputs, decision) => {
+        spies.logMollifiedCalls.push({ inputs, decision });
+      },
+      recordDecision: (outcome, reason) => {
+        spies.recordDecisionCalls.push({ outcome, reason });
+      },
+    };
+
+    const outcome = await evaluateGate(inputs, deps);
+
+    expect(outcome.action).toBe("pass_through");
+    expect(spies.evaluatorCalls).toBe(1);
+    expect(spies.logMollifiedCalls).toHaveLength(0);
+    expect(spies.logShadowCalls).toHaveLength(0);
+    expect(spies.recordDecisionCalls).toEqual([{ outcome: "pass_through", reason: undefined }]);
+  });
+});
+
 describe("evaluateGate — fail open on resolveOrgFlag error", () => {
   it("treats org flag as false when resolveOrgFlag throws, and does not block triggers", async () => {
     const spies: Spies = {
