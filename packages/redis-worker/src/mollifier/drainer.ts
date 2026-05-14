@@ -153,17 +153,18 @@ export class MollifierDrainer<TPayload = unknown> {
   }
 
   // Take up to `maxEnvsPerTick` envs starting at the current cursor, with
-  // wrap-around. When the full set fits within the cap we take everything
-  // and advance the cursor by 1 — preserves the original head-of-line
-  // fairness rotation. When we have to slice, we advance the cursor by the
-  // slice size so successive ticks sweep through the full set rather than
-  // re-processing the same prefix on each tick.
+  // wrap-around. Always advance the cursor by 1 — when the full set fits
+  // within the cap this is just the original rotation; when we have to
+  // slice, advancing by 1 still gives every env a turn at every position
+  // (0…sliceSize-1) over `envs.length` ticks, so no env is systematically
+  // last into `pLimit`. Drainage rate per env is `sliceSize / envs.length`
+  // per tick — same as advancing by sliceSize, but without the head-of-line
+  // bias that fixed slice boundaries would introduce.
   private takeRotatingSlice(envs: string[]): string[] {
     const n = envs.length;
     const sliceSize = Math.min(this.maxEnvsPerTick, n);
     const start = this.envCursor % n;
-    const advance = sliceSize < n ? sliceSize : 1;
-    this.envCursor = (this.envCursor + advance) % Math.max(n, 1);
+    this.envCursor = (this.envCursor + 1) % Math.max(n, 1);
     const end = start + sliceSize;
     if (end <= n) return envs.slice(start, end);
     return [...envs.slice(start), ...envs.slice(0, end - n)];

@@ -371,7 +371,7 @@ describe("MollifierDrainer per-tick env cap", () => {
     expect(popped).toHaveLength(5);
   });
 
-  it("rotates through the full set across successive ticks when sliced", async () => {
+  it("covers the full env set across `envs.length` ticks when sliced", async () => {
     const allEnvs = Array.from({ length: 12 }, (_, i) => `env_${i}`);
     const popped: string[] = [];
     const buffer = makeStubBuffer({
@@ -392,13 +392,73 @@ describe("MollifierDrainer per-tick env cap", () => {
       logger: new Logger("test-drainer", "log"),
     });
 
-    // Three ticks = 12 / 4 → exactly one full sweep.
-    await drainer.runOnce();
-    await drainer.runOnce();
-    await drainer.runOnce();
+    // Cursor advances by 1 each tick. Over envs.length ticks every env
+    // appears in exactly `sliceSize` of them (slices overlap — intentional,
+    // see the head-of-line fairness test below).
+    for (let i = 0; i < allEnvs.length; i++) {
+      await drainer.runOnce();
+    }
 
     expect(new Set(popped)).toEqual(new Set(allEnvs));
-    expect(popped).toHaveLength(12);
+    expect(popped).toHaveLength(allEnvs.length * 4); // envs.length × sliceSize
+    const perEnvCounts = popped.reduce<Record<string, number>>((acc, e) => {
+      acc[e] = (acc[e] ?? 0) + 1;
+      return acc;
+    }, {});
+    for (const env of allEnvs) {
+      expect(perEnvCounts[env]).toBe(4);
+    }
+  });
+
+  it("preserves head-of-line fairness when sliced: every env reaches every slice position", async () => {
+    // Regression test for the bias that advance-by-sliceSize would
+    // reintroduce. With fixed disjoint slices, env_0 would always be at
+    // position 0 (first into pLimit) and env_(sliceSize-1) would always
+    // be last. Advance-by-1 spreads each env across every slot.
+    const allEnvs = Array.from({ length: 8 }, (_, i) => `env_${i}`);
+    const sliceSize = 4;
+    const positionsByEnv = new Map<string, Set<number>>();
+    for (const env of allEnvs) positionsByEnv.set(env, new Set());
+
+    let currentTick: string[] = [];
+    const popOrderBuffer = makeStubBuffer({
+      listEnvs: async () => allEnvs,
+      pop: async (envId: string) => {
+        currentTick.push(envId);
+        return null;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer: popOrderBuffer,
+      handler: async () => {},
+      // Concurrency >= sliceSize so pLimit doesn't reorder — pop call order
+      // matches the slice's scheduling order (i.e. the env's slot position).
+      concurrency: sliceSize,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: sliceSize,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    for (let tick = 0; tick < allEnvs.length; tick++) {
+      currentTick = [];
+      await drainer.runOnce();
+      currentTick.forEach((env, position) => {
+        positionsByEnv.get(env)!.add(position);
+      });
+    }
+
+    // Each env should have occupied every slot 0..sliceSize-1 across the
+    // cycle. If we'd regressed to advance-by-sliceSize, env_0 would only
+    // ever be at position 0 and env_3 only at position 3.
+    for (const env of allEnvs) {
+      const positions = positionsByEnv.get(env)!;
+      expect(positions.size).toBe(sliceSize);
+      for (let p = 0; p < sliceSize; p++) {
+        expect(positions.has(p)).toBe(true);
+      }
+    }
   });
 
   it("takes all envs and rotates by 1 when the set fits within the cap", async () => {
