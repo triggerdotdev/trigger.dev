@@ -125,7 +125,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          RUN_ID=$(gh run list --repo "$REPO" --workflow "Dependabot Updates" --status success --limit 30 --json databaseId,name --jq 'first(.[] | select(.name | startswith("npm_and_yarn")) | .databaseId) // empty')
+          # Repos without a dependabot.yml have no "Dependabot Updates" workflow;
+          # treat the lookup failure as "no recent run found" rather than failing.
+          if ! RUN_ID=$(gh run list --repo "$REPO" --workflow "Dependabot Updates" --status success --limit 30 --json databaseId,name --jq 'first(.[] | select(.name | startswith("npm_and_yarn")) | .databaseId) // empty' 2>/dev/null); then
+            RUN_ID=""
+          fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Extract stuck deps (only if actions pending)
