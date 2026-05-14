@@ -1057,6 +1057,7 @@ const EnvironmentSchema = z
     MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
     MOLLIFIER_ENTRY_TTL_S: z.coerce.number().int().positive().default(600),
     MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+    MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()

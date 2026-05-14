@@ -149,10 +149,16 @@ export async function init() {
       // without a process-global guard, dev hot-reloads would stack a fresh
       // listener pair every request. Mirrors the `__worker__` singleton
       // pattern above.
+      // Bound shutdown so a hung handler can't block process exit past the
+      // pod's termination grace period. `drainer.stop({ timeoutMs })` logs a
+      // warning and returns if the deadline is hit while a handler is still
+      // in flight.
       const stopDrainer = () => {
-        drainer.stop().catch((error) => {
-          logger.error("Failed to stop mollifier drainer", { error });
-        });
+        drainer
+          .stop({ timeoutMs: env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS })
+          .catch((error) => {
+            logger.error("Failed to stop mollifier drainer", { error });
+          });
       };
       process.once("SIGTERM", stopDrainer);
       process.once("SIGINT", stopDrainer);
