@@ -142,6 +142,7 @@ const { action, loader } = createActionApiRoute(
         {
           id: result.run.friendlyId,
           isCached: result.isCached,
+          ...("notice" in result && result.notice ? { notice: result.notice } : {}),
         },
         {
           headers: $responseHeaders,
