@@ -101,6 +101,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
         createdAt: true,
         updatedAt: true,
         runtimeEnvironmentId: true,
+        currentRunId: true,
       },
     });
 

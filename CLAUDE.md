@@ -6,6 +6,8 @@ This file provides guidance to Claude Code when working with this repository. Su
 
 This is a pnpm 10.33.2 monorepo using Turborepo. Run commands from root with `pnpm run`.
 
+**Adding dependencies:** Edit `package.json` directly instead of using `pnpm add`, then run `pnpm i` from the repo root. See `.claude/rules/package-installation.md` for the full process.
+
 ```bash
 pnpm run docker              # Start Docker services (PostgreSQL, Redis, Electric)
 pnpm run db:migrate           # Run database migrations
