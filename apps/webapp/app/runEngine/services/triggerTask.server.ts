@@ -423,78 +423,48 @@ export class RunEngineTriggerTaskService {
               }
             }
 
+            const baseEngineInput = this.#buildEngineTriggerInput({
+              runFriendlyId,
+              environment,
+              idempotencyKey,
+              idempotencyKeyExpiresAt,
+              body,
+              options,
+              queueName,
+              lockedQueueId,
+              workerQueue,
+              enableFastPath,
+              lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
+              delayUntil,
+              ttl,
+              metadataPacket,
+              tags,
+              depth,
+              parentRun: parentRun ?? undefined,
+              annotations,
+              planType,
+              taskId,
+              payloadPacket,
+              traceContext: this.#propagateExternalTraceContext(
+                event.traceContext,
+                parentRun?.traceContext,
+                event.traceparent?.spanId
+              ),
+              traceId: event.traceId,
+              spanId: event.spanId,
+              parentSpanId:
+                options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
+              taskEventStore: store,
+            });
+
             const taskRun = await this.engine.trigger(
               {
-                friendlyId: runFriendlyId,
-                environment: environment,
-                idempotencyKey,
-                idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
-                idempotencyKeyOptions: body.options?.idempotencyKeyOptions,
-                taskIdentifier: taskId,
-                payload: payloadPacket.data ?? "",
-                payloadType: payloadPacket.dataType,
-                context: body.context,
-                traceContext: this.#propagateExternalTraceContext(
-                  event.traceContext,
-                  parentRun?.traceContext,
-                  event.traceparent?.spanId
-                ),
-                traceId: event.traceId,
-                spanId: event.spanId,
-                parentSpanId:
-                  options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
-                replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
-                lockedToVersionId: lockedToBackgroundWorker?.id,
-                taskVersion: lockedToBackgroundWorker?.version,
-                sdkVersion: lockedToBackgroundWorker?.sdkVersion,
-                cliVersion: lockedToBackgroundWorker?.cliVersion,
-                concurrencyKey: body.options?.concurrencyKey,
-                queue: queueName,
-                lockedQueueId,
-                workerQueue,
-                enableFastPath,
-                isTest: body.options?.test ?? false,
-                delayUntil,
-                queuedAt: delayUntil ? undefined : new Date(),
-                maxAttempts: body.options?.maxAttempts,
-                taskEventStore: store,
-                ttl,
-                tags,
-                oneTimeUseToken: options.oneTimeUseToken,
-                parentTaskRunId: parentRun?.id,
-                rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
-                batch: options?.batchId
-                  ? {
-                    id: options.batchId,
-                    index: options.batchIndex ?? 0,
-                  }
-                  : undefined,
-                resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-                depth,
-                metadata: metadataPacket?.data,
-                metadataType: metadataPacket?.dataType,
-                seedMetadata: metadataPacket?.data,
-                seedMetadataType: metadataPacket?.dataType,
-                maxDurationInSeconds: body.options?.maxDuration
-                  ? clampMaxDuration(body.options.maxDuration)
-                  : undefined,
-                machine: body.options?.machine,
-                priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
-                queueTimestamp:
-                  options.queueTimestamp ??
-                  (parentRun && body.options?.resumeParentOnCompletion
-                    ? parentRun.queueTimestamp ?? undefined
-                    : undefined),
-                scheduleId: options.scheduleId,
-                scheduleInstanceId: options.scheduleInstanceId,
-                createdAt: options.overrideCreatedAt,
-                bulkActionId: body.options?.bulkActionId,
-                planType,
-                realtimeStreamsVersion: options.realtimeStreamsVersion,
-                streamBasinName: environment.organization.streamBasinName,
-                debounce: body.options?.debounce,
-                annotations,
-                // When debouncing with triggerAndWait, create a span for the debounced trigger
+                ...baseEngineInput,
+                // onDebounced is a closure over webapp state (triggerRequest +
+                // traceEventConcern) and can't be serialised into the mollifier
+                // snapshot. The pass-through path attaches it here; the drainer
+                // path replays without it. C1/F4 gate bypasses ensure debounce
+                // and triggerAndWait never reach the mollify branch.
                 onDebounced:
                   body.options?.debounce && body.options?.resumeParentOnCompletion
                     ? async ({ existingRun, waitpoint, debounceKey }) => {
@@ -573,6 +543,109 @@ export class RunEngineTriggerTaskService {
         throw error;
       }
     });
+  }
+
+  // Build the engine.trigger() input object from the values gathered during
+  // this.call(). Extracted so the mollify path (Phase 2) can construct the
+  // same input shape without re-entering the trace-run span. The pass-through
+  // path spreads this result and attaches `onDebounced` inline; the mollify
+  // path serialises it into the buffer for drainer replay.
+  #buildEngineTriggerInput(args: {
+    runFriendlyId: string;
+    environment: AuthenticatedEnvironment;
+    idempotencyKey?: string;
+    idempotencyKeyExpiresAt?: Date;
+    body: TriggerTaskRequest["body"];
+    options: TriggerTaskServiceOptions;
+    queueName: string;
+    lockedQueueId?: string;
+    workerQueue?: string;
+    enableFastPath: boolean;
+    lockedToBackgroundWorker?: { id: string; version: string; sdkVersion: string; cliVersion: string };
+    delayUntil?: Date;
+    ttl?: string;
+    metadataPacket?: { data?: string; dataType: string };
+    tags: string[];
+    depth: number;
+    parentRun?: { id: string; rootTaskRunId?: string | null; queueTimestamp?: Date | null; taskEventStore?: string };
+    annotations: {
+      triggerSource: string;
+      triggerAction: string;
+      rootTriggerSource: string;
+      rootScheduleId?: string | undefined;
+    };
+    planType?: string;
+    taskId: string;
+    payloadPacket: { data?: string; dataType: string };
+    traceContext: TriggerTraceContext;
+    traceId: string;
+    spanId: string;
+    parentSpanId: string | undefined;
+    taskEventStore: string;
+  }) {
+    return {
+      friendlyId: args.runFriendlyId,
+      environment: args.environment,
+      idempotencyKey: args.idempotencyKey,
+      idempotencyKeyExpiresAt: args.idempotencyKey ? args.idempotencyKeyExpiresAt : undefined,
+      idempotencyKeyOptions: args.body.options?.idempotencyKeyOptions,
+      taskIdentifier: args.taskId,
+      payload: args.payloadPacket.data ?? "",
+      payloadType: args.payloadPacket.dataType,
+      context: args.body.context,
+      traceContext: args.traceContext,
+      traceId: args.traceId,
+      spanId: args.spanId,
+      parentSpanId: args.parentSpanId,
+      replayedFromTaskRunFriendlyId: args.options.replayedFromTaskRunFriendlyId,
+      lockedToVersionId: args.lockedToBackgroundWorker?.id,
+      taskVersion: args.lockedToBackgroundWorker?.version,
+      sdkVersion: args.lockedToBackgroundWorker?.sdkVersion,
+      cliVersion: args.lockedToBackgroundWorker?.cliVersion,
+      concurrencyKey: args.body.options?.concurrencyKey,
+      queue: args.queueName,
+      lockedQueueId: args.lockedQueueId,
+      workerQueue: args.workerQueue,
+      enableFastPath: args.enableFastPath,
+      isTest: args.body.options?.test ?? false,
+      delayUntil: args.delayUntil,
+      queuedAt: args.delayUntil ? undefined : new Date(),
+      maxAttempts: args.body.options?.maxAttempts,
+      taskEventStore: args.taskEventStore,
+      ttl: args.ttl,
+      tags: args.tags,
+      oneTimeUseToken: args.options.oneTimeUseToken,
+      parentTaskRunId: args.parentRun?.id,
+      rootTaskRunId: args.parentRun?.rootTaskRunId ?? args.parentRun?.id,
+      batch: args.options?.batchId
+        ? { id: args.options.batchId, index: args.options.batchIndex ?? 0 }
+        : undefined,
+      resumeParentOnCompletion: args.body.options?.resumeParentOnCompletion,
+      depth: args.depth,
+      metadata: args.metadataPacket?.data,
+      metadataType: args.metadataPacket?.dataType,
+      seedMetadata: args.metadataPacket?.data,
+      seedMetadataType: args.metadataPacket?.dataType,
+      maxDurationInSeconds: args.body.options?.maxDuration
+        ? clampMaxDuration(args.body.options.maxDuration)
+        : undefined,
+      machine: args.body.options?.machine,
+      priorityMs: args.body.options?.priority ? args.body.options.priority * 1_000 : undefined,
+      queueTimestamp:
+        args.options.queueTimestamp ??
+        (args.parentRun && args.body.options?.resumeParentOnCompletion
+          ? args.parentRun.queueTimestamp ?? undefined
+          : undefined),
+      scheduleId: args.options.scheduleId,
+      scheduleInstanceId: args.options.scheduleInstanceId,
+      createdAt: args.options.overrideCreatedAt,
+      bulkActionId: args.body.options?.bulkActionId,
+      planType: args.planType,
+      realtimeStreamsVersion: args.options.realtimeStreamsVersion,
+      streamBasinName: args.environment.organization.streamBasinName,
+      debounce: args.body.options?.debounce,
+      annotations: args.annotations,
+    };
   }
 
   #propagateExternalTraceContext(
