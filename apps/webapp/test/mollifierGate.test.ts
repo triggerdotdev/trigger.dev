@@ -1,5 +1,17 @@
+import { describe, expect, it, vi } from "vitest";
+
+// Stub `~/db.server` before importing anything that transitively imports it.
+// The real module eagerly calls `prisma.$connect()` at singleton construction
+// (db.server.ts), so loading it under vitest tries to reach localhost:5432
+// and surfaces as an unhandled rejection that fails the whole shard — even
+// though no test in this file actually uses the default prisma client.
+// `postgresTest` provides its own container-backed prisma via the fixture.
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+}));
+
 import { postgresTest } from "@internal/testcontainers";
-import { describe, expect, it } from "vitest";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import {
