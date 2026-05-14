@@ -1,7 +1,11 @@
+import { trace } from "@opentelemetry/api";
 import type { RunEngine } from "@internal/run-engine";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { MollifierDrainerHandler } from "@trigger.dev/redis-worker";
+import { startSpan } from "~/v3/tracing.server";
 import type { MollifierSnapshot } from "./mollifierSnapshot.server";
+
+const tracer = trace.getTracer("mollifier-drainer");
 
 export function isRetryablePgError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
@@ -19,6 +23,15 @@ export function createDrainerHandler(deps: {
   prisma: PrismaClientOrTransaction;
 }): MollifierDrainerHandler<MollifierSnapshot> {
   return async (input) => {
-    await deps.engine.trigger(input.payload as any, deps.prisma);
+    const dwellMs = Date.now() - input.createdAt.getTime();
+
+    await startSpan(tracer, "mollifier.drained", async (span) => {
+      span.setAttribute("mollifier.drained", true);
+      span.setAttribute("mollifier.dwell_ms", dwellMs);
+      span.setAttribute("mollifier.attempts", input.attempts);
+      span.setAttribute("mollifier.run_friendly_id", input.runId);
+
+      await deps.engine.trigger(input.payload as any, deps.prisma);
+    });
   };
 }
