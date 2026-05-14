@@ -16,6 +16,7 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import {
   evaluateGate,
+  makeResolveMollifierFlag,
   type GateDependencies,
   type GateInputs,
   type TripDecision,
@@ -195,6 +196,101 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
 // we build it via `makeFlag(prisma)` and let the `Organization.featureFlags`
 // blob flow through `flag()`'s overrides path. The global `FeatureFlag` table
 // is empty, so the only signal moving outcomes is the per-org JSON.
+// Hot-path guard: `triggerTask.server.ts` calls `evaluateGate` on every
+// trigger when `MOLLIFIER_ENABLED=1`. The per-org override path must resolve
+// without a Prisma round-trip — otherwise the gate adds a DB query to the
+// highest-throughput code path in the system (see apps/webapp/CLAUDE.md).
+describe("resolveMollifierFlag — hot path", () => {
+  it("returns override value without calling flag() when override is set", async () => {
+    let flagCalls = 0;
+    const flagStub: any = async () => {
+      flagCalls += 1;
+      return false;
+    };
+    const resolve = makeResolveMollifierFlag(flagStub);
+
+    const enabled = await resolve({
+      envId: "e",
+      orgId: "o",
+      taskId: "t",
+      orgFeatureFlags: { mollifierEnabled: true },
+    });
+    const disabled = await resolve({
+      envId: "e",
+      orgId: "o",
+      taskId: "t",
+      orgFeatureFlags: { mollifierEnabled: false },
+    });
+
+    expect(enabled).toBe(true);
+    expect(disabled).toBe(false);
+    expect(flagCalls).toBe(0);
+  });
+
+  it("falls back to flag() when org has no override for the key", async () => {
+    let flagCalls = 0;
+    const flagStub: any = async () => {
+      flagCalls += 1;
+      return true;
+    };
+    const resolve = makeResolveMollifierFlag(flagStub);
+
+    const fromNull = await resolve({
+      envId: "e",
+      orgId: "o",
+      taskId: "t",
+      orgFeatureFlags: null,
+    });
+    const fromUnrelatedKeys = await resolve({
+      envId: "e",
+      orgId: "o",
+      taskId: "t",
+      orgFeatureFlags: { hasAiAccess: true },
+    });
+
+    expect(fromNull).toBe(true);
+    expect(fromUnrelatedKeys).toBe(true);
+    expect(flagCalls).toBe(2);
+  });
+});
+
+describe("evaluateGate — fail open on resolveOrgFlag error", () => {
+  it("treats org flag as false when resolveOrgFlag throws, and does not block triggers", async () => {
+    const spies: Spies = {
+      evaluatorCalls: 0,
+      logShadowCalls: [],
+      logMollifiedCalls: [],
+      recordDecisionCalls: [],
+    };
+    const deps: Partial<GateDependencies> = {
+      isMollifierEnabled: () => true,
+      isShadowModeOn: () => false,
+      resolveOrgFlag: async () => {
+        throw new Error("simulated prisma timeout");
+      },
+      evaluator: async () => {
+        spies.evaluatorCalls += 1;
+        return trippedDecision;
+      },
+      logShadow: (inputs, decision) => {
+        spies.logShadowCalls.push({ inputs, decision });
+      },
+      logMollified: (inputs, decision) => {
+        spies.logMollifiedCalls.push({ inputs, decision });
+      },
+      recordDecision: (outcome, reason) => {
+        spies.recordDecisionCalls.push({ outcome, reason });
+      },
+    };
+
+    const outcome = await evaluateGate(inputs, deps);
+
+    expect(outcome.action).toBe("pass_through");
+    expect(spies.evaluatorCalls).toBe(0);
+    expect(spies.recordDecisionCalls).toEqual([{ outcome: "pass_through", reason: undefined }]);
+  });
+});
+
 describe("evaluateGate — per-org isolation via Organization.featureFlags", () => {
   function makeIsolationDeps(
     realResolveOrgFlag: GateDependencies["resolveOrgFlag"],

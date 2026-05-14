@@ -1,7 +1,7 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { flag } from "~/v3/featureFlags.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 import { createRealTripEvaluator } from "./mollifierTripEvaluator.server";
 import {
@@ -95,15 +95,35 @@ function logDivertDecision(
   });
 }
 
+// Check per-org override in-memory before consulting the DB. `triggerTask`
+// is the hot path, so we resolve the common case (org has an explicit
+// `mollifierEnabled` value in its `Organization.featureFlags` JSON) without
+// a Prisma round-trip. Only orgs with no override fall through to `flag()`,
+// which queries the global `FeatureFlag` row.
+export function makeResolveMollifierFlag(
+  flagFn: typeof flag = flag,
+): (inputs: GateInputs) => Promise<boolean> {
+  return (inputs) => {
+    const override = inputs.orgFeatureFlags?.[FEATURE_FLAG.mollifierEnabled];
+    if (override !== undefined) {
+      const parsed = FeatureFlagCatalog[FEATURE_FLAG.mollifierEnabled].safeParse(override);
+      if (parsed.success) {
+        return Promise.resolve(parsed.data);
+      }
+    }
+    return flagFn({
+      key: FEATURE_FLAG.mollifierEnabled,
+      defaultValue: false,
+    });
+  };
+}
+
+const resolveMollifierFlag = makeResolveMollifierFlag();
+
 export const defaultGateDependencies: GateDependencies = {
   isMollifierEnabled: () => env.MOLLIFIER_ENABLED === "1",
   isShadowModeOn: () => env.MOLLIFIER_SHADOW_MODE === "1",
-  resolveOrgFlag: (inputs) =>
-    flag({
-      key: FEATURE_FLAG.mollifierEnabled,
-      defaultValue: false,
-      overrides: inputs.orgFeatureFlags ?? {},
-    }),
+  resolveOrgFlag: resolveMollifierFlag,
   evaluator: defaultEvaluator,
   logShadow: (inputs, decision) =>
     logDivertDecision("mollifier.would_mollify", inputs, decision),
@@ -123,7 +143,21 @@ export async function evaluateGate(
     return { action: "pass_through" };
   }
 
-  const orgFlagEnabled = await d.resolveOrgFlag(inputs);
+  // Fail open: a transient DB error resolving the per-org flag must not
+  // block triggers. Mirror the evaluator's fail-open posture in
+  // `mollifierTripEvaluator.server.ts`.
+  let orgFlagEnabled: boolean;
+  try {
+    orgFlagEnabled = await d.resolveOrgFlag(inputs);
+  } catch (error) {
+    logger.warn("mollifier.resolve_org_flag_failed", {
+      envId: inputs.envId,
+      orgId: inputs.orgId,
+      taskId: inputs.taskId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    orgFlagEnabled = false;
+  }
   const shadowOn = d.isShadowModeOn();
 
   if (!orgFlagEnabled && !shadowOn) {
