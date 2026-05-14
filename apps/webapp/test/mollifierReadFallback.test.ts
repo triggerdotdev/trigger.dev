@@ -123,4 +123,97 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.status).toBe("FAILED");
     expect(result!.error).toEqual({ code: "VALIDATION", message: "task not found" });
   });
+
+  it("extracts snapshot-derived fields from the buffered payload", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "my-task",
+        payload: '{"foo":"bar"}',
+        payloadType: "application/json",
+        metadata: '{"customer":"acme"}',
+        metadataType: "application/json",
+        idempotencyKey: "client-abc",
+        idempotencyKeyOptions: ["payload"],
+        isTest: true,
+        depth: 2,
+        ttl: "1h",
+        tags: ["tag-a", "tag-b"],
+        lockToVersion: "20260511.1",
+        resumeParentOnCompletion: false,
+        parentTaskRunId: "run_parent",
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.payloadType).toBe("application/json");
+    expect(result!.metadata).toBe('{"customer":"acme"}');
+    expect(result!.metadataType).toBe("application/json");
+    expect(result!.idempotencyKey).toBe("client-abc");
+    expect(result!.idempotencyKeyOptions).toEqual(["payload"]);
+    expect(result!.isTest).toBe(true);
+    expect(result!.depth).toBe(2);
+    expect(result!.ttl).toBe("1h");
+    expect(result!.tags).toEqual(["tag-a", "tag-b"]);
+    expect(result!.lockedToVersion).toBe("20260511.1");
+    expect(result!.resumeParentOnCompletion).toBe(false);
+    expect(result!.parentTaskRunId).toBe("run_parent");
+  });
+
+  it("extracts gate-allocated trace context from the snapshot", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        traceId: "trace_abc",
+        spanId: "span_xyz",
+        parentSpanId: "span_parent",
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.traceId).toBe("trace_abc");
+    expect(result!.spanId).toBe("span_xyz");
+    expect(result!.parentSpanId).toBe("span_parent");
+  });
+
+  it("defaults snapshot-derived fields to safe values when absent", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({ taskIdentifier: "t" }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.payloadType).toBeUndefined();
+    expect(result!.metadata).toBeUndefined();
+    expect(result!.idempotencyKey).toBeUndefined();
+    expect(result!.isTest).toBe(false);
+    expect(result!.depth).toBe(0);
+    expect(result!.tags).toEqual([]);
+    expect(result!.resumeParentOnCompletion).toBe(false);
+    expect(result!.traceId).toBeUndefined();
+    expect(result!.spanId).toBeUndefined();
+  });
 });
