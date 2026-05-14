@@ -1342,7 +1342,7 @@ describe("RunEngineTriggerTaskService", () => {
       // engine.trigger ran — Postgres has the run
       expect(result).toBeDefined();
       expect(result?.run.friendlyId).toBeDefined();
-      const pgRun = await prisma.taskRun.findUnique({ where: { id: result!.run.id } });
+      const pgRun = await prisma.taskRun.findFirst({ where: { id: result!.run.id } });
       expect(pgRun).not.toBeNull();
       expect(pgRun!.friendlyId).toBe(result!.run.friendlyId);
 

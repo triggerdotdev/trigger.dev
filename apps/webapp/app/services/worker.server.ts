@@ -131,6 +131,14 @@ export async function init() {
     await workerQueue.initialize();
   }
 
+  // Only the worker role drains the mollifier buffer. API-only replicas
+  // still produce into the buffer via the trigger hot path, but the
+  // polling loop + Redis consumer connection only belongs on workers —
+  // otherwise every webapp replica races for the same entries.
+  if (env.WORKER_ENABLED !== "true") {
+    return;
+  }
+
   try {
     const drainer = getMollifierDrainer();
     if (drainer && !global.__mollifierShutdownRegistered__) {

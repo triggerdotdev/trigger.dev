@@ -10,10 +10,15 @@ import {
   type DecisionReason,
 } from "./mollifierTelemetry.server";
 
-// `count` is the *single-instance* sliding-window counter, not a fleet-wide
-// aggregate. Each webapp instance maintains its own Redis key, so the fleet
-// effective ceiling is `instance_count * threshold`. Phase 2 consumers must
-// not treat `count` as a global rate.
+// `count` is the *single-instance* fixed-window counter (INCR with a PEXPIRE
+// armed on the first tick of each window — see `mollifierEvaluateTrip` in
+// `packages/redis-worker/src/mollifier/buffer.ts`). It is not a fleet-wide
+// aggregate: each webapp instance maintains its own Redis key, so the fleet
+// effective ceiling is `instance_count * threshold`, and at a window boundary
+// the instance can briefly admit up to ~2x threshold before tripping. The
+// tripped marker is refreshed on every overage call, so a sustained burst
+// holds the divert state until the rate falls below threshold within a
+// window. Phase 2 consumers must not treat `count` as a global rate.
 export type TripDecision =
   | { divert: false }
   | {

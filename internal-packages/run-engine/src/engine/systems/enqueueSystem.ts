@@ -88,8 +88,11 @@ export class EnqueueSystem {
 
       const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
 
-      // Include TTL only when explicitly requested (first enqueue from trigger).
-      // Re-enqueues (waitpoint, checkpoint, delayed, pending version) must not add TTL.
+      // Include TTL only when explicitly requested. Callers pass `includeTtl: true`
+      // on the first enqueue that puts the run into the run queue — the initial
+      // trigger path, the delayed run release, and the pending-version release.
+      // Waitpoint/checkpoint re-enqueues must NOT pass it: the run has already
+      // started, so the queued-but-never-started TTL no longer applies.
       let ttlExpiresAt: number | undefined;
       if (includeTtl && run.ttl) {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
