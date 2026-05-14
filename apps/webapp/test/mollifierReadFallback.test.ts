@@ -50,6 +50,23 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result).toBeNull();
   });
 
+  it("returns null when buffer entry orgId does not match caller (auth mismatch)", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_OTHER",
+      payload: JSON.stringify({ taskIdentifier: "t" }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result).toBeNull();
+  });
+
   it("returns synthesised QUEUED run when entry exists with matching auth", async () => {
     const entry: BufferEntry = {
       runId: "run_1",
