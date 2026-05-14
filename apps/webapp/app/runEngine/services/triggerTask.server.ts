@@ -50,7 +50,12 @@ import { serialiseSnapshot, type MollifierBuffer } from "@trigger.dev/redis-work
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 export type MollifierEvaluateGate = (
-  inputs: { envId: string; orgId: string; taskId: string },
+  inputs: {
+    envId: string;
+    orgId: string;
+    taskId: string;
+    orgFeatureFlags: Record<string, unknown> | null;
+  },
 ) => Promise<GateOutcome>;
 
 export type MollifierGetBuffer = () => MollifierBuffer | null;
