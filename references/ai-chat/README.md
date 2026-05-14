@@ -41,22 +41,38 @@ Persistence is handled server-side in the Trigger.dev task via three hooks:
 
 ## Setup
 
+This reference assumes you already have the local webapp running per the repo's [`CONTRIBUTING.md`](../../CONTRIBUTING.md) (Docker services, `pnpm run db:migrate`, `pnpm run db:seed`, webapp on `:3030`).
+
+Unlike `hello-world`, the ai-chat project is **not** in the webapp seed. You'll need to create it manually:
+
+1. Open http://localhost:3030, log in, switch to the `References` org, and create a new project called `ai-chat`.
+2. Grab the project ref (`proj_...`) from the URL and a Dev secret key from the project's API keys page.
+3. Set up this app's env and database:
+
+   ```bash
+   cd references/ai-chat
+   cp .env.example .env
+   # Fill in TRIGGER_PROJECT_REF, TRIGGER_SECRET_KEY,
+   # NEXT_PUBLIC_TRIGGER_PROJECT_DASHBOARD_PATH, and at least one
+   # of OPENAI_API_KEY / ANTHROPIC_API_KEY.
+   npx prisma migrate deploy
+   ```
+
+   The `DATABASE_URL` in `.env.example` points at the local Postgres started by `pnpm run docker` and uses a separate `ai_chat` database.
+
+## Running
+
+Three terminals from the repo root:
+
 ```bash
-# From the repo root
-pnpm run docker              # Start PostgreSQL, Redis, Electric
-pnpm run db:migrate          # Run webapp migrations
-pnpm run db:seed             # Seed the database
+# 1. Webapp (if not already running)
+pnpm run dev --filter webapp
 
-# Set up the reference app's database
-cd references/ai-chat
-cp .env.example .env         # Edit DATABASE_URL if needed
-npx prisma migrate deploy
+# 2. Trigger CLI dev (registers the chat tasks with the local webapp)
+cd references/ai-chat && pnpm exec trigger dev
 
-# Build and run
-pnpm run build --filter trigger.dev --filter @trigger.dev/sdk
-pnpm run dev --filter webapp  # In one terminal
-cd references/ai-chat && pnpm exec trigger dev  # In another
-cd references/ai-chat && pnpm run dev            # In another
+# 3. Next.js dev server for the chat UI
+cd references/ai-chat && pnpm run dev
 ```
 
 Open http://localhost:3000 to use the chat app.
