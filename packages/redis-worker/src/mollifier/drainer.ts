@@ -48,6 +48,7 @@ export class MollifierDrainer<TPayload = unknown> {
   private envCursor = 0;
   private isRunning = false;
   private stopping = false;
+  private loopPromise: Promise<void> | null = null;
 
   constructor(options: MollifierDrainerOptions<TPayload>) {
     this.buffer = options.buffer;
@@ -82,22 +83,31 @@ export class MollifierDrainer<TPayload = unknown> {
     if (this.isRunning) return;
     this.isRunning = true;
     this.stopping = false;
-    void this.loop();
+    this.loopPromise = this.loop();
   }
 
+  // Signal the loop to exit (`stopping = true`) and wait for it. With no
+  // timeout, wait indefinitely for the in-flight `runOnce` and its handlers
+  // to settle — same semantic as FairQueue / BatchQueue's `stop()`. With a
+  // timeout, race the loop promise against a deadline so a hung handler
+  // can't wedge the process past its termination grace period.
   async stop(options: { timeoutMs?: number } = {}): Promise<void> {
-    if (!this.isRunning) return;
+    if (!this.isRunning || !this.loopPromise) return;
     this.stopping = true;
-    const deadline = options.timeoutMs != null ? Date.now() + options.timeoutMs : Infinity;
-    while (this.isRunning) {
-      if (Date.now() >= deadline) {
-        this.logger.warn(
-          "MollifierDrainer.stop: deadline exceeded; returning while loop iteration is in flight",
-          { timeoutMs: options.timeoutMs },
-        );
-        return;
-      }
-      await this.delay(20);
+    if (options.timeoutMs == null) {
+      await this.loopPromise;
+      return;
+    }
+    const timeoutSentinel = Symbol("mollifier.stop.timeout");
+    const winner = await Promise.race([
+      this.loopPromise.then(() => "done" as const),
+      this.delay(options.timeoutMs).then(() => timeoutSentinel),
+    ]);
+    if (winner === timeoutSentinel) {
+      this.logger.warn(
+        "MollifierDrainer.stop: deadline exceeded; returning while loop iteration is in flight",
+        { timeoutMs: options.timeoutMs },
+      );
     }
   }
 
