@@ -63,6 +63,13 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
     /^\/api\/v1\/waitpoints\/tokens\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
     /^\/api\/v\d+\/deployments/, // /api/v{1,2,3,n}/deployments/*
+    // Internal SDK plumbing — packets are presigned-URL handshakes for
+    // payload uploads (v2 PUT) and downloads (v1 GET), authenticated via
+    // run-scoped JWT, called once per task/turn boundary by the runtime.
+    // Same shape as `/api/v1/runs/$runFriendlyId/attempts` above; not a
+    // customer-facing surface so customer rate limits shouldn't apply.
+    /^\/api\/v1\/packets\//,
+    /^\/api\/v2\/packets\//,
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

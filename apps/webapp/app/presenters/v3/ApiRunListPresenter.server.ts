@@ -304,6 +304,10 @@ export class ApiRunListPresenter extends BasePresenter {
             durationMs: run.usageDurationMs,
             depth: run.depth,
             metadata,
+            // ClickHouse defaults `task_kind` to "" for pre-migration rows.
+            // Match `NextRunListPresenter`'s "STANDARD" fallback so API
+            // consumers and the dashboard see the same value.
+            taskKind: run.taskKind || "STANDARD",
             ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
               ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion)
             ),

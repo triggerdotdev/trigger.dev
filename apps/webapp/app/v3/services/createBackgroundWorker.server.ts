@@ -324,6 +324,13 @@ async function createWorkerTask(
       );
     }
 
+    const resolvedTriggerSource =
+      task.triggerSource === "schedule"
+        ? ("SCHEDULED" as const)
+        : task.triggerSource === "agent"
+          ? ("AGENT" as const)
+          : ("STANDARD" as const);
+
     await prisma.backgroundWorkerTask.create({
       data: {
         friendlyId: generateFriendlyId("task"),
@@ -337,7 +344,8 @@ async function createWorkerTask(
         retryConfig: task.retry,
         queueConfig: task.queue,
         machineConfig: task.machine,
-        triggerSource: task.triggerSource === "schedule" ? "SCHEDULED" : "STANDARD",
+        triggerSource: resolvedTriggerSource,
+        config: task.agentConfig ? (task.agentConfig as any) : undefined,
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
         ttl:
