@@ -22,6 +22,11 @@ import {
 } from "~/v3/mollifier/mollifierGate.server";
 import type { DecisionOutcome, DecisionReason } from "~/v3/mollifier/mollifierTelemetry.server";
 
+// Each `postgresTest` boots its own Postgres container; the 5s vitest default
+// regularly times out on CI just on container start. Match the timeout used by
+// other postgresTest suites in this app (e.g. `taskIdentifierRegistry.test.ts`).
+vi.setConfig({ testTimeout: 30_000 });
+
 // We deliberately don't use vi.fn here. Per repo policy tests shouldn't lean on
 // mock frameworks for behaviours that are pure functions of the inputs — the
 // gate is pure decision logic, so a hand-rolled "deps + spy log" wired with
