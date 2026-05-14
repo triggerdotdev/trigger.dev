@@ -33,7 +33,9 @@ jobs:
               - '!docs/**'
               - '!.changeset/**'
               - '!hosting/**'
-              - '!.github/workflows/helm-prerelease.yml'
+              - '!.github/**'
+              - '.github/workflows/pr_checks.yml'
+              - '.github/workflows/typecheck.yml'
             webapp:
               - 'apps/webapp/**'
               - 'packages/**'
