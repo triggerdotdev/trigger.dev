@@ -107,6 +107,7 @@ let workerQueue: ZodWorker<typeof workerCatalog>;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
+  var __mollifierShutdownRegistered__: boolean | undefined;
 }
 
 // this is needed because in development we don't want to restart
@@ -132,11 +133,14 @@ export async function init() {
 
   try {
     const drainer = getMollifierDrainer();
-    if (drainer) {
+    if (drainer && !global.__mollifierShutdownRegistered__) {
       // The drainer owns a polling loop and a Redis client; let it drain
       // in-flight pops on shutdown rather than tearing the process down
-      // mid-handler. Idempotent — `drainer.stop()` short-circuits if already
-      // stopped, so registering on both signals is safe.
+      // mid-handler. `init()` is called per request from entry.server.tsx,
+      // and `process.once()` only removes its listener after it fires — so
+      // without a process-global guard, dev hot-reloads would stack a fresh
+      // listener pair every request. Mirrors the `__worker__` singleton
+      // pattern above.
       const stopDrainer = () => {
         drainer.stop().catch((error) => {
           logger.error("Failed to stop mollifier drainer", { error });
@@ -144,6 +148,7 @@ export async function init() {
       };
       process.once("SIGTERM", stopDrainer);
       process.once("SIGINT", stopDrainer);
+      global.__mollifierShutdownRegistered__ = true;
     }
   } catch (error) {
     logger.error("Failed to initialise mollifier drainer", { error });
