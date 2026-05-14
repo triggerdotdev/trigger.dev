@@ -90,19 +90,41 @@ export class MollifierDrainer<TPayload = unknown> {
     }
   }
 
+  // Transient Redis errors (e.g. a connection blip in `listEnvs` or `pop`)
+  // must not kill the polling loop permanently. We log each `runOnce`
+  // failure, back off so we don't spin tight on a sustained outage, and
+  // resume. The loop only exits when `stop()` flips `stopping`.
   private async loop(): Promise<void> {
     try {
+      let consecutiveErrors = 0;
       while (!this.stopping) {
-        const result = await this.runOnce();
-        if (result.drained === 0 && result.failed === 0) {
-          await this.delay(this.pollIntervalMs);
+        try {
+          const result = await this.runOnce();
+          consecutiveErrors = 0;
+          if (result.drained === 0 && result.failed === 0) {
+            await this.delay(this.pollIntervalMs);
+          }
+        } catch (err) {
+          consecutiveErrors += 1;
+          this.logger.error("MollifierDrainer.runOnce failed; backing off", {
+            err,
+            consecutiveErrors,
+          });
+          await this.delay(this.backoffMs(consecutiveErrors));
         }
       }
-    } catch (err) {
-      this.logger.error("MollifierDrainer loop crashed", { err });
     } finally {
       this.isRunning = false;
     }
+  }
+
+  // Exponential backoff capped at 5s. Keeps the loop responsive after a
+  // brief blip while preventing a tight retry loop during a long Redis
+  // outage. 1 → 200ms, 2 → 400ms, 3 → 800ms, 4 → 1.6s, 5 → 3.2s, 6+ → 5s.
+  private backoffMs(consecutiveErrors: number): number {
+    const base = Math.max(this.pollIntervalMs, 100);
+    const capped = Math.min(base * 2 ** (consecutiveErrors - 1), 5_000);
+    return capped;
   }
 
   private delay(ms: number): Promise<void> {
@@ -115,8 +137,18 @@ export class MollifierDrainer<TPayload = unknown> {
     return [...envs.slice(start), ...envs.slice(0, start)];
   }
 
+  // A `pop()` failure for one env (e.g. a Redis hiccup mid-batch) must not
+  // poison the rest of the batch — `Promise.all` would otherwise reject and
+  // bubble all the way to `loop()`. Catch here so the failed env is just
+  // counted as "failed" for this tick and we move on.
   private async processOneFromEnv(envId: string): Promise<"drained" | "failed" | "empty"> {
-    const entry = await this.buffer.pop(envId);
+    let entry: BufferEntry | null;
+    try {
+      entry = await this.buffer.pop(envId);
+    } catch (err) {
+      this.logger.error("MollifierDrainer.pop failed", { envId, err });
+      return "failed";
+    }
     if (!entry) return "empty";
     return this.processEntry(entry);
   }

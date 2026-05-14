@@ -1,5 +1,5 @@
 import { redisTest } from "@internal/testcontainers";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Logger } from "@trigger.dev/core/logger";
 import { MollifierBuffer } from "./buffer.js";
 import { MollifierDrainer } from "./drainer.js";
@@ -214,6 +214,115 @@ describe("MollifierDrainer error handling", () => {
     } finally {
       await buffer.close();
     }
+  });
+});
+
+// Transient Redis errors used to permanently kill the loop because
+// `processOneFromEnv` didn't catch `buffer.pop()` rejections — the error
+// bubbled through `Promise.all` → `runOnce` → `loop`'s outer catch and
+// left `isRunning = false`. These tests use a stubbed buffer (no Redis
+// container) so we can deterministically inject failures from `listEnvs`
+// and `pop` without racing against a real client.
+describe("MollifierDrainer resilience to transient buffer errors", () => {
+  type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
+
+  function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+    const base: StubBuffer = {
+      listEnvs: async () => [],
+      pop: async () => null,
+      ack: async () => {},
+      requeue: async () => {},
+      fail: async () => true,
+      getEntry: async () => null,
+      close: async () => {},
+    };
+    return { ...base, ...overrides } as unknown as MollifierBuffer;
+  }
+
+  it("survives a transient listEnvs failure and resumes draining", async () => {
+    let listCalls = 0;
+    const popped: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => {
+        listCalls += 1;
+        if (listCalls === 1) {
+          throw new Error("simulated redis blip");
+        }
+        return ["env_a"];
+      },
+      pop: async () => {
+        const runId = `run_${popped.length + 1}`;
+        if (popped.length >= 2) return null;
+        popped.push(runId);
+        return {
+          runId,
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const handled: string[] = [];
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+      },
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      pollIntervalMs: 20,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    drainer.start();
+    const deadline = Date.now() + 3_000;
+    while (handled.length < 2 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await drainer.stop({ timeoutMs: 1_000 });
+
+    expect(handled).toEqual(["run_1", "run_2"]);
+    expect(listCalls).toBeGreaterThan(1);
+  });
+
+  it("a pop failure for one env doesn't poison the rest of the batch", async () => {
+    const buffer = makeStubBuffer({
+      listEnvs: async () => ["bad", "good"],
+      pop: async (envId: string) => {
+        if (envId === "bad") {
+          throw new Error("simulated pop failure on bad env");
+        }
+        return {
+          runId: "run_good",
+          envId: "good",
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const handled: string[] = [];
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+      },
+      concurrency: 5,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const result = await drainer.runOnce();
+    expect(result.drained).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(handled).toEqual(["run_good"]);
   });
 });
 
