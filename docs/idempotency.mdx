@@ -108,6 +108,10 @@ When you pass a raw string, it defaults to `"run"` scope (scoped to the parent r
 
 <Note>Make sure you provide sufficiently unique keys to avoid collisions.</Note>
 
+<Note>
+Idempotency keys are limited to 2048 characters. Keys produced by `idempotencyKeys.create()` are 64-character hashes and always fit; this limit only matters if you pass a long raw string. Requests above the limit return `400`.
+</Note>
+
 You can pass the `idempotencyKey` when calling `batchTrigger` as well:
 
 ```ts

@@ -197,7 +197,13 @@ export const TriggerTaskRequestBody = z.object({
         .optional(),
       concurrencyKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z
+        .string()
+        // Caps user-supplied keys before they reach the unique idempotency index
+        // on the underlying table — values past this fail at the database layer
+        // rather than returning a clean 400.
+        .max(2048, "idempotencyKey must be 2048 characters or less")
+        .optional(),
       idempotencyKeyTTL: z.string().optional(),
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
@@ -249,7 +255,13 @@ export const BatchTriggerTaskItem = z.object({
     .object({
       concurrencyKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z
+        .string()
+        // Caps user-supplied keys before they reach the unique idempotency index
+        // on the underlying table — values past this fail at the database layer
+        // rather than returning a clean 400.
+        .max(2048, "idempotencyKey must be 2048 characters or less")
+        .optional(),
       idempotencyKeyTTL: z.string().optional(),
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
@@ -358,7 +370,13 @@ export const CreateBatchRequestBody = z.object({
   /** Whether to resume parent on completion (true for batchTriggerAndWait) */
   resumeParentOnCompletion: z.boolean().optional(),
   /** Idempotency key for the batch */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /** The original user-provided idempotency key and scope */
   idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
 });
@@ -1350,7 +1368,13 @@ export const CreateWaitpointTokenRequestBody = z.object({
    *
    * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
    */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /**
    * When set, this means the passed in idempotency key will expire after this time.
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
@@ -1389,7 +1413,13 @@ export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTok
 export const CreateInputStreamWaitpointRequestBody = z.object({
   streamId: z.string(),
   timeout: z.string().optional(),
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   idempotencyKeyTTL: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   /**
@@ -1422,7 +1452,13 @@ export const CreateSessionStreamWaitpointRequestBody = z.object({
   session: z.string(),
   io: z.enum(["out", "in"]),
   timeout: z.string().optional(),
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   idempotencyKeyTTL: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   /**
@@ -1711,7 +1747,13 @@ export const WaitForDurationRequestBody = z.object({
    *
    * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
    */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /**
    * When set, this means the passed in idempotency key will expire after this time.
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
