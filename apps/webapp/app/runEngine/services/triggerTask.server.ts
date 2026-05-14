@@ -48,8 +48,9 @@ import {
   getMollifierBuffer as defaultGetMollifierBuffer,
   type MollifierGetBuffer,
 } from "~/v3/mollifier/mollifierBuffer.server";
+import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import { buildBufferedTriggerPayload } from "~/v3/mollifier/bufferedTriggerPayload.server";
-import { serialiseSnapshot } from "@trigger.dev/redis-worker";
+import { serialiseSnapshot, type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
@@ -342,6 +343,95 @@ export class RunEngineTriggerTaskService {
         orgFeatureFlags:
           (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
       });
+
+      // Phase 2: real divert path. When the gate says mollify, write the
+      // engine.trigger input snapshot into the Redis buffer and return a
+      // synthesised TriggerTaskServiceResult. The customer never waits on
+      // Postgres; the drainer materialises the run later by replaying
+      // engine.trigger against the snapshot. Skip traceRun entirely — the
+      // run span is created by the drainer when it eventually runs.
+      if (mollifierOutcome.action === "mollify") {
+        const mollifierBuffer = this.getMollifierBuffer();
+        if (mollifierBuffer && !body.options?.debounce) {
+          const synthetic = await startSpan(
+            this.tracer,
+            "mollifier.queued",
+            async (mollifierSpan) => {
+              mollifierSpan.setAttribute("mollifier.reason", mollifierOutcome.decision.reason);
+              mollifierSpan.setAttribute("mollifier.count", mollifierOutcome.decision.count);
+              mollifierSpan.setAttribute(
+                "mollifier.threshold",
+                mollifierOutcome.decision.threshold
+              );
+              mollifierSpan.setAttribute("runId", runFriendlyId);
+
+              const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+              const taskEventStore = parentRun?.taskEventStore ?? "taskEvent";
+              const traceContext = this.#propagateExternalTraceContext(
+                {},
+                parentRun?.traceContext,
+                undefined
+              );
+
+              const engineTriggerInput = this.#buildEngineTriggerInput({
+                runFriendlyId,
+                environment,
+                idempotencyKey,
+                idempotencyKeyExpiresAt,
+                body,
+                options,
+                queueName,
+                lockedQueueId,
+                workerQueue,
+                enableFastPath,
+                lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
+                delayUntil,
+                ttl,
+                metadataPacket,
+                tags,
+                depth,
+                parentRun: parentRun ?? undefined,
+                annotations,
+                planType,
+                taskId,
+                payloadPacket,
+                traceContext,
+                traceId: mollifierSpan.spanContext().traceId,
+                spanId: mollifierSpan.spanContext().spanId,
+                parentSpanId: undefined,
+                taskEventStore,
+              });
+
+              const result = await mollifyTrigger({
+                runFriendlyId,
+                environmentId: environment.id,
+                organizationId: environment.organizationId,
+                engineTriggerInput,
+                decision: mollifierOutcome.decision,
+                buffer: mollifierBuffer,
+              });
+
+              logger.info("mollifier.buffered", {
+                runId: runFriendlyId,
+                envId: environment.id,
+                orgId: environment.organizationId,
+                taskId,
+                reason: mollifierOutcome.decision.reason,
+              });
+
+              return result;
+            }
+          );
+          // Synthetic result is structurally narrower than the full TaskRun;
+          // the route handler only reads `result.run.friendlyId`.
+          return synthetic as unknown as TriggerTaskServiceResult;
+        }
+        if (!mollifierBuffer) {
+          logger.warn(
+            "mollifier gate said mollify but buffer is null — falling through to pass-through"
+          );
+        }
+      }
 
       try {
         return await this.traceEventConcern.traceRun(
