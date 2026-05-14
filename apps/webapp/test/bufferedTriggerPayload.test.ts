@@ -50,6 +50,16 @@ describe("buildBufferedTriggerPayload", () => {
     const noKey = buildBufferedTriggerPayload(baseInput);
     expect(noKey.idempotencyKey).toBeNull();
     expect(noKey.idempotencyKeyExpiresAt).toBeNull();
+
+    // Defensive: an expiresAt without an accompanying key is an impossible
+    // idempotency state — drop the expiresAt rather than serialise it.
+    const orphanExpiry = buildBufferedTriggerPayload({
+      ...baseInput,
+      idempotencyKey: null,
+      idempotencyKeyExpiresAt: new Date("2026-05-13T10:00:00.000Z"),
+    });
+    expect(orphanExpiry.idempotencyKey).toBeNull();
+    expect(orphanExpiry.idempotencyKeyExpiresAt).toBeNull();
   });
 
   it("preserves customer body byte-equivalent (drainer replay must match Postgres)", () => {

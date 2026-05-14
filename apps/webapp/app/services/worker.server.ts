@@ -130,7 +130,24 @@ export async function init() {
     await workerQueue.initialize();
   }
 
-  getMollifierDrainer();
+  try {
+    const drainer = getMollifierDrainer();
+    if (drainer) {
+      // The drainer owns a polling loop and a Redis client; let it drain
+      // in-flight pops on shutdown rather than tearing the process down
+      // mid-handler. Idempotent — `drainer.stop()` short-circuits if already
+      // stopped, so registering on both signals is safe.
+      const stopDrainer = () => {
+        drainer.stop().catch((error) => {
+          logger.error("Failed to stop mollifier drainer", { error });
+        });
+      };
+      process.once("SIGTERM", stopDrainer);
+      process.once("SIGINT", stopDrainer);
+    }
+  } catch (error) {
+    logger.error("Failed to initialise mollifier drainer", { error });
+  }
 }
 
 function getWorkerQueue() {

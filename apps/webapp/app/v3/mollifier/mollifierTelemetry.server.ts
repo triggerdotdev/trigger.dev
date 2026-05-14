@@ -7,8 +7,9 @@ export const mollifierDecisionsCounter = meter.createCounter("mollifier.decision
 });
 
 export type DecisionOutcome = "pass_through" | "shadow_log" | "mollify";
+export type DecisionReason = "per_env_rate";
 
-export function recordDecision(outcome: DecisionOutcome, reason?: string): void {
+export function recordDecision(outcome: DecisionOutcome, reason?: DecisionReason): void {
   mollifierDecisionsCounter.add(1, {
     outcome,
     ...(reason ? { reason } : {}),

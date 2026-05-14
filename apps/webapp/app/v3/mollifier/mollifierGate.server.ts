@@ -4,7 +4,11 @@ import { flag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 import { createRealTripEvaluator } from "./mollifierTripEvaluator.server";
-import { recordDecision, type DecisionOutcome } from "./mollifierTelemetry.server";
+import {
+  recordDecision,
+  type DecisionOutcome,
+  type DecisionReason,
+} from "./mollifierTelemetry.server";
 
 // `count` is the *single-instance* sliding-window counter, not a fleet-wide
 // aggregate. Each webapp instance maintains its own Redis key, so the fleet
@@ -37,7 +41,7 @@ export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
 export type GateDependencies = {
   isMollifierEnabled: () => boolean;
   isShadowModeOn: () => boolean;
-  resolveOrgFlag: () => Promise<boolean>;
+  resolveFlag: () => Promise<boolean>;
   evaluator: TripEvaluator;
   logShadow: (
     inputs: GateInputs,
@@ -47,7 +51,7 @@ export type GateDependencies = {
     inputs: GateInputs,
     decision: Extract<TripDecision, { divert: true }>,
   ) => void;
-  recordDecision: (outcome: DecisionOutcome, reason?: string) => void;
+  recordDecision: (outcome: DecisionOutcome, reason?: DecisionReason) => void;
 };
 
 // `options` is a thunk so env reads happen per-evaluation, not at module load.
@@ -82,7 +86,7 @@ function logDivertDecision(
 export const defaultGateDependencies: GateDependencies = {
   isMollifierEnabled: () => env.MOLLIFIER_ENABLED === "1",
   isShadowModeOn: () => env.MOLLIFIER_SHADOW_MODE === "1",
-  resolveOrgFlag: () =>
+  resolveFlag: () =>
     flag({ key: FEATURE_FLAG.mollifierEnabled, defaultValue: false }),
   evaluator: defaultEvaluator,
   logShadow: (inputs, decision) =>
@@ -103,10 +107,10 @@ export async function evaluateGate(
     return { action: "pass_through" };
   }
 
-  const orgFlagEnabled = await d.resolveOrgFlag();
+  const flagEnabled = await d.resolveFlag();
   const shadowOn = d.isShadowModeOn();
 
-  if (!orgFlagEnabled && !shadowOn) {
+  if (!flagEnabled && !shadowOn) {
     d.recordDecision("pass_through");
     return { action: "pass_through" };
   }
@@ -117,7 +121,7 @@ export async function evaluateGate(
     return { action: "pass_through" };
   }
 
-  if (orgFlagEnabled) {
+  if (flagEnabled) {
     d.logMollified(inputs, decision);
     d.recordDecision("mollify", decision.reason);
     return { action: "mollify", decision };

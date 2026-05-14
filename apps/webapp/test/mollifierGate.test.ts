@@ -1,39 +1,56 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   evaluateGate,
   type GateDependencies,
   type GateInputs,
   type TripDecision,
 } from "~/v3/mollifier/mollifierGate.server";
+import type { DecisionOutcome, DecisionReason } from "~/v3/mollifier/mollifierTelemetry.server";
 
+// We deliberately don't use vi.fn here. Per repo policy tests shouldn't lean on
+// mock frameworks for behaviours that are pure functions of the inputs — the
+// gate is pure decision logic, so a hand-rolled "deps + spy log" wired with
+// plain closures gives exactly the assertions we need without the indirection.
 type Spies = {
-  [K in keyof GateDependencies]: ReturnType<typeof vi.fn>;
+  evaluatorCalls: number;
+  logShadowCalls: Array<{ inputs: GateInputs; decision: Extract<TripDecision, { divert: true }> }>;
+  logMollifiedCalls: Array<{ inputs: GateInputs; decision: Extract<TripDecision, { divert: true }> }>;
+  recordDecisionCalls: Array<{ outcome: DecisionOutcome; reason?: DecisionReason }>;
 };
 
-function makeDeps(overrides: Partial<GateDependencies> = {}): {
-  deps: GateDependencies;
-  spies: Spies;
-} {
-  const defaults: GateDependencies = {
-    isMollifierEnabled: () => false,
-    isShadowModeOn: () => false,
-    resolveOrgFlag: async () => false,
-    evaluator: async () => ({ divert: false }) as TripDecision,
-    logShadow: () => {},
-    logMollified: () => {},
-    recordDecision: () => {},
+type Toggles = {
+  enabled: boolean;
+  shadow: boolean;
+  flag: boolean;
+  decision: TripDecision;
+};
+
+function makeDeps(toggles: Toggles): { deps: GateDependencies; spies: Spies } {
+  const spies: Spies = {
+    evaluatorCalls: 0,
+    logShadowCalls: [],
+    logMollifiedCalls: [],
+    recordDecisionCalls: [],
   };
-  const merged = { ...defaults, ...overrides };
-  const spies = {
-    isMollifierEnabled: vi.fn(merged.isMollifierEnabled),
-    isShadowModeOn: vi.fn(merged.isShadowModeOn),
-    resolveOrgFlag: vi.fn(merged.resolveOrgFlag),
-    evaluator: vi.fn(merged.evaluator),
-    logShadow: vi.fn(merged.logShadow),
-    logMollified: vi.fn(merged.logMollified),
-    recordDecision: vi.fn(merged.recordDecision),
-  } satisfies Spies;
-  return { deps: spies, spies };
+  const deps: GateDependencies = {
+    isMollifierEnabled: () => toggles.enabled,
+    isShadowModeOn: () => toggles.shadow,
+    resolveFlag: async () => toggles.flag,
+    evaluator: async () => {
+      spies.evaluatorCalls += 1;
+      return toggles.decision;
+    },
+    logShadow: (inputs, decision) => {
+      spies.logShadowCalls.push({ inputs, decision });
+    },
+    logMollified: (inputs, decision) => {
+      spies.logMollifiedCalls.push({ inputs, decision });
+    },
+    recordDecision: (outcome, reason) => {
+      spies.recordDecisionCalls.push({ outcome, reason });
+    },
+  };
+  return { deps, spies };
 }
 
 const trippedDecision = {
@@ -101,53 +118,49 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
     "row $id: enabled=$enabled shadow=$shadow flag=$flag divert=$divert → action=$expected.action",
     async (row) => {
       const { deps, spies } = makeDeps({
-        isMollifierEnabled: () => row.enabled,
-        isShadowModeOn: () => row.shadow,
-        resolveOrgFlag: async () => row.flag,
-        evaluator: async () => (row.divert ? trippedDecision : passDecision),
+        enabled: row.enabled,
+        shadow: row.shadow,
+        flag: row.flag,
+        decision: row.divert ? trippedDecision : passDecision,
       });
 
       const outcome = await evaluateGate(inputs, deps);
 
       expect(outcome.action).toBe(row.expected.action);
-      expect(spies.evaluator).toHaveBeenCalledTimes(row.expected.evaluatorCalls);
-      expect(spies.logShadow).toHaveBeenCalledTimes(row.expected.logShadowCalls);
-      expect(spies.logMollified).toHaveBeenCalledTimes(row.expected.logMollifiedCalls);
+      expect(spies.evaluatorCalls).toBe(row.expected.evaluatorCalls);
+      expect(spies.logShadowCalls).toHaveLength(row.expected.logShadowCalls);
+      expect(spies.logMollifiedCalls).toHaveLength(row.expected.logMollifiedCalls);
 
       // Every evaluation records exactly one decision.
-      expect(spies.recordDecision).toHaveBeenCalledTimes(1);
-      if (row.expected.expectedReason === undefined) {
-        expect(spies.recordDecision).toHaveBeenCalledWith(row.expected.recordedOutcome);
-      } else {
-        expect(spies.recordDecision).toHaveBeenCalledWith(
-          row.expected.recordedOutcome,
-          row.expected.expectedReason,
-        );
-      }
+      expect(spies.recordDecisionCalls).toHaveLength(1);
+      expect(spies.recordDecisionCalls[0].outcome).toBe(row.expected.recordedOutcome);
+      expect(spies.recordDecisionCalls[0].reason).toBe(row.expected.expectedReason);
     },
   );
 
   it("divert log carries the full decision (envId, orgId, taskId, reason, count, threshold, windowMs, holdMs)", async () => {
     const { deps, spies } = makeDeps({
-      isMollifierEnabled: () => true,
-      isShadowModeOn: () => true,
-      evaluator: async () => trippedDecision,
+      enabled: true,
+      shadow: true,
+      flag: false,
+      decision: trippedDecision,
     });
 
     await evaluateGate(inputs, deps);
 
-    expect(spies.logShadow).toHaveBeenCalledWith(inputs, trippedDecision);
+    expect(spies.logShadowCalls).toEqual([{ inputs, decision: trippedDecision }]);
   });
 
   it("mollify log carries the full decision (mirrors shadow log)", async () => {
     const { deps, spies } = makeDeps({
-      isMollifierEnabled: () => true,
-      resolveOrgFlag: async () => true,
-      evaluator: async () => trippedDecision,
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
     });
 
     await evaluateGate(inputs, deps);
 
-    expect(spies.logMollified).toHaveBeenCalledWith(inputs, trippedDecision);
+    expect(spies.logMollifiedCalls).toEqual([{ inputs, decision: trippedDecision }]);
   });
 });

@@ -92,9 +92,10 @@ export function buildBufferedTriggerPayload(input: {
     taskId: input.taskId,
     body: input.body,
     idempotencyKey: input.idempotencyKey,
-    idempotencyKeyExpiresAt: input.idempotencyKeyExpiresAt
-      ? input.idempotencyKeyExpiresAt.toISOString()
-      : null,
+    idempotencyKeyExpiresAt:
+      input.idempotencyKey && input.idempotencyKeyExpiresAt
+        ? input.idempotencyKeyExpiresAt.toISOString()
+        : null,
     tags: input.tags,
     parentRunFriendlyId: input.parentRunFriendlyId,
     traceContext: input.traceContext,
