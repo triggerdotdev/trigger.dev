@@ -35,12 +35,9 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: 131_072, // 128KB is plenty for the batch metadata
     authorization: {
       action: "batchTrigger",
-      resource: () => ({
-        // No specific tasks to authorize at batch creation time
-        // Tasks are validated when items are streamed
-        tasks: [],
-      }),
-      superScopes: ["write:tasks", "admin"],
+      // No specific tasks to authorize at batch creation time — tasks are
+      // validated when items are streamed. Collection-level check.
+      resource: () => ({ type: "tasks" }),
     },
     corsStrategy: "all",
   },

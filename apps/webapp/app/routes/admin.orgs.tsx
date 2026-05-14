@@ -1,7 +1,6 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useState } from "react";
 import { z } from "zod";
 import { FeatureFlagsDialog } from "~/components/admin/FeatureFlagsDialog";
@@ -20,7 +19,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { adminGetOrganizations } from "~/models/admin.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -30,20 +29,18 @@ export const SearchParams = z.object({
 
 export type SearchParams = z.infer<typeof SearchParams>;
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ user, request }) => {
+    const searchParams = createSearchParams(request.url, SearchParams);
+    if (!searchParams.success) {
+      throw new Error(searchParams.error);
+    }
+    const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
 
-  const searchParams = createSearchParams(request.url, SearchParams);
-  if (!searchParams.success) {
-    throw new Error(searchParams.error);
+    return typedjson(result);
   }
-  const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
-
-  return typedjson(result);
-};
+);
 
 export default function AdminDashboardRoute() {
   const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();

@@ -132,6 +132,12 @@ export interface RunQueueKeyProducer {
   baseQueueKeyFromQueue(queue: string): string;
   isCkWildcard(queue: string): boolean;
   toCkWildcard(queue: string): string;
+
+  // Per-base-queue counters for CK queues
+  queueLengthCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueLengthCounterKeyFromQueue(queue: string): string;
+  queueRunningCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string;
+  queueRunningCounterKeyFromQueue(queue: string): string;
 }
 
 export type EnvQueues = {

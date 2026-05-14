@@ -114,6 +114,10 @@ export function organizationTeamPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/settings/team`;
 }
 
+export function organizationRolesPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/roles`;
+}
+
 export function inviteTeamMemberPath(organization: OrgForPath) {
   return `${organizationPath(organization)}/invite`;
 }

@@ -69,8 +69,7 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "none",
     authorization: {
       action: "read",
-      resource: () => ({ deployments: "list" }),
-      superScopes: ["read:deployments", "read:all", "admin"],
+      resource: () => ({ type: "deployments", id: "list" }),
     },
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },

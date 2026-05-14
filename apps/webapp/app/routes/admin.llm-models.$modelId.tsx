@@ -1,5 +1,4 @@
 import { Form, useActionData, useNavigate } from "@remix-run/react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -8,34 +7,37 @@ import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
+const ParamsSchema = z.object({
+  modelId: z.string(),
+});
 
-  const model = await prisma.llmModel.findUnique({
-    where: { friendlyId: params.modelId },
-    include: {
-      pricingTiers: { include: { prices: true }, orderBy: { priority: "asc" } },
-    },
-  });
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true }, params: ParamsSchema },
+  async ({ params }) => {
+    const model = await prisma.llmModel.findUnique({
+      where: { friendlyId: params.modelId },
+      include: {
+        pricingTiers: { include: { prices: true }, orderBy: { priority: "asc" } },
+      },
+    });
 
-  if (!model) throw new Response("Model not found", { status: 404 });
+    if (!model) throw new Response("Model not found", { status: 404 });
 
-  // Convert Prisma Decimal to plain numbers for serialization
-  const serialized = {
-    ...model,
-    pricingTiers: model.pricingTiers.map((t) => ({
-      ...t,
-      prices: t.prices.map((p) => ({ ...p, price: Number(p.price) })),
-    })),
-  };
+    // Convert Prisma Decimal to plain numbers for serialization
+    const serialized = {
+      ...model,
+      pricingTiers: model.pricingTiers.map((t) => ({
+        ...t,
+        prices: t.prices.map((p) => ({ ...p, price: Number(p.price) })),
+      })),
+    };
 
-  return typedjson({ model: serialized });
-};
+    return typedjson({ model: serialized });
+  }
+);
 
 const SaveSchema = z.object({
   modelName: z.string().min(1),
@@ -49,100 +51,99 @@ const SaveSchema = z.object({
   isHidden: z.string().optional(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
+export const action = dashboardAction(
+  { authorization: { requireSuper: true }, params: ParamsSchema },
+  async ({ params, request }) => {
+    const friendlyId = params.modelId;
+    const existing = await prisma.llmModel.findUnique({ where: { friendlyId } });
+    if (!existing) throw new Response("Model not found", { status: 404 });
+    const modelId = existing.id;
 
-  const friendlyId = params.modelId!;
-  const existing = await prisma.llmModel.findUnique({ where: { friendlyId } });
-  if (!existing) throw new Response("Model not found", { status: 404 });
-  const modelId = existing.id;
+    const formData = await request.formData();
+    const _action = formData.get("_action");
 
-  const formData = await request.formData();
-  const _action = formData.get("_action");
-
-  if (_action === "delete") {
-    await prisma.llmModel.delete({ where: { id: modelId } });
-    await llmPricingRegistry?.reload();
-    return redirect("/admin/llm-models");
-  }
-
-  if (_action === "save") {
-    const raw = Object.fromEntries(formData);
-    const parsed = SaveSchema.safeParse(raw);
-
-    if (!parsed.success) {
-      return typedjson({ error: "Invalid form data", details: parsed.error.issues }, { status: 400 });
+    if (_action === "delete") {
+      await prisma.llmModel.delete({ where: { id: modelId } });
+      await llmPricingRegistry?.reload();
+      return redirect("/admin/llm-models");
     }
 
-    const { modelName, matchPattern, pricingTiersJson } = parsed.data;
+    if (_action === "save") {
+      const raw = Object.fromEntries(formData);
+      const parsed = SaveSchema.safeParse(raw);
 
-    // Validate regex — strip (?i) POSIX flag since our registry handles it
-    try {
-      const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
-      new RegExp(testPattern);
-    } catch {
-      return typedjson({ error: "Invalid regex in matchPattern" }, { status: 400 });
-    }
+      if (!parsed.success) {
+        return typedjson({ error: "Invalid form data", details: parsed.error.issues }, { status: 400 });
+      }
 
-    // Parse tiers
-    let pricingTiers: Array<{
-      name: string;
-      isDefault: boolean;
-      priority: number;
-      conditions: Array<{ usageDetailPattern: string; operator: string; value: number }>;
-      prices: Record<string, number>;
-    }>;
-    try {
-      pricingTiers = JSON.parse(pricingTiersJson) as typeof pricingTiers;
-    } catch {
-      return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
-    }
+      const { modelName, matchPattern, pricingTiersJson } = parsed.data;
 
-    // Update model
-    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
-    await prisma.llmModel.update({
-      where: { id: modelId },
-      data: {
-        modelName,
-        matchPattern,
-        provider: provider || null,
-        description: description || null,
-        contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
-        maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
-        capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
-        isHidden: isHidden === "on",
-      },
-    });
+      // Validate regex — strip (?i) POSIX flag since our registry handles it
+      try {
+        const testPattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
+        new RegExp(testPattern);
+      } catch {
+        return typedjson({ error: "Invalid regex in matchPattern" }, { status: 400 });
+      }
 
-    // Replace tiers
-    await prisma.llmPricingTier.deleteMany({ where: { modelId } });
-    for (const tier of pricingTiers) {
-      await prisma.llmPricingTier.create({
+      // Parse tiers
+      let pricingTiers: Array<{
+        name: string;
+        isDefault: boolean;
+        priority: number;
+        conditions: Array<{ usageDetailPattern: string; operator: string; value: number }>;
+        prices: Record<string, number>;
+      }>;
+      try {
+        pricingTiers = JSON.parse(pricingTiersJson) as typeof pricingTiers;
+      } catch {
+        return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
+      }
+
+      // Update model
+      const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
+      await prisma.llmModel.update({
+        where: { id: modelId },
         data: {
-          modelId,
-          name: tier.name,
-          isDefault: tier.isDefault,
-          priority: tier.priority,
-          conditions: tier.conditions,
-          prices: {
-            create: Object.entries(tier.prices).map(([usageType, price]) => ({
-              modelId,
-              usageType,
-              price,
-            })),
-          },
+          modelName,
+          matchPattern,
+          provider: provider || null,
+          description: description || null,
+          contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
+          maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
+          capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
+          isHidden: isHidden === "on",
         },
       });
+
+      // Replace tiers
+      await prisma.llmPricingTier.deleteMany({ where: { modelId } });
+      for (const tier of pricingTiers) {
+        await prisma.llmPricingTier.create({
+          data: {
+            modelId,
+            name: tier.name,
+            isDefault: tier.isDefault,
+            priority: tier.priority,
+            conditions: tier.conditions,
+            prices: {
+              create: Object.entries(tier.prices).map(([usageType, price]) => ({
+                modelId,
+                usageType,
+                price,
+              })),
+            },
+          },
+        });
+      }
+
+      await llmPricingRegistry?.reload();
+      return typedjson({ success: true });
     }
 
-    await llmPricingRegistry?.reload();
-    return typedjson({ success: true });
+    return typedjson({ error: "Unknown action" }, { status: 400 });
   }
-
-  return typedjson({ error: "Unknown action" }, { status: 400 });
-}
+);
 
 export default function AdminLlmModelDetailRoute() {
   const { model } = useTypedLoaderData<typeof loader>();

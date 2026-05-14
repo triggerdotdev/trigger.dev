@@ -37,8 +37,7 @@ export const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (_resource, params) => ({ prompts: params.slug }),
-      superScopes: ["read:prompts", "admin"],
+      resource: (_resource, params) => ({ type: "prompts", id: params.slug }),
     },
   },
   async ({ searchParams, resource: prompt }) => {
@@ -98,8 +97,7 @@ const { action } = createActionApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "read",
-      resource: (params) => ({ prompts: params.slug }),
-      superScopes: ["read:prompts", "admin"],
+      resource: (params) => ({ type: "prompts", id: params.slug }),
     },
   },
   async ({ body, params, authentication }) => {

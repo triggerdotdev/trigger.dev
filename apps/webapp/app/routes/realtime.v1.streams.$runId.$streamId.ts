@@ -3,7 +3,10 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 
 const ParamsSchema = z.object({
@@ -89,7 +92,13 @@ export const loader = createLoaderApiRoute(
           friendlyId: params.runId,
           runtimeEnvironmentId: auth.environment.id,
         },
-        include: {
+        select: {
+          id: true,
+          friendlyId: true,
+          taskIdentifier: true,
+          runTags: true,
+          realtimeStreamsVersion: true,
+          streamBasinName: true,
           batch: {
             select: {
               friendlyId: true,
@@ -100,13 +109,17 @@ export const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (run) => ({
-        runs: run.friendlyId,
-        tags: run.runTags,
-        batch: run.batch?.friendlyId,
-        tasks: run.taskIdentifier,
-      }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (run) => {
+        const resources = [
+          { type: "runs", id: run.friendlyId },
+          { type: "tasks", id: run.taskIdentifier },
+          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+        ];
+        if (run.batch?.friendlyId) {
+          resources.push({ type: "batch", id: run.batch.friendlyId });
+        }
+        return anyResource(resources);
+      },
     },
   },
   async ({ params, request, resource: run, authentication }) => {

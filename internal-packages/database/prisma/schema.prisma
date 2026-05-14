@@ -289,6 +289,16 @@ model OrgMemberInvite {
   email String
   role  OrgMemberRole @default(MEMBER)
 
+  /// Optional RBAC role to assign on invite acceptance. When set, the
+  /// accept-invite flow calls the loaded RBAC plugin's setUserRole with
+  /// this id after creating the OrgMember. Null = legacy behaviour, the
+  /// runtime fallback derives the role from `role` above.
+  ///
+  /// Plain text (not an FK) — the RBAC plugin's RbacRole table lives on
+  /// a separate schema (Drizzle, not Prisma) so we can't model the FK
+  /// here. Validation happens at write time (action) and read time
+  /// (acceptInvite).
+  rbacRoleId String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
