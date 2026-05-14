@@ -21,6 +21,7 @@ const RequestSchema = z.object({
   taskIdentifier: z.string().max(256),
   payloadSchema: z.string().max(50_000).optional(),
   currentPayload: z.string().max(50_000).optional(),
+  isAgent: z.enum(["true", "false"]).optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -64,16 +65,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const { prompt, taskIdentifier, payloadSchema, currentPayload } = submission.data;
+  const { prompt, taskIdentifier, payloadSchema, currentPayload, isAgent } = submission.data;
+  const agentMode = isAgent === "true";
 
   logger.info("[AI payload] Generating payload", {
     taskIdentifier,
     hasPayloadSchema: !!payloadSchema,
     hasCurrentPayload: !!currentPayload,
     promptLength: prompt.length,
+    agentMode,
   });
 
-  const systemPrompt = buildSystemPrompt(taskIdentifier, payloadSchema, currentPayload);
+  const systemPrompt = agentMode
+    ? buildAgentClientDataPrompt(taskIdentifier, payloadSchema, currentPayload)
+    : buildSystemPrompt(taskIdentifier, payloadSchema, currentPayload);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -232,6 +237,60 @@ async function getTaskFromDeployment(environmentId: string, taskIdentifier: stri
   if (!task) return null;
 
   return { fileId: task.fileId };
+}
+
+function buildAgentClientDataPrompt(
+  taskIdentifier: string,
+  payloadSchema?: string,
+  currentPayload?: string
+): string {
+  let prompt = `You are a JSON generator for client data (metadata) of a Trigger.dev chat agent with id "${taskIdentifier}".
+
+IMPORTANT: You are generating ONLY the client data object — this is the metadata sent alongside each chat message. It is NOT the full task payload. Do NOT generate fields like "chatId", "messages", "trigger", or "idleTimeoutInSeconds" — those are internal transport fields managed by the framework.
+
+The client data typically contains user context like user IDs, preferences, configuration, or session info. Return ONLY valid JSON wrapped in a \`\`\`json code block.
+
+Requirements:
+- Generate realistic, meaningful example data
+- All string values should be plausible (real-looking IDs, names, etc.)
+- The JSON must be valid and parseable
+- Keep it simple — client data is usually a flat or shallow object`;
+
+  if (payloadSchema) {
+    prompt += `
+
+The agent has the following JSON Schema for its client data:
+\`\`\`json
+${payloadSchema}
+\`\`\`
+
+Generate client data that strictly conforms to this schema.`;
+  } else {
+    prompt += `
+
+No JSON Schema is available for this agent's client data. Use the getTaskSourceCode tool to look up the agent's source code file.
+
+IMPORTANT instructions for reading the source code:
+- The file may contain multiple task/agent definitions. Find the one with id "${taskIdentifier}".
+- Look for \`withClientData({ schema: ... })\` or \`clientDataSchema\` to find the expected client data shape.
+- If using \`chat.agent()\` or \`chat.customAgent()\`, the client data is accessed via \`clientData\` in hooks and \`payload.metadata\` in raw tasks.
+- Look for how \`clientData\` or \`payload.metadata\` is accessed/destructured to infer the shape.
+- Do NOT generate the full ChatTaskWirePayload (messages, chatId, trigger, etc.) — ONLY the metadata/clientData portion.
+- If no client data schema or usage is found, generate a simple \`{ "userId": "user_..." }\` object.`;
+  }
+
+  if (currentPayload) {
+    prompt += `
+
+The current client data in the editor is:
+\`\`\`json
+${currentPayload}
+\`\`\`
+
+Use this as context but generate new client data based on the user's prompt.`;
+  }
+
+  return prompt;
 }
 
 function buildSystemPrompt(

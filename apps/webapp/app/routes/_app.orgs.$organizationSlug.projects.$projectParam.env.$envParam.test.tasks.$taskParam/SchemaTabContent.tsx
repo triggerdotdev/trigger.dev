@@ -9,18 +9,34 @@ import { docsPath } from "~/utils/pathBuilder";
 export function SchemaTabContent({
   schema,
   inferredSchema,
+  title = "Payload schema",
+  description,
+  showDocsLink = true,
 }: {
   schema?: unknown;
   inferredSchema?: unknown;
+  title?: string;
+  description?: string;
+  showDocsLink?: boolean;
 }) {
   if (schema) {
     return (
       <div className="space-y-2">
-        <Header3 className="text-text-bright">Payload schema</Header3>
-        <Paragraph variant="extra-small" className="text-text-dimmed">
-          JSON Schema defined by this task via{" "}
-          <TextLink to={docsPath("tasks/schemaTask")}>schemaTask</TextLink>.
-        </Paragraph>
+        <Header3 className="text-text-bright">{title}</Header3>
+        {showDocsLink ? (
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            {description ?? (
+              <>
+                JSON Schema defined by this task via{" "}
+                <TextLink to={docsPath("tasks/schemaTask")}>schemaTask</TextLink>.
+              </>
+            )}
+          </Paragraph>
+        ) : description ? (
+          <Paragraph variant="extra-small" className="text-text-dimmed">
+            {description}
+          </Paragraph>
+        ) : null}
         <CodeBlock
           code={JSON.stringify(schema, null, 2)}
           language="json"
