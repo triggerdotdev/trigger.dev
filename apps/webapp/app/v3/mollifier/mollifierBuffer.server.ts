@@ -3,6 +3,10 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 
+// DI seam type for consumers (e.g. triggerTask.server.ts) that need a
+// nullable buffer accessor at construction time.
+export type MollifierGetBuffer = () => MollifierBuffer | null;
+
 function initializeMollifierBuffer(): MollifierBuffer {
   logger.debug("Initializing mollifier buffer", {
     host: env.MOLLIFIER_REDIS_HOST,

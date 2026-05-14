@@ -51,6 +51,12 @@ export type GateInputs = {
 
 export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
 
+// DI seam type for consumers (e.g. triggerTask.server.ts) that inject the
+// gate at construction time. Deliberately narrower than `evaluateGate`'s
+// real signature — no `deps` param — because consumers only call it with
+// inputs and rely on the module-level defaults.
+export type MollifierEvaluateGate = (inputs: GateInputs) => Promise<GateOutcome>;
+
 export type GateDependencies = {
   isMollifierEnabled: () => boolean;
   isShadowModeOn: () => boolean;

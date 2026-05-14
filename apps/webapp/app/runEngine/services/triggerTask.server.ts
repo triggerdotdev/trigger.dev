@@ -42,23 +42,15 @@ import type {
 } from "../types";
 import {
   evaluateGate as defaultEvaluateGate,
-  type GateOutcome,
+  type MollifierEvaluateGate,
 } from "~/v3/mollifier/mollifierGate.server";
-import { getMollifierBuffer as defaultGetMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import {
+  getMollifierBuffer as defaultGetMollifierBuffer,
+  type MollifierGetBuffer,
+} from "~/v3/mollifier/mollifierBuffer.server";
 import { buildBufferedTriggerPayload } from "~/v3/mollifier/bufferedTriggerPayload.server";
-import { serialiseSnapshot, type MollifierBuffer } from "@trigger.dev/redis-worker";
+import { serialiseSnapshot } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
-
-export type MollifierEvaluateGate = (
-  inputs: {
-    envId: string;
-    orgId: string;
-    taskId: string;
-    orgFeatureFlags: Record<string, unknown> | null;
-  },
-) => Promise<GateOutcome>;
-
-export type MollifierGetBuffer = () => MollifierBuffer | null;
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
