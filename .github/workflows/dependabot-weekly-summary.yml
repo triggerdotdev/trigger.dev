@@ -21,6 +21,10 @@ jobs:
     name: Post weekly Dependabot summary
     runs-on: ubuntu-latest
     environment: dependabot-summary
+    env:
+      # Severities surface in the actions list when their remaining TTR drops
+      # below this many days. Override via repo/env var ACTION_THRESHOLD_DAYS.
+      THRESHOLD_DAYS: ${{ vars.ACTION_THRESHOLD_DAYS || '7' }}
     steps:
       - name: Fetch alerts and compute summaries
         id: alerts
@@ -63,9 +67,9 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-          # Actions: alerts with <7d to TTR (P0=7d, P1=30d, P2=90d, P3=no deadline)
+          # Actions: alerts within THRESHOLD_DAYS of their TTR (P0=7d, P1=30d, P2=90d, P3=no deadline)
           # Grouped by (package, severity); shows earliest deadline per group.
-          ACTIONS=$(jq -r '
+          ACTIONS=$(jq -r --argjson threshold "$THRESHOLD_DAYS" '
             [.[]
               | (.security_advisory.severity) as $sev
               | ({"critical":7,"high":30,"medium":90,"low":null}[$sev]) as $ttr
@@ -75,7 +79,7 @@ jobs:
             ]
             | group_by([.pkg, .sev])
             | map({pkg: .[0].pkg, sev: .[0].sev, count: length, min_remaining: ([.[].remaining] | min)})
-            | map(select(.min_remaining < 7))
+            | map(select(.min_remaining < $threshold))
             | sort_by(.min_remaining)
             | if length == 0 then "_None_"
               else (map(
@@ -184,9 +188,10 @@ jobs:
             --arg prs_list "$PRS_LIST" \
             --arg actions "$ACTIONS" \
             --arg stuck "$STUCK" \
+            --arg threshold "$THRESHOLD_DAYS" \
             '{
               channel: $channel,
-              text: ":calendar: *Weekly Dependabot summary* - `\($repo)`\n\n*Open alerts (\($total)):*\n\($by_severity)\n\n*Open Dependabot PRs:*\n\($prs_list)\n\n*Actions needed (<7d remaining):*\n\($actions)\($stuck)\n\n<https://github.com/\($repo)/security/dependabot|Dependabot alerts>"
+              text: ":calendar: *Weekly Dependabot summary* - `\($repo)`\n\n*Open alerts (\($total)):*\n\($by_severity)\n\n*Open Dependabot PRs:*\n\($prs_list)\n\n*Actions needed (<\($threshold)d remaining):*\n\($actions)\($stuck)\n\n<https://github.com/\($repo)/security/dependabot|Dependabot alerts>"
             }' > payload.json
 
       - name: Post Slack summary
