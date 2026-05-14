@@ -497,6 +497,76 @@ describe("MollifierDrainer per-tick env cap", () => {
     expect(popsPerTick[0][0]).not.toEqual(popsPerTick[1][0]);
     expect(popsPerTick[1][0]).not.toEqual(popsPerTick[2][0]);
   });
+
+  it("a light env is not starved behind heavy envs", async () => {
+    // The buffer's atomic Lua removes an env from `mollifier:envs` the
+    // moment its queue becomes empty, so a heavy env with thousands of
+    // pending entries stays in listEnvs and a light env with a single
+    // entry only stays until that one entry pops. Combined with the
+    // advance-by-1 cursor, this means the light env can't be parked
+    // behind heavy envs indefinitely — it gets popped within at most
+    // `envs.length - sliceSize + 1` ticks regardless of how many
+    // entries the heavy envs have queued.
+    const heavy = Array.from({ length: 6 }, (_, i) => `env_heavy_${i}`);
+    const light = "env_light";
+    const queues = new Map<string, string[]>();
+    for (const h of heavy) {
+      queues.set(
+        h,
+        Array.from({ length: 100 }, (_, i) => `${h}_run_${i}`),
+      );
+    }
+    queues.set(light, [`${light}_run_0`]);
+
+    const buffer = makeStubBuffer({
+      listEnvs: async () =>
+        [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const runId = q.shift()!;
+        return {
+          runId,
+          envId,
+          orgId: "org_1",
+          payload: "{}",
+          status: "DRAINING",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 4,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: 4, // < 7 envs so we exercise slicing
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // 7 envs, sliceSize=4 → worst-case wait for env_light is 4 ticks
+    // (it appears in the slice in exactly 4 of every 7 ticks). Run 7 to
+    // give the upper bound a wide margin.
+    const ticksUntilLightDrained = await (async () => {
+      for (let tick = 1; tick <= 7; tick++) {
+        await drainer.runOnce();
+        if ((queues.get(light)?.length ?? 0) === 0) return tick;
+      }
+      return Infinity;
+    })();
+
+    expect(ticksUntilLightDrained).toBeLessThanOrEqual(4);
+    // Sanity: heavy envs are being worked on (not starved themselves) but
+    // are far from drained — confirms we measured the right property.
+    for (const h of heavy) {
+      const remaining = queues.get(h)!.length;
+      expect(remaining).toBeGreaterThan(0);
+      expect(remaining).toBeLessThan(100);
+    }
+  });
 });
 
 describe("MollifierDrainer.start/stop", () => {
