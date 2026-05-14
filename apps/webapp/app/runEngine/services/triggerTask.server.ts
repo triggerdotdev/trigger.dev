@@ -342,6 +342,8 @@ export class RunEngineTriggerTaskService {
         envId: environment.id,
         orgId: environment.organizationId,
         taskId,
+        orgFeatureFlags:
+          (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
       });
 
       try {

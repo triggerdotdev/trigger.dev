@@ -34,6 +34,13 @@ export type GateInputs = {
   envId: string;
   orgId: string;
   taskId: string;
+  // Org-scoped flag overrides — taken from `Organization.featureFlags` on the
+  // AuthenticatedEnvironment at the call site. The repo-wide `flag()` helper
+  // queries the global `FeatureFlag` table; passing per-org overrides lets the
+  // mollifier opt in a single org without touching the global row, matching
+  // the pattern used by `canAccessAi`, `canAccessPrivateConnections`, and the
+  // compute-template beta gate.
+  orgFeatureFlags: Record<string, unknown> | null;
 };
 
 export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
@@ -41,7 +48,7 @@ export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
 export type GateDependencies = {
   isMollifierEnabled: () => boolean;
   isShadowModeOn: () => boolean;
-  resolveFlag: () => Promise<boolean>;
+  resolveOrgFlag: (inputs: GateInputs) => Promise<boolean>;
   evaluator: TripEvaluator;
   logShadow: (
     inputs: GateInputs,
@@ -86,8 +93,12 @@ function logDivertDecision(
 export const defaultGateDependencies: GateDependencies = {
   isMollifierEnabled: () => env.MOLLIFIER_ENABLED === "1",
   isShadowModeOn: () => env.MOLLIFIER_SHADOW_MODE === "1",
-  resolveFlag: () =>
-    flag({ key: FEATURE_FLAG.mollifierEnabled, defaultValue: false }),
+  resolveOrgFlag: (inputs) =>
+    flag({
+      key: FEATURE_FLAG.mollifierEnabled,
+      defaultValue: false,
+      overrides: inputs.orgFeatureFlags ?? {},
+    }),
   evaluator: defaultEvaluator,
   logShadow: (inputs, decision) =>
     logDivertDecision("mollifier.would_mollify", inputs, decision),
@@ -107,10 +118,10 @@ export async function evaluateGate(
     return { action: "pass_through" };
   }
 
-  const flagEnabled = await d.resolveFlag();
+  const orgFlagEnabled = await d.resolveOrgFlag(inputs);
   const shadowOn = d.isShadowModeOn();
 
-  if (!flagEnabled && !shadowOn) {
+  if (!orgFlagEnabled && !shadowOn) {
     d.recordDecision("pass_through");
     return { action: "pass_through" };
   }
@@ -121,7 +132,7 @@ export async function evaluateGate(
     return { action: "pass_through" };
   }
 
-  if (flagEnabled) {
+  if (orgFlagEnabled) {
     d.logMollified(inputs, decision);
     d.recordDecision("mollify", decision.reason);
     return { action: "mollify", decision };
