@@ -1,6 +1,7 @@
 import { CheckIcon, ClipboardDocumentIcon } from "@heroicons/react/20/solid";
-import { lazy, Suspense, useState } from "react";
+import { Suspense, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
+import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
@@ -19,16 +20,6 @@ import { AIToolsInventory } from "./AIToolsInventory";
 import type { AISpanData, DisplayItem } from "./types";
 import type { PromptSpanData } from "~/presenters/v3/SpanPresenter.server";
 import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
-
-const StreamdownRenderer = lazy(() =>
-  import("streamdown").then((mod) => ({
-    default: ({ children }: { children: string }) => (
-      <mod.ShikiThemeContext.Provider value={["one-dark-pro", "one-dark-pro"]}>
-        <mod.Streamdown isAnimating={false}>{children}</mod.Streamdown>
-      </mod.ShikiThemeContext.Provider>
-    ),
-  }))
-);
 
 type AITab = "overview" | "messages" | "tools" | "prompt";
 
