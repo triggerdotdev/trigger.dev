@@ -140,28 +140,13 @@ export async function init() {
   }
 
   try {
+    // getMollifierDrainer() runs the singleton factory, which validates the
+    // shutdown-timeout reconciliation against GRACEFUL_SHUTDOWN_TIMEOUT and
+    // throws BEFORE starting the polling loop if it's misconfigured. The
+    // outer catch below logs and aborts drainer registration on either that
+    // validation error or a Redis init failure — no half-started state.
     const drainer = getMollifierDrainer();
     if (drainer && !global.__mollifierShutdownRegistered__) {
-      // The SIGTERM handler is sync fire-and-forget: it kicks off
-      // `drainer.stop(...)` and returns. The unresolved promise keeps the
-      // event loop alive, but in cluster mode the primary process runs its
-      // own graceful-shutdown timer (`GRACEFUL_SHUTDOWN_TIMEOUT`) and will
-      // call `process.exit(0)` independently. If the drainer's deadline
-      // exceeds the primary's, the drainer gets cut off mid-wait — which
-      // turns "log a warning on timeout" into "hard exit with no log".
-      // Reconcile the two timeouts at boot rather than discovering the
-      // misconfig from a missing warning at shutdown. Margin gives the
-      // primary room to do its own teardown after the drainer settles.
-      const SHUTDOWN_MARGIN_MS = 1_000;
-      if (
-        env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS >=
-        env.GRACEFUL_SHUTDOWN_TIMEOUT - SHUTDOWN_MARGIN_MS
-      ) {
-        throw new Error(
-          `MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${SHUTDOWN_MARGIN_MS}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`,
-        );
-      }
-
       // The drainer owns a polling loop and a Redis client; let it drain
       // in-flight pops on shutdown rather than tearing the process down
       // mid-handler. `init()` is called per request from entry.server.tsx,
