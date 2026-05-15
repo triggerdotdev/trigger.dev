@@ -142,9 +142,15 @@ export async function init() {
   try {
     // getMollifierDrainer() runs the singleton factory, which validates the
     // shutdown-timeout reconciliation against GRACEFUL_SHUTDOWN_TIMEOUT and
-    // throws BEFORE starting the polling loop if it's misconfigured. The
+    // throws BEFORE constructing the drainer if it's misconfigured. The
     // outer catch below logs and aborts drainer registration on either that
-    // validation error or a Redis init failure — no half-started state.
+    // validation error or a Redis init failure — no half-started state. The
+    // returned drainer is configured-but-stopped; start() runs below, AFTER
+    // the SIGTERM/SIGINT handlers are registered, so a signal landing during
+    // boot can never find the polling loop running without a graceful-stop
+    // path. Same `__mollifierShutdownRegistered__` guard owns both the
+    // handler registration and the start() call so dev hot-reloads don't
+    // double-register or double-start.
     const drainer = getMollifierDrainer();
     if (drainer && !global.__mollifierShutdownRegistered__) {
       // The drainer owns a polling loop and a Redis client; let it drain
@@ -168,6 +174,7 @@ export async function init() {
       process.once("SIGTERM", stopDrainer);
       process.once("SIGINT", stopDrainer);
       global.__mollifierShutdownRegistered__ = true;
+      drainer.start();
     }
   } catch (error) {
     logger.error("Failed to initialise mollifier drainer", { error });

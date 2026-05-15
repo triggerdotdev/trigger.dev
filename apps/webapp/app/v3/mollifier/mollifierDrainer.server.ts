@@ -83,10 +83,16 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     isRetryable: () => false,
   });
 
-  drainer.start();
   return drainer;
 }
 
+// Returns a configured-but-stopped drainer. Callers MUST register their
+// SIGTERM / SIGINT shutdown handlers before invoking `drainer.start()` —
+// see `apps/webapp/app/services/worker.server.ts`. Starting inside the
+// singleton factory would put the polling loop ahead of handler
+// registration, leaving a narrow window where a SIGTERM landing between
+// `start()` and `process.once("SIGTERM", ...)` would skip the graceful
+// stop. The split is intentional.
 export function getMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> | null {
   if (env.MOLLIFIER_ENABLED !== "1") return null;
   return singleton("mollifierDrainer", initializeMollifierDrainer);
