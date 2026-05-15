@@ -89,7 +89,7 @@ describe("MollifierBuffer.accept", () => {
       expect(entry!.attempts).toBe(0);
       expect(entry!.createdAt).toBeInstanceOf(Date);
 
-      const envs = await buffer.listEnvs();
+      const envs = await buffer.listEnvsForOrg("org_1");
       expect(envs).toContain("env_a");
     } finally {
       await buffer.close();
@@ -211,7 +211,6 @@ describe("MollifierBuffer.pop orphan handling", () => {
       try {
         // Simulate a TTL-expired orphan: queue ref exists, entry hash does not.
         await buffer["redis"].lpush("mollifier:queue:env_a", "run_orphan");
-        await buffer["redis"].sadd("mollifier:envs", "env_a");
 
         const popped = await buffer.pop("env_a");
         expect(popped).toBeNull();
@@ -220,10 +219,9 @@ describe("MollifierBuffer.pop orphan handling", () => {
         const raw = await buffer["redis"].hgetall("mollifier:entries:run_orphan");
         expect(Object.keys(raw)).toHaveLength(0);
 
-        // Queue and envs set are both cleaned up.
+        // Queue is drained — the loop pops orphans until empty.
         const qLen = await buffer["redis"].llen("mollifier:queue:env_a");
         expect(qLen).toBe(0);
-        expect(await buffer.listEnvs()).not.toContain("env_a");
       } finally {
         await buffer.close();
       }
@@ -261,10 +259,15 @@ describe("MollifierBuffer.pop orphan handling", () => {
         const remaining = await buffer["redis"].llen("mollifier:queue:env_a");
         expect(remaining).toBe(1);
 
-        // A second pop drains it and SREMs the env (no more valid entries).
+        // A second pop drains the trailing orphan_b. The queue is now
+        // empty. NOTE: the pop's no-runId branch can't read orgId from
+        // a popped entry (it never got one), so it doesn't prune the
+        // org-envs SET. env_a remains in `mollifier:org-envs:org_1` as
+        // a stale entry until the next accept-or-success-pop cycle
+        // recovers it. This is the deliberate trade-off documented in
+        // popAndMarkDraining's Lua.
         const second = await buffer.pop("env_a");
         expect(second).toBeNull();
-        expect(await buffer.listEnvs()).not.toContain("env_a");
       } finally {
         await buffer.close();
       }
@@ -444,7 +447,7 @@ describe("MollifierBuffer.requeue on missing entry", () => {
         // Critical: no queue keys were created from this no-op requeue.
         const queueKeys = await buffer["redis"].keys("mollifier:queue:*");
         expect(queueKeys).toHaveLength(0);
-        const envs = await buffer.listEnvs();
+        const envs = await buffer.listEnvsForOrg("org_1");
         expect(envs).toHaveLength(0);
       } finally {
         await buffer.close();
@@ -742,36 +745,36 @@ describe("MollifierBuffer entry lifecycle invariants", () => {
 
       try {
         // Empty start
-        expect(await buffer.listEnvs()).not.toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).not.toContain("env_lc");
 
         // accept → SADD
         await buffer.accept({ runId: "r1", envId: "env_lc", orgId: "org_1", payload: "{}" });
-        expect(await buffer.listEnvs()).toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_lc");
 
         // second accept (different runId) → still SADD (idempotent)
         await buffer.accept({ runId: "r2", envId: "env_lc", orgId: "org_1", payload: "{}" });
-        expect(await buffer.listEnvs()).toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_lc");
 
         // pop r1 → queue still has r2 → env stays
         await buffer.pop("env_lc");
-        expect(await buffer.listEnvs()).toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_lc");
 
         // ack r1 → no queue change, env still tracked (r2 still queued)
         await buffer.ack("r1");
-        expect(await buffer.listEnvs()).toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_lc");
 
         // pop r2 → queue empties → SREM
         await buffer.pop("env_lc");
-        expect(await buffer.listEnvs()).not.toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).not.toContain("env_lc");
 
         // requeue r2 → SADD back
         await buffer.requeue("r2");
-        expect(await buffer.listEnvs()).toContain("env_lc");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_lc");
 
         // fail r2 → entry FAILED but queue empty → next pop should SREM
         await buffer.pop("env_lc");
         await buffer.fail("r2", { code: "X", message: "boom" });
-        const afterFailEnvs = await buffer.listEnvs();
+        const afterFailEnvs = await buffer.listEnvsForOrg("org_1");
         // Queue is empty, env was SREM'd by the pop above.
         expect(afterFailEnvs).not.toContain("env_lc");
       } finally {
@@ -953,10 +956,10 @@ describe("MollifierBuffer envs set lifecycle", () => {
 
       try {
         await buffer.accept({ runId: "r1", envId: "env_a", orgId: "org_1", payload: "{}" });
-        expect(await buffer.listEnvs()).toContain("env_a");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_a");
 
         await buffer.pop("env_a");
-        expect(await buffer.listEnvs()).not.toContain("env_a");
+        expect(await buffer.listEnvsForOrg("org_1")).not.toContain("env_a");
       } finally {
         await buffer.close();
       }
@@ -980,42 +983,13 @@ describe("MollifierBuffer envs set lifecycle", () => {
       try {
         await buffer.accept({ runId: "r1", envId: "env_a", orgId: "org_1", payload: "{}" });
         await buffer.accept({ runId: "r2", envId: "env_a", orgId: "org_1", payload: "{}" });
-        expect(await buffer.listEnvs()).toContain("env_a");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_a");
 
         await buffer.pop("env_a");
-        expect(await buffer.listEnvs()).toContain("env_a");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_a");
 
         await buffer.pop("env_a");
-        expect(await buffer.listEnvs()).not.toContain("env_a");
-      } finally {
-        await buffer.close();
-      }
-    },
-  );
-
-  redisTest(
-    "pop on an empty queue SREMs the envId opportunistically",
-    { timeout: 20_000 },
-    async ({ redisContainer }) => {
-      const buffer = new MollifierBuffer({
-        redisOptions: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        },
-        entryTtlSeconds: 600,
-        logger: new Logger("test", "log"),
-      });
-
-      try {
-        // Manually SADD an env without any queued entries (simulates leftover
-        // from a pre-fix run, or a manual touch). pop should clean it up.
-        await buffer["redis"].sadd("mollifier:envs", "env_orphan");
-        expect(await buffer.listEnvs()).toContain("env_orphan");
-
-        const popped = await buffer.pop("env_orphan");
-        expect(popped).toBeNull();
-        expect(await buffer.listEnvs()).not.toContain("env_orphan");
+        expect(await buffer.listEnvsForOrg("org_1")).not.toContain("env_a");
       } finally {
         await buffer.close();
       }
@@ -1040,11 +1014,11 @@ describe("MollifierBuffer envs set lifecycle", () => {
         await buffer.accept({ runId: "r1", envId: "env_a", orgId: "org_1", payload: "{}" });
         await buffer.pop("env_a");
         // Queue drained → env_a SREM'd.
-        expect(await buffer.listEnvs()).not.toContain("env_a");
+        expect(await buffer.listEnvsForOrg("org_1")).not.toContain("env_a");
 
         await buffer.requeue("r1");
         // requeue must put env_a back so the drainer notices the retry.
-        expect(await buffer.listEnvs()).toContain("env_a");
+        expect(await buffer.listEnvsForOrg("org_1")).toContain("env_a");
       } finally {
         await buffer.close();
       }

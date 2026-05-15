@@ -10,6 +10,34 @@ const noopOptions = {
   logger: new Logger("test", "log"),
 };
 
+// Module-scope stub helpers used by the unit tests below (no real Redis).
+type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
+
+function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+  const base: StubBuffer = {
+    listOrgs: async () => [],
+    listEnvsForOrg: async () => [],
+    pop: async () => null,
+    ack: async () => {},
+    requeue: async () => {},
+    fail: async () => true,
+    getEntry: async () => null,
+    close: async () => {},
+  };
+  return { ...base, ...overrides } as unknown as MollifierBuffer;
+}
+
+// Convenience for tests that don't care about org grouping: treat each
+// env as its own org. `listOrgs` returns the env list verbatim;
+// `listEnvsForOrg(envId)` returns `[envId]`. Spread into makeStubBuffer
+// alongside the test's own `pop` override.
+function eachEnvAsOwnOrg(envs: string[]): Partial<StubBuffer> {
+  return {
+    listOrgs: async () => envs,
+    listEnvsForOrg: async (orgId: string) => (envs.includes(orgId) ? [orgId] : []),
+  };
+}
+
 describe("MollifierDrainer.runOnce", () => {
   redisTest("drains one queued entry through the handler and acks", { timeout: 20_000 }, async ({ redisContainer }) => {
     const buffer = new MollifierBuffer({
@@ -239,47 +267,18 @@ describe("MollifierDrainer error handling", () => {
 // container) so we can deterministically inject failures from `listEnvs`
 // and `pop` without racing against a real client.
 describe("MollifierDrainer resilience to transient buffer errors", () => {
-  type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
-
-  function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
-    // For tests that don't care about org grouping, default `listOrgs` and
-    // `listEnvsForOrg` to deriving from `listEnvs` (each env is its own
-    // org). Tests that exercise multi-env-per-org behaviour override
-    // these explicitly.
-    const inferredListOrgs = async (): Promise<string[]> => {
-      if (!overrides.listEnvs) return [];
-      return overrides.listEnvs();
-    };
-    const inferredListEnvsForOrg = async (orgId: string): Promise<string[]> => {
-      if (!overrides.listEnvs) return [];
-      const envs = await overrides.listEnvs();
-      return envs.includes(orgId) ? [orgId] : [];
-    };
-    const base: StubBuffer = {
-      listEnvs: async () => [],
-      listOrgs: inferredListOrgs,
-      listEnvsForOrg: inferredListEnvsForOrg,
-      pop: async () => null,
-      ack: async () => {},
-      requeue: async () => {},
-      fail: async () => true,
-      getEntry: async () => null,
-      close: async () => {},
-    };
-    return { ...base, ...overrides } as unknown as MollifierBuffer;
-  }
-
-  it("survives a transient listEnvs failure and resumes draining", async () => {
+  it("survives a transient listOrgs failure and resumes draining", async () => {
     let listCalls = 0;
     const popped: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => {
+      listOrgs: async () => {
         listCalls += 1;
         if (listCalls === 1) {
           throw new Error("simulated redis blip");
         }
         return ["env_a"];
       },
+      listEnvsForOrg: async (orgId: string) => (orgId === "env_a" ? ["env_a"] : []),
       pop: async () => {
         const runId = `run_${popped.length + 1}`;
         if (popped.length >= 2) return null;
@@ -321,7 +320,7 @@ describe("MollifierDrainer resilience to transient buffer errors", () => {
 
   it("a pop failure for one env doesn't poison the rest of the batch", async () => {
     const buffer = makeStubBuffer({
-      listEnvs: async () => ["bad", "good"],
+      ...eachEnvAsOwnOrg(["bad", "good"]),
       pop: async (envId: string) => {
         if (envId === "bad") {
           throw new Error("simulated pop failure on bad env");
@@ -356,52 +355,18 @@ describe("MollifierDrainer resilience to transient buffer errors", () => {
   });
 });
 
-describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)", () => {
+describe("MollifierDrainer per-tick org cap", () => {
   // Bounding fan-out prevents one runOnce from queuing thousands of
-  // processOneFromEnv jobs when `mollifier:envs` is unexpectedly large.
-  // These stub-buffer tests never return entries (pop = null), so the
-  // env→org cache never populates and every env behaves as its own
-  // pseudo-org. That makes the org-level cap functionally equivalent to
-  // a per-env cap in this regime, which is exactly what we want at cold
-  // start. The hierarchical-rotation behaviour is exercised by the org
-  // fairness tests further down.
-  // These tests use a stub buffer so we can drive the env list count
+  // processOneFromEnv jobs when the org set is unexpectedly large.
+  // These tests use a stub buffer so we can drive the org/env counts
   // deterministically without provisioning a real Redis with thousands
   // of envs.
-  type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
-  function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
-    // For tests that don't care about org grouping, default `listOrgs` and
-    // `listEnvsForOrg` to deriving from `listEnvs` (each env is its own
-    // org). Tests that exercise multi-env-per-org behaviour override
-    // these explicitly.
-    const inferredListOrgs = async (): Promise<string[]> => {
-      if (!overrides.listEnvs) return [];
-      return overrides.listEnvs();
-    };
-    const inferredListEnvsForOrg = async (orgId: string): Promise<string[]> => {
-      if (!overrides.listEnvs) return [];
-      const envs = await overrides.listEnvs();
-      return envs.includes(orgId) ? [orgId] : [];
-    };
-    const base: StubBuffer = {
-      listEnvs: async () => [],
-      listOrgs: inferredListOrgs,
-      listEnvsForOrg: inferredListEnvsForOrg,
-      pop: async () => null,
-      ack: async () => {},
-      requeue: async () => {},
-      fail: async () => true,
-      getEntry: async () => null,
-      close: async () => {},
-    };
-    return { ...base, ...overrides } as unknown as MollifierBuffer;
-  }
 
   it("processes at most maxOrgsPerTick envs per runOnce", async () => {
     const allEnvs = Array.from({ length: 20 }, (_, i) => `env_${i}`);
     const popped: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => allEnvs,
+      ...eachEnvAsOwnOrg(allEnvs),
       pop: async (envId: string) => {
         popped.push(envId);
         return null; // empty queue — runOnce records this as "empty"
@@ -426,7 +391,7 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     const allEnvs = Array.from({ length: 12 }, (_, i) => `env_${i}`);
     const popped: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => allEnvs,
+      ...eachEnvAsOwnOrg(allEnvs),
       pop: async (envId: string) => {
         popped.push(envId);
         return null;
@@ -473,7 +438,7 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
 
     let currentTick: string[] = [];
     const popOrderBuffer = makeStubBuffer({
-      listEnvs: async () => allEnvs,
+      ...eachEnvAsOwnOrg(allEnvs),
       pop: async (envId: string) => {
         currentTick.push(envId);
         return null;
@@ -517,7 +482,7 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     const popsPerTick: string[][] = [];
     let tick: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => allEnvs,
+      ...eachEnvAsOwnOrg(allEnvs),
       pop: async (envId: string) => {
         tick.push(envId);
         return null;
@@ -570,9 +535,12 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     }
     queues.set(light, [`${light}_run_0`]);
 
+    const activeEnvs = () =>
+      [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0);
     const buffer = makeStubBuffer({
-      listEnvs: async () =>
-        [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
+      listOrgs: async () => activeEnvs(),
+      listEnvsForOrg: async (orgId: string) =>
+        activeEnvs().includes(orgId) ? [orgId] : [],
       pop: async (envId: string) => {
         const q = queues.get(envId);
         if (!q || q.length === 0) return null;
@@ -621,20 +589,14 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
   });
 
   it("a light org is not starved behind a heavy org with many envs", async () => {
-    // Org-level fairness analogue of the env-level no-starvation test.
-    // Org A has many envs each with many entries (a noisy tenant). Org B
-    // has a single env with a single entry. The drainer's per-env rotation
-    // means org_B's env still gets a turn each cycle — its single entry
-    // is drained within (envs.length - sliceSize + 1) ticks regardless of
-    // how much pressure org_A is applying through its many envs.
-    //
-    // The buffer doesn't track orgs as a separate axis (each entry just
-    // carries orgId on its payload); fairness across orgs is therefore an
-    // emergent property of fairness across envs. This test pins that
-    // property: org-level drainage latency is bounded by the env rotation,
-    // not by total org throughput.
+    // Org-level no-starvation: org_B's single entry drains within ~1
+    // tick because the drainer walks orgs at the top level. Org_A
+    // having many envs doesn't give it extra rotation slots.
     const orgAEnvs = Array.from({ length: 6 }, (_, i) => `env_orgA_${i}`);
     const orgBEnv = "env_orgB_only";
+    const envOrg = new Map<string, string>();
+    for (const e of orgAEnvs) envOrg.set(e, "org_A");
+    envOrg.set(orgBEnv, "org_B");
     const queues = new Map<string, Array<{ runId: string; orgId: string }>>();
     for (const e of orgAEnvs) {
       queues.set(
@@ -649,8 +611,20 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
 
     const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
     const buffer = makeStubBuffer({
-      listEnvs: async () =>
-        [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
+      listOrgs: async () => {
+        const orgs = new Set<string>();
+        for (const [envId, items] of queues.entries()) {
+          if (items.length > 0) orgs.add(envOrg.get(envId)!);
+        }
+        return [...orgs];
+      },
+      listEnvsForOrg: async (orgId: string) => {
+        const envs: string[] = [];
+        for (const [envId, items] of queues.entries()) {
+          if (items.length > 0 && envOrg.get(envId) === orgId) envs.push(envId);
+        }
+        return envs;
+      },
       pop: async (envId: string) => {
         const q = queues.get(envId);
         if (!q || q.length === 0) return null;
@@ -675,12 +649,12 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
       concurrency: 4,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxOrgsPerTick: 4, // < 7 envs, exercises slicing
+      maxOrgsPerTick: 4,
       logger: new Logger("test-drainer", "log"),
     });
 
-    // 7 envs (6 from org_A + 1 from org_B), sliceSize=4 → worst-case wait
-    // for org_B's env is `envs.length - sliceSize + 1 = 4` ticks.
+    // Only 2 orgs in play → both are in every tick's slice. Org_B's
+    // single env is popped on tick 1.
     const ticksUntilOrgBDrained = await (async () => {
       for (let tick = 1; tick <= 7; tick++) {
         await drainer.runOnce();
@@ -689,7 +663,7 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
       return Infinity;
     })();
 
-    expect(ticksUntilOrgBDrained).toBeLessThanOrEqual(4);
+    expect(ticksUntilOrgBDrained).toBe(1);
     // Sanity: org_A is being drained too (not starved itself) but its many
     // envs are far from empty.
     expect(drainedByOrg["org_A"]).toBeGreaterThan(0);
@@ -734,8 +708,6 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
 
     const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
     const buffer = makeStubBuffer({
-      listEnvs: async () =>
-        [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
       listOrgs: async () => {
         const orgs = new Set<string>();
         for (const [envId, items] of queues.entries()) {
@@ -803,8 +775,6 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
 
     const poppedSequence: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () =>
-        [...queues.keys()].filter((k) => (queues.get(k) ?? 0) > 0),
       listOrgs: async () => {
         const anyEnvActive = [...queues.values()].some((n) => n > 0);
         return anyEnvActive ? [orgId] : [];
@@ -858,35 +828,6 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
 });
 
 describe("MollifierDrainer additional coverage", () => {
-  // Helper duplicated locally to keep these tests self-contained.
-  type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
-  function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
-    // For tests that don't care about org grouping, default `listOrgs` and
-    // `listEnvsForOrg` to deriving from `listEnvs` (each env is its own
-    // org). Tests that exercise multi-env-per-org behaviour override
-    // these explicitly.
-    const inferredListOrgs = async (): Promise<string[]> => {
-      if (!overrides.listEnvs) return [];
-      return overrides.listEnvs();
-    };
-    const inferredListEnvsForOrg = async (orgId: string): Promise<string[]> => {
-      if (!overrides.listEnvs) return [];
-      const envs = await overrides.listEnvs();
-      return envs.includes(orgId) ? [orgId] : [];
-    };
-    const base: StubBuffer = {
-      listEnvs: async () => [],
-      listOrgs: inferredListOrgs,
-      listEnvsForOrg: inferredListEnvsForOrg,
-      pop: async () => null,
-      ack: async () => {},
-      requeue: async () => {},
-      fail: async () => true,
-      getEntry: async () => null,
-      close: async () => {},
-    };
-    return { ...base, ...overrides } as unknown as MollifierBuffer;
-  }
 
   it("a malformed payload is treated as a non-retryable handler error and goes terminal", async () => {
     // The deserialise call lives inside processEntry's try, so a JSON parse
@@ -897,7 +838,7 @@ describe("MollifierDrainer additional coverage", () => {
     let handlerCalled = false;
     const failedEntries: Array<{ runId: string; error: { code: string; message: string } }> = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => ["env_a"],
+      ...eachEnvAsOwnOrg(["env_a"]),
       pop: async () =>
         ({
           runId: "run_malformed",
@@ -945,7 +886,7 @@ describe("MollifierDrainer additional coverage", () => {
     let handlerCalls = 0;
     const failedEntries: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => ["env_a"],
+      ...eachEnvAsOwnOrg(["env_a"]),
       pop: async () =>
         ({
           runId: "run_x",
@@ -985,7 +926,7 @@ describe("MollifierDrainer additional coverage", () => {
   it("start() called twice does not spawn a second loop", async () => {
     let listEnvsCalls = 0;
     const buffer = makeStubBuffer({
-      listEnvs: async () => {
+      listOrgs: async () => {
         listEnvsCalls += 1;
         return [];
       },
@@ -1031,11 +972,11 @@ describe("MollifierDrainer additional coverage", () => {
     await expect(drainer.stop()).resolves.toBeUndefined();
   });
 
-  it("rotation cursors and env→org cache reset on start() so a stop+start cycle begins fresh", async () => {
+  it("rotation cursors reset on start() so a stop+start cycle begins fresh", async () => {
     const allEnvs = ["env_a", "env_b", "env_c", "env_d", "env_e", "env_f"];
     const popLog: string[] = [];
     const buffer = makeStubBuffer({
-      listEnvs: async () => allEnvs,
+      ...eachEnvAsOwnOrg(allEnvs),
       pop: async (envId: string) => {
         popLog.push(envId);
         return null;
@@ -1079,7 +1020,7 @@ describe("MollifierDrainer additional coverage", () => {
     const tickTimestamps: number[] = [];
     let listEnvsCalls = 0;
     const buffer = makeStubBuffer({
-      listEnvs: async () => {
+      listOrgs: async () => {
         listEnvsCalls += 1;
         tickTimestamps.push(Date.now());
         if (listEnvsCalls <= 4) {
