@@ -11,8 +11,8 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
   if (!buffer) {
     // Unreachable in normal config: getMollifierDrainer() gates on the
     // same env flag as getMollifierBuffer(). If we hit this, fail loud
-    // — the operator has set MOLLIFIER_ENABLED=1 on a worker pod but
-    // the buffer can't initialise (e.g. MOLLIFIER_REDIS_HOST resolves
+    // — the operator has set TRIGGER_MOLLIFIER_ENABLED=1 on a worker pod but
+    // the buffer can't initialise (e.g. TRIGGER_MOLLIFIER_REDIS_HOST resolves
     // to nothing). Crashing surfaces the misconfig immediately rather
     // than silently leaving entries un-drained.
     throw new Error("MollifierDrainer initialised without a buffer — env vars inconsistent");
@@ -24,7 +24,7 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
   // polling with no SIGTERM handler registered by the caller — exactly
   // the failure mode the validation is supposed to prevent.
   //
-  // The SIGTERM handler in worker.server.ts is sync fire-and-forget:
+  // The SIGTERM handler in mollifierDrainerWorker.server.ts is sync fire-and-forget:
   // `drainer.stop({ timeoutMs })` returns a promise that keeps the event
   // loop alive, but in cluster mode the primary runs its own
   // GRACEFUL_SHUTDOWN_TIMEOUT and will call `process.exit(0)`
@@ -34,17 +34,17 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
   // its own teardown after the drainer settles.
   const shutdownMarginMs = 1_000;
   if (
-    env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS >=
+    env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS >=
     env.GRACEFUL_SHUTDOWN_TIMEOUT - shutdownMarginMs
   ) {
     throw new Error(
-      `MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${shutdownMarginMs}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`,
+      `TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${shutdownMarginMs}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`,
     );
   }
 
   logger.debug("Initializing mollifier drainer", {
-    concurrency: env.MOLLIFIER_DRAIN_CONCURRENCY,
-    maxAttempts: env.MOLLIFIER_DRAIN_MAX_ATTEMPTS,
+    concurrency: env.TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY,
+    maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
   });
 
   // Phase 1 handler: no-op ack. The trigger has ALREADY been written to
@@ -74,9 +74,9 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
         payloadHash,
       });
     },
-    concurrency: env.MOLLIFIER_DRAIN_CONCURRENCY,
-    maxAttempts: env.MOLLIFIER_DRAIN_MAX_ATTEMPTS,
-    maxOrgsPerTick: env.MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,
+    concurrency: env.TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY,
+    maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
+    maxOrgsPerTick: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,
     // A no-op handler shouldn't throw, but if something does (e.g. an
     // unexpected deserialise failure), don't loop — let it FAIL terminally
     // so the entry is observable in metrics.
@@ -88,12 +88,12 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
 
 // Returns a configured-but-stopped drainer. Callers MUST register their
 // SIGTERM / SIGINT shutdown handlers before invoking `drainer.start()` —
-// see `apps/webapp/app/services/worker.server.ts`. Starting inside the
-// singleton factory would put the polling loop ahead of handler
-// registration, leaving a narrow window where a SIGTERM landing between
-// `start()` and `process.once("SIGTERM", ...)` would skip the graceful
-// stop. The split is intentional.
+// see `apps/webapp/app/v3/mollifierDrainerWorker.server.ts`. Starting
+// inside the singleton factory would put the polling loop ahead of
+// handler registration, leaving a narrow window where a SIGTERM landing
+// between `start()` and `process.once("SIGTERM", ...)` would skip the
+// graceful stop. The split is intentional.
 export function getMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> | null {
-  if (env.MOLLIFIER_ENABLED !== "1") return null;
+  if (env.TRIGGER_MOLLIFIER_ENABLED !== "1") return null;
   return singleton("mollifierDrainer", initializeMollifierDrainer);
 }

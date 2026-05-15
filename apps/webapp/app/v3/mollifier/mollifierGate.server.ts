@@ -78,9 +78,9 @@ export type GateDependencies = {
 const defaultEvaluator = createRealTripEvaluator({
   getBuffer: () => getMollifierBuffer(),
   options: () => ({
-    windowMs: env.MOLLIFIER_TRIP_WINDOW_MS,
-    threshold: env.MOLLIFIER_TRIP_THRESHOLD,
-    holdMs: env.MOLLIFIER_HOLD_MS,
+    windowMs: env.TRIGGER_MOLLIFIER_TRIP_WINDOW_MS,
+    threshold: env.TRIGGER_MOLLIFIER_TRIP_THRESHOLD,
+    holdMs: env.TRIGGER_MOLLIFIER_HOLD_MS,
   }),
 });
 
@@ -104,7 +104,7 @@ function logDivertDecision(
 // Resolve the per-org mollifier flag purely from the in-memory
 // `Organization.featureFlags` JSON. No DB query — `triggerTask` is the
 // trigger hot path and the webapp CLAUDE.md forbids adding Prisma calls
-// there. The fleet-wide kill switch lives in `MOLLIFIER_ENABLED`; rollout
+// there. The fleet-wide kill switch lives in `TRIGGER_MOLLIFIER_ENABLED`; rollout
 // is per-org via the JSON, matching the pattern used by `canAccessAi`,
 // `hasComputeAccess`, etc. There is no global `FeatureFlag` table read
 // in this path by design.
@@ -124,8 +124,8 @@ export function makeResolveMollifierFlag(): (inputs: GateInputs) => Promise<bool
 const resolveMollifierFlag = makeResolveMollifierFlag();
 
 export const defaultGateDependencies: GateDependencies = {
-  isMollifierEnabled: () => env.MOLLIFIER_ENABLED === "1",
-  isShadowModeOn: () => env.MOLLIFIER_SHADOW_MODE === "1",
+  isMollifierEnabled: () => env.TRIGGER_MOLLIFIER_ENABLED === "1",
+  isShadowModeOn: () => env.TRIGGER_MOLLIFIER_SHADOW_MODE === "1",
   resolveOrgFlag: resolveMollifierFlag,
   evaluator: defaultEvaluator,
   logShadow: (inputs, decision) =>

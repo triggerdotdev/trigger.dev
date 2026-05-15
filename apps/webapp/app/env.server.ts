@@ -1054,46 +1054,46 @@ const EnvironmentSchema = z
     COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-    MOLLIFIER_ENABLED: z.string().default("0"),
+    TRIGGER_MOLLIFIER_ENABLED: z.string().default("0"),
     // Separate switch for the drainer (consumer side) so it can be split
     // off onto a dedicated worker service. Unset → inherits
-    // MOLLIFIER_ENABLED, so single-container self-hosters don't have to
+    // TRIGGER_MOLLIFIER_ENABLED, so single-container self-hosters don't have to
     // flip two switches. In multi-replica deployments, set this to "0"
     // explicitly on every replica except the one dedicated drainer
     // service — otherwise every replica's polling loop races for the
-    // same buffer entries. `MOLLIFIER_ENABLED` is still the master kill
-    // switch; setting this to "1" while `MOLLIFIER_ENABLED` is "0" is a
+    // same buffer entries. `TRIGGER_MOLLIFIER_ENABLED` is still the master kill
+    // switch; setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
     // no-op because the gate-side singleton refuses to construct a
     // buffer when the system is off.
-    MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.MOLLIFIER_ENABLED ?? "0"),
-    MOLLIFIER_SHADOW_MODE: z.string().default("0"),
-    MOLLIFIER_REDIS_HOST: z
+    TRIGGER_MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
+    TRIGGER_MOLLIFIER_SHADOW_MODE: z.string().default("0"),
+    TRIGGER_MOLLIFIER_REDIS_HOST: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    MOLLIFIER_REDIS_PORT: z.coerce
+    TRIGGER_MOLLIFIER_REDIS_PORT: z.coerce
       .number()
       .optional()
       .transform(
         (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined),
       ),
-    MOLLIFIER_REDIS_USERNAME: z
+    TRIGGER_MOLLIFIER_REDIS_USERNAME: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_USERNAME),
-    MOLLIFIER_REDIS_PASSWORD: z
+    TRIGGER_MOLLIFIER_REDIS_PASSWORD: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    MOLLIFIER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
-    MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
-    MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
-    MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
-    MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
-    MOLLIFIER_ENTRY_TTL_S: z.coerce.number().int().positive().default(600),
-    MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
-    MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-    MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
+    TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    TRIGGER_MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
+    TRIGGER_MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
+    TRIGGER_MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
+    TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
+    TRIGGER_MOLLIFIER_ENTRY_TTL_S: z.coerce.number().int().positive().default(600),
+    TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+    TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
 
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()

@@ -183,7 +183,7 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
 });
 
 // Hot-path guard: `triggerTask.server.ts` calls `evaluateGate` on every
-// trigger when `MOLLIFIER_ENABLED=1`. The per-org override path must resolve
+// trigger when `TRIGGER_MOLLIFIER_ENABLED=1`. The per-org override path must resolve
 // without a Prisma round-trip — otherwise the gate adds a DB query to the
 // highest-throughput code path in the system (see apps/webapp/CLAUDE.md).
 describe("resolveMollifierFlag — hot path", () => {
@@ -211,7 +211,7 @@ describe("resolveMollifierFlag — hot path", () => {
     // Regression intent: the resolver MUST NOT call `flag()` (which would
     // query `FeatureFlag` via Prisma) on the trigger hot path. Per-org
     // rollout via `Organization.featureFlags` JSON is the only enable
-    // path; the fleet-wide kill switch is `MOLLIFIER_ENABLED`.
+    // path; the fleet-wide kill switch is `TRIGGER_MOLLIFIER_ENABLED`.
     const resolve = makeResolveMollifierFlag();
 
     const fromNull = await resolve({
@@ -404,7 +404,7 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
     // `FeatureFlag` table on the hot path. An org with `orgFeatureFlags`
     // unset (the default for almost every org during rollout) gets
     // pass_through, period. The fleet-wide kill switch lives in
-    // `MOLLIFIER_ENABLED`, not the FeatureFlag table.
+    // `TRIGGER_MOLLIFIER_ENABLED`, not the FeatureFlag table.
     const orgInherits = { ...inputs, orgId: "org_inherits", orgFeatureFlags: null };
     const orgEmpty = { ...inputs, orgId: "org_empty", orgFeatureFlags: {} };
     const orgUnrelated = {
