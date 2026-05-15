@@ -1,8 +1,10 @@
 import { CreateBackgroundWorkerRequestBody, tryCatch } from "@trigger.dev/core/v3";
-import type { BackgroundWorker } from "@trigger.dev/database";
+import type { BackgroundWorker, PrismaClientOrTransaction } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
+import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
@@ -24,6 +26,17 @@ import { CURRENT_DEPLOYMENT_LABEL, BackgroundWorkerId } from "@trigger.dev/core/
  * @deprecated
  */
 export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
+  private readonly _taskMetaCache: TaskMetadataCache;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+  ) {
+    super(prisma, replica);
+    this._taskMetaCache = taskMetaCache;
+  }
+
   public async call(
     projectRef: string,
     environment: AuthenticatedEnvironment,
@@ -74,8 +87,14 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
         });
       }
 
+      let workerTaskEntries: Awaited<ReturnType<typeof createWorkerResources>> = [];
       try {
-        await createWorkerResources(body.metadata, backgroundWorker, environment, this._prisma);
+        workerTaskEntries = await createWorkerResources(
+          body.metadata,
+          backgroundWorker,
+          environment,
+          this._prisma
+        );
         await syncDeclarativeSchedules(
           body.metadata.tasks,
           backgroundWorker,
@@ -146,6 +165,16 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
       if (syncIdError) {
         logger.error("Error syncing task identifiers", { error: syncIdError });
       }
+
+      // V3 promotes the deployment immediately above, so this worker is now
+      // current for the env — write both keyspaces atomically. Cache calls
+      // log+swallow internally. Empty `workerTaskEntries` is intentional: the
+      // populate methods clear stale hashes for zero-task deploys.
+      await this._taskMetaCache.populateByCurrentWorker(
+        environment.id,
+        backgroundWorker.id,
+        workerTaskEntries
+      );
 
       try {
         //send a notification that a new worker has been created
