@@ -88,10 +88,12 @@ import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
@@ -276,6 +278,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       );
     }
 
+    // PG miss → try the mollifier buffer. When the gate diverts a trigger
+    // the run sits in Redis until the drainer materialises it; without
+    // this fallback the run-detail page 404s for the brief buffered window
+    // even though the API has accepted the trigger and returned an id.
+    const buffered = await tryMollifiedRunFallback({
+      runFriendlyId: runParam,
+      organizationSlug,
+      projectSlug: projectParam,
+      envSlug: envParam,
+      userId,
+    });
+
+    if (buffered) {
+      const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
+      const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
+
+      return json({
+        run: buffered.run,
+        trace: undefined,
+        maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
+        resizable: { parent, tree },
+        runsList: null,
+        isMollified: true,
+      });
+    }
+
     throw error;
   }
 
@@ -301,8 +329,54 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tree,
     },
     runsList,
+    isMollified: false,
   });
 };
+
+async function tryMollifiedRunFallback(args: {
+  runFriendlyId: string;
+  organizationSlug: string;
+  projectSlug: string;
+  envSlug: string;
+  userId: string;
+}) {
+  const project = await findProjectBySlug(args.organizationSlug, args.projectSlug, args.userId);
+  if (!project) return null;
+  const environment = await findEnvironmentBySlug(project.id, args.envSlug, args.userId);
+  if (!environment) return null;
+
+  const buffered = await findRunByIdWithMollifierFallback({
+    runId: args.runFriendlyId,
+    environmentId: environment.id,
+    organizationId: project.organizationId,
+  });
+  if (!buffered) return null;
+
+  return {
+    run: {
+      id: buffered.friendlyId,
+      number: 1,
+      friendlyId: buffered.friendlyId,
+      traceId: buffered.traceId ?? "",
+      spanId: buffered.spanId ?? "",
+      status: "PENDING" as const,
+      isFinished: false,
+      startedAt: null,
+      completedAt: null,
+      logsDeletedAt: null,
+      rootTaskRun: null,
+      parentTaskRun: null,
+      environment: {
+        id: environment.id,
+        organizationId: project.organizationId,
+        type: environment.type,
+        slug: environment.slug,
+        userId: undefined,
+        userName: undefined,
+      },
+    },
+  };
+}
 
 type LoaderData = SerializeFrom<typeof loader>;
 
