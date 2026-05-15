@@ -31,6 +31,15 @@ const ROOT_DIR = join(import.meta.dirname, "..");
 
 // --- Parse changeset PR body ---
 
+/**
+ * Parse the changesets-generated PR body into a flat list of entries.
+ * Deduplicates by linked PR number, skips dependency-only bumps, and
+ * heuristically categorizes each entry as fix / feature / breaking /
+ * improvement based on its leading text.
+ *
+ * @param {string} body - Raw markdown body from the changesets release PR.
+ * @returns {Array<{text: string, type: 'fix' | 'feature' | 'breaking' | 'improvement'}>}
+ */
 function parsePrBody(body) {
   const entries = [];
   if (!body) return entries;
@@ -88,6 +97,13 @@ function parsePrBody(body) {
 
 const REPO = "triggerdotdev/trigger.dev";
 
+/**
+ * Run a git command in the repo root and return its trimmed stdout.
+ * Rejects with the underlying execFile error on non-zero exit.
+ *
+ * @param {string[]} args - argv passed to git (e.g. ["log", "--format=%H"]).
+ * @returns {Promise<string>}
+ */
 function gitExec(args) {
   return new Promise((resolve, reject) => {
     execFile("git", args, { cwd: ROOT_DIR, maxBuffer: 1024 * 1024 }, (err, stdout) => {
@@ -97,6 +113,13 @@ function gitExec(args) {
   });
 }
 
+/**
+ * Find the commit that first added a file (used to attribute a
+ * `.server-changes/*.md` file back to the PR that introduced it).
+ *
+ * @param {string} filePath - Path relative to repo root.
+ * @returns {Promise<string|null>} Commit SHA, or null if not found / git failed.
+ */
 async function getCommitForFile(filePath) {
   try {
     // Find the commit that added this file
@@ -107,6 +130,15 @@ async function getCommitForFile(filePath) {
   }
 }
 
+/**
+ * Look up the PR that introduced a given commit. Prefers merged PRs and
+ * picks the earliest-merged one (matches @changesets/get-github-info).
+ * Requires GITHUB_TOKEN or GH_TOKEN; returns null without a token, on
+ * fetch failure, or when no PR is associated with the commit.
+ *
+ * @param {string} commitSha
+ * @returns {Promise<number|null>} PR number, or null.
+ */
 async function getPrForCommit(commitSha) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (!token || !commitSha) return null;
@@ -139,6 +171,16 @@ async function getPrForCommit(commitSha) {
 
 // --- Parse .server-changes/ files ---
 
+/**
+ * Read every `.server-changes/*.md` file (skipping README.md), parse
+ * frontmatter, and return the entries to render under "Server changes" in
+ * the enhanced PR body. Looks up the introducing PR for each file and
+ * appends a PR link if one is found and not already inline. Frontmatter
+ * `type` and `area` fields drive section grouping (defaults: improvement,
+ * webapp).
+ *
+ * @returns {Promise<Array<{text: string, type: string, area: string}>>}
+ */
 async function parseServerChanges() {
   const dir = join(ROOT_DIR, ".server-changes");
   const entries = [];
@@ -189,6 +231,15 @@ async function parseServerChanges() {
   return entries;
 }
 
+/**
+ * Minimal YAML frontmatter parser — splits a `---`-delimited header from
+ * the body and returns both. Frontmatter values are trimmed strings; no
+ * type coercion. Returns the whole content as `body` when no frontmatter
+ * is present.
+ *
+ * @param {string} content
+ * @returns {{frontmatter: Record<string, string>, body: string}}
+ */
 function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { frontmatter: {}, body: content };
@@ -206,8 +257,53 @@ function parseFrontmatter(content) {
 
 // --- Format the enhanced PR body ---
 
-function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
+/**
+ * Render the enhanced release PR body.
+ *
+ * @param {object} args
+ * @param {string} args.version - Proposed release version (e.g. "4.4.6").
+ * @param {Array<{text: string, type: string}>} args.packageEntries - Entries parsed from the changesets-generated PR body.
+ * @param {Array<{text: string, type: string, area: string}>} args.serverEntries - Entries parsed from .server-changes/*.md.
+ * @param {string} args.rawBody - The original changesets-generated PR body (kept in a collapsed details section).
+ * @param {{sourceBranch: string, currentLatest: string, willBeLatest: boolean, lineMatch: string|null}|null} args.releaseContext - Release-branch context (only set when SOURCE_BRANCH env is present); drives the "Release prep" header.
+ * @returns {string} Markdown body.
+ */
+function formatPrBody({ version, packageEntries, serverEntries, rawBody, releaseContext }) {
   const lines = [];
+
+  // Release-branch context header. Surfaces whether this PR will become the
+  // npm `latest` / Docker `:v4-beta` / GitHub "Latest" — surprising on
+  // release-branch hotfixes.
+  if (releaseContext) {
+    const { sourceBranch, currentLatest, willBeLatest, lineMatch } = releaseContext;
+    lines.push("## Release prep");
+    lines.push("");
+    lines.push(`- **Version:** \`${version}\``);
+    lines.push(`- **Source branch:** \`${sourceBranch}\``);
+    lines.push(`- **Current \`latest\` on npm:** \`${currentLatest}\``);
+    lines.push(
+      `- **This release will become \`latest\`:** ${
+        willBeLatest
+          ? "✅ yes"
+          : `❌ no — will publish to dist-tag \`release-${lineMatch || "?"}\``
+      }`
+    );
+    if (sourceBranch && sourceBranch.startsWith("release/")) {
+      lines.push("");
+      if (willBeLatest) {
+        lines.push(
+          `> Hotfix on the **${lineMatch}.x** line. Becomes \`latest\` because the current latest (${currentLatest}) is older. Customers running \`npm install\` will pick this up.`
+        );
+      } else {
+        lines.push(
+          `> Hotfix on the **${lineMatch}.x** line. Will NOT become \`latest\` because main has shipped a higher version (${currentLatest}). Customers wanting this fix on the ${lineMatch}.x line should pin: \`npm install @trigger.dev/sdk@release-${lineMatch}\`.`
+        );
+      }
+    }
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+  }
 
   const features = packageEntries.filter((e) => e.type === "feature");
   const fixes = packageEntries.filter((e) => e.type === "fix");
@@ -306,6 +402,54 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
 
 // --- Main ---
 
+/**
+ * Build release-branch context for the PR body header.
+ *
+ * Reads SOURCE_BRANCH from the environment (set by changesets-pr.yml). When
+ * present, queries npm for the current `latest` dist-tag of @trigger.dev/sdk,
+ * compares the proposed version against it, and returns context for rendering
+ * the "Release prep" header. Returns null when SOURCE_BRANCH is unset (so the
+ * header is omitted on plain main releases that don't need branch context).
+ *
+ * @returns {Promise<{sourceBranch: string, currentLatest: string, willBeLatest: boolean, lineMatch: string|null}|null>}
+ */
+async function getReleaseContext() {
+  const sourceBranch = process.env.SOURCE_BRANCH;
+  if (!sourceBranch) return null;
+
+  // Look up current npm `latest` for the canonical package
+  let currentLatest = "0.0.0";
+  try {
+    const out = await new Promise((resolve) => {
+      execFile(
+        "npm",
+        ["view", "@trigger.dev/sdk", "dist-tags.latest"],
+        { maxBuffer: 1024 * 1024 },
+        (err, stdout) => resolve(err ? "" : stdout.trim())
+      );
+    });
+    if (out && out !== "undefined") currentLatest = out;
+  } catch {
+    // fall through with default
+  }
+
+  const cmp = (a, b) =>
+    a.split(".").map(Number).reduce((acc, n, i) => acc || n - (b.split(".").map(Number)[i] ?? 0), 0);
+  const willBeLatest = cmp(version, currentLatest) > 0;
+
+  const m = sourceBranch.match(/^release\/(\d+\.\d+)\.x$/);
+  const lineMatch = m ? m[1] : null;
+
+  return { sourceBranch, currentLatest, willBeLatest, lineMatch };
+}
+
+/**
+ * Entry point. Reads the raw changesets PR body from CHANGESET_PR_BODY env
+ * or stdin, gathers package + server entries and release-branch context,
+ * and writes the enhanced markdown body to stdout.
+ *
+ * @returns {Promise<void>}
+ */
 async function main() {
   let rawBody = process.env.CHANGESET_PR_BODY || "";
   if (!rawBody && !process.stdin.isTTY) {
@@ -316,12 +460,14 @@ async function main() {
 
   const packageEntries = parsePrBody(rawBody);
   const serverEntries = await parseServerChanges();
+  const releaseContext = await getReleaseContext();
 
   const body = formatPrBody({
     version,
     packageEntries,
     serverEntries,
     rawBody,
+    releaseContext,
   });
 
   process.stdout.write(body);

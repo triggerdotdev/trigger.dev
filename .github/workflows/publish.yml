@@ -8,6 +8,11 @@ on:
         description: The image tag to publish
         required: true
         type: string
+      is_latest:
+        description: "Whether this version is the highest released version. Drives :v4-beta / :latest tag updates. release.yml computes this via version comparison."
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -74,6 +79,7 @@ jobs:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
+      is_latest: ${{ inputs.is_latest }}
 
   publish-worker:
     needs: [typecheck]
@@ -96,3 +102,4 @@ jobs:
     uses: ./.github/workflows/publish-worker-v4.yml
     with:
       image_tag: ${{ inputs.image_tag }}
+      is_latest: ${{ inputs.is_latest }}
