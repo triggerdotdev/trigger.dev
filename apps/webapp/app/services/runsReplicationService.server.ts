@@ -264,6 +264,13 @@ export class RunsReplicationService {
       logger: this.logger,
       reconnect: async () => {
         await this._replicationClient.subscribe(this._latestCommitEndLsn ?? undefined);
+        if (this._replicationClient.isStopped) {
+          // subscribe() can resolve without throwing or emitting an "error"
+          // event when leader-lock acquisition fails (see LogicalReplication-
+          // Client.subscribe leader-election branch). Throw here so the
+          // recovery handler reschedules the next attempt.
+          throw new Error("Replication client stopped after subscribe()");
+        }
       },
       isShuttingDown: () => this._isShuttingDown || this._isShutDownComplete,
     });
