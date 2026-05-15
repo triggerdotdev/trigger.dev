@@ -1,5 +1,6 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { signalsEmitter } from "~/services/signals.server";
 import { getMollifierDrainer } from "./mollifier/mollifierDrainer.server";
 
 declare global {
@@ -52,6 +53,19 @@ export function initMollifierDrainerWorker(): void {
       // entry.server.tsx, which Remix dev re-evaluates on every change).
       // Same guard owns both the handler registration and the start()
       // call so the two never get out of sync.
+      //
+      // Registers through `signalsEmitter` (the webapp-wide singleton in
+      // `~/services/signals.server`) rather than `process.once` directly:
+      //  - matches the codebase convention (runsReplicationInstance,
+      //    llmPricingRegistry, dynamicFlushScheduler etc. all listen on
+      //    the same emitter);
+      //  - `.on` (not `.once`) means a second SIGTERM still reaches us if
+      //    the orchestrator delivers more than one signal before SIGKILL;
+      //  - if SIGTERM lands in the gap between this listener attaching
+      //    and `drainer.start()` below, the first invocation no-ops
+      //    (stop() returns early because the drainer isn't running yet)
+      //    but the listener stays attached for a subsequent signal,
+      //    rather than being consumed by `once`.
       const stopDrainer = () => {
         drainer
           .stop({ timeoutMs: env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS })
@@ -59,8 +73,8 @@ export function initMollifierDrainerWorker(): void {
             logger.error("Failed to stop mollifier drainer", { error });
           });
       };
-      process.once("SIGTERM", stopDrainer);
-      process.once("SIGINT", stopDrainer);
+      signalsEmitter.on("SIGTERM", stopDrainer);
+      signalsEmitter.on("SIGINT", stopDrainer);
       global.__mollifierShutdownRegistered__ = true;
       drainer.start();
     }
