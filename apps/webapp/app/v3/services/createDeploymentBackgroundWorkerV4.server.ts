@@ -152,14 +152,27 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // only the `task-meta:by-worker:{workerId}` keyspace so locked-version
       // triggers against this build hit the cache. Promotion (which writes the
       // env keyspace) happens later via finalizeDeployment → changeCurrentDeployment.
+      // Wrap in tryCatch so a Redis blip can't break the deployment state
+      // machine — without this the build would stall in BUILDING and only
+      // surface as a misleading "Indexing timed out".
       if (workerTaskEntries && workerTaskEntries.length > 0) {
-        await syncTaskMetadataCache(
-          environment.id,
-          backgroundWorker.id,
-          false,
-          workerTaskEntries,
-          this._taskMetaCache
+        const [metaCacheError] = await tryCatch(
+          syncTaskMetadataCache(
+            environment.id,
+            backgroundWorker.id,
+            false,
+            workerTaskEntries,
+            this._taskMetaCache
+          )
         );
+
+        if (metaCacheError) {
+          logger.error("Error syncing task metadata cache on build", {
+            error: metaCacheError,
+            deploymentId: deployment.id,
+            workerId: backgroundWorker.id,
+          });
+        }
       }
 
       const [schedulesError] = await tryCatch(

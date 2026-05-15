@@ -10,7 +10,7 @@ export type TaskMetadataEntry = {
   queueName: string;
 };
 
-export interface TaskMetadataCache {
+export type TaskMetadataCache = {
   getCurrent(envId: string, slug: string): Promise<TaskMetadataEntry | null>;
   getByWorker(workerId: string, slug: string): Promise<TaskMetadataEntry | null>;
   populateCurrent(envId: string, entries: TaskMetadataEntry[]): Promise<void>;
@@ -20,7 +20,7 @@ export interface TaskMetadataCache {
   /** Add a single field to the by-worker keyspace and refresh the hash TTL. */
   setByWorker(workerId: string, entry: TaskMetadataEntry): Promise<void>;
   invalidateCurrent(envId: string): Promise<void>;
-}
+};
 
 export type RedisTaskMetadataCacheOptions = {
   redis: Redis;

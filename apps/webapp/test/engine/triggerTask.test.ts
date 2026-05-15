@@ -1294,10 +1294,12 @@ describe("DefaultQueueManager task metadata cache", () => {
       assertNonNullable(result);
       expect((result.run.annotations as { taskKind?: string } | null)?.taskKind).toBe("STANDARD");
 
-      // Back-fill is fire-and-forget; allow a turn of the event loop for it to land.
-      await setTimeout(50);
-
-      const backfilled = await cache.getCurrent(environment.id, taskIdentifier);
+      // Back-fill is fire-and-forget; poll with a bounded timeout to avoid CI flakes.
+      let backfilled = await cache.getCurrent(environment.id, taskIdentifier);
+      for (let i = 0; i < 40 && !backfilled; i++) {
+        await setTimeout(25);
+        backfilled = await cache.getCurrent(environment.id, taskIdentifier);
+      }
       expect(backfilled).not.toBeNull();
       expect(backfilled?.triggerSource).toBe("STANDARD");
       expect(backfilled?.queueName).toBe(`task/${taskIdentifier}`);
@@ -1495,14 +1497,22 @@ describe("DefaultQueueManager task metadata cache", () => {
       const redis = new Redis(redisOptions);
       const cache = new RedisTaskMetadataCache({ redis });
 
+      // Pre-clear any pre-existing cache state so the assertions below prove
+      // the rollback service did the write — not some other path. The test
+      // helpers don't currently populate the cache, but pre-clearing keeps the
+      // test bulletproof against future helper changes.
+      await redis.del(`task-meta:by-worker:${workerA.worker.id}`);
+      await redis.del(`task-meta:env:${environment.id}`);
+      expect(await cache.getByWorker(workerA.worker.id, taskIdentifier)).toBeNull();
+      expect(await cache.getCurrent(environment.id, taskIdentifier)).toBeNull();
+
       // Manually rollback to A to exercise the cache-write side effect.
       const service = new ChangeCurrentDeploymentService(prisma, undefined, cache);
       await service.call(workerA.deployment, "rollback", true /* disableVersionCheck */);
 
-      // Allow the awaited cache write to settle.
+      // Both keyspaces should now reflect workerA.
       const entry = await cache.getCurrent(environment.id, taskIdentifier);
       expect(entry).not.toBeNull();
-      // by-worker keyspace also written by syncTaskMetadataCache(isCurrent=true)
       const byWorkerEntry = await cache.getByWorker(workerA.worker.id, taskIdentifier);
       expect(byWorkerEntry).not.toBeNull();
       expect(byWorkerEntry?.queueName).toBe(`task/${taskIdentifier}`);

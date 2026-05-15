@@ -234,14 +234,26 @@ export class CreateBackgroundWorkerService extends BaseService {
       // worker by createdAt. Non-DEV (deploy-built) workers are not promoted
       // here — promotion writes the `:env:` keyspace later in
       // changeCurrentDeployment / createDeploymentBackgroundWorkerV3.
+      // Wrap in tryCatch so a Redis blip can't break the post-cache side
+      // effects below.
       if (workerTaskEntries && workerTaskEntries.length > 0) {
-        await syncTaskMetadataCache(
-          environment.id,
-          backgroundWorker.id,
-          environment.type === "DEVELOPMENT",
-          workerTaskEntries,
-          this._taskMetaCache
+        const [metaCacheError] = await tryCatch(
+          syncTaskMetadataCache(
+            environment.id,
+            backgroundWorker.id,
+            environment.type === "DEVELOPMENT",
+            workerTaskEntries,
+            this._taskMetaCache
+          )
         );
+
+        if (metaCacheError) {
+          logger.error("Error syncing task metadata cache", {
+            error: metaCacheError,
+            backgroundWorker,
+            environment,
+          });
+        }
       }
 
       const [updateConcurrencyLimitsError] = await tryCatch(
