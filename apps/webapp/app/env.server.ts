@@ -498,6 +498,17 @@ const EnvironmentSchema = z
     TRIGGER_OTEL_ATTRIBUTE_PER_LINK_COUNT_LIMIT: z.string().default("10"),
     TRIGGER_OTEL_ATTRIBUTE_PER_EVENT_COUNT_LIMIT: z.string().default("10"),
 
+    // Server-side OTel ingestion limits applied in otlpExporter.server.ts.
+    // Default per-attribute cap (8KB) is enough for nearly all keys, but
+    // Vercel AI SDK content keys (ai.prompt*, ai.response.text/object/etc.,
+    // gen_ai.prompt, gen_ai.completion) carry tens of KB and have a tighter
+    // dedicated cap. The total cap is a backstop applied to the assembled
+    // attributes JSON; if exceeded, AI content keys are dropped in priority
+    // order. Both prevent oversized JSON from breaking ClickHouse inserts.
+    SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.coerce.number().int().default(8192),
+    SERVER_OTEL_AI_CONTENT_ATTRIBUTE_VALUE_LENGTH_LIMIT: z.coerce.number().int().default(1024),
+    SERVER_OTEL_SPAN_TOTAL_ATTRIBUTES_LENGTH_LIMIT: z.coerce.number().int().default(32768),
+
     CHECKPOINT_THRESHOLD_IN_MS: z.coerce.number().int().default(30000),
 
     // Internal OTEL environment variables
