@@ -118,23 +118,23 @@ export class DefaultQueueManager implements QueueManager {
         // Pull `triggerSource` (for `taskKind` annotation) and `ttl` from cache.
         // On cache hit this is 0 PG queries; on miss the helper falls back to
         // a BackgroundWorkerTask lookup and back-fills the cache.
+        //
+        // If the task slug isn't on this locked worker version, we tolerate
+        // the missing row and fall through with `taskKind = undefined`
+        // (coalesced to "STANDARD" downstream) and `taskTtl = undefined`.
+        // This matches main's pre-PR behavior — the no-override branch below
+        // still throws because there's no queue to route to in that case,
+        // but here the caller already named the queue.
         const lockedMeta = await this.resolveLockedTaskMetadata(
           lockedBackgroundWorker.id,
           request.environment.id,
           request.taskId
         );
 
-        if (!lockedMeta) {
-          throw new ServiceValidationError(
-            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
-            }'.`
-          );
-        }
-
         if (request.body.options?.ttl === undefined) {
-          taskTtl = lockedMeta.ttl ?? undefined;
+          taskTtl = lockedMeta?.ttl ?? undefined;
         }
-        taskKind = lockedMeta.triggerSource;
+        taskKind = lockedMeta?.triggerSource;
       } else {
         // No queue override - resolve default queue + TTL + triggerSource via cache,
         // falling back to a single BackgroundWorkerTask lookup on miss.
