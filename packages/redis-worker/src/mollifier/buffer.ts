@@ -128,6 +128,23 @@ export class MollifierBuffer {
     return this.redis.smembers(`mollifier:org-envs:${orgId}`);
   }
 
+  // Read-only listing of currently-queued entries for a single env. Used by
+  // the dashboard's "Recently queued" surface — LRANGE is non-destructive,
+  // so the drainer still pops these entries in order. Returns up to
+  // `maxCount` entries (the most-recently-queued ones, since accept LPUSHes
+  // onto the head). Each entry hash is fetched separately; a `null` from
+  // getEntry (TTL expired between LRANGE and HGETALL) is skipped.
+  async listEntriesForEnv(envId: string, maxCount: number): Promise<BufferEntry[]> {
+    if (maxCount <= 0) return [];
+    const runIds = await this.redis.lrange(`mollifier:queue:${envId}`, 0, maxCount - 1);
+    const entries: BufferEntry[] = [];
+    for (const runId of runIds) {
+      const entry = await this.getEntry(runId);
+      if (entry) entries.push(entry);
+    }
+    return entries;
+  }
+
   async ack(runId: string): Promise<void> {
     await this.redis.del(`mollifier:entries:${runId}`);
   }

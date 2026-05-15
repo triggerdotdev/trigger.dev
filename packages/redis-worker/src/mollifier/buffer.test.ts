@@ -1025,3 +1025,80 @@ describe("MollifierBuffer envs set lifecycle", () => {
     },
   );
 });
+
+describe("MollifierBuffer.listEntriesForEnv", () => {
+  redisTest(
+    "returns up to maxCount entries from the queue without consuming them",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "r1", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({ runId: "r2", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({ runId: "r3", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        const entries = await buffer.listEntriesForEnv("env_a", 2);
+        expect(entries).toHaveLength(2);
+        const runIds = entries.map((e) => e.runId);
+        expect(new Set(runIds).size).toBe(2);
+        for (const id of runIds) expect(["r1", "r2", "r3"]).toContain(id);
+
+        // Non-destructive: the drainer can still pop all three.
+        const popped: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          const entry = await buffer.pop("env_a");
+          if (entry) popped.push(entry.runId);
+        }
+        expect(new Set(popped)).toEqual(new Set(["r1", "r2", "r3"]));
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest("returns empty array when env queue is empty", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const buffer = new MollifierBuffer({
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      entryTtlSeconds: 600,
+      logger: new Logger("test", "log"),
+    });
+
+    try {
+      expect(await buffer.listEntriesForEnv("env_empty", 10)).toEqual([]);
+    } finally {
+      await buffer.close();
+    }
+  });
+
+  redisTest("maxCount <= 0 returns empty without hitting redis", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const buffer = new MollifierBuffer({
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      entryTtlSeconds: 600,
+      logger: new Logger("test", "log"),
+    });
+
+    try {
+      expect(await buffer.listEntriesForEnv("env_a", 0)).toEqual([]);
+      expect(await buffer.listEntriesForEnv("env_a", -5)).toEqual([]);
+    } finally {
+      await buffer.close();
+    }
+  });
+});
