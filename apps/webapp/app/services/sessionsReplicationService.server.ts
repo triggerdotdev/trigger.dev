@@ -245,6 +245,11 @@ export class SessionsReplicationService {
       logger: this.logger,
       reconnect: async () => {
         await this._replicationClient.subscribe(this._latestCommitEndLsn ?? undefined);
+        if (this._replicationClient.isStopped) {
+          // See RunsReplicationService for the rationale: subscribe() can
+          // resolve without throwing when leader-lock acquisition fails.
+          throw new Error("Replication client stopped after subscribe()");
+        }
       },
       isShuttingDown: () => this._isShuttingDown || this._isShutDownComplete,
     });
