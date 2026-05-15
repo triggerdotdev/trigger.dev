@@ -83,6 +83,11 @@ export class MollifierDrainer<TPayload = unknown> {
     if (this.isRunning) return;
     this.isRunning = true;
     this.stopping = false;
+    // Reset rotation state on each (re)start. A stop+start cycle means
+    // operator intent to "begin clean" — between-restart cursor drift
+    // would otherwise carry implicit state across what should look like
+    // a fresh boot. Pinned by the cursor-reset test in drainer.test.ts.
+    this.envCursor = 0;
     this.loopPromise = this.loop();
   }
 

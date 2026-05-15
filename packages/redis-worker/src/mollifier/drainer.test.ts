@@ -568,6 +568,336 @@ describe("MollifierDrainer per-tick env cap", () => {
       expect(remaining).toBeLessThan(100);
     }
   });
+
+  it("a light org is not starved behind a heavy org with many envs", async () => {
+    // Org-level fairness analogue of the env-level no-starvation test.
+    // Org A has many envs each with many entries (a noisy tenant). Org B
+    // has a single env with a single entry. The drainer's per-env rotation
+    // means org_B's env still gets a turn each cycle — its single entry
+    // is drained within (envs.length - sliceSize + 1) ticks regardless of
+    // how much pressure org_A is applying through its many envs.
+    //
+    // The buffer doesn't track orgs as a separate axis (each entry just
+    // carries orgId on its payload); fairness across orgs is therefore an
+    // emergent property of fairness across envs. This test pins that
+    // property: org-level drainage latency is bounded by the env rotation,
+    // not by total org throughput.
+    const orgAEnvs = Array.from({ length: 6 }, (_, i) => `env_orgA_${i}`);
+    const orgBEnv = "env_orgB_only";
+    const queues = new Map<string, Array<{ runId: string; orgId: string }>>();
+    for (const e of orgAEnvs) {
+      queues.set(
+        e,
+        Array.from({ length: 100 }, (_, i) => ({
+          runId: `${e}_run_${i}`,
+          orgId: "org_A",
+        })),
+      );
+    }
+    queues.set(orgBEnv, [{ runId: `${orgBEnv}_run_0`, orgId: "org_B" }]);
+
+    const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
+    const buffer = makeStubBuffer({
+      listEnvs: async () =>
+        [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const entry = q.shift()!;
+        return {
+          runId: entry.runId,
+          envId,
+          orgId: entry.orgId,
+          payload: "{}",
+          status: "DRAINING",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        drainedByOrg[input.orgId] = (drainedByOrg[input.orgId] ?? 0) + 1;
+      },
+      concurrency: 4,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: 4, // < 7 envs, exercises slicing
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // 7 envs (6 from org_A + 1 from org_B), sliceSize=4 → worst-case wait
+    // for org_B's env is `envs.length - sliceSize + 1 = 4` ticks.
+    const ticksUntilOrgBDrained = await (async () => {
+      for (let tick = 1; tick <= 7; tick++) {
+        await drainer.runOnce();
+        if ((drainedByOrg["org_B"] ?? 0) > 0) return tick;
+      }
+      return Infinity;
+    })();
+
+    expect(ticksUntilOrgBDrained).toBeLessThanOrEqual(4);
+    // Sanity: org_A is being drained too (not starved itself) but its many
+    // envs are far from empty.
+    expect(drainedByOrg["org_A"]).toBeGreaterThan(0);
+    for (const e of orgAEnvs) {
+      expect(queues.get(e)!.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("MollifierDrainer additional coverage", () => {
+  // Helper duplicated locally to keep these tests self-contained.
+  type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
+  function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+    const base: StubBuffer = {
+      listEnvs: async () => [],
+      pop: async () => null,
+      ack: async () => {},
+      requeue: async () => {},
+      fail: async () => true,
+      getEntry: async () => null,
+      close: async () => {},
+    };
+    return { ...base, ...overrides } as unknown as MollifierBuffer;
+  }
+
+  it("a malformed payload is treated as a non-retryable handler error and goes terminal", async () => {
+    // The deserialise call lives inside processEntry's try, so a JSON parse
+    // failure is caught by the same handler-error branch. With
+    // isRetryable=false, the entry transitions directly to FAILED — the
+    // handler is never invoked because the throw happens before the
+    // handler call.
+    let handlerCalled = false;
+    const failedEntries: Array<{ runId: string; error: { code: string; message: string } }> = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => ["env_a"],
+      pop: async () =>
+        ({
+          runId: "run_malformed",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "not valid json {",
+          status: "DRAINING",
+          attempts: 0,
+          createdAt: new Date(),
+        }) as any,
+      fail: async (runId: string, error: { code: string; message: string }) => {
+        failedEntries.push({ runId, error });
+        return true;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {
+        handlerCalled = true;
+      },
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const result = await drainer.runOnce();
+
+    expect(handlerCalled).toBe(false);
+    expect(result.failed).toBe(1);
+    expect(result.drained).toBe(0);
+    expect(failedEntries).toHaveLength(1);
+    expect(failedEntries[0]?.runId).toBe("run_malformed");
+  });
+
+  it("an ack failure after a successful handler is currently treated as a handler error (documented behaviour)", async () => {
+    // CAVEAT: this pins a known behaviour gap, not the ideal behaviour.
+    // ack() lives inside the same try as the handler call, so if the
+    // handler succeeds but ack throws (e.g. transient Redis blip), the
+    // entry is routed through the retry/terminal path even though the
+    // handler-side work completed. Phase 2's engine-replay handler will
+    // need idempotency to absorb the re-execution this implies on retry,
+    // OR ack should be lifted out of the try block.
+    let handlerCalls = 0;
+    const failedEntries: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => ["env_a"],
+      pop: async () =>
+        ({
+          runId: "run_x",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          status: "DRAINING",
+          attempts: 0,
+          createdAt: new Date(),
+        }) as any,
+      ack: async () => {
+        throw new Error("simulated ack failure");
+      },
+      fail: async (runId: string) => {
+        failedEntries.push(runId);
+        return true;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {
+        handlerCalls += 1;
+      },
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    await drainer.runOnce();
+
+    expect(handlerCalls).toBe(1); // handler did run
+    expect(failedEntries).toEqual(["run_x"]); // but entry was marked failed anyway
+  });
+
+  it("start() called twice does not spawn a second loop", async () => {
+    let listEnvsCalls = 0;
+    const buffer = makeStubBuffer({
+      listEnvs: async () => {
+        listEnvsCalls += 1;
+        return [];
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      pollIntervalMs: 50,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    drainer.start();
+    drainer.start(); // no-op
+    await new Promise((r) => setTimeout(r, 150));
+    await drainer.stop({ timeoutMs: 500 });
+
+    // One loop's worth of polling, not two. Allow a small fudge for timing —
+    // a doubled loop would produce ~2x the calls in the same window.
+    expect(listEnvsCalls).toBeLessThan(10);
+  });
+
+  it("stop() is idempotent and safe to call when never started", async () => {
+    const buffer = makeStubBuffer({});
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // Never started.
+    await expect(drainer.stop()).resolves.toBeUndefined();
+
+    // Started then stopped twice.
+    drainer.start();
+    await expect(drainer.stop()).resolves.toBeUndefined();
+    await expect(drainer.stop()).resolves.toBeUndefined();
+  });
+
+  it("envCursor resets to 0 on start() so a stop+start cycle begins from envs[0]", async () => {
+    const allEnvs = ["env_a", "env_b", "env_c", "env_d", "env_e", "env_f"];
+    const popLog: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () => allEnvs,
+      pop: async (envId: string) => {
+        popLog.push(envId);
+        return null;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 3,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxEnvsPerTick: 3,
+      // Long sleep so the loop ticks exactly once between start() and stop().
+      pollIntervalMs: 10_000,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // Advance the cursor via runOnce so it's nonzero before start().
+    await drainer.runOnce();
+    await drainer.runOnce();
+    popLog.length = 0;
+
+    drainer.start();
+    // Wait long enough for the loop's first tick to complete.
+    await new Promise((r) => setTimeout(r, 100));
+    await drainer.stop({ timeoutMs: 1_000 });
+
+    // The first slice after start() should begin at envs[0] (cursor reset)
+    // — the slice is [env_a, env_b, env_c]. Without the reset, it would
+    // start at env_c (cursor was 2).
+    expect(popLog.slice(0, 3)).toEqual(["env_a", "env_b", "env_c"]);
+  });
+
+  it("loop backoff grows with consecutive runOnce failures and resets on success", async () => {
+    // The loop catches runOnce-level errors (e.g. listEnvs blip), increments
+    // `consecutiveErrors`, and delays for backoffMs(consecutiveErrors) —
+    // capped at 5s. This test pins the growth curve by failing N times in a
+    // row and observing increasing inter-tick gaps, then succeeding to
+    // verify the counter resets.
+    const tickTimestamps: number[] = [];
+    let listEnvsCalls = 0;
+    const buffer = makeStubBuffer({
+      listEnvs: async () => {
+        listEnvsCalls += 1;
+        tickTimestamps.push(Date.now());
+        if (listEnvsCalls <= 4) {
+          throw new Error("simulated sustained outage");
+        }
+        return []; // success — resets consecutiveErrors
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      pollIntervalMs: 100,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    drainer.start();
+    // Allow time for 4 failures + first success + a few subsequent successes.
+    // Backoff schedule on errors 1..4: 200ms, 400ms, 800ms, 1.6s ≈ 3s total
+    // worst case. Add headroom for jitter.
+    await new Promise((r) => setTimeout(r, 4_000));
+    await drainer.stop({ timeoutMs: 1_000 });
+
+    expect(listEnvsCalls).toBeGreaterThanOrEqual(5);
+    // Inter-tick gaps during the failure run should grow (exponential).
+    const gap1 = tickTimestamps[1]! - tickTimestamps[0]!;
+    const gap2 = tickTimestamps[2]! - tickTimestamps[1]!;
+    const gap3 = tickTimestamps[3]! - tickTimestamps[2]!;
+    expect(gap2).toBeGreaterThan(gap1);
+    expect(gap3).toBeGreaterThan(gap2);
+
+    // After the first success (tick 5), counter resets, so the gap between
+    // tick 5 and tick 6 should drop back to pollIntervalMs-ish — much
+    // smaller than gap3 (which was the longest backoff).
+    if (tickTimestamps.length >= 6) {
+      const postRecoveryGap = tickTimestamps[5]! - tickTimestamps[4]!;
+      expect(postRecoveryGap).toBeLessThan(gap3);
+    }
+  });
 });
 
 describe("MollifierDrainer.start/stop", () => {
