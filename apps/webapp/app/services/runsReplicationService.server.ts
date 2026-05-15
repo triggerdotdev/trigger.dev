@@ -289,9 +289,10 @@ export class RunsReplicationService {
       if (!isLeader) {
         // Failed leader election doesn't throw or emit an "error" event —
         // subscribe() just emits leaderElection(false), calls stop(), and
-        // returns. Nudge the recovery handler so reconnect doesn't silently
-        // stall when another instance holds the lock.
-        this._errorRecovery.handle(
+        // returns. Route through a dedicated handler so only the reconnect
+        // strategy acts; the exit strategy must not restart-loop when
+        // another instance holds the lock.
+        this._errorRecovery.notifyLeaderElectionLost(
           new Error("Failed to acquire replication leader lock")
         );
       }

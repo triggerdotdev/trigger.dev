@@ -44,6 +44,11 @@ export type ReplicationErrorRecovery = {
   // Called from the replication client's "start" event handler. Resets the
   // reconnect attempt counter so the next failure starts from initialDelayMs.
   notifyStreamStarted(): void;
+  // Called from the replication client's "leaderElection" event handler with
+  // isLeader=false. Only the reconnect strategy acts on this; exit and log
+  // strategies treat losing the lock as a normal multi-instance state (an
+  // "exit" instance would otherwise restart-loop whenever a peer holds it).
+  notifyLeaderElectionLost(error: unknown): void;
   // Cancel any pending reconnect/exit timer. Called from shutdown().
   dispose(): void;
 };
@@ -144,6 +149,14 @@ export function createReplicationErrorRecovery(
         logger.info("Replication reconnect succeeded", { attempt });
         attempt = 0;
       }
+    },
+    notifyLeaderElectionLost(error) {
+      if (isShuttingDown()) return;
+      // Only the reconnect strategy should react. For exit, losing the
+      // lock to a peer would otherwise trigger a restart loop. For log,
+      // we keep historical no-op semantics.
+      if (strategy.type !== "reconnect") return;
+      scheduleReconnect(error);
     },
     dispose() {
       if (pendingReconnect) {
