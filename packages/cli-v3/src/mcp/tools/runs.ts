@@ -374,6 +374,7 @@ export const listRunsTool = {
       to: $to,
       period: input.period,
       machine: input.machine,
+      region: input.region,
     });
 
     const formattedRuns = formatRunList(result);

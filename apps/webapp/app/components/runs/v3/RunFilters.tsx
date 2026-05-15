@@ -4,6 +4,7 @@ import {
   ClockIcon,
   CpuChipIcon,
   FingerPrintIcon,
+  GlobeAltIcon,
   PlusIcon,
   RectangleStackIcon,
   Squares2X2Icon,
@@ -61,6 +62,8 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
+import { useRegions } from "~/hooks/useRegions";
+import { RegionLabel } from "./RegionLabel";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
@@ -187,6 +190,9 @@ export const TaskRunListSearchFilters = z.object({
       "Schedule ID to filter by - shows runs from a specific schedule. They start with sched_"
     ),
   queues: StringOrStringArray.describe("Queue names to filter by (these are user-defined names)"),
+  regions: StringOrStringArray.describe(
+    "Region master-queue identifiers to filter by (the worker instance group masterQueue values)"
+  ),
   machines: MachinePresetOrMachinePresetArray.describe(
     `Machine presets to filter by (${machines.join(", ")})`
   ),
@@ -229,6 +235,8 @@ export function filterTitle(filterKey: string) {
       return "Schedule ID";
     case "queues":
       return "Queues";
+    case "regions":
+      return "Region";
     case "machines":
       return "Machine";
     case "versions":
@@ -271,6 +279,8 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
       return <ClockIcon className="size-4" />;
     case "queues":
       return <RectangleStackIcon className="size-4" />;
+    case "regions":
+      return <GlobeAltIcon className="size-4" />;
     case "machines":
       return <MachineDefaultIcon className="size-4" />;
     case "versions":
@@ -316,6 +326,10 @@ export function getRunFiltersFromSearchParams(
     queues:
       searchParams.getAll("queues").filter((v) => v.length > 0).length > 0
         ? searchParams.getAll("queues")
+        : undefined,
+    regions:
+      searchParams.getAll("regions").filter((v) => v.length > 0).length > 0
+        ? searchParams.getAll("regions")
         : undefined,
     machines:
       searchParams.getAll("machines").filter((v) => v.length > 0).length > 0
@@ -369,6 +383,7 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("runId") ||
     searchParams.has("scheduleId") ||
     searchParams.has("queues") ||
+    searchParams.has("regions") ||
     searchParams.has("machines") ||
     searchParams.has("versions") ||
     searchParams.has("errorId") ||
@@ -402,6 +417,7 @@ const filterTypes = [
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "versions", title: "Versions", icon: <IconRotateClockwise2 className="size-4" /> },
   { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
+  { name: "regions", title: "Region", icon: <GlobeAltIcon className="size-4" /> },
   { name: "machines", title: "Machines", icon: <MachineDefaultIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
@@ -456,6 +472,7 @@ function AppliedFilters({ bulkActions }: RunFiltersProps) {
       <AppliedTagsFilter />
       <AppliedVersionsFilter />
       <AppliedQueuesFilter />
+      <AppliedRegionsFilter />
       <AppliedMachinesFilter />
       <AppliedRunIdFilter />
       <AppliedBatchIdFilter />
@@ -485,6 +502,8 @@ function Menu(props: MenuProps) {
       return <TagsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "queues":
       return <QueuesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
+    case "regions":
+      return <RegionsDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "machines":
       return <MachinesDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "run":
@@ -503,11 +522,14 @@ function Menu(props: MenuProps) {
 }
 
 function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
+  const environment = useEnvironment();
+  const showRegion = environment.type !== "DEVELOPMENT";
   const filtered = useMemo(() => {
     return filterTypes.filter((item) => {
+      if (item.name === "regions" && !showRegion) return false;
       return item.title.toLowerCase().includes(searchValue.toLowerCase());
     });
-  }, [searchValue]);
+  }, [searchValue, showRegion]);
 
   return (
     <SelectProvider virtualFocus={true}>
@@ -1248,6 +1270,138 @@ function AppliedQueuesFilter() {
                 icon={filterIcon("queues")}
                 value={appliedSummary(values("queues").map((v) => v.replace("task/", "")))}
                 onRemove={() => del(["queues", "cursor", "direction"])}
+                variant="secondary/small"
+              />
+            </Ariakit.Select>
+          }
+          searchValue={search}
+          clearSearchValue={() => setSearch("")}
+        />
+      )}
+    </FilterMenuProvider>
+  );
+}
+
+function RegionsDropdown({
+  trigger,
+  clearSearchValue,
+  searchValue,
+  onClose,
+}: {
+  trigger: ReactNode;
+  clearSearchValue: () => void;
+  searchValue: string;
+  onClose?: () => void;
+}) {
+  const { values, replace } = useSearchParams();
+  const regions = useRegions();
+
+  const handleChange = (values: string[]) => {
+    clearSearchValue();
+    replace({
+      regions: values.length > 0 ? values : undefined,
+      cursor: undefined,
+      direction: undefined,
+    });
+  };
+
+  const selected = values("regions").filter((v) => v !== "");
+
+  const filtered = useMemo(() => {
+    type RegionItem = { masterQueue: string; name: string; location?: string };
+    const items: RegionItem[] = [];
+
+    for (const masterQueue of selected) {
+      const known = regions.find((r) => r.masterQueue === masterQueue);
+      if (!known) {
+        items.push({ masterQueue, name: masterQueue });
+      }
+    }
+
+    for (const region of regions) {
+      if (!items.some((i) => i.masterQueue === region.masterQueue)) {
+        items.push({
+          masterQueue: region.masterQueue,
+          name: region.name,
+          location: region.location,
+        });
+      }
+    }
+
+    return matchSorter(items, searchValue, { keys: ["name", "masterQueue"] });
+  }, [searchValue, regions, selected.join(",")]);
+
+  return (
+    <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
+      {trigger}
+      <SelectPopover
+        className="min-w-0 max-w-[min(320px,var(--popover-available-width))]"
+        hideOnEscape={() => {
+          if (onClose) {
+            onClose();
+            return false;
+          }
+          return true;
+        }}
+      >
+        <ComboBox
+          value={searchValue}
+          render={(props) => (
+            <div className="flex items-center justify-stretch">
+              <input {...props} placeholder={"Filter by region..."} />
+            </div>
+          )}
+        />
+        <SelectList>
+          {filtered.length > 0
+            ? filtered.map((region) => (
+                <SelectItem
+                  key={region.masterQueue}
+                  value={region.masterQueue}
+                  className="text-text-bright"
+                >
+                  <RegionLabel region={region} iconClassName="size-4" />
+                </SelectItem>
+              ))
+            : null}
+          {filtered.length === 0 && <SelectItem disabled>No regions found</SelectItem>}
+        </SelectList>
+      </SelectPopover>
+    </SelectProvider>
+  );
+}
+
+function AppliedRegionsFilter() {
+  const { values, del } = useSearchParams();
+  const environment = useEnvironment();
+  const knownRegions = useRegions();
+
+  const regions = values("regions");
+
+  if (environment.type === "DEVELOPMENT") {
+    return null;
+  }
+
+  if (regions.length === 0 || regions.every((v) => v === "")) {
+    return null;
+  }
+
+  const labels = regions.map((mq) => {
+    const match = knownRegions.find((r) => r.masterQueue === mq);
+    return match?.name ?? mq;
+  });
+
+  return (
+    <FilterMenuProvider>
+      {(search, setSearch) => (
+        <RegionsDropdown
+          trigger={
+            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+              <AppliedFilter
+                label="Region"
+                icon={filterIcon("regions")}
+                value={appliedSummary(labels)}
+                onRemove={() => del(["regions", "cursor", "direction"])}
                 variant="secondary/small"
               />
             </Ariakit.Select>
