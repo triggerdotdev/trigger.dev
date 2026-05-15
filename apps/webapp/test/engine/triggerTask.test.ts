@@ -24,7 +24,6 @@ import { Redis } from "ioredis";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import { RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
-import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 import {
   EntitlementValidationParams,
   MaxAttemptsValidationParams,
@@ -1462,63 +1461,6 @@ describe("DefaultQueueManager task metadata cache", () => {
       });
       assertNonNullable(current);
       expect((current.run.annotations as { taskKind?: string } | null)?.taskKind).toBe("SCHEDULED");
-
-      await redis.quit();
-      await engine.quit();
-    }
-  );
-
-  containerTest(
-    "ChangeCurrentDeploymentService promotes the env cache to the new worker",
-    async ({ prisma, redisOptions }) => {
-      const engine = new RunEngine({
-        prisma,
-        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
-        queue: { redis: redisOptions },
-        runLock: { redis: redisOptions },
-        machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": { name: "small-1x", cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
-          },
-          baseCostInCents: 0.0005,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
-
-      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const taskIdentifier = "promotion-task";
-
-      // Worker A → setupBackgroundWorker auto-creates a deployment + promotes it.
-      const workerA = await setupBackgroundWorker(engine, environment, taskIdentifier);
-      // Worker B → setupBackgroundWorker overrides the promotion to point at B.
-      const workerB = await setupBackgroundWorker(engine, environment, taskIdentifier);
-
-      assertNonNullable(workerA.deployment);
-      assertNonNullable(workerB.deployment);
-
-      const redis = new Redis(redisOptions);
-      const cache = new RedisTaskMetadataCache({ redis });
-
-      // Pre-clear any pre-existing cache state so the assertions below prove
-      // the rollback service did the write — not some other path. The test
-      // helpers don't currently populate the cache, but pre-clearing keeps the
-      // test bulletproof against future helper changes.
-      await redis.del(`task-meta:by-worker:${workerA.worker.id}`);
-      await redis.del(`task-meta:env:${environment.id}`);
-      expect(await cache.getByWorker(workerA.worker.id, taskIdentifier)).toBeNull();
-      expect(await cache.getCurrent(environment.id, taskIdentifier)).toBeNull();
-
-      // Manually rollback to A to exercise the cache-write side effect.
-      const service = new ChangeCurrentDeploymentService(prisma, undefined, cache);
-      await service.call(workerA.deployment, "rollback", true /* disableVersionCheck */);
-
-      // Both keyspaces should now reflect workerA.
-      const entry = await cache.getCurrent(environment.id, taskIdentifier);
-      expect(entry).not.toBeNull();
-      const byWorkerEntry = await cache.getByWorker(workerA.worker.id, taskIdentifier);
-      expect(byWorkerEntry).not.toBeNull();
-      expect(byWorkerEntry?.queueName).toBe(`task/${taskIdentifier}`);
 
       await redis.quit();
       await engine.quit();

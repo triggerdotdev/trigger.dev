@@ -271,17 +271,16 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
       // Always invoke the script — empty `entries` is valid and causes both
       // keyspaces to be cleared (DEL + no HSET), which is the right behavior
       // when promoting a worker with no tasks.
-      const argv: string[] = [
-        String(this.currentEnvTtlSeconds),
-        String(this.byWorkerTtlSeconds),
-      ];
+      const fieldValues: string[] = [];
       for (const entry of entries) {
-        argv.push(entry.slug, encode(entry));
+        fieldValues.push(entry.slug, encode(entry));
       }
       await this.redis.taskMetaReplaceTwoHashes(
         currentEnvKey(envId),
         byWorkerKey(workerId),
-        ...argv
+        String(this.currentEnvTtlSeconds),
+        String(this.byWorkerTtlSeconds),
+        ...fieldValues
       );
     } catch (error) {
       logger.error("Failed to populate task metadata cache (current worker)", {
@@ -295,11 +294,15 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
   async populateByWorker(workerId: string, entries: TaskMetadataEntry[]): Promise<void> {
     try {
       // Always invoke the script — empty `entries` clears the keyspace.
-      const argv: string[] = [String(this.byWorkerTtlSeconds)];
+      const fieldValues: string[] = [];
       for (const entry of entries) {
-        argv.push(entry.slug, encode(entry));
+        fieldValues.push(entry.slug, encode(entry));
       }
-      await this.redis.taskMetaReplaceHash(byWorkerKey(workerId), ...argv);
+      await this.redis.taskMetaReplaceHash(
+        byWorkerKey(workerId),
+        String(this.byWorkerTtlSeconds),
+        ...fieldValues
+      );
     } catch (error) {
       logger.error("Failed to populate task metadata cache (by worker)", {
         workerId,
