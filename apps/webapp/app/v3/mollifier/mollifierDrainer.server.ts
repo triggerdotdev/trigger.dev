@@ -6,15 +6,16 @@ import { singleton } from "~/utils/singleton";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 import type { BufferedTriggerPayload } from "./bufferedTriggerPayload.server";
 
-function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> | null {
+function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> {
   const buffer = getMollifierBuffer();
   if (!buffer) {
-    // Buffer degraded to disabled (e.g. MOLLIFIER_ENABLED=1 but
-    // MOLLIFIER_REDIS_HOST unset). Don't crash the pod — return null and
-    // let the worker shutdown registration short-circuit. The degraded
-    // config is logged once by `getMollifierBuffer()`; we don't double
-    // log here.
-    return null;
+    // Unreachable in normal config: getMollifierDrainer() gates on the
+    // same env flag as getMollifierBuffer(). If we hit this, fail loud
+    // — the operator has set MOLLIFIER_ENABLED=1 on a worker pod but
+    // the buffer can't initialise (e.g. MOLLIFIER_REDIS_HOST resolves
+    // to nothing). Crashing surfaces the misconfig immediately rather
+    // than silently leaving entries un-drained.
+    throw new Error("MollifierDrainer initialised without a buffer — env vars inconsistent");
   }
 
   logger.debug("Initializing mollifier drainer", {

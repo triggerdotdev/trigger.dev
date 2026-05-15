@@ -1032,16 +1032,25 @@ const EnvironmentSchema = z
 
     MOLLIFIER_ENABLED: z.string().default("0"),
     MOLLIFIER_SHADOW_MODE: z.string().default("0"),
-    // No fallback to the main `REDIS_*` cluster. The mollifier writes to a
-    // dedicated Redis to keep burst traffic off the engine's primary queue.
-    // If `MOLLIFIER_ENABLED=1` but `MOLLIFIER_REDIS_HOST` is unset, the
-    // buffer degrades to disabled (with a warn log) rather than silently
-    // colocating with the main Redis. See `mollifierBuffer.server.ts`.
-    MOLLIFIER_REDIS_HOST: z.string().optional(),
-    MOLLIFIER_REDIS_PORT: z.coerce.number().optional(),
-    MOLLIFIER_REDIS_USERNAME: z.string().optional(),
-    MOLLIFIER_REDIS_PASSWORD: z.string().optional(),
-    MOLLIFIER_REDIS_TLS_DISABLED: z.string().default("false"),
+    MOLLIFIER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    MOLLIFIER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined),
+      ),
+    MOLLIFIER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    MOLLIFIER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    MOLLIFIER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
     MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
     MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
