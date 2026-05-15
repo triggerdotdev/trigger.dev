@@ -269,7 +269,7 @@ export class SessionsReplicationService {
       this.logger.info("Leader election", { isLeader });
       if (!isLeader) {
         // See RunsReplicationService for the rationale.
-        this._errorRecovery.handle(
+        this._errorRecovery.notifyLeaderElectionLost(
           new Error("Failed to acquire replication leader lock")
         );
       }
