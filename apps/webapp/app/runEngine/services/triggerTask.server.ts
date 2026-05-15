@@ -40,8 +40,10 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
+import { env } from "~/env.server";
 import {
   evaluateGate as defaultEvaluateGate,
+  type GateOutcome,
   type MollifierEvaluateGate,
 } from "~/v3/mollifier/mollifierGate.server";
 import {
@@ -335,13 +337,22 @@ export class RunEngineTriggerTaskService {
         taskKind: taskKind ?? "STANDARD",
       };
 
-      const mollifierOutcome = await this.evaluateGate({
-        envId: environment.id,
-        orgId: environment.organizationId,
-        taskId,
-        orgFeatureFlags:
-          (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
-      });
+      // Short-circuit before the gate when mollifier is globally off (the
+      // default for every deployment that hasn't opted in). Avoids the
+      // GateInputs allocation, the deps spread inside `evaluateGate`, and
+      // the `mollifier.decisions{outcome=pass_through}` OTel increment on
+      // every trigger — `triggerTask` is the highest-throughput code path
+      // in the system. When the flag is on, behaviour is unchanged.
+      const mollifierOutcome: GateOutcome | null =
+        env.TRIGGER_MOLLIFIER_ENABLED === "1"
+          ? await this.evaluateGate({
+              envId: environment.id,
+              orgId: environment.organizationId,
+              taskId,
+              orgFeatureFlags:
+                (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
+            })
+          : null;
 
       try {
         return await this.traceEventConcern.traceRun(
@@ -363,7 +374,7 @@ export class RunEngineTriggerTaskService {
             // dequeue mechanism works. Phase 2 will replace engine.trigger
             // (below) with a synthesised 200 response and rely on the
             // drainer to perform the Postgres write via replay.
-            if (mollifierOutcome.action === "mollify") {
+            if (mollifierOutcome?.action === "mollify") {
               const buffer = this.getMollifierBuffer();
               if (buffer) {
                 const canonicalPayload = buildBufferedTriggerPayload({
