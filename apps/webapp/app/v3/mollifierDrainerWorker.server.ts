@@ -29,15 +29,18 @@ declare global {
  * `batchTriggerWorker`).
  *
  * Gating order:
- *   - `WORKER_ENABLED !== "true"`  → early return (API-only replicas
- *     still produce into the buffer via the trigger hot path; only worker
- *     replicas drain it, otherwise every replica races for the same
- *     entries).
+ *   - `MOLLIFIER_DRAINER_ENABLED !== "1"`  → early return. Unset defaults
+ *     to `MOLLIFIER_ENABLED`, so single-container self-hosters still get
+ *     the drainer for free with one flag. In multi-replica deployments,
+ *     set this to "0" explicitly on every replica except the dedicated
+ *     drainer service so the polling loop doesn't race across replicas.
  *   - `MOLLIFIER_ENABLED !== "1"`  → `getMollifierDrainer()` returns null
- *     and the bootstrap is a no-op.
+ *     and the bootstrap is a no-op. `MOLLIFIER_ENABLED` remains the
+ *     master kill switch; the new flag only controls WHICH replicas
+ *     run the drainer when the system is on.
  */
 export function initMollifierDrainerWorker(): void {
-  if (env.WORKER_ENABLED !== "true") {
+  if (env.MOLLIFIER_DRAINER_ENABLED !== "1") {
     return;
   }
 

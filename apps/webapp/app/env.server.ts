@@ -1055,6 +1055,17 @@ const EnvironmentSchema = z
     COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     MOLLIFIER_ENABLED: z.string().default("0"),
+    // Separate switch for the drainer (consumer side) so it can be split
+    // off onto a dedicated worker service. Unset → inherits
+    // MOLLIFIER_ENABLED, so single-container self-hosters don't have to
+    // flip two switches. In multi-replica deployments, set this to "0"
+    // explicitly on every replica except the one dedicated drainer
+    // service — otherwise every replica's polling loop races for the
+    // same buffer entries. `MOLLIFIER_ENABLED` is still the master kill
+    // switch; setting this to "1" while `MOLLIFIER_ENABLED` is "0" is a
+    // no-op because the gate-side singleton refuses to construct a
+    // buffer when the system is off.
+    MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.MOLLIFIER_ENABLED ?? "0"),
     MOLLIFIER_SHADOW_MODE: z.string().default("0"),
     MOLLIFIER_REDIS_HOST: z
       .string()
