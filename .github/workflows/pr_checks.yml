@@ -34,6 +34,9 @@ jobs:
               - '!.changeset/**'
               - '!hosting/**'
               - '!.github/**'
+              - '!references/**'
+              - '!**/*.md'
+              - '!**/.env.example'
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/typecheck.yml'
             webapp:

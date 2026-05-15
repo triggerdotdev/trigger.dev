@@ -2,6 +2,8 @@ import {
   CompleteRunAttemptResult,
   DequeuedMessage,
   IntervalService,
+  isManualOutOfMemoryError,
+  isOOMRunError,
   LogLevel,
   RunExecutionData,
   SuspendedProcessError,
@@ -52,6 +54,12 @@ export class DevRunController {
   private readonly cwd?: string;
   private isCompletingRun = false;
   private isShuttingDown = false;
+  // Set when the current attempt's outcome means the worker process can't
+  // safely be reused (OOM in particular). Production gives every retry a
+  // fresh container; local dev's process pool needs the same on these
+  // outcomes or in-process state (e.g. session.in cursors) leaks across
+  // attempts and the OOM retry skips the message that triggered it.
+  private discardProcessOnReturn = false;
 
   private state:
     | {
@@ -539,6 +547,13 @@ export class DevRunController {
         error: TaskRunProcess.parseExecuteError(error),
       } satisfies TaskRunFailedExecutionResult;
 
+      // Same OOM check as the success path: if the thrown error parses to
+      // an OOM, force-kill the process when it's eventually returned (via
+      // runFinished / stop) instead of recycling it.
+      if (isOOMRunError(completion.error) || isManualOutOfMemoryError(completion.error)) {
+        this.discardProcessOnReturn = true;
+      }
+
       const completionResult = await this.httpClient.dev.completeRunAttempt(
         run.friendlyId,
         this.snapshotFriendlyId ?? snapshot.friendlyId,
@@ -591,6 +606,9 @@ export class DevRunController {
     });
 
     this.isCompletingRun = false;
+    // Reset between attempts so a stale OOM flag from a prior attempt
+    // doesn't force-kill a healthy reused process on RETRY_IMMEDIATELY.
+    this.discardProcessOnReturn = false;
 
     // Get process from pool instead of creating new one
     const { taskRunProcess, isReused } = await this.opts.taskRunProcessPool.getProcess(
@@ -664,10 +682,22 @@ export class DevRunController {
 
     this.isCompletingRun = true;
 
+    // Detect OOM in the failure result so we can force-kill the worker
+    // instead of returning it to the pool. Mirrors the production behavior
+    // where OOM retry happens on a brand-new container.
+    if (
+      !completion.ok &&
+      (isOOMRunError(completion.error) || isManualOutOfMemoryError(completion.error))
+    ) {
+      this.discardProcessOnReturn = true;
+    }
+
     // Return process to pool instead of killing it
     try {
       const version = this.opts.worker.serverWorker?.version || "unknown";
-      await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
+      await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version, {
+        forceKill: this.discardProcessOnReturn,
+      });
       this.taskRunProcess = undefined;
     } catch (error) {
       logger.debug("Failed to return task run process to pool, submitting completion anyway", {
@@ -820,7 +850,9 @@ export class DevRunController {
     if (this.taskRunProcess) {
       try {
         const version = this.opts.worker.serverWorker?.version || "unknown";
-        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
+        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version, {
+          forceKill: this.discardProcessOnReturn,
+        });
         this.taskRunProcess = undefined;
       } catch (error) {
         logger.debug("Failed to return task run process to pool during runFinished", { error });
@@ -854,7 +886,9 @@ export class DevRunController {
     if (this.taskRunProcess && !this.taskRunProcess.isBeingKilled) {
       try {
         const version = this.opts.worker.serverWorker?.version || "unknown";
-        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version);
+        await this.opts.taskRunProcessPool.returnProcess(this.taskRunProcess, version, {
+          forceKill: this.discardProcessOnReturn,
+        });
         this.taskRunProcess = undefined;
       } catch (error) {
         logger.debug("Failed to return task run process to pool during stop", { error });

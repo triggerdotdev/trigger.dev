@@ -235,6 +235,30 @@ const EnvironmentSchema = z
     CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     CACHE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    TASK_META_CACHE_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    TASK_META_CACHE_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    TASK_META_CACHE_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    TASK_META_CACHE_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    TASK_META_CACHE_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
+    TASK_META_CACHE_BY_WORKER_TTL_SECONDS: z.coerce.number().default(2592000),
+
     REALTIME_STREAMS_REDIS_HOST: z
       .string()
       .optional()

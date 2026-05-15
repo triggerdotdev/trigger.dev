@@ -2,6 +2,7 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
+  ArrowsRightLeftIcon,
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
@@ -10,6 +11,7 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
+  CpuChipIcon,
   CubeIcon,
   ExclamationTriangleIcon,
   FolderIcon,
@@ -69,7 +71,9 @@ import {
   organizationTeamPath,
   queryPath,
   regionsPath,
+  v3AgentsPath,
   v3ApiKeysPath,
+  v3PlaygroundPath,
   v3BatchesPath,
   v3BillingPath,
   v3BuiltInDashboardPath,
@@ -88,6 +92,7 @@ import {
   v3QueuesPath,
   v3RunsPath,
   v3SchedulesPath,
+  v3SessionsPath,
   v3TestPath,
   v3UsagePath,
   v3WaitpointTokensPath,
@@ -467,6 +472,31 @@ export function SideMenu({
                 initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
                 onCollapseToggle={handleSectionToggle("ai")}
               >
+                <SideMenuItem
+                  name="Agents"
+                  icon={CpuChipIcon}
+                  activeIconColor="text-indigo-500"
+                  inactiveIconColor="text-indigo-500"
+                  to={v3AgentsPath(organization, project, environment)}
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Sessions"
+                  icon={ArrowsRightLeftIcon}
+                  activeIconColor="text-teal-500"
+                  inactiveIconColor="text-teal-500"
+                  to={v3SessionsPath(organization, project, environment)}
+                  data-action="sessions"
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Playground"
+                  icon={BeakerIcon}
+                  activeIconColor="text-indigo-400"
+                  inactiveIconColor="text-indigo-400"
+                  to={v3PlaygroundPath(organization, project, environment)}
+                  isCollapsed={isCollapsed}
+                />
                 <SideMenuItem
                   name="Prompts"
                   icon={AIPromptsIcon}

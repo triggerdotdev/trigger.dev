@@ -14,6 +14,11 @@ import { sanitizeQueueName } from "~/models/taskQueue.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
+import {
+  type TaskMetadataCache,
+  type TaskMetadataEntry,
+} from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   removeQueueConcurrencyLimits,
@@ -56,6 +61,17 @@ export function stripBackgroundWorkerMetadataForStorage(
 }
 
 export class CreateBackgroundWorkerService extends BaseService {
+  private readonly _taskMetaCache: TaskMetadataCache;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+  ) {
+    super(prisma, replica);
+    this._taskMetaCache = taskMetaCache;
+  }
+
   public async call(
     projectRef: string,
     environment: AuthenticatedEnvironment,
@@ -147,7 +163,7 @@ export class CreateBackgroundWorkerService extends BaseService {
         throw new ServiceValidationError("Error creating background worker files");
       }
 
-      const [resourcesError] = await tryCatch(
+      const [resourcesError, workerTaskEntries] = await tryCatch(
         createWorkerResources(
           body.metadata,
           backgroundWorker,
@@ -212,6 +228,26 @@ export class CreateBackgroundWorkerService extends BaseService {
         });
       }
 
+      // Populate task metadata cache. DEV workers are always "current" because
+      // `findCurrentWorkerFromEnvironment` resolves DEV current as the latest
+      // worker by createdAt. Non-DEV (deploy-built) workers are not promoted
+      // here — promotion writes the `:env:` keyspace later in
+      // changeCurrentDeployment / createDeploymentBackgroundWorkerV3.
+      // Cache calls log+swallow internally, so a Redis blip can't break
+      // anything else here. Empty `workerTaskEntries` is intentional — the
+      // populate methods clear stale hashes for zero-task deploys.
+      if (workerTaskEntries) {
+        if (environment.type === "DEVELOPMENT") {
+          await this._taskMetaCache.populateByCurrentWorker(
+            environment.id,
+            backgroundWorker.id,
+            workerTaskEntries
+          );
+        } else {
+          await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
+        }
+      }
+
       const [updateConcurrencyLimitsError] = await tryCatch(
         updateEnvConcurrencyLimits(environment)
       );
@@ -265,17 +301,26 @@ export async function createWorkerResources(
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
-) {
+): Promise<TaskMetadataEntry[]> {
   // Create the queues
   const queues = await createWorkerQueues(metadata, worker, environment, prisma);
 
   // Create the tasks
-  await createWorkerTasks(metadata, queues, worker, environment, prisma, tasksToBackgroundFiles);
+  const taskEntries = await createWorkerTasks(
+    metadata,
+    queues,
+    worker,
+    environment,
+    prisma,
+    tasksToBackgroundFiles
+  );
 
   // Register prompts
   if (metadata.prompts && metadata.prompts.length > 0) {
     await createWorkerPrompts(metadata.prompts, worker, environment, prisma);
   }
+
+  return taskEntries;
 }
 
 async function createWorkerTasks(
@@ -285,17 +330,22 @@ async function createWorkerTasks(
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
-) {
+): Promise<TaskMetadataEntry[]> {
   // Create tasks in chunks of 20
   const CHUNK_SIZE = 20;
+  const entries: TaskMetadataEntry[] = [];
   for (let i = 0; i < metadata.tasks.length; i += CHUNK_SIZE) {
     const chunk = metadata.tasks.slice(i, i + CHUNK_SIZE);
-    await Promise.all(
+    const chunkEntries = await Promise.all(
       chunk.map((task) =>
         createWorkerTask(task, queues, worker, environment, prisma, tasksToBackgroundFiles)
       )
     );
+    for (const entry of chunkEntries) {
+      if (entry) entries.push(entry);
+    }
   }
+  return entries;
 }
 
 async function createWorkerTask(
@@ -305,7 +355,7 @@ async function createWorkerTask(
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
-) {
+): Promise<TaskMetadataEntry | null> {
   try {
     let queue = queues.find((queue) => queue.name === task.queue?.name);
 
@@ -331,6 +381,9 @@ async function createWorkerTask(
           ? ("AGENT" as const)
           : ("STANDARD" as const);
 
+    const resolvedTtl =
+      typeof task.ttl === "number" ? stringifyDuration(task.ttl) ?? null : task.ttl ?? null;
+
     await prisma.backgroundWorkerTask.create({
       data: {
         friendlyId: generateFriendlyId("task"),
@@ -348,12 +401,19 @@ async function createWorkerTask(
         config: task.agentConfig ? (task.agentConfig as any) : undefined,
         fileId: tasksToBackgroundFiles?.get(task.id) ?? null,
         maxDurationInSeconds: task.maxDuration ? clampMaxDuration(task.maxDuration) : null,
-        ttl:
-          typeof task.ttl === "number" ? stringifyDuration(task.ttl) ?? null : task.ttl ?? null,
+        ttl: resolvedTtl,
         queueId: queue.id,
         payloadSchema: task.payloadSchema as any,
       },
     });
+
+    return {
+      slug: task.id,
+      ttl: resolvedTtl,
+      triggerSource: resolvedTriggerSource,
+      queueId: queue.id,
+      queueName: queue.name,
+    };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       // The error code for unique constraint violation in Prisma is P2002
@@ -389,6 +449,7 @@ async function createWorkerTask(
         worker,
       });
     }
+    return null;
   }
 }
 

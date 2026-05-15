@@ -1,7 +1,9 @@
 import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
 import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
-import type { BackgroundWorker, WorkerDeployment } from "@trigger.dev/database";
+import type { BackgroundWorker, PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import {
   createBackgroundFiles,
@@ -13,6 +15,17 @@ import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
+  private readonly _taskMetaCache: TaskMetadataCache;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+  ) {
+    super(prisma, replica);
+    this._taskMetaCache = taskMetaCache;
+  }
+
   public async call(
     environment: AuthenticatedEnvironment,
     deploymentId: string,
@@ -110,7 +123,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         throw serviceError;
       }
 
-      const [resourcesError] = await tryCatch(
+      const [resourcesError, workerTaskEntries] = await tryCatch(
         createWorkerResources(
           body.metadata,
           backgroundWorker,
@@ -132,6 +145,16 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         await this.#failBackgroundWorkerDeployment(deployment, serviceError);
 
         throw serviceError;
+      }
+
+      // V4 build path: worker created but NOT yet promoted to current. Write
+      // only the `task-meta:by-worker:{workerId}` keyspace so locked-version
+      // triggers against this build hit the cache. Promotion (which writes the
+      // env keyspace) happens later via finalizeDeployment → changeCurrentDeployment.
+      // Cache calls log+swallow internally, so a Redis blip can't stall the
+      // deployment state machine. Empty entries clears stale hashes.
+      if (workerTaskEntries) {
+        await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
       }
 
       const [schedulesError] = await tryCatch(

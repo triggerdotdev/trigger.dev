@@ -184,6 +184,7 @@ await sendMessageInCatalog(
     manifest: {
       tasks,
       prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
+      skills: resourceCatalog.listSkillManifests(),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
