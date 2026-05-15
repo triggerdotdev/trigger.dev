@@ -402,7 +402,7 @@ export class RunEngineTriggerTaskService {
                   // O(1) per trigger. The drainer computes the payload hash
                   // off-path; operators correlate `mollifier.buffered` →
                   // `mollifier.drained` by runId.
-                  logger.info("mollifier.buffered", {
+                  logger.debug("mollifier.buffered", {
                     runId: runFriendlyId,
                     envId: environment.id,
                     orgId: environment.organizationId,
