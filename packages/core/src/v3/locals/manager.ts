@@ -5,7 +5,7 @@ export class NoopLocalsManager implements LocalsManager {
     return {
       __type: Symbol(),
       id,
-    } as unknown as LocalsKey<T>;
+    };
   }
 
   getLocal<T>(key: LocalsKey<T>): T | undefined {
@@ -23,7 +23,7 @@ export class StandardLocalsManager implements LocalsManager {
     return {
       __type: key,
       id,
-    } as unknown as LocalsKey<T>;
+    };
   }
 
   getLocal<T>(key: LocalsKey<T>): T | undefined {

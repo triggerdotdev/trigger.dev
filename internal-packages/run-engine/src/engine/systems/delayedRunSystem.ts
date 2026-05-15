@@ -144,13 +144,34 @@ export class DelayedRunSystem {
         return;
       }
 
+      // The batch TTL path only expires runs still in the queue sorted set.
+      // For DEV environments where the dev CLI may not be running, fast-pathed
+      // runs can sit on the worker queue indefinitely. Keep the legacy per-run
+      // expireRun job armed for DEV so those runs still expire.
+      if (run.ttl && run.runtimeEnvironment.type === "DEVELOPMENT") {
+        const expireAt = parseNaturalLanguageDuration(run.ttl);
+        if (expireAt) {
+          await this.$.worker.enqueue({
+            id: `expireRun:${runId}`,
+            job: "expireRun",
+            payload: { runId },
+            availableAt: expireAt,
+          });
+        }
+      }
+
       // Now we need to enqueue the run into the RunQueue
-      // Skip the lock in enqueueRun since we already hold it
+      // Skip the lock in enqueueRun since we already hold it.
+      // includeTtl: true so the run's TTL is armed from the moment it enters
+      // the queue (not from taskRun.createdAt). The TTL system tracks runs
+      // that are queued and have never started — delayed runs are first
+      // enqueued here, so this is the correct point to arm TTL.
       await this.enqueueSystem.enqueueRun({
         run,
         env: run.runtimeEnvironment,
         batchId: run.batchId ?? undefined,
         skipRunLock: true,
+        includeTtl: true,
       });
 
       const queuedAt = new Date();
@@ -183,18 +204,6 @@ export class DelayedRunSystem {
         },
       });
 
-      if (run.ttl) {
-        const expireAt = parseNaturalLanguageDuration(run.ttl);
-
-        if (expireAt) {
-          await this.$.worker.enqueue({
-            id: `expireRun:${runId}`,
-            job: "expireRun",
-            payload: { runId },
-            availableAt: expireAt,
-          });
-        }
-      }
     });
   }
 

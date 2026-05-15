@@ -138,8 +138,9 @@ function TaskSelector({
       <div className="p-2">
         <Input
           placeholder="Search tasks"
-          variant="small"
+          variant="secondary-small"
           icon={MagnifyingGlassIcon}
+          iconClassName="text-text-bright"
           fullWidth={true}
           value={filterText}
           autoFocus

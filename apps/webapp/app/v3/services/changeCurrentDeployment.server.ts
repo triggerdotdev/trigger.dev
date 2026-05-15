@@ -1,8 +1,13 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import { WorkerDeployment } from "@trigger.dev/database";
+import { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
+import {
+  type TaskMetadataCache,
+  type TaskMetadataEntry,
+} from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
@@ -11,6 +16,17 @@ import { compareDeploymentVersions } from "../utils/deploymentVersions";
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
 
 export class ChangeCurrentDeploymentService extends BaseService {
+  private readonly _taskMetaCache: TaskMetadataCache;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+  ) {
+    super(prisma, replica);
+    this._taskMetaCache = taskMetaCache;
+  }
+
   public async call(
     deployment: WorkerDeployment,
     direction: ChangeCurrentDeploymentDirection,
@@ -96,23 +112,59 @@ export class ChangeCurrentDeploymentService extends BaseService {
       },
     });
 
-    const [syncError] = await tryCatch(
-      (async () => {
-        const tasks = await this._prisma.backgroundWorkerTask.findMany({
-          where: { workerId: deployment.workerId! },
-          select: { slug: true, triggerSource: true },
-        });
-        await syncTaskIdentifiers(
+    const [fetchTasksError, tasks] = await tryCatch(
+      this._prisma.backgroundWorkerTask.findMany({
+        where: { workerId: deployment.workerId! },
+        select: {
+          slug: true,
+          triggerSource: true,
+          ttl: true,
+          queue: { select: { id: true, name: true } },
+        },
+      })
+    );
+
+    if (fetchTasksError) {
+      logger.error("Error fetching worker tasks on deployment change", {
+        error: fetchTasksError,
+      });
+    }
+
+    if (tasks) {
+      // Side effect 1: refresh the `TaskIdentifier` table and the existing
+      // `tids:` Redis cache so the task-listing UI reflects the new deploy.
+      const [syncIdentifiersError] = await tryCatch(
+        syncTaskIdentifiers(
           deployment.environmentId,
           deployment.projectId,
           deployment.workerId!,
           tasks.map((t) => ({ id: t.slug, triggerSource: t.triggerSource }))
-        );
-      })()
-    );
+        )
+      );
 
-    if (syncError) {
-      logger.error("Error syncing task identifiers on deployment change", { error: syncError });
+      if (syncIdentifiersError) {
+        logger.error("Error syncing task identifiers on deployment change", {
+          error: syncIdentifiersError,
+        });
+      }
+
+      // Side effect 2: refresh the `task-meta:` cache that the queue resolver
+      // reads from. Independent of side effect 1 — if `syncTaskIdentifiers`
+      // throws, the queue resolver still gets a warm cache for the new worker.
+      const metadataEntries: TaskMetadataEntry[] = tasks.map((t) => ({
+        slug: t.slug,
+        ttl: t.ttl,
+        triggerSource: t.triggerSource,
+        queueId: t.queue?.id ?? null,
+        queueName: t.queue?.name ?? "",
+      }));
+
+      // Cache calls log+swallow internally.
+      await this._taskMetaCache.populateByCurrentWorker(
+        deployment.environmentId,
+        deployment.workerId!,
+        metadataEntries
+      );
     }
 
     const [scheduleSyncError] = await tryCatch(this.#syncSchedulesForDeployment(deployment));

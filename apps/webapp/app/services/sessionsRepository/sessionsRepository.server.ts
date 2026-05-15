@@ -95,6 +95,7 @@ export type ListedSession = Prisma.SessionGetPayload<{
     createdAt: true;
     updatedAt: true;
     runtimeEnvironmentId: true;
+    currentRunId: true;
   };
 }>;
 

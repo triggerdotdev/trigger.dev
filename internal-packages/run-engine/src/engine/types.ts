@@ -259,6 +259,7 @@ export type TriggerParams = {
   bulkActionId?: string;
   planType?: string;
   realtimeStreamsVersion?: string;
+  streamBasinName?: string | null;
   debounce?: {
     key: string;
     delay: string;

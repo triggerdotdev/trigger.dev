@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String     @id
+  name           String
+  plan           String     @default("free") // "free" | "pro"
+  preferredModel String?
+  githubToken    String?
+  messageCount   Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  chats          Chat[]
+}
+
+model Chat {
+  id        String   @id
+  title     String
+  model     String   @default("gpt-4o-mini")
+  messages  Json     @default("[]")
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Persistable session state for a chat. After the Sessions-as-run-manager
+// refactor, the transport addresses by `chatId` (used as the Session
+// `externalId`) on every wire path — so we only need a session-scoped
+// PAT and the SSE last-event-id for resume. Runs come and go inside
+// the Session and are managed server-side.
+model ChatSession {
+  id                String  @id // chatId
+  publicAccessToken String
+  lastEventId       String?
+}

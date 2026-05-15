@@ -84,6 +84,7 @@ describe("Task Runs V2", () => {
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
+      "", // task_kind
       null, // is_warm_start
     ];
 
@@ -215,6 +216,7 @@ describe("Task Runs V2", () => {
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
+      "", // task_kind
       null, // is_warm_start
     ];
 
@@ -269,6 +271,7 @@ describe("Task Runs V2", () => {
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
+      "", // task_kind
       null, // is_warm_start
     ];
 
@@ -370,6 +373,7 @@ describe("Task Runs V2", () => {
         null, // max_duration_in_seconds
         "", // trigger_source
         "", // root_trigger_source
+        "", // task_kind
         null, // is_warm_start
       ];
 

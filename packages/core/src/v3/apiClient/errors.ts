@@ -128,6 +128,18 @@ export class PermissionDeniedError extends ApiError {
   override readonly status: 403 = 403;
 }
 
+/**
+ * True when `error` is a 401/403 from the Trigger API (e.g. expired run-scoped PAT on realtime streams).
+ * Uses structural checks so it works even if multiple copies of `@trigger.dev/core` are bundled (subclass `instanceof` can fail).
+ */
+export function isTriggerRealtimeAuthError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") {
+    return false;
+  }
+  const e = error as ApiError;
+  return e.name === "TriggerApiError" && (e.status === 401 || e.status === 403);
+}
+
 export class NotFoundError extends ApiError {
   override readonly status: 404 = 404;
 }

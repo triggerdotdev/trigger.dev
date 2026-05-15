@@ -1,12 +1,14 @@
 import {
   type MachinePreset,
   prettyPrintPacket,
+  RunAnnotations,
   SemanticInternalAttributes,
   type TaskRunContext,
   TaskRunError,
   TriggerTraceContext,
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
+
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
   extractIdempotencyKeyScope,
@@ -240,6 +242,9 @@ export class SpanPresenter extends BasePresenter {
 
     const externalTraceId = this.#getExternalTraceId(run.traceContext);
 
+    const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
+    const isAgentRun = taskKind === "AGENT";
+
     let region: { name: string; location: string | null } | null = null;
 
     if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
@@ -255,6 +260,48 @@ export class SpanPresenter extends BasePresenter {
 
       region = workerGroup ?? null;
     }
+
+    // Only AGENT-tagged runs (chat.agent and friends) can be session-bound,
+    // so skip the SessionRun lookup for the much larger set of standard runs.
+    // Lookup is by the unique `runId` index, but the cheapest query is the
+    // one we don't run.
+    const sessionRun = isAgentRun
+      ? await this._replica.sessionRun.findFirst({
+          where: { runId: run.id },
+          select: {
+            reason: true,
+            triggeredAt: true,
+            session: {
+              select: {
+                friendlyId: true,
+                externalId: true,
+                type: true,
+                taskIdentifier: true,
+                closedAt: true,
+                expiresAt: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    const session = sessionRun
+      ? {
+          friendlyId: sessionRun.session.friendlyId,
+          externalId: sessionRun.session.externalId,
+          type: sessionRun.session.type,
+          taskIdentifier: sessionRun.session.taskIdentifier,
+          status:
+            sessionRun.session.closedAt != null
+              ? ("CLOSED" as const)
+              : sessionRun.session.expiresAt != null &&
+                sessionRun.session.expiresAt.getTime() < Date.now()
+              ? ("EXPIRED" as const)
+              : ("ACTIVE" as const),
+          reason: sessionRun.reason,
+          triggeredAt: sessionRun.triggeredAt,
+        }
+      : undefined;
 
     return {
       id: run.id,
@@ -297,6 +344,7 @@ export class SpanPresenter extends BasePresenter {
       isFinished,
       isRunning: RUNNING_STATUSES.includes(run.status),
       isError: isFailedRunStatus(run.status),
+      isAgentRun,
       payload,
       payloadType: run.payloadType,
       output,
@@ -315,6 +363,7 @@ export class SpanPresenter extends BasePresenter {
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
+      session,
       engine: run.engine,
       region,
       workerQueue: run.workerQueue,
@@ -455,6 +504,7 @@ export class SpanPresenter extends BasePresenter {
         payloadType: true,
         metadata: true,
         metadataType: true,
+        annotations: true,
         maxAttempts: true,
         project: {
           include: {

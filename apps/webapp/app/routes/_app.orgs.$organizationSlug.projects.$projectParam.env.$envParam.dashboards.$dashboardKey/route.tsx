@@ -1,6 +1,8 @@
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/node";
+import { Form } from "@remix-run/react";
 import type { TaskTriggerSource } from "@trigger.dev/database";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactGridLayout from "react-grid-layout";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -15,7 +17,8 @@ import { QueuesFilter } from "~/components/metrics/QueuesFilter";
 import { ScopeFilter } from "~/components/metrics/ScopeFilter";
 import { TitleWidget } from "~/components/metrics/TitleWidget";
 import { CreateDashboardPageButton } from "~/components/navigation/DashboardDialogs";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Button } from "~/components/primitives/Buttons";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -143,13 +146,6 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title={title} />
-        <PageAccessories>
-          <CreateDashboardPageButton
-            organization={organization}
-            project={project}
-            environment={environment}
-          />
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className="h-full">
@@ -165,6 +161,14 @@ export default function Page() {
             possiblePrompts={possiblePrompts}
             possibleOperations={possibleOperations}
             possibleProviders={possibleProviders}
+            filterAccessories={
+              <CreateDashboardPageButton
+                organization={organization}
+                project={project}
+                environment={environment}
+                shortcut={{ key: "n" }}
+              />
+            }
           />
         </div>
       </PageBody>
@@ -188,6 +192,7 @@ export function MetricDashboard({
   onRenameWidget,
   onDeleteWidget,
   onDuplicateWidget,
+  filterAccessories,
 }: {
   /** The layout items (positions/sizes) - fully controlled from parent */
   layout: LayoutItem[];
@@ -212,6 +217,7 @@ export function MetricDashboard({
   onRenameWidget?: (widgetId: string, newTitle: string) => void;
   onDeleteWidget?: (widgetId: string) => void;
   onDuplicateWidget?: (widgetId: string, widget: WidgetData) => void;
+  filterAccessories?: ReactNode;
 }) {
   const { value, values } = useSearchParams();
   const { width, containerRef, mounted } = useContainerWidth();
@@ -239,6 +245,13 @@ export function MetricDashboard({
   const providers = values("providers").filter((v) => v !== "");
 
   const activeFilters = filterConfig ?? ["tasks", "queues"];
+  const hasAppliedFilters =
+    tasks.length > 0 ||
+    queues.length > 0 ||
+    models.length > 0 ||
+    prompts.length > 0 ||
+    operations.length > 0 ||
+    providers.length > 0;
 
   const handleLayoutChange = useCallback(
     (newLayout: readonly LayoutItem[]) => {
@@ -263,31 +276,48 @@ export function MetricDashboard({
 
   return (
     <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
-      <div className="flex items-center gap-1 border-b border-b-grid-bright py-2 pl-2 pr-3">
-        <ScopeFilter />
-        {activeFilters.includes("tasks") && (
-          <LogsTaskFilter possibleTasks={possibleTasks ?? []} />
+      <div className="flex items-center justify-between gap-x-2 border-b border-b-grid-bright py-2 pl-2 pr-3">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <ScopeFilter shortcut={{ key: "s" }} />
+          {activeFilters.includes("tasks") && (
+            <LogsTaskFilter possibleTasks={possibleTasks ?? []} />
+          )}
+          {activeFilters.includes("queues") && <QueuesFilter />}
+          {activeFilters.includes("models") && (
+            <ModelsFilter possibleModels={possibleModels ?? []} />
+          )}
+          {activeFilters.includes("prompts") && (
+            <PromptsFilter possiblePrompts={possiblePrompts ?? []} />
+          )}
+          {activeFilters.includes("operations") && (
+            <OperationsFilter possibleOperations={possibleOperations ?? []} />
+          )}
+          {activeFilters.includes("providers") && (
+            <ProvidersFilter possibleProviders={possibleProviders ?? []} />
+          )}
+          <TimeFilter
+            defaultPeriod={defaultPeriod}
+            labelName="Period"
+            hideLabel
+            maxPeriodDays={maxPeriodDays}
+            valueClassName="text-text-bright"
+            shortcut={{ key: "d" }}
+          />
+          {hasAppliedFilters && (
+            <Form className="-ml-1 h-6">
+              <Button
+                variant="minimal/small"
+                LeadingIcon={XMarkIcon}
+                tooltip="Clear all filters"
+                className="group-hover/button:bg-transparent"
+                leadingIconClassName="group-hover/button:text-text-bright"
+              />
+            </Form>
+          )}
+        </div>
+        {filterAccessories && (
+          <div className="flex shrink-0 items-center">{filterAccessories}</div>
         )}
-        {activeFilters.includes("queues") && <QueuesFilter />}
-        {activeFilters.includes("models") && (
-          <ModelsFilter possibleModels={possibleModels ?? []} />
-        )}
-        {activeFilters.includes("prompts") && (
-          <PromptsFilter possiblePrompts={possiblePrompts ?? []} />
-        )}
-        {activeFilters.includes("operations") && (
-          <OperationsFilter possibleOperations={possibleOperations ?? []} />
-        )}
-        {activeFilters.includes("providers") && (
-          <ProvidersFilter possibleProviders={possibleProviders ?? []} />
-        )}
-        <TimeFilter
-          defaultPeriod={defaultPeriod}
-          labelName="Period"
-          hideLabel
-          maxPeriodDays={maxPeriodDays}
-          valueClassName="text-text-bright"
-        />
       </div>
       <div
         ref={containerRef}

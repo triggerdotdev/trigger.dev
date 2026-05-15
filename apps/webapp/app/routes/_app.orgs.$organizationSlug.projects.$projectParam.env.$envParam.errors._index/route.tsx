@@ -290,6 +290,8 @@ const errorStatusOptions = [
 
 const statusIcon = <IconBugFilled className="size-4" />;
 const statusShortcut = { key: "s" };
+const timeShortcut = { key: "d" };
+const alertsShortcut = { key: "c" };
 
 function StatusFilter() {
   const { values, del } = useSearchParams();
@@ -306,8 +308,9 @@ function StatusFilter() {
                 variant="secondary/small"
                 shortcut={statusShortcut}
                 tooltipTitle="Filter by status"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Status</span>
+                <span className="ml-1">Status</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -416,9 +419,10 @@ function FiltersBar({
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
-      <div className="flex flex-row flex-wrap items-center gap-2">
+      <div className="flex flex-row flex-wrap items-center gap-1.5">
         {list ? (
           <>
+            <SearchInput placeholder="Search errors…" />
             <StatusFilter />
             <LogsTaskFilter possibleTasks={list.filters.possibleTasks} />
             <LogsVersionFilter />
@@ -426,43 +430,53 @@ function FiltersBar({
               defaultPeriod={defaultPeriod}
               maxPeriodDays={retentionLimitDays}
               labelName="Occurred"
+              shortcut={timeShortcut}
             />
-            <SearchInput placeholder="Search errors…" />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}
           </>
         ) : (
           <>
+            <SearchInput placeholder="Search errors…" />
             <StatusFilter />
             <LogsTaskFilter possibleTasks={[]} />
             <LogsVersionFilter />
-            <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
-            <SearchInput placeholder="Search errors…" />
+            <TimeFilter
+              defaultPeriod={defaultPeriod}
+              maxPeriodDays={retentionLimitDays}
+              shortcut={timeShortcut}
+            />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}
           </>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <LinkButton
           to={alertsHref}
           variant="secondary/small"
           LeadingIcon={BellAlertIcon}
           leadingIconClassName="text-alerts"
+          shortcut={alertsShortcut}
+          tooltip="Configure alerts"
         >
           Configure alerts…
         </LinkButton>

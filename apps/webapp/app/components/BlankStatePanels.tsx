@@ -1,4 +1,5 @@
 import {
+  ArrowsRightLeftIcon,
   BeakerIcon,
   BellAlertIcon,
   BookOpenIcon,
@@ -184,6 +185,28 @@ export function BatchesNone() {
       <Paragraph spacing variant="small">
         You have no batches in this environment. You can trigger batches from your backend or from
         inside other tasks.
+      </Paragraph>
+    </InfoPanel>
+  );
+}
+
+export function SessionsNone() {
+  return (
+    <InfoPanel
+      title="Sessions"
+      icon={ArrowsRightLeftIcon}
+      iconClassName="text-teal-500"
+      panelClassName="max-w-full"
+      accessory={
+        <LinkButton to={docsPath("/ai-chat/overview")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+          Sessions docs
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        You have no sessions in this environment. Sessions are durable, typed, bidirectional I/O
+        primitives that outlive a single run — used by <InlineCode>chat.agent</InlineCode> and any
+        long-running task that needs streaming input and output.
       </Paragraph>
     </InfoPanel>
   );

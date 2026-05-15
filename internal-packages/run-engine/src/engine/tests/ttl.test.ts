@@ -1,6 +1,7 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
+import { Decimal } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import { EventBusEventArgs } from "../eventBus.js";
@@ -28,6 +29,7 @@ describe("RunEngine ttl", () => {
         ttlSystem: {
           pollIntervalMs: 100,
           batchSize: 10,
+          batchMaxWaitMs: 100,
         },
       },
       runLock: {
@@ -57,6 +59,14 @@ describe("RunEngine ttl", () => {
         authenticatedEnvironment,
         taskIdentifier
       );
+
+      // TTL only expires runs still queued waiting on a concurrency slot.
+      // Force env concurrency to 0 so the run never gets dequeued and stays
+      // in the TTL set long enough for the consumer to expire it.
+      await engine.runQueue.updateEnvConcurrencyLimits({
+        ...authenticatedEnvironment,
+        maximumConcurrencyLimit: 0,
+      });
 
       //trigger the run
       const run = await engine.trigger(
@@ -153,6 +163,7 @@ describe("RunEngine ttl", () => {
         ttlSystem: {
           pollIntervalMs: 100,
           batchSize: 10,
+          batchMaxWaitMs: 100,
         },
       },
       runLock: {
@@ -231,6 +242,7 @@ describe("RunEngine ttl", () => {
         ttlSystem: {
           pollIntervalMs: 100,
           batchSize: 10,
+          batchMaxWaitMs: 100,
         },
       },
       runLock: {
@@ -302,6 +314,221 @@ describe("RunEngine ttl", () => {
     }
   });
 
+  containerTest(
+    "Re-enqueued runs are not expired by TTL once they have started",
+    async ({ prisma, redisOptions }) => {
+      // Contract: TTL only applies to runs that are queued and have never started.
+      // Once a run has been dequeued (started executing), a subsequent re-enqueue
+      // (e.g. after a waitpoint, checkpoint resume, or pending-version flow)
+      // must not re-arm TTL, even if the original TTL deadline has long passed.
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const expiredEvents: EventBusEventArgs<"runExpired">[0][] = [];
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 100,
+            batchSize: 10,
+            batchMaxWaitMs: 100,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        engine.eventBus.on("runExpired", (result) => {
+          expiredEvents.push(result);
+        });
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_restart01",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_re2",
+            spanId: "s_re2",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        // Dequeue the run — this simulates the run starting to execute, which
+        // ZREMs its TTL set entry.
+        await engine.runQueue.processMasterQueueForEnvironment(
+          authenticatedEnvironment.id,
+          10
+        );
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test-consumer",
+          workerQueue: "main",
+          blockingPopTimeoutSeconds: 1,
+        });
+        expect(dequeued.length).toBe(1);
+
+        // Re-enqueue without includeTtl — this is what waitpoint/checkpoint
+        // resume paths do.
+        await engine.enqueueSystem.enqueueRun({
+          run,
+          env: authenticatedEnvironment,
+          tx: prisma,
+          skipRunLock: true,
+          includeTtl: false,
+        });
+
+        // Wait well past the original 1s TTL deadline. The run was first
+        // enqueued ~0s ago, so this is far beyond the original deadline.
+        await setTimeout(2_500);
+
+        // Run must still exist and must NOT have been expired.
+        expect(expiredEvents.length).toBe(0);
+        const reenqueuedRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        // Whatever status the dequeue/re-enqueue flow leaves the run in, it
+        // must NOT be EXPIRED — that's the contract this test locks in.
+        expect(reenqueuedRun?.status).not.toBe("EXPIRED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "DEV runs sitting on worker queue still expire via legacy per-run job",
+    async ({ prisma, redisOptions }) => {
+      // The batch TTL path only expires runs still in the queue sorted set.
+      // In DEV, runs are fast-pathed straight to the worker queue, and if the
+      // dev CLI isn't running they can sit there forever. The legacy per-run
+      // expireRun job is kept for DEV specifically to cover this case.
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "DEVELOPMENT");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          // TTL batch path is enabled but should never see this run: it goes
+          // straight to the worker queue via fast-path. The legacy per-run
+          // job is what should expire it.
+          ttlSystem: {
+            pollIntervalMs: 100,
+            batchSize: 10,
+            batchMaxWaitMs: 100,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        let expiredEventData: EventBusEventArgs<"runExpired">[0] | undefined;
+        engine.eventBus.on("runExpired", (result) => {
+          expiredEventData = result;
+        });
+
+        // Trigger a DEV run with fast-path enabled and a short TTL. The run
+        // should land in the worker queue without entering the TTL set.
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_devttl1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "tdevttl1",
+            spanId: "sdevttl1",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+            enableFastPath: true,
+          },
+          prisma
+        );
+
+        // Wait past the TTL. The legacy per-run job should fire and expire it.
+        await setTimeout(1_500);
+
+        assertNonNullable(expiredEventData);
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   containerTest("Multiple runs expiring via TTL batch", async ({ prisma, redisOptions }) => {
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -322,6 +549,7 @@ describe("RunEngine ttl", () => {
         ttlSystem: {
           pollIntervalMs: 100,
           batchSize: 10,
+          batchMaxWaitMs: 100,
         },
       },
       runLock: {
@@ -346,6 +574,12 @@ describe("RunEngine ttl", () => {
       const taskIdentifier = "test-task";
 
       await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      // TTL only expires runs still queued waiting on a concurrency slot.
+      await engine.runQueue.updateEnvConcurrencyLimits({
+        ...authenticatedEnvironment,
+        maximumConcurrencyLimit: 0,
+      });
 
       engine.eventBus.on("runExpired", (result) => {
         expiredEvents.push(result);
@@ -384,8 +618,10 @@ describe("RunEngine ttl", () => {
         expect(executionData.snapshot.executionStatus).toBe("QUEUED");
       }
 
-      // Wait for TTL to expire
-      await setTimeout(1_500);
+      // Wait for TTL to expire. Concurrent triggers can land in different
+      // 100ms TTL-poll windows, so allow enough headroom for any stragglers
+      // to be claimed in a subsequent poll and flushed.
+      await setTimeout(2_500);
 
       // All runs should be expired
       expect(expiredEvents.length).toBe(3);
@@ -450,6 +686,7 @@ describe("RunEngine ttl", () => {
         ttlSystem: {
           pollIntervalMs: 100,
           batchSize: 10,
+          batchMaxWaitMs: 100,
         },
       },
       runLock: {
@@ -538,6 +775,7 @@ describe("RunEngine ttl", () => {
           ttlSystem: {
             pollIntervalMs: 100,
             batchSize: 10,
+            batchMaxWaitMs: 100,
           },
         },
         runLock: {
@@ -562,6 +800,12 @@ describe("RunEngine ttl", () => {
         const taskIdentifier = "test-task";
 
         await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // TTL only expires runs still queued waiting on a concurrency slot.
+        await engine.runQueue.updateEnvConcurrencyLimits({
+          ...authenticatedEnvironment,
+          maximumConcurrencyLimit: 0,
+        });
 
         engine.eventBus.on("runExpired", (result) => {
           expiredEvents.push(result);
@@ -631,10 +875,9 @@ describe("RunEngine ttl", () => {
 
       const expiredEvents: EventBusEventArgs<"runExpired">[0][] = [];
 
-      // Disable worker to prevent the scheduleExpireRun job from firing before
-      // we can test the dequeue path. Use masterQueueConsumersDisabled so we can
-      // manually trigger dequeue via processMasterQueueForEnvironment.
-      // TTL consumers start independently and will expire the run after their poll interval.
+      // Use masterQueueConsumersDisabled so we can manually trigger dequeue via
+      // processMasterQueueForEnvironment. TTL consumers start independently and
+      // will expire the run after their poll interval.
       const engine = new RunEngine({
         prisma,
         worker: {
@@ -651,6 +894,7 @@ describe("RunEngine ttl", () => {
           ttlSystem: {
             pollIntervalMs: 5000,
             batchSize: 10,
+            batchMaxWaitMs: 100,
           },
         },
         runLock: {
@@ -781,6 +1025,7 @@ describe("RunEngine ttl", () => {
           ttlSystem: {
             pollIntervalMs: 5000,
             batchSize: 10,
+            batchMaxWaitMs: 100,
           },
         },
         runLock: {
@@ -878,7 +1123,6 @@ describe("RunEngine ttl", () => {
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      // Disable worker to prevent the scheduleExpireRun job from firing.
       // Use masterQueueConsumersDisabled so we can manually trigger dequeue.
       // Very long TTL consumer interval so it doesn't interfere.
       const engine = new RunEngine({
@@ -1246,6 +1490,7 @@ describe("RunEngine ttl", () => {
           ttlSystem: {
             pollIntervalMs: 100,
             batchSize: 10,
+            batchMaxWaitMs: 100,
           },
         },
         runLock: {
@@ -1271,6 +1516,16 @@ describe("RunEngine ttl", () => {
         const childTask = "child-task";
 
         await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        // TTL only expires runs still queued waiting on a concurrency slot.
+        // Cap env concurrency at exactly 1 (limit=1, burstFactor=1) so the
+        // parent takes the only slot and the child stays queued long enough
+        // for the new TTL path to expire it.
+        await engine.runQueue.updateEnvConcurrencyLimits({
+          ...authenticatedEnvironment,
+          maximumConcurrencyLimit: 1,
+          concurrencyLimitBurstFactor: new Decimal(1.0),
+        });
 
         // Trigger the parent run
         const parentRun = await engine.trigger(

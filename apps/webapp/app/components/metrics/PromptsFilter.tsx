@@ -34,8 +34,9 @@ export function PromptsFilter({ possiblePrompts }: PromptsFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by prompt"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Prompts</span>
+                <span className="ml-1">Prompts</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -113,7 +114,7 @@ function PromptsDropdown({
         <ComboBox placeholder="Filter by prompt..." value={searchValue} />
         <SelectList>
           {filtered.map((slug) => (
-            <SelectItem key={slug} value={slug} icon={<DocumentTextIcon className="size-4" />}>
+            <SelectItem key={slug} value={slug} className="text-text-bright" icon={<DocumentTextIcon className="size-4 text-text-dimmed" />}>
               {slug}
             </SelectItem>
           ))}

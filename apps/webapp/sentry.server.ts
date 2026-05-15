@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/remix";
+import { addOtelTraceContextToEvent } from "./app/utils/sentryTraceContext.server";
 
 if (process.env.SENTRY_DSN) {
   console.log("🔭 Initializing Sentry");
@@ -29,4 +30,6 @@ if (process.env.SENTRY_DSN) {
     ignoreErrors: ["queryRoute() call aborted", /^ServiceValidationError(?::|$)/],
     includeLocalVariables: false,
   });
+
+  Sentry.addEventProcessor(addOtelTraceContextToEvent);
 }

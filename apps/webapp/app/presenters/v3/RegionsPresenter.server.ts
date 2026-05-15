@@ -10,6 +10,7 @@ import { getCurrentPlan } from "~/services/platform.v3.server";
 export type Region = {
   id: string;
   name: string;
+  masterQueue: string;
   description?: string;
   cloudProvider?: string;
   location?: string;
@@ -73,6 +74,7 @@ export class RegionsPresenter extends BasePresenter {
       select: {
         id: true,
         name: true,
+        masterQueue: true,
         description: true,
         cloudProvider: true,
         location: true,
@@ -96,6 +98,7 @@ export class RegionsPresenter extends BasePresenter {
     const regions: Region[] = visibleRegions.map((region) => ({
       id: region.id,
       name: region.name,
+      masterQueue: region.masterQueue,
       description: region.description ?? undefined,
       cloudProvider: region.cloudProvider ?? undefined,
       location: region.location ?? undefined,
@@ -110,6 +113,7 @@ export class RegionsPresenter extends BasePresenter {
         select: {
           id: true,
           name: true,
+          masterQueue: true,
           description: true,
           cloudProvider: true,
           location: true,
@@ -130,6 +134,7 @@ export class RegionsPresenter extends BasePresenter {
         regions.push({
           id: defaultWorkerGroup.id,
           name: defaultWorkerGroup.name,
+          masterQueue: defaultWorkerGroup.masterQueue,
           description: defaultWorkerGroup.description ?? undefined,
           cloudProvider: defaultWorkerGroup.cloudProvider ?? undefined,
           location: defaultWorkerGroup.location ?? undefined,

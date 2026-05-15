@@ -1,13 +1,12 @@
-import { BellAlertIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
-import { motion } from "framer-motion";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import { Header3 } from "~/components/primitives/Headers";
+import { useCallback, useEffect, useRef, useState } from "react";
+import simplur from "simplur";
+import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { usePlatformNotifications } from "~/routes/resources.platform-notifications";
-import { cn } from "~/utils/cn";
+import { NotificationCard } from "./NotificationCard";
 
 type Notification = {
   id: string;
@@ -102,211 +101,57 @@ export function NotificationPanel({
     return null;
   }
 
+  const { title, description, image, actionUrl, dismissOnAction } = notification.payload.data;
   const card = (
     <NotificationCard
-      notification={notification}
-      onDismiss={handleDismiss}
+      title={title}
+      description={description}
+      image={image}
+      actionUrl={actionUrl}
+      onDismiss={() => handleDismiss(notification.id)}
+      onCardClick={() => {
+        fireClickBeacon(notification.id);
+        if (dismissOnAction) {
+          handleDismiss(notification.id);
+        }
+      }}
       onLinkClick={() => fireClickBeacon(notification.id)}
     />
   );
 
   return (
     <Popover>
-      <div className="p-1">
-        {/* Expanded sidebar: show card directly */}
-        <motion.div
-          initial={false}
-          animate={{
-            height: isCollapsed ? 0 : "auto",
-            opacity: isCollapsed ? 0 : 1,
-          }}
-          transition={{ duration: 0.15 }}
-          className="overflow-hidden"
-        >
-          {card}
-        </motion.div>
-
-        {/* Collapsed sidebar: show bell icon that opens popover */}
-        <motion.div
-          initial={false}
-          animate={{
-            height: isCollapsed ? "auto" : 0,
-            opacity: isCollapsed ? 1 : 0,
-          }}
-          transition={{ duration: 0.15 }}
-          className="overflow-hidden"
-        >
+      <div className={isCollapsed ? "p-1" : "p-2"}>
+        {isCollapsed ? (
           <SimpleTooltip
+            asChild
             button={
-              <PopoverTrigger className="flex !h-8 w-full items-center justify-center rounded border border-charcoal-650 bg-charcoal-750/50 transition-colors hover:border-charcoal-600 hover:bg-charcoal-700/50">
-                <div className="relative">
-                  <BellAlertIcon className="size-5 text-text-dimmed" />
-                  <span
-                    className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-medium text-white"
-                    style={{ backgroundColor: "#6366f1" }}
-                  >
-                    {visibleNotifications.length}
-                  </span>
-                </div>
-              </PopoverTrigger>
+              <div className="relative">
+                <PopoverTrigger asChild>
+                  <Button variant="small-menu-item" className="h-8 w-[2.1875rem] justify-center">
+                    <BellAlertIcon className="size-5" />
+                  </Button>
+                </PopoverTrigger>
+                <span
+                  className="pointer-events-none absolute -top-[0.2rem] right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.625rem] font-medium text-text-bright"
+                  style={{ backgroundColor: "#6366f1" }}
+                >
+                  {visibleNotifications.length}
+                </span>
+              </div>
             }
-            content="Notifications"
+            content={simplur`${visibleNotifications.length} notification[|s]`}
             side="right"
             sideOffset={8}
             disableHoverableContent
-            asChild
           />
-        </motion.div>
+        ) : (
+          card
+        )}
       </div>
-      <PopoverContent side="right" sideOffset={8} align="start" className="w-56 !min-w-0 p-0">
+      <PopoverContent side="right" sideOffset={8} align="end" className="w-56 !min-w-0 p-0">
         {card}
       </PopoverContent>
     </Popover>
   );
-}
-
-function NotificationCard({
-  notification,
-  onDismiss,
-  onLinkClick,
-}: {
-  notification: Notification;
-  onDismiss: (id: string) => void;
-  onLinkClick: () => void;
-}) {
-  const { title, description, image, actionUrl, dismissOnAction } = notification.payload.data;
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-  const descriptionRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const el = descriptionRef.current;
-    if (el) {
-      setIsOverflowing(el.scrollHeight > el.clientHeight);
-    }
-  }, [description]);
-
-  const handleDismiss = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onDismiss(notification.id);
-  };
-
-  const handleToggleExpand = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsExpanded((v) => !v);
-  };
-
-  const handleCardClick = () => {
-    onLinkClick();
-    if (dismissOnAction) {
-      onDismiss(notification.id);
-    }
-  };
-
-  const Wrapper = actionUrl ? "a" : "div";
-  const wrapperProps = actionUrl
-    ? {
-        href: actionUrl,
-        target: "_blank" as const,
-        rel: "noopener noreferrer" as const,
-        onClick: handleCardClick,
-      }
-    : {};
-
-  return (
-    <Wrapper
-      {...wrapperProps}
-      className="group/card group relative block overflow-hidden rounded border transition-colors border-grid-bright bg-charcoal-750/50 no-underline"
-    >
-      {/* Header: title + dismiss */}
-      <div className="relative flex items-start gap-1 px-2 pt-1.5">
-        <Header3 className="flex-1 !text-xs">
-          {title}
-        </Header3>
-        <button
-          type="button"
-          onClick={handleDismiss}
-          className="shrink-0 rounded p-0.5 text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
-        >
-          <XMarkIcon className="size-3.5" />
-        </button>
-      </div>
-
-      {/* Body: description + chevron */}
-      <div className="relative px-2 pb-2">
-        <div className="flex gap-1">
-          <div className="min-w-0 flex-1">
-            <div
-              ref={descriptionRef}
-              className={cn(!isExpanded && "line-clamp-3")}
-            >
-              <ReactMarkdown components={getMarkdownComponents(onLinkClick)}>{description}</ReactMarkdown>
-            </div>
-            {(isOverflowing || isExpanded) && (
-              <button
-                type="button"
-                onClick={handleToggleExpand}
-                className="mt-0.5 text-xs text-indigo-400 hover:text-indigo-300"
-              >
-                {isExpanded ? "Show less" : "Show more"}
-              </button>
-            )}
-          </div>
-          {actionUrl && (
-            <div className="mt-1 flex shrink-0 items-center pb-1 text-text-dimmed group-hover/card:text-text-bright transition-colors">
-              <ChevronRightIcon className="size-4" />
-            </div>
-          )}
-        </div>
-
-        {image && (
-          <img src={sanitizeImageUrl(image)} alt="" className="mt-1.5 rounded" />
-        )}
-      </div>
-    </Wrapper>
-  );
-}
-
-/** Sanitize image URL to prevent XSS via javascript: or data: URIs. */
-function sanitizeImageUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol === "https:" || parsed.protocol === "http:") {
-      return parsed.href;
-    }
-    return "";
-  } catch {
-    return "";
-  }
-}
-
-function getMarkdownComponents(onLinkClick: () => void) {
-  return {
-    p: ({ children }: { children?: React.ReactNode }) => (
-      <p className="my-0.5 text-xs leading-relaxed text-text-dimmed">{children}</p>
-    ),
-    a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-indigo-400 underline hover:text-indigo-300 transition-colors"
-        onClick={(e) => {
-          e.stopPropagation();
-          onLinkClick();
-        }}
-      >
-        {children}
-      </a>
-    ),
-    strong: ({ children }: { children?: React.ReactNode }) => (
-      <strong className="font-semibold text-text-bright">{children}</strong>
-    ),
-    em: ({ children }: { children?: React.ReactNode }) => <em>{children}</em>,
-    code: ({ children }: { children?: React.ReactNode }) => (
-      <code className="rounded bg-charcoal-700 px-1 py-0.5 text-[11px]">{children}</code>
-    ),
-  };
 }

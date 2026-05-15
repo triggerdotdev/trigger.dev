@@ -65,6 +65,7 @@ type TableProps = {
   children: ReactNode;
   fullWidth?: boolean;
   showTopBorder?: boolean;
+  stickyHeader?: boolean;
 };
 
 // Add TableContext
@@ -79,6 +80,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
       fullWidth,
       variant = "dimmed",
       showTopBorder = true,
+      stickyHeader = false,
     },
     ref
   ) => {
@@ -86,7 +88,8 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
       <TableContext.Provider value={{ variant }}>
         <div
           className={cn(
-            "overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            stickyHeader ? "overflow-visible" : "overflow-x-auto",
             showTopBorder && "border-t",
             containerClassName,
             fullWidth && "w-full"

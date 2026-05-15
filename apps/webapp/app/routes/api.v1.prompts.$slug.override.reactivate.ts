@@ -22,8 +22,7 @@ const { action } = createActionApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "update",
-      resource: (params) => ({ prompts: params.slug }),
-      superScopes: ["admin"],
+      resource: (params) => ({ type: "prompts", id: params.slug }),
     },
   },
   async ({ body, params, authentication }) => {

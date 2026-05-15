@@ -10,6 +10,7 @@ import {
   ApiWaitpointListSearchParams,
 } from "~/presenters/v3/ApiWaitpointListPresenter.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import {
   createActionApiRoute,
@@ -92,10 +93,9 @@ const { action } = createActionApiRoute(
     } catch (error) {
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
       }
 
+      logger.error("Failed to create waitpoint token", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

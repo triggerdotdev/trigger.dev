@@ -45,8 +45,9 @@ export function LogsTaskFilter({ possibleTasks }: LogsTaskFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by task"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Tasks</span>
+                <span className="ml-1">Tasks</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -133,8 +134,9 @@ function TasksDropdown({
             .filter((item) => item.isInLatestDeployment)
             .map((item) => (
               <SelectItem
-                key={item.slug}
+                key={`${item.triggerSource}-${item.slug}`}
                 value={item.slug}
+                className="text-text-bright"
                 icon={
                   <TaskTriggerSourceIcon source={item.triggerSource} className="size-4 flex-none" />
                 }
@@ -149,8 +151,9 @@ function TasksDropdown({
                 .filter((item) => !item.isInLatestDeployment)
                 .map((item) => (
                   <SelectItem
-                    key={item.slug}
+                    key={`${item.triggerSource}-${item.slug}`}
                     value={item.slug}
+                    className="text-text-bright"
                     icon={
                       <span className="opacity-50">
                         <TaskTriggerSourceIcon

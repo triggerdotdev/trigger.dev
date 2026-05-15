@@ -5,3 +5,5 @@ import { RealtimeStreamsAPI } from "./realtimeStreams/index.js";
 export const realtimeStreams = RealtimeStreamsAPI.getInstance();
 
 export * from "./realtimeStreams/types.js";
+export { SessionStreamInstance } from "./realtimeStreams/sessionStreamInstance.js";
+export type { SessionStreamInstanceOptions } from "./realtimeStreams/sessionStreamInstance.js";

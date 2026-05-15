@@ -358,6 +358,14 @@ export type SubscribeToRunOptions = {
    * ```
    */
   skipColumns?: RealtimeRunSkipColumns;
+
+  /**
+   * An AbortSignal to cancel the subscription.
+   *
+   * When the signal is aborted, the underlying SSE connection is closed
+   * and the async iterator completes.
+   */
+  signal?: AbortSignal;
 };
 
 /**
@@ -403,6 +411,7 @@ function subscribeToRun<TRunId extends AnyRunHandle | AnyTask | string>(
     closeOnComplete:
       typeof options?.stopOnCompletion === "boolean" ? options.stopOnCompletion : true,
     skipColumns: options?.skipColumns,
+    signal: options?.signal,
   });
 }
 

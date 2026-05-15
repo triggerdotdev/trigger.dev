@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-import { PromptManifest, QueueManifest, TaskFile, TaskManifest } from "./schemas.js";
+import {
+  PromptManifest,
+  QueueManifest,
+  SkillManifest,
+  TaskFile,
+  TaskManifest,
+} from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),
@@ -70,6 +76,8 @@ export const BuildManifest = z.object({
     .optional(),
   /** Maps output file paths to their content hashes for deduplication during dev */
   outputHashes: z.record(z.string()).optional(),
+  /** Skills discovered and bundled into `.trigger/skills/{id}/` under `outputPath`. */
+  skills: SkillManifest.array().optional(),
 });
 
 export type BuildManifest = z.infer<typeof BuildManifest>;
@@ -87,6 +95,7 @@ export const WorkerManifest = z.object({
   configPath: z.string(),
   tasks: TaskManifest.array(),
   prompts: PromptManifest.array().optional(),
+  skills: SkillManifest.array().optional(),
   queues: QueueManifest.array().optional(),
   workerEntryPoint: z.string(),
   controllerEntryPoint: z.string().optional(),

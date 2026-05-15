@@ -234,11 +234,6 @@ export default function Page() {
                     </TableBody>
                   </Table>
 
-                  {(pagination.next || pagination.previous) && (
-                    <div className="flex justify-end border-t border-grid-dimmed px-2 py-3">
-                      <ListPagination list={{ pagination }} />
-                    </div>
-                  )}
                 </div>
               </div>
             </ResizablePanel>

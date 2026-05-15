@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
@@ -68,6 +70,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
@@ -92,18 +96,20 @@ jobs:
       - name: Extract version from tag or input
         id: version
         run: |
-          if [ -n "${{ inputs.chart_version }}" ]; then
-            VERSION="${{ inputs.chart_version }}"
+          if [ -n "${INPUTS_CHART_VERSION}" ]; then
+            VERSION="${INPUTS_CHART_VERSION}"
           else
-            VERSION="${{ github.ref_name }}"
+            VERSION="${GITHUB_REF_NAME}"
             VERSION="${VERSION#helm-v}"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing version: $VERSION"
+        env:
+          INPUTS_CHART_VERSION: ${{ inputs.chart_version }}
 
       - name: Check Chart.yaml version matches release version
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${STEPS_VERSION_OUTPUTS_VERSION}"
           CHART_VERSION=$(grep '^version:' ./hosting/k8s/helm/Chart.yaml | awk '{print $2}')
           echo "Chart.yaml version: $CHART_VERSION"
           echo "Release version: $VERSION"
@@ -112,6 +118,8 @@ jobs:
             exit 1
           fi
           echo "✅ Chart.yaml version matches release version."
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Package Helm Chart
         run: |
@@ -119,11 +127,13 @@ jobs:
 
       - name: Push Helm Chart to GHCR
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${STEPS_VERSION_OUTPUTS_VERSION}"
           CHART_PACKAGE="/tmp/${{ env.CHART_NAME }}-${VERSION}.tgz"
           
           # Push to GHCR OCI registry
           helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
+        env:
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
 
       - name: Create GitHub Release
         id: release

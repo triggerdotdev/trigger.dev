@@ -8,7 +8,10 @@ import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { swapSessionRun } from "~/services/realtime/sessionRunManager.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   session: z.string(),
@@ -42,15 +45,18 @@ const { action, loader } = createActionApiRoute(
       resolveSessionByIdOrExternalId($replica, auth.environment.id, params.session),
     authorization: {
       action: "write",
+      // Multi-key: the session is addressable by URL param, friendlyId,
+      // and externalId — a JWT scoped to any of them grants access.
+      // Type-level `write:sessions` (no id) also matches; `write:all` /
+      // `admin` bypass via the JWT ability's wildcard branches.
       resource: (params, _, __, ___, session) => {
         const ids = new Set<string>([params.session]);
         if (session) {
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return { sessions: [...ids] };
+        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
       },
-      superScopes: ["write:sessions", "write:all", "admin"],
     },
   },
   async ({ authentication, params, body, resource: session }) => {

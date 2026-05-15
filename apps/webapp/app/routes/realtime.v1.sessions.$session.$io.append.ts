@@ -12,7 +12,10 @@ import {
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
@@ -49,15 +52,16 @@ const { action, loader } = createActionApiRoute(
       action: "write",
       // Authorize against the union of the URL form, friendlyId, and
       // externalId so a JWT scoped to any form authorizes any URL.
+      // Type-level `write:sessions` (no id) also matches; `write:all` /
+      // `admin` bypass via the JWT ability's wildcard branches.
       resource: (params, _, __, ___, session) => {
         const ids = new Set<string>([params.session]);
         if (session) {
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return { sessions: [...ids] };
+        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
       },
-      superScopes: ["write:sessions", "write:all", "admin"],
     },
   },
   async ({ request, params, authentication, resource: session }) => {
@@ -81,7 +85,9 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return json(
@@ -133,7 +139,12 @@ const { action, loader } = createActionApiRoute(
           { status: appendError.status ?? 422 }
         );
       }
-      return json({ ok: false, error: appendError.message }, { status: 500 });
+      logger.error("Failed to append to session stream", {
+        sessionId: session.id,
+        io: params.io,
+        error: appendError,
+      });
+      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
     }
 
     // Fire any run-scoped waitpoints registered against this channel. Best

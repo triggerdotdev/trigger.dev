@@ -53,7 +53,7 @@ export function LogsLevelFilter() {
   const hasLevels = selectedLevels.length > 0 && selectedLevels.some((v) => v !== "");
 
   if (hasLevels) {
-    return <AppliedLevelFilter/>;
+    return <AppliedLevelFilter />;
   }
 
   return (
@@ -64,19 +64,16 @@ export function LogsLevelFilter() {
           variant="secondary/small"
           shortcut={shortcut}
           tooltipTitle="Filter by level"
+          className="pl-1.5"
         >
-          Level
+          <span className="ml-1">Level</span>
         </SelectTrigger>
       }
     />
   );
 }
 
-function LevelDropdown({
-  trigger,
-}: {
-  trigger: ReactNode;
-}) {
+function LevelDropdown({ trigger }: { trigger: ReactNode }) {
   const { values, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {

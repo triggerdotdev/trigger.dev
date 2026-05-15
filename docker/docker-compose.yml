@@ -137,6 +137,7 @@ services:
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
+      - ./config/clickhouse-disable-system-logs.xml:/etc/clickhouse-server/config.d/disable-system-logs.xml:ro
     networks:
       - app_network
     healthcheck:

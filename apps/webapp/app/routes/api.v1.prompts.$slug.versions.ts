@@ -27,8 +27,7 @@ export const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (_resource, params) => ({ prompts: params.slug }),
-      superScopes: ["read:prompts", "admin"],
+      resource: (_resource, params) => ({ type: "prompts", id: params.slug }),
     },
   },
   async ({ resource: prompt }) => {

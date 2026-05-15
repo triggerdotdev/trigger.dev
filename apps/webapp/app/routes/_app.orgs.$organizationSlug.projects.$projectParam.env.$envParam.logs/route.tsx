@@ -260,20 +260,22 @@ function FiltersBar({
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
-      <div className="flex flex-row flex-wrap items-center gap-1">
+      <div className="flex flex-row flex-wrap items-center gap-1.5">
         {list ? (
           <>
+            <SearchInput />
             <LogsTaskFilter possibleTasks={list.possibleTasks} />
             <LogsRunIdFilter />
             <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
             <LogsLevelFilter />
-            <SearchInput />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}
@@ -286,11 +288,13 @@ function FiltersBar({
             <LogsLevelFilter />
             <SearchInput />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}

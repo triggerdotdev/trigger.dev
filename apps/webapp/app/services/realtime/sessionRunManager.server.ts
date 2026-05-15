@@ -40,10 +40,22 @@ type EnsureRunForSessionParams = {
   /**
    * Session row to operate on. Caller is responsible for the env match —
    * we don't re-check `runtimeEnvironmentId` against `environment.id`.
+   *
+   * `friendlyId` is used to pre-populate `payload.sessionId` on the new
+   * run so the agent's `chat.agent` boot path can attach to `session.in/.out`
+   * without a control-plane round-trip. `currentRunId` is also forwarded
+   * as `payload.previousRunId` (with `continuation: true`) when the prior
+   * run is dead, so the agent's boot gate triggers snapshot.read + replay
+   * instead of treating the run as a fresh chat.
    */
   session: Pick<
     Session,
-    "id" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
+    | "id"
+    | "friendlyId"
+    | "taskIdentifier"
+    | "triggerConfig"
+    | "currentRunId"
+    | "currentRunVersion"
   >;
   environment: AuthenticatedEnvironment;
   reason: EnsureRunReason;
@@ -97,20 +109,78 @@ export async function ensureRunForSession(
   }
 
   // 1. Probe currentRunId.
+  let priorDeadRunFriendlyId: string | undefined;
   if (session.currentRunId) {
-    const status = await getRunStatus(session.currentRunId);
-    if (status && !isFinalRunStatus(status)) {
+    const probe = await getRunStatusAndFriendlyId(session.currentRunId);
+    if (probe && !isFinalRunStatus(probe.status)) {
       return { runId: session.currentRunId, triggered: false };
+    }
+    // Either the row vanished (probe null) or its status is final. Either
+    // way the prior run isn't going to consume new appends — but the
+    // session may still hold conversation state on `session.out` and an
+    // S3 snapshot keyed on `session.friendlyId`. Forward the prior run's
+    // public-form id (friendlyId — same shape as `ctx.run.id`) to the
+    // agent as `previousRunId` so its boot gate flips
+    // `couldHavePriorState` and replays the persisted state instead of
+    // treating this as a fresh chat. See `chat.agent`'s boot orchestration
+    // in `packages/trigger-sdk/src/v3/ai.ts`.
+    if (probe?.friendlyId) {
+      priorDeadRunFriendlyId = probe.friendlyId;
+    } else {
+      // Replica miss on a row we just observed via `currentRunId`. Retry
+      // on the writer so the customer's `runs.retrieve(previousRunId)`
+      // gets the public `run_*` form rather than the internal cuid.
+      const writerProbe = await prisma.taskRun.findFirst({
+        where: { id: session.currentRunId },
+        select: { friendlyId: true },
+      });
+      priorDeadRunFriendlyId = writerProbe?.friendlyId ?? session.currentRunId;
     }
   }
 
-  // 2. Validate config + trigger upfront.
+  // 2. Validate config + trigger upfront. Continuation overrides
+  // (`continuation`, `previousRunId`) are derived from session state above
+  // and merged AFTER caller-supplied overrides — caller can't accidentally
+  // unset them on a session that has had a prior run, but can still
+  // override `trigger`/`metadata` etc. `sessionId` is always set so the
+  // agent doesn't need a control-plane round-trip to look up the session
+  // friendlyId from `payload.chatId`.
+  // Continuation overrides strip the basePayload's first-run-only fields
+  // so a continuation run doesn't inherit a stale boot payload. The Session
+  // row's `triggerConfig.basePayload` is captured at create-time and used
+  // verbatim for every Run we trigger; if the customer included `message`
+  // / `messages` / `trigger: "submit-message"` to make the FIRST run boot
+  // straight into a first turn (via `chat.createStartSessionAction`), those
+  // values stick around and get replayed on every continuation. With
+  // `continuation: true` and `message`/`messages` cleared, the SDK boot
+  // path enters its continuation-wait branch and waits for the next
+  // session.in record before running a turn.
+  const continuationOverrides: Record<string, unknown> = {
+    sessionId: session.friendlyId,
+    ...(priorDeadRunFriendlyId !== undefined
+      ? {
+          continuation: true,
+          previousRunId: priorDeadRunFriendlyId,
+          // Clear sticky boot-payload fields so the new run waits for the
+          // next session.in record instead of re-processing whatever was
+          // in the original `createStartSessionAction({ basePayload })`.
+          message: undefined,
+          messages: undefined,
+          trigger: undefined,
+        }
+      : {}),
+  };
+  const mergedPayloadOverrides: Record<string, unknown> = {
+    ...(payloadOverrides ?? {}),
+    ...continuationOverrides,
+  };
+
   const config = SessionTriggerConfigSchema.parse(session.triggerConfig);
   const triggered = await triggerSessionRun({
     session,
     config,
     environment,
-    payloadOverrides,
+    payloadOverrides: mergedPayloadOverrides,
   });
 
   // 3. Try to claim the slot atomically.
@@ -161,6 +231,7 @@ export async function ensureRunForSession(
     where: { id: session.id },
     select: {
       id: true,
+      friendlyId: true,
       taskIdentifier: true,
       triggerConfig: true,
       currentRunId: true,
@@ -175,8 +246,15 @@ export async function ensureRunForSession(
   }
 
   if (fresh.currentRunId) {
-    const status = await getRunStatus(fresh.currentRunId);
-    if (status && !isFinalRunStatus(status)) {
+    // Same read-after-write reason as the `fresh` reload above: the winner
+    // just wrote `currentRunId` on the writer, so probe the writer too —
+    // the replica may not have the run row yet, and a missed probe forces
+    // another trigger+recurse until `ENSURE_RUN_FOR_SESSION_MAX_ATTEMPTS`.
+    const probe = await prisma.taskRun.findFirst({
+      where: { id: fresh.currentRunId },
+      select: { status: true, friendlyId: true },
+    });
+    if (probe && !isFinalRunStatus(probe.status)) {
       return { runId: fresh.currentRunId, triggered: false };
     }
   }
@@ -223,6 +301,9 @@ async function triggerSessionRun(params: {
       ...(config.queue ? { queue: { name: config.queue } } : {}),
       ...(config.tags ? { tags: config.tags } : {}),
       ...(config.maxAttempts !== undefined ? { maxAttempts: config.maxAttempts } : {}),
+      ...(config.maxDuration !== undefined ? { maxDuration: config.maxDuration } : {}),
+      ...(config.lockToVersion ? { lockToVersion: config.lockToVersion } : {}),
+      ...(config.region ? { region: config.region } : {}),
     },
   };
 
@@ -242,15 +323,32 @@ async function triggerSessionRun(params: {
 }
 
 type SwapSessionRunParams = {
+  /**
+   * Session row to swap. `friendlyId` is forwarded as `payload.sessionId`
+   * on the new run so the agent attaches to `session.in/.out` without a
+   * control-plane round-trip (same convention as
+   * {@link EnsureRunForSessionParams}).
+   */
   session: Pick<
     Session,
-    "id" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
+    | "id"
+    | "friendlyId"
+    | "taskIdentifier"
+    | "triggerConfig"
+    | "currentRunId"
+    | "currentRunVersion"
   >;
   /**
    * The run requesting the swap. Optimistic claim requires
    * `Session.currentRunId === callingRunId` so the swap can't clobber
    * a run triggered out-of-band (e.g. a parallel `.in/append` probe
    * that already replaced the dead run).
+   *
+   * Also forwarded as `payload.previousRunId` on the new run alongside
+   * `continuation: true` — every swap is a continuation by construction
+   * (`chat.requestUpgrade` / `chat.endRun` deliberately hand off prior
+   * conversation state to a new run), so the agent's boot gate flips
+   * `couldHavePriorState` and replays the snapshot + session.out tail.
    */
   callingRunId: string;
   environment: AuthenticatedEnvironment;
@@ -285,12 +383,39 @@ export async function swapSessionRun(
 ): Promise<SwapSessionRunResult> {
   const { session, callingRunId, environment, reason, payloadOverrides } = params;
 
+  // `callingRunId` is the internal cuid (`Session.currentRunId` stores
+  // cuid; the route handler resolves the wire's friendlyId before passing
+  // it here). The agent's `previousRunId` is customer-visible and must
+  // match the public `run_*` form exposed via `ctx.run.id` — resolve
+  // before forwarding.
+  const callingRunFriendlyId = await resolveRunFriendlyId(callingRunId);
+
+  // Continuation overrides — unconditionally set on swap. Unlike
+  // `ensureRunForSession`, there's no dead-run-detection branch here:
+  // every swap is a deliberate handoff from `callingRunId` (which owned
+  // prior conversation state) to a fresh run. Merged AFTER caller-supplied
+  // overrides so a caller can't accidentally unset them.
+  //
+  // Sticky boot-payload fields (`message` / `messages` / `trigger`) are
+  // cleared here for the same reason as in `ensureRunForSession`: the
+  // Session's basePayload is captured at create-time and replays on every
+  // continuation if not stripped. See the comment in `ensureRunForSession`.
+  const mergedPayloadOverrides: Record<string, unknown> = {
+    ...(payloadOverrides ?? {}),
+    sessionId: session.friendlyId,
+    continuation: true,
+    previousRunId: callingRunFriendlyId,
+    message: undefined,
+    messages: undefined,
+    trigger: undefined,
+  };
+
   const config = SessionTriggerConfigSchema.parse(session.triggerConfig);
   const triggered = await triggerSessionRun({
     session,
     config,
     environment,
-    payloadOverrides,
+    payloadOverrides: mergedPayloadOverrides,
   });
 
   const claim = await prisma.session.updateMany({
@@ -341,20 +466,55 @@ export async function swapSessionRun(
     select: { currentRunId: true },
   });
 
+  // Mirror `ensureRunForSession`'s "session vanished" branch: if we
+  // can't find the row (or it has no current run) on the writer right
+  // after losing the race, surface as an error rather than handing back
+  // `callingRunId` with `swapped: false` — that would tell the caller
+  // it's still the canonical run when in fact we don't know who is.
+  if (!fresh?.currentRunId) {
+    throw new SessionRunManagerError(
+      `Session ${session.id} has no currentRunId after preempted swap`
+    );
+  }
+
   return {
-    runId: fresh?.currentRunId ?? callingRunId,
+    runId: fresh.currentRunId,
     swapped: false,
   };
 }
 
-async function getRunStatus(runId: string): Promise<TaskRunStatus | null> {
+async function getRunStatusAndFriendlyId(
+  runId: string
+): Promise<{ status: TaskRunStatus; friendlyId: string } | null> {
   // Use the read replica — this is a hot-path probe and stale-by-ms is
   // fine. The append handler re-checks if it ends up reusing the runId.
+  // `friendlyId` is fetched alongside `status` so the dead-run-detection
+  // branch in `ensureRunForSession` can forward the public-form id as
+  // `payload.previousRunId` without a second read. `Session.currentRunId`
+  // stores the internal cuid; the agent's wire / customer hooks expose
+  // the friendlyId via `ctx.run.id`, so consistency matters.
   const row = await $replica.taskRun.findFirst({
     where: { id: runId },
-    select: { status: true },
+    select: { status: true, friendlyId: true },
   });
-  return row?.status ?? null;
+  return row ?? null;
+}
+
+/**
+ * Resolve a TaskRun cuid to its friendlyId. Used by `swapSessionRun` to
+ * forward the calling run's public-form id as `payload.previousRunId` on
+ * the new run. Falls back to the cuid on lookup miss so the swap doesn't
+ * fail just because the read replica hasn't caught up — the agent only
+ * uses `previousRunId` for customer-visible bookkeeping (e.g.
+ * `runs.retrieve(previousRunId)`), so a stale-but-non-null value is
+ * acceptable degraded behavior.
+ */
+async function resolveRunFriendlyId(runId: string): Promise<string> {
+  const row = await $replica.taskRun.findFirst({
+    where: { id: runId },
+    select: { friendlyId: true },
+  });
+  return row?.friendlyId ?? runId;
 }
 
 async function cancelLostRaceRun(

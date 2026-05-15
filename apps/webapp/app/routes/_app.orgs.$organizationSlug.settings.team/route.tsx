@@ -9,7 +9,7 @@ import {
   useFetcher,
   useNavigation,
 } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -41,24 +41,27 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { cn } from "~/utils/cn";
 import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { cn } from "~/utils/cn";
+import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   inviteTeamMemberPath,
+  organizationRolesPath,
   organizationTeamPath,
   resendInvitePath,
   revokeInvitePath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
-import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { SetSeatsAddOnService } from "~/v3/services/setSeatsAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
@@ -74,31 +77,51 @@ const Params = z.object({
   organizationSlug: z.string(),
 });
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = Params.parse(params);
-
-  const organization = await $replica.organization.findFirst({
-    where: { slug: organizationSlug },
+// Resolve slug → orgId in the dashboardLoader's context callback so the
+// rbac.authenticateSession call gets a real organizationId. The result
+// is cached for the duration of the request and reused by the handler
+// below (we re-find by slug there to get a typed value — the context
+// only sees the loosely typed return type).
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({
+    where: { slug },
     select: { id: true },
   });
+  return org?.id ?? null;
+}
 
-  if (!organization) {
-    throw new Response("Not Found", { status: 404 });
+export const loader = dashboardLoader(
+  {
+    params: Params,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+    authorization: { action: "read", resource: { type: "members" } },
+  },
+  async ({ user, ability, context }) => {
+    const orgId = context.organizationId;
+    if (!orgId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const presenter = new TeamPresenter();
+    const result = await presenter.call({
+      userId: user.id,
+      organizationId: orgId,
+    });
+
+    if (!result) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    // Pre-compute manage authority server-side so the UI gating matches
+    // the action gating (the action enforces it independently).
+    const canManageMembers = ability.can("manage", { type: "members" });
+
+    return typedjson({ ...result, canManageMembers });
   }
-
-  const presenter = new TeamPresenter();
-  const result = await presenter.call({
-    userId,
-    organizationId: organization.id,
-  });
-
-  if (!result) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return typedjson(result);
-};
+);
 
 const schema = z.object({
   memberId: z.string(),
@@ -111,89 +134,157 @@ const PurchaseSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce
-      .number()
-      .int("Must be a whole number")
-      .min(1, "Amount must be greater than 0"),
+    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
   }),
 ]);
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = params;
-  invariant(organizationSlug, "organizationSlug not found");
+const SetRoleSchema = z.object({
+  userId: z.string(),
+  roleId: z.string(),
+});
 
-  const formData = await request.formData();
-  const formType = formData.get("_formType");
+export const action = dashboardAction(
+  {
+    params: Params,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+    // No top-level authorization — different intents have different
+    // requirements. Each branch inside checks the right ability:
+    //   set-role        → manage:members
+    //   purchase-seats  → manage:billing
+    //   remove-member   → manage:members (skipped for self-leave)
+    // Don't rely on the model-layer (removeTeamMember /
+    // SetSeatsAddOnService) for enforcement — those are defense in
+    // depth; the route layer is where the ability gate belongs.
+  },
+  async ({ user, ability, request, params, context }) => {
+    const userId = user.id;
+    const { organizationSlug } = params;
+    invariant(organizationSlug, "organizationSlug not found");
 
-  if (formType === "purchase-seats") {
-    const org = await $replica.organization.findFirst({
-      where: { slug: organizationSlug },
-      select: { id: true },
-    });
+    const formData = await request.formData();
+    const formType = formData.get("_formType");
 
-    if (!org) {
-      return json({ ok: false, error: "Organization not found" } as const);
+    if (formType === "set-role") {
+      if (!ability.can("manage", { type: "members" })) {
+        return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+      }
+      const orgId = context.organizationId;
+      if (!orgId) {
+        return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
+      }
+      const submission = parse(formData, { schema: SetRoleSchema });
+      if (!submission.value || submission.intent !== "submit") {
+        return json(submission);
+      }
+      const result = await rbac.setUserRole({
+        userId: submission.value.userId,
+        organizationId: orgId,
+        roleId: submission.value.roleId,
+      });
+      if (!result.ok) {
+        return json({ ok: false, error: result.error } as const, { status: 400 });
+      }
+      return json({ ok: true } as const);
     }
 
-    const submission = parse(formData, { schema: PurchaseSchema });
+    if (formType === "purchase-seats") {
+      // Adjusting seat count is a billing operation. Pre-RBAC the team
+      // page's loader gated the entire route on Owner/Admin, so reaching
+      // this action implied authority. Post-RBAC the loader requires
+      // `read:members` (broader audience), so gate the seat purchase
+      // explicitly here against the right ability rather than relying
+      // on the SetSeatsAddOnService for enforcement at the model layer.
+      if (!ability.can("manage", { type: "billing" })) {
+        return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+      }
+      // Reuse the orgId the dashboardBuilder already resolved in the
+      // context callback (single slug → orgId lookup per request,
+      // regardless of whether the OSS fallback or cloud plugin
+      // services the auth — the plugin takes `organizationId` as
+      // input and doesn't re-resolve from a slug).
+      const orgId = context.organizationId;
+      if (!orgId) {
+        return json({ ok: false, error: "Organization not found" } as const);
+      }
+
+      const submission = parse(formData, { schema: PurchaseSchema });
+
+      if (!submission.value || submission.intent !== "submit") {
+        return json(submission);
+      }
+
+      const service = new SetSeatsAddOnService();
+      const [error, result] = await tryCatch(
+        service.call({
+          userId,
+          organizationId: orgId,
+          action: submission.value.action,
+          amount: submission.value.amount,
+        })
+      );
+
+      if (error) {
+        submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+        return json(submission);
+      }
+
+      if (!result.success) {
+        submission.error.amount = [result.error];
+        return json(submission);
+      }
+
+      return json({ ok: true } as const);
+    }
+
+    const submission = parse(formData, { schema });
 
     if (!submission.value || submission.intent !== "submit") {
       return json(submission);
     }
 
-    const service = new SetSeatsAddOnService();
-    const [error, result] = await tryCatch(
-      service.call({
-        userId,
-        organizationId: org.id,
-        action: submission.value.action,
-        amount: submission.value.amount,
-      })
-    );
-
-    if (error) {
-      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-      return json(submission);
-    }
-
-    if (!result.success) {
-      submission.error.amount = [result.error];
-      return json(submission);
-    }
-
-    return json({ ok: true } as const);
-  }
-
-  const submission = parse(formData, { schema });
-
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
-
-  try {
-    const deletedMember = await removeTeamMember({
-      userId,
-      memberId: submission.value.memberId,
-      slug: organizationSlug,
+    // Default intent: remove a member or leave the org. Self-leave (the
+    // actor removing their own membership) is always allowed. Removing
+    // another member requires `manage:members` — pre-RBAC the
+    // `removeTeamMember` model fn only verified the actor was a member
+    // of the target org, so any org member could remove any other
+    // member by id; this gate fixes that latent permissions hole.
+    const targetMember = await $replica.orgMember.findFirst({
+      where: { id: submission.value.memberId },
+      select: { userId: true },
     });
-
-    if (deletedMember.userId === userId) {
-      return redirectWithSuccessMessage("/", request, `You left the organization`);
+    const isSelfLeave = targetMember?.userId === userId;
+    if (!isSelfLeave && !ability.can("manage", { type: "members" })) {
+      return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
     }
 
-    return redirectWithSuccessMessage(
-      organizationTeamPath(deletedMember.organization),
-      request,
-      `Removed ${deletedMember.user.name ?? "member"} from team`
-    );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    try {
+      const deletedMember = await removeTeamMember({
+        userId,
+        memberId: submission.value.memberId,
+        slug: organizationSlug,
+      });
+
+      if (deletedMember.userId === userId) {
+        return redirectWithSuccessMessage("/", request, `You left the organization`);
+      }
+
+      return redirectWithSuccessMessage(
+        organizationTeamPath(deletedMember.organization),
+        request,
+        `Removed ${deletedMember.user.name ?? "member"} from team`
+      );
+    } catch (error: any) {
+      return json({ errors: { body: error.message } }, { status: 400 });
+    }
   }
-};
+);
 
 type Member = UseDataFunctionReturn<typeof loader>["members"][number];
 type Invite = UseDataFunctionReturn<typeof loader>["invites"][number];
+type Role = UseDataFunctionReturn<typeof loader>["roles"][number];
 
 export default function Page() {
   const {
@@ -205,7 +296,16 @@ export default function Page() {
     seatPricing,
     maxSeatQuota,
     planSeatLimit,
+    roles,
+    assignableRoleIds,
+    memberRoles,
+    canManageMembers,
   } = useTypedLoaderData<typeof loader>();
+  // Build a userId → roleId map so the dropdown's defaultValue matches
+  // each member's current assignment without re-querying.
+  const memberRoleByUserId = new Map<string, string>(
+    memberRoles.flatMap((m) => (m.role ? [[m.userId, m.role.id]] : []))
+  );
   const user = useUser();
   const organization = useOrganization();
 
@@ -242,10 +342,31 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-          {requiresUpgrade ? (
+          {!canManageMembers ? (
+            // Gate the invite affordance on manage:members. The action
+            // route enforces this independently — hiding it here just
+            // avoids dead UI for non-managers.
             <SimpleTooltip
               button={
-                <ButtonContent variant="primary/small" LeadingIcon={UserPlusIcon} className="cursor-not-allowed opacity-50">
+                <ButtonContent
+                  variant="primary/small"
+                  LeadingIcon={UserPlusIcon}
+                  className="cursor-not-allowed opacity-50"
+                >
+                  Invite a team member
+                </ButtonContent>
+              }
+              content="You don't have permission to invite team members"
+              disableHoverableContent
+            />
+          ) : requiresUpgrade ? (
+            <SimpleTooltip
+              button={
+                <ButtonContent
+                  variant="primary/small"
+                  LeadingIcon={UserPlusIcon}
+                  className="cursor-not-allowed opacity-50"
+                >
                   Invite a team member
                 </ButtonContent>
               }
@@ -291,34 +412,57 @@ export default function Page() {
                   </ul>
                 </>
               )}
-              <Header2>Active team members</Header2>
-              <ul className="divide-ui-border mb-8 mt-3 flex w-full flex-col divide-y border-y border-grid-bright">
+              <div className="mt-4 flex items-baseline justify-between">
+                <Header2>Active team members</Header2>
+                {roles.length > 0 ? (
+                  <a
+                    className="text-xs text-text-link hover:underline"
+                    href={organizationRolesPath(organization)}
+                  >
+                    View all role permissions →
+                  </a>
+                ) : null}
+              </div>
+              <div className="mb-8 mt-3 grid w-full grid-cols-[1fr_auto_auto] items-center gap-x-2 border-y border-grid-bright">
                 {members.map((member) => (
-                  <li key={member.user.id} className="flex items-center gap-x-4 py-4">
-                    <UserAvatar
-                      avatarUrl={member.user.avatarUrl}
-                      name={member.user.name}
-                      className="size-10"
-                    />
-                    <div className="flex flex-col gap-0.5">
-                      <Header3>
-                        {member.user.name}{" "}
-                        {member.user.id === user.id && (
-                          <span className="text-text-dimmed">(You)</span>
-                        )}
-                      </Header3>
-                      <Paragraph variant="small">{member.user.email}</Paragraph>
+                  <div
+                    key={member.user.id}
+                    className="col-span-3 grid grid-cols-subgrid items-center gap-x-2 border-b border-grid-bright py-2 last:border-b-0"
+                  >
+                    <div className="flex items-center gap-x-2">
+                      <UserAvatar
+                        avatarUrl={member.user.avatarUrl}
+                        name={member.user.name}
+                        className="size-10"
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <Header3>
+                          {member.user.name}{" "}
+                          {member.user.id === user.id && (
+                            <span className="text-text-dimmed">(You)</span>
+                          )}
+                        </Header3>
+                        <Paragraph variant="small">{member.user.email}</Paragraph>
+                      </div>
                     </div>
-                    <div className="flex grow items-center justify-end gap-4">
+                    <RolePicker
+                      memberUserId={member.user.id}
+                      currentRoleId={memberRoleByUserId.get(member.user.id) ?? null}
+                      roles={roles}
+                      assignableRoleIds={assignableRoleIds}
+                      canManageMembers={canManageMembers}
+                    />
+                    <div className="justify-self-end">
                       <LeaveRemoveButton
                         userId={user.id}
                         member={member}
                         memberCount={members.length}
+                        canManageMembers={canManageMembers}
                       />
                     </div>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           </div>
 
@@ -387,10 +531,12 @@ function LeaveRemoveButton({
   userId,
   member,
   memberCount,
+  canManageMembers,
 }: {
   userId: string;
   member: Member;
   memberCount: number;
+  canManageMembers: boolean;
 }) {
   const organization = useOrganization();
 
@@ -409,7 +555,8 @@ function LeaveRemoveButton({
       );
     }
 
-    //you leave the team
+    //you leave the team — leaving is always permitted regardless of
+    //manage:members; non-managers can still leave on their own.
     return (
       <LeaveTeamModal
         member={member}
@@ -421,7 +568,20 @@ function LeaveRemoveButton({
     );
   }
 
-  //you remove another member
+  //you remove another member — requires manage:members
+  if (!canManageMembers) {
+    return (
+      <SimpleTooltip
+        button={
+          <ButtonContent variant="secondary/small" className="cursor-not-allowed opacity-50">
+            Remove from team
+          </ButtonContent>
+        }
+        disableHoverableContent
+        content="You don't have permission to remove team members"
+      />
+    );
+  }
   return (
     <LeaveTeamModal
       member={member}
@@ -430,6 +590,100 @@ function LeaveRemoveButton({
       description={`They will no longer have access to ${organization.title}. To regain access, you will need to invite them again.`}
       actionText="Remove from team"
     />
+  );
+}
+
+// Inline role picker — submits a `_formType=set-role` form via fetcher
+// so the change persists without a full page reload. Disabled options
+// (and the picker itself) reflect plan gating + manage:members; the
+// server's setUserRole enforces both checks again as the source of
+// truth, so this is a UI-affordance layer only.
+function RolePicker({
+  memberUserId,
+  currentRoleId,
+  roles,
+  assignableRoleIds,
+  canManageMembers,
+}: {
+  memberUserId: string;
+  currentRoleId: string | null;
+  roles: Role[];
+  assignableRoleIds: string[];
+  canManageMembers: boolean;
+}) {
+  const organization = useOrganization();
+  const fetcher = useFetcher<{ ok: boolean; error?: string } | { ok: true }>();
+  const assignable = new Set(assignableRoleIds);
+  // With no RBAC plugin installed, the loader returns no roles —
+  // render nothing rather than an empty dropdown.
+  if (roles.length === 0) return null;
+
+  const isSubmitting = fetcher.state === "submitting";
+  const error =
+    fetcher.data && "error" in fetcher.data && fetcher.data.error ? fetcher.data.error : null;
+
+  const picker = (
+    <Select
+      // Controlled — keeps the dropdown in sync with the persisted
+      // role even after a failed set-role fetcher submit (the server
+      // kept the old role; without `value` the UI would show the
+      // attempted change).
+      value={currentRoleId ?? ""}
+      items={roles}
+      variant="tertiary/small"
+      disabled={!canManageMembers || isSubmitting}
+      dropdownIcon
+      text={(v) => roles.find((r) => r.id === v)?.name ?? "No role"}
+      setValue={(next) => {
+        if (typeof next !== "string" || next === (currentRoleId ?? "")) return;
+        // Upgrade-link rows have a value too (Ariakit needs one to
+        // make the row interactive — without it the Link inside
+        // doesn't even register the click), but they shouldn't
+        // submit the role-change form. The Link navigates the user
+        // to the plan-selection page; we just bail here.
+        if (!assignable.has(next)) return;
+        fetcher.submit(
+          { _formType: "set-role", userId: memberUserId, roleId: next },
+          { method: "post" }
+        );
+      }}
+    >
+      {(items) =>
+        items.map((role) => {
+          const isAssignable = assignable.has(role.id);
+          return isAssignable ? (
+            <SelectItem key={role.id} value={role.id}>
+              {role.name}
+            </SelectItem>
+          ) : (
+            <SelectLinkItem key={role.id} value={role.id} to={v3BillingPath(organization)}>
+              {role.name} (upgrade)
+            </SelectLinkItem>
+          );
+        })
+      }
+    </Select>
+  );
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {canManageMembers ? (
+        picker
+      ) : (
+        // Disabled <Select> swallows hover events on its own, so wrap it
+        // in a div the tooltip can attach to.
+        <SimpleTooltip
+          button={<div className="cursor-not-allowed">{picker}</div>}
+          content="You don't have permission to change roles"
+          disableHoverableContent
+        />
+      )}
+      {error ? (
+        <span className="text-xs text-error" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

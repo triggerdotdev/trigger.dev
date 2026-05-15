@@ -921,6 +921,7 @@ export class RunsReplicationService {
       run.maxDurationInSeconds ?? null, // max_duration_in_seconds
       annotations?.triggerSource ?? "", // trigger_source
       annotations?.rootTriggerSource ?? "", // root_trigger_source
+      annotations?.taskKind ?? "", // task_kind
       run.isWarmStart ?? null, // is_warm_start
     ];
   }

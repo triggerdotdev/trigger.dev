@@ -1,6 +1,4 @@
 import { useSearchParams } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -14,8 +12,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { prisma } from "~/db.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { getMissingLlmModels } from "~/services/admin/missingLlmModels.server";
 
 const LOOKBACK_OPTIONS = [
@@ -30,25 +27,24 @@ const SearchParams = z.object({
   lookbackHours: z.coerce.number().optional(),
 });
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.admin) throw redirect("/");
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ request }) => {
+    const url = new URL(request.url);
+    const lookbackHours = parseInt(url.searchParams.get("lookbackHours") ?? "24", 10);
 
-  const url = new URL(request.url);
-  const lookbackHours = parseInt(url.searchParams.get("lookbackHours") ?? "24", 10);
+    let models: Awaited<ReturnType<typeof getMissingLlmModels>> = [];
+    let error: string | undefined;
 
-  let models: Awaited<ReturnType<typeof getMissingLlmModels>> = [];
-  let error: string | undefined;
+    try {
+      models = await getMissingLlmModels({ lookbackHours });
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to query ClickHouse";
+    }
 
-  try {
-    models = await getMissingLlmModels({ lookbackHours });
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to query ClickHouse";
+    return typedjson({ models, lookbackHours, error });
   }
-
-  return typedjson({ models, lookbackHours, error });
-};
+);
 
 export default function AdminLlmModelsMissingRoute() {
   const { models, lookbackHours, error } = useTypedLoaderData<typeof loader>();

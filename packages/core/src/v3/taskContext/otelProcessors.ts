@@ -36,6 +36,17 @@ export class TaskContextSpanProcessor implements SpanProcessor {
       if (!taskContext.isRunDisabled && taskContext.ctx.run.tags?.length) {
         span.setAttribute(SemanticInternalAttributes.RUN_TAGS, taskContext.ctx.run.tags);
       }
+
+      // Stamp `gen_ai.conversation.id` (OTel GenAI semantic convention)
+      // directly on every span so it survives the OTLP ingest's `ctx.*`
+      // strip and lands in the stored attributes column without a schema
+      // migration.
+      if (taskContext.conversationId) {
+        span.setAttribute(
+          SemanticInternalAttributes.GEN_AI_CONVERSATION_ID,
+          taskContext.conversationId
+        );
+      }
     }
 
     if (!isPartialSpan(span) && !skipPartialSpan(span)) {
@@ -176,6 +187,11 @@ export class TaskContextMetricExporter implements PushMetricExporter {
 
     if (!taskContext.isRunDisabled && ctx.run.tags?.length) {
       contextAttrs[SemanticInternalAttributes.RUN_TAGS] = ctx.run.tags;
+    }
+
+    if (taskContext.conversationId) {
+      contextAttrs[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID] =
+        taskContext.conversationId;
     }
 
     const modified: ResourceMetrics = {
