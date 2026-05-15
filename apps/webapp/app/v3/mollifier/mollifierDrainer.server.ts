@@ -18,6 +18,30 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     throw new Error("MollifierDrainer initialised without a buffer — env vars inconsistent");
   }
 
+  // Validate BEFORE start() so a misconfigured shutdown timeout fails
+  // loud at module-load time and the singleton is never cached. If start()
+  // ran first and the throw propagated out, the loop would already be
+  // polling with no SIGTERM handler registered by the caller — exactly
+  // the failure mode the validation is supposed to prevent.
+  //
+  // The SIGTERM handler in worker.server.ts is sync fire-and-forget:
+  // `drainer.stop({ timeoutMs })` returns a promise that keeps the event
+  // loop alive, but in cluster mode the primary runs its own
+  // GRACEFUL_SHUTDOWN_TIMEOUT and will call `process.exit(0)`
+  // independently. If the drainer's deadline exceeds the primary's, the
+  // drainer is cut off mid-wait — "log a warning on timeout" turns into
+  // "hard exit with no log". 1s margin gives the primary room to finish
+  // its own teardown after the drainer settles.
+  const shutdownMarginMs = 1_000;
+  if (
+    env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS >=
+    env.GRACEFUL_SHUTDOWN_TIMEOUT - shutdownMarginMs
+  ) {
+    throw new Error(
+      `MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${shutdownMarginMs}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`,
+    );
+  }
+
   logger.debug("Initializing mollifier drainer", {
     concurrency: env.MOLLIFIER_DRAIN_CONCURRENCY,
     maxAttempts: env.MOLLIFIER_DRAIN_MAX_ATTEMPTS,
