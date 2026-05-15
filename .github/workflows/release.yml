@@ -64,6 +64,7 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       published_packages: ${{ steps.changesets.outputs.publishedPackages }}
       published_package_version: ${{ steps.get_version.outputs.package_version }}
+      is_prerelease: ${{ steps.get_version.outputs.is_prerelease }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 # zizmor: ignore[artipacked] needs persisted git creds for tag push; no artifact upload here so no leak path
@@ -124,6 +125,12 @@ jobs:
         run: |
           package_version=$(echo "${STEPS_CHANGESETS_OUTPUTS_PUBLISHEDPACKAGES}" | jq -r '.[0].version')
           echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+          # Any semver with a hyphen is a prerelease (e.g. 4.5.0-rc.0, 0.0.0-snapshot-...)
+          if [[ "${package_version}" == *-* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
         env:
           STEPS_CHANGESETS_OUTPUTS_PUBLISHEDPACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
 
@@ -133,13 +140,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PR_BODY: ${{ github.event.pull_request.body }}
           STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION: ${{ steps.get_version.outputs.package_version }}
+          STEPS_GET_VERSION_OUTPUTS_IS_PRERELEASE: ${{ steps.get_version.outputs.is_prerelease }}
         run: |
           VERSION="${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
           node scripts/generate-github-release.mjs "$VERSION" > /tmp/release-body.md
+          PRERELEASE_FLAG=""
+          if [ "${STEPS_GET_VERSION_OUTPUTS_IS_PRERELEASE}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
           gh release create "v${VERSION}" \
             --title "trigger.dev v${VERSION}" \
             --notes-file /tmp/release-body.md \
-            --target main
+            --target main \
+            $PRERELEASE_FLAG
 
       - name: Create and push Docker tag
         if: steps.changesets.outputs.published == 'true'
@@ -239,7 +252,7 @@ jobs:
   dispatch-changelog:
     name: 📝 Dispatch changelog PR
     needs: [release, update-release]
-    if: needs.release.outputs.published == 'true'
+    if: needs.release.outputs.published == 'true' && needs.release.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
     permissions: {}
     steps:
