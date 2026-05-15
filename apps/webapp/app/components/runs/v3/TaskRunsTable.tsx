@@ -23,6 +23,7 @@ import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider"
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useRegions } from "~/hooks/useRegions";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -73,7 +74,6 @@ type RunsTableProps = {
   variant?: TableVariant;
   disableAdjacentRows?: boolean;
   additionalTableState?: Record<string, string>;
-  regions?: { masterQueue: string; name: string; location?: string }[];
 };
 
 export function TaskRunsTable({
@@ -87,11 +87,9 @@ export function TaskRunsTable({
   allowSelection = false,
   variant = "dimmed",
   additionalTableState,
-  regions,
 }: RunsTableProps) {
-  const regionByMasterQueue = new Map(
-    (regions ?? []).map((r) => [r.masterQueue, r] as const)
-  );
+  const regions = useRegions();
+  const regionByMasterQueue = new Map(regions.map((r) => [r.masterQueue, r] as const));
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();

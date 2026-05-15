@@ -62,7 +62,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
-import { type loader as regionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.regions";
+import { useRegions } from "~/hooks/useRegions";
 import { RegionLabel } from "./RegionLabel";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
 import { Button } from "../../primitives/Buttons";
@@ -383,6 +383,7 @@ export function RunsFilters(props: RunFiltersProps) {
     searchParams.has("runId") ||
     searchParams.has("scheduleId") ||
     searchParams.has("queues") ||
+    searchParams.has("regions") ||
     searchParams.has("machines") ||
     searchParams.has("versions") ||
     searchParams.has("errorId") ||
@@ -1292,10 +1293,8 @@ function RegionsDropdown({
   searchValue: string;
   onClose?: () => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
   const { values, replace } = useSearchParams();
+  const regions = useRegions();
 
   const handleChange = (values: string[]) => {
     clearSearchValue();
@@ -1308,41 +1307,29 @@ function RegionsDropdown({
 
   const selected = values("regions").filter((v) => v !== "");
 
-  const fetcher = useFetcher<typeof regionsLoader>();
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data === undefined) {
-      fetcher.load(
-        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/regions`
-      );
-    }
-  }, [fetcher.state, fetcher.data, organization.slug, project.slug, environment.slug]);
-
   const filtered = useMemo(() => {
     type RegionItem = { masterQueue: string; name: string; location?: string };
     const items: RegionItem[] = [];
 
     for (const masterQueue of selected) {
-      const known = fetcher.data?.regions.find((r) => r.masterQueue === masterQueue);
+      const known = regions.find((r) => r.masterQueue === masterQueue);
       if (!known) {
         items.push({ masterQueue, name: masterQueue });
       }
     }
 
-    if (fetcher.data) {
-      for (const region of fetcher.data.regions) {
-        if (!items.some((i) => i.masterQueue === region.masterQueue)) {
-          items.push({
-            masterQueue: region.masterQueue,
-            name: region.name,
-            location: region.location,
-          });
-        }
+    for (const region of regions) {
+      if (!items.some((i) => i.masterQueue === region.masterQueue)) {
+        items.push({
+          masterQueue: region.masterQueue,
+          name: region.name,
+          location: region.location,
+        });
       }
     }
 
     return matchSorter(items, searchValue, { keys: ["name", "masterQueue"] });
-  }, [searchValue, fetcher.data, selected.join(",")]);
+  }, [searchValue, regions, selected.join(",")]);
 
   return (
     <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
@@ -1362,7 +1349,6 @@ function RegionsDropdown({
           render={(props) => (
             <div className="flex items-center justify-stretch">
               <input {...props} placeholder={"Filter by region..."} />
-              {fetcher.state === "loading" && <Spinner color="muted" />}
             </div>
           )}
         />
@@ -1378,9 +1364,7 @@ function RegionsDropdown({
                 </SelectItem>
               ))
             : null}
-          {filtered.length === 0 && fetcher.state !== "loading" && (
-            <SelectItem disabled>No regions found</SelectItem>
-          )}
+          {filtered.length === 0 && <SelectItem disabled>No regions found</SelectItem>}
         </SelectList>
       </SelectPopover>
     </SelectProvider>
@@ -1389,32 +1373,10 @@ function RegionsDropdown({
 
 function AppliedRegionsFilter() {
   const { values, del } = useSearchParams();
-  const organization = useOrganization();
-  const project = useProject();
   const environment = useEnvironment();
-  const fetcher = useFetcher<typeof regionsLoader>();
+  const knownRegions = useRegions();
 
   const regions = values("regions");
-
-  useEffect(() => {
-    if (
-      regions.length > 0 &&
-      !regions.every((v) => v === "") &&
-      fetcher.state === "idle" &&
-      fetcher.data === undefined
-    ) {
-      fetcher.load(
-        `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/regions`
-      );
-    }
-  }, [
-    regions.join(","),
-    fetcher.state,
-    fetcher.data,
-    organization.slug,
-    project.slug,
-    environment.slug,
-  ]);
 
   if (environment.type === "DEVELOPMENT") {
     return null;
@@ -1425,7 +1387,7 @@ function AppliedRegionsFilter() {
   }
 
   const labels = regions.map((mq) => {
-    const match = fetcher.data?.regions.find((r) => r.masterQueue === mq);
+    const match = knownRegions.find((r) => r.masterQueue === mq);
     return match?.name ?? mq;
   });
 

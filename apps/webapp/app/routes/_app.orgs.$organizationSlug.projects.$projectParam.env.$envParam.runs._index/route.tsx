@@ -44,7 +44,6 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -95,18 +94,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ...filters,
   });
 
-  const regionsPresenter = new RegionsPresenter();
-  const regions = await regionsPresenter
-    .call({ userId, projectSlug: project.slug })
-    .then(({ regions }) =>
-      regions.map((r) => ({
-        masterQueue: r.masterQueue,
-        name: r.name,
-        location: r.location,
-      }))
-    )
-    .catch(() => [] as { masterQueue: string; name: string; location?: string }[]);
-
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,
   // the toggle's URL value can be a temporary auto-flip (or a user override scoped to
   // the current task filter), and we don't want either bleeding into the saved
@@ -125,14 +112,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       data: list,
       rootOnlyDefault: filters.rootOnly,
       filters,
-      regions,
     },
     headers ? { headers } : undefined
   );
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters, regions } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const project = useProject();
   const environment = useEnvironment();
@@ -191,7 +177,6 @@ export default function Page() {
                       selectedItems={selectedItems}
                       rootOnlyDefault={rootOnlyDefault}
                       filters={filters}
-                      regions={regions}
                     />
                   );
                 }}
@@ -209,13 +194,11 @@ function RunsList({
   selectedItems,
   rootOnlyDefault,
   filters,
-  regions,
 }: {
   list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
   selectedItems: Set<string>;
   rootOnlyDefault: boolean;
   filters: TaskRunListSearchFilters;
-  regions: { masterQueue: string; name: string; location?: string }[];
 }) {
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
@@ -324,7 +307,6 @@ function RunsList({
                   isLoading={isLoading}
                   allowSelection
                   rootOnlyDefault={rootOnlyDefault}
-                  regions={regions}
                 />
               </div>
             )}
