@@ -40,6 +40,7 @@ const RunListInputOptionsSchema = z.object({
   runId: z.array(z.string()).optional(),
   bulkId: z.string().optional(),
   queues: z.array(z.string()).optional(),
+  regions: z.array(z.string()).optional(),
   machines: MachinePresetName.array().optional(),
   errorId: z.string().optional(),
   taskKinds: z.array(z.string()).optional(),
@@ -104,6 +105,7 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     metadataType: true;
     machinePreset: true;
     queue: true;
+    workerQueue: true;
     annotations: true;
   };
 }>;

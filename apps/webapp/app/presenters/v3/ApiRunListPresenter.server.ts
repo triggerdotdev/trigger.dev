@@ -116,6 +116,12 @@ export const ApiRunListSearchParams = z.object({
     .transform((value) => {
       return value ? value.split(",") : undefined;
     }),
+  "filter[region]": z
+    .string()
+    .optional()
+    .transform((value) => {
+      return value ? value.split(",") : undefined;
+    }),
   "filter[machine]": z
     .string()
     .optional()
@@ -255,6 +261,10 @@ export class ApiRunListPresenter extends BasePresenter {
         options.queues = searchParams["filter[queue]"];
       }
 
+      if (searchParams["filter[region]"]) {
+        options.regions = searchParams["filter[region]"];
+      }
+
       if (searchParams["filter[machine]"]) {
         options.machines = searchParams["filter[machine]"];
       }
@@ -308,6 +318,7 @@ export class ApiRunListPresenter extends BasePresenter {
             // Match `NextRunListPresenter`'s "STANDARD" fallback so API
             // consumers and the dashboard see the same value.
             taskKind: run.taskKind || "STANDARD",
+            region: run.region ?? undefined,
             ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
               ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion)
             ),

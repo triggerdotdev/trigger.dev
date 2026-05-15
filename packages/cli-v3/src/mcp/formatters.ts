@@ -427,6 +427,11 @@ function formatRunSummary(run: ListRunResponseItem): string {
     parts.push(`v${run.version}`);
   }
 
+  // Region if available
+  if (run.region) {
+    parts.push(`region:${run.region}`);
+  }
+
   return parts.join(" | ");
 }
 
