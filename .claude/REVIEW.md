@@ -23,14 +23,6 @@ Reserve 🔴 for things that would page someone or block a rollback. In this cod
 ## Always check
 
 - **Tests use testcontainers, not mocks.** Vitest with `redisTest` / `postgresTest` / `containerTest` from `@internal/testcontainers`. Any new `vi.mock(...)` on Redis, Postgres, BullMQ, or other infra is wrong here — 🔴 if added in production-path tests, 🟡 if isolated unit test.
-
-  **What the rule is actually for.** The intent is "don't fool yourself by mocking real flow into oblivion" — not "literally zero use of `vi.mock` / `vi.fn` / `vi.spyOn` anywhere ever." Three things are fine and should NOT be flagged:
-
-  1. **Module-load workarounds.** `vi.mock("~/db.server", ...)` at the top of a unit test purely to stop Prisma `$connect()` firing at import time. The test isn't faking DB behavior — it's cutting the import graph so the module under test loads without bringing in `prisma.$connect()`. The actual code under test still runs.
-  2. **Hand-written DI doubles where the real implementation has its own dedicated tests.** Pattern: a test file constructs the service-under-test with a stub injected through a DI seam (e.g. `CapturingMollifierBuffer`, `MockPayloadProcessor`, `MockTriggerTaskValidator` already in the repo). Acceptable when the stubbed dependency has its OWN dedicated suite hitting real infra (e.g. `mollifierTripEvaluator.test.ts` exercises the real `MollifierBuffer` via `redisTest`). The unit test verifies the wiring at the seam; the integration test verifies the seam's target.
-  3. **`vi.fn` used as a probe at a DI seam.** Sometimes the test only needs "was the seam invoked, with what args" — `vi.fn` is a convenience for this. The same shape can be written as a plain closure incrementing a captured counter, but the `vi.fn` form is not load-bearing on whether the test proves anything. Prefer the closure form for new code; don't 🔴 an existing `vi.fn` probe that follows the host file's prior art.
-
-  Still 🔴: mocking out the actual code path under test (e.g. `vi.spyOn(realService, "doTheThing").mockResolvedValue(...)` then asserting "doTheThing was called" — that's a tautology, not a test). Still 🔴: replacing real infra with mocks in tests that are meant to cover the real behavior (e.g. mocking Redis in a test of a Redis-backed queue).
 - **Public-package changes have a changeset.** `pnpm run changeset:add` produces `.changeset/*.md`. Required for any edit under `packages/*`. Missing → 🟡; missing on a breaking change → 🔴.
 - **Server-only changes have `.server-changes/*.md`.** Required for `apps/webapp/`, `apps/supervisor/` edits with no public-package change. Body should be 1-2 sentences (it has to fit as one bullet in a future changelog). Missing → 🟡.
 - **Lua script naming.** Coexisting scripts use behavior-descriptive suffixes (`Tracked`), never `V2`. Old name must keep working until the next deploy clears it.
