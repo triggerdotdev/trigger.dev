@@ -1,6 +1,5 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
-import { flag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 import { createRealTripEvaluator } from "./mollifierTripEvaluator.server";
@@ -102,14 +101,14 @@ function logDivertDecision(
   });
 }
 
-// Check per-org override in-memory before consulting the DB. `triggerTask`
-// is the hot path, so we resolve the common case (org has an explicit
-// `mollifierEnabled` value in its `Organization.featureFlags` JSON) without
-// a Prisma round-trip. Only orgs with no override fall through to `flag()`,
-// which queries the global `FeatureFlag` row.
-export function makeResolveMollifierFlag(
-  flagFn: typeof flag = flag,
-): (inputs: GateInputs) => Promise<boolean> {
+// Resolve the per-org mollifier flag purely from the in-memory
+// `Organization.featureFlags` JSON. No DB query — `triggerTask` is the
+// trigger hot path and the webapp CLAUDE.md forbids adding Prisma calls
+// there. The fleet-wide kill switch lives in `MOLLIFIER_ENABLED`; rollout
+// is per-org via the JSON, matching the pattern used by `canAccessAi`,
+// `hasComputeAccess`, etc. There is no global `FeatureFlag` table read
+// in this path by design.
+export function makeResolveMollifierFlag(): (inputs: GateInputs) => Promise<boolean> {
   return (inputs) => {
     const override = inputs.orgFeatureFlags?.[FEATURE_FLAG.mollifierEnabled];
     if (override !== undefined) {
@@ -118,10 +117,7 @@ export function makeResolveMollifierFlag(
         return Promise.resolve(parsed.data);
       }
     }
-    return flagFn({
-      key: FEATURE_FLAG.mollifierEnabled,
-      defaultValue: false,
-    });
+    return Promise.resolve(false);
   };
 }
 

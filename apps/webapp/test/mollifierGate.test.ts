@@ -5,15 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 // (db.server.ts), so loading it under vitest tries to reach localhost:5432
 // and surfaces as an unhandled rejection that fails the whole shard — even
 // though no test in this file actually uses the default prisma client.
-// `postgresTest` provides its own container-backed prisma via the fixture.
 vi.mock("~/db.server", () => ({
   prisma: {},
   $replica: {},
 }));
 
-import { postgresTest } from "@internal/testcontainers";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import {
   evaluateGate,
   makeResolveMollifierFlag,
@@ -22,11 +18,6 @@ import {
   type TripDecision,
 } from "~/v3/mollifier/mollifierGate.server";
 import type { DecisionOutcome, DecisionReason } from "~/v3/mollifier/mollifierTelemetry.server";
-
-// Each `postgresTest` boots its own Postgres container; the 5s vitest default
-// regularly times out on CI just on container start. Match the timeout used by
-// other postgresTest suites in this app (e.g. `taskIdentifierRegistry.test.ts`).
-vi.setConfig({ testTimeout: 30_000 });
 
 // We deliberately don't use vi.fn here. Per repo policy tests shouldn't lean on
 // mock frameworks for behaviours that are pure functions of the inputs — the
@@ -191,23 +182,13 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
   });
 });
 
-// The gate must opt in single orgs without affecting the others. These tests
-// exercise the *real* `resolveOrgFlag` against a real Postgres testcontainer:
-// we build it via `makeFlag(prisma)` and let the `Organization.featureFlags`
-// blob flow through `flag()`'s overrides path. The global `FeatureFlag` table
-// is empty, so the only signal moving outcomes is the per-org JSON.
 // Hot-path guard: `triggerTask.server.ts` calls `evaluateGate` on every
 // trigger when `MOLLIFIER_ENABLED=1`. The per-org override path must resolve
 // without a Prisma round-trip — otherwise the gate adds a DB query to the
 // highest-throughput code path in the system (see apps/webapp/CLAUDE.md).
 describe("resolveMollifierFlag — hot path", () => {
-  it("returns override value without calling flag() when override is set", async () => {
-    let flagCalls = 0;
-    const flagStub: any = async () => {
-      flagCalls += 1;
-      return false;
-    };
-    const resolve = makeResolveMollifierFlag(flagStub);
+  it("returns the per-org override when it's set", async () => {
+    const resolve = makeResolveMollifierFlag();
 
     const enabled = await resolve({
       envId: "e",
@@ -224,16 +205,14 @@ describe("resolveMollifierFlag — hot path", () => {
 
     expect(enabled).toBe(true);
     expect(disabled).toBe(false);
-    expect(flagCalls).toBe(0);
   });
 
-  it("falls back to flag() when org has no override for the key", async () => {
-    let flagCalls = 0;
-    const flagStub: any = async () => {
-      flagCalls += 1;
-      return true;
-    };
-    const resolve = makeResolveMollifierFlag(flagStub);
+  it("returns false when the org has no override for the key — no DB query, ever", async () => {
+    // Regression intent: the resolver MUST NOT call `flag()` (which would
+    // query `FeatureFlag` via Prisma) on the trigger hot path. Per-org
+    // rollout via `Organization.featureFlags` JSON is the only enable
+    // path; the fleet-wide kill switch is `MOLLIFIER_ENABLED`.
+    const resolve = makeResolveMollifierFlag();
 
     const fromNull = await resolve({
       envId: "e",
@@ -248,9 +227,8 @@ describe("resolveMollifierFlag — hot path", () => {
       orgFeatureFlags: { hasAiAccess: true },
     });
 
-    expect(fromNull).toBe(true);
-    expect(fromUnrelatedKeys).toBe(true);
-    expect(flagCalls).toBe(2);
+    expect(fromNull).toBe(false);
+    expect(fromUnrelatedKeys).toBe(false);
   });
 });
 
@@ -330,7 +308,7 @@ describe("evaluateGate — fail open on resolveOrgFlag error", () => {
 
 describe("evaluateGate — per-org isolation via Organization.featureFlags", () => {
   function makeIsolationDeps(
-    realResolveOrgFlag: GateDependencies["resolveOrgFlag"],
+    resolveOrgFlag: GateDependencies["resolveOrgFlag"],
   ): { deps: Partial<GateDependencies>; spies: Spies } {
     const spies: Spies = {
       evaluatorCalls: 0,
@@ -338,13 +316,13 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
       logMollifiedCalls: [],
       recordDecisionCalls: [],
     };
-    // Override lifecycle bits and inject the real DB-backed resolveOrgFlag.
+    // Override lifecycle bits and inject the production resolveOrgFlag.
     // Evaluator returns a fixed tripped decision so the outcome is purely a
     // function of the flag resolution (which is what we're isolating on).
     const deps: Partial<GateDependencies> = {
       isMollifierEnabled: () => true,
       isShadowModeOn: () => false,
-      resolveOrgFlag: realResolveOrgFlag,
+      resolveOrgFlag,
       evaluator: async () => {
         spies.evaluatorCalls += 1;
         return trippedDecision;
@@ -362,120 +340,95 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
     return { deps, spies };
   }
 
-  // Build the production resolveOrgFlag wired to the test Prisma client. This
-  // is exactly the closure `defaultGateDependencies.resolveOrgFlag` runs in
-  // prod — the only swap is the Prisma instance.
-  function realResolveOrgFlag(prisma: Parameters<typeof makeFlag>[0]) {
-    const f = makeFlag(prisma);
-    return (inputs: GateInputs) =>
-      f({
-        key: FEATURE_FLAG.mollifierEnabled,
-        defaultValue: false,
-        overrides: inputs.orgFeatureFlags ?? {},
-      });
-  }
+  // The production resolver — purely in-memory, no Prisma. Mirrors
+  // `defaultGateDependencies.resolveOrgFlag` exactly.
+  const resolve = makeResolveMollifierFlag();
 
-  postgresTest(
-    "opts in only the org whose featureFlags has mollifierEnabled=true",
-    async ({ prisma }) => {
-      const resolve = realResolveOrgFlag(prisma);
-      const orgA = { ...inputs, orgId: "org_a", orgFeatureFlags: { mollifierEnabled: true } };
-      const orgB = { ...inputs, orgId: "org_b", orgFeatureFlags: { mollifierEnabled: false } };
-      const orgC = { ...inputs, orgId: "org_c", orgFeatureFlags: null };
+  it("opts in only the org whose featureFlags has mollifierEnabled=true", async () => {
+    const orgA = { ...inputs, orgId: "org_a", orgFeatureFlags: { mollifierEnabled: true } };
+    const orgB = { ...inputs, orgId: "org_b", orgFeatureFlags: { mollifierEnabled: false } };
+    const orgC = { ...inputs, orgId: "org_c", orgFeatureFlags: null };
 
-      const a = makeIsolationDeps(resolve);
-      const b = makeIsolationDeps(resolve);
-      const c = makeIsolationDeps(resolve);
+    const a = makeIsolationDeps(resolve);
+    const b = makeIsolationDeps(resolve);
+    const c = makeIsolationDeps(resolve);
 
-      const [outcomeA, outcomeB, outcomeC] = await Promise.all([
-        evaluateGate(orgA, a.deps),
-        evaluateGate(orgB, b.deps),
-        evaluateGate(orgC, c.deps),
-      ]);
+    const [outcomeA, outcomeB, outcomeC] = await Promise.all([
+      evaluateGate(orgA, a.deps),
+      evaluateGate(orgB, b.deps),
+      evaluateGate(orgC, c.deps),
+    ]);
 
-      // Only org A's flag is on → only org A mollifies. Orgs B and C never
-      // reach the evaluator because both flag and shadow-mode are off.
-      expect(outcomeA.action).toBe("mollify");
-      expect(outcomeB.action).toBe("pass_through");
-      expect(outcomeC.action).toBe("pass_through");
+    // Only org A's flag is on → only org A mollifies. Orgs B and C never
+    // reach the evaluator because both flag and shadow-mode are off.
+    expect(outcomeA.action).toBe("mollify");
+    expect(outcomeB.action).toBe("pass_through");
+    expect(outcomeC.action).toBe("pass_through");
 
-      expect(a.spies.evaluatorCalls).toBe(1);
-      expect(b.spies.evaluatorCalls).toBe(0);
-      expect(c.spies.evaluatorCalls).toBe(0);
+    expect(a.spies.evaluatorCalls).toBe(1);
+    expect(b.spies.evaluatorCalls).toBe(0);
+    expect(c.spies.evaluatorCalls).toBe(0);
 
-      expect(a.spies.logMollifiedCalls).toHaveLength(1);
-      expect(b.spies.logMollifiedCalls).toHaveLength(0);
-      expect(c.spies.logMollifiedCalls).toHaveLength(0);
-    },
-  );
+    expect(a.spies.logMollifiedCalls).toHaveLength(1);
+    expect(b.spies.logMollifiedCalls).toHaveLength(0);
+    expect(c.spies.logMollifiedCalls).toHaveLength(0);
+  });
 
-  postgresTest(
-    "another org's beta flags must not opt them into mollifier",
-    async ({ prisma }) => {
-      const resolve = realResolveOrgFlag(prisma);
-      // Org A has mollifier on (plus an unrelated beta).
-      const orgA = {
-        ...inputs,
-        orgId: "org_a",
-        orgFeatureFlags: { mollifierEnabled: true, hasComputeAccess: true },
-      };
-      // Org B has *other* betas on but mollifier remains off — keys that gate
-      // compute/AI/query must not bleed across into the mollifier decision.
-      const orgB = {
-        ...inputs,
-        orgId: "org_b",
-        orgFeatureFlags: { hasComputeAccess: true, hasAiAccess: true },
-      };
+  it("another org's beta flags must not opt them into mollifier", async () => {
+    // Org A has mollifier on (plus an unrelated beta).
+    const orgA = {
+      ...inputs,
+      orgId: "org_a",
+      orgFeatureFlags: { mollifierEnabled: true, hasComputeAccess: true },
+    };
+    // Org B has *other* betas on but mollifier remains off — keys that gate
+    // compute/AI/query must not bleed across into the mollifier decision.
+    const orgB = {
+      ...inputs,
+      orgId: "org_b",
+      orgFeatureFlags: { hasComputeAccess: true, hasAiAccess: true },
+    };
 
-      const a = makeIsolationDeps(resolve);
-      const b = makeIsolationDeps(resolve);
+    const a = makeIsolationDeps(resolve);
+    const b = makeIsolationDeps(resolve);
 
-      const outcomeA = await evaluateGate(orgA, a.deps);
-      const outcomeB = await evaluateGate(orgB, b.deps);
+    const outcomeA = await evaluateGate(orgA, a.deps);
+    const outcomeB = await evaluateGate(orgB, b.deps);
 
-      expect(outcomeA.action).toBe("mollify");
-      expect(outcomeB.action).toBe("pass_through");
-    },
-  );
+    expect(outcomeA.action).toBe("mollify");
+    expect(outcomeB.action).toBe("pass_through");
+  });
 
-  postgresTest(
-    "global FeatureFlag row enables only when an org's overrides don't say otherwise",
-    async ({ prisma }) => {
-      // Set the global flag on. The repo-wide `flag()` helper checks
-      // overrides first, then global, then default. So:
-      //   - org with explicit `mollifierEnabled: false` → stays off.
-      //   - org with no override → picks up the global on.
-      //   - org with explicit `true` → on.
-      await prisma.featureFlag.create({
-        data: { key: FEATURE_FLAG.mollifierEnabled, value: true },
-      });
-      const resolve = realResolveOrgFlag(prisma);
+  it("orgs without an explicit override stay off — no global FeatureFlag fallback", async () => {
+    // Regression intent: the resolver MUST NOT consult the global
+    // `FeatureFlag` table on the hot path. An org with `orgFeatureFlags`
+    // unset (the default for almost every org during rollout) gets
+    // pass_through, period. The fleet-wide kill switch lives in
+    // `MOLLIFIER_ENABLED`, not the FeatureFlag table.
+    const orgInherits = { ...inputs, orgId: "org_inherits", orgFeatureFlags: null };
+    const orgEmpty = { ...inputs, orgId: "org_empty", orgFeatureFlags: {} };
+    const orgUnrelated = {
+      ...inputs,
+      orgId: "org_unrelated",
+      orgFeatureFlags: { hasAiAccess: true },
+    };
 
-      const orgOptedOut = {
-        ...inputs,
-        orgId: "org_opted_out",
-        orgFeatureFlags: { mollifierEnabled: false },
-      };
-      const orgInherits = { ...inputs, orgId: "org_inherits", orgFeatureFlags: null };
-      const orgExplicit = {
-        ...inputs,
-        orgId: "org_explicit",
-        orgFeatureFlags: { mollifierEnabled: true },
-      };
+    const inheritsDeps = makeIsolationDeps(resolve);
+    const emptyDeps = makeIsolationDeps(resolve);
+    const unrelatedDeps = makeIsolationDeps(resolve);
 
-      const optedOut = makeIsolationDeps(resolve);
-      const inherits = makeIsolationDeps(resolve);
-      const explicit = makeIsolationDeps(resolve);
+    const [outInherits, outEmpty, outUnrelated] = await Promise.all([
+      evaluateGate(orgInherits, inheritsDeps.deps),
+      evaluateGate(orgEmpty, emptyDeps.deps),
+      evaluateGate(orgUnrelated, unrelatedDeps.deps),
+    ]);
 
-      const [outOptedOut, outInherits, outExplicit] = await Promise.all([
-        evaluateGate(orgOptedOut, optedOut.deps),
-        evaluateGate(orgInherits, inherits.deps),
-        evaluateGate(orgExplicit, explicit.deps),
-      ]);
-
-      expect(outOptedOut.action).toBe("pass_through");
-      expect(outInherits.action).toBe("mollify");
-      expect(outExplicit.action).toBe("mollify");
-    },
-  );
+    expect(outInherits.action).toBe("pass_through");
+    expect(outEmpty.action).toBe("pass_through");
+    expect(outUnrelated.action).toBe("pass_through");
+    // None of these reached the evaluator (flag off, shadow off).
+    expect(inheritsDeps.spies.evaluatorCalls).toBe(0);
+    expect(emptyDeps.spies.evaluatorCalls).toBe(0);
+    expect(unrelatedDeps.spies.evaluatorCalls).toBe(0);
+  });
 });
