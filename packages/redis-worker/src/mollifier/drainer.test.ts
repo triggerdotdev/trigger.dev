@@ -494,8 +494,9 @@ describe("MollifierDrainer per-tick env cap", () => {
     for (const popped of popsPerTick) {
       expect(new Set(popped)).toEqual(new Set(allEnvs));
     }
-    expect(popsPerTick[0][0]).not.toEqual(popsPerTick[1][0]);
-    expect(popsPerTick[1][0]).not.toEqual(popsPerTick[2][0]);
+    const [tick0, tick1, tick2] = popsPerTick;
+    expect(tick0?.[0]).not.toEqual(tick1?.[0]);
+    expect(tick1?.[0]).not.toEqual(tick2?.[0]);
   });
 
   it("a light env is not starved behind heavy envs", async () => {
