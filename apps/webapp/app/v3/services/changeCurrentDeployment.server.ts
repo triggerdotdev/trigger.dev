@@ -8,7 +8,6 @@ import {
   type TaskMetadataEntry,
 } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
-import { syncTaskMetadataCache } from "~/services/taskMetadataSync.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
@@ -160,21 +159,12 @@ export class ChangeCurrentDeploymentService extends BaseService {
         queueName: t.queue?.name ?? "",
       }));
 
-      const [metaError] = await tryCatch(
-        syncTaskMetadataCache(
-          deployment.environmentId,
-          deployment.workerId!,
-          true,
-          metadataEntries,
-          this._taskMetaCache
-        )
+      // Cache calls log+swallow internally.
+      await this._taskMetaCache.populateByCurrentWorker(
+        deployment.environmentId,
+        deployment.workerId!,
+        metadataEntries
       );
-
-      if (metaError) {
-        logger.error("Error syncing task metadata cache on deployment change", {
-          error: metaError,
-        });
-      }
     }
 
     const [scheduleSyncError] = await tryCatch(this.#syncSchedulesForDeployment(deployment));

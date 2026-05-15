@@ -19,7 +19,6 @@ import {
   type TaskMetadataEntry,
 } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
-import { syncTaskMetadataCache } from "~/services/taskMetadataSync.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   removeQueueConcurrencyLimits,
@@ -234,25 +233,17 @@ export class CreateBackgroundWorkerService extends BaseService {
       // worker by createdAt. Non-DEV (deploy-built) workers are not promoted
       // here — promotion writes the `:env:` keyspace later in
       // changeCurrentDeployment / createDeploymentBackgroundWorkerV3.
-      // Wrap in tryCatch so a Redis blip can't break the post-cache side
-      // effects below.
+      // Cache calls log+swallow internally, so a Redis blip can't break
+      // anything else here.
       if (workerTaskEntries && workerTaskEntries.length > 0) {
-        const [metaCacheError] = await tryCatch(
-          syncTaskMetadataCache(
+        if (environment.type === "DEVELOPMENT") {
+          await this._taskMetaCache.populateByCurrentWorker(
             environment.id,
             backgroundWorker.id,
-            environment.type === "DEVELOPMENT",
-            workerTaskEntries,
-            this._taskMetaCache
-          )
-        );
-
-        if (metaCacheError) {
-          logger.error("Error syncing task metadata cache", {
-            error: metaCacheError,
-            backgroundWorker,
-            environment,
-          });
+            workerTaskEntries
+          );
+        } else {
+          await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
         }
       }
 

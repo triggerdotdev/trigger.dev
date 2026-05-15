@@ -4,7 +4,6 @@ import type { BackgroundWorker, PrismaClientOrTransaction, WorkerDeployment } fr
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
-import { syncTaskMetadataCache } from "~/services/taskMetadataSync.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import {
   createBackgroundFiles,
@@ -152,27 +151,13 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // only the `task-meta:by-worker:{workerId}` keyspace so locked-version
       // triggers against this build hit the cache. Promotion (which writes the
       // env keyspace) happens later via finalizeDeployment → changeCurrentDeployment.
-      // Wrap in tryCatch so a Redis blip can't break the deployment state
-      // machine — without this the build would stall in BUILDING and only
-      // surface as a misleading "Indexing timed out".
+      // Cache calls log+swallow internally, so a Redis blip can't stall the
+      // deployment state machine.
       if (workerTaskEntries && workerTaskEntries.length > 0) {
-        const [metaCacheError] = await tryCatch(
-          syncTaskMetadataCache(
-            environment.id,
-            backgroundWorker.id,
-            false,
-            workerTaskEntries,
-            this._taskMetaCache
-          )
+        await this._taskMetaCache.populateByWorker(
+          backgroundWorker.id,
+          workerTaskEntries
         );
-
-        if (metaCacheError) {
-          logger.error("Error syncing task metadata cache on build", {
-            error: metaCacheError,
-            deploymentId: deployment.id,
-            workerId: backgroundWorker.id,
-          });
-        }
       }
 
       const [schedulesError] = await tryCatch(

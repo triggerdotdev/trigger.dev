@@ -1198,7 +1198,7 @@ describe("DefaultQueueManager task metadata cache", () => {
 
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "cached-task";
-      await setupBackgroundWorker(engine, environment, taskIdentifier);
+      const setup = await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const redis = new Redis(redisOptions);
       const cache = new RedisTaskMetadataCache({ redis });
@@ -1206,7 +1206,7 @@ describe("DefaultQueueManager task metadata cache", () => {
       // Pre-populate cache with AGENT triggerSource; DB row has the default STANDARD.
       // If the read path hits the cache, the resulting TaskRun.taskKind reflects the
       // cached value. If it falls through to PG, it reflects STANDARD.
-      await cache.populateCurrent(environment.id, [
+      await cache.populateByCurrentWorker(environment.id, setup.worker.id, [
         {
           slug: taskIdentifier,
           ttl: null,
@@ -1329,14 +1329,14 @@ describe("DefaultQueueManager task metadata cache", () => {
 
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "override-task";
-      await setupBackgroundWorker(engine, environment, taskIdentifier);
+      const setup = await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const redis = new Redis(redisOptions);
       const cache = new RedisTaskMetadataCache({ redis });
 
       // Cache says AGENT; DB row says STANDARD. Caller provides both a queue
       // override and an explicit TTL — the hot path the PR regressed.
-      await cache.populateCurrent(environment.id, [
+      await cache.populateByCurrentWorker(environment.id, setup.worker.id, [
         {
           slug: taskIdentifier,
           ttl: null,
@@ -1406,7 +1406,10 @@ describe("DefaultQueueManager task metadata cache", () => {
       const cache = new RedisTaskMetadataCache({ redis });
 
       // Populate the two keyspaces with conflicting triggerSource values so we
-      // can tell which keyspace the read used.
+      // can tell which keyspace the read used. The real worker's by-worker
+      // hash gets AGENT; the env hash gets SCHEDULED (seeded via a throwaway
+      // worker id since `populateByCurrentWorker` writes both keyspaces and
+      // we want the real worker's by-worker hash untouched).
       await cache.populateByWorker(worker.worker.id, [
         {
           slug: taskIdentifier,
@@ -1416,7 +1419,7 @@ describe("DefaultQueueManager task metadata cache", () => {
           queueName: `task/${taskIdentifier}`,
         },
       ]);
-      await cache.populateCurrent(environment.id, [
+      await cache.populateByCurrentWorker(environment.id, "dummy-worker-for-env-seed", [
         {
           slug: taskIdentifier,
           ttl: null,

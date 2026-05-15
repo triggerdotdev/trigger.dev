@@ -281,7 +281,7 @@ export class DefaultQueueManager implements QueueManager {
 
     // Fire-and-forget back-fill — `setByWorker` upserts the single field and
     // refreshes the hash TTL. Errors are logged inside the cache and swallowed.
-    this.taskMetaCache.setByWorker(workerId, entry).catch(() => {});
+    void this.taskMetaCache.setByWorker(workerId, entry);
 
     return entry;
   }
@@ -327,12 +327,11 @@ export class DefaultQueueManager implements QueueManager {
       queueName: row.queue?.name ?? "",
     };
 
-    // Back-fill both keyspaces so a subsequent locked-or-not trigger hits the
-    // cache. `setCurrent` preserves the env hash's existing TTL boundary
-    // (promotion owns it); `setByWorker` refreshes the by-worker TTL to keep
-    // active workers warm.
-    this.taskMetaCache.setCurrent(environment.id, entry).catch(() => {});
-    this.taskMetaCache.setByWorker(worker.id, entry).catch(() => {});
+    // Fire-and-forget back-fill — atomically upserts the slug into both
+    // keyspaces so a subsequent locked-or-not trigger hits the cache. The
+    // env-keyspace TTL is preserved (promotion owns it); the by-worker TTL
+    // is refreshed (sliding window keeps active workers warm).
+    void this.taskMetaCache.setByCurrentWorker(environment.id, worker.id, entry);
 
     return entry;
   }

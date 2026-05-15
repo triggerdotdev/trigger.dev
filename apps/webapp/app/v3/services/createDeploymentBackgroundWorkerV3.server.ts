@@ -5,7 +5,6 @@ import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
-import { syncTaskMetadataCache } from "~/services/taskMetadataSync.server";
 import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
@@ -168,27 +167,14 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
       }
 
       // V3 promotes the deployment immediately above, so this worker is now
-      // current for the env — write both keyspaces. Wrap in tryCatch so a
-      // Redis blip can't strand the post-cache side effects below (waiting
-      // runs flush, alerts, timeout cancellation).
+      // current for the env — write both keyspaces atomically. Cache calls
+      // log+swallow internally.
       if (workerTaskEntries.length > 0) {
-        const [metaCacheError] = await tryCatch(
-          syncTaskMetadataCache(
-            environment.id,
-            backgroundWorker.id,
-            true,
-            workerTaskEntries,
-            this._taskMetaCache
-          )
+        await this._taskMetaCache.populateByCurrentWorker(
+          environment.id,
+          backgroundWorker.id,
+          workerTaskEntries
         );
-
-        if (metaCacheError) {
-          logger.error("Error syncing task metadata cache on deployment", {
-            error: metaCacheError,
-            deploymentId: deployment.id,
-            workerId: backgroundWorker.id,
-          });
-        }
       }
 
       try {

@@ -10,17 +10,39 @@ export type TaskMetadataEntry = {
   queueName: string;
 };
 
-export type TaskMetadataCache = {
+export interface TaskMetadataCache {
+  /** Read a slug's metadata from the env keyspace (current pointer). */
   getCurrent(envId: string, slug: string): Promise<TaskMetadataEntry | null>;
+  /** Read a slug's metadata from the by-worker keyspace (locked-version lookups). */
   getByWorker(workerId: string, slug: string): Promise<TaskMetadataEntry | null>;
-  populateCurrent(envId: string, entries: TaskMetadataEntry[]): Promise<void>;
+  /**
+   * Atomically replace both `task-meta:env:{envId}` and
+   * `task-meta:by-worker:{workerId}` with the given entries. Used at deploy
+   * promotion sites where the worker just became current for the env.
+   */
+  populateByCurrentWorker(
+    envId: string,
+    workerId: string,
+    entries: TaskMetadataEntry[]
+  ): Promise<void>;
+  /**
+   * Replace `task-meta:by-worker:{workerId}` only. Used at deploy build sites
+   * (V4) where the worker is created but not yet promoted.
+   */
   populateByWorker(workerId: string, entries: TaskMetadataEntry[]): Promise<void>;
-  /** Add a single field to the env keyspace without resetting the hash TTL. */
-  setCurrent(envId: string, entry: TaskMetadataEntry): Promise<void>;
-  /** Add a single field to the by-worker keyspace and refresh the hash TTL. */
+  /**
+   * Atomically upsert one slug in both keyspaces. Used by the non-locked
+   * read-path back-fill. The env-keyspace TTL is only set when no TTL is
+   * present (preserves the promotion boundary); the by-worker TTL is
+   * refreshed on every call (sliding expiry).
+   */
+  setByCurrentWorker(envId: string, workerId: string, entry: TaskMetadataEntry): Promise<void>;
+  /**
+   * Upsert one slug in `task-meta:by-worker:{workerId}` only. Used by the
+   * locked-version read-path back-fill; refreshes the by-worker TTL.
+   */
   setByWorker(workerId: string, entry: TaskMetadataEntry): Promise<void>;
-  invalidateCurrent(envId: string): Promise<void>;
-};
+}
 
 export type RedisTaskMetadataCacheOptions = {
   redis: Redis;
@@ -72,14 +94,11 @@ function byWorkerKey(workerId: string): string {
 }
 
 /**
- * Atomically replace a HASH's contents and reset its TTL.
+ * Atomically replace a single HASH's contents and reset its TTL.
  *
  * KEYS[1] = hash key
  * ARGV[1] = ttl seconds (0 = no TTL)
  * ARGV[2..N] = alternating field, value pairs
- *
- * One round-trip; readers never observe the empty intermediate state that a
- * naive DEL + HSET pipeline exposes.
  */
 const REPLACE_HASH_LUA = `
 redis.call("DEL", KEYS[1])
@@ -98,15 +117,46 @@ return 1
 `;
 
 /**
- * Set a single field and refresh the HASH TTL.
+ * Atomically replace BOTH keyspaces in one Redis transaction. Used at deploy
+ * promotion — the worker just became current for the env, so the env keyspace
+ * and the worker keyspace get the same field set.
+ *
+ * KEYS[1] = env hash key
+ * KEYS[2] = by-worker hash key
+ * ARGV[1] = env ttl seconds (0 = no TTL)
+ * ARGV[2] = by-worker ttl seconds (0 = no TTL)
+ * ARGV[3..N] = alternating field, value pairs (same for both hashes)
+ */
+const REPLACE_TWO_HASHES_LUA = `
+redis.call("DEL", KEYS[1])
+redis.call("DEL", KEYS[2])
+if #ARGV > 2 then
+  local fv = {}
+  for i = 3, #ARGV do
+    fv[#fv + 1] = ARGV[i]
+  end
+  redis.call("HSET", KEYS[1], unpack(fv))
+  redis.call("HSET", KEYS[2], unpack(fv))
+end
+local envTtl = tonumber(ARGV[1])
+if envTtl and envTtl > 0 then
+  redis.call("EXPIRE", KEYS[1], envTtl)
+end
+local workerTtl = tonumber(ARGV[2])
+if workerTtl and workerTtl > 0 then
+  redis.call("EXPIRE", KEYS[2], workerTtl)
+end
+return 1
+`;
+
+/**
+ * Set a single field and refresh the HASH TTL. Used by the locked-version
+ * back-fill path — sliding expiry keeps active workers warm.
  *
  * KEYS[1] = hash key
  * ARGV[1] = ttl seconds (0 = no TTL refresh)
  * ARGV[2] = field
  * ARGV[3] = value
- *
- * Used by the by-worker back-fill path — sliding-window expiry keeps active
- * workers warm and lets idle workers age out.
  */
 const SET_FIELD_REFRESH_TTL_LUA = `
 redis.call("HSET", KEYS[1], ARGV[2], ARGV[3])
@@ -118,23 +168,27 @@ return 1
 `;
 
 /**
- * Set a single field and only set the HASH TTL if no TTL is set yet.
+ * Atomically upsert one field in BOTH keyspaces. Used by the non-locked
+ * back-fill path. The env-keyspace TTL is only set if no TTL is present
+ * (preserves the promotion boundary); the by-worker TTL is refreshed.
  *
- * KEYS[1] = hash key
- * ARGV[1] = ttl seconds (0 = no TTL)
- * ARGV[2] = field
- * ARGV[3] = value
- *
- * Used by the env back-fill path — the env keyspace TTL boundary is owned by
- * `populateCurrent` (called at promotion). Back-fills shouldn't extend it; if
- * a hash already has a TTL, we leave it alone so the safety net still expires
- * on schedule.
+ * KEYS[1] = env hash key
+ * KEYS[2] = by-worker hash key
+ * ARGV[1] = env ttl seconds (0 = no TTL)
+ * ARGV[2] = by-worker ttl seconds (0 = no TTL)
+ * ARGV[3] = field
+ * ARGV[4] = value
  */
-const SET_FIELD_PRESERVE_TTL_LUA = `
-redis.call("HSET", KEYS[1], ARGV[2], ARGV[3])
-local ttl = tonumber(ARGV[1])
-if ttl and ttl > 0 and redis.call("TTL", KEYS[1]) == -1 then
-  redis.call("EXPIRE", KEYS[1], ttl)
+const SET_TWO_FIELDS_LUA = `
+redis.call("HSET", KEYS[1], ARGV[3], ARGV[4])
+local envTtl = tonumber(ARGV[1])
+if envTtl and envTtl > 0 and redis.call("TTL", KEYS[1]) == -1 then
+  redis.call("EXPIRE", KEYS[1], envTtl)
+end
+redis.call("HSET", KEYS[2], ARGV[3], ARGV[4])
+local workerTtl = tonumber(ARGV[2])
+if workerTtl and workerTtl > 0 then
+  redis.call("EXPIRE", KEYS[2], workerTtl)
 end
 return 1
 `;
@@ -146,6 +200,13 @@ declare module "ioredis" {
       ttlSeconds: string,
       ...fieldValues: string[]
     ): Result<number, Context>;
+    taskMetaReplaceTwoHashes(
+      envKey: string,
+      workerKey: string,
+      envTtlSeconds: string,
+      workerTtlSeconds: string,
+      ...fieldValues: string[]
+    ): Result<number, Context>;
     taskMetaSetFieldRefreshTtl(
       key: string,
       ttlSeconds: string,
@@ -153,9 +214,11 @@ declare module "ioredis" {
       value: string,
       callback?: Callback<number>
     ): Result<number, Context>;
-    taskMetaSetFieldPreserveTtl(
-      key: string,
-      ttlSeconds: string,
+    taskMetaSetTwoFields(
+      envKey: string,
+      workerKey: string,
+      envTtlSeconds: string,
+      workerTtlSeconds: string,
       field: string,
       value: string,
       callback?: Callback<number>
@@ -177,13 +240,17 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
       numberOfKeys: 1,
       lua: REPLACE_HASH_LUA,
     });
+    this.redis.defineCommand("taskMetaReplaceTwoHashes", {
+      numberOfKeys: 2,
+      lua: REPLACE_TWO_HASHES_LUA,
+    });
     this.redis.defineCommand("taskMetaSetFieldRefreshTtl", {
       numberOfKeys: 1,
       lua: SET_FIELD_REFRESH_TTL_LUA,
     });
-    this.redis.defineCommand("taskMetaSetFieldPreserveTtl", {
-      numberOfKeys: 1,
-      lua: SET_FIELD_PRESERVE_TTL_LUA,
+    this.redis.defineCommand("taskMetaSetTwoFields", {
+      numberOfKeys: 2,
+      lua: SET_TWO_FIELDS_LUA,
     });
   }
 
@@ -195,25 +262,68 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
     return this.#get(byWorkerKey(workerId), slug);
   }
 
-  async populateCurrent(envId: string, entries: TaskMetadataEntry[]): Promise<void> {
-    await this.#replaceHash(currentEnvKey(envId), entries, this.currentEnvTtlSeconds);
+  async populateByCurrentWorker(
+    envId: string,
+    workerId: string,
+    entries: TaskMetadataEntry[]
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    try {
+      const argv: string[] = [
+        String(this.currentEnvTtlSeconds),
+        String(this.byWorkerTtlSeconds),
+      ];
+      for (const entry of entries) {
+        argv.push(entry.slug, encode(entry));
+      }
+      await this.redis.taskMetaReplaceTwoHashes(
+        currentEnvKey(envId),
+        byWorkerKey(workerId),
+        ...argv
+      );
+    } catch (error) {
+      logger.error("Failed to populate task metadata cache (current worker)", {
+        envId,
+        workerId,
+        error,
+      });
+    }
   }
 
   async populateByWorker(workerId: string, entries: TaskMetadataEntry[]): Promise<void> {
-    await this.#replaceHash(byWorkerKey(workerId), entries, this.byWorkerTtlSeconds);
+    if (entries.length === 0) return;
+    try {
+      const argv: string[] = [String(this.byWorkerTtlSeconds)];
+      for (const entry of entries) {
+        argv.push(entry.slug, encode(entry));
+      }
+      await this.redis.taskMetaReplaceHash(byWorkerKey(workerId), ...argv);
+    } catch (error) {
+      logger.error("Failed to populate task metadata cache (by worker)", {
+        workerId,
+        error,
+      });
+    }
   }
 
-  async setCurrent(envId: string, entry: TaskMetadataEntry): Promise<void> {
+  async setByCurrentWorker(
+    envId: string,
+    workerId: string,
+    entry: TaskMetadataEntry
+  ): Promise<void> {
     try {
-      await this.redis.taskMetaSetFieldPreserveTtl(
+      await this.redis.taskMetaSetTwoFields(
         currentEnvKey(envId),
+        byWorkerKey(workerId),
         String(this.currentEnvTtlSeconds),
+        String(this.byWorkerTtlSeconds),
         entry.slug,
         encode(entry)
       );
     } catch (error) {
-      logger.error("Failed to set task metadata current cache field", {
+      logger.error("Failed to set task metadata cache field (current worker)", {
         envId,
+        workerId,
         slug: entry.slug,
         error,
       });
@@ -229,19 +339,11 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
         encode(entry)
       );
     } catch (error) {
-      logger.error("Failed to set task metadata by-worker cache field", {
+      logger.error("Failed to set task metadata cache field (by worker)", {
         workerId,
         slug: entry.slug,
         error,
       });
-    }
-  }
-
-  async invalidateCurrent(envId: string): Promise<void> {
-    try {
-      await this.redis.del(currentEnvKey(envId));
-    } catch (error) {
-      logger.error("Failed to invalidate task metadata current cache", { envId, error });
     }
   }
 
@@ -255,22 +357,6 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
       return null;
     }
   }
-
-  async #replaceHash(
-    key: string,
-    entries: TaskMetadataEntry[],
-    ttlSeconds: number
-  ): Promise<void> {
-    try {
-      const argv: string[] = [String(ttlSeconds)];
-      for (const entry of entries) {
-        argv.push(entry.slug, encode(entry));
-      }
-      await this.redis.taskMetaReplaceHash(key, ...argv);
-    } catch (error) {
-      logger.error("Failed to replace task metadata cache hash", { key, error });
-    }
-  }
 }
 
 export class NoopTaskMetadataCache implements TaskMetadataCache {
@@ -282,7 +368,7 @@ export class NoopTaskMetadataCache implements TaskMetadataCache {
     return null;
   }
 
-  async populateCurrent(): Promise<void> {
+  async populateByCurrentWorker(): Promise<void> {
     // intentionally empty
   }
 
@@ -290,15 +376,11 @@ export class NoopTaskMetadataCache implements TaskMetadataCache {
     // intentionally empty
   }
 
-  async setCurrent(): Promise<void> {
+  async setByCurrentWorker(): Promise<void> {
     // intentionally empty
   }
 
   async setByWorker(): Promise<void> {
-    // intentionally empty
-  }
-
-  async invalidateCurrent(): Promise<void> {
     // intentionally empty
   }
 }
