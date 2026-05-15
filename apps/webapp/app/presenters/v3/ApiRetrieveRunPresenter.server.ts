@@ -15,6 +15,10 @@ import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import {
+  findRunByIdWithMollifierFallback,
+  type SyntheticRun,
+} from "~/v3/mollifier/readFallback.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
@@ -63,13 +67,34 @@ type CommonRelatedRun = Prisma.Result<
   "findFirstOrThrow"
 >;
 
-type FoundRun = NonNullable<Awaited<ReturnType<typeof ApiRetrieveRunPresenter.findRun>>>;
+// Full shape returned by findRun() — the commonRunSelect fields plus the
+// extras the route handler reads. Declared explicitly (not inferred via
+// ReturnType<typeof findRun>) so findRun can return a synthesised buffered
+// run without the type becoming self-referential.
+type FoundRun = CommonRelatedRun & {
+  traceId: string;
+  payload: string;
+  payloadType: string;
+  output: string | null;
+  outputType: string;
+  error: Prisma.JsonValue;
+  attempts: { id: string }[];
+  attemptNumber: number | null;
+  engine: "V1" | "V2";
+  taskEventStore: string;
+  parentTaskRun: CommonRelatedRun | null;
+  rootTaskRun: CommonRelatedRun | null;
+  childRuns: CommonRelatedRun[];
+};
 
 export class ApiRetrieveRunPresenter {
   constructor(private readonly apiVersion: API_VERSIONS) {}
 
-  public static async findRun(friendlyId: string, env: AuthenticatedEnvironment) {
-    return $replica.taskRun.findFirst({
+  public static async findRun(
+    friendlyId: string,
+    env: AuthenticatedEnvironment,
+  ): Promise<FoundRun | null> {
+    const pgRow = await $replica.taskRun.findFirst({
       where: {
         friendlyId,
         runtimeEnvironmentId: env.id,
@@ -101,6 +126,23 @@ export class ApiRetrieveRunPresenter {
         },
       },
     });
+
+    if (pgRow) return pgRow;
+
+    // Postgres miss → fall back to the mollifier buffer. When the gate
+    // diverted a trigger, the run lives in Redis until the drainer replays
+    // it through engine.trigger. Synthesise the FoundRun shape so call()
+    // returns a `QUEUED` (or `FAILED`) response with empty output, no
+    // attempts, no relations.
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: friendlyId,
+      environmentId: env.id,
+      organizationId: env.organizationId,
+    });
+
+    if (!buffered) return null;
+
+    return synthesiseFoundRunFromBuffer(buffered);
   }
 
   public async call(taskRun: FoundRun, env: AuthenticatedEnvironment) {
@@ -472,4 +514,65 @@ function resolveTriggerFunction(run: CommonRelatedRun): TriggerFunction {
   } else {
     return run.resumeParentOnCompletion ? "triggerAndWait" : "trigger";
   }
+}
+
+// Build a FoundRun-shaped object from a buffered (mollified) run. The run
+// is in the Redis buffer; engine.trigger hasn't created the Postgres row
+// yet, so every field that comes from execution state (output, attempts,
+// completedAt, cost, relations) takes a default. The presenter's call()
+// handles QUEUED-state runs without surprise.
+function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
+  const status: TaskRunStatus =
+    buffered.status === "FAILED" ? "SYSTEM_FAILURE" : "PENDING";
+
+  const errorJson: Prisma.JsonValue = buffered.error
+    ? {
+        type: "STRING_ERROR",
+        raw: `${buffered.error.code}: ${buffered.error.message}`,
+      }
+    : null;
+
+  const metadata: Prisma.JsonValue =
+    typeof buffered.metadata === "string" ? buffered.metadata : null;
+
+  return {
+    id: buffered.friendlyId,
+    friendlyId: buffered.friendlyId,
+    status,
+    taskIdentifier: buffered.taskIdentifier ?? "",
+    createdAt: buffered.createdAt,
+    startedAt: null,
+    updatedAt: buffered.createdAt,
+    completedAt: null,
+    expiredAt: null,
+    delayUntil: null,
+    metadata,
+    metadataType: buffered.metadataType ?? "application/json",
+    ttl: buffered.ttl ?? null,
+    costInCents: 0,
+    baseCostInCents: 0,
+    usageDurationMs: 0,
+    idempotencyKey: buffered.idempotencyKey ?? null,
+    idempotencyKeyOptions: buffered.idempotencyKeyOptions ?? null,
+    isTest: buffered.isTest,
+    depth: buffered.depth,
+    scheduleId: null,
+    lockedToVersion: buffered.lockedToVersion ? { version: buffered.lockedToVersion } : null,
+    resumeParentOnCompletion: buffered.resumeParentOnCompletion,
+    batch: null,
+    runTags: buffered.tags,
+    traceId: buffered.traceId ?? "",
+    payload: typeof buffered.payload === "string" ? buffered.payload : "",
+    payloadType: buffered.payloadType ?? "application/json",
+    output: null,
+    outputType: "application/json",
+    error: errorJson,
+    attempts: [],
+    attemptNumber: null,
+    engine: "V2",
+    taskEventStore: "taskEvent",
+    parentTaskRun: null,
+    rootTaskRun: null,
+    childRuns: [],
+  };
 }
