@@ -174,47 +174,62 @@ describe("MollifierDrainer error handling", () => {
     }
   });
 
-  redisTest("multi-env round-robin: drains one item per env per runOnce", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
+  redisTest(
+    "multi-org round-robin: drains one item per org per runOnce",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
 
-    const handled: string[] = [];
-    const handler = vi.fn(async (input: { runId: string }) => {
-      handled.push(input.runId);
-    });
+      const handled: string[] = [];
+      const handler = vi.fn(async (input: { runId: string }) => {
+        handled.push(input.runId);
+      });
 
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 10,
-      maxAttempts: 3,
-      isRetryable: () => false,
-      logger: new Logger("test-drainer", "log"),
-    });
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 10,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "a1", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.accept({ runId: "a2", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.accept({ runId: "b1", envId: "env_b", orgId: "org_1", payload: "{}" });
+      try {
+        // org_A has two envs (env_a, env_b) → drainer picks one per tick
+        // via the per-org env cursor. org_B has one env (env_c) → it's
+        // always picked when org_B is in the slice.
+        await buffer.accept({ runId: "a1", envId: "env_a", orgId: "org_A", payload: "{}" });
+        await buffer.accept({ runId: "b1", envId: "env_b", orgId: "org_A", payload: "{}" });
+        await buffer.accept({ runId: "c1", envId: "env_c", orgId: "org_B", payload: "{}" });
 
-      const r1 = await drainer.runOnce();
-      expect(r1.drained).toBe(2);
-      expect(new Set(handled)).toEqual(new Set(["a1", "b1"]));
+        // Tick 1: 2 orgs in slice → 2 pops, one from org_A's rotating env
+        // pick and one from org_B's only env.
+        const r1 = await drainer.runOnce();
+        expect(r1.drained).toBe(2);
+        expect(handled).toContain("c1");
+        // Org_A contributed exactly one of {a1, b1}.
+        const orgADrainedTick1 = handled.filter((h) => h === "a1" || h === "b1");
+        expect(orgADrainedTick1).toHaveLength(1);
 
-      handled.length = 0;
-      const r2 = await drainer.runOnce();
-      expect(r2.drained).toBe(1);
-      expect(handled).toEqual(["a2"]);
-    } finally {
-      await buffer.close();
-    }
-  });
+        handled.length = 0;
+        // Tick 2: org_B's queue is empty (only had 1 entry, drained tick 1).
+        // listOrgs returns [org_A] only. Drain the remaining org_A env.
+        const r2 = await drainer.runOnce();
+        expect(r2.drained).toBe(1);
+        expect(handled).toHaveLength(1);
+        expect(["a1", "b1"]).toContain(handled[0]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
 });
 
 // Transient Redis errors used to permanently kill the loop because
@@ -227,8 +242,23 @@ describe("MollifierDrainer resilience to transient buffer errors", () => {
   type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
 
   function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+    // For tests that don't care about org grouping, default `listOrgs` and
+    // `listEnvsForOrg` to deriving from `listEnvs` (each env is its own
+    // org). Tests that exercise multi-env-per-org behaviour override
+    // these explicitly.
+    const inferredListOrgs = async (): Promise<string[]> => {
+      if (!overrides.listEnvs) return [];
+      return overrides.listEnvs();
+    };
+    const inferredListEnvsForOrg = async (orgId: string): Promise<string[]> => {
+      if (!overrides.listEnvs) return [];
+      const envs = await overrides.listEnvs();
+      return envs.includes(orgId) ? [orgId] : [];
+    };
     const base: StubBuffer = {
       listEnvs: async () => [],
+      listOrgs: inferredListOrgs,
+      listEnvsForOrg: inferredListEnvsForOrg,
       pop: async () => null,
       ack: async () => {},
       requeue: async () => {},
@@ -340,8 +370,23 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
   // of envs.
   type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
   function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+    // For tests that don't care about org grouping, default `listOrgs` and
+    // `listEnvsForOrg` to deriving from `listEnvs` (each env is its own
+    // org). Tests that exercise multi-env-per-org behaviour override
+    // these explicitly.
+    const inferredListOrgs = async (): Promise<string[]> => {
+      if (!overrides.listEnvs) return [];
+      return overrides.listEnvs();
+    };
+    const inferredListEnvsForOrg = async (orgId: string): Promise<string[]> => {
+      if (!overrides.listEnvs) return [];
+      const envs = await overrides.listEnvs();
+      return envs.includes(orgId) ? [orgId] : [];
+    };
     const base: StubBuffer = {
       listEnvs: async () => [],
+      listOrgs: inferredListOrgs,
+      listEnvsForOrg: inferredListEnvsForOrg,
       pop: async () => null,
       ack: async () => {},
       requeue: async () => {},
@@ -653,19 +698,22 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     }
   });
 
-  it("after cache warm-up, a heavy org with many envs gets ~1 slot per tick, not N slots", async () => {
-    // The hierarchical rotation property: once the env→org cache is
-    // populated, an org with N envs gets the SAME per-tick scheduling slot
-    // as an org with 1 env, instead of N slots (which is what per-env
-    // rotation would give). Sustained-run drainage rate is therefore
-    // determined by org count, not env count.
+  it("a heavy org with many envs gets ~1 slot per tick, not N slots", async () => {
+    // Hierarchical rotation property: an org with N envs gets the SAME
+    // per-tick scheduling slot as an org with 1 env, instead of N slots
+    // (which is what per-env rotation would give). Sustained-run drainage
+    // rate is therefore determined by org count, not env count.
     //
     // Org_A: 6 envs × 100 entries (a noisy tenant).
     // Org_B: 1 env × 100 entries (a quiet tenant).
     // Per-env rotation would drain org_A 6× faster than org_B. The org-
-    // level rotation drains them at ~1:1 over a sustained window.
+    // level walk via listOrgs → listEnvsForOrg drains them at ~1:1 over
+    // a sustained window.
     const orgAEnvs = Array.from({ length: 6 }, (_, i) => `env_orgA_${i}`);
     const orgBEnv = "env_orgB_only";
+    const envOrg = new Map<string, string>();
+    for (const e of orgAEnvs) envOrg.set(e, "org_A");
+    envOrg.set(orgBEnv, "org_B");
     const queues = new Map<string, Array<{ runId: string; orgId: string }>>();
     for (const e of orgAEnvs) {
       queues.set(
@@ -688,6 +736,20 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     const buffer = makeStubBuffer({
       listEnvs: async () =>
         [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
+      listOrgs: async () => {
+        const orgs = new Set<string>();
+        for (const [envId, items] of queues.entries()) {
+          if (items.length > 0) orgs.add(envOrg.get(envId)!);
+        }
+        return [...orgs];
+      },
+      listEnvsForOrg: async (orgId: string) => {
+        const envs: string[] = [];
+        for (const [envId, items] of queues.entries()) {
+          if (items.length > 0 && envOrg.get(envId) === orgId) envs.push(envId);
+        }
+        return envs;
+      },
       pop: async (envId: string) => {
         const q = queues.get(envId);
         if (!q || q.length === 0) return null;
@@ -716,13 +778,6 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
       logger: new Logger("test-drainer", "log"),
     });
 
-    // Warm the cache: first tick treats every env as its own pseudo-org
-    // (per-env behaviour). After tick 1 the cache is populated and
-    // subsequent ticks bucket by real org.
-    await drainer.runOnce();
-
-    // Drive 20 more ticks with the cache hot. Under hierarchical rotation
-    // each tick drains 1 from org_A and 1 from org_B.
     for (let i = 0; i < 20; i++) {
       await drainer.runOnce();
     }
@@ -732,18 +787,15 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     expect(drainedByOrg["org_A"]).toBeGreaterThan(0);
     expect(drainedByOrg["org_B"]).toBeGreaterThan(0);
     const ratio = drainedByOrg["org_A"]! / drainedByOrg["org_B"]!;
-    // Allow a generous band to absorb cold-start tick 1 (which favoured
-    // org_A by 6 because each env was its own pseudo-org). Within 2× is
-    // the bar; under per-env it would be ~6×.
-    expect(ratio).toBeGreaterThan(0.5);
-    expect(ratio).toBeLessThan(2);
+    expect(ratio).toBeGreaterThan(0.7);
+    expect(ratio).toBeLessThan(1.5);
   });
 
   it("within an org, envs are rotated round-robin across ticks", async () => {
-    // After cache warm-up an org with N envs picks one env per tick,
-    // cycling through its envs. This test verifies the inner cursor
-    // advances by 1 per visit to the org (analogous to head-of-line
-    // fairness within a slice, but at the env-within-org layer).
+    // An org with N envs picks one env per tick, cycling through its
+    // envs via the per-org env cursor. Inner cursor advances by 1 per
+    // visit to the org (analogous to head-of-line fairness within a
+    // slice, but at the env-within-org layer).
     const orgEnvs = ["env_x", "env_y", "env_z"];
     const orgId = "org_solo";
     const queues = new Map<string, number>();
@@ -753,6 +805,14 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
     const buffer = makeStubBuffer({
       listEnvs: async () =>
         [...queues.keys()].filter((k) => (queues.get(k) ?? 0) > 0),
+      listOrgs: async () => {
+        const anyEnvActive = [...queues.values()].some((n) => n > 0);
+        return anyEnvActive ? [orgId] : [];
+      },
+      listEnvsForOrg: async (org: string) =>
+        org === orgId
+          ? [...queues.keys()].filter((k) => (queues.get(k) ?? 0) > 0)
+          : [],
       pop: async (envId: string) => {
         const remaining = queues.get(envId) ?? 0;
         if (remaining === 0) return null;
@@ -780,19 +840,12 @@ describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)",
       logger: new Logger("test-drainer", "log"),
     });
 
-    // Tick 1: cold cache, each env is its own pseudo-org → all 3 popped.
-    await drainer.runOnce();
-    poppedSequence.length = 0;
-
-    // Now cache is warm; all 3 envs are in `org_solo`. Each tick should
-    // drain exactly one env from the org bucket, rotating through them.
+    // 6 ticks × 1 env per tick = 6 pops, cycling x, y, z, x, y, z. Every
+    // env should be picked exactly twice across the 6 ticks.
     for (let i = 0; i < 6; i++) {
       await drainer.runOnce();
     }
 
-    // 6 ticks × 1 env per tick = 6 pops, cycling x, y, z, x, y, z (in
-    // some sort order). The exact sequence depends on the bucket's
-    // internal cursor — but every env should be picked exactly twice.
     expect(poppedSequence).toHaveLength(6);
     const counts = poppedSequence.reduce<Record<string, number>>((acc, e) => {
       acc[e] = (acc[e] ?? 0) + 1;
@@ -808,8 +861,23 @@ describe("MollifierDrainer additional coverage", () => {
   // Helper duplicated locally to keep these tests self-contained.
   type StubBuffer = Partial<MollifierBuffer> & { [K in keyof MollifierBuffer]?: any };
   function makeStubBuffer(overrides: StubBuffer): MollifierBuffer {
+    // For tests that don't care about org grouping, default `listOrgs` and
+    // `listEnvsForOrg` to deriving from `listEnvs` (each env is its own
+    // org). Tests that exercise multi-env-per-org behaviour override
+    // these explicitly.
+    const inferredListOrgs = async (): Promise<string[]> => {
+      if (!overrides.listEnvs) return [];
+      return overrides.listEnvs();
+    };
+    const inferredListEnvsForOrg = async (orgId: string): Promise<string[]> => {
+      if (!overrides.listEnvs) return [];
+      const envs = await overrides.listEnvs();
+      return envs.includes(orgId) ? [orgId] : [];
+    };
     const base: StubBuffer = {
       listEnvs: async () => [],
+      listOrgs: inferredListOrgs,
+      listEnvsForOrg: inferredListEnvsForOrg,
       pop: async () => null,
       ack: async () => {},
       requeue: async () => {},
@@ -1188,13 +1256,16 @@ describe("MollifierDrainer concurrency cap", () => {
       });
 
       try {
-        // One entry per env so runOnce sees `envCount` candidates and pLimits
-        // them through pLimit(concurrency).
+        // One entry per (env, org) so runOnce sees `envCount` distinct
+        // orgs as scheduling candidates and pLimits them through
+        // pLimit(concurrency). Spread across orgs (not envs in one org)
+        // because the drainer picks one env per org per tick — a single
+        // org with 12 envs would only see 1 pop per tick.
         for (let i = 0; i < envCount; i++) {
           await buffer.accept({
             runId: `run_${i}`,
             envId: `env_${i}`,
-            orgId: "org_1",
+            orgId: `org_${i}`,
             payload: "{}",
           });
         }

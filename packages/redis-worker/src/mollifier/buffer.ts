@@ -53,17 +53,20 @@ export class MollifierBuffer {
     const entryKey = `mollifier:entries:${input.runId}`;
     const queueKey = `mollifier:queue:${input.envId}`;
     const envsKey = "mollifier:envs";
+    const orgsKey = "mollifier:orgs";
     const createdAt = new Date().toISOString();
     const result = await this.redis.acceptMollifierEntry(
       entryKey,
       queueKey,
       envsKey,
+      orgsKey,
       input.runId,
       input.envId,
       input.orgId,
       input.payload,
       createdAt,
       String(this.entryTtlSeconds),
+      "mollifier:org-envs:",
     );
     return result === 1;
   }
@@ -71,12 +74,15 @@ export class MollifierBuffer {
   async pop(envId: string): Promise<BufferEntry | null> {
     const queueKey = `mollifier:queue:${envId}`;
     const envsKey = "mollifier:envs";
+    const orgsKey = "mollifier:orgs";
     const entryPrefix = "mollifier:entries:";
     const encoded = (await this.redis.popAndMarkDraining(
       queueKey,
       envsKey,
+      orgsKey,
       entryPrefix,
       envId,
+      "mollifier:org-envs:",
     )) as string | null;
     if (!encoded) return null;
 
@@ -114,8 +120,22 @@ export class MollifierBuffer {
     return parsed.data;
   }
 
+  // Flat list of envs with active entries. Kept for inspection and the
+  // org-walk fallback; the drainer walks orgs → envs-for-org instead.
   async listEnvs(): Promise<string[]> {
     return this.redis.smembers("mollifier:envs");
+  }
+
+  // Drainer walks these two methods to schedule pops with org-level
+  // fairness: one env per org per tick. The Lua scripts maintain both
+  // sets atomically with the per-env queues, so an env appears here
+  // exactly when its queue has at least one entry.
+  async listOrgs(): Promise<string[]> {
+    return this.redis.smembers("mollifier:orgs");
+  }
+
+  async listEnvsForOrg(orgId: string): Promise<string[]> {
+    return this.redis.smembers(`mollifier:org-envs:${orgId}`);
   }
 
   async ack(runId: string): Promise<void> {
@@ -126,8 +146,10 @@ export class MollifierBuffer {
     await this.redis.requeueMollifierEntry(
       `mollifier:entries:${runId}`,
       "mollifier:envs",
+      "mollifier:orgs",
       "mollifier:queue:",
       runId,
+      "mollifier:org-envs:",
     );
   }
 
@@ -169,17 +191,19 @@ export class MollifierBuffer {
 
   #registerCommands() {
     this.redis.defineCommand("acceptMollifierEntry", {
-      numberOfKeys: 3,
+      numberOfKeys: 4,
       lua: `
         local entryKey = KEYS[1]
         local queueKey = KEYS[2]
         local envsKey = KEYS[3]
+        local orgsKey = KEYS[4]
         local runId = ARGV[1]
         local envId = ARGV[2]
         local orgId = ARGV[3]
         local payload = ARGV[4]
         local createdAt = ARGV[5]
         local ttlSeconds = tonumber(ARGV[6])
+        local orgEnvsPrefix = ARGV[7]
 
         -- Idempotent: refuse if an entry for this runId already exists in any
         -- state. Caller-side dedup is also enforced via API idempotency keys,
@@ -199,19 +223,28 @@ export class MollifierBuffer {
         redis.call('EXPIRE', entryKey, ttlSeconds)
         redis.call('LPUSH', queueKey, runId)
         redis.call('SADD', envsKey, envId)
+        -- Org-level membership: maintained atomically with the per-env
+        -- queue/SET so the drainer can walk orgs → envs-for-org and
+        -- schedule one env per org per tick. SADDs are idempotent if the
+        -- org/env are already tracked.
+        redis.call('SADD', orgsKey, orgId)
+        redis.call('SADD', orgEnvsPrefix .. orgId, envId)
         return 1
       `,
     });
 
     this.redis.defineCommand("requeueMollifierEntry", {
-      numberOfKeys: 2,
+      numberOfKeys: 3,
       lua: `
         local entryKey = KEYS[1]
         local envsKey = KEYS[2]
+        local orgsKey = KEYS[3]
         local queuePrefix = ARGV[1]
         local runId = ARGV[2]
+        local orgEnvsPrefix = ARGV[3]
 
         local envId = redis.call('HGET', entryKey, 'envId')
+        local orgId = redis.call('HGET', entryKey, 'orgId')
         if not envId then
           return 0
         end
@@ -221,20 +254,41 @@ export class MollifierBuffer {
 
         redis.call('HSET', entryKey, 'status', 'QUEUED', 'attempts', tostring(nextAttempts))
         redis.call('LPUSH', queuePrefix .. envId, runId)
-        -- Re-track the env: pop may have SREM'd it when the queue last
-        -- emptied. SADD is idempotent if the env is still present.
+        -- Re-track the env/org: pop may have SREM'd them when the queue
+        -- last emptied. SADDs are idempotent if the values are still
+        -- present.
         redis.call('SADD', envsKey, envId)
+        if orgId then
+          redis.call('SADD', orgsKey, orgId)
+          redis.call('SADD', orgEnvsPrefix .. orgId, envId)
+        end
         return 1
       `,
     });
 
     this.redis.defineCommand("popAndMarkDraining", {
-      numberOfKeys: 2,
+      numberOfKeys: 3,
       lua: `
         local queueKey = KEYS[1]
         local envsKey = KEYS[2]
+        local orgsKey = KEYS[3]
         local entryPrefix = ARGV[1]
         local envId = ARGV[2]
+        local orgEnvsPrefix = ARGV[3]
+
+        -- Helper: prune org-level membership when an env's queue empties.
+        -- Called only from the success branch where we know orgId from the
+        -- popped entry. The no-runId branch below can't reach this because
+        -- it has no entry to read orgId from — accept any stale org-envs
+        -- entries that result (bounded by env count, recovered next accept).
+        local function pruneOrgMembership(orgId)
+          if not orgId then return end
+          local orgEnvsKey = orgEnvsPrefix .. orgId
+          redis.call('SREM', orgEnvsKey, envId)
+          if redis.call('SCARD', orgEnvsKey) == 0 then
+            redis.call('SREM', orgsKey, orgId)
+          end
+        end
 
         -- Loop to skip orphan queue references — runIds whose entry hash has
         -- expired (TTL hit). HSET on a missing key would CREATE a partial
@@ -245,6 +299,9 @@ export class MollifierBuffer {
           if not runId then
             -- Queue is empty; opportunistically prune envs set. SREM is safe
             -- under concurrent LPUSH: accept SADDs the env back atomically.
+            -- Org-level cleanup is skipped here because we don't know orgId
+            -- without an entry to read from. Stale org-envs entries are
+            -- bounded by env count and recovered on the next accept.
             if redis.call('LLEN', queueKey) == 0 then
               redis.call('SREM', envsKey, envId)
             end
@@ -254,16 +311,17 @@ export class MollifierBuffer {
           local entryKey = entryPrefix .. runId
           if redis.call('EXISTS', entryKey) == 1 then
             redis.call('HSET', entryKey, 'status', 'DRAINING')
-            -- Prune envs set if this pop drained the queue. Atomic with the
-            -- RPOP above — a concurrent accept AFTER this script will SADD
-            -- the env back along with its LPUSH.
-            if redis.call('LLEN', queueKey) == 0 then
-              redis.call('SREM', envsKey, envId)
-            end
             local raw = redis.call('HGETALL', entryKey)
             local result = {}
             for i = 1, #raw, 2 do
               result[raw[i]] = raw[i + 1]
+            end
+            -- Prune envs/orgs/org-envs sets if this pop drained the queue.
+            -- Atomic with the RPOP above — a concurrent accept AFTER this
+            -- script will SADD all three back along with its LPUSH.
+            if redis.call('LLEN', queueKey) == 0 then
+              redis.call('SREM', envsKey, envId)
+              pruneOrgMembership(result['orgId'])
             end
             return cjson.encode(result)
           end
@@ -321,26 +379,32 @@ declare module "@internal/redis" {
       entryKey: string,
       queueKey: string,
       envsKey: string,
+      orgsKey: string,
       runId: string,
       envId: string,
       orgId: string,
       payload: string,
       createdAt: string,
       ttlSeconds: string,
+      orgEnvsPrefix: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     popAndMarkDraining(
       queueKey: string,
       envsKey: string,
+      orgsKey: string,
       entryPrefix: string,
       envId: string,
+      orgEnvsPrefix: string,
       callback?: Callback<string | null>,
     ): Result<string | null, Context>;
     requeueMollifierEntry(
       entryKey: string,
       envsKey: string,
+      orgsKey: string,
       queuePrefix: string,
       runId: string,
+      orgEnvsPrefix: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     failMollifierEntry(
