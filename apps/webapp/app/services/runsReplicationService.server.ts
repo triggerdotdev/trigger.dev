@@ -264,13 +264,6 @@ export class RunsReplicationService {
       logger: this.logger,
       reconnect: async () => {
         await this._replicationClient.subscribe(this._latestCommitEndLsn ?? undefined);
-        if (this._replicationClient.isStopped) {
-          // subscribe() can resolve without throwing or emitting an "error"
-          // event when leader-lock acquisition fails (see LogicalReplication-
-          // Client.subscribe leader-election branch). Throw here so the
-          // recovery handler reschedules the next attempt.
-          throw new Error("Replication client stopped after subscribe()");
-        }
       },
       isShuttingDown: () => this._isShuttingDown || this._isShutDownComplete,
     });
@@ -293,6 +286,15 @@ export class RunsReplicationService {
 
     this._replicationClient.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { isLeader });
+      if (!isLeader) {
+        // Failed leader election doesn't throw or emit an "error" event —
+        // subscribe() just emits leaderElection(false), calls stop(), and
+        // returns. Nudge the recovery handler so reconnect doesn't silently
+        // stall when another instance holds the lock.
+        this._errorRecovery.handle(
+          new Error("Failed to acquire replication leader lock")
+        );
+      }
     });
 
     // Initialize retry configuration
