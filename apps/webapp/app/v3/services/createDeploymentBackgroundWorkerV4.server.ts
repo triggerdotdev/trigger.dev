@@ -152,12 +152,9 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // triggers against this build hit the cache. Promotion (which writes the
       // env keyspace) happens later via finalizeDeployment → changeCurrentDeployment.
       // Cache calls log+swallow internally, so a Redis blip can't stall the
-      // deployment state machine.
-      if (workerTaskEntries && workerTaskEntries.length > 0) {
-        await this._taskMetaCache.populateByWorker(
-          backgroundWorker.id,
-          workerTaskEntries
-        );
+      // deployment state machine. Empty entries clears stale hashes.
+      if (workerTaskEntries) {
+        await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
       }
 
       const [schedulesError] = await tryCatch(

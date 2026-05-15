@@ -234,8 +234,9 @@ export class CreateBackgroundWorkerService extends BaseService {
       // here — promotion writes the `:env:` keyspace later in
       // changeCurrentDeployment / createDeploymentBackgroundWorkerV3.
       // Cache calls log+swallow internally, so a Redis blip can't break
-      // anything else here.
-      if (workerTaskEntries && workerTaskEntries.length > 0) {
+      // anything else here. Empty `workerTaskEntries` is intentional — the
+      // populate methods clear stale hashes for zero-task deploys.
+      if (workerTaskEntries) {
         if (environment.type === "DEVELOPMENT") {
           await this._taskMetaCache.populateByCurrentWorker(
             environment.id,

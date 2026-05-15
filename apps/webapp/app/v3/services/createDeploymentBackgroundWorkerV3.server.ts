@@ -168,14 +168,13 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
 
       // V3 promotes the deployment immediately above, so this worker is now
       // current for the env — write both keyspaces atomically. Cache calls
-      // log+swallow internally.
-      if (workerTaskEntries.length > 0) {
-        await this._taskMetaCache.populateByCurrentWorker(
-          environment.id,
-          backgroundWorker.id,
-          workerTaskEntries
-        );
-      }
+      // log+swallow internally. Empty `workerTaskEntries` is intentional: the
+      // populate methods clear stale hashes for zero-task deploys.
+      await this._taskMetaCache.populateByCurrentWorker(
+        environment.id,
+        backgroundWorker.id,
+        workerTaskEntries
+      );
 
       try {
         //send a notification that a new worker has been created

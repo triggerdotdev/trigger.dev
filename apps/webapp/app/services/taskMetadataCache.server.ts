@@ -267,8 +267,10 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
     workerId: string,
     entries: TaskMetadataEntry[]
   ): Promise<void> {
-    if (entries.length === 0) return;
     try {
+      // Always invoke the script — empty `entries` is valid and causes both
+      // keyspaces to be cleared (DEL + no HSET), which is the right behavior
+      // when promoting a worker with no tasks.
       const argv: string[] = [
         String(this.currentEnvTtlSeconds),
         String(this.byWorkerTtlSeconds),
@@ -291,8 +293,8 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
   }
 
   async populateByWorker(workerId: string, entries: TaskMetadataEntry[]): Promise<void> {
-    if (entries.length === 0) return;
     try {
+      // Always invoke the script — empty `entries` clears the keyspace.
       const argv: string[] = [String(this.byWorkerTtlSeconds)];
       for (const entry of entries) {
         argv.push(entry.slug, encode(entry));

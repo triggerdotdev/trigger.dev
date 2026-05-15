@@ -124,10 +124,17 @@ export class DefaultQueueManager implements QueueManager {
           request.taskId
         );
 
-        if (request.body.options?.ttl === undefined) {
-          taskTtl = lockedMeta?.ttl ?? undefined;
+        if (!lockedMeta) {
+          throw new ServiceValidationError(
+            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
+            }'.`
+          );
         }
-        taskKind = lockedMeta?.triggerSource;
+
+        if (request.body.options?.ttl === undefined) {
+          taskTtl = lockedMeta.ttl ?? undefined;
+        }
+        taskKind = lockedMeta.triggerSource;
       } else {
         // No queue override - resolve default queue + TTL + triggerSource via cache,
         // falling back to a single BackgroundWorkerTask lookup on miss.
