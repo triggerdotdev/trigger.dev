@@ -1159,7 +1159,7 @@ importers:
         version: 18.3.1
       react-email:
         specifier: ^2.1.1
-        version: 2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(bufferutil@4.0.9)(eslint@8.31.0)
+        version: 2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0)
       resend:
         specifier: ^3.2.0
         version: 3.2.0
@@ -1512,8 +1512,8 @@ importers:
   packages/cli-v3:
     dependencies:
       '@clack/prompts':
-        specifier: 0.11.0
-        version: 0.11.0
+        specifier: 1.4.0
+        version: 1.4.0
       '@depot/cli':
         specifier: 0.0.1-cli.2.80.0
         version: 0.0.1-cli.2.80.0
@@ -1933,7 +1933,7 @@ importers:
         version: 6.0.1
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(typescript@5.5.4)(yaml@2.8.3)
+        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.6.1)(postcss@8.5.10)(tsx@4.20.6)(typescript@5.5.4)(yaml@2.8.3)
       typescript:
         specifier: 5.5.4
         version: 5.5.4
@@ -4260,11 +4260,13 @@ packages:
   '@chevrotain/utils@12.0.0':
     resolution: {integrity: sha512-lB59uJoaGIfOOL9knQqQRfhl9g7x8/wqFkp13zTdkRu1huG9kg6IJs1O8hqj9rs6h7orGxHJUKb+mX3rPbWGhA==}
 
-  '@clack/core@0.5.0':
-    resolution: {integrity: sha512-p3y0FIOwaYRUPRcMO7+dlmLh8PSRcrjuTndsiA0WAFbWES0mLZlrjVoBRZ9DzkPFJZG6KGkJmoEAY0ZcVWTkow==}
+  '@clack/core@1.3.1':
+    resolution: {integrity: sha512-fT1qHVGAag4IEkrupZ6lRRbNCs1vS9P01KB/sG8zKgvUztbYtFBtQpjSITNwooDZ83tpsPzP0mRNs1/KVszCRA==}
+    engines: {node: '>= 20.12.0'}
 
-  '@clack/prompts@0.11.0':
-    resolution: {integrity: sha512-pMN5FcrEw9hUkZA4f+zLlzivQSeQf5dRGJjSUbvVYDLvpKCdQx5OaknvKzgbtXOizhP+SJJJjqEbOe55uKKfAw==}
+  '@clack/prompts@1.4.0':
+    resolution: {integrity: sha512-S0My7XPGIgpRWMDG8uRqalbgT+a6FmCUdOW+HaIOVVpUPHOb7RrpvjTjiODadKp06fsrVDJZlIzc6yCTp4AnxA==}
+    engines: {node: '>= 20.12.0'}
 
   '@clickhouse/client-common@1.11.1':
     resolution: {integrity: sha512-bme0le2yhDSAh13d2fxhSW5ZrNoVqZ3LTyac8jK6hNH0qkksXnjYkLS6KQalPU6NMpffxHmpI4+/Gi2MnX0NCA==}
@@ -13818,11 +13820,20 @@ packages:
   fast-shallow-equal@1.0.0:
     resolution: {integrity: sha512-HPtaa38cPgWvaCFmRNhlc6NG7pv6NUHqjPgVAkWGoB9mQMwYB27/K0CvOM5Czy+qpT3e8XJ6Q4aPAnzpNpzNaw==}
 
+  fast-string-truncated-width@3.0.3:
+    resolution: {integrity: sha512-0jjjIEL6+0jag3l2XWWizO64/aZVtpiGE3t0Zgqxv0DPuxiMjvB3M24fCyhZUO4KomJQPj3LTSUnDP3GpdwC0g==}
+
+  fast-string-width@3.0.2:
+    resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
+
   fast-uri@3.0.6:
     resolution: {integrity: sha512-Atfo14OibSv5wAp4VWNsFYE1AchQRTv9cBGWET4pZWHzYshFSS9NQI6I57rdKn9croWVMbYFbLhJ+yJvmZIIHw==}
 
   fast-url-parser@1.1.3:
     resolution: {integrity: sha512-5jOCVXADYNuRkKFzNJ0dCCewsZiYo0dz8QNYljkOpFC6r2U4OBmKtvm/Tsuh4w1YYdDqDb31a8TVhBJ2OJKdqQ==}
+
+  fast-wrap-ansi@0.2.0:
+    resolution: {integrity: sha512-rLV8JHxTyhVmFYhBJuMujcrHqOT2cnO5Zxj37qROj23CP39GXubJRBUFF0z8KFK77Uc0SukZUf7JZhsVEQ6n8w==}
 
   fast-xml-builder@1.1.5:
     resolution: {integrity: sha512-4TJn/8FKLeslLAH3dnohXqE3QSoxkhvaMzepOIZytwJXZO69Bfz0HBdDHzOTOon6G59Zrk6VQ2bEiv1t61rfkA==}
@@ -19781,6 +19792,7 @@ packages:
 
   uuid@10.0.0:
     resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@11.1.0:
@@ -23044,15 +23056,16 @@ snapshots:
 
   '@chevrotain/utils@12.0.0': {}
 
-  '@clack/core@0.5.0':
+  '@clack/core@1.3.1':
     dependencies:
-      picocolors: 1.1.1
+      fast-wrap-ansi: 0.2.0
       sisteransi: 1.0.5
 
-  '@clack/prompts@0.11.0':
+  '@clack/prompts@1.4.0':
     dependencies:
-      '@clack/core': 0.5.0
-      picocolors: 1.1.1
+      '@clack/core': 1.3.1
+      fast-string-width: 3.0.2
+      fast-wrap-ansi: 0.2.0
       sisteransi: 1.0.5
 
   '@clickhouse/client-common@1.11.1': {}
@@ -34501,11 +34514,21 @@ snapshots:
 
   fast-shallow-equal@1.0.0: {}
 
+  fast-string-truncated-width@3.0.3: {}
+
+  fast-string-width@3.0.2:
+    dependencies:
+      fast-string-truncated-width: 3.0.3
+
   fast-uri@3.0.6: {}
 
   fast-url-parser@1.1.3:
     dependencies:
       punycode: 1.4.1
+
+  fast-wrap-ansi@0.2.0:
+    dependencies:
+      fast-string-width: 3.0.2
 
   fast-xml-builder@1.1.5:
     dependencies:
@@ -38398,11 +38421,11 @@ snapshots:
       tsx: 4.17.0
       yaml: 2.8.3
 
-  postcss-load-config@6.0.1(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(yaml@2.8.3):
+  postcss-load-config@6.0.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.20.6)(yaml@2.8.3):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
-      jiti: 2.4.2
+      jiti: 2.6.1
       postcss: 8.5.10
       tsx: 4.20.6
       yaml: 2.8.3
@@ -38975,7 +38998,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(bufferutil@4.0.9)(eslint@8.31.0):
+  react-email@2.1.2(@opentelemetry/api@1.9.0)(@swc/helpers@0.5.15)(eslint@8.31.0):
     dependencies:
       '@babel/parser': 7.24.1
       '@radix-ui/colors': 1.0.1
@@ -39012,8 +39035,8 @@ snapshots:
       react: 18.3.1
       react-dom: 18.2.0(react@18.3.1)
       shelljs: 0.8.5
-      socket.io: 4.7.3(bufferutil@4.0.9)
-      socket.io-client: 4.7.3(bufferutil@4.0.9)
+      socket.io: 4.7.3
+      socket.io-client: 4.7.3
       sonner: 1.3.1(react-dom@18.2.0(react@18.3.1))(react@18.3.1)
       source-map-js: 1.0.2
       stacktrace-parser: 0.1.10
@@ -40269,7 +40292,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  socket.io-client@4.7.3(bufferutil@4.0.9):
+  socket.io-client@4.7.3:
     dependencies:
       '@socket.io/component-emitter': 3.1.0
       debug: 4.3.7(supports-color@10.0.0)
@@ -40298,7 +40321,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  socket.io@4.7.3(bufferutil@4.0.9):
+  socket.io@4.7.3:
     dependencies:
       accepts: 1.3.8
       base64id: 2.0.0
@@ -41342,7 +41365,7 @@ snapshots:
       - tsx
       - yaml
 
-  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(typescript@5.5.4)(yaml@2.8.3):
+  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.6.1)(postcss@8.5.10)(tsx@4.20.6)(typescript@5.5.4)(yaml@2.8.3):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.25.1)
       cac: 6.7.14
@@ -41352,7 +41375,7 @@ snapshots:
       esbuild: 0.25.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@2.4.2)(postcss@8.5.10)(tsx@4.20.6)(yaml@2.8.3)
+      postcss-load-config: 6.0.1(jiti@2.6.1)(postcss@8.5.10)(tsx@4.20.6)(yaml@2.8.3)
       resolve-from: 5.0.0
       rollup: 4.60.1
       source-map: 0.8.0-beta.0
