@@ -1,5 +1,5 @@
 import { redisTest } from "@internal/testcontainers";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Logger } from "@trigger.dev/core/logger";
 import { MollifierBuffer } from "./buffer.js";
 import { MollifierDrainer } from "./drainer.js";
@@ -49,7 +49,16 @@ describe("MollifierDrainer.runOnce", () => {
       ...noopOptions,
     });
 
-    const handler = vi.fn(async () => {});
+    const handlerCalls: Array<{ runId: string; envId: string; orgId: string; payload: unknown }> =
+      [];
+    const handler = async (input: {
+      runId: string;
+      envId: string;
+      orgId: string;
+      payload: unknown;
+    }) => {
+      handlerCalls.push(input);
+    };
     const drainer = new MollifierDrainer({
       buffer,
       handler,
@@ -70,15 +79,13 @@ describe("MollifierDrainer.runOnce", () => {
       const result = await drainer.runOnce();
       expect(result.drained).toBe(1);
       expect(result.failed).toBe(0);
-      expect(handler).toHaveBeenCalledTimes(1);
-      expect(handler).toHaveBeenCalledWith(
-        expect.objectContaining({
-          runId: "run_1",
-          envId: "env_a",
-          orgId: "org_1",
-          payload: { foo: 1 },
-        }),
-      );
+      expect(handlerCalls).toHaveLength(1);
+      expect(handlerCalls[0]).toMatchObject({
+        runId: "run_1",
+        envId: "env_a",
+        orgId: "org_1",
+        payload: { foo: 1 },
+      });
 
       const entry = await buffer.getEntry("run_1");
       expect(entry).toBeNull();
@@ -97,7 +104,10 @@ describe("MollifierDrainer.runOnce", () => {
       ...noopOptions,
     });
 
-    const handler = vi.fn(async () => {});
+    let handlerCalls = 0;
+    const handler = async () => {
+      handlerCalls++;
+    };
     const drainer = new MollifierDrainer({
       buffer,
       handler,
@@ -111,7 +121,7 @@ describe("MollifierDrainer.runOnce", () => {
       const result = await drainer.runOnce();
       expect(result.drained).toBe(0);
       expect(result.failed).toBe(0);
-      expect(handler).not.toHaveBeenCalled();
+      expect(handlerCalls).toBe(0);
     } finally {
       await buffer.close();
     }
@@ -130,10 +140,10 @@ describe("MollifierDrainer error handling", () => {
     });
 
     let calls = 0;
-    const handler = vi.fn(async () => {
+    const handler = async () => {
       calls++;
       throw new Error("transient");
-    });
+    };
 
     const drainer = new MollifierDrainer({
       buffer,
@@ -176,9 +186,9 @@ describe("MollifierDrainer error handling", () => {
       ...noopOptions,
     });
 
-    const handler = vi.fn(async () => {
+    const handler = async () => {
       throw new Error("validation failure");
-    });
+    };
 
     const drainer = new MollifierDrainer({
       buffer,
@@ -216,9 +226,9 @@ describe("MollifierDrainer error handling", () => {
       });
 
       const handled: string[] = [];
-      const handler = vi.fn(async (input: { runId: string }) => {
+      const handler = async (input: { runId: string }) => {
         handled.push(input.runId);
-      });
+      };
 
       const drainer = new MollifierDrainer({
         buffer,
@@ -1077,9 +1087,9 @@ describe("MollifierDrainer.start/stop", () => {
     });
 
     const handled: string[] = [];
-    const handler = vi.fn(async (input: { runId: string }) => {
+    const handler = async (input: { runId: string }) => {
       handled.push(input.runId);
-    });
+    };
 
     const drainer = new MollifierDrainer({
       buffer,
@@ -1121,10 +1131,10 @@ describe("MollifierDrainer.start/stop", () => {
     });
 
     let handlerStarted = false;
-    const handler = vi.fn(async () => {
+    const handler = async () => {
       handlerStarted = true;
       await new Promise<void>(() => {});
-    });
+    };
 
     const drainer = new MollifierDrainer({
       buffer,
@@ -1177,7 +1187,9 @@ describe("MollifierDrainer concurrency cap", () => {
       const envCount = 12;
       let inflight = 0;
       let peak = 0;
-      const handler = vi.fn(async () => {
+      let handlerCalls = 0;
+      const handler = async () => {
+        handlerCalls++;
         inflight++;
         if (inflight > peak) peak = inflight;
         // Sleep long enough that handlers definitely overlap if scheduling
@@ -1185,7 +1197,7 @@ describe("MollifierDrainer concurrency cap", () => {
         // would be running simultaneously without the cap.
         await new Promise((r) => setTimeout(r, 75));
         inflight--;
-      });
+      };
 
       const drainer = new MollifierDrainer({
         buffer,
@@ -1213,7 +1225,7 @@ describe("MollifierDrainer concurrency cap", () => {
 
         const result = await drainer.runOnce();
         expect(result.drained).toBe(envCount);
-        expect(handler).toHaveBeenCalledTimes(envCount);
+        expect(handlerCalls).toBe(envCount);
         expect(peak).toBeGreaterThan(1); // concurrency is real, not serialised
         expect(peak).toBeLessThanOrEqual(concurrency);
       } finally {
