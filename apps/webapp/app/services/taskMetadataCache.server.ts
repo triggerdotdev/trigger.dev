@@ -117,27 +117,42 @@ return 1
 `;
 
 /**
+ * Reserved field name on env hashes that records the worker currently
+ * "owning" the env keyspace. The back-fill Lua script reads this and skips
+ * its env-side write if the owner has flipped — closing the race where a
+ * concurrent promotion atomically replaces the env hash between a resolver's
+ * PG read and its back-fill write. Customer task slugs are kebab/camelCase
+ * and never start with `__`, so collisions are not a concern; an accidental
+ * `getCurrent(envId, "__owner_worker_id")` would JSON.parse-fail and fall
+ * back to PG, not corrupt anything.
+ */
+const OWNER_FIELD = "__owner_worker_id";
+
+/**
  * Atomically replace BOTH keyspaces in one Redis transaction. Used at deploy
  * promotion — the worker just became current for the env, so the env keyspace
- * and the worker keyspace get the same field set.
+ * and the worker keyspace get the same field set, and the env hash is
+ * stamped with the new owner workerId.
  *
  * KEYS[1] = env hash key
  * KEYS[2] = by-worker hash key
  * ARGV[1] = env ttl seconds (0 = no TTL)
  * ARGV[2] = by-worker ttl seconds (0 = no TTL)
- * ARGV[3..N] = alternating field, value pairs (same for both hashes)
+ * ARGV[3] = workerId (env-hash owner marker)
+ * ARGV[4..N] = alternating field, value pairs (same for both hashes)
  */
 const REPLACE_TWO_HASHES_LUA = `
 redis.call("DEL", KEYS[1])
 redis.call("DEL", KEYS[2])
-if #ARGV > 2 then
+if #ARGV > 3 then
   local fv = {}
-  for i = 3, #ARGV do
+  for i = 4, #ARGV do
     fv[#fv + 1] = ARGV[i]
   end
   redis.call("HSET", KEYS[1], unpack(fv))
   redis.call("HSET", KEYS[2], unpack(fv))
 end
+redis.call("HSET", KEYS[1], "${OWNER_FIELD}", ARGV[3])
 local envTtl = tonumber(ARGV[1])
 if envTtl and envTtl > 0 then
   redis.call("EXPIRE", KEYS[1], envTtl)
@@ -169,26 +184,43 @@ return 1
 
 /**
  * Atomically upsert one field in BOTH keyspaces. Used by the non-locked
- * back-fill path. The env-keyspace TTL is only set if no TTL is present
- * (preserves the promotion boundary); the by-worker TTL is refreshed.
+ * back-fill path.
+ *
+ * The by-worker hash always gets written (the key contains the workerId, so
+ * stale data lands in a dead worker's keyspace and is never read by anyone
+ * not pinned to that version).
+ *
+ * The env hash is CAS-guarded by `${OWNER_FIELD}`: if a concurrent promotion
+ * has replaced the hash between this resolver's PG read and this write, the
+ * stored owner won't match the workerId the back-filler resolved to, so the
+ * env write is skipped — preventing the back-fill from overwriting a freshly
+ * promoted slug with stale data from the previous worker.
  *
  * KEYS[1] = env hash key
  * KEYS[2] = by-worker hash key
  * ARGV[1] = env ttl seconds (0 = no TTL)
  * ARGV[2] = by-worker ttl seconds (0 = no TTL)
- * ARGV[3] = field
- * ARGV[4] = value
+ * ARGV[3] = writer's expected env-hash owner workerId
+ * ARGV[4] = field
+ * ARGV[5] = value
  */
 const SET_TWO_FIELDS_LUA = `
-redis.call("HSET", KEYS[1], ARGV[3], ARGV[4])
-local envTtl = tonumber(ARGV[1])
-if envTtl and envTtl > 0 and redis.call("TTL", KEYS[1]) == -1 then
-  redis.call("EXPIRE", KEYS[1], envTtl)
-end
-redis.call("HSET", KEYS[2], ARGV[3], ARGV[4])
+redis.call("HSET", KEYS[2], ARGV[4], ARGV[5])
 local workerTtl = tonumber(ARGV[2])
 if workerTtl and workerTtl > 0 then
   redis.call("EXPIRE", KEYS[2], workerTtl)
+end
+
+local owner = redis.call("HGET", KEYS[1], "${OWNER_FIELD}")
+if owner == false or owner == ARGV[3] then
+  redis.call("HSET", KEYS[1], ARGV[4], ARGV[5])
+  if owner == false then
+    redis.call("HSET", KEYS[1], "${OWNER_FIELD}", ARGV[3])
+  end
+  local envTtl = tonumber(ARGV[1])
+  if envTtl and envTtl > 0 and redis.call("TTL", KEYS[1]) == -1 then
+    redis.call("EXPIRE", KEYS[1], envTtl)
+  end
 end
 return 1
 `;
@@ -205,6 +237,7 @@ declare module "ioredis" {
       workerKey: string,
       envTtlSeconds: string,
       workerTtlSeconds: string,
+      workerId: string,
       ...fieldValues: string[]
     ): Result<number, Context>;
     taskMetaSetFieldRefreshTtl(
@@ -219,6 +252,7 @@ declare module "ioredis" {
       workerKey: string,
       envTtlSeconds: string,
       workerTtlSeconds: string,
+      workerId: string,
       field: string,
       value: string,
       callback?: Callback<number>
@@ -280,6 +314,7 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
         byWorkerKey(workerId),
         String(this.currentEnvTtlSeconds),
         String(this.byWorkerTtlSeconds),
+        workerId,
         ...fieldValues
       );
     } catch (error) {
@@ -322,6 +357,7 @@ export class RedisTaskMetadataCache implements TaskMetadataCache {
         byWorkerKey(workerId),
         String(this.currentEnvTtlSeconds),
         String(this.byWorkerTtlSeconds),
+        workerId,
         entry.slug,
         encode(entry)
       );
