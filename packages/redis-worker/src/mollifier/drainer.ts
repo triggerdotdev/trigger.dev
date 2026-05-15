@@ -130,16 +130,30 @@ export class MollifierDrainer<TPayload = unknown> {
       await this.loopPromise;
       return;
     }
+    // Hold the timer handle so we can clearTimeout() it after the race.
+    // Without this, when the loop wins the race, the discarded timer is
+    // still ref'd and pins the Node event loop for up to `timeoutMs`,
+    // delaying process shutdown by exactly the slack we were trying to
+    // bound. try/finally clears the handle in every exit path (loop-won,
+    // timeout-won, or exception).
     const timeoutSentinel = Symbol("mollifier.stop.timeout");
-    const winner = await Promise.race([
-      this.loopPromise.then(() => "done" as const),
-      this.delay(options.timeoutMs).then(() => timeoutSentinel),
-    ]);
-    if (winner === timeoutSentinel) {
-      this.logger.warn(
-        "MollifierDrainer.stop: deadline exceeded; returning while loop iteration is in flight",
-        { timeoutMs: options.timeoutMs },
-      );
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<typeof timeoutSentinel>((resolve) => {
+      timeoutHandle = setTimeout(() => resolve(timeoutSentinel), options.timeoutMs);
+    });
+    try {
+      const winner = await Promise.race([
+        this.loopPromise.then(() => "done" as const),
+        timeoutPromise,
+      ]);
+      if (winner === timeoutSentinel) {
+        this.logger.warn(
+          "MollifierDrainer.stop: deadline exceeded; returning while loop iteration is in flight",
+          { timeoutMs: options.timeoutMs },
+        );
+      }
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
   }
 
