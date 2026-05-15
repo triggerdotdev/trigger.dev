@@ -233,7 +233,7 @@ export async function findOrCreateGoogleUser({
     // Check if email user and auth user are the same
     if (existingEmailUser.id !== existingUser.id) {
       // Different users: email is taken by one user, Google auth belongs to another
-      logger.error(
+      logger.warn(
         `Google auth conflict: Google ID ${authenticationProfile.id} belongs to user ${existingUser.id} but email ${email} is taken by user ${existingEmailUser.id}`,
         {
           email,
