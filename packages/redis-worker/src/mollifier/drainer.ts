@@ -74,13 +74,20 @@ export class MollifierDrainer<TPayload = unknown> {
 
     const orgSlice = this.takeOrgSlice(orgs);
 
-    // For each picked org, pick one env from its active-envs set. The
-    // listEnvsForOrg calls are independent and could be parallelised; we
-    // do them sequentially for simplicity since they're each a fast
-    // SMEMBERS. The actual pops happen concurrently below.
+    // Fan the per-org SMEMBERS out in a single pipelined round-trip. Serial
+    // awaits would otherwise add `orgSlice.length × RTT` of dead time before
+    // pops start — at the default `maxOrgsPerTick=500` and a ~1ms ElastiCache
+    // RTT that's a ~500ms per-tick floor. ioredis auto-pipelines concurrent
+    // commands into one batch, so the burst is cheap; SMEMBERS on a small set
+    // is O(N) per org and trivial at this scale. `Promise.all` preserves
+    // order, so the org→envs pairing below stays deterministic.
+    const envsByOrg = await Promise.all(
+      orgSlice.map((orgId) => this.buffer.listEnvsForOrg(orgId)),
+    );
     const targets: string[] = [];
-    for (const orgId of orgSlice) {
-      const envsForOrg = await this.buffer.listEnvsForOrg(orgId);
+    for (let i = 0; i < orgSlice.length; i++) {
+      const orgId = orgSlice[i]!;
+      const envsForOrg = envsByOrg[i]!;
       if (envsForOrg.length === 0) continue;
       const envId = this.pickEnvForOrg(orgId, envsForOrg);
       targets.push(envId);
