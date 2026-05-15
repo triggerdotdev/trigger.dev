@@ -326,9 +326,15 @@ describe("MollifierDrainer resilience to transient buffer errors", () => {
   });
 });
 
-describe("MollifierDrainer per-tick env cap", () => {
+describe("MollifierDrainer per-tick org cap (cold cache exercises pseudo-orgs)", () => {
   // Bounding fan-out prevents one runOnce from queuing thousands of
   // processOneFromEnv jobs when `mollifier:envs` is unexpectedly large.
+  // These stub-buffer tests never return entries (pop = null), so the
+  // env→org cache never populates and every env behaves as its own
+  // pseudo-org. That makes the org-level cap functionally equivalent to
+  // a per-env cap in this regime, which is exactly what we want at cold
+  // start. The hierarchical-rotation behaviour is exercised by the org
+  // fairness tests further down.
   // These tests use a stub buffer so we can drive the env list count
   // deterministically without provisioning a real Redis with thousands
   // of envs.
@@ -346,7 +352,7 @@ describe("MollifierDrainer per-tick env cap", () => {
     return { ...base, ...overrides } as unknown as MollifierBuffer;
   }
 
-  it("processes at most maxEnvsPerTick envs per runOnce", async () => {
+  it("processes at most maxOrgsPerTick envs per runOnce", async () => {
     const allEnvs = Array.from({ length: 20 }, (_, i) => `env_${i}`);
     const popped: string[] = [];
     const buffer = makeStubBuffer({
@@ -363,7 +369,7 @@ describe("MollifierDrainer per-tick env cap", () => {
       concurrency: 5,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: 5,
+      maxOrgsPerTick: 5,
       logger: new Logger("test-drainer", "log"),
     });
 
@@ -388,7 +394,7 @@ describe("MollifierDrainer per-tick env cap", () => {
       concurrency: 4,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: 4,
+      maxOrgsPerTick: 4,
       logger: new Logger("test-drainer", "log"),
     });
 
@@ -437,7 +443,7 @@ describe("MollifierDrainer per-tick env cap", () => {
       concurrency: sliceSize,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: sliceSize,
+      maxOrgsPerTick: sliceSize,
       logger: new Logger("test-drainer", "log"),
     });
 
@@ -479,7 +485,7 @@ describe("MollifierDrainer per-tick env cap", () => {
       concurrency: 3,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: 100, // way above n
+      maxOrgsPerTick: 100, // way above n
       logger: new Logger("test-drainer", "log"),
     });
 
@@ -544,7 +550,7 @@ describe("MollifierDrainer per-tick env cap", () => {
       concurrency: 4,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: 4, // < 7 envs so we exercise slicing
+      maxOrgsPerTick: 4, // < 7 envs so we exercise slicing
       logger: new Logger("test-drainer", "log"),
     });
 
@@ -624,7 +630,7 @@ describe("MollifierDrainer per-tick env cap", () => {
       concurrency: 4,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: 4, // < 7 envs, exercises slicing
+      maxOrgsPerTick: 4, // < 7 envs, exercises slicing
       logger: new Logger("test-drainer", "log"),
     });
 
@@ -644,6 +650,156 @@ describe("MollifierDrainer per-tick env cap", () => {
     expect(drainedByOrg["org_A"]).toBeGreaterThan(0);
     for (const e of orgAEnvs) {
       expect(queues.get(e)!.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("after cache warm-up, a heavy org with many envs gets ~1 slot per tick, not N slots", async () => {
+    // The hierarchical rotation property: once the env→org cache is
+    // populated, an org with N envs gets the SAME per-tick scheduling slot
+    // as an org with 1 env, instead of N slots (which is what per-env
+    // rotation would give). Sustained-run drainage rate is therefore
+    // determined by org count, not env count.
+    //
+    // Org_A: 6 envs × 100 entries (a noisy tenant).
+    // Org_B: 1 env × 100 entries (a quiet tenant).
+    // Per-env rotation would drain org_A 6× faster than org_B. The org-
+    // level rotation drains them at ~1:1 over a sustained window.
+    const orgAEnvs = Array.from({ length: 6 }, (_, i) => `env_orgA_${i}`);
+    const orgBEnv = "env_orgB_only";
+    const queues = new Map<string, Array<{ runId: string; orgId: string }>>();
+    for (const e of orgAEnvs) {
+      queues.set(
+        e,
+        Array.from({ length: 100 }, (_, i) => ({
+          runId: `${e}_run_${i}`,
+          orgId: "org_A",
+        })),
+      );
+    }
+    queues.set(
+      orgBEnv,
+      Array.from({ length: 100 }, (_, i) => ({
+        runId: `${orgBEnv}_run_${i}`,
+        orgId: "org_B",
+      })),
+    );
+
+    const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
+    const buffer = makeStubBuffer({
+      listEnvs: async () =>
+        [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0),
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const entry = q.shift()!;
+        return {
+          runId: entry.runId,
+          envId,
+          orgId: entry.orgId,
+          payload: "{}",
+          status: "DRAINING",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        drainedByOrg[input.orgId] = (drainedByOrg[input.orgId] ?? 0) + 1;
+      },
+      concurrency: 10,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxOrgsPerTick: 100, // unsliced — every org gets a slot every tick
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // Warm the cache: first tick treats every env as its own pseudo-org
+    // (per-env behaviour). After tick 1 the cache is populated and
+    // subsequent ticks bucket by real org.
+    await drainer.runOnce();
+
+    // Drive 20 more ticks with the cache hot. Under hierarchical rotation
+    // each tick drains 1 from org_A and 1 from org_B.
+    for (let i = 0; i < 20; i++) {
+      await drainer.runOnce();
+    }
+
+    // Under per-env rotation, drainedByOrg.org_A would be ~6× larger than
+    // drainedByOrg.org_B. Under hierarchical, the ratio is ~1.
+    expect(drainedByOrg["org_A"]).toBeGreaterThan(0);
+    expect(drainedByOrg["org_B"]).toBeGreaterThan(0);
+    const ratio = drainedByOrg["org_A"]! / drainedByOrg["org_B"]!;
+    // Allow a generous band to absorb cold-start tick 1 (which favoured
+    // org_A by 6 because each env was its own pseudo-org). Within 2× is
+    // the bar; under per-env it would be ~6×.
+    expect(ratio).toBeGreaterThan(0.5);
+    expect(ratio).toBeLessThan(2);
+  });
+
+  it("within an org, envs are rotated round-robin across ticks", async () => {
+    // After cache warm-up an org with N envs picks one env per tick,
+    // cycling through its envs. This test verifies the inner cursor
+    // advances by 1 per visit to the org (analogous to head-of-line
+    // fairness within a slice, but at the env-within-org layer).
+    const orgEnvs = ["env_x", "env_y", "env_z"];
+    const orgId = "org_solo";
+    const queues = new Map<string, number>();
+    for (const e of orgEnvs) queues.set(e, 100);
+
+    const poppedSequence: string[] = [];
+    const buffer = makeStubBuffer({
+      listEnvs: async () =>
+        [...queues.keys()].filter((k) => (queues.get(k) ?? 0) > 0),
+      pop: async (envId: string) => {
+        const remaining = queues.get(envId) ?? 0;
+        if (remaining === 0) return null;
+        queues.set(envId, remaining - 1);
+        poppedSequence.push(envId);
+        return {
+          runId: `${envId}_${remaining}`,
+          envId,
+          orgId,
+          payload: "{}",
+          status: "DRAINING",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {},
+      concurrency: 1,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxOrgsPerTick: 100,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    // Tick 1: cold cache, each env is its own pseudo-org → all 3 popped.
+    await drainer.runOnce();
+    poppedSequence.length = 0;
+
+    // Now cache is warm; all 3 envs are in `org_solo`. Each tick should
+    // drain exactly one env from the org bucket, rotating through them.
+    for (let i = 0; i < 6; i++) {
+      await drainer.runOnce();
+    }
+
+    // 6 ticks × 1 env per tick = 6 pops, cycling x, y, z, x, y, z (in
+    // some sort order). The exact sequence depends on the bucket's
+    // internal cursor — but every env should be picked exactly twice.
+    expect(poppedSequence).toHaveLength(6);
+    const counts = poppedSequence.reduce<Record<string, number>>((acc, e) => {
+      acc[e] = (acc[e] ?? 0) + 1;
+      return acc;
+    }, {});
+    for (const env of orgEnvs) {
+      expect(counts[env]).toBe(2);
     }
   });
 });
@@ -807,7 +963,7 @@ describe("MollifierDrainer additional coverage", () => {
     await expect(drainer.stop()).resolves.toBeUndefined();
   });
 
-  it("envCursor resets to 0 on start() so a stop+start cycle begins from envs[0]", async () => {
+  it("rotation cursors and env→org cache reset on start() so a stop+start cycle begins fresh", async () => {
     const allEnvs = ["env_a", "env_b", "env_c", "env_d", "env_e", "env_f"];
     const popLog: string[] = [];
     const buffer = makeStubBuffer({
@@ -824,7 +980,7 @@ describe("MollifierDrainer additional coverage", () => {
       concurrency: 3,
       maxAttempts: 3,
       isRetryable: () => false,
-      maxEnvsPerTick: 3,
+      maxOrgsPerTick: 3,
       // Long sleep so the loop ticks exactly once between start() and stop().
       pollIntervalMs: 10_000,
       logger: new Logger("test-drainer", "log"),

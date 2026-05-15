@@ -51,7 +51,7 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     },
     concurrency: env.MOLLIFIER_DRAIN_CONCURRENCY,
     maxAttempts: env.MOLLIFIER_DRAIN_MAX_ATTEMPTS,
-    maxEnvsPerTick: env.MOLLIFIER_DRAIN_MAX_ENVS_PER_TICK,
+    maxOrgsPerTick: env.MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,
     // A no-op handler shouldn't throw, but if something does (e.g. an
     // unexpected deserialise failure), don't loop — let it FAIL terminally
     // so the entry is observable in metrics.

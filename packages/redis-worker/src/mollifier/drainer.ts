@@ -19,15 +19,17 @@ export type MollifierDrainerOptions<TPayload> = {
   maxAttempts: number;
   isRetryable: (err: unknown) => boolean;
   pollIntervalMs?: number;
-  // Cap on how many envs `runOnce` processes per tick. When the
-  // `mollifier:envs` SET grows large (e.g. an extended drainer outage left
-  // entries piled up across thousands of envs), an uncapped fan-out queues
-  // one `processOneFromEnv` job per env through `pLimit`, ballooning
-  // per-tick latency and event-loop queue depth. With this cap the
-  // drainer rotates through the full set across multiple ticks instead.
-  // Defaults to 500; size for "typical worst-case envs-with-pending-
-  // entries" rather than total system env count.
-  maxEnvsPerTick?: number;
+  // Cap on how many ORGS `runOnce` processes per tick. The drainer rotates
+  // through orgs at the top level and picks one env per org per tick, so
+  // the actual per-tick env count is at most `maxOrgsPerTick`. Tune for
+  // "typical worst-case orgs-with-pending-entries" rather than total
+  // system org count. Defaults to 500.
+  //
+  // Why orgs, not envs: an org with N envs would otherwise dominate
+  // drainer throughput proportionally (each env is its own rotation
+  // slot). Capping at the org level means a tenant with one busy env
+  // and a tenant with a hundred busy envs get the same drainage share.
+  maxOrgsPerTick?: number;
   logger?: Logger;
 };
 
@@ -36,16 +38,31 @@ export type DrainResult = {
   failed: number;
 };
 
+// Sentinel prefix for envs we haven't seen popped yet — they don't know
+// their orgId at scheduling time, so they're treated as their own
+// pseudo-org for that tick. Once a pop completes for the env, we cache
+// its real orgId and subsequent ticks bucket it under that org.
+const UNCACHED_ORG_PREFIX = "__uncached_org_for_env__:";
+
 export class MollifierDrainer<TPayload = unknown> {
   private readonly buffer: MollifierBuffer;
   private readonly handler: MollifierDrainerHandler<TPayload>;
   private readonly maxAttempts: number;
   private readonly isRetryable: (err: unknown) => boolean;
   private readonly pollIntervalMs: number;
-  private readonly maxEnvsPerTick: number;
+  private readonly maxOrgsPerTick: number;
   private readonly logger: Logger;
   private readonly limit: ReturnType<typeof pLimit>;
-  private envCursor = 0;
+  // Rotation state. `orgCursor` advances through the org list; each org
+  // has its own internal cursor in `perOrgEnvCursors` for cycling through
+  // that org's envs. Reset on `start()`.
+  private orgCursor = 0;
+  private perOrgEnvCursors = new Map<string, number>();
+  // envId → orgId learned from popped entries. Survives across runOnce
+  // calls so subsequent ticks can bucket envs by org. Reset on `start()`.
+  // Cross-process restarts naturally rebuild the cache within one full
+  // tick — uncached envs cold-start as their own pseudo-orgs.
+  private envOrgCache = new Map<string, string>();
   private isRunning = false;
   private stopping = false;
   private loopPromise: Promise<void> | null = null;
@@ -56,7 +73,7 @@ export class MollifierDrainer<TPayload = unknown> {
     this.maxAttempts = options.maxAttempts;
     this.isRetryable = options.isRetryable;
     this.pollIntervalMs = options.pollIntervalMs ?? 100;
-    this.maxEnvsPerTick = options.maxEnvsPerTick ?? 500;
+    this.maxOrgsPerTick = options.maxOrgsPerTick ?? 500;
     this.logger = options.logger ?? new Logger("MollifierDrainer", "debug");
     this.limit = pLimit(options.concurrency);
   }
@@ -65,10 +82,10 @@ export class MollifierDrainer<TPayload = unknown> {
     const envs = await this.buffer.listEnvs();
     if (envs.length === 0) return { drained: 0, failed: 0 };
 
-    const ordered = this.takeRotatingSlice(envs);
+    const targets = this.selectEnvsThisTick(envs);
 
     const inflight: Promise<"drained" | "failed" | "empty">[] = [];
-    for (const envId of ordered) {
+    for (const envId of targets) {
       inflight.push(this.limit(() => this.processOneFromEnv(envId)));
     }
 
@@ -86,8 +103,11 @@ export class MollifierDrainer<TPayload = unknown> {
     // Reset rotation state on each (re)start. A stop+start cycle means
     // operator intent to "begin clean" — between-restart cursor drift
     // would otherwise carry implicit state across what should look like
-    // a fresh boot. Pinned by the cursor-reset test in drainer.test.ts.
-    this.envCursor = 0;
+    // a fresh boot. The env→org cache is also reset; it'll rebuild
+    // within one tick as pops populate it.
+    this.orgCursor = 0;
+    this.perOrgEnvCursors = new Map();
+    this.envOrgCache = new Map();
     this.loopPromise = this.loop();
   }
 
@@ -157,22 +177,51 @@ export class MollifierDrainer<TPayload = unknown> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  // Take up to `maxEnvsPerTick` envs starting at the current cursor, with
-  // wrap-around. Always advance the cursor by 1 — when the full set fits
-  // within the cap this is just the original rotation; when we have to
-  // slice, advancing by 1 still gives every env a turn at every position
-  // (0…sliceSize-1) over `envs.length` ticks, so no env is systematically
-  // last into `pLimit`. Drainage rate per env is `sliceSize / envs.length`
-  // per tick — same as advancing by sliceSize, but without the head-of-line
-  // bias that fixed slice boundaries would introduce.
-  private takeRotatingSlice(envs: string[]): string[] {
-    const n = envs.length;
-    const sliceSize = Math.min(this.maxEnvsPerTick, n);
-    const start = this.envCursor % n;
-    this.envCursor = (this.envCursor + 1) % Math.max(n, 1);
-    const end = start + sliceSize;
-    if (end <= n) return envs.slice(start, end);
-    return [...envs.slice(start), ...envs.slice(0, end - n)];
+  // Two-level rotation for org:env fairness:
+  //
+  //   1. Bucket envs by cached orgId. Envs we haven't seen popped yet get
+  //      their own pseudo-org (`__uncached_org_for_env__:envId`) so cold
+  //      start behaves like the original per-env rotation; once a pop
+  //      populates the cache, the env joins its real org's bucket.
+  //   2. Rotate through buckets (orgs + pseudo-orgs) using `orgCursor`,
+  //      taking up to `maxOrgsPerTick` of them. Cursor advances by 1 each
+  //      tick so every bucket experiences every slot position over a full
+  //      cycle (no head-of-line bias within the slice).
+  //   3. For each picked bucket, pick one env using that bucket's own
+  //      cursor in `perOrgEnvCursors`. This makes a tenant with N envs
+  //      drain its envs round-robin at 1/N the rate per env, but the
+  //      tenant overall gets the same per-tick slot as a tenant with 1
+  //      env. That's the org:env fairness contract.
+  private selectEnvsThisTick(envs: string[]): string[] {
+    const buckets = new Map<string, string[]>();
+    for (const envId of envs) {
+      const orgKey = this.envOrgCache.get(envId) ?? `${UNCACHED_ORG_PREFIX}${envId}`;
+      const list = buckets.get(orgKey) ?? [];
+      list.push(envId);
+      buckets.set(orgKey, list);
+    }
+    // Stable bucket order for deterministic rotation. Sorting is O(B log B)
+    // where B = orgs + uncached envs; bounded by `envs.length`, fine.
+    const orgs = [...buckets.keys()].sort();
+    const n = orgs.length;
+    const sliceSize = Math.min(this.maxOrgsPerTick, n);
+    const start = this.orgCursor % n;
+    this.orgCursor = (this.orgCursor + 1) % Math.max(n, 1);
+
+    const orgSlice: string[] =
+      start + sliceSize <= n
+        ? orgs.slice(start, start + sliceSize)
+        : [...orgs.slice(start), ...orgs.slice(0, start + sliceSize - n)];
+
+    const targets: string[] = [];
+    for (const orgKey of orgSlice) {
+      const envsInOrg = buckets.get(orgKey)!;
+      const cursor = this.perOrgEnvCursors.get(orgKey) ?? 0;
+      const idx = cursor % envsInOrg.length;
+      this.perOrgEnvCursors.set(orgKey, (cursor + 1) % envsInOrg.length);
+      targets.push(envsInOrg[idx]!);
+    }
+    return targets;
   }
 
   // A `pop()` failure for one env (e.g. a Redis hiccup mid-batch) must not
@@ -188,6 +237,10 @@ export class MollifierDrainer<TPayload = unknown> {
       return "failed";
     }
     if (!entry) return "empty";
+    // Learn this env's orgId from the popped entry so subsequent ticks
+    // bucket it correctly. Survives across runOnce calls; reset on
+    // `start()` along with the rotation cursors.
+    this.envOrgCache.set(entry.envId, entry.orgId);
     return this.processEntry(entry);
   }
 

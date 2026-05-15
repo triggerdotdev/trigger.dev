@@ -1175,35 +1175,11 @@ describe("RunEngineTriggerTaskService", () => {
 
   // ─── Mollifier integration ──────────────────────────────────────────────────
   //
-  // The four tests below pin the call-site behaviour of the mollifier hooks
-  // inside RunEngineTriggerTaskService.call. They use the optional DI ports
+  // These tests pin the call-site behaviour of the mollifier hooks inside
+  // RunEngineTriggerTaskService.call. They use the optional DI ports
   // (`evaluateGate`, `getMollifierBuffer`) added on the service constructor —
   // production wiring is unchanged (defaults to the live module-level imports).
-  // Regression intent:
-  //   1. Validation must run BEFORE the mollifier gate. If a validator throws,
-  //      no buffer write happens. Reordering would silently bypass validation
-  //      for any future caller — the test catches it.
-  //   2. When the gate returns "mollify", the call site MUST call buffer.accept
-  //      AND continue to engine.trigger (dual-write). Dropping either side of
-  //      the dual-write breaks Phase 1's monitoring contract — the test catches
-  //      it.
-  //   3. When the gate returns "pass_through", the call site MUST NOT call
-  //      buffer.accept. Accidentally enabling the mollify branch for all
-  //      requests would produce buffer entries with no audit-trail rationale —
-  //      the test catches it.
-  //   4. (Documentation test.) When engine.trigger throws AFTER buffer.accept
-  //      has succeeded, the throw must propagate to the caller AND the buffer
-  //      entry remains in Redis as an "orphan" — the no-op drainer will pop
-  //      and ack it on its next loop. This is the residual race documented in
-  //      the demo doc: a concurrent non-mollified trigger with the same
-  //      idempotency key (or one-time-use token) could win the DB UNIQUE
-  //      constraint between IdempotencyKeyConcern's pre-check and
-  //      engine.trigger's INSERT, causing engine.trigger to throw P2002. The
-  //      customer correctly gets a 4xx; the audit-trail surfaces the orphan
-  //      (mollifier.buffered with no matching TaskRun in Postgres). Test #4
-  //      pins this behaviour as known, not bug, so a future change that
-  //      "fixes" it by silently swallowing the throw or by rolling back the
-  //      buffer write will fail the test and force an explicit decision.
+  // Each test's regression intent lives in its own setup comment.
 
   class CapturingMollifierBuffer {
     public accepted: Array<{ runId: string; envId: string; orgId: string; payload: string }> = [];
