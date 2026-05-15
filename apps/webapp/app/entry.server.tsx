@@ -6,6 +6,7 @@ import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
+import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
@@ -246,6 +247,8 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
 Worker.init().catch((error) => {
   logError(error);
 });
+
+initMollifierDrainerWorker();
 
 bootstrap().catch((error) => {
   logError(error);
