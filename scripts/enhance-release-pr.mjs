@@ -415,22 +415,29 @@ function formatPrBody({ version, packageEntries, serverEntries, rawBody, release
  */
 async function getReleaseContext() {
   const sourceBranch = process.env.SOURCE_BRANCH;
-  if (!sourceBranch) return null;
+if (!sourceBranch) return null;
 
-// Look up current npm `latest` for the canonical package
+  // Look up current npm `latest` for the canonical package
   let currentLatest = "0.0.0";
-  const out = await new Promise((resolve, reject) => {
-    execFile(
-      "npm",
-      ["view", "@trigger.dev/sdk", "dist-tags.latest"],
-      { maxBuffer: 1024 * 1024 },
-      (err, stdout) => (err ? reject(err) : resolve(stdout.trim()))
-    );
-  });
-  if (out && out !== "undefined") currentLatest = out;
+  try {
+    const out = await new Promise((resolve) => {
+      execFile(
+        "npm",
+        ["view", "@trigger.dev/sdk", "dist-tags.latest"],
+        { maxBuffer: 1024 * 1024 },
+        (err, stdout) => resolve(err ? "" : stdout.trim())
+      );
+    });
+    if (out && out !== "undefined") currentLatest = out;
+  } catch {
+    // fall through with default
+  }
 
   // Use semver-aware comparison - matches release.yml's sort -V exactly
-  const willBeLatest = version !== currentLatest && version > currentLatest;
+  // Split versions into parts and compare numerically
+  const cmp = (a, b) =>
+    a.split(".").map(Number).reduce((acc, n, i) => acc || n - (b.split(".").map(Number)[i] ?? 0), 0);
+  const willBeLatest = cmp(version, currentLatest) > 0;
 
   const m = sourceBranch.match(/^release\/(\d+\.\d+)\.x$/);
   const lineMatch = m ? m[1] : null;

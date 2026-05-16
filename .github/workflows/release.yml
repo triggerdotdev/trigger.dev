@@ -134,8 +134,8 @@ jobs:
       #   - Fresh hotfix while main has unreleased work (main released 4.4.5,
       #     PR #3173 merged but unreleased; hotfix 4.4.6 from release/4.4.x):
       #     4.4.6 > 4.4.5 -> IS latest. Customers running `npm install` get it.
-      #
-# Source of truth: npm's `latest` dist-tag for the canonical package
+#
+      # Source of truth: npm's `latest` dist-tag for the canonical package
       # (`@trigger.dev/sdk`). All public packages are version-locked via the
       # `fixed` config, so any one is canonical.
       - name: Compare new version to current latest
