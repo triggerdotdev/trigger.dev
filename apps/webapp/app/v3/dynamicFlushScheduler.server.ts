@@ -193,14 +193,13 @@ export class DynamicFlushScheduler<T> {
 
     if (batchesToFlush.length === 0) return;
 
-    // Schedule all batches for concurrent processing
+// Schedule all batches for concurrent processing
     const flushPromises = batchesToFlush.map((batch) =>
       this.limiter(async () => {
-        const itemCount = batch.length;
-
         const self = this;
 
         async function tryFlush(flushId: string, batchToFlush: T[], attempt: number = 1) {
+          const itemCount = batchToFlush.length;
           try {
             const startTime = Date.now();
             await self.callback(flushId, batchToFlush);

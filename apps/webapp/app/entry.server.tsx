@@ -247,6 +247,11 @@ Worker.init().catch((error) => {
   logError(error);
 });
 
+import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
+initMollifierDrainerWorker().catch((error) => {
+  logger.error("Mollifier drainer initialization failed", { error });
+});
+
 bootstrap().catch((error) => {
   logError(error);
 });
