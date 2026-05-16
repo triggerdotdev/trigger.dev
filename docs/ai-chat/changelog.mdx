@@ -4,6 +4,67 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 16, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
+
+## `session.out` is now bounded — header-form control records + per-turn trim
+
+Long-lived chats were accumulating `session.out` records forever (every turn appends; nothing trimmed). The Sessions dashboard re-streamed the entire history from `seq_num=0` on every page load, and OOM-retry boot scanned the whole stream to find the last turn-complete. Surfaced by Arena AI: "what's the lifetime of these streams?"
+
+After this release `session.out` stays roughly **one turn long forever** at steady state. After each `turn-complete`, the agent appends an S2 `trim` command record pointing back to the previous turn-complete's seq_num. Full conversation history continues to live in the durable S3 snapshot, not on the stream. Resume across a single turn boundary still works (the previous `turn-complete` is still on the stream and S2's eventually-consistent trim window gives 10-60s of grace); resume across multiple turns of inactivity falls back to the snapshot.
+
+### What changed on the wire
+
+`trigger:turn-complete` and `trigger:upgrade-required` are no longer JSON data chunks on `session.out`. They're now **header-form control records** under a uniform `trigger-control` namespace:
+
+```
+headers:
+  ["trigger-control", "turn-complete"]
+  ["public-access-token", "eyJ..."]   // optional, refreshed JWT on turn-complete
+body: ""
+```
+
+```
+headers:
+  ["trigger-control", "upgrade-required"]
+body: ""
+```
+
+The control event names ("turn-complete", "upgrade-required") are unchanged conceptually — they just moved from `chunk.type` into a `trigger-control` header value. Body is always empty; metadata that previously rode in the chunk (e.g. `publicAccessToken`) now rides on sibling headers.
+
+### Custom transport implementers
+
+Built-in SDK transports (`TriggerChatTransport`, `AgentChat`) handle this transparently — `onTurnComplete` fires the same way with the same payload. Custom transports filtering on `chunk.type === "trigger:turn-complete"` need to switch to the header-based filter:
+
+```ts
+import { controlSubtype } from "@trigger.dev/core/v3";
+
+const control = controlSubtype(record.headers);
+if (control === "turn-complete") {
+  // refresh token from record.headers, end turn, etc.
+}
+```
+
+The full uniform filter rule (data records vs control records vs S2 command records like `trim`) is documented at [Records on `session.out`](/ai-chat/client-protocol#records-on-session-out).
+
+### Sessions dashboard snapshot read
+
+The Sessions detail page in the trigger.dev dashboard now reads the agent's S3 snapshot first via a presigned URL, then SSE-tails from `snapshot.lastOutEventId`. Bandwidth and time-to-first-render are O(unread turns) instead of O(session lifetime). Sessions that registered a `hydrateMessages` hook (which skips snapshot writes) show only the most recent turn — those customers typically have their own DB-backed dashboards.
+
+### Breaking surface
+
+- Custom transports parsing `chunk.type` for turn-complete / upgrade-required must switch to the `trigger-control` header check.
+- Snapshot consumers should import `ChatSnapshotV1` / `ChatSnapshotV1Schema` from `@trigger.dev/core/v3` (now an exported shape, not SDK-internal).
+
+Hard cutover — no compat shim. v4.5 is prerelease.
+
+### Docs
+
+- [Records on `session.out`](/ai-chat/client-protocol#records-on-session-out) — full filter rule for data / control / command records.
+- [Resuming a stream](/ai-chat/client-protocol#resuming-a-stream) — explicit single-turn vs multi-turn-away semantics.
+- [`turn-complete` control record](/ai-chat/client-protocol#turn-complete-control-record) and [`upgrade-required` control record](/ai-chat/client-protocol#upgrade-required-control-record) — replaced the old chunk-shape docs.
+
+</Update>
+
 <Update label="May 8, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
 
 ## 512 KiB `/in/append` ceiling removed for long chats — slim wire + S3 snapshot

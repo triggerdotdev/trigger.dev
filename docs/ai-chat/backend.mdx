@@ -357,6 +357,10 @@ See [Actions](/ai-chat/actions).
 
 Imperative API for reading and modifying the accumulated message history. Works from any hook (`onAction`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`, `hydrateMessages`) or from `run()` and AI SDK tools.
 
+<Note>
+  The agent's accumulator — not `session.out` — is the source of truth for the full conversation. The `.out` stream is a bounded sliding window (roughly one turn at steady state, see [Records on `session.out`](/ai-chat/client-protocol#records-on-session-out)); the durable history lives in the agent's accumulator and is persisted to S3 between turns for fast next-run boots. `chat.history` reads and mutates that accumulator directly.
+</Note>
+
 **Reads.** Synchronous against the current accumulator state.
 
 | Method | Description |
