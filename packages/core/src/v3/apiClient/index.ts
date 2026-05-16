@@ -118,6 +118,10 @@ import {
   type SSEStreamPart,
 } from "./runStream.js";
 import {
+  controlSubtype,
+  type ControlEvent,
+} from "../sessionStreams/wireProtocol.js";
+import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   ListProjectRunsQueryParams,
@@ -1308,6 +1312,12 @@ export class ApiClient {
       onError?: (error: Error) => void;
       lastEventId?: string;
       onPart?: (part: SSEStreamPart<T>) => void;
+      /**
+       * Fires when a `trigger-control` record arrives on the stream (e.g.
+       * `turn-complete`, `upgrade-required`). The control record is never
+       * enqueued into the consumer stream — handle the event here.
+       */
+      onControl?: (event: ControlEvent) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
     const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
@@ -1323,13 +1333,29 @@ export class ApiClient {
 
     const stream = await subscription.subscribe();
     const onPart = options?.onPart;
+    const onControl = options?.onControl;
 
     return stream.pipeThrough(
       new TransformStream<SSEStreamPart, T>({
-        transform(chunk, controller) {
-          const data = chunk.chunk as T;
-          onPart?.(chunk as SSEStreamPart<T>);
-          controller.enqueue(data);
+        transform(part, controller) {
+          // Always surface the raw part via onPart so cursor tracking
+          // (lastSeqNum, lastEventId) stays correct for both data and
+          // control records.
+          onPart?.(part as SSEStreamPart<T>);
+
+          // Trigger control record — route to onControl, never enqueue.
+          const subtype = controlSubtype(part.headers);
+          if (subtype) {
+            onControl?.({
+              subtype,
+              headers: part.headers ?? [],
+              seqNum: Number.parseInt(part.id, 10) || 0,
+              timestamp: part.timestamp,
+            });
+            return;
+          }
+
+          controller.enqueue(part.chunk as T);
         },
       })
     );

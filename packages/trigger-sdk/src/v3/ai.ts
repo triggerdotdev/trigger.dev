@@ -2,7 +2,9 @@ import {
   accessoryAttributes,
   AnyTask,
   apiClientManager,
+  controlSubtype,
   getSchemaParseFn,
+  headerValue,
   InputStreamOncePromise,
   type InputStreamOnceOptions,
   type InputStreamWaitOptions,
@@ -31,6 +33,7 @@ import {
   type TaskSchema,
   type TaskRunContext,
   type TaskWithSchema,
+  TRIGGER_CONTROL_SUBTYPE,
   type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import type {
@@ -42,7 +45,7 @@ import type {
   UIMessageStreamOptions,
   LanguageModelUsage,
 } from "ai";
-import type { StreamWriteResult } from "@trigger.dev/core/v3";
+import type { ChatSnapshotV1, StreamWriteResult } from "@trigger.dev/core/v3";
 import {
   convertToModelMessages,
   dynamicTool,
@@ -132,19 +135,35 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
 
 /**
- * Scan `session.out` for the latest `trigger:turn-complete` chunk and
+ * S2 seq_num of the most recent `turn-complete` control record written by
+ * this worker. Read by `writeTurnCompleteChunk` to know what to trim back
+ * to when the next turn finishes, keeping `session.out` bounded to ~one
+ * turn at steady state.
+ *
+ * Seeded at boot from `ChatSnapshotV1.lastOutEventId` (which is exactly
+ * the previous turn-complete's seq_num). Wrapped in a mutable holder so
+ * `writeTurnCompleteChunk` can advance it without going through a setter.
+ * @internal
+ */
+const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
+  "chat.lastTurnCompleteSeqNum"
+);
+
+/**
+ * Scan `session.out` for the latest `turn-complete` control record and
  * return its SSE timestamp. Used at OOM-retry boot to derive a
  * lower-bound timestamp for the `session.in` filter — records older
  * than `T_last_complete` belong to turns that already completed on the
  * prior attempt and are dropped before they reach the turn loop.
  *
- * Implementation is a streaming scan: subscribes via the existing SSE
- * endpoint with a short `timeoutInSeconds`, processes each part inline,
- * and discards the chunk body so memory stays O(1) regardless of how
- * many records are on `session.out`. Bandwidth scales linearly with
- * stream length but the scan only fires on retry — a rare event.
+ * Implementation streams the SSE endpoint and listens for `turn-complete`
+ * via the transport's `onControl` callback; the data-chunk for-await is
+ * just there to drive the stream. The scan is naturally O(1 turn) now
+ * that `session.out` is bounded to roughly one turn at steady state
+ * (every successful turn-complete is followed by an S2 trim back to the
+ * previous one — see `writeTurnCompleteChunk`).
  *
- * Returns `undefined` if no `trigger:turn-complete` chunk has been
+ * Returns `undefined` if no `turn-complete` control record has been
  * written yet (first-turn OOM, no completed turns to dedup against).
  * @internal
  */
@@ -155,23 +174,15 @@ async function findLatestTurnCompleteTimestamp(
   let latestTs: number | undefined;
   const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
     timeoutInSeconds: 1,
-    onPart: (part) => {
-      let chunk: unknown = part.chunk;
-      if (typeof chunk === "string") {
-        try {
-          chunk = JSON.parse(chunk);
-        } catch {
-          return;
-        }
-      }
-      if (chunk && typeof chunk === "object" && (chunk as { type?: unknown }).type === "trigger:turn-complete") {
-        latestTs = part.timestamp;
+    onControl: (event) => {
+      if (event.subtype === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+        latestTs = event.timestamp;
       }
     },
   });
-  // Drain the stream to drive `onPart`. We don't accumulate the chunks —
-  // each iteration discards the data immediately, so a long session.out
-  // doesn't blow memory on the retry-boot worker.
+  // Drain the stream so the underlying SSE reader runs to completion. We
+  // don't accumulate chunks; `onControl` fires inline as turn-complete
+  // records arrive.
   for await (const _ of stream) {
     // intentionally empty
   }
@@ -182,23 +193,17 @@ async function findLatestTurnCompleteTimestamp(
  * Versioned blob written to S3 after every turn completes (when no
  * `hydrateMessages` hook is registered). Read at run boot to seed the
  * accumulator with prior conversation state, replacing the old wire-borne
- * full-history seed. Only the runtime owns this format — customers never
- * touch it.
+ * full-history seed.
  *
- * `lastOutEventId` is the SSE Last-Event-ID after the snapshot's final
- * chunk, used to resume `session.out` replay from precisely after the
- * snapshot. `lastOutTimestamp` is the same chunk's timestamp, used to
- * skip `findLatestTurnCompleteTimestamp` on OOM retry boot.
+ * The shape is shared with the Sessions dashboard (which reads the same
+ * blob to render the full conversation transcript) via
+ * `@trigger.dev/core/v3`. Customer code shouldn't reach in here — the
+ * SDK transports surface the messages through the standard `messages`
+ * accumulator.
  *
  * @internal
  */
-export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
-  version: 1;
-  savedAt: number;
-  messages: TUIMessage[];
-  lastOutEventId?: string;
-  lastOutTimestamp?: number;
-};
+export type { ChatSnapshotV1 } from "@trigger.dev/core/v3";
 
 /**
  * S3 key suffix for a session's snapshot blob. The webapp's presigned-URL
@@ -4570,6 +4575,9 @@ function chatAgent<
       // `chat.createStartSessionAction` or browser-direct) before this
       // run is triggered — no client-side upsert needed here.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
+      // and is the trim target for the NEXT turn's trim record.
+      locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
       taskContext.setConversationId(payload.chatId);
 
       // Stamp `gen_ai.conversation.id` on the run-level span. Every
@@ -4649,6 +4657,20 @@ function chatAgent<
             error: error instanceof Error ? error.message : String(error),
             sessionId: sessionIdForSnapshot,
           });
+        }
+
+        // Seed the trim chain from the snapshot's `lastOutEventId` (the SSE
+        // id of the previous turn's `turn-complete` control record). The
+        // first turn-complete this worker writes will then trim back to it.
+        // Without seeding, the new worker would emit no trim on its first
+        // turn (chain self-bootstraps from turn 2), so this is purely an
+        // optimization to keep continuation runs bounded from the first turn.
+        if (bootSnapshot?.lastOutEventId !== undefined) {
+          const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
+          if (Number.isFinite(seeded)) {
+            const slot = locals.get(lastTurnCompleteSeqNumKey);
+            if (slot) slot.value = seeded;
+          }
         }
 
         try {
@@ -8657,27 +8679,61 @@ export const chat = {
 };
 
 /**
- * Writes a turn-complete control chunk to the chat output stream.
- * The frontend transport intercepts this to close the ReadableStream for the current turn.
+ * Writes a `turn-complete` control record to the chat output stream and,
+ * if we have a prior turn-complete's seq_num, appends an S2 `trim` command
+ * record back to it — keeping `session.out` bounded to roughly one turn
+ * at steady state.
+ *
+ * The control record's body is empty; `trigger-control: turn-complete`
+ * plus an optional `public-access-token` ride on the headers (see
+ * `docs/ai-chat/client-protocol.mdx`). SDK transports filter it from the
+ * consumer chunk stream and surface it via `onControl` / `onTurnComplete`.
+ *
+ * Trim is opportunistic and monotonic at S2's layer. A failed trim is
+ * logged and swallowed; the next turn will retry against a fresher
+ * target seq_num.
+ *
  * @internal
  */
 async function writeTurnCompleteChunk(
-  chatId?: string,
+  _chatId?: string,
   publicAccessToken?: string
 ): Promise<StreamWriteResult> {
-  const { waitUntilComplete } = chatStream.writer({
-    spanName: "turn complete",
-    collapsed: true,
-    execute: ({ write }) => {
-      // Transport-intercepted control chunk — not a valid UIMessageChunk
-      // type but travels on the same session.out stream.
-      write({
-        type: "trigger:turn-complete",
-        ...(publicAccessToken ? { publicAccessToken } : {}),
-      } as unknown as UIMessageChunk);
-    },
-  });
-  return await waitUntilComplete();
+  const session = getChatSession();
+
+  // 1. Write the turn-complete control record. The ack's `lastEventId` is
+  //    this record's seq_num — that's the trim target for the NEXT turn.
+  const extraHeaders: ReadonlyArray<readonly [string, string]> = publicAccessToken
+    ? [["public-access-token", publicAccessToken]]
+    : [];
+  const result = await session.out.writeControl(
+    TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,
+    extraHeaders
+  );
+  const T_N = result.lastEventId ? Number.parseInt(result.lastEventId, 10) : undefined;
+
+  // 2. Trim back to the previous turn-complete, if we have one. Skipping on
+  //    first-turn-ever (or first turn post-OOM without a snapshot seed) is
+  //    fine — the chain catches up next turn.
+  const slot = locals.get(lastTurnCompleteSeqNumKey);
+  const prev = slot?.value;
+  if (slot && prev !== undefined) {
+    try {
+      await session.out.trimTo(prev);
+    } catch (err) {
+      logger.warn("chat.agent: trim failed; will retry next turn", {
+        error: err instanceof Error ? err.message : String(err),
+        prev,
+      });
+    }
+  }
+
+  // 3. Advance the slot so the next turn-complete trims back to this one.
+  if (slot && T_N !== undefined && Number.isFinite(T_N)) {
+    slot.value = T_N;
+  }
+
+  return result;
 }
 
 /**
@@ -8725,16 +8781,8 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
     }
   }
 
-  const { waitUntilComplete } = chatStream.writer({
-    spanName: "upgrade required",
-    collapsed: true,
-    execute: ({ write }) => {
-      write({
-        type: "trigger:upgrade-required",
-      } as unknown as UIMessageChunk);
-    },
-  });
-  return await waitUntilComplete();
+  const session = getChatSession();
+  return session.out.writeControl(TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED);
 }
 
 /**

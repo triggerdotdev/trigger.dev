@@ -19,7 +19,13 @@
 import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 import { readUIMessageStream } from "ai";
-import { ApiClient, SSEStreamSubscription, apiClientManager } from "@trigger.dev/core/v3";
+import {
+  ApiClient,
+  apiClientManager,
+  controlSubtype,
+  SSEStreamSubscription,
+  TRIGGER_CONTROL_SUBTYPE,
+} from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { sessions } from "./sessions.js";
 
@@ -710,33 +716,19 @@ export class AgentChat<TAgent = unknown> {
 
               if (value.id) state.lastEventId = value.id;
 
-              // Session records arrive as raw JSON strings (the server
-              // wraps `{data, id}` on S2). Parse back into objects so
-              // the control-flow below can inspect chunk.type.
-              let chunkObj: Record<string, unknown> | null = null;
-              if (value.chunk != null) {
-                if (typeof value.chunk === "string") {
-                  try {
-                    chunkObj = JSON.parse(value.chunk) as Record<string, unknown>;
-                  } catch {
-                    chunkObj = null;
-                  }
-                } else if (typeof value.chunk === "object") {
-                  chunkObj = value.chunk as Record<string, unknown>;
-                }
-              }
-              if (!chunkObj) continue;
-
-              const chunk = chunkObj;
+              // Trigger control records (turn-complete, upgrade-required)
+              // route by header — see `client-protocol.mdx`. Their bodies
+              // are empty; everything substantive is on `value.headers`.
+              const controlValue = controlSubtype(value.headers);
 
               if (state.skipToTurnComplete) {
-                if (chunk.type === "trigger:turn-complete") {
+                if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
                   state.skipToTurnComplete = false;
                 }
                 continue;
               }
 
-              if (chunk.type === "trigger:upgrade-required") {
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
                 // Server has already triggered the new run via
                 // `end-and-continue`; v2's chunks arrive on the same
                 // S2 stream. Filter the marker for cleanliness and
@@ -744,7 +736,7 @@ export class AgentChat<TAgent = unknown> {
                 continue;
               }
 
-              if (chunk.type === "trigger:turn-complete") {
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
                 // Customer's callback may be async (e.g. persisting
                 // lastEventId to a DB). Wrap so a rejected Promise
                 // doesn't surface as an unhandled rejection — that
@@ -764,7 +756,11 @@ export class AgentChat<TAgent = unknown> {
                 return;
               }
 
-              controller.enqueue(chunk as unknown as UIMessageChunk);
+              // Data record — `value.chunk` is the parsed UIMessageChunk
+              // (the SSE parser does the JSON envelope unwrap). Drop
+              // empty/malformed payloads defensively.
+              if (value.chunk == null) continue;
+              controller.enqueue(value.chunk as UIMessageChunk);
             }
           } catch (readError) {
             reader.releaseLock();

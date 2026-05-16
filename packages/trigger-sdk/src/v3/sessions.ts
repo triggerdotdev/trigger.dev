@@ -31,7 +31,10 @@ import {
   runtime,
   sessionStreams,
   taskContext,
+  trimSessionStream,
+  writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
+import type { StreamWriteResult } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { tracer } from "./tracer.js";
@@ -463,6 +466,38 @@ export class SessionOutputChannel {
 
       throw error;
     }
+  }
+
+  /**
+   * Write a single Trigger control record to `.out`. The record carries a
+   * `trigger-control` header valued with `subtype` plus any sibling
+   * `extraHeaders`; the body is empty. Control records are filtered out of
+   * the consumer-facing chunk stream by the SDK transport — readers route
+   * them via the `onControl` callback instead.
+   *
+   * The returned `lastEventId` is the S2 seq_num of the written record,
+   * useful for trim chains (e.g. trim back to the previous turn-complete).
+   */
+  async writeControl(
+    subtype: string,
+    extraHeaders?: ReadonlyArray<readonly [string, string]>
+  ): Promise<StreamWriteResult> {
+    const apiClient = apiClientManager.clientOrThrow();
+    return writeSessionControlRecord(apiClient, this.sessionId, "out", subtype, extraHeaders);
+  }
+
+  /**
+   * Append an S2 `trim` command record to `.out`. Records with seq_num
+   * less than `earliestSeqNum` are eventually removed from the stream.
+   *
+   * Idempotent and monotonic at S2's layer (`max(existing, min(provided,
+   * current_tail))`) — backward trims are silently no-ops for deletion
+   * but still consume a seq_num. Used by `chat.agent`'s turn loop to
+   * keep `session.out` bounded to roughly one turn at steady state.
+   */
+  async trimTo(earliestSeqNum: number): Promise<void> {
+    const apiClient = apiClientManager.clientOrThrow();
+    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum);
   }
 }
 

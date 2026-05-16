@@ -7,6 +7,7 @@ import {
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
 import { SessionChannelIO, SessionStreamManager } from "./types.js";
+import { controlSubtype } from "./wireProtocol.js";
 
 type SessionStreamHandler = (data: unknown) => void | Promise<void>;
 
@@ -359,6 +360,13 @@ export class StandardSessionStreamManager implements SessionStreamManager {
           const seqNum = parseInt(part.id, 10);
           if (Number.isFinite(seqNum)) {
             this.seqNums.set(key, seqNum);
+          }
+
+          // Trigger control records (turn-complete, upgrade-required)
+          // are dispatched out-of-band via `onControl` — they're not
+          // consumer-facing data. Skip the data dispatch path.
+          if (controlSubtype(part.headers)) {
+            return;
           }
 
           // Min-timestamp filter: drop records older than (or at) the
