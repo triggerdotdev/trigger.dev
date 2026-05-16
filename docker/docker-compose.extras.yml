@@ -1,0 +1,124 @@
+# Optional services for advanced local-dev workflows. Pair with
+# `docker-compose.yml` via `pnpm run docker:full`.
+#
+# Same `name:` so `docker compose` treats both files as one project — bring
+# them up together and they share the `app_network` and `triggerdotdev-docker`
+# volume namespace. Tear down with `pnpm run docker:full:stop`.
+#
+# Includes:
+#   - electric-shard-1:   second Electric instance for multi-shard testing
+#   - ch-ui:              ClickHouse browser UI
+#   - toxiproxy:          chaos / flake testing
+#   - nginx-h2:           HTTP/2 reverse proxy
+#   - otel-collector + prometheus + grafana: observability stack
+name: triggerdotdev-docker
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  app_network:
+    external: false
+
+services:
+  electric-shard-1:
+    container_name: ${CONTAINER_PREFIX:-}electric-shard-1
+    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
+      ELECTRIC_INSECURE: true
+      ELECTRIC_REPLICATION_STREAM_ID: "triggershard1"
+    networks:
+      - app_network
+    ports:
+      - "${ELECTRIC_SHARD_1_HOST_PORT:-3061}:3000"
+    depends_on:
+      - database
+
+  ch-ui:
+    image: ghcr.io/caioricciuti/ch-ui:latest@sha256:288abf7103d6e0f45527ee835ee79bd1e0bfb82d55dc514fb3cf43816306b538
+    restart: always
+    ports:
+      - "${CH_UI_HOST_PORT:-5521}:5521"
+    environment:
+      VITE_CLICKHOUSE_URL: "http://localhost:${CLICKHOUSE_HTTP_HOST_PORT:-8123}"
+      VITE_CLICKHOUSE_USER: "default"
+      VITE_CLICKHOUSE_PASS: "password"
+    networks:
+      - app_network
+
+  toxiproxy:
+    container_name: ${CONTAINER_PREFIX:-}toxiproxy
+    image: ghcr.io/shopify/toxiproxy:latest@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e
+    restart: always
+    volumes:
+      - ./config/toxiproxy.json:/config/toxiproxy.json
+    ports:
+      - "${TOXIPROXY_PROXY_HOST_PORT:-30303}:30303" # Proxied webapp port
+      - "${TOXIPROXY_API_HOST_PORT:-8474}:8474" # Toxiproxy API port
+    networks:
+      - app_network
+    command: ["-host", "0.0.0.0", "-config", "/config/toxiproxy.json"]
+
+  nginx-h2:
+    image: nginx:1.27@sha256:6784fb0834aa7dbbe12e3d7471e69c290df3e6ba810dc38b34ae33d3c1c05f7d
+    container_name: ${CONTAINER_PREFIX:-}nginx-h2
+    restart: unless-stopped
+    ports:
+      - "${NGINX_H2_HOST_PORT:-8443}:8443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/certs:/etc/nginx/certs:ro
+    networks:
+      - app_network
+
+  # Observability stack for local development
+  otel-collector:
+    container_name: ${CONTAINER_PREFIX:-}otel-collector
+    image: otel/opentelemetry-collector-contrib:0.96.0@sha256:7ef2a2ff46b9e432321fdd63df104bfeedaf7b4e276950f42c634d0f23521fc4
+    restart: always
+    command: ["--config", "/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "${OTEL_GRPC_HOST_PORT:-4317}:4317" # OTLP gRPC receiver
+      - "${OTEL_HTTP_HOST_PORT:-4318}:4318" # OTLP HTTP receiver
+      - "${OTEL_PROMETHEUS_HOST_PORT:-8889}:8889" # Prometheus exporter
+    networks:
+      - app_network
+
+  prometheus:
+    container_name: ${CONTAINER_PREFIX:-}prometheus
+    image: prom/prometheus:v2.54.1@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94
+    restart: always
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    networks:
+      - app_network
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+
+  grafana:
+    container_name: ${CONTAINER_PREFIX:-}grafana
+    image: grafana/grafana:11.3.0@sha256:a0f881232a6fb71a0554a47d0fe2203b6888fe77f4cefb7ea62bed7eb54e13c3
+    restart: always
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_HOST_PORT:-3001}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    networks:
+      - app_network
+    depends_on:
+      - prometheus
