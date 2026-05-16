@@ -225,6 +225,15 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
   /** Base URL for the Trigger.dev API. @default "https://api.trigger.dev" */
   baseURL?: string;
 
+  /**
+   * Base URL for the SSE stream subscription only (`GET .../sessions/{chatId}/out`).
+   * Falls back to `baseURL` when unset. Set this to route the long-lived
+   * stream through a custom proxy (e.g. a Cloudflare worker capturing JA4
+   * fingerprints for bot detection) while keeping append POSTs direct to
+   * `baseURL` to avoid an extra hop on every user message.
+   */
+  streamBaseURL?: string;
+
   /** Additional headers included in every API request. */
   headers?: Record<string, string>;
 
@@ -346,6 +355,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
     | undefined;
   private readonly baseURL: string;
+  private readonly streamBaseURL: string;
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
@@ -367,6 +377,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
       | undefined;
     this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
+    this.streamBaseURL = options.streamBaseURL ?? this.baseURL;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
     this.defaultMetadata = options.clientData;
@@ -1021,7 +1032,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const streamUrl = `${this.baseURL}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = `${this.streamBaseURL}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {

@@ -568,6 +568,40 @@ describe("TriggerChatTransport", () => {
       expect(subscribe!).toContain("/realtime/v1/sessions/chat-by-chatid/out");
     });
 
+    it("routes .out SSE through streamBaseURL while appends stay on baseURL", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://api.test.trigger.dev",
+        streamBaseURL: "https://chat-proxy.example.com",
+        sessions: { "chat-split": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-split",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      const append = requests.find(isSessionStreamAppendUrl);
+      const subscribe = requests.find(isSessionOutSubscribeUrl);
+      expect(append!.startsWith("https://api.test.trigger.dev/")).toBe(true);
+      expect(subscribe!.startsWith("https://chat-proxy.example.com/")).toBe(true);
+      expect(subscribe!).toContain("/realtime/v1/sessions/chat-split/out");
+    });
+
     it("for submit-message, only the latest message is delivered to .in", async () => {
       // Slim wire: each `.in/append` carries at most ONE new message in
       // `payload.message` (singular). Even if the caller hands sendMessages
