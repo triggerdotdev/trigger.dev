@@ -1,0 +1,18 @@
+{
+  "name": "references-libreoffice-convert",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "trigger.dev": "workspace:*"
+  },
+  "dependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "libreoffice-convert": "^1.4.3",
+    "zod": "3.25.76"
+  },
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  }
+}
