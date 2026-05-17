@@ -443,6 +443,15 @@ async function collectAgentResponse(
       if (value.chunk != null && typeof value.chunk === "object") {
         const chunk = value.chunk as Record<string, unknown>;
 
+        // Legacy belt-and-suspenders: prior SDK versions emitted
+        // `trigger:turn-complete` / `trigger:upgrade-required` as
+        // data records (`chunk.type`) instead of header-form control
+        // records. Filter them so an in-flight session whose `.out`
+        // was populated by an older agent doesn't stall this loop.
+        if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+          continue;
+        }
+
         if (chunk.type === "text-delta" && typeof chunk.delta === "string") {
           text += chunk.delta;
           // Accumulate into a text part

@@ -49,7 +49,13 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   // a buffered record into a waiter, the cursor (`lastDispatchedSeqNums`)
   // can advance to that record's seq. Kept as a separate map so the
   // existing `peek()` shape (returns `unknown`) stays unchanged.
-  private bufferSeqNums = new Map<string, number[]>();
+  //
+  // Entries are `number | undefined` so the array stays length-locked
+  // with `buffer` even if a record arrives without a parseable seq —
+  // shifting `undefined` is just a no-op for the cursor advance, but
+  // the slot still gets consumed. Drifting lengths would map seq_nums
+  // to the wrong records on subsequent shifts.
+  private bufferSeqNums = new Map<string, Array<number | undefined>>();
   private tails = new Map<string, TailState>();
   // Per-stream lower-bound timestamp filter. When set, records whose
   // SSE timestamp is <= the bound are dropped before dispatch — used by
@@ -503,14 +509,16 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(data);
-    if (seqNum !== undefined) {
-      let bufferedSeqs = this.bufferSeqNums.get(key);
-      if (!bufferedSeqs) {
-        bufferedSeqs = [];
-        this.bufferSeqNums.set(key, bufferedSeqs);
-      }
-      bufferedSeqs.push(seqNum);
+    let bufferedSeqs = this.bufferSeqNums.get(key);
+    if (!bufferedSeqs) {
+      bufferedSeqs = [];
+      this.bufferSeqNums.set(key, bufferedSeqs);
     }
+    // Always push, even when `seqNum` is undefined (e.g. NaN from a
+    // malformed `part.id`). Skipping the push here would drift the two
+    // arrays apart and misattribute seq_nums to records on the next
+    // shift.
+    bufferedSeqs.push(seqNum);
   }
 
   #invokeHandlers(key: string, data: unknown): void {

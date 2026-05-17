@@ -567,6 +567,13 @@ async function openHandoverSession(opts: {
           // legacy chunk shape for the customer-server-to-browser hop).
           let latestEventId: string | undefined;
           let turnComplete = false;
+          // Dedicated abort signal for this agent subscription. Aborted
+          // from `onControl` the moment turn-complete fires so the
+          // `for await` loop below exits immediately instead of blocking
+          // until S2's long-poll closes (~60s). Combined with the outer
+          // `abortController.signal` via `AbortSignal.any` so a request-
+          // wide abort still tears the subscription down.
+          const subscriptionAbort = new AbortController();
           const agentStream = await apiClient.subscribeToSessionStream<UIMessageChunk>(
             chatId,
             "out",
@@ -574,7 +581,7 @@ async function openHandoverSession(opts: {
               ...(customerLastEventId != null
                 ? { lastEventId: customerLastEventId }
                 : {}),
-              signal: abortController.signal,
+              signal: AbortSignal.any([abortController.signal, subscriptionAbort.signal]),
               onPart: (part) => {
                 if (part.id) latestEventId = part.id;
               },
@@ -589,18 +596,28 @@ async function openHandoverSession(opts: {
                   controller.enqueue({
                     type: "trigger:turn-complete",
                   } as unknown as UIMessageChunk);
+                  // Stop the SSE read now. Without this the `for await`
+                  // can't see the control event (control records are
+                  // never enqueued into the data stream) and would idle
+                  // until S2's long-poll timeout closes the connection.
+                  subscriptionAbort.abort();
                 }
               },
             }
           );
 
-          for await (const chunk of agentStream) {
-            // Data records only — control records are routed via
-            // `onControl` above. Stop reading as soon as we see the
-            // turn-complete control event (the loop may have one more
-            // data record buffered, but that's fine — we break out).
-            controller.enqueue(chunk);
-            if (turnComplete) break;
+          try {
+            for await (const chunk of agentStream) {
+              // Data records only — control records are routed via
+              // `onControl` above and trigger the subscription abort.
+              controller.enqueue(chunk);
+              if (turnComplete) break;
+            }
+          } catch (err) {
+            // AbortError from `subscriptionAbort` is the expected exit
+            // path once turn-complete fires; surface anything else.
+            const isAbort = err instanceof Error && err.name === "AbortError";
+            if (!isAbort || !turnComplete) throw err;
           }
 
           // Final control chunk: hand the browser transport the
