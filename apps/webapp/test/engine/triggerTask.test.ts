@@ -1174,6 +1174,570 @@ describe("RunEngineTriggerTaskService", () => {
       await engine.quit();
     }
   );
+
+  // ─── Mollifier integration ──────────────────────────────────────────────────
+  //
+  // These tests pin the call-site behaviour of the mollifier hooks inside
+  // RunEngineTriggerTaskService.call. They use the optional DI ports
+  // (`evaluateGate`, `getMollifierBuffer`) added on the service constructor —
+  // production wiring is unchanged (defaults to the live module-level imports).
+  // Each test's regression intent lives in its own setup comment.
+
+  class CapturingMollifierBuffer {
+    public accepted: Array<{ runId: string; envId: string; orgId: string; payload: string }> = [];
+    async accept(input: { runId: string; envId: string; orgId: string; payload: string }) {
+      this.accepted.push(input);
+      return true;
+    }
+    async pop() { return null; }
+    async ack() {}
+    async requeue() {}
+    async fail() { return false; }
+    async getEntry() { return null; }
+    async listEnvs(): Promise<string[]> { return []; }
+    async getEntryTtlSeconds(): Promise<number> { return -1; }
+    async evaluateTrip() { return { tripped: false, count: 0 }; }
+    async close() {}
+  }
+
+  containerTest(
+    "mollifier · validation throws before the gate is consulted; no buffer write",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      // Validator that fails on maxAttempts. Any validation throw must abort
+      // the call BEFORE the gate runs — otherwise the gate could leak a
+      // buffer write for an invalid request.
+      class FailingMaxAttemptsValidator extends MockTriggerTaskValidator {
+        validateMaxAttempts(): ValidationResult {
+          return { ok: false, error: new Error("synthetic max-attempts failure") };
+        }
+      }
+
+      const buffer = new CapturingMollifierBuffer();
+      const evaluateGateSpy = vi.fn(async () => ({ action: "mollify" as const, decision: {
+        divert: true as const, reason: "per_env_rate" as const, count: 99, threshold: 1, windowMs: 200, holdMs: 500,
+      } }));
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        validator: new FailingMaxAttemptsValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+        evaluateGate: evaluateGateSpy,
+        getMollifierBuffer: () => buffer as never,
+      });
+
+      await expect(
+        triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: { payload: { test: "x" } },
+        }),
+      ).rejects.toThrow(/synthetic max-attempts failure/);
+
+      // Critical: the gate must NEVER be consulted when validation fails.
+      // If this assertion fires, validation has been re-ordered after the
+      // mollifier gate — a regression that would let invalid triggers land
+      // in the buffer.
+      expect(evaluateGateSpy).not.toHaveBeenCalled();
+      expect(buffer.accepted).toHaveLength(0);
+
+      await engine.quit();
+    },
+  );
+
+  containerTest(
+    "mollifier · mollify action triggers dual-write (buffer.accept + engine.trigger)",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const buffer = new CapturingMollifierBuffer();
+      const trippedDecision = {
+        divert: true as const,
+        reason: "per_env_rate" as const,
+        count: 150,
+        threshold: 100,
+        windowMs: 200,
+        holdMs: 500,
+      };
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+        evaluateGate: async () => ({ action: "mollify", decision: trippedDecision }),
+        getMollifierBuffer: () => buffer as never,
+      });
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { hello: "world" } },
+      });
+
+      // engine.trigger ran — Postgres has the run
+      expect(result).toBeDefined();
+      expect(result?.run.friendlyId).toBeDefined();
+      const pgRun = await prisma.taskRun.findFirst({ where: { id: result!.run.id } });
+      expect(pgRun).not.toBeNull();
+      expect(pgRun!.friendlyId).toBe(result!.run.friendlyId);
+
+      // buffer.accept ran — Redis has the audit copy under the same friendlyId
+      expect(buffer.accepted).toHaveLength(1);
+      expect(buffer.accepted[0]!.runId).toBe(result!.run.friendlyId);
+      expect(buffer.accepted[0]!.envId).toBe(authenticatedEnvironment.id);
+      expect(buffer.accepted[0]!.orgId).toBe(authenticatedEnvironment.organizationId);
+
+      // payload is the canonical replay shape
+      const payload = JSON.parse(buffer.accepted[0]!.payload);
+      expect(payload.runFriendlyId).toBe(result!.run.friendlyId);
+      expect(payload.taskId).toBe(taskIdentifier);
+      expect(payload.envId).toBe(authenticatedEnvironment.id);
+      expect(payload.body).toEqual({ payload: { hello: "world" } });
+
+      await engine.quit();
+    },
+  );
+
+  containerTest(
+    "mollifier · pass_through action does NOT call buffer.accept",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const buffer = new CapturingMollifierBuffer();
+      const getBufferSpy = vi.fn(() => buffer as never);
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+        evaluateGate: async () => ({ action: "pass_through" }),
+        getMollifierBuffer: getBufferSpy,
+      });
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "x" } },
+      });
+
+      expect(result).toBeDefined();
+      // Postgres has the run, no buffer side-effects
+      expect(buffer.accepted).toHaveLength(0);
+      // getMollifierBuffer must not be called either — the call site short-circuits
+      // before touching the singleton when the gate says pass_through.
+      expect(getBufferSpy).not.toHaveBeenCalled();
+
+      await engine.quit();
+    },
+  );
+
+  containerTest(
+    "mollifier · engine.trigger throwing AFTER buffer.accept leaves an orphan entry (documented behaviour)",
+    async ({ prisma, redisOptions }) => {
+      // SCENARIO: dual-write where buffer.accept succeeds but engine.trigger
+      // throws. The throw propagates to the caller (correct: customer sees
+      // the same 4xx as today), and the buffer entry remains as an "orphan"
+      // — Phase 1's no-op drainer will pop+ack it on its next poll, so the
+      // orphan is bounded (~drainer pollIntervalMs) but observable in the
+      // audit trail (mollifier.buffered with no matching TaskRun).
+      //
+      // Why engine.trigger can throw post-buffer:
+      //   - RunDuplicateIdempotencyKeyError (Prisma P2002 on idempotencyKey):
+      //     a concurrent non-mollified trigger with the same idempotencyKey
+      //     wins the DB UNIQUE constraint between IdempotencyKeyConcern's
+      //     pre-check and engine.trigger's INSERT.
+      //   - RunOneTimeUseTokenError (Prisma P2002 on oneTimeUseToken).
+      //   - Transient Prisma errors (FK constraint, connection drop, etc.).
+      //
+      // Why we don't "fix" this race in Phase 1:
+      //   The customer correctly gets the error. State eventually converges
+      //   (drainer pops the orphan). The audit-trail explicitly surfaces
+      //   "buffered without TaskRun" entries to operators. A real fix is
+      //   Phase 2's responsibility once the buffer becomes the primary write
+      //   — at that point we add the mollifier-specific idempotency index.
+      //
+      // This test pins the current ordering: buffer.accept fires synchronously
+      // BEFORE engine.trigger, and engine.trigger failure does NOT roll back
+      // the buffer write. Any future change that reverses the order or adds
+      // a silent rollback will fail this assertion and force a design
+      // decision rather than a silent behaviour change.
+
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const buffer = new CapturingMollifierBuffer();
+
+      // Force engine.trigger to throw on this single call. We spy AFTER
+      // setupBackgroundWorker so the worker setup still uses the real
+      // engine.trigger (which has its own engine.trigger-ish calls for
+      // worker bootstrap — though in practice setupBackgroundWorker doesn't
+      // call trigger).
+      const simulatedFailure = new Error("simulated engine.trigger failure post-buffer");
+      vi.spyOn(engine, "trigger").mockRejectedValueOnce(simulatedFailure);
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+        evaluateGate: async () => ({
+          action: "mollify",
+          decision: {
+            divert: true,
+            reason: "per_env_rate",
+            count: 150,
+            threshold: 100,
+            windowMs: 200,
+            holdMs: 500,
+          },
+        }),
+        getMollifierBuffer: () => buffer as never,
+      });
+
+      await expect(
+        triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: { payload: { test: "x" } },
+        }),
+      ).rejects.toThrow(/simulated engine.trigger failure post-buffer/);
+
+      // The buffer write happened BEFORE engine.trigger threw. The orphan
+      // remains; the audit-trail will surface it (mollifier.buffered with
+      // no matching TaskRun row). Phase 1's no-op drainer cleans it up.
+      expect(buffer.accepted).toHaveLength(1);
+      const orphanPayload = JSON.parse(buffer.accepted[0]!.payload);
+      expect(orphanPayload.taskId).toBe(taskIdentifier);
+
+      await engine.quit();
+    },
+  );
+
+  containerTest(
+    "mollifier · idempotency-key match short-circuits BEFORE the gate is consulted",
+    async ({ prisma, redisOptions }) => {
+      // SCENARIO: a trigger arrives with an idempotency key matching an
+      // already-created run. `IdempotencyKeyConcern.handleTriggerRequest`
+      // (line 236 of triggerTask.server.ts) detects the match BEFORE the
+      // mollifier gate runs and returns `{ isCached: true, run }`. The
+      // service early-returns. The gate is never consulted, buffer.accept
+      // never fires, no orphan entry is created.
+      //
+      // Regression intent: if IdempotencyKeyConcern were re-ordered to run
+      // AFTER evaluateGate, every idempotent retry on a flagged org would
+      // produce an orphan buffer entry — the audit-trail invariant ("every
+      // buffered runId has a matching TaskRun") would silently start failing
+      // for retries. This test pins the current order.
+
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const idempotencyKeyConcern = new IdempotencyKeyConcern(
+        prisma,
+        engine,
+        new MockTraceEventConcern(),
+      );
+
+      // Setup: normal trigger to create the cached run (no mollifier).
+      const baseline = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+      });
+      const first = await baseline.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "x" }, options: { idempotencyKey: "regression-key-5" } },
+      });
+      expect(first?.isCached).toBe(false);
+
+      // Action: same idempotency key, with a mollify-stub gate that WOULD
+      // create an orphan if reached. The concern must short-circuit first.
+      const buffer = new CapturingMollifierBuffer();
+      const evaluateGateSpy = vi.fn(async () => ({
+        action: "mollify" as const,
+        decision: {
+          divert: true as const,
+          reason: "per_env_rate" as const,
+          count: 150,
+          threshold: 100,
+          windowMs: 200,
+          holdMs: 500,
+        },
+      }));
+
+      const mollifierService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+        evaluateGate: evaluateGateSpy,
+        getMollifierBuffer: () => buffer as never,
+      });
+
+      const cached = await mollifierService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "x" }, options: { idempotencyKey: "regression-key-5" } },
+      });
+
+      // Customer sees the cached run, isCached=true
+      expect(cached).toBeDefined();
+      expect(cached?.isCached).toBe(true);
+      expect(cached?.run.friendlyId).toBe(first?.run.friendlyId);
+
+      // Critical: the gate must NEVER be consulted on a cached-idempotency replay.
+      expect(evaluateGateSpy).not.toHaveBeenCalled();
+      expect(buffer.accepted).toHaveLength(0);
+
+      await engine.quit();
+    },
+  );
+
+  containerTest(
+    "mollifier · debounce match produces an orphan buffer entry (documented behaviour)",
+    async ({ prisma, redisOptions }) => {
+      // SCENARIO: a trigger with a debounce key arrives while a matching
+      // debounced run already exists. `debounceSystem.handleDebounce` runs
+      // INSIDE `engine.trigger` (line ~514 of run-engine/src/engine/index.ts),
+      // AFTER buffer.accept has already written the new friendlyId. The
+      // service correctly returns the existing run id to the customer, but
+      // the buffer is left with an orphan entry for the new friendlyId.
+      //
+      // Why this is acceptable in Phase 1:
+      //   - Customer-facing behaviour is unchanged from today: they receive
+      //     the existing run id, same as the non-mollified path.
+      //   - The orphan is bounded — the drainer's no-op-ack handler pops
+      //     and acks it on its next poll.
+      //   - The audit-trail surfaces it: a `mollifier.buffered` log line
+      //     with `runId` that has no matching TaskRun in Postgres.
+      //
+      // Why Phase 2 cares:
+      //   - When the buffer becomes the primary write path, debounce can
+      //     no longer be allowed to run AFTER buffer.accept. The drainer's
+      //     engine.trigger replay would observe "existing" and skip the
+      //     persist — the customer's synthesised 200 (with the new
+      //     friendlyId) would never get a TaskRun, and the audit-trail
+      //     divergence becomes a real data-loss bug.
+      //   - Phase 2 must lift `handleDebounce` into the call site BEFORE
+      //     buffer.accept:
+      //       1. handleDebounce → if existing, return existing run; do NOT
+      //          touch the buffer.
+      //       2. Otherwise, accept with `claimId` threaded into the
+      //          canonical payload so the drainer's replay can
+      //          `registerDebouncedRun` after persisting.
+      //
+      // This test pins the current ordering. A future change that "fixes"
+      // it by lifting handleDebounce upfront will fail the orphan
+      // assertion below and force an explicit choice (update the test,
+      // remove this scenario, or stage the lift behind a flag).
+
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const idempotencyKeyConcern = new IdempotencyKeyConcern(
+        prisma,
+        engine,
+        new MockTraceEventConcern(),
+      );
+
+      // Setup: trigger with debounce — creates the existing run + Redis claim.
+      const baseline = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+      });
+      const first = await baseline.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "x" },
+          options: { debounce: { key: "regression-debounce-6", delay: "30s" } },
+        },
+      });
+      expect(first?.run.friendlyId).toBeDefined();
+
+      // Action: same debounce key, mollify-stub gate.
+      const buffer = new CapturingMollifierBuffer();
+      const mollifierService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern,
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024,
+        evaluateGate: async () => ({
+          action: "mollify",
+          decision: {
+            divert: true,
+            reason: "per_env_rate",
+            count: 150,
+            threshold: 100,
+            windowMs: 200,
+            holdMs: 500,
+          },
+        }),
+        getMollifierBuffer: () => buffer as never,
+      });
+
+      const debounced = await mollifierService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "x" },
+          options: { debounce: { key: "regression-debounce-6", delay: "30s" } },
+        },
+      });
+
+      // Customer-facing behaviour: the existing run is returned (correct).
+      expect(debounced).toBeDefined();
+      expect(debounced?.run.friendlyId).toBe(first?.run.friendlyId);
+
+      // Orphan: buffer.accept fired with the new friendlyId we generated
+      // upfront, and that friendlyId has no matching TaskRun in Postgres
+      // because engine.trigger returned the existing run via debounce.
+      expect(buffer.accepted).toHaveLength(1);
+      expect(buffer.accepted[0]!.runId).not.toBe(first?.run.friendlyId);
+      const orphanFriendlyId = buffer.accepted[0]!.runId;
+      const orphanRow = await prisma.taskRun.findFirst({
+        where: { friendlyId: orphanFriendlyId },
+      });
+      expect(orphanRow).toBeNull();
+
+      await engine.quit();
+    },
+  );
 });
 
 describe("DefaultQueueManager task metadata cache", () => {

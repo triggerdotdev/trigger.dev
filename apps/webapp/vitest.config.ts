@@ -10,6 +10,7 @@ export default defineConfig({
     exclude: ["test/**/*.e2e.test.ts", "test/**/*.e2e.full.test.ts"],
     globals: true,
     pool: "forks",
+    setupFiles: ["./test/setup.ts"], // load apps/webapp/.env
   },
   // @ts-ignore
   plugins: [tsconfigPaths({ projects: ["./tsconfig.json"] })],
