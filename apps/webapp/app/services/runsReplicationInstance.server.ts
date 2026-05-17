@@ -3,6 +3,7 @@ import invariant from "tiny-invariant";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { meter, provider } from "~/v3/tracer.server";
+import { strategyFromEnv } from "./replicationErrorRecovery.server";
 import { RunsReplicationService } from "./runsReplicationService.server";
 import { signalsEmitter } from "./signals.server";
 
@@ -69,6 +70,14 @@ function initializeRunsReplicationInstance() {
     insertStrategy: env.RUN_REPLICATION_INSERT_STRATEGY,
     disablePayloadInsert: env.RUN_REPLICATION_DISABLE_PAYLOAD_INSERT === "1",
     disableErrorFingerprinting: env.RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING === "1",
+    errorRecovery: strategyFromEnv({
+      strategy: env.RUN_REPLICATION_ERROR_STRATEGY,
+      reconnectInitialDelayMs: env.REPLICATION_RECONNECT_INITIAL_DELAY_MS,
+      reconnectMaxDelayMs: env.REPLICATION_RECONNECT_MAX_DELAY_MS,
+      reconnectMaxAttempts: env.REPLICATION_RECONNECT_MAX_ATTEMPTS,
+      exitDelayMs: env.RUN_REPLICATION_EXIT_DELAY_MS,
+      exitCode: env.RUN_REPLICATION_EXIT_CODE,
+    }),
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {
