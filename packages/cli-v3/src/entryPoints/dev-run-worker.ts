@@ -67,17 +67,13 @@ import {
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
 import { setInterval, setTimeout } from "node:timers/promises";
-import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
+import { installSourceMapSupport } from "../utilities/installSourceMapSupport.js";
 import { VERSION } from "../version.js";
 import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+installSourceMapSupport();
 
 // If the parent CLI closes the IPC channel (process restart, crash, lost
 // handle), exit cleanly instead of being re-parented to init and busy-looping
