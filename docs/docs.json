@@ -106,6 +106,7 @@
                   "ai-chat/overview",
                   "ai-chat/changelog",
                   "ai-chat/quick-start",
+                  "ai-chat/how-it-works",
                   "ai-chat/backend",
                   "ai-chat/lifecycle-hooks",
                   "ai-chat/frontend",
