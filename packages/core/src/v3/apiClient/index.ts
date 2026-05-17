@@ -1346,10 +1346,21 @@ export class ApiClient {
           // Trigger control record — route to onControl, never enqueue.
           const subtype = controlSubtype(part.headers);
           if (subtype) {
+            // `part.id` is the S2 seq_num in decimal string form.
+            // `parseInt` returns NaN if S2 ever surfaces a non-numeric
+            // id (shouldn't happen, but `|| 0` would mask it as a real
+            // seq 0). Drop the malformed event rather than fire
+            // `onControl` with a misleading cursor — callers like
+            // `findLatestSessionInCursor` and the dashboard rely on the
+            // seqNum being meaningful for resume.
+            const parsedSeqNum = Number.parseInt(part.id, 10);
+            if (!Number.isFinite(parsedSeqNum)) {
+              return;
+            }
             onControl?.({
               subtype,
               headers: part.headers ?? [],
-              seqNum: Number.parseInt(part.id, 10) || 0,
+              seqNum: parsedSeqNum,
               timestamp: part.timestamp,
             });
             return;

@@ -178,7 +178,13 @@ async function findLatestSessionInCursor(
   const apiClient = apiClientManager.clientOrThrow();
   let latestCursor: number | undefined;
   const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
-    timeoutInSeconds: 1,
+    // 5s rather than 1s: S2 trim is eventually-consistent (10-60s
+    // window), so a worker booting just after a trim could still see
+    // pre-trim records and need a bit longer to drain them all before
+    // the SSE long-poll closes. Without enough headroom the scan would
+    // fall back to `undefined`, the `.in` cursor wouldn't be seeded,
+    // and the next subscribe would replay messages already processed.
+    timeoutInSeconds: 5,
     onControl: (event) => {
       if (event.subtype !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) return;
       const raw = headerValue(event.headers, SESSION_IN_EVENT_ID_HEADER);

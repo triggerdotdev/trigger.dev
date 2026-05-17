@@ -118,6 +118,20 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       for (const data of buffered) {
         this.#invokeHandler(handler, data);
       }
+      // Advance the committed-consume cursor to the highest seq drained
+      // into the new handler. `on()`-drain removes the records from the
+      // buffer, so they're no longer available to a future `once()` —
+      // from the manager's perspective they've been consumed. Without
+      // this, a worker that uses `messagesInput.on()` for user-message
+      // delivery (pendingMessages mode) would persist a `.in` cursor
+      // that lags behind the records the handler already processed, and
+      // the next boot would re-deliver them.
+      const seqList = this.bufferSeqNums.get(key);
+      if (seqList) {
+        for (const s of seqList) {
+          if (s !== undefined) this.#advanceLastDispatched(key, s);
+        }
+      }
       this.buffer.delete(key);
       // Keep `bufferSeqNums` in lock-step with `buffer` — without this,
       // the parallel array desyncs and the next `#dispatch` that buffers
