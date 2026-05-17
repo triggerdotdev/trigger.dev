@@ -19,6 +19,7 @@ See `ai/references/repo.md` for a more complete explanation of the workspaces.
    ```bash
    pnpm run docker
    ```
+   Add `:full` (`pnpm run docker:full`) for the optional observability + chaos tooling. See `docker/docker-compose.extras.yml`.
 4. Run database migrations:
    ```bash
    pnpm run db:migrate

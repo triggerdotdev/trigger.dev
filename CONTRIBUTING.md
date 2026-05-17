@@ -71,11 +71,13 @@ branch are tagged into a release periodically.
 
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
-8. Start Docker. This starts the required services: Postgres, Redis, Electric, and ClickHouse (the ClickHouse migrator runs once on first start). If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md).
+8. Start Docker. This starts the core dev services (Postgres, Redis, Electric, MinIO, ClickHouse, s2-lite) and runs the ClickHouse migrator once on first start. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md).
 
    ```
    pnpm run docker
    ```
+
+   For the observability stack (Prometheus, Grafana, OTEL collector) and other optional tooling (Toxiproxy, nginx-h2, ch-ui, extra electric shard), use `pnpm run docker:full` instead. See `docker/docker-compose.extras.yml` for the full list.
 
 9. Migrate the database
    ```
@@ -300,3 +302,7 @@ The process running on port `3030` should be destroyed.
    ```sh
    sudo kill -9 <PID>
    ```
+
+### Running two clones side by side (worktree, branch experiment)
+
+The default `pnpm run docker` uses the project name `triggerdotdev-docker` and the standard host ports (5432, 6379, 3060, 4566, 8123, 9000, 9005, 9006). To stand up a second instance in another clone without clashing, set a different `COMPOSE_PROJECT_NAME` and the offset host ports in that clone's `.env`. The "Running multiple instances side by side" block in `.env.example` lists every overridable env var with its default for reference; uncomment the lines you need and update `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_PORT` / `APP_ORIGIN` / `LOGIN_ORIGIN` / `ELECTRIC_ORIGIN` / `REALTIME_STREAMS_S2_ENDPOINT` to match.
