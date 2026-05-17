@@ -1,5 +1,189 @@
 # @trigger.dev/sdk
 
+## 4.5.0-rc.0
+
+### Minor Changes
+
+- **AI Prompts** — define prompt templates as code alongside your tasks, version them on deploy, and override the text or model from the dashboard without redeploying. Prompts integrate with the Vercel AI SDK via `toAISDKTelemetry()` (links every generation span back to the prompt) and with `chat.agent` via `chat.prompt.set()` + `chat.toStreamTextOptions()`. ([#3629](https://github.com/triggerdotdev/trigger.dev/pull/3629))
+
+  ```ts
+  import { prompts } from "@trigger.dev/sdk";
+  import { generateText } from "ai";
+  import { openai } from "@ai-sdk/openai";
+  import { z } from "zod";
+
+  export const supportPrompt = prompts.define({
+    id: "customer-support",
+    model: "gpt-4o",
+    config: { temperature: 0.7 },
+    variables: z.object({
+      customerName: z.string(),
+      plan: z.string(),
+      issue: z.string(),
+    }),
+    content: `You are a support agent for Acme.
+  
+  Customer: {{customerName}} ({{plan}} plan)
+  Issue: {{issue}}`,
+  });
+
+  const resolved = await supportPrompt.resolve({
+    customerName: "Alice",
+    plan: "Pro",
+    issue: "Can't access billing",
+  });
+
+  const result = await generateText({
+    model: openai(resolved.model ?? "gpt-4o"),
+    system: resolved.text,
+    prompt: "Can't access billing",
+    ...resolved.toAISDKTelemetry(),
+  });
+  ```
+
+  **What you get:**
+
+  - **Code-defined, deploy-versioned templates** — define with `prompts.define({ id, model, config, variables, content })`. Every deploy creates a new version visible in the dashboard. Mustache-style placeholders (`{{var}}`, `{{#cond}}...{{/cond}}`) with Zod / ArkType / Valibot-typed variables.
+  - **Dashboard overrides** — change a prompt's text or model from the dashboard without redeploying. Overrides take priority over the deployed "current" version and are environment-scoped (dev / staging / production independent).
+  - **Resolve API** — `prompt.resolve(vars, { version?, label? })` returns the compiled `text`, resolved `model`, `version`, and labels. Standalone `prompts.resolve<typeof handle>(slug, vars)` for cross-file resolution with full type inference on slug and variable shape.
+  - **AI SDK integration** — spread `resolved.toAISDKTelemetry({ ...extra })` into any `generateText` / `streamText` call and every generation span links to the prompt in the dashboard alongside its input variables, model, tokens, and cost.
+  - **`chat.agent` integration** — `chat.prompt.set(resolved)` stores the resolved prompt run-scoped; `chat.toStreamTextOptions({ registry })` pulls `system`, `model` (resolved via the AI SDK provider registry), `temperature` / `maxTokens` / etc., and telemetry into a single spread for `streamText`.
+  - **Management SDK** — `prompts.list()`, `prompts.versions(slug)`, `prompts.promote(slug, version)`, `prompts.createOverride(slug, body)`, `prompts.updateOverride(slug, body)`, `prompts.removeOverride(slug)`, `prompts.reactivateOverride(slug, version)`.
+  - **Dashboard** — prompts list with per-prompt usage sparklines; per-prompt detail with Template / Details / Versions / Generations / Metrics tabs. AI generation spans get a custom inspector showing the linked prompt's metadata, input variables, and template content alongside model, tokens, cost, and the message thread.
+
+  See [/docs/ai/prompts](https://trigger.dev/docs/ai/prompts) for the full reference — template syntax, version resolution order, override workflow, and type utilities (`PromptHandle`, `PromptIdentifier`, `PromptVariables`).
+
+- Adds `onBoot` to `chat.agent` — a lifecycle hook that fires once per worker process picking up the chat. Runs for the initial run, preloaded runs, AND reactive continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry), before any other hook. Use it to initialize `chat.local`, open per-process resources, or re-hydrate state from your DB on continuation — anywhere the SAME run picking up after suspend/resume isn't enough. ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  ```ts
+  const userContext = chat.local<{ name: string; plan: string }>({ id: "userContext" });
+
+  export const myChat = chat.agent({
+    id: "my-chat",
+    onBoot: async ({ clientData, continuation }) => {
+      const user = await db.user.findUnique({ where: { id: clientData.userId } });
+      userContext.init({ name: user.name, plan: user.plan });
+    },
+    run: async ({ messages, signal }) =>
+      streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+  });
+  ```
+
+  Use `onBoot` (not `onChatStart`) for state setup that must run every time a worker picks up the chat — `onChatStart` fires once per chat and won't run on continuation, leaving `chat.local` uninitialized when `run()` tries to use it.
+
+- **AI Agents** — run AI SDK chat completions as durable Trigger.dev agents instead of fragile API routes. Define an agent in one function, point `useChat` at it from React, and the conversation survives page refreshes, network blips, and process restarts. ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  ```ts
+  import { chat } from "@trigger.dev/sdk/ai";
+  import { streamText } from "ai";
+  import { openai } from "@ai-sdk/openai";
+
+  export const myChat = chat.agent({
+    id: "my-chat",
+    run: async ({ messages, signal }) =>
+      streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+  });
+  ```
+
+  ```tsx
+  import { useChat } from "@ai-sdk/react";
+  import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+
+  const transport = useTriggerChatTransport({ task: "my-chat", accessToken, startSession });
+  const { messages, sendMessage } = useChat({ transport });
+  ```
+
+  **What you get:**
+
+  - **AI SDK `useChat` integration** — a custom [`ChatTransport`](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) (`useTriggerChatTransport`) plugs straight into Vercel AI SDK's `useChat` hook. Text streaming, tool calls, reasoning, and `data-*` parts all work natively over Trigger.dev's realtime streams. No custom API routes needed.
+  - **First-turn fast path (`chat.headStart`)** — opt-in handler that runs the first turn's `streamText` step in your warm server process while the agent run boots in parallel, cutting cold-start TTFC by roughly half (measured 2801ms → 1218ms on `claude-sonnet-4-6`). The agent owns step 2+ (tool execution, persistence, hooks) so heavy deps stay where they belong. Web Fetch handler works natively in Next.js, Hono, SvelteKit, Remix, Workers, etc.; bridge to Express/Fastify/Koa via `chat.toNodeListener`. New `@trigger.dev/sdk/chat-server` subpath.
+  - **Multi-turn durability via Sessions** — every chat is backed by a durable Session that outlives any individual run. Conversations resume across page refreshes, idle timeout, crashes, and deploys; `resume: true` reconnects via `lastEventId` so clients only see new chunks. `sessions.list` enumerates chats for inbox-style UIs.
+  - **Auto-accumulated history, delta-only wire** — the backend accumulates the full conversation across turns; clients only ship the new message each turn. Long chats never hit the 512 KiB body cap. Register `hydrateMessages` to be the source of truth yourself.
+  - **Lifecycle hooks** — `onPreload`, `onChatStart`, `onValidateMessages`, `hydrateMessages`, `onTurnStart`, `onBeforeTurnComplete`, `onTurnComplete`, `onChatSuspend`, `onChatResume` — for persistence, validation, and post-turn work.
+  - **Stop generation** — client-driven `transport.stopGeneration(chatId)` aborts mid-stream; the run stays alive for the next message, partial response is captured, and aborted parts (stuck `partial-call` tools, in-progress reasoning) are auto-cleaned.
+  - **Tool approvals (HITL)** — tools with `needsApproval: true` pause until the user approves or denies via `addToolApprovalResponse`. The runtime reconciles the updated assistant message by ID and continues `streamText`.
+  - **Steering and background injection** — `pendingMessages` injects user messages between tool-call steps so users can steer the agent mid-execution; `chat.inject()` + `chat.defer()` adds context from background work (self-review, RAG, safety checks) between turns.
+  - **Actions** — non-turn frontend commands (undo, rollback, regenerate, edit) sent via `transport.sendAction`. Fire `hydrateMessages` + `onAction` only — no turn hooks, no `run()`. `onAction` can return a `StreamTextResult` for a model response, or `void` for side-effect-only.
+  - **Typed state primitives** — `chat.local<T>` for per-run state accessible from hooks, `run()`, tools, and subtasks (auto-serialized through `ai.toolExecute`); `chat.store` for typed shared data between agent and client; `chat.history` for reading and mutating the message chain; `clientDataSchema` for typed `clientData` in every hook.
+  - **`chat.toStreamTextOptions()`** — one spread into `streamText` wires up versioned system [Prompts](https://trigger.dev/docs/ai/prompts), model resolution, telemetry metadata, compaction, steering, and background injection.
+  - **Multi-tab coordination** — `multiTab: true` + `useMultiTabChat` prevents duplicate sends and syncs state across browser tabs via `BroadcastChannel`. Non-active tabs go read-only with live updates.
+  - **Network resilience** — built-in indefinite retry with bounded backoff, reconnect on `online` / tab refocus / bfcache restore, `Last-Event-ID` mid-stream resume. No app code needed.
+
+  See [/docs/ai-chat](https://trigger.dev/docs/ai-chat/overview) for the full surface — quick start, three backend approaches (`chat.agent`, `chat.createSession`, raw task), persistence and code-sandbox patterns, type-level guides, and API reference.
+
+- Add read primitives to `chat.history` for HITL flows: `getPendingToolCalls()`, `getResolvedToolCalls()`, `extractNewToolResults(message)`, `getChain()`, and `findMessage(messageId)`. These lift the accumulator-walking logic that customers building human-in-the-loop tools were re-implementing into the SDK. ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  Use `getPendingToolCalls()` to gate fresh user turns while a tool call is awaiting an answer. Use `extractNewToolResults(message)` to dedup tool results when persisting to your own store — the helper returns only the parts whose `toolCallId` is not already resolved on the chain.
+
+  ```ts
+  const pending = chat.history.getPendingToolCalls();
+  if (pending.length > 0) {
+    // an addToolOutput is expected before a new user message
+  }
+
+  onTurnComplete: async ({ responseMessage }) => {
+    const newResults = chat.history.extractNewToolResults(responseMessage);
+    for (const r of newResults) {
+      await db.toolResults.upsert({ id: r.toolCallId, output: r.output, errorText: r.errorText });
+    }
+  };
+  ```
+
+- **Sessions** — a durable, run-aware stream channel keyed on a stable `externalId`. A Session is the unit of state that owns a multi-run conversation: messages flow through `.in`, responses through `.out`, both survive run boundaries. Sessions back the new `chat.agent` runtime, and you can build on them directly for any pattern that needs durable bi-directional streaming across runs. ([#3542](https://github.com/triggerdotdev/trigger.dev/pull/3542))
+
+  ```ts
+  import { sessions, tasks } from "@trigger.dev/sdk";
+
+  // Trigger a task and subscribe to its session output in one call
+  const { runId, stream } = await tasks.triggerAndSubscribe("my-task", payload, {
+    externalId: "user-456",
+  });
+
+  for await (const chunk of stream) {
+    // ...
+  }
+
+  // Enumerate existing sessions (powers inbox-style UIs without a separate index)
+  for await (const s of sessions.list({ type: "chat.agent", tag: "user:user-456" })) {
+    console.log(s.id, s.externalId, s.createdAt, s.closedAt);
+  }
+  ```
+
+  See [/docs/ai-chat/overview](https://trigger.dev/docs/ai-chat/overview) for the full surface — Sessions powers the durable, resumable chat runtime described there.
+
+### Patch Changes
+
+- Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  ```ts
+  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+
+  chat.skills.set([await pdfSkill.local()]);
+  ```
+
+  Built on the [AI SDK cookbook pattern](https://ai-sdk.dev/cookbook/guides/agent-skills) — portable across providers. SDK + CLI only for now; dashboard-editable `SKILL.md` text is on the roadmap.
+
+- Add `ai.toolExecute(task)` so you can wire a Trigger subtask in as the `execute` handler of an AI SDK `tool()` while defining `description` and `inputSchema` yourself — useful when you want full control over the tool surface and just need Trigger's subtask machinery for the body. ([#3546](https://github.com/triggerdotdev/trigger.dev/pull/3546))
+
+  ```ts
+  const myTool = tool({
+    description: "...",
+    inputSchema: z.object({ ... }),
+    execute: ai.toolExecute(mySubtask),
+  });
+  ```
+
+  `ai.tool(task)` (`toolFromTask`) keeps doing the all-in-one wrap and now aligns its return type with AI SDK's `ToolSet`. Minimum `ai` peer raised to `^6.0.116` to avoid cross-version `ToolSet` mismatches in monorepos.
+
+- Stamp `gen_ai.conversation.id` (the chat id) on every span and metric emitted from inside a `chat.task` or `chat.agent` run. Lets you filter dashboard spans, runs, and metrics by the chat conversation that produced them — independent of the run boundary, so multi-run chats correlate cleanly. No code changes required on the user side. ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+- Unit-test `chat.agent` definitions offline with `mockChatAgent` from `@trigger.dev/sdk/ai/test`. Drives a real agent's turn loop in-process — no network, no task runtime — so you can send messages, actions, and stop signals via driver methods, inspect captured output chunks, and verify hooks fire. Pairs with `MockLanguageModelV3` from `ai/test` for model mocking. `setupLocals` lets you pre-seed `locals` (DB clients, service stubs) before `run()` starts. ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  The broader `runInMockTaskContext` harness it's built on lives at `@trigger.dev/core/v3/test` — useful for unit-testing any task code, not just chat.
+
+- Add `region` to the runs list / retrieve API: filter runs by region (`runs.list({ region: "..." })` / `filter[region]=<masterQueue>`) and read each run's executing region from the new `region` field on the response. ([#3612](https://github.com/triggerdotdev/trigger.dev/pull/3612))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.0`
+
 ## 4.4.6
 
 ### Patch Changes

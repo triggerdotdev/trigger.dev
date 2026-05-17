@@ -1,5 +1,27 @@
 # trigger.dev
 
+## 4.5.0-rc.0
+
+### Patch Changes
+
+- Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  ```ts
+  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+
+  chat.skills.set([await pdfSkill.local()]);
+  ```
+
+  Built on the [AI SDK cookbook pattern](https://ai-sdk.dev/cookbook/guides/agent-skills) — portable across providers. SDK + CLI only for now; dashboard-editable `SKILL.md` text is on the roadmap.
+
+- Add `TRIGGER_BUILD_SKIP_REWRITE_TIMESTAMP=1` escape hatch for local self-hosted builds whose buildx driver doesn't support `rewrite-timestamp` alongside push (e.g. orbstack's default `docker` driver). ([#3618](https://github.com/triggerdotdev/trigger.dev/pull/3618))
+- The CLI MCP server's agent-chat tools (`start_agent_chat`, `send_agent_message`, `close_agent_chat`) now run on the new Sessions primitive, so AI assistants driving a `chat.agent` get the same idempotent-by-`chatId`, durable-across-runs behavior the browser transport gets. Required PAT scopes go from `write:inputStreams` to `read:sessions` + `write:sessions`. ([#3546](https://github.com/triggerdotdev/trigger.dev/pull/3546))
+- MCP `list_runs` tool: add a `region` filter input and surface each run's executing region in the formatted summary. ([#3612](https://github.com/triggerdotdev/trigger.dev/pull/3612))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.0`
+  - `@trigger.dev/build@4.5.0-rc.0`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.0`
+
 ## 4.4.6
 
 ### Patch Changes

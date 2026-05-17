@@ -18,5 +18,23 @@
     "@trigger.dev/schema-to-json": "4.4.6",
     "@trigger.dev/sdk": "4.4.6"
   },
-  "changesets": []
+  "changesets": [
+    "agent-skills",
+    "ai-prompts",
+    "ai-tool-helpers",
+    "cap-idempotency-key-length",
+    "chat-agent-on-boot-hook",
+    "chat-agent",
+    "chat-history-read-primitives",
+    "chat-session-attributes",
+    "cli-deploy-skip-rewrite-timestamp",
+    "locals-key-dual-package-fix",
+    "mcp-agent-chat-sessions",
+    "mcp-list-runs-region",
+    "mock-chat-agent-test-harness",
+    "plugin-auth-path",
+    "retry-sigsegv",
+    "runs-list-region-filter",
+    "sessions-primitive"
+  ]
 }
