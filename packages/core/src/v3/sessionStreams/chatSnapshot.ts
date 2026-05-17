@@ -13,9 +13,6 @@
  * replay from precisely after the snapshot, and as the trim-chain seed
  * for the agent's next turn.
  *
- * `lastOutTimestamp` is the same record's S2 arrival timestamp (ms since
- * epoch). Used as the dedup cutoff for `session.in` on OOM-retry boot.
- *
  * The `version` field is a forward-compat lever: readers that don't
  * recognise a version silently fall back to no-snapshot behaviour.
  */
@@ -29,7 +26,6 @@ export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
   savedAt: number;
   messages: TUIMessage[];
   lastOutEventId?: string;
-  lastOutTimestamp?: number;
 };
 
 /**
@@ -43,7 +39,6 @@ export const ChatSnapshotV1Schema = z.object({
   savedAt: z.number(),
   messages: z.array(z.unknown()),
   lastOutEventId: z.string().optional(),
-  lastOutTimestamp: z.number().optional(),
 });
 
 /**

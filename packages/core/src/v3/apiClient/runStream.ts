@@ -179,10 +179,10 @@ export type SSEStreamPart<TChunk = unknown> = {
   /**
    * S2 record headers, when the underlying transport is the v2 batch shape
    * (Session streams). Undefined for v1 streams. Empty array when the record
-   * had no headers. First-header empty-name is a Trigger control protocol
-   * marker (see `trigger-control` records on `session.out`); empty-name
-   * records that S2 itself interprets as command records (trim/fence) are
-   * filtered out before reaching this struct.
+   * had no headers. Trigger control records carry a `trigger-control` named
+   * header (see `trigger-control` records on `session.out`) and may reach
+   * this struct. S2 command records (trim/fence) are identified by an
+   * empty-name first header and are filtered out before enqueue.
    */
   headers?: Array<[string, string]>;
 };

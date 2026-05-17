@@ -33,6 +33,7 @@ import {
   type TaskSchema,
   type TaskRunContext,
   type TaskWithSchema,
+  SESSION_IN_EVENT_ID_HEADER,
   TRIGGER_CONTROL_SUBTYPE,
   type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
@@ -151,33 +152,39 @@ const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
 
 /**
  * Scan `session.out` for the latest `turn-complete` control record and
- * return its SSE timestamp. Used at OOM-retry boot to derive a
- * lower-bound timestamp for the `session.in` filter — records older
- * than `T_last_complete` belong to turns that already completed on the
- * prior attempt and are dropped before they reach the turn loop.
+ * return its `session-in-event-id` header value — the committed-consume
+ * cursor on `.in` as of that turn-complete. Used at worker boot to seed
+ * the `.in` subscription so already-processed user messages don't get
+ * replayed from S2.
  *
  * Implementation streams the SSE endpoint and listens for `turn-complete`
  * via the transport's `onControl` callback; the data-chunk for-await is
- * just there to drive the stream. The scan is naturally O(1 turn) now
- * that `session.out` is bounded to roughly one turn at steady state
- * (every successful turn-complete is followed by an S2 trim back to the
- * previous one — see `writeTurnCompleteChunk`).
+ * just there to drive the stream. The scan is O(1 turn) because
+ * `session.out` is bounded to roughly one turn at steady state — every
+ * successful turn-complete is followed by an S2 trim back to the
+ * previous one (see `writeTurnCompleteChunk`).
  *
- * Returns `undefined` if no `turn-complete` control record has been
- * written yet (first-turn OOM, no completed turns to dedup against).
+ * Returns `undefined` if no `turn-complete` carrying the header has been
+ * written yet — first-turn-ever, first turn post-OOM-with-no-prior-runs,
+ * or a `turn-complete` written before this header existed (cross-version
+ * boot). Callers fall back to subscribing `.in` from seq 0 in that case;
+ * the slim-wire merge handles any dedup against snapshot-restored
+ * messages.
  * @internal
  */
-async function findLatestTurnCompleteTimestamp(
+async function findLatestSessionInCursor(
   chatId: string
 ): Promise<number | undefined> {
   const apiClient = apiClientManager.clientOrThrow();
-  let latestTs: number | undefined;
+  let latestCursor: number | undefined;
   const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
     timeoutInSeconds: 1,
     onControl: (event) => {
-      if (event.subtype === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-        latestTs = event.timestamp;
-      }
+      if (event.subtype !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) return;
+      const raw = headerValue(event.headers, SESSION_IN_EVENT_ID_HEADER);
+      if (!raw) return;
+      const parsed = Number.parseInt(raw, 10);
+      if (Number.isFinite(parsed)) latestCursor = parsed;
     },
   });
   // Drain the stream so the underlying SSE reader runs to completion. We
@@ -186,7 +193,7 @@ async function findLatestTurnCompleteTimestamp(
   for await (const _ of stream) {
     // intentionally empty
   }
-  return latestTs;
+  return latestCursor;
 }
 
 /**
@@ -4687,47 +4694,46 @@ function chatAgent<
         }
       }
 
-      // ── session.in dedup cutoff ────────────────────────────────────
+      // ── session.in resume cursor ───────────────────────────────────
       //
       // A fresh worker subscribes to `session.in` from seq 0 and would
       // re-deliver every record ever appended — including user messages
-      // from turns already completed on a prior run. Without dedup, the
-      // loop would re-process them as fresh turns and the slim-wire merge
-      // would replace-by-id against the snapshot-restored copies, yielding
-      // no-op replaces while the customer's actual new message waits in
-      // the queue.
+      // from turns already completed on a prior run. Without a cursor,
+      // the loop would re-process them as fresh turns and the slim-wire
+      // merge would replace-by-id against snapshot-restored copies,
+      // yielding no-op replaces while the customer's actual new message
+      // waits in the queue.
       //
-      // The cutoff is the timestamp of the last `trigger:turn-complete`
-      // chunk on `session.out`. When we have a snapshot, that timestamp is
-      // already in `lastOutTimestamp` — use it directly to skip the
-      // O(stream-length) scan. Fall back to the scan only when no snapshot
-      // is available (first-ever OOM retry, or `hydrateMessages`
-      // short-circuited the snapshot read).
+      // The cursor is the seq_num of the last `.in` record the prior
+      // worker committed to processing, persisted on each `turn-complete`
+      // control record as a `session-in-event-id` sibling header. The
+      // boot scan reads the header off `.out`'s latest turn-complete and
+      // seeds the manager so the upcoming `.in` SSE subscribe opens with
+      // `Last-Event-ID: <cursor>` — S2 starts after that seq and old
+      // messages never reach this worker.
       //
-      // Applies in three cases (any of which means session.in has records
+      // Applies in three cases (any of which means `.in` has records
       // belonging to completed turns the new run should skip):
       //  - OOM retry (`ctx.attempt.number > 1`)
       //  - Continuation run (`payload.continuation === true`) — prior run
       //    crashed / was canceled / requested upgrade
       //  - Snapshot exists at all (catches edge cases where the wire
       //    didn't set `continuation` but a snapshot indicates prior turns)
-      const needsDedupCutoff =
+      const needsResumeCursor =
         ctx.attempt.number > 1 ||
         payload.continuation === true ||
         bootSnapshot !== undefined;
 
-      if (needsDedupCutoff) {
+      if (needsResumeCursor) {
         try {
-          let cutoff = bootSnapshot?.lastOutTimestamp;
-          if (cutoff === undefined) {
-            cutoff = await findLatestTurnCompleteTimestamp(payload.chatId);
-          }
-          if (cutoff !== undefined) {
-            sessionStreams.setMinTimestamp(payload.chatId, "in", cutoff);
+          const cursor = await findLatestSessionInCursor(payload.chatId);
+          if (cursor !== undefined) {
+            sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
+            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
           }
         } catch (error) {
           logger.warn(
-            "chat.agent: session.in dedup cutoff lookup failed; old messages may replay",
+            "chat.agent: session.in resume cursor lookup failed; old messages may replay",
             { error: error instanceof Error ? error.message : String(error) }
           );
         }
@@ -6431,16 +6437,7 @@ function chatAgent<
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
-                            // `StreamWriteResult` exposes `lastEventId` only;
-                            // use the snapshot save time as the
-                            // `lastOutTimestamp` cutoff hint. The OOM-retry
-                            // optimization compares this to SSE chunk
-                            // timestamps (ms epoch on the server) — Date.now()
-                            // here is the closest cheap approximation
-                            // available client-side and is consistent with
-                            // the existing turn-complete chunk emission.
                             lastOutEventId: turnCompleteResult?.lastEventId,
-                            lastOutTimestamp: Date.now(),
                           });
                         },
                         {
@@ -8703,9 +8700,22 @@ async function writeTurnCompleteChunk(
 
   // 1. Write the turn-complete control record. The ack's `lastEventId` is
   //    this record's seq_num — that's the trim target for the NEXT turn.
-  const extraHeaders: ReadonlyArray<readonly [string, string]> = publicAccessToken
-    ? [["public-access-token", publicAccessToken]]
-    : [];
+  //
+  //    Sibling headers:
+  //    - `public-access-token` (optional): refresh token surfaced to
+  //      browser-side transports via `onTurnComplete`.
+  //    - `session-in-event-id` (optional): the committed-consume cursor
+  //      on `.in` as of this turn-complete. On next worker boot, the
+  //      boot scan reads this back and seeds the `.in` subscription so
+  //      already-processed user messages aren't re-delivered.
+  const extraHeaders: Array<[string, string]> = [];
+  if (publicAccessToken) {
+    extraHeaders.push(["public-access-token", publicAccessToken]);
+  }
+  const inCursor = session.in.lastDispatchedSeqNum();
+  if (inCursor !== undefined) {
+    extraHeaders.push([SESSION_IN_EVENT_ID_HEADER, String(inCursor)]);
+  }
   const result = await session.out.writeControl(
     TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,
     extraHeaders

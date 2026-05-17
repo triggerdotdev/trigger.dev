@@ -34,7 +34,7 @@ import {
   trimSessionStream,
   writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
-import type { StreamWriteResult } from "@trigger.dev/core/v3";
+import type { ControlEvent, StreamWriteResult } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { tracer } from "./tracer.js";
@@ -393,6 +393,7 @@ export class SessionOutputChannel {
       lastEventId:
         options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
+      onControl: options?.onControl,
       onComplete: options?.onComplete,
       onError: options?.onError,
     });
@@ -593,6 +594,20 @@ export class SessionInputChannel {
   }
 
   /**
+   * The highest S2 sequence number of any record this channel has
+   * delivered to a `once()` / `wait()` consumer (or had shifted off its
+   * buffer into one). Distinct from "last received" — buffered-but-not-
+   * yet-consumed records don't count.
+   *
+   * Used by `chat.agent` to persist the `.in` resume cursor on each
+   * `turn-complete` control record, so the next worker boot can subscribe
+   * past already-processed user messages.
+   */
+  lastDispatchedSeqNum(): number | undefined {
+    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+  }
+
+  /**
    * Suspend the current run until the next record arrives on `.in`.
    * Unlike {@link once}, `wait()` frees compute while blocked — the
    * run-engine waitpoint holds the run until the session append handler
@@ -762,6 +777,13 @@ export type SessionSubscribeOptions<T = unknown> = {
   timeoutInSeconds?: number;
   /** Called for each SSE event with the full event metadata (id, timestamp). */
   onPart?: (part: { id: string; chunk: T; timestamp: number }) => void;
+  /**
+   * Called when a `trigger-control` record arrives on the stream (e.g.
+   * `turn-complete`, `upgrade-required`). Control records are filtered
+   * out of the consumer chunk stream — handle them here. See
+   * `docs/ai-chat/client-protocol.mdx` for the wire shape.
+   */
+  onControl?: (event: ControlEvent) => void;
   /** Called when the server signals end-of-stream. */
   onComplete?: () => void;
   /** Called on unrecoverable errors after the retry budget is exhausted. */

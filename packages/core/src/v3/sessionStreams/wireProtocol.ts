@@ -28,6 +28,18 @@ export const PUBLIC_ACCESS_TOKEN_HEADER = "public-access-token" as const;
 /** Header name carrying the agent's last S2 event id on a handover bridge. */
 export const SESSION_STATE_LAST_EVENT_ID_HEADER = "last-event-id" as const;
 
+/**
+ * Header on `turn-complete` records carrying the highest `session.in`
+ * seq_num the agent committed to processing during this turn. Read on
+ * the next worker boot to seed `.in`'s resume cursor — anything past
+ * this seq is new and gets delivered; anything at-or-before was already
+ * processed and is skipped. Decimal-string form of the seq_num.
+ *
+ * Omitted when no `.in` records have been consumed yet (first turn of a
+ * fresh chat triggered via the wire payload).
+ */
+export const SESSION_IN_EVENT_ID_HEADER = "session-in-event-id" as const;
+
 export const TRIGGER_CONTROL_SUBTYPE = {
   TURN_COMPLETE: "turn-complete",
   UPGRADE_REQUIRED: "upgrade-required",

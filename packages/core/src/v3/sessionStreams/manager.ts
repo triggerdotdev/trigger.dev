@@ -44,6 +44,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   private handlers = new Map<string, Set<SessionStreamHandler>>();
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, unknown[]>();
+  // Parallel to `buffer`: the SSE seq_num of each buffered record. Same
+  // length and order as `buffer[key]`. Used so that when `once()` shifts
+  // a buffered record into a waiter, the cursor (`lastDispatchedSeqNums`)
+  // can advance to that record's seq. Kept as a separate map so the
+  // existing `peek()` shape (returns `unknown`) stays unchanged.
+  private bufferSeqNums = new Map<string, number[]>();
   private tails = new Map<string, TailState>();
   // Per-stream lower-bound timestamp filter. When set, records whose
   // SSE timestamp is <= the bound are dropped before dispatch — used by
@@ -59,6 +65,15 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   // that's already being delivered out-of-band via the waitpoint.
   private explicitlyDisconnected = new Set<string>();
   private seqNums = new Map<string, number>();
+  // Highest seq_num that has been *consumed* (delivered to a once()
+  // waiter or shifted off the buffer into a once() caller) on a channel.
+  // Distinct from `seqNums`, which advances whenever any record is
+  // received from SSE — even ones still sitting in the local buffer.
+  // The committed-consume cursor is what gets persisted on the
+  // turn-complete control record's `session-in-event-id` header so the
+  // next worker boot can resume `.in` from this point without
+  // re-delivering already-handled user messages.
+  private lastDispatchedSeqNums = new Map<string, number>();
   // Reconnect attempt counter per key. Drives the exponential backoff
   // applied by `#ensureTailConnected`'s `.finally` so a persistent
   // backend failure (auth rejection, 5xx, DNS, etc.) doesn't reconnect
@@ -123,8 +138,14 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
       const data = buffered.shift()!;
+      const seqList = this.bufferSeqNums.get(key);
+      const shiftedSeqNum = seqList?.shift();
       if (buffered.length === 0) {
         this.buffer.delete(key);
+        this.bufferSeqNums.delete(key);
+      }
+      if (shiftedSeqNum !== undefined) {
+        this.#advanceLastDispatched(key, shiftedSeqNum);
       }
       return new InputStreamOncePromise((resolve) => {
         resolve({ ok: true, output: data });
@@ -186,6 +207,25 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
+  lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
+    return this.lastDispatchedSeqNums.get(keyFor(sessionId, io));
+  }
+
+  setLastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number
+  ): void {
+    this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
+  }
+
+  #advanceLastDispatched(key: string, seqNum: number): void {
+    const current = this.lastDispatchedSeqNums.get(key);
+    if (current === undefined || seqNum > current) {
+      this.lastDispatchedSeqNums.set(key, seqNum);
+    }
+  }
+
   setMinTimestamp(
     sessionId: string,
     io: SessionChannelIO,
@@ -204,7 +244,15 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
       buffered.shift();
-      if (buffered.length === 0) this.buffer.delete(key);
+      const seqList = this.bufferSeqNums.get(key);
+      const shiftedSeqNum = seqList?.shift();
+      if (buffered.length === 0) {
+        this.buffer.delete(key);
+        this.bufferSeqNums.delete(key);
+      }
+      if (shiftedSeqNum !== undefined) {
+        this.#advanceLastDispatched(key, shiftedSeqNum);
+      }
       return true;
     }
     return false;
@@ -224,6 +272,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.tails.delete(key);
     }
     this.buffer.delete(key);
+    this.bufferSeqNums.delete(key);
     // Reset the backoff counter so a future re-attach starts fresh —
     // an explicit disconnect is a deliberate teardown, not evidence of
     // a broken backend.
@@ -261,6 +310,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   reset(): void {
     this.disconnect();
     this.seqNums.clear();
+    this.lastDispatchedSeqNums.clear();
     this.minTimestamps.clear();
     this.handlers.clear();
     this.reconnectAttempts.clear();
@@ -276,6 +326,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
     this.onceWaiters.clear();
     this.buffer.clear();
+    this.bufferSeqNums.clear();
   }
 
   #ensureTailConnected(sessionId: string, io: SessionChannelIO): void {
@@ -385,7 +436,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
               // keep as string
             }
           }
-          this.#dispatch(key, data);
+          this.#dispatch(key, data, Number.isFinite(seqNum) ? seqNum : undefined);
         },
         onComplete: () => {
           if (this.debug) {
@@ -410,7 +461,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  #dispatch(key: string, data: unknown): void {
+  #dispatch(key: string, data: unknown, seqNum: number | undefined): void {
     // Any record flowing through = healthy connection; reset the backoff
     // counter so the next disconnect starts fresh.
     this.reconnectAttempts.delete(key);
@@ -422,6 +473,12 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       if (waiter.timeoutHandle) clearTimeout(waiter.timeoutHandle);
       if (waiter.signal && waiter.abortHandler) {
         waiter.signal.removeEventListener("abort", waiter.abortHandler);
+      }
+      // Record was consumed directly by a waiter — advance the
+      // committed-consume cursor immediately. Buffered-then-shifted
+      // records advance the cursor in `once()` / `shiftBuffer()`.
+      if (seqNum !== undefined) {
+        this.#advanceLastDispatched(key, seqNum);
       }
       waiter.resolve({ ok: true, output: data });
       this.#invokeHandlers(key, data);
@@ -442,6 +499,14 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(data);
+    if (seqNum !== undefined) {
+      let bufferedSeqs = this.bufferSeqNums.get(key);
+      if (!bufferedSeqs) {
+        bufferedSeqs = [];
+        this.bufferSeqNums.set(key, bufferedSeqs);
+      }
+      bufferedSeqs.push(seqNum);
+    }
   }
 
   #invokeHandlers(key: string, data: unknown): void {

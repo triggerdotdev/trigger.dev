@@ -433,9 +433,8 @@ async function collectAgentResponse(
         // record's seq (set above when the part arrived). The recursive
         // subscribe resumes right after that marker, so we don't replay
         // the entire session.out stream — which would hit a historical
-        // turn-complete and break the loop with empty/old text.
-        reader.releaseLock();
-        // Recurse — subscribe to the new run's stream (same session.out URL)
+        // turn-complete and break the loop with empty/old text. The outer
+        // `finally` block releases the reader before the recursion runs.
         return collectAgentResponse(session, depth + 1);
       }
 
