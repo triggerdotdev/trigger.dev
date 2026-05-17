@@ -1,0 +1,402 @@
+---
+title: "Compaction"
+sidebarTitle: "Compaction"
+description: "Automatic context compaction to keep long conversations within token limits."
+---
+
+## Overview
+
+Long conversations accumulate tokens across turns. Eventually the context window fills up, causing errors or degraded responses. Compaction solves this by automatically summarizing the conversation when token usage exceeds a threshold, then using that summary as the context for future turns.
+
+The `compaction` option on `chat.agent()` handles this in both paths:
+
+- **Between tool-call steps** (inner loop) — via the AI SDK's `prepareStep`, compaction runs between tool calls within a single turn
+- **Between turns** (outer loop) — for single-step responses with no tool calls, where `prepareStep` never fires
+
+## Basic usage
+
+Provide `shouldCompact` to decide when to compact and `summarize` to generate the summary:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) => {
+      const result = await generateText({
+        model: openai("gpt-4o-mini"),
+        messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
+      });
+      return result.text;
+    },
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions({ registry }),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+<Note>
+  The `prepareStep` for inner-loop compaction is automatically injected when you spread `chat.toStreamTextOptions()` into your `streamText` call. If you provide your own `prepareStep` after the spread, it overrides the auto-injected one.
+</Note>
+
+## How it works
+
+After each turn completes:
+
+1. `shouldCompact` is called with the current token usage
+2. If it returns `true`, `summarize` generates a summary from the model messages
+3. The **model messages** (sent to the LLM) are replaced with the summary
+4. The **UI messages** (persisted and displayed) are preserved by default
+5. The `onCompacted` hook fires if configured
+
+On the next turn, the LLM receives the compact summary instead of the full history — dramatically reducing token usage while preserving context.
+
+## Customizing what gets persisted
+
+By default, compaction only affects model messages — UI messages stay intact so users see the full conversation after a page refresh. You can customize this with `compactUIMessages`:
+
+### Summary + recent messages
+
+Replace older messages with a summary but keep the last few exchanges visible:
+
+```ts
+import { generateId } from "ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) => {
+      return generateText({
+        model: openai("gpt-4o-mini"),
+        messages: [...messages, { role: "user", content: "Summarize." }],
+      }).then((r) => r.text);
+    },
+    compactUIMessages: ({ uiMessages, summary }) => [
+      {
+        id: generateId(),
+        role: "assistant",
+        parts: [{ type: "text", text: `[Conversation summary]\n\n${summary}` }],
+      },
+      ...uiMessages.slice(-4), // Keep the last 4 messages
+    ],
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+### Flatten to summary only
+
+Replace all messages with just the summary (like the LLM sees):
+
+```ts
+compactUIMessages: ({ summary }) => [
+  {
+    id: generateId(),
+    role: "assistant",
+    parts: [{ type: "text", text: `[Conversation summary]\n\n${summary}` }],
+  },
+],
+```
+
+## Customizing model messages
+
+By default, model messages are replaced with a single summary message. Use `compactModelMessages` to customize what the LLM sees after compaction:
+
+### Summary + recent context
+
+Keep the last few model messages so the LLM has recent detail alongside the summary:
+
+```ts
+compactModelMessages: ({ modelMessages, summary }) => [
+  { role: "user", content: summary },
+  ...modelMessages.slice(-2), // Keep last exchange for detail
+],
+```
+
+### Keep tool results
+
+Preserve tool-call results so the LLM remembers what tools returned:
+
+```ts
+compactModelMessages: ({ modelMessages, summary }) => [
+  { role: "user", content: summary },
+  ...modelMessages.filter((m) => m.role === "tool"),
+],
+```
+
+## shouldCompact event
+
+The `shouldCompact` callback receives context about the current state:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `messages` | `ModelMessage[]` | Current model messages |
+| `totalTokens` | `number \| undefined` | Total tokens from the triggering step/turn |
+| `inputTokens` | `number \| undefined` | Input tokens |
+| `outputTokens` | `number \| undefined` | Output tokens |
+| `usage` | `LanguageModelUsage` | Full usage object |
+| `totalUsage` | `LanguageModelUsage` | Cumulative usage across all turns |
+| `chatId` | `string` | Chat session ID |
+| `turn` | `number` | Current turn (0-indexed) |
+| `clientData` | `unknown` | Custom data from the frontend |
+| `source` | `"inner" \| "outer"` | Whether this is between steps or between turns |
+| `steps` | `CompactionStep[]` | Steps array (inner loop only) |
+| `stepNumber` | `number` | Step index (inner loop only) |
+
+## summarize event
+
+The `summarize` callback receives similar context:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `messages` | `ModelMessage[]` | Messages to summarize |
+| `usage` | `LanguageModelUsage` | Usage from the triggering step/turn |
+| `totalUsage` | `LanguageModelUsage` | Cumulative usage |
+| `chatId` | `string` | Chat session ID |
+| `turn` | `number` | Current turn |
+| `clientData` | `unknown` | Custom data from the frontend |
+| `source` | `"inner" \| "outer"` | Where compaction is running |
+| `stepNumber` | `number` | Step index (inner loop only) |
+
+## onCompacted hook
+
+Track compaction events for logging, billing, or analytics:
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  compaction: { ... },
+  onCompacted: async ({ summary, totalTokens, messageCount, chatId, turn }) => {
+    logger.info("Compacted", { chatId, turn, totalTokens, messageCount });
+    await db.compactionLog.create({
+      data: { chatId, summary, totalTokens, messageCount },
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+## User-initiated compaction
+
+Sometimes you want the user to decide when to compact — a "Summarize conversation" button, a `/compact` slash command, or a settings toggle. Wire this up with [actions](/ai-chat/actions): the frontend sends a typed action, `onAction` runs the summary, and `chat.history.set()` replaces the conversation.
+
+### Backend
+
+Define a `compact` action that reuses your existing `summarize` function:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, generateText, generateId, convertToModelMessages } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+// Reusable summarize fn — also used by the automatic compaction config.
+async function summarize(messages: ModelMessage[]) {
+  const result = await generateText({
+    model: openai("gpt-4o-mini"),
+    messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
+  });
+  return result.text;
+}
+
+export const myChat = chat.agent({
+  id: "my-chat",
+
+  // Automatic compaction still runs on threshold.
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) => summarize(messages),
+  },
+
+  // User-initiated: the frontend sends { type: "compact" }.
+  actionSchema: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("compact") }),
+  ]),
+
+  onAction: async ({ action, uiMessages }) => {
+    if (action.type !== "compact") return;
+
+    const summary = await summarize(convertToModelMessages(uiMessages));
+
+    // Replace the full history with a single summary message.
+    chat.history.set([
+      {
+        id: generateId(),
+        role: "assistant",
+        parts: [{ type: "text", text: `[Conversation summary]\n\n${summary}` }],
+      },
+    ]);
+  },
+
+  run: async ({ messages, trigger, signal }) => {
+    // Compact action doesn't need an LLM response — just exit.
+    if (trigger === "action") return;
+
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+Actions fire `onAction`, apply any `chat.history.*` mutations, then call `run()`. For compaction there's no new user message to respond to, so `run()` returns early when `trigger === "action"`. `onTurnComplete` still fires with the compacted `uiMessages` — use it to persist the new state.
+
+### Frontend
+
+Call `transport.sendAction()` from a button or slash command:
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/react-hooks";
+import { useChat } from "@ai-sdk/react";
+
+function ChatView({ chatId, accessToken }: { chatId: string; accessToken: string }) {
+  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+  const { messages } = useChat({ id: chatId, transport });
+
+  return (
+    <>
+      <button onClick={() => transport.sendAction(chatId, { type: "compact" })}>
+        Summarize conversation
+      </button>
+      {messages.map(/* ... */)}
+    </>
+  );
+}
+```
+
+The call returns as soon as the backend accepts the action. Because `onTurnComplete` replaces the `uiMessages` with the summary, `useChat` receives the new state via the normal turn-complete flow — the UI updates automatically.
+
+### Indicating compaction in the UI
+
+For "Compacting..." feedback while the summary generates, append a transient data part from `onAction` via `chat.stream.append()`:
+
+```ts
+onAction: async ({ action, uiMessages }) => {
+  if (action.type !== "compact") return;
+
+  chat.stream.append({ type: "data-compaction", data: { status: "compacting" } });
+  const summary = await summarize(convertToModelMessages(uiMessages));
+  chat.stream.append({ type: "data-compaction", data: { status: "complete" } });
+
+  chat.history.set([ /* ... */ ]);
+},
+```
+
+See [Raw streaming with chat.stream](/ai-chat/features#raw-streaming-with-chatstream) for the full API.
+
+## Using with chat.createSession()
+
+Pass the same `compaction` config to `chat.createSession()`. The session handles outer-loop compaction automatically inside `turn.complete()`:
+
+```ts
+const session = chat.createSession(payload, {
+  signal,
+  idleTimeoutInSeconds: 60,
+  timeout: "1h",
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) =>
+      generateText({ model: openai("gpt-4o-mini"), messages }).then((r) => r.text),
+    compactUIMessages: ({ uiMessages, summary }) => [
+      { id: generateId(), role: "assistant",
+        parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+      ...uiMessages.slice(-4),
+    ],
+  },
+});
+
+for await (const turn of session) {
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages: turn.messages,
+    abortSignal: turn.signal,
+  });
+
+  await turn.complete(result);
+  // Outer-loop compaction runs automatically after complete()
+
+  await db.chat.update({
+    where: { id: turn.chatId },
+    data: { messages: turn.uiMessages },
+  });
+}
+```
+
+## Using with raw tasks (MessageAccumulator)
+
+Pass `compaction` to the `MessageAccumulator` constructor. Use `prepareStep()` for inner-loop compaction and `compactIfNeeded()` for the outer loop:
+
+```ts
+const conversation = new chat.MessageAccumulator({
+  compaction: {
+    shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+    summarize: async ({ messages }) =>
+      generateText({ model: openai("gpt-4o-mini"), messages }).then((r) => r.text),
+    compactUIMessages: ({ summary }) => [
+      { id: generateId(), role: "assistant",
+        parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
+    ],
+  },
+});
+
+for (let turn = 0; turn < 100; turn++) {
+  const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+
+  const result = streamText({
+    model: openai("gpt-4o"),
+    messages,
+    prepareStep: conversation.prepareStep(), // Inner-loop compaction
+  });
+
+  const response = await chat.pipeAndCapture(result);
+  if (response) await conversation.addResponse(response);
+
+  // Outer-loop compaction
+  const usage = await result.totalUsage;
+  await conversation.compactIfNeeded(usage, { chatId: payload.chatId, turn });
+
+  await db.chat.update({ data: { messages: conversation.uiMessages } });
+  await chat.writeTurnComplete();
+}
+```
+
+## Fully manual compaction
+
+For maximum control, use `chat.compact()` directly inside a custom `prepareStep`:
+
+```ts
+prepareStep: async ({ messages: stepMessages, steps }) => {
+  const result = await chat.compact(stepMessages, steps, {
+    threshold: 80_000,
+    summarize: async (msgs) =>
+      generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
+  });
+  return result.type === "skipped" ? undefined : result;
+},
+```
+
+Or use the `chat.compactionStep()` factory:
+
+```ts
+prepareStep: chat.compactionStep({
+  threshold: 80_000,
+  summarize: async (msgs) =>
+    generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
+}),
+```
+
+<Note>
+  The fully manual APIs only handle inner-loop compaction (between tool-call steps). For outer-loop coverage, use the `compaction` option on `chat.agent()`, `chat.createSession()`, or `MessageAccumulator`.
+</Note>

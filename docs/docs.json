@@ -10,7 +10,11 @@
   },
   "favicon": "/images/favicon.png",
   "contextual": {
-    "options": ["copy", "view", "claude"]
+    "options": [
+      "copy",
+      "view",
+      "claude"
+    ]
   },
   "navigation": {
     "dropdowns": [
@@ -36,7 +40,11 @@
             "pages": [
               {
                 "group": "Tasks",
-                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
+                "pages": [
+                  "tasks/overview",
+                  "tasks/schemaTask",
+                  "tasks/scheduled"
+                ]
               },
               "triggering",
               "runs",
@@ -49,7 +57,10 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": ["mcp-introduction", "mcp-tools"]
+                "pages": [
+                  "mcp-introduction",
+                  "mcp-tools"
+                ]
               },
               "skills",
               "mcp-agent-rules"
@@ -63,7 +74,12 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
+                "pages": [
+                  "wait",
+                  "wait-for",
+                  "wait-until",
+                  "wait-for-token"
+                ]
               },
               "queue-concurrency",
               "versioning",
@@ -78,6 +94,54 @@
               "context",
               "runs/priority",
               "hidden-tasks"
+            ]
+          },
+          {
+            "group": "AI",
+            "pages": [
+              "ai/prompts",
+              {
+                "group": "Agents",
+                "pages": [
+                  "ai-chat/overview",
+                  "ai-chat/changelog",
+                  "ai-chat/quick-start",
+                  "ai-chat/how-it-works",
+                  "ai-chat/backend",
+                  "ai-chat/lifecycle-hooks",
+                  "ai-chat/frontend",
+                  "ai-chat/server-chat",
+                  "ai-chat/types",
+                  "ai-chat/features",
+                  "ai-chat/fast-starts",
+                  "ai-chat/compaction",
+                  "ai-chat/pending-messages",
+                  "ai-chat/background-injection",
+                  "ai-chat/actions",
+                  "ai-chat/error-handling",
+                  "ai-chat/mcp",
+                  "ai-chat/testing",
+                  {
+                    "group": "Patterns",
+                    "pages": [
+                      "ai-chat/patterns/sub-agents",
+                      "ai-chat/patterns/version-upgrades",
+                      "ai-chat/patterns/database-persistence",
+                      "ai-chat/patterns/persistence-and-replay",
+                      "ai-chat/patterns/branching-conversations",
+                      "ai-chat/patterns/code-sandbox",
+                      "ai-chat/patterns/human-in-the-loop",
+                      "ai-chat/patterns/tool-result-auditing",
+                      "ai-chat/patterns/large-payloads",
+                      "ai-chat/patterns/skills",
+                      "ai-chat/patterns/oom-resilience"
+                    ]
+                  },
+                  "ai-chat/client-protocol",
+                  "ai-chat/reference",
+                  "ai-chat/upgrade-guide"
+                ]
+              }
             ]
           },
           {
@@ -113,7 +177,9 @@
           },
           {
             "group": "Development",
-            "pages": ["cli-dev"]
+            "pages": [
+              "cli-dev"
+            ]
           },
           {
             "group": "Deployment",
@@ -125,7 +191,10 @@
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": ["github-integration", "vercel-integration"]
+                "pages": [
+                  "github-integration",
+                  "vercel-integration"
+                ]
               }
             ]
           },
@@ -189,11 +258,19 @@
           },
           {
             "group": "Observability",
-            "pages": ["observability/query", "observability/dashboards"]
+            "pages": [
+              "observability/query",
+              "observability/dashboards"
+            ]
           },
           {
             "group": "Using the Dashboard",
-            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
+            "pages": [
+              "run-tests",
+              "troubleshooting-alerts",
+              "replaying",
+              "bulk-actions"
+            ]
           },
           {
             "group": "Troubleshooting",
@@ -215,18 +292,30 @@
               "self-hosting/kubernetes",
               {
                 "group": "Environment variables",
-                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
+                "pages": [
+                  "self-hosting/env/webapp",
+                  "self-hosting/env/supervisor"
+                ]
               },
               "open-source-self-hosting"
             ]
           },
           {
             "group": "Open source",
-            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
+            "pages": [
+              "open-source-contributing",
+              "github-repo",
+              "changelog",
+              "roadmap"
+            ]
           },
           {
             "group": "Help",
-            "pages": ["community", "help-slack", "help-email"]
+            "pages": [
+              "community",
+              "help-slack",
+              "help-email"
+            ]
           }
         ]
       },
@@ -332,7 +421,11 @@
           },
           {
             "group": "Query API",
-            "pages": ["management/query/execute", "management/query/schema", "management/query/dashboards"]
+            "pages": [
+              "management/query/execute",
+              "management/query/schema",
+              "management/query/dashboards"
+            ]
           }
         ]
       },
@@ -343,7 +436,9 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": ["guides/introduction"]
+            "pages": [
+              "guides/introduction"
+            ]
           },
           {
             "group": "Frameworks",
@@ -366,7 +461,6 @@
                 },
                 "pages": [
                   "guides/ai-agents/overview",
-
                   "guides/ai-agents/generate-translate-copy",
                   "guides/ai-agents/route-question",
                   "guides/ai-agents/respond-and-check-content",
@@ -410,7 +504,10 @@
           },
           {
             "group": "Migration guides",
-            "pages": ["migration-mergent", "migration-n8n"]
+            "pages": [
+              "migration-mergent",
+              "migration-n8n"
+            ]
           },
           {
             "group": "Use cases",
@@ -501,7 +598,10 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": ["openapi.yml", "v3-openapi.yaml"],
+    "openapi": [
+      "openapi.yml",
+      "v3-openapi.yaml"
+    ],
     "playground": {
       "display": "simple"
     }
@@ -743,6 +843,10 @@
     {
       "source": "/insights/metrics",
       "destination": "/observability/dashboards"
+    },
+    {
+      "source": "/guides/ai-chat",
+      "destination": "/ai-chat/overview"
     }
   ]
 }

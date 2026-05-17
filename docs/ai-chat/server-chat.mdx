@@ -1,0 +1,258 @@
+---
+title: "Server-Side Chat"
+sidebarTitle: "Server-Side Chat"
+description: "Use AgentChat to interact with chat agents from server-side code — tasks, webhooks, scripts, or other agents."
+---
+
+`AgentChat` lets you chat with agents from server-side code. It works inside tasks (agent-to-agent), request handlers, webhook processors, and scripts.
+
+```ts
+import { AgentChat } from "@trigger.dev/sdk/chat";
+
+const chat = new AgentChat({ agent: "my-agent" });
+const stream = await chat.sendMessage("Hello!");
+const text = await stream.text();
+await chat.close();
+```
+
+## Type-safe client data
+
+Pass `typeof yourAgent` as a type parameter and `clientData` is automatically typed from the agent's `withClientData` schema:
+
+```ts
+import { AgentChat } from "@trigger.dev/sdk/chat";
+import type { myAgent } from "./trigger/my-agent";
+
+const chat = new AgentChat<typeof myAgent>({
+  agent: "my-agent",
+  clientData: { userId: "user_123" }, // ← typed from agent definition
+});
+```
+
+## Conversation lifecycle
+
+Each `AgentChat` instance represents one conversation. The conversation ID is auto-generated or can be set explicitly:
+
+```ts
+// Auto-generated ID
+const chat = new AgentChat({ agent: "my-agent" });
+
+// Explicit ID — useful for persistence or finding the run later
+const chat = new AgentChat({ agent: "my-agent", id: `review-${prNumber}` });
+```
+
+### Sending messages
+
+`sendMessage()` triggers a new run on the first call, then reuses the same run for subsequent messages via input streams:
+
+```ts
+// First message — triggers a new run
+const stream1 = await chat.sendMessage("Review PR #42");
+const review = await stream1.text();
+
+// Follow-up — same run, agent has full context
+const stream2 = await chat.sendMessage("Can you fix the main bug?");
+const fix = await stream2.text();
+```
+
+### Preloading (optional)
+
+If you want the agent to initialize before the first message (e.g., load data, authenticate), call `preload()`. This is optional — `sendMessage()` triggers the run automatically if needed.
+
+```ts
+await chat.preload();
+// Agent's onPreload hook fires now, before user types anything
+const stream = await chat.sendMessage("Hello");
+```
+
+### Closing
+
+Signal the agent to exit its loop gracefully:
+
+```ts
+await chat.close();
+```
+
+Without `close()`, the agent exits on its own when its idle/suspend timeout expires.
+
+## Reading responses
+
+`sendMessage()` returns a `ChatStream` — a typed wrapper around the response.
+
+### Get the full text
+
+```ts
+const stream = await chat.sendMessage("What is Trigger.dev?");
+const text = await stream.text();
+```
+
+### Get structured results
+
+```ts
+const stream = await chat.sendMessage("Research this topic");
+const { text, toolCalls, toolResults } = await stream.result();
+
+for (const tc of toolCalls) {
+  console.log(`Tool: ${tc.toolName}, Input: ${JSON.stringify(tc.input)}`);
+}
+```
+
+### Stream chunks in real-time
+
+```ts
+const stream = await chat.sendMessage("Write a report");
+
+for await (const chunk of stream) {
+  if (chunk.type === "text-delta") {
+    process.stdout.write(chunk.delta);
+  }
+  if (chunk.type === "tool-input-available") {
+    console.log(`Using tool: ${chunk.toolName}`);
+  }
+}
+```
+
+## Stateless request handlers
+
+In a stateless environment (HTTP handler, serverless function), you need to persist and restore the session across requests.
+
+Each chat is backed by a durable Session row that outlives any single run. `AgentChat` exposes the persistable state via `chat.session` (the SSE resume cursor) and surfaces the current run id via the `onTriggered` callback for telemetry / dashboard linking.
+
+```ts
+import { AgentChat } from "@trigger.dev/sdk/chat";
+
+export async function POST(req: Request) {
+  const { chatId, message } = await req.json();
+  const saved = await db.sessions.find({ chatId });
+
+  const chat = new AgentChat({
+    agent: "my-agent",
+    id: chatId,
+    // Restore from previous request — `lastEventId` is the SSE resume
+    // cursor; the underlying Session is keyed on `chatId` so it's
+    // implicit and durable.
+    session: saved ? { lastEventId: saved.lastEventId } : undefined,
+    // Useful for telemetry / dashboard linking. The `runId` is the
+    // current run, which may change across continuations and upgrades.
+    onTriggered: async ({ runId }) => {
+      await db.sessions.upsert({ chatId, runId });
+    },
+    // Persist after each turn for stream resumption
+    onTurnComplete: async ({ lastEventId }) => {
+      await db.sessions.update({ chatId, lastEventId });
+    },
+  });
+
+  const stream = await chat.sendMessage(message);
+  const text = await stream.text();
+
+  return Response.json({ text });
+}
+```
+
+<Info>
+  The Session row is the run manager — a chat that was active yesterday
+  resumes against the same chatId today, even if the original run has
+  long since exited. `AgentChat` (server-side) and `TriggerChatTransport`
+  (browser) both rely on this: send a new message and the server
+  triggers a fresh continuation run on the same session, carrying the
+  conversation forward without losing history or identity.
+</Info>
+
+## Sub-agent tool pattern
+
+`AgentChat` can be used inside an AI SDK tool to delegate work to a durable sub-agent. The sub-agent's response streams as preliminary tool results:
+
+```ts
+import { tool } from "ai";
+import { AgentChat } from "@trigger.dev/sdk/chat";
+import { z } from "zod";
+
+const researchTool = tool({
+  description: "Delegate research to a specialist agent.",
+  inputSchema: z.object({ topic: z.string() }),
+  execute: async function* ({ topic }, { abortSignal }) {
+    const chat = new AgentChat({ agent: "research-agent" });
+    const stream = await chat.sendMessage(topic, { abortSignal });
+    yield* stream.messages();
+    await chat.close();
+  },
+  toModelOutput: ({ output: message }) => {
+    const lastText = message?.parts?.findLast(
+      (p: { type: string }) => p.type === "text"
+    ) as { text?: string } | undefined;
+    return { type: "text", value: lastText?.text ?? "Done." };
+  },
+});
+```
+
+This supports single-turn delegation, multi-turn LLM-driven conversations with persistent sub-agents, and cross-turn state that survives snapshot/restore.
+
+See the [Sub-Agents guide](/ai-chat/patterns/sub-agents) for the full pattern including multi-turn conversations, cleanup, and what the frontend sees.
+
+## Additional methods
+
+### Steering
+
+Send a message during an active stream without interrupting it:
+
+```ts
+await chat.steer("Focus on security issues specifically");
+```
+
+### Stop generation
+
+Abort the current `streamText` call without ending the run:
+
+```ts
+await chat.stop();
+```
+
+### Raw messages
+
+For full control over the UIMessage shape:
+
+```ts
+const rawStream = await chat.sendRaw([
+  {
+    id: "msg-1",
+    role: "user",
+    parts: [
+      { type: "text", text: "Hello" },
+      { type: "file", url: "https://...", mediaType: "image/png" },
+    ],
+  },
+]);
+```
+
+### Reconnect
+
+Resume a stream subscription after a disconnect:
+
+```ts
+const stream = await chat.reconnect();
+```
+
+## AgentChat options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `agent` | `string` | required | The agent task ID to trigger |
+| `id` | `string` | `crypto.randomUUID()` | Conversation ID for tagging and correlation |
+| `clientData` | typed from agent | `undefined` | Client data included in every request |
+| `session` | `ChatSession` (`{ lastEventId?: string }`) | `undefined` | Restore a previous session's SSE resume cursor. The Session row itself is keyed on `chatId` (durable) — no other state to thread. |
+| `onTriggered` | `(event) => void` | `undefined` | Called when a new run is created |
+| `onTurnComplete` | `(event) => void` | `undefined` | Called when a turn's stream ends |
+| `streamKey` | `string` | `"chat"` | Output stream key |
+| `streamTimeoutSeconds` | `number` | `120` | SSE timeout in seconds |
+| `triggerOptions` | `object` | `undefined` | Tags, queue, machine, priority |
+
+## ChatStream methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `text()` | `Promise<string>` | Consume stream, return accumulated text |
+| `result()` | `Promise<ChatStreamResult>` | Consume stream, return `{ text, toolCalls, toolResults }` |
+| `messages()` | `AsyncGenerator<UIMessage>` | Yield accumulated UIMessage snapshots (sub-agent pattern) |
+| `[Symbol.asyncIterator]` | `UIMessageChunk` | Iterate over typed stream chunks |
+| `.stream` | `ReadableStream<UIMessageChunk>` | Raw stream for AI SDK utilities |

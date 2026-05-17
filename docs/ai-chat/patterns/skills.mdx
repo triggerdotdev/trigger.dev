@@ -1,0 +1,213 @@
+---
+title: "Agent Skills"
+sidebarTitle: "Agent Skills"
+description: "Ship reusable capabilities (folders with SKILL.md + scripts) that a chat agent discovers and invokes on demand."
+---
+
+Agent skills are reusable capabilities you ship as folders — a `SKILL.md` describing when and how to use them, plus optional scripts, references, and assets. The chat agent sees a short description of each skill in its system prompt, loads the full instructions on demand via a `loadSkill` tool, and invokes the bundled scripts via `bash` — all without you wiring anything up manually.
+
+Built on the [AI SDK cookbook pattern](https://ai-sdk.dev/cookbook/guides/agent-skills). Works with any provider (OpenAI, Anthropic, Gemini, etc.) — not tied to Anthropic's server-side skills.
+
+## Why skills?
+
+Compared to regular AI SDK tools:
+
+- **Tools** are typed functions you pre-declare. Great when you know up-front exactly what capability the agent needs.
+- **Skills** are folders the model discovers and reads on demand. Great when the capability is a bundle of instructions + helper scripts that would be awkward to encode as a single tool.
+
+PDFs are the canonical example: you don't want to ask the LLM to parse PDF bytes inline. You want it to `bash scripts/extract.py report.pdf` using a bundled `pdfplumber` wrapper. A skill ships the script, the instructions, and any reference notes together.
+
+Dashboard-editable `SKILL.md` is on the roadmap so a platform team can tighten a skill's description or "when to use" text without a redeploy. Today, skills are SDK-only — defined in your task code and shipped with each deploy.
+
+## Trust model
+
+Skills are **developer-authored code**, not end-user-supplied. The same developer who writes the `chat.agent()` writes the skill bundle. The trust boundary is identical to any `tool.execute` handler the developer writes — scripts run directly in the Trigger.dev worker container, no sandboxing required.
+
+This makes skills different from the Claude Code / end-user model where arbitrary user-provided skills need isolation. Don't accept skill paths from untrusted input.
+
+## Skill folder layout
+
+A skill is a directory under your project (conventionally `trigger/skills/{id}/`):
+
+```
+trigger/skills/time-utils/
+├── SKILL.md              # Required — frontmatter + instructions
+├── scripts/
+│   ├── now.sh
+│   └── add.sh
+├── references/
+│   └── timezones.txt
+└── assets/               # Optional — templates, data files, etc.
+```
+
+### SKILL.md
+
+Frontmatter is YAML-subset — only `name` and `description` are required:
+
+```md
+---
+name: time-utils
+description: Compute and format dates/times in arbitrary timezones. Use when the user asks "what time is it", timezone conversions, or date math.
+---
+
+# Time utilities
+
+## When to use
+
+- The user asks for the current time in a timezone
+- The user wants date math ("3 days from now")
+
+## Scripts
+
+### `scripts/now.sh [TZ]`
+Prints the current time in the given IANA timezone (default `UTC`).
+
+### `scripts/add.sh DAYS [TZ]`
+Prints a date `DAYS` days from now.
+
+## Tips
+- IANA timezone names only (`America/New_York`, not `EST`).
+- See `references/timezones.txt` for a cheat-sheet.
+```
+
+The **description** is what the model sees in its system prompt — write it like you're explaining to the agent when to reach for the skill.
+
+The **body** is loaded on demand via the `loadSkill` tool when the agent decides to use the skill. Write it like documentation for the agent.
+
+## Defining and using a skill
+
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { skills } from "@trigger.dev/sdk";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+const timeUtilsSkill = skills.define({
+  id: "time-utils",
+  path: "./skills/time-utils",
+});
+
+export const agent = chat.agent({
+  id: "docs-chat",
+  onChatStart: async () => {
+    chat.skills.set([await timeUtilsSkill.local()]);
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+      ...chat.toStreamTextOptions(),
+    });
+  },
+});
+```
+
+`skills.define({ id, path })` does two things:
+
+1. Registers the skill with the Trigger.dev build system so the CLI **automatically bundles the folder** into your deploy image at `/app/.trigger/skills/{id}/`. No `trigger.config.ts` changes, no build extension — it just works.
+2. Returns a `SkillHandle` you use at runtime.
+
+`skill.local()` reads the bundled `SKILL.md` from disk and returns a `ResolvedSkill` with the parsed frontmatter + body + on-disk path.
+
+`chat.skills.set([...])` stores the resolved skills for the current run. `chat.toStreamTextOptions()` spreads them into `streamText` automatically:
+
+- The frontmatter `description` lands in the system prompt under "Available skills:".
+- Three tools are added: `loadSkill`, `readFile`, `bash` — scoped per skill.
+
+## What gets auto-injected
+
+When you spread `chat.toStreamTextOptions()` with skills set, the AI SDK call receives three tools:
+
+### `loadSkill({ name })`
+
+Returns the full `SKILL.md` body for the named skill. The model calls this first when it decides a skill is relevant, to load the full instructions.
+
+### `readFile({ skill, path })`
+
+Reads a file inside the skill's bundled folder. Paths are relative to the skill's root and are rejected if they attempt to escape via `..` or absolute paths. Output is capped at 1 MB per call.
+
+Use for reference files and templates that the model should read literally:
+
+```
+readFile({ skill: "time-utils", path: "references/timezones.txt" })
+```
+
+### `bash({ skill, command })`
+
+Runs a bash command with `cwd` set to the skill's root. Stdout and stderr are captured and returned (each capped at 64 KB per call, with tail truncation). The turn's abort signal propagates — cancelling the run kills the child process.
+
+Use to invoke the skill's bundled scripts:
+
+```
+bash({ skill: "time-utils", command: "bash scripts/now.sh America/Los_Angeles" })
+```
+
+Script runtime expectations are yours to manage. If your skill uses `extract.py`, your deploy image needs Python — add it via your build config the same way you would for any other task dependency.
+
+## How discovery works in the model
+
+The model sees a short preamble appended to your system prompt:
+
+```
+Available skills (call `loadSkill` to read the full instructions before using one):
+- time-utils: Compute and format dates/times in arbitrary timezones...
+- pdf-processing: Extract text from PDFs, fill forms...
+```
+
+When the user asks something that matches a description, the model calls `loadSkill({ name: "time-utils" })` to load the body, then follows the body's instructions — typically by calling `bash` or `readFile` on the bundled scripts.
+
+This is **progressive disclosure**: each skill costs ~100 tokens up front (its one-line description), and only the ones the model actually uses pay the full context cost.
+
+## Mixing skills with custom tools
+
+If you also define your own AI SDK tools, pass them through `chat.toStreamTextOptions()` so the merge is explicit:
+
+```ts
+return streamText({
+  model: openai("gpt-4o"),
+  messages,
+  abortSignal: signal,
+  ...chat.toStreamTextOptions({
+    tools: {
+      webFetch,       // your tool
+      deepResearch,   // your tool
+    },
+  }),
+});
+```
+
+Your tools win on name conflicts. (Pick names that don't collide with `loadSkill` / `readFile` / `bash` to keep things predictable.)
+
+## Bundling
+
+Bundling is **built-in to the CLI** — there's no extension to import. When you run `trigger deploy` or `trigger dev`:
+
+1. esbuild bundles your task code as usual.
+2. The CLI forks the indexer locally against the bundled output, collects every `skills.define({ path })` registration.
+3. Each skill's folder is copied to `{outputPath}/.trigger/skills/{id}/` via a recursive copy.
+4. The existing Dockerfile `COPY` picks up `.trigger/skills/` along with the rest of the bundle — no Dockerfile changes.
+
+If you're running `trigger dev`, the same layout appears in the local dev output directory, so `skill.local()` works the same way.
+
+## Path scoping rules
+
+- `skill.path` always resolves to `${process.cwd()}/.trigger/skills/{id}/` at runtime. Don't hardcode paths elsewhere.
+- `readFile` rejects `..` segments and absolute paths — the tool only exposes files inside the skill's own directory.
+- `bash` runs with `cwd` set to the skill's root. Inside the script, relative paths resolve against the skill directory.
+- Cross-skill access isn't provided — each skill is isolated by design. If two skills need to share data, either duplicate the shared file or consolidate the skills.
+
+## Current limitations
+
+- `skill.resolve()` (backend-managed overrides) is not available yet — use `.local()` for now. Dashboard-editable `SKILL.md` is on the roadmap.
+- No per-skill metrics in the dashboard yet.
+- No Anthropic `/v1/skills` integration — use the portable path today; we're tracking the Anthropic optimization separately.
+
+## Full example
+
+See `references/ai-chat/src/trigger/skills/time-utils/` in the Trigger.dev monorepo for a working skill that bundles two bash scripts and a reference cheat-sheet, wired into a `chat.agent` that answers timezone questions.
+
+## Related
+
+- [AI SDK cookbook — Agent Skills](https://ai-sdk.dev/cookbook/guides/agent-skills) — the userland pattern we build on
+- [Anthropic Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) — Anthropic's codified version (server-side, optional future integration)

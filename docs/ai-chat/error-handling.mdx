@@ -1,0 +1,411 @@
+---
+title: "Error handling"
+sidebarTitle: "Error handling"
+description: "How errors flow through chat.agent — stream errors, hook errors, run failures — and how to recover."
+---
+
+`chat.agent` errors fall into four layers, each with different recovery semantics. The default behavior is **conversation-preserving**: a thrown error in a hook or `run()` does not kill the chat. The current turn ends with an error chunk, and the agent waits for the user's next message.
+
+## Error layers at a glance
+
+| Layer | Source | Default behavior | Recovery |
+|-------|--------|------------------|----------|
+| **Stream** | `streamText` errors mid-response (rate limits, model API failures) | `onError` callback converts to error chunk | Sanitize message via `uiMessageStreamOptions.onError` |
+| **Hook / turn** | Throws in `onValidateMessages`, `onTurnStart`, `run`, etc. | Error chunk + turn-complete written to stream; conversation continues | Catch in your hook, or rely on default |
+| **Run** | Unhandled exception escapes the run | Run fails. No retry by default. Standard task `onFailure` fires. | `onFailure` task hook |
+| **Frontend** | Stream delivers `{ type: "error", errorText }` | `useChat` exposes via `error` field and `onError` callback | Show toast, retry button, etc. |
+
+## Stream errors mid-turn
+
+When the model API errors mid-response (rate limits, network failures, malformed output), the AI SDK's `streamText` calls the `onError` callback. Use `uiMessageStreamOptions.onError` to convert the error to a user-friendly string. The string is sent to the frontend as an error chunk.
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  uiMessageStreamOptions: {
+    onError: (error) => {
+      console.error("Stream error:", error);
+      if (error instanceof Error && error.message.includes("rate limit")) {
+        return "Rate limited. Please wait a moment and try again.";
+      }
+      if (error instanceof Error && error.message.includes("context_length")) {
+        return "This conversation is too long. Please start a new chat.";
+      }
+      return "Something went wrong while generating a response. Please try again.";
+    },
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+<Note>
+  Returning a string from `onError` is what gets shown to the user. Do not return raw error messages — they may leak internal details (API keys, stack traces, etc.).
+</Note>
+
+The frontend receives this as an error chunk that `useChat` exposes via its `error` field:
+
+```tsx
+const { messages, error } = useChat({ transport });
+
+{error && <div className="text-red-600">{error.message}</div>}
+```
+
+## Hook and turn errors
+
+If any lifecycle hook (`onValidateMessages`, `onChatStart`, `onTurnStart`, `hydrateMessages`, `onAction`, `prepareMessages`, `onBeforeTurnComplete`, `onTurnComplete`) or `run()` throws an unhandled exception, the turn loop catches it:
+
+1. Writes `{ type: "error", errorText: error.message }` to the stream
+2. Writes a turn-complete chunk to close the turn
+3. Waits for the next user message
+
+The conversation stays alive. The user can send another message and continue.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onTurnStart: async ({ chatId, uiMessages }) => {
+    // If this throws, the turn ends with an error chunk
+    // and the agent waits for the next message
+    await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+### Catching errors in your own hooks
+
+For granular control, wrap your hook code in try/catch and decide what to do. Common patterns:
+
+```ts
+onValidateMessages: async ({ messages }) => {
+  try {
+    return await validateUIMessages({ messages, tools: chatTools });
+  } catch (err) {
+    // Log to your error tracking service
+    Sentry.captureException(err);
+    // Throw a user-facing error message — this becomes the error chunk
+    throw new Error("Your message contains invalid data and could not be sent.");
+  }
+},
+```
+
+<Tip>
+  The `Error.message` you throw is sent verbatim to the frontend as the error chunk's `errorText`. Use messages safe for end users.
+</Tip>
+
+### Catching errors inside `run()`
+
+`run()` is your code — wrap it in try/catch for full control. This is the right place to save partial state to your DB before the error chunk goes out:
+
+```ts
+run: async ({ messages, chatId, signal }) => {
+  try {
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  } catch (err) {
+    // Save the failed turn for debugging / undo
+    await db.failedTurn.create({
+      data: {
+        chatId,
+        error: err instanceof Error ? err.message : String(err),
+        messages,
+      },
+    });
+    throw err; // Re-throw to trigger the error chunk
+  }
+},
+```
+
+## Saving error state to your DB
+
+To persist errors for debugging or undo, use `onTurnComplete` (which fires even after errors) or the standard task `onComplete` hook.
+
+### Using `onTurnComplete`
+
+`onTurnComplete` fires after every turn — successful **or** errored. The `responseMessage` will be undefined or partial on errors. Use this to mark the turn as failed:
+
+```ts
+onTurnComplete: async ({ chatId, uiMessages, responseMessage, stopped }) => {
+  // Persist the messages regardless of error state
+  await db.chat.update({
+    where: { id: chatId },
+    data: {
+      messages: uiMessages,
+      // Mark the chat as errored if no response message
+      lastTurnStatus: responseMessage ? "ok" : stopped ? "stopped" : "errored",
+    },
+  });
+},
+```
+
+### Using the standard `onFailure` task hook
+
+For run-level failures (the entire run dies), use the standard task `onFailure` hook. This fires when the run terminates with an unhandled exception:
+
+```ts
+chat.agent({
+  id: "my-chat",
+  onFailure: async ({ error, ctx }) => {
+    // Log run-level failure to your monitoring service
+    await monitoring.recordRunFailure({
+      runId: ctx.run.id,
+      chatId: ctx.run.tags.find(t => t.startsWith("chat:"))?.slice(5),
+      error: error.message,
+    });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ ... });
+  },
+});
+```
+
+<Info>
+  `chat.agent` uses `retry: { maxAttempts: 1 }` internally, so the run never retries on failure. To add run-level retries, wrap the agent in a parent task or implement your own retry logic in the frontend (re-send the message).
+</Info>
+
+## Recovery patterns
+
+### Pattern 1: Undo to last successful response
+
+A common pattern is to let the user "undo" the failed turn and try again. Combine `chat.history.rollbackTo` with a custom action:
+
+```ts
+chat.agent({
+  id: "my-chat",
+  actionSchema: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("undo") }),
+  ]),
+  onAction: async ({ action, uiMessages }) => {
+    if (action.type === "undo") {
+      // Find the last user message and roll back to it
+      const lastUserIdx = [...uiMessages].reverse().findIndex(m => m.role === "user");
+      if (lastUserIdx !== -1) {
+        const targetIdx = uiMessages.length - 1 - lastUserIdx - 1;
+        const target = uiMessages[targetIdx];
+        if (target) chat.history.rollbackTo(target.id);
+      }
+    }
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({ ... });
+  },
+});
+```
+
+On the frontend, show an "Undo" button when an error occurs:
+
+```tsx
+{error && (
+  <button onClick={() => transport.sendAction(chatId, { type: "undo" })}>
+    Undo and try again
+  </button>
+)}
+```
+
+### Pattern 2: Retry the last message
+
+For transient errors (network blips, rate limits), the simplest recovery is to re-send the last user message. The AI SDK's `useChat` provides `regenerate()`:
+
+```tsx
+const { messages, error, regenerate } = useChat({ transport });
+
+{error && (
+  <button onClick={() => regenerate()}>Retry</button>
+)}
+```
+
+`regenerate()` removes the last assistant response and re-sends. Combined with `onValidateMessages` or `hydrateMessages`, you can reload the canonical state from your DB before retrying.
+
+### Pattern 3: Save partial responses
+
+When a stream errors mid-response, the `responseMessage` in `onBeforeTurnComplete` and `onTurnComplete` contains the partial output. Save it as a "draft" so the user can see what was generated before the error:
+
+```ts
+onBeforeTurnComplete: async ({ chatId, responseMessage, stopped }) => {
+  if (responseMessage && responseMessage.parts.length > 0) {
+    // Save partial response — user can manually accept or discard
+    await db.partialResponse.create({
+      data: {
+        chatId,
+        message: responseMessage,
+        reason: stopped ? "stopped" : "errored",
+      },
+    });
+  }
+},
+```
+
+### Pattern 4: Fall back to a different model
+
+If the primary model errors, try a fallback model in the same turn:
+
+```ts
+run: async ({ messages, signal }) => {
+  try {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  } catch (err) {
+    console.warn("Primary model failed, falling back:", err);
+    return streamText({
+      model: anthropic("claude-sonnet-4-6"),
+      messages,
+      abortSignal: signal,
+    });
+  }
+},
+```
+
+<Note>
+  This only catches errors thrown synchronously by `streamText` setup. Errors that happen mid-stream go through `uiMessageStreamOptions.onError`, not your try/catch.
+</Note>
+
+## What gets written to the stream on error
+
+When an error occurs at any layer, the frontend receives an error chunk in the SSE stream:
+
+```
+event: data
+data: {"type":"error","errorText":"Rate limited. Please wait a moment and try again."}
+
+event: data
+data: {"type":"trigger:turn-complete",...}
+```
+
+The AI SDK's `useChat` processes this and:
+
+1. Sets `useChat`'s `error` field to an `Error` with `message = errorText`
+2. Calls the user's `onError` callback (if set)
+3. Marks the turn as complete (`status` returns to `"ready"`)
+
+```tsx
+const { messages, error, status } = useChat({
+  transport,
+  onError: (err) => {
+    toast.error(err.message);
+  },
+});
+```
+
+## Frontend error handling
+
+### Showing the error to the user
+
+```tsx
+function Chat() {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
+  const { messages, error, sendMessage } = useChat({ transport });
+
+  return (
+    <div>
+      {messages.map(m => /* ... */)}
+      {error && (
+        <div className="rounded border border-red-300 bg-red-50 p-3">
+          <p className="text-red-700">{error.message}</p>
+        </div>
+      )}
+      <form onSubmit={(e) => { e.preventDefault(); sendMessage(/* ... */); }}>
+        {/* ... */}
+      </form>
+    </div>
+  );
+}
+```
+
+### Distinguishing error types
+
+The `errorText` is just a string, so distinguish error types via prefixes or codes:
+
+```ts
+// Backend
+uiMessageStreamOptions: {
+  onError: (error) => {
+    if (error.message.includes("rate limit")) return "RATE_LIMIT: Please wait and try again.";
+    if (error.message.includes("context_length")) return "CONTEXT_TOO_LONG: Start a new chat.";
+    return "UNKNOWN: Something went wrong.";
+  },
+},
+```
+
+```tsx
+// Frontend
+{error?.message.startsWith("RATE_LIMIT") && <RateLimitNotice />}
+{error?.message.startsWith("CONTEXT_TOO_LONG") && <NewChatPrompt />}
+```
+
+<Tip>
+  For richer error structures, use [`chat.response.write()`](/ai-chat/features#custom-data-parts) with a custom `data-error` part type. This lets you ship structured error metadata (codes, retry hints, etc.) instead of stringly-typed messages.
+</Tip>
+
+### Errors from `accessToken` / `startSession`
+
+If your `accessToken` or `startSession` callback throws (auth failure, DB write failure, network error), the rejection surfaces through `useChat`'s `error` state — same as a stream error. The transport doesn't retry the callback automatically; the customer is responsible for handling it.
+
+```tsx
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: async ({ chatId }) => {
+    try {
+      return await mintChatAccessToken(chatId);
+    } catch (err) {
+      // Customer's server action failed (e.g. user lost auth).
+      // Re-throw to surface as a useChat error, or return a sentinel
+      // your UI can detect and prompt re-auth.
+      throw new Error(`AUTH_REFRESH: ${err.message}`);
+    }
+  },
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+});
+```
+
+`startSession` failures most commonly mean the customer's authorization layer rejected the request (no plan, quota exceeded, user not allowed to chat with this agent). The customer's server should produce a meaningful error message; the transport propagates it verbatim to `useChat`'s `error` state.
+
+## Run-level retries
+
+`chat.agent` uses `retry: { maxAttempts: 1 }` — the run **never retries** on unhandled failure. This is intentional: each turn is conversation-preserving, so a true run failure is severe and shouldn't silently retry (which could send duplicate API calls or mutate state twice).
+
+To add retry-like behavior:
+
+- **Per-turn retries**: handle inside `run()` with try/catch and a fallback model
+- **Per-message retries**: re-send from the frontend (call `sendMessage` or `regenerate` again)
+- **Whole-run retries**: wrap `chat.agent` with a parent task that has `retry` configured, and call the agent's task internally
+
+## Best practices
+
+1. **Always set `uiMessageStreamOptions.onError`** to sanitize stream errors before they reach the user.
+2. **Persist messages in `onTurnStart`** so a mid-stream failure still leaves the user's message visible.
+3. **Use `onTurnComplete` to mark turn status** in your DB (`ok` / `errored` / `stopped`).
+4. **Don't throw raw errors with internal details** in hooks — catch, log, then throw a sanitized user-facing message.
+5. **Provide an undo or retry affordance** in the UI when errors occur.
+6. **Use `onFailure` for run-level monitoring** (Sentry, monitoring dashboards).
+7. **For known transient errors (rate limits, network)**, consider a fallback model inside `run()` instead of failing the turn.
+
+## `ChatChunkTooLargeError`
+
+A specific run-failing error worth flagging on its own. Anything written through the chat output is one record on the underlying realtime stream, capped at ~1 MiB per record. A single chunk over the cap throws `ChatChunkTooLargeError` (named export from `@trigger.dev/sdk`). The most common trigger is a tool whose result object is large enough to overflow as one `tool-output-available` chunk.
+
+The error carries `chunkType`, `chunkSize`, and `maxSize`. Catch with the `isChatChunkTooLargeError` guard and route oversized values out-of-band.
+
+See [Large payloads in chat.agent](/ai-chat/patterns/large-payloads) for the two patterns that work around the cap (ID-reference + run-scoped `streams.writer()`).
+
+## See also
+
+- [`uiMessageStreamOptions.onError`](/ai-chat/backend#error-handling-with-onerror) — stream error handler details
+- [Custom actions](/ai-chat/actions) — implement undo/retry actions
+- [`chat.history`](/ai-chat/backend#chat-history) — rollback to a previous message
+- [Large payloads](/ai-chat/patterns/large-payloads) — handling the ~1 MiB per-chunk cap
+- [Database persistence](/ai-chat/patterns/database-persistence) — saving conversation state
+- [Standard task hooks](/tasks/overview) — `onFailure`, `onComplete`, `onWait`, etc.

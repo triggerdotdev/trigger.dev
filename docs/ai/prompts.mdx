@@ -1,0 +1,424 @@
+---
+title: "Prompts"
+sidebarTitle: "Prompts"
+description: "Define prompt templates as code, version them on deploy, and override from the dashboard without redeploying."
+---
+
+## Overview
+
+AI Prompts let you define prompt templates in your codebase alongside your tasks. When you deploy, Trigger.dev automatically versions your prompts. You can then:
+
+- View all prompt versions in the dashboard
+- Create **overrides** to change the prompt text or model without redeploying
+- Track every generation that used each prompt version
+- See token usage, cost, and latency metrics per prompt
+- Manage prompts programmatically via SDK methods
+
+## Defining a prompt
+
+Use `prompts.define()` to create a prompt with typed variables:
+
+```ts
+import { prompts } from "@trigger.dev/sdk";
+import { z } from "zod";
+
+export const supportPrompt = prompts.define({
+  id: "customer-support",
+  description: "System prompt for customer support interactions",
+  model: "gpt-4o",
+  config: { temperature: 0.7 },
+  variables: z.object({
+    customerName: z.string(),
+    plan: z.string(),
+    issue: z.string(),
+  }),
+  content: `You are a support agent for Acme SaaS.
+
+## Customer context
+
+- **Name:** {{customerName}}
+- **Plan:** {{plan}}
+- **Issue:** {{issue}}
+
+Respond to the customer's issue. Be concise and helpful.`,
+});
+```
+
+### Options
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `id` | `string` | Yes | Unique identifier (becomes the prompt slug) |
+| `description` | `string` | No | Shown in the dashboard |
+| `model` | `string` | No | Default model (e.g. `"gpt-4o"`, `"claude-sonnet-4-6"`) |
+| `config` | `object` | No | Default config (temperature, maxTokens, etc.) |
+| `variables` | Zod/ArkType schema | No | Schema for template variables (enables validation and dashboard UI) |
+| `content` | `string` | Yes | The prompt template with `{{variable}}` placeholders |
+
+### Template syntax
+
+Templates use Mustache-style placeholders:
+
+- `{{variableName}}` — replaced with the variable value
+- `{{#conditionalVar}}...{{/conditionalVar}}` — content only included if the variable is truthy
+
+```ts
+export const prompt = prompts.define({
+  id: "summarizer",
+  model: "gpt-4o-mini",
+  variables: z.object({
+    text: z.string(),
+    maxSentences: z.string().optional(),
+  }),
+  content: `Summarize the following text{{#maxSentences}} in {{maxSentences}} sentences or fewer{{/maxSentences}}:
+
+{{text}}`,
+});
+```
+
+## Resolving a prompt
+
+### Via prompt handle
+
+Call `.resolve()` on the handle returned by `define()`:
+
+```ts
+const resolved = await supportPrompt.resolve({
+  customerName: "Alice",
+  plan: "Pro",
+  issue: "Cannot access billing dashboard",
+});
+
+console.log(resolved.text);    // The compiled prompt with variables filled in
+console.log(resolved.version); // e.g. 3
+console.log(resolved.model);   // "gpt-4o"
+console.log(resolved.labels);  // ["current"] or ["override"]
+```
+
+### Via standalone prompts.resolve()
+
+Resolve any prompt by slug without needing a handle. Pass the prompt handle as a type parameter for full type safety:
+
+```ts
+import { prompts } from "@trigger.dev/sdk";
+import type { supportPrompt } from "./prompts";
+
+// Fully typesafe — ID and variables are checked at compile time
+const resolved = await prompts.resolve<typeof supportPrompt>("customer-support", {
+  customerName: "Alice",
+  plan: "Pro",
+  issue: "Cannot access billing dashboard",
+});
+```
+
+Without the generic, the function still works but accepts any string slug and `Record<string, unknown>` variables.
+
+### Resolve options
+
+You can resolve a specific version or label:
+
+```ts
+// Resolve a specific version
+const v2 = await supportPrompt.resolve(variables, { version: 2 });
+
+// Resolve by label
+const current = await supportPrompt.resolve(variables, { label: "current" });
+```
+
+By default, `resolve()` returns the **override** version if one is active, otherwise the **current** (latest deployed) version.
+
+<Note>
+  Both `promptHandle.resolve()` and `prompts.resolve()` call the Trigger.dev API when a client is configured. During local dev with `trigger dev`, this means you'll always get the server version (including overrides).
+</Note>
+
+## Using with the AI SDK
+
+The resolved prompt integrates with the [Vercel AI SDK](https://ai-sdk.dev) via `toAISDKTelemetry()`. This links AI generation spans to the prompt in the dashboard.
+
+### generateText
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export const supportTask = task({
+  id: "handle-support",
+  run: async (payload) => {
+    const resolved = await supportPrompt.resolve({
+      customerName: payload.name,
+      plan: payload.plan,
+      issue: payload.issue,
+    });
+
+    const result = await generateText({
+      model: openai(resolved.model ?? "gpt-4o"),
+      system: resolved.text,
+      prompt: payload.issue,
+      ...resolved.toAISDKTelemetry(),
+    });
+
+    return { response: result.text };
+  },
+});
+```
+
+### streamText
+
+```ts
+import { streamText } from "ai";
+
+export const streamTask = task({
+  id: "stream-support",
+  run: async (payload) => {
+    const resolved = await supportPrompt.resolve({
+      customerName: payload.name,
+      plan: payload.plan,
+      issue: payload.issue,
+    });
+
+    const result = streamText({
+      model: openai(resolved.model ?? "gpt-4o"),
+      system: resolved.text,
+      prompt: payload.issue,
+      ...resolved.toAISDKTelemetry(),
+    });
+
+    let fullText = "";
+    for await (const chunk of result.textStream) {
+      fullText += chunk;
+    }
+
+    return { response: fullText };
+  },
+});
+```
+
+### Custom telemetry metadata
+
+Pass additional metadata to `toAISDKTelemetry()` that will appear on the generation span:
+
+```ts
+const result = await generateText({
+  model: openai("gpt-4o"),
+  prompt: resolved.text,
+  ...resolved.toAISDKTelemetry({
+    "task.type": "summarization",
+    "customer.tier": "enterprise",
+  }),
+});
+```
+
+## Using with chat.agent()
+
+Prompts integrate with `chat.agent()` via `chat.prompt` — a run-scoped store for the resolved prompt. Store a prompt once in a lifecycle hook, then access it anywhere during the run.
+
+### chat.prompt.set() and chat.prompt()
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { prompts } from "@trigger.dev/sdk";
+import { streamText, createProviderRegistry } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const registry = createProviderRegistry({ openai, anthropic });
+
+const systemPrompt = prompts.define({
+  id: "my-chat-system",
+  model: "openai:gpt-4o",
+  config: { temperature: 0.7 },
+  variables: z.object({ name: z.string() }),
+  content: `You are a helpful assistant for {{name}}.`,
+});
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onChatStart: async ({ clientData }) => {
+    const resolved = await systemPrompt.resolve({ name: clientData.name });
+    chat.prompt.set(resolved);
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions({ registry }),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+### chat.toStreamTextOptions()
+
+Returns an options object ready to spread into `streamText()`. When a prompt is stored via `chat.prompt.set()`, it includes:
+
+- `system` — the compiled prompt text
+- `model` — resolved via the `registry` when provided
+- `temperature`, `maxTokens`, etc. — from the prompt's `config`
+- `experimental_telemetry` — links generations to the prompt in the dashboard
+
+```ts
+// With registry — model is resolved automatically
+const options = chat.toStreamTextOptions({ registry });
+// { system: "...", model: LanguageModel, temperature: 0.7, experimental_telemetry: { ... } }
+
+// Without registry — model is not included
+const options = chat.toStreamTextOptions();
+// { system: "...", temperature: 0.7, experimental_telemetry: { ... } }
+```
+
+<Tip>
+  When the user provides a `registry` and the prompt has a `model` string (e.g. `"openai:gpt-4o"`), the model is resolved via `registry.languageModel()` and included in the returned options. This means `streamText` uses the prompt's model by default — no manual model selection needed.
+</Tip>
+
+### Reading the prompt
+
+Access the stored prompt from anywhere in the run:
+
+```ts
+run: async ({ messages, signal }) => {
+  const prompt = chat.prompt(); // Throws if not set
+  console.log(prompt.text);     // The compiled prompt
+  console.log(prompt.model);    // "openai:gpt-4o"
+  console.log(prompt.version);  // 3
+
+  return streamText({
+    ...chat.toStreamTextOptions({ registry }),
+    messages,
+    abortSignal: signal,
+  });
+},
+```
+
+You can also set a plain string if you don't need the full prompt system:
+
+```ts
+chat.prompt.set("You are a helpful assistant.");
+```
+
+## Prompt management SDK
+
+The `prompts` namespace includes methods for managing prompts programmatically. These work both inside tasks and outside (e.g. scripts, API handlers) as long as an API client is configured.
+
+### List prompts
+
+```ts
+const allPrompts = await prompts.list();
+```
+
+### List versions
+
+```ts
+const versions = await prompts.versions("customer-support");
+```
+
+### Create an override
+
+Create a new override that takes priority over the deployed version:
+
+```ts
+const result = await prompts.createOverride("customer-support", {
+  textContent: "New prompt template: Hello {{customerName}}!",
+  model: "gpt-4o-mini",
+  commitMessage: "Shorter prompt",
+});
+```
+
+### Update an override
+
+```ts
+await prompts.updateOverride("customer-support", {
+  textContent: "Updated template: Hi {{customerName}}!",
+  model: "gpt-4o",
+});
+```
+
+### Remove an override
+
+Remove the active override, reverting to the deployed version:
+
+```ts
+await prompts.removeOverride("customer-support");
+```
+
+### Promote a version
+
+```ts
+await prompts.promote("customer-support", 2);
+```
+
+### All management methods
+
+| Method | Description |
+|--------|-------------|
+| `prompts.list()` | List all prompts in the current environment |
+| `prompts.versions(slug)` | List all versions for a prompt |
+| `prompts.resolve(slug, variables?, options?)` | Resolve a prompt by slug |
+| `prompts.promote(slug, version)` | Promote a version to current |
+| `prompts.createOverride(slug, body)` | Create an override |
+| `prompts.updateOverride(slug, body)` | Update the active override |
+| `prompts.removeOverride(slug)` | Remove the active override |
+| `prompts.reactivateOverride(slug, version)` | Reactivate a removed override |
+
+## Overrides
+
+Overrides let you change a prompt's template or model from the dashboard or SDK without redeploying your code. When an override is active, `resolve()` returns the override version instead of the deployed version.
+
+### How overrides work
+
+- Overrides take priority over the deployed ("current") version
+- Only one override can be active at a time
+- Creating a new override replaces the previous one
+- Removing an override reverts to the deployed version
+- Overrides are environment-scoped (dev, staging, production are independent)
+
+### Creating an override (dashboard)
+
+1. Go to the prompt detail page
+2. Click **Create Override**
+3. Edit the template text and/or model
+4. Add an optional commit message
+5. Click **Create override**
+
+### Version resolution order
+
+When `resolve()` is called, versions are resolved in this order:
+
+1. **Specific version** — if `{ version: N }` is passed
+2. **Override** — if an override is active in this environment
+3. **Label** — if `{ label: "..." }` is passed (defaults to `"current"`)
+4. **Current** — the latest deployed version with the "current" label
+
+## Dashboard
+
+### Prompts list
+
+The prompts list page shows all prompts in the current environment with the current or override version, default model, and a usage sparkline.
+
+### Prompt detail
+
+Click a prompt to see:
+
+- **Template panel** — the prompt template for the selected version
+- **Details tab** — slug, description, model, config, source file, and variable schema
+- **Versions tab** — all versions with labels, source, and commit messages
+- **Generations tab** — every AI generation that used this prompt, with live polling
+- **Metrics tab** — token usage, cost, and latency charts
+
+### AI span inspectors
+
+When you use `toAISDKTelemetry()`, AI generation spans in the run trace get a custom inspector showing:
+
+- **Overview** — model, provider, token usage, cost, input/output preview
+- **Messages** — the full message thread
+- **Tools** — tool definitions and tool call details
+- **Prompt** — the linked prompt's metadata, input variables, and template content
+
+## Type utilities
+
+```ts
+import type { PromptHandle, PromptIdentifier, PromptVariables } from "@trigger.dev/sdk";
+
+type Id = PromptIdentifier<typeof supportPrompt>;   // "customer-support"
+type Vars = PromptVariables<typeof supportPrompt>;   // { customerName: string; plan: string; issue: string }
+```

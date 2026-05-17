@@ -1,0 +1,192 @@
+---
+title: "Background injection"
+sidebarTitle: "Background injection"
+description: "Inject context from background work into the agent's conversation — self-review, RAG augmentation, or any async analysis."
+---
+
+## Overview
+
+`chat.inject()` queues model messages for injection into the conversation. Messages are picked up at the start of the next turn or at the next `prepareStep` boundary (between tool-call steps).
+
+This is the backend counterpart to [pending messages](/ai-chat/pending-messages) — pending messages come from the user via the frontend, while `chat.inject()` comes from your task code.
+
+## Basic usage
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+
+// Queue a system message for injection
+chat.inject([
+  {
+    role: "system",
+    content: "The user's account was just upgraded to Pro.",
+  },
+]);
+```
+
+Messages are appended to the model messages before the next LLM inference call. The LLM sees them as part of the conversation context.
+
+## Common pattern: defer + inject
+
+The most powerful pattern combines `chat.defer()` (background work) with `chat.inject()` (inject results). Background work runs in parallel with the idle wait between turns, and results are injected before the next response.
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onTurnComplete: async ({ messages }) => {
+    // Kick off background analysis — doesn't block the turn
+    chat.defer(
+      (async () => {
+        const analysis = await analyzeConversation(messages);
+        chat.inject([
+          {
+            role: "system",
+            content: `[Analysis of conversation so far]\n\n${analysis}`,
+          },
+        ]);
+      })()
+    );
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions({ registry }),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+### Timing
+
+1. Turn completes, `onTurnComplete` fires
+2. `chat.defer()` registers the background work
+3. The run immediately starts waiting for the next message (no blocking)
+4. Background work completes, `chat.inject()` queues the messages
+5. User sends next message, turn starts
+6. Injected messages are appended before `run()` executes
+7. The LLM sees the injected context alongside the new user message
+
+If the background work finishes *during* a tool-call loop (not between turns), the messages are picked up at the next `prepareStep` boundary instead.
+
+## Example: self-review
+
+A cheap model reviews the agent's response after each turn and injects coaching for the next one. Uses [Prompts](/ai/prompts) for the review prompt and `generateObject` for structured output.
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { prompts } from "@trigger.dev/sdk";
+import { streamText, generateObject, createProviderRegistry } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+const registry = createProviderRegistry({ openai });
+
+const selfReviewPrompt = prompts.define({
+  id: "self-review",
+  model: "openai:gpt-4o-mini",
+  content: `You are a conversation quality reviewer. Analyze the assistant's most recent response.
+
+Focus on:
+- Whether the response answered the user's question
+- Missed opportunities to use tools or provide more detail
+- Tone mismatches
+
+Be concise. Only flag issues worth fixing.`,
+});
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onTurnComplete: async ({ messages }) => {
+    chat.defer(
+      (async () => {
+        const resolved = await selfReviewPrompt.resolve({});
+
+        const review = await generateObject({
+          model: registry.languageModel(resolved.model ?? "openai:gpt-4o-mini"),
+          ...resolved.toAISDKTelemetry(),
+          system: resolved.text,
+          prompt: messages
+            .filter((m) => m.role === "user" || m.role === "assistant")
+            .map((m) => {
+              const text =
+                typeof m.content === "string"
+                  ? m.content
+                  : Array.isArray(m.content)
+                    ? m.content
+                        .filter((p: any) => p.type === "text")
+                        .map((p: any) => p.text)
+                        .join("")
+                    : "";
+              return `${m.role}: ${text}`;
+            })
+            .join("\n\n"),
+          schema: z.object({
+            needsImprovement: z.boolean(),
+            suggestions: z.array(z.string()),
+          }),
+        });
+
+        if (review.object.needsImprovement) {
+          chat.inject([
+            {
+              role: "system",
+              content: `[Self-review]\n\n${review.object.suggestions.map((s) => `- ${s}`).join("\n")}\n\nApply these naturally.`,
+            },
+          ]);
+        }
+      })()
+    );
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions({ registry }),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+The self-review runs on `gpt-4o-mini` (fast, cheap) in the background. If the user sends another message before it completes, the coaching is still injected — `chat.inject()` persists across the idle wait.
+
+## Other use cases
+
+- **RAG augmentation**: After each turn, fetch relevant documents and inject them as context for the next response
+- **Safety checks**: Run a moderation model on the response, inject warnings if issues are detected
+- **Fact-checking**: Verify claims in the response using search tools, inject corrections
+- **Context enrichment**: Look up user/account data based on what was discussed, inject it as system context
+
+## How it differs from pending messages
+
+| | `chat.inject()` | [Pending messages](/ai-chat/pending-messages) |
+|---|---|---|
+| **Source** | Backend task code | Frontend user input |
+| **Triggered by** | Your code (e.g. `onTurnComplete` + `chat.defer()`) | User sending a message during streaming |
+| **Injection point** | Start of next turn, or next `prepareStep` boundary | Next `prepareStep` boundary only |
+| **Message role** | Any (`system`, `user`, `assistant`) | Typically `user` |
+| **Frontend visibility** | Not visible unless you write custom `data-*` chunks | Visible via `usePendingMessages` hook |
+
+## API reference
+
+### chat.inject()
+
+```ts
+chat.inject(messages: ModelMessage[]): void
+```
+
+Queue model messages for injection at the next opportunity. Messages persist across the idle wait between turns — they are not reset when a new turn starts.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `messages` | `ModelMessage[]` | Model messages to inject (from the `ai` package) |
+
+Messages are drained (consumed) when:
+1. A new turn starts — before `run()` executes
+2. A `prepareStep` boundary is reached — between tool-call steps during streaming
+
+<Note>
+  `chat.inject()` writes to an in-memory queue in the current process. It works from any code running in the same task — lifecycle hooks, deferred work, tool execute functions, etc. It does not work from subtasks or other runs.
+</Note>

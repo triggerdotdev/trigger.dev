@@ -11,6 +11,10 @@ The Input Streams API allows you to send data into running Trigger.dev tasks fro
   Streams](/tasks/streams#input-streams) in the Streams doc.
 </Note>
 
+<Tip>
+  Input streams are keyed by `runId` — they're correct for sending data to a specific live run. If you need a bidirectional channel that survives run boundaries (e.g. a chat that resumes tomorrow, an agent coordinated across many runs), look at [`chat.agent`](/ai-chat/overview): it's built on a durable Session row that owns its runs and exposes the same consumer-side API (`on` / `once` / `wait` / `waitWithIdleTimeout`) on its `.in` channel.
+</Tip>
+
 ## Sending data to a running task
 
 ### Using defined input streams (Recommended)

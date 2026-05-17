@@ -1,0 +1,248 @@
+---
+title: "Sub-Agents"
+sidebarTitle: "Sub-Agents"
+description: "Delegate work to durable sub-agents from within a parent agent's tool calls, with streaming preliminary results."
+---
+
+Sub-agents let a parent agent delegate work to other agents running as durable Trigger.dev tasks. The sub-agent's response streams back through the parent as preliminary tool results, so the frontend sees the sub-agent working inside the parent's tool call card.
+
+This builds on the AI SDK's [async generator tool pattern](https://ai-sdk.dev/docs/agents/subagents) and Trigger.dev's [AgentChat](/ai-chat/server-chat) for server-side agent interaction.
+
+## How it works
+
+1. The parent LLM calls a tool (e.g., `researchAgent`)
+2. The tool's `execute` is an `async function*` (async generator)
+3. Inside, it creates an `AgentChat` and sends a message to the sub-agent
+4. `yield* stream.messages()` streams each accumulated `UIMessage` snapshot as a preliminary tool result
+5. The frontend renders the sub-agent's response building up inside the parent's tool card
+6. `toModelOutput` compresses the full output into a summary for the parent LLM
+
+```
+Parent LLM
+  │
+  ├─ calls researchAgent tool
+  │    │
+  │    ├─ AgentChat triggers sub-agent run
+  │    ├─ sub-agent streams response (text, tool calls, etc.)
+  │    ├─ yield* sends UIMessage snapshots as preliminary results
+  │    └─ toModelOutput compresses for parent LLM
+  │
+  └─ parent LLM reads compressed summary, continues reasoning
+```
+
+## Single-turn sub-agent
+
+The simplest pattern: one tool call, one sub-agent turn, conversation closes.
+
+```ts
+import { tool } from "ai";
+import { AgentChat } from "@trigger.dev/sdk/chat";
+import { z } from "zod";
+import type { prReviewAgent } from "./trigger/pr-review";
+
+const prReviewTool = tool({
+  description: "Delegate a PR review to the PR review agent.",
+  inputSchema: z.object({
+    prNumber: z.number().describe("The PR number to review"),
+    repo: z.string().describe("The GitHub repo URL"),
+  }),
+  execute: async function* ({ prNumber, repo }, { abortSignal }) {
+    const chat = new AgentChat<typeof prReviewAgent>({
+      agent: "pr-review",
+      id: `review-${prNumber}`,
+      clientData: { userId: "parent-agent", githubUrl: repo },
+    });
+
+    const stream = await chat.sendMessage(`Review PR #${prNumber}`, { abortSignal });
+
+    // Each yield sends a UIMessage snapshot to the frontend
+    yield* stream.messages();
+
+    await chat.close();
+  },
+  // The parent LLM only sees this compressed summary
+  toModelOutput: ({ output: message }) => {
+    const lastText = message?.parts?.findLast(
+      (p: { type: string }) => p.type === "text"
+    ) as { text?: string } | undefined;
+    return { type: "text", value: lastText?.text ?? "Review complete." };
+  },
+});
+```
+
+Use this tool in a parent agent's `streamText` call:
+
+```ts
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const result = streamText({
+  model: anthropic("claude-sonnet-4-6"),
+  tools: { prReview: prReviewTool },
+  prompt: "Review PR #42 on triggerdotdev/trigger.dev",
+});
+```
+
+## Multi-turn sub-agent (LLM-driven)
+
+The parent LLM drives a persistent conversation with a sub-agent across multiple tool calls. Each call with the same `conversationId` hits the same durable agent run.
+
+```ts
+import { tool } from "ai";
+import { AgentChat } from "@trigger.dev/sdk/chat";
+import { z } from "zod";
+
+// Track active sub-agent conversations
+const subAgents = new Map<string, AgentChat>();
+
+const researchTool = tool({
+  description:
+    "Talk to a research agent. Use the same conversationId to continue " +
+    "an existing conversation — the agent remembers full context.",
+  inputSchema: z.object({
+    conversationId: z
+      .string()
+      .describe("Unique ID for this research thread. Reuse to continue."),
+    message: z.string().describe("Your message to the research agent"),
+  }),
+  execute: async function* ({ conversationId, message }, { abortSignal }) {
+    let agent = subAgents.get(conversationId);
+    if (!agent) {
+      agent = new AgentChat({
+        agent: "research-agent",
+        id: conversationId,
+      });
+      subAgents.set(conversationId, agent);
+    }
+
+    const stream = await agent.sendMessage(message, { abortSignal });
+    yield* stream.messages();
+  },
+  toModelOutput: ({ output: message }) => {
+    const lastText = message?.parts?.findLast(
+      (p: { type: string }) => p.type === "text"
+    ) as { text?: string } | undefined;
+    return { type: "text", value: lastText?.text ?? "Done." };
+  },
+});
+```
+
+The parent LLM naturally calls this tool multiple times:
+
+1. `researchAgent({ conversationId: "competitors", message: "Research competitors in AI agents" })` — first call triggers a new sub-agent run
+2. `researchAgent({ conversationId: "competitors", message: "Go deeper on pricing" })` — same run, sub-agent has full context
+3. `researchAgent({ conversationId: "new-topic", message: "..." })` — different ID = different sub-agent
+
+### Cross-turn persistence
+
+Sub-agent conversations persist across **parent turns** because the `Map` lives in the parent's process heap. When the parent suspends and restores via snapshot, the heap is preserved — the Map still has the conversations, the sessions still have the run IDs.
+
+```ts
+export const orchestrator = chat
+  .withClientData({ schema: z.object({ userId: z.string() }) })
+  .customAgent({
+    id: "orchestrator",
+    run: async (payload, { signal: runSignal }) => {
+      // These survive across parent turns via snapshot/restore
+      const subAgents = new Map<string, AgentChat>();
+
+      const researchTool = tool({
+        // ... closes over subAgents Map
+      });
+
+      // Turn loop — subAgents persist across all turns
+      for (let turn = 0; turn < 50; turn++) {
+        // ... streamText with researchTool
+      }
+
+      // Cleanup when parent exits
+      await Promise.all(
+        Array.from(subAgents.values()).map((a) => a.close().catch(() => {}))
+      );
+    },
+  });
+```
+
+## How sub-agents clean up
+
+Sub-agents clean up through three mechanisms:
+
+1. **Explicit close**: Call `chat.close()` or `agent.close()` when done
+2. **Idle timeout**: The sub-agent's idle timeout expires, it suspends
+3. **Suspend timeout**: The sub-agent's suspend timeout expires, the run ends
+
+For the multi-turn pattern, the parent should clean up sub-agents when it exits (in `onComplete` for managed agents, or at the end of the loop for custom agents). Without explicit cleanup, sub-agents close on their own via timeouts — no leaked resources or cost while suspended.
+
+## What the frontend sees
+
+Each `yield` from `stream.messages()` sends a complete `UIMessage` containing all the sub-agent's parts accumulated so far. The AI SDK delivers these as `tool-output-available` chunks with `preliminary: true`.
+
+The frontend renders the tool part with:
+- `state: "output-available"` and `preliminary: true` while streaming
+- `state: "output-available"` and `preliminary: false` (or absent) when done
+
+The tool output contains the full `UIMessage` with nested parts — text, the sub-agent's own tool calls and results, reasoning, etc.
+
+### Controlling what the parent LLM sees
+
+`toModelOutput` transforms the tool's output before it enters the parent LLM's context. The full UIMessage streams to the frontend, but the model only sees the compressed version:
+
+```ts
+toModelOutput: ({ output: message }) => {
+  // Extract just the final text — the model doesn't need
+  // to see all the sub-agent's tool calls and intermediate work
+  const lastText = message?.parts?.findLast(
+    (p: { type: string }) => p.type === "text"
+  ) as { text?: string } | undefined;
+  return { type: "text", value: lastText?.text ?? "Done." };
+},
+```
+
+This is important for token efficiency: the sub-agent might use 100K tokens exploring and reasoning, but the parent LLM only consumes the summary.
+
+## ChatStream.messages()
+
+The `messages()` method on `ChatStream` wraps the AI SDK's `readUIMessageStream`. It reads the raw `UIMessageChunk` stream and yields complete `UIMessage` snapshots — each containing all parts received so far.
+
+```ts
+const stream = await chat.sendMessage("Research this topic");
+
+// Each yield is a complete UIMessage with all accumulated parts
+for await (const message of stream.messages()) {
+  console.log(message.parts.length, "parts so far");
+}
+```
+
+For the sub-agent pattern, use `yield*` to delegate all yields to the parent tool's generator:
+
+```ts
+execute: async function* ({ topic }, { abortSignal }) {
+  const stream = await chat.sendMessage(topic, { abortSignal });
+  yield* stream.messages();
+},
+```
+
+<Tip>
+  `stream.messages()` consumes the stream. You can't also call `stream.text()` or iterate over chunks on the same stream. Pick one consumption mode.
+</Tip>
+
+## Combining with chat.agent()
+
+Sub-agent tools work inside both `chat.agent()` (managed) and `chat.customAgent()` (manual lifecycle):
+
+```ts
+// Managed agent with sub-agent tool
+export const myAgent = chat.agent({
+  id: "orchestrator",
+  run: async ({ messages, stopSignal }) => {
+    return streamText({
+      model: anthropic("claude-sonnet-4-6"),
+      messages,
+      tools: { research: researchTool },
+      abortSignal: stopSignal,
+    });
+  },
+});
+```
+
+For `chat.customAgent()`, define the tool and sub-agent Map inside the `run` closure so they survive across turns.

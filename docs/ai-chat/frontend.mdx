@@ -1,0 +1,554 @@
+---
+title: "Frontend"
+sidebarTitle: "Frontend"
+description: "Transport setup, session management, client data, and frontend patterns for AI Chat."
+---
+
+## Transport setup
+
+Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+import type { myChat } from "@/trigger/chat";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
+
+export function Chat() {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({ transport });
+  // ... render UI
+}
+```
+
+The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
+
+The two callbacks have distinct responsibilities:
+
+- **`accessToken`** is a *pure* PAT mint — the transport invokes it on a 401/403 to refresh the session-scoped token. Customer wraps `auth.createPublicToken({ scopes: { sessions: chatId } })`.
+- **`startSession`** wraps `chat.createStartSessionAction(taskId)` and is called when the transport needs to *create* the session (`transport.preload(chatId)`, or lazily on the first `sendMessage` for a chatId without a cached PAT). The customer's server controls authorization here, alongside any DB writes paired with session creation.
+
+See [Quick start](/ai-chat/quick-start) for the matching server actions.
+
+<Tip>
+  The hook keeps `onSessionChange` and `clientData` up to date via internal refs, so you don't need
+  to memoize callbacks or worry about stale closures when those options change between renders.
+</Tip>
+
+## Typed messages (`chat.withUIMessage`)
+
+If your chat agent is defined with [`chat.withUIMessage<YourUIMessage>()`](/ai-chat/types) (custom `data-*` parts, typed tools, etc.), pass the same message type through `useChat` so `messages` and `message.parts` are narrowed on the client:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport, type InferChatUIMessage } from "@trigger.dev/sdk/chat/react";
+import type { myChat } from "./myChat";
+
+type Msg = InferChatUIMessage<typeof myChat>;
+
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+});
+const { messages } = useChat<Msg>({ transport });
+```
+
+See the [Types](/ai-chat/types) guide for defining `YourUIMessage`, default stream options, and backend examples.
+
+### Calling a fetch endpoint instead of a server action
+
+If you want to mint tokens via a REST endpoint instead of a Next.js server action, the same callbacks accept any async function. Import `AccessTokenParams` and `StartSessionParams` from `@trigger.dev/sdk/chat` to type your fetch handler.
+
+```ts
+import type { AccessTokenParams, StartSessionParams } from "@trigger.dev/sdk/chat";
+
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: async ({ chatId }: AccessTokenParams) => {
+    const res = await fetch(`/api/chat/${chatId}/access-token`, { method: "POST" });
+    return res.text();
+  },
+  startSession: async ({ chatId, taskId, clientData }: StartSessionParams) => {
+    const res = await fetch(`/api/chat/${chatId}/start`, {
+      method: "POST",
+      body: JSON.stringify({ taskId, clientData }),
+    });
+    return res.json(); // { publicAccessToken: string }
+  },
+});
+```
+
+The fetch handlers on the server side wrap the same SDK helpers as the server-action variant: `auth.createPublicToken({ scopes: { sessions: chatId } })` for refresh and `chat.createStartSessionAction(taskId)` for create.
+
+## Session management
+
+Every chat is backed by a durable Session — the row that owns the chat's runs, persists across run lifecycles, and orchestrates handoffs. The transport manages the session for you; what you persist on your side is a small piece of state per chat that lets a fresh tab resume without a round-trip to create a new session.
+
+### What the transport persists per chat
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `publicAccessToken` | `string` | Session-scoped JWT (`read:sessions:{chatId} + write:sessions:{chatId}`). Refreshed automatically on 401/403 via `accessToken`. |
+| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream after a reload. |
+| `isStreaming` | `boolean \| undefined` | **Optional.** The transport sets it internally, but you don't have to persist it — the server decides "nothing is streaming" via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) signal on reconnect. If you do persist it, the transport keeps the fast-path short-circuit. If you drop it, reconnects open the SSE and close fast on settled sessions. |
+
+### Session cleanup (frontend)
+
+Since session creation and updates are handled server-side, the frontend only needs to handle session deletion when a run ends:
+
+```tsx
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+  sessions: loadedSessions, // Restored from DB on page load
+  onSessionChange: (chatId, session) => {
+    if (!session) {
+      deleteSession(chatId); // Server action — run ended
+    }
+  },
+});
+```
+
+### Restoring on page load
+
+On page load, fetch both the messages and the session state from your database, then pass them to `useChat` and the transport. Pass `resume: true` to `useChat` when there's an existing conversation — this tells the AI SDK to reconnect to the stream via the transport.
+
+Because the underlying Session row outlives individual runs, a chat you were in yesterday resumes against the same chat — even if the original run has long since exited. The transport hydrates from the persisted state and uses `lastEventId` to resubscribe; if the client tries to send a new message and no run is alive, the server triggers a fresh continuation run on the same session before the message is appended.
+
+```tsx app/chat/[chatId]/ChatPage.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+import {
+  mintChatAccessToken,
+  startChatSession,
+  getChatMessages,
+  getSession,
+  deleteSession,
+} from "@/app/actions";
+
+// Rendered from `app/chat/[chatId]/page.tsx`, which awaits `params`
+// and forwards `chatId` into this client component:
+//
+//   export default async function Page({ params }: { params: Promise<{ chatId: string }> }) {
+//     const { chatId } = await params;
+//     return <ChatPage chatId={chatId} />;
+//   }
+export default function ChatPage({ chatId }: { chatId: string }) {
+  const [initialMessages, setInitialMessages] = useState([]);
+  const [initialSession, setInitialSession] = useState(undefined);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const [messages, session] = await Promise.all([getChatMessages(chatId), getSession(chatId)]);
+      setInitialMessages(messages);
+      setInitialSession(session ? { [chatId]: session } : undefined);
+      setLoaded(true);
+    }
+    load();
+  }, [chatId]);
+
+  if (!loaded) return null;
+
+  return (
+    <ChatClient
+      chatId={chatId}
+      initialMessages={initialMessages}
+      initialSessions={initialSession}
+    />
+  );
+}
+
+function ChatClient({ chatId, initialMessages, initialSessions }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+    sessions: initialSessions,
+    onSessionChange: (id, session) => {
+      if (!session) deleteSession(id);
+    },
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    resume: initialMessages.length > 0, // Resume if there's an existing conversation
+  });
+
+  // ... render UI
+}
+```
+
+<Info>
+  `resume: true` causes `useChat` to call `reconnectToStream` on the transport when the component
+  mounts. The transport uses the session's `lastEventId` to skip past already-seen stream events, so
+  the frontend only receives new data. Only enable `resume` when there are existing messages — for
+  brand new chats, there's nothing to reconnect to.
+</Info>
+
+<Note>
+  After resuming, `useChat`'s built-in `stop()` won't send the stop signal to the backend because
+  the AI SDK doesn't pass its abort signal through `reconnectToStream`. Use
+  `transport.stopGeneration(chatId)` for reliable stop behavior after resume — see
+  [Stop generation](#stop-generation) for the recommended pattern.
+</Note>
+
+<Warning>
+  In React strict mode (enabled by default in Next.js dev), you may see a `TypeError: Cannot read
+  properties of undefined (reading 'state')` in the console when using `resume`. This is a [known
+  bug in the AI SDK](https://github.com/vercel/ai/issues/8477) caused by React strict mode
+  double-firing the resume effect. The error is caught internally and **does not affect
+  functionality** — streaming and message display work correctly. It only appears in development and
+  will not occur in production builds.
+</Warning>
+
+### Network resilience
+
+You don't need to handle network drops, mobile background-kills, or Safari bfcache restores. The transport retries indefinitely with bounded backoff, reconnects on `online` / tab refocus / `pageshow` with `event.persisted`, and uses `Last-Event-ID` to resume without dropping chunks. See the [changelog entry](/ai-chat/changelog) for the gory details.
+
+## Client data and metadata
+
+### Transport-level client data
+
+Set default client data on the transport that's included in every request. When the task uses `clientDataSchema`, this is type-checked to match:
+
+```ts
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+  clientData: { userId: currentUser.id },
+});
+```
+
+The transport threads `clientData` through three places automatically: into `startSession`'s `params.clientData` for the first run's `payload.metadata`, into per-turn `metadata` on every `.in/append` chunk, and live-updates if the option value changes between renders (so React-driven values like the current user work without reconstructing the transport).
+
+### Per-message metadata
+
+Pass metadata with individual messages via `sendMessage`. Per-message values are merged with transport-level client data (per-message wins on conflicts):
+
+```ts
+sendMessage({ text: "Hello" }, { metadata: { model: "gpt-4o", priority: "high" } });
+```
+
+### Typed client data with clientDataSchema
+
+Instead of manually parsing `clientData` with Zod in every hook, pass a `clientDataSchema` to `chat.agent`. The schema validates the data once per turn, and `clientData` is typed in all hooks and `run`:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  clientDataSchema: z.object({
+    model: z.string().optional(),
+    userId: z.string(),
+  }),
+  onChatStart: async ({ chatId, clientData }) => {
+    // clientData is typed as { model?: string; userId: string }
+    await db.chat.create({
+      data: { id: chatId, userId: clientData.userId },
+    });
+  },
+  run: async ({ messages, clientData, signal }) => {
+    // Same typed clientData — no manual parsing needed
+    return streamText({
+      model: openai(clientData?.model ?? "gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+The schema also types the `clientData` option on the frontend transport:
+
+```ts
+// TypeScript enforces that clientData matches the schema
+const transport = useTriggerChatTransport<typeof myChat>({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+  clientData: { userId: currentUser.id },
+});
+```
+
+Supports Zod, ArkType, Valibot, and other schema libraries supported by the SDK.
+
+## Stop generation
+
+Use `transport.stopGeneration(chatId)` to stop the current generation. This sends a stop signal to the running task via input streams, aborting the current `streamText` call while keeping the run alive for the next message.
+
+`stopGeneration` works in all scenarios — including after a page refresh when the stream was reconnected via `resume`. Call it alongside `useChat`'s `stop()` to also update the frontend state:
+
+```tsx
+const { messages, sendMessage, stop: aiStop, status } = useChat({ transport });
+
+// Wrap both calls in a single stop handler
+const stop = useCallback(() => {
+  transport.stopGeneration(chatId);
+  aiStop();
+}, [transport, chatId, aiStop]);
+
+{
+  status === "streaming" && (
+    <button type="button" onClick={stop}>
+      Stop
+    </button>
+  );
+}
+```
+
+<Info>
+  `transport.stopGeneration(chatId)` handles the backend stop signal and closes
+  the SSE connection, while `aiStop()` (from `useChat`) updates the frontend
+  status to `"ready"` and fires the `onFinish` callback.
+</Info>
+
+<Tip>
+  A [PR to the AI SDK](https://github.com/vercel/ai/pull/14350) has been
+  submitted to pass `abortSignal` through `reconnectToStream`, which would make
+  `useChat`'s built-in `stop()` work after resume without needing
+  `stopGeneration`. Until that lands, use the pattern above for reliable stop
+  behavior after page refresh.
+</Tip>
+
+See [Stop generation](/ai-chat/backend#stop-generation) in the backend docs for how to handle stop signals in your task.
+
+## Tool approvals
+
+The AI SDK supports tools that require human approval before execution. To use this with `chat.agent`, define a tool with `needsApproval: true` on the backend, then handle the approval UI and configure `sendAutomaticallyWhen` on the frontend.
+
+### Backend: define an approval-required tool
+
+```ts
+import { tool } from "ai";
+import { z } from "zod";
+
+const sendEmail = tool({
+  description: "Send an email. Requires human approval before sending.",
+  inputSchema: z.object({
+    to: z.string(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  needsApproval: true,
+  execute: async ({ to, subject, body }) => {
+    await emailService.send({ to, subject, body });
+    return { sent: true, to, subject };
+  },
+});
+```
+
+Pass the tool to `streamText` in your `run` function as usual. When the model calls the tool, `chat.agent` streams a `tool-approval-request` chunk. The turn completes and the run waits for the next message.
+
+### Frontend: approval UI
+
+Import `lastAssistantMessageIsCompleteWithApprovalResponses` from the AI SDK and pass it to `sendAutomaticallyWhen`. This tells `useChat` to automatically re-send messages once all approvals have been responded to.
+
+Destructure `addToolApprovalResponse` from `useChat` and wire it to your approval buttons:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
+
+function Chat({ chatId, transport }) {
+  const { messages, sendMessage, addToolApprovalResponse, status } = useChat({
+    id: chatId,
+    transport,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+  });
+
+  const handleApprove = (approvalId: string) => {
+    addToolApprovalResponse({ id: approvalId, approved: true });
+  };
+
+  const handleDeny = (approvalId: string) => {
+    addToolApprovalResponse({ id: approvalId, approved: false, reason: "User denied" });
+  };
+
+  return (
+    <div>
+      {messages.map((msg) =>
+        msg.parts.map((part, i) => {
+          if (part.state === "approval-requested") {
+            return (
+              <div key={i}>
+                <p>Tool "{part.type}" wants to run with input:</p>
+                <pre>{JSON.stringify(part.input, null, 2)}</pre>
+                <button onClick={() => handleApprove(part.approval.id)}>Approve</button>
+                <button onClick={() => handleDeny(part.approval.id)}>Deny</button>
+              </div>
+            );
+          }
+          // ... render other parts
+        })
+      )}
+    </div>
+  );
+}
+```
+
+### How it works
+
+1. Model calls a tool with `needsApproval: true` — the turn completes with the tool in `approval-requested` state
+2. Frontend shows Approve/Deny buttons
+3. User clicks Approve — `addToolApprovalResponse` updates the tool part to `approval-responded`
+4. `sendAutomaticallyWhen` returns `true` — `useChat` re-sends the updated assistant message
+5. The transport sends the message via input streams — the backend matches it by ID and replaces the existing assistant message in the accumulator
+6. `streamText` sees the approved tool, executes it, and streams the result
+
+<Info>
+  Message IDs are kept in sync between frontend and backend automatically. The backend always
+  includes a `generateMessageId` function when streaming responses, ensuring the `start` chunk
+  carries a `messageId` that the frontend uses. This makes the ID-based matching reliable
+  for tool approval updates.
+</Info>
+
+## Sending actions
+
+Send custom actions (undo, rollback, edit) to the agent via `transport.sendAction()`. Actions wake the agent and fire only `hydrateMessages` (if configured) and `onAction` — they're not turns, so `onTurnStart` / `prepareMessages` / `onBeforeTurnComplete` / `onTurnComplete` and `run()` do not fire.
+
+For optimistic UI, mirror the action's effect on the `useChat` state via `setMessages` while the request is in flight:
+
+```tsx
+function ChatControls({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
+
+  const { setMessages } = useChat({ transport });
+
+  return (
+    <div>
+      <button
+        onClick={() => {
+          void transport.sendAction(chatId, { type: "undo" });
+          setMessages((prev) => prev.slice(0, -2));
+        }}
+      >
+        Undo last exchange
+      </button>
+      <button
+        onClick={() => transport.sendAction(chatId, { type: "rollback", targetMessageId: "msg-5" })}
+      >
+        Rollback to message
+      </button>
+    </div>
+  );
+}
+```
+
+The action payload is validated against the agent's `actionSchema` on the backend — invalid actions are rejected. See [Actions](/ai-chat/actions) for the backend setup.
+
+<Note>
+  `sendAction` returns a `ReadableStream<UIMessageChunk>`. For side-effect-only actions (where `onAction` returns `void`), the stream completes immediately with `trigger:turn-complete`. For actions where `onAction` returns a `StreamTextResult`, the stream carries the assistant chunks the same way `sendMessages` does — `useChat` consumes them automatically.
+</Note>
+
+For server-to-server usage, `AgentChat` has the same method:
+
+```ts
+const stream = await agentChat.sendAction({ type: "undo" });
+for await (const chunk of stream) {
+  if (chunk.type === "text-delta") process.stdout.write(chunk.delta);
+}
+```
+
+## Multi-tab coordination
+
+When the same chat is open in multiple browser tabs, `multiTab: true` prevents duplicate messages and syncs conversation state across tabs. Only one tab can send at a time. Other tabs enter read-only mode with real-time message updates.
+
+```tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useMultiTabChat } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+
+function Chat({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+    multiTab: true,
+  });
+
+  const { messages, setMessages, sendMessage } = useChat({
+    id: chatId,
+    transport,
+  });
+
+  const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
+
+  return (
+    <div>
+      {isReadOnly && (
+        <div className="bg-amber-50 text-amber-700 p-2 text-sm">
+          This chat is active in another tab. Messages are read-only.
+        </div>
+      )}
+      {/* message list */}
+      <input
+        disabled={isReadOnly}
+        placeholder={isReadOnly ? "Active in another tab" : "Type a message..."}
+      />
+    </div>
+  );
+}
+```
+
+### How it works
+
+1. When a tab sends a message, the transport "claims" the chatId via `BroadcastChannel`
+2. Other tabs detect the claim and enter read-only mode (`isReadOnly: true`)
+3. The active tab broadcasts its messages so read-only tabs see updates in real-time
+4. When the turn completes, the claim is released. Any tab can send next.
+5. Heartbeats detect crashed tabs (10s timeout clears stale claims)
+
+### What `useMultiTabChat` does
+
+- Returns `{ isReadOnly }` for disabling the input UI
+- Broadcasts `messages` from the active tab to other tabs
+- Calls `setMessages` on read-only tabs when messages arrive from the active tab
+- Tracks read-only state via the transport's `BroadcastChannel` coordinator
+
+<Note>
+  Multi-tab coordination is same-browser only (`BroadcastChannel` is a browser API). It gracefully degrades to a no-op in Node.js, SSR, or browsers without `BroadcastChannel` support. Cross-device coordination requires server-side involvement.
+</Note>
+
+## Self-hosting
+
+If you're self-hosting Trigger.dev, pass the `baseURL` option:
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+  baseURL: "https://your-trigger-instance.com",
+});
+```

@@ -1,0 +1,600 @@
+---
+title: "Changelog"
+sidebarTitle: "Changelog"
+description: "Pre-release updates for AI chat agents."
+---
+
+<Update label="May 16, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
+
+## `session.out` is now bounded — header-form control records + per-turn trim
+
+Long-lived chats were accumulating `session.out` records forever (every turn appends; nothing trimmed). The Sessions dashboard re-streamed the entire history from `seq_num=0` on every page load, and OOM-retry boot scanned the whole stream to find the last turn-complete. Surfaced by Arena AI: "what's the lifetime of these streams?"
+
+After this release `session.out` stays roughly **one turn long forever** at steady state. After each `turn-complete`, the agent appends an S2 `trim` command record pointing back to the previous turn-complete's seq_num. Full conversation history continues to live in the durable S3 snapshot, not on the stream. Resume across a single turn boundary still works (the previous `turn-complete` is still on the stream and S2's eventually-consistent trim window gives 10-60s of grace); resume across multiple turns of inactivity falls back to the snapshot.
+
+### What changed on the wire
+
+`trigger:turn-complete` and `trigger:upgrade-required` are no longer JSON data chunks on `session.out`. They're now **header-form control records** under a uniform `trigger-control` namespace:
+
+```
+headers:
+  ["trigger-control", "turn-complete"]
+  ["public-access-token", "eyJ..."]   // optional, refreshed JWT on turn-complete
+body: ""
+```
+
+```
+headers:
+  ["trigger-control", "upgrade-required"]
+body: ""
+```
+
+The control event names ("turn-complete", "upgrade-required") are unchanged conceptually — they just moved from `chunk.type` into a `trigger-control` header value. Body is always empty; metadata that previously rode in the chunk (e.g. `publicAccessToken`) now rides on sibling headers.
+
+`turn-complete` also picks up a new optional sibling header — `["session-in-event-id", "<seq>"]` — carrying the agent's committed-consume cursor on `.in` as of this turn. It's an agent-internal contract that lets the next worker boot seed its `.in` SSE subscription past already-processed user messages, without relying on a wall-clock-derived dedup cutoff. Custom transports should ignore the header; it has no client-side meaning.
+
+### Custom transport implementers
+
+Built-in SDK transports (`TriggerChatTransport`, `AgentChat`) handle this transparently — `onTurnComplete` fires the same way with the same payload. Custom transports filtering on `chunk.type === "trigger:turn-complete"` need to switch to the header-based filter:
+
+```ts
+import { controlSubtype } from "@trigger.dev/core/v3";
+
+const control = controlSubtype(record.headers);
+if (control === "turn-complete") {
+  // refresh token from record.headers, end turn, etc.
+}
+```
+
+The full uniform filter rule (data records vs control records vs S2 command records like `trim`) is documented at [Records on `session.out`](/ai-chat/client-protocol#records-on-session-out).
+
+### Sessions dashboard snapshot read
+
+The Sessions detail page in the trigger.dev dashboard now reads the agent's S3 snapshot first via a presigned URL, then SSE-tails from `snapshot.lastOutEventId`. Bandwidth and time-to-first-render are O(unread turns) instead of O(session lifetime). Sessions that registered a `hydrateMessages` hook (which skips snapshot writes) show only the most recent turn — those customers typically have their own DB-backed dashboards.
+
+### Breaking surface
+
+- Custom transports parsing `chunk.type` for turn-complete / upgrade-required must switch to the `trigger-control` header check.
+- Snapshot consumers should import `ChatSnapshotV1` / `ChatSnapshotV1Schema` from `@trigger.dev/core/v3` (now an exported shape, not SDK-internal).
+
+Hard cutover — no compat shim. v4.5 is prerelease.
+
+### Docs
+
+- [Records on `session.out`](/ai-chat/client-protocol#records-on-session-out) — full filter rule for data / control / command records.
+- [Resuming a stream](/ai-chat/client-protocol#resuming-a-stream) — explicit single-turn vs multi-turn-away semantics.
+- [`turn-complete` control record](/ai-chat/client-protocol#turn-complete-control-record) and [`upgrade-required` control record](/ai-chat/client-protocol#upgrade-required-control-record) — replaced the old chunk-shape docs.
+
+</Update>
+
+<Update label="May 8, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
+
+## 512 KiB `/in/append` ceiling removed for long chats — slim wire + S3 snapshot
+
+`chat.agent` long-running chats with heavy tool results were hitting the realtime API's 512 KiB body cap on `/realtime/v1/sessions/{id}/in/append` once the accumulated `UIMessage[]` history (which the wire shipped in full on every send) crossed the limit. The 413 surfaced as a CORS error in browsers and stalled chats around turn 10–30 with tool use.
+
+The wire is now **delta-only**: each `.in/append` carries at most one new `UIMessage` (the new user turn or a tool-approval response) instead of the full history. The agent rebuilds prior history at run boot from a durable JSON snapshot in object storage plus a replay of the `session.out` tail. The 512 KiB ceiling stops being pressure — slim payloads are normally a few KB regardless of chat length.
+
+```ts
+// Before — full history shipped on every send
+{ messages: [u1, a1, u2, a2, /* ... 30 turns ... */, u31], chatId, trigger: "submit-message" }
+
+// After — only the new turn
+{ message: u31, chatId, trigger: "submit-message" }
+```
+
+### What changed
+
+- **`ChatTaskWirePayload`**: `messages: UIMessage[]` is removed. Replaced by `message?: UIMessage` (singular, optional) and a dedicated `headStartMessages?: UIMessage[]` field used only by `chat.headStart` first-turn handover.
+- **Run boot**: when `hydrateMessages` is not registered, the runtime reads `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json` from object storage and replays any `session.out` chunks landed since the snapshot's cursor. Snapshot writes happen after every `onTurnComplete`, awaited so they survive an idle suspend.
+- **`hydrateMessages` short-circuit**: registering the hook skips snapshot read/write and replay entirely. Customer is the source of truth for history, same as today.
+- **`hydrateMessages.incomingMessages`**: now consistently 0-or-1-length across every trigger type. Previously `regenerate-message` and continuations occasionally shipped full history; they now ship none.
+- **`onChatStart` is now once-per-chat**: fires only on the chat's very first user message; does NOT fire on continuation runs (post-`endRun`, post-waitpoint-timeout, post-`chat.requestUpgrade`) or on OOM-retry attempts. The `continuation` and `previousRunId` fields on `ChatStartEvent` are now `@deprecated` (always `false` / `undefined` when the hook fires). Drop any `if (continuation) return;` gates from `onChatStart` — they're now unreachable. For per-turn setup that runs on continuations too, move to `onTurnStart`.
+- **Continuation boot payload**: the server now strips `message` / `messages` / `trigger` from the cached `basePayload` on continuation runs, and the SDK enters a new continuation-wait branch that waits silently on `session.in` for the next user message. Fixes a phantom-turn bug where stale boot-payload fields were replayed on every resume.
+- **OOM-retry boot**: uses the snapshot's `lastOutTimestamp` as the `session.in` cutoff, saving one stream subscription per retry.
+- **Built-in transports**: `TriggerChatTransport`, `AgentChat`, mid-stream pending-message handling, and `chat.headStart` route handler all updated to the slim shape. Existing customer code calling `transport.sendMessage(...)` / `agentChat.sendMessage(...)` is unaffected — the change is below those surfaces.
+
+### Object store configuration
+
+Snapshot read/write reuses Trigger.dev's existing object-store infrastructure — the same presigned-URL routes used for large payloads. Set `OBJECT_STORE_*` env vars on your webapp deployment if you haven't already; MinIO works locally via `OBJECT_STORE_DEFAULT_PROTOCOL`.
+
+If no object store is configured **and** no `hydrateMessages` hook is registered, conversations don't survive run boundaries (the runtime logs a warning at registration time). Either configure an object store or register `hydrateMessages`.
+
+### Breaking surface
+
+- **Custom transports**: any code constructing `ChatTaskWirePayload` directly must drop `messages` and use `message`. See the rewritten [Client Protocol](/ai-chat/client-protocol).
+- **Client-side `setMessages` no longer round-trips**: full-history mutations on the client never reached the agent before this release either, but the slim wire makes that explicit. Use server-side [`chat.history.set()`](/ai-chat/backend#chat-history) inside `onTurnStart` for compaction.
+- **Custom server-to-server senders**: code calling `apiClient.appendToSessionInput(sessionId, ...)` or hitting `/realtime/v1/sessions/{id}/in/append` directly must switch to the slim shape.
+
+Hard cutover — there is no compat shim. v4.5 is prerelease.
+
+### Docs
+
+- Rewritten [Client Protocol](/ai-chat/client-protocol) — slim payload, new `headStartMessages` field, new "How history is rebuilt" and "Head-start protocol caveat" sections.
+- New [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — end-to-end walkthrough of the snapshot model, OOM-retry interaction, crash semantics, `hydrateMessages` short-circuit.
+- New [Tool result auditing](/ai-chat/patterns/tool-result-auditing) — the `extractNewToolResults` + `onTurnComplete` / `hydrateMessages` pattern for HITL audit logging.
+- [v4.5 section of the upgrade guide](/ai-chat/upgrade-guide#v45-wire-format-change) — migration steps for custom transports and `hydrateMessages` consumers.
+- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages), [`onChatStart`](/ai-chat/lifecycle-hooks#onchatstart) — clarifications on the new `incomingMessages` and `messages` shapes.
+
+</Update>
+
+<Update label="May 7, 2026" description="0.0.0-chat-prerelease-20260507131256" tags={["SDK"]}>
+
+## `chat.history` read primitives for HITL flows
+
+Customers building human-in-the-loop tools were re-implementing the same accumulator-walking logic to figure out which tool calls were pending, which were resolved, and which results in an incoming wire message were actually new. Lifted into the SDK as five new methods on `chat.history`:
+
+| Method | Description |
+|---|---|
+| `chat.history.getPendingToolCalls()` | Tool calls on the most recent assistant message in `input-available` state — gates fresh user turns during HITL. |
+| `chat.history.getResolvedToolCalls()` | All tool calls in the chain in `output-available` or `output-error` state. |
+| `chat.history.extractNewToolResults(message)` | Tool results in `message` whose `toolCallId` is not already resolved on the chain. Most useful in `hydrateMessages` against an incoming wire message, before the runtime merges it. |
+| `chat.history.getChain()` | Same as `chat.history.all()` — alias that reads better alongside parent-aware APIs. |
+| `chat.history.findMessage(messageId)` | Direct lookup; `undefined` if absent. |
+
+```ts
+// Refuse a regenerate while a tool call is awaiting an answer
+onAction: async ({ action }) => {
+  if (action.type === "regenerate") {
+    if (chat.history.getPendingToolCalls().length > 0) return;
+    chat.history.slice(0, -1);
+  }
+},
+
+// Side-effect once per net-new tool result on incoming wire messages
+hydrateMessages: async ({ incomingMessages }) => {
+  for (const msg of incomingMessages) {
+    for (const r of chat.history.extractNewToolResults(msg)) {
+      await auditLog.record({ id: r.toolCallId, output: r.output, errorText: r.errorText });
+    }
+  }
+  return incomingMessages;
+},
+```
+
+See [`chat.history`](/ai-chat/backend#chat-history) and [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop).
+
+## Fix: HITL `addToolOutput` resume preserves the assistant message id
+
+In some HITL flows the AI SDK regenerated the assistant message id when the user's `addToolOutput` answer round-tripped back to the agent. The fresh id slipped past the runtime's id-based merge, leaving the resolved tool answer attached to a sibling assistant message instead of the head, which broke downstream dedup and rendered the tool answer twice.
+
+The runtime now records `toolCallId → head messageId` whenever an assistant with tool parts lands in the accumulator and rewrites the incoming id back via that map before the merge. Customers who had a content-match workaround for this can drop it.
+
+</Update>
+
+<Update label="May 6, 2026" description="0.0.0-chat-prerelease-20260506093419" tags={["SDK", "Breaking"]}>
+
+## `chat.agent` actions are no longer turns
+
+Submitting an action via `transport.sendAction()` previously fell through to the regular turn machinery, calling `onTurnStart`, `run()`, `onTurnComplete`, etc. — meaning every action fired an LLM call by default. The workaround was a `chat.local`-based `skipModelCall` flag read in `run()`.
+
+Actions now fire `hydrateMessages` and `onAction` only. No `onTurnStart` / `prepareMessages` / `onBeforeTurnComplete` / `onTurnComplete`, no `run()` invocation, no turn-counter increment. The trace span is named `chat action` instead of `chat turn N`.
+
+`onAction`'s return type widens: returning `void` is side-effect-only (default); returning a `StreamTextResult`, `string`, or `UIMessage` produces a model response that's auto-piped back to the frontend.
+
+### Migration
+
+If you had `run()` branching on `payload.trigger === "action"` for a model response, return your `streamText(...)` from `onAction` instead. If you persisted in `onTurnComplete`, do that work inside `onAction`. For state-only actions, just remove the skip-the-model workaround.
+
+```ts
+// before
+onAction: async ({ action }) => {
+  if (action.type === "regenerate") {
+    runState.skipModelCall = false;
+    chat.history.slice(0, -1);
+  }
+},
+run: async ({ messages, signal }) => {
+  if (runState.skipModelCall) return;
+  return streamText({ model, messages, abortSignal: signal });
+},
+
+// after
+onAction: async ({ action, messages, signal }) => {
+  if (action.type === "regenerate") {
+    chat.history.slice(0, -1);
+    return streamText({ model, messages, abortSignal: signal });
+  }
+},
+run: async ({ messages, signal }) =>
+  streamText({ model, messages, abortSignal: signal }),
+```
+
+Actions arriving when no `onAction` handler is configured now `console.warn` once and are ignored — previously they silently fell through to `run()` with an empty wire payload.
+
+</Update>
+
+<Update label="May 5, 2026" description="0.0.0-chat-prerelease-20260505140031" tags={["SDK"]}>
+
+## Fix: duplicate turn after `chat.agent` idle-suspends
+
+Every message sent to a `chat.agent` after the run idle-suspended produced two turns on the agent side instead of one — same user message, two LLM calls. Internal session-stream reconnect logic was racing the waitpoint and feeding the just-consumed message back into the next turn's input buffer. No public API change.
+
+</Update>
+
+<Update label="May 5, 2026" description="0.0.0-chat-prerelease-20260505084711" tags={["SDK"]}>
+
+## `chat.headStart` — fast first-turn for chat.agent
+
+A new opt-in flow that cuts first-turn TTFC roughly in half by running step 1's LLM call in your warm process while the chat.agent run boots in parallel. On the LLM's `tool-calls` boundary, ownership of the durable stream hands over to the agent for tool execution and step 2+. Pure-text first turns finish on the customer side with no LLM call from the trigger run at all.
+
+Measured on `claude-sonnet-4-6` (same model both sides): TTFT 2801ms → 1218ms (−57%), total turn 4180ms → 2345ms (−44%). With Head Start, first-text time is essentially the LLM TTFB floor.
+
+### Setup
+
+```ts app/api/chat/route.ts
+import { chat } from "@trigger.dev/sdk/chat-server";
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { headStartTools } from "@/lib/chat-tools/schemas";
+
+export const POST = chat.headStart({
+  agentId: "my-chat",
+  run: async ({ chat: helper }) =>
+    streamText({
+      ...helper.toStreamTextOptions({ tools: headStartTools }),
+      model: anthropic("claude-sonnet-4-6"),
+      system: "You are a helpful assistant.",
+    }),
+});
+```
+
+```tsx components/chat.tsx
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  startSession: ({ chatId, taskId, clientData }) =>
+    startChatSession({ chatId, taskId, clientData }),
+  headStart: "/api/chat",
+});
+```
+
+### Bundle isolation
+
+Tool schemas (`description` + `inputSchema`) live in their own module that imports only `ai` and `zod`. The agent task imports those schemas and adds heavy `execute` fns. The route handler imports schemas only — keeping the warm-process bundle light is what makes the win possible. Runtime "strip executes" helpers don't solve this — bundlers resolve imports at build time. See [Fast starts → Head Start setup](/ai-chat/fast-starts#setup) for the full split.
+
+### Compared to Preload
+
+Preload eagerly triggers the run on page load (good when you're confident the user *will* send a message — trades idle compute for fast TTFC). Head Start gates the run on a real first message — no idle compute, customer's process runs step 1 directly. Pick one per chat.
+
+### Works on every runtime
+
+`chat.headStart` returns a standard Web Fetch handler — `(req: Request) => Promise<Response>` — so it slots into Next.js App Router, Hono, SvelteKit, Remix / React Router v7, TanStack Start, Astro, Nitro/Nuxt, Elysia, Cloudflare Workers, Bun, Deno, and any other runtime that speaks Web Fetch. Verified runtimes: Node 18+, Bun, Deno, Workers, Vercel (Node and Edge), Netlify (Functions and Edge).
+
+For Node-only frameworks (Express, Fastify, Koa, raw `node:http`), the SDK ships `chat.toNodeListener(handler)` — converts any Web Fetch handler into a Node `(req, res)` listener with proper streaming, header translation, and client-disconnect propagation.
+
+```ts
+import express from "express";
+import { chat } from "@trigger.dev/sdk/chat-server";
+
+const handler = chat.headStart({ agentId: "my-chat", run: ... });
+
+const app = express();
+app.post("/api/chat", chat.toNodeListener(handler));
+```
+
+## Docs
+
+- New [Head Start guide](/ai-chat/fast-starts#head-start) — bundle isolation, schema/execute split, route handler setup, transport option, lifecycle, limitations.
+- [Reference](/ai-chat/reference#triggerchattransport-options) — `headStart` transport option.
+
+</Update>
+
+<Update label="May 2, 2026" description="0.0.0-chat-prerelease-20260502065709" tags={["SDK"]}>
+
+## Resilient SSE reconnection
+
+The chat transport now retries indefinitely on network drops with bounded exponential backoff (100ms initial, 5s cap, 50% jitter) instead of giving up after 5 attempts. Reconnects are immediate on `online`, on tab refocus after a long background, and on Safari bfcache restore (`pageshow` with `event.persisted`).
+
+A 60s stall detector catches silent-dead-socket cases on mobile where the OS killed the TCP socket without the reader noticing. A 30s per-attempt fetch timeout prevents stuck connections from blocking the retry loop.
+
+Resume continues to use `Last-Event-ID`, so no chunks are lost when the connection comes back. No public API change — these are defaults on `TriggerChatTransport`. Customers who built `hasActiveStream` / `isStreaming` flag tracking on their side can drop it: the transport handles the silent-but-stale case internally now.
+
+`SSEStreamSubscription` (used by `TriggerChatTransport` and `AgentChat`) gained `retryNow()` and `forceReconnect()` for callers writing custom transports, plus options to tune `maxRetries` / `retryDelayMs` / `maxRetryDelayMs` / `retryJitter` / `fetchTimeoutMs` / `stallTimeoutMs` / `nonRetryableStatuses`. `404` and `410` short-circuit retry by default (stream gone / session closed).
+
+</Update>
+
+<Update label="April 24, 2026" description="0.0.0-chat-prerelease-20260501122331" tags={["SDK", "Platform"]}>
+
+## `chat.agent` now runs on Sessions
+
+Every chat is backed by a durable Session row that outlives any single run. `externalId` = your chat ID, `type` = `"chat.agent"`. Under the hood:
+
+- Output chunks stream on `session.out` (was a run-scoped `streams.writer("chat")`).
+- Client messages and stops land on `session.in` as a [`ChatInputChunk`](/ai-chat/reference#chatinputchunk) tagged union (was two run-scoped `streams.input` definitions).
+- Wire endpoints moved from `/realtime/v1/streams/{runId}/...` to `/realtime/v1/sessions/{sessionId}/...`. See the rewritten [Client Protocol](/ai-chat/client-protocol).
+
+Public surface (`chat.agent()`, `TriggerChatTransport`, `AgentChat`, `chat.stream` / `chat.messages` / `chat.stopSignal`) is unchanged — existing apps keep working. What's new is:
+
+- **Cross-run resume is free.** A chat you were in yesterday resumes against the same `sessionId` today, even if the original run long since exited. No more lost conversations when a run idle-times-out.
+- **Inbox views via `sessions.list({type: "chat.agent"})`.** Enumerate every chat in your environment, filter by tag or status.
+- **`TriggerChatTaskResult.sessionId`** + **`ChatTaskRunPayload.sessionId`** — you can reach into the raw session via `sessions.open(payload.sessionId)` for advanced cases (writing from a sub-agent, custom transport).
+- **Dashboard Agent tab** resolves via `sessionId` and stays in sync with the live stream across runs.
+
+The full wire-level protocol (session create, channel routes, JWT scopes) is documented in [Client Protocol](/ai-chat/client-protocol).
+
+## `X-Session-Settled` — fast reconnect on idle chats
+
+When a client reconnects to `session.out` and the tail record is a `trigger:turn-complete` marker (agent finished a turn, idle-waiting or exited), the server sets `X-Session-Settled: true` and uses `wait=0` on the underlying S2 read. The SSE drains any remaining records then closes in ~1s instead of long-polling for 60s.
+
+Practical impact: `TriggerChatTransport.reconnectToStream` no longer needs a client-side `isStreaming` flag. You can drop the field from your persisted `ChatSession` state entirely — the server decides. Existing callers that still persist `isStreaming` are unaffected; `reconnectToStream` keeps the fast-path short-circuit when it's `false`.
+
+## Migration
+
+See the [Sessions Upgrade Guide](/ai-chat/upgrade-guide) for the full step-by-step — auth callback split, persisted `ChatSession` shape, server-side helpers (`chat.createStartSessionAction`, `chat.createAccessToken` for renewal), and the `clientData` validation pivot.
+
+## Docs
+
+- Rewritten [Client Protocol](/ai-chat/client-protocol) — full wire format for the new `/realtime/v1/sessions/{sessionId}/...` endpoints, JWT scopes, S2 direct-write credentials, and `Last-Event-ID` resume.
+- [Database persistence pattern](/ai-chat/patterns/database-persistence) — new `chatId`-keyed `ChatSession` shape (no more `runId`) and a warning on the `onTurnComplete` race that requires a single atomic write of `messages` + `lastEventId`.
+- [Reference](/ai-chat/reference) — added `chat.createStartSessionAction`, `chat.createAccessToken`, `ChatInputChunk`, `TriggerChatTaskResult.sessionId`, `ChatTaskRunPayload.sessionId`. The old run-scoped stream-ID constants are gone.
+- Refreshed [Backend](/ai-chat/backend), [Frontend](/ai-chat/frontend), [Server Chat](/ai-chat/server-chat), [Quick start](/ai-chat/quick-start), [Overview](/ai-chat/overview), [Features](/ai-chat/features), [Types](/ai-chat/types), [Error handling](/ai-chat/error-handling), and [Testing](/ai-chat/testing) for the session-based wiring.
+
+</Update>
+
+<Update label="April 19, 2026" description="0.0.0-chat-prerelease-20260419173457" tags={["SDK", "CLI"]}>
+
+## Agent Skills
+
+Ship reusable capabilities as folders — a `SKILL.md` plus optional scripts, references, and assets. The agent sees short descriptions in its system prompt, loads full instructions on demand via `loadSkill`, and invokes bundled scripts via `bash` — no manual wiring.
+
+`skills.define({ id, path })` registers the skill; the CLI bundles the folder into the deploy image. `chat.skills.set([...])` activates skills for the run; `chat.toStreamTextOptions()` auto-injects the preamble and tools.
+
+See the new [Agent Skills guide](/ai-chat/patterns/skills).
+
+</Update>
+
+<Update label="April 18, 2026" description="0.0.0-chat-prerelease-20260418174118" tags={["SDK"]}>
+
+## `chat.endRun()` — exit on your own terms
+
+New imperative API to exit the loop after the current turn completes, without the upgrade-required signal that `chat.requestUpgrade()` sends. Use for one-shot agents, budget-exhausted exits, or goal-reached completions.
+
+```ts
+chat.agent({
+  id: "one-shot",
+  run: async ({ messages, signal }) => {
+    chat.endRun();
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+The current turn streams normally, `onBeforeTurnComplete` / `onTurnComplete` fire, the turn-complete chunk is written, and the run exits instead of suspending. Callable from `run()`, `chat.defer()`, `onBeforeTurnComplete`, or `onTurnComplete`. See [Ending a run on your terms](/ai-chat/backend#ending-a-run-on-your-terms).
+
+## `finishReason` on turn-complete events
+
+`TurnCompleteEvent` and `BeforeTurnCompleteEvent` now include the AI SDK's `finishReason` (`"stop" | "tool-calls" | "length" | "content-filter" | "error" | "other"`). Clean signal for distinguishing a normal turn end from one paused on a pending tool call (HITL flows like `ask_user`):
+
+```ts
+onTurnComplete: async ({ finishReason, responseMessage }) => {
+  if (finishReason === "tool-calls") {
+    // Paused — assistant message has a pending tool call waiting for user input
+    await persistCheckpoint(responseMessage);
+  } else {
+    await persistCompleted(responseMessage);
+  }
+};
+```
+
+Undefined for manual `chat.pipe()` flows or aborted streams. See the new [Human-in-the-loop pattern](/ai-chat/patterns/human-in-the-loop).
+
+## User-initiated compaction pattern
+
+The [Compaction guide](/ai-chat/compaction) now covers how to wire a "Summarize conversation" button or `/compact` slash command via `actionSchema` + `onAction`. The agent summarizes on demand, rewrites history with `chat.history.set()`, and short-circuits the LLM call for action turns.
+
+Needed a small type fix for this: `ChatTaskPayload.trigger` now correctly includes `"action"`, so `run()` handlers can short-circuit with `if (trigger === "action") return` when an action doesn't need a response.
+
+## Human-in-the-loop pattern page
+
+New [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop) page walks through `ask_user`-style mid-turn user input end-to-end: defining a no-execute tool, rendering pending tool calls on the frontend with `addToolOutput` + `sendAutomaticallyWhen`, detecting paused turns via `finishReason`, and two persistence strategies (overwrite vs. checkpoint nodes).
+
+</Update>
+
+<Update label="April 18, 2026" description="0.0.0-chat-prerelease-20260418083610" tags={["SDK"]}>
+
+## Offline test harness for `chat.agent`
+
+`@trigger.dev/sdk/ai/test` now ships `mockChatAgent`, a harness that drives a `chat.agent` definition through real turns without network or task runtime. Send messages, actions, and stop signals; inspect emitted chunks; assert on hook order.
+
+```ts
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+import { MockLanguageModelV3 } from "ai/test";
+import { myAgent } from "./my-agent";
+
+const harness = mockChatAgent(myAgent, {
+  chatId: "test-1",
+  clientData: { model: new MockLanguageModelV3({ /* ... */ }) },
+});
+
+const turn = await harness.sendMessage({
+  id: "u1",
+  role: "user",
+  parts: [{ type: "text", text: "hi" }],
+});
+expect(turn.chunks).toContainEqual(
+  expect.objectContaining({ type: "text-delta", delta: "hello" }),
+);
+await harness.close();
+```
+
+### Dependency injection via locals
+
+`setupLocals` pre-seeds `locals` before `run()` starts — the pattern for injecting database clients, service stubs, and other server-side dependencies that shouldn't leak through untrusted `clientData`:
+
+```ts
+import { dbKey } from "./db";
+
+const harness = mockChatAgent(agent, {
+  chatId: "test-1",
+  setupLocals: ({ set }) => {
+    set(dbKey, testDb);
+  },
+});
+```
+
+Hooks then read the seeded value with `locals.get(dbKey)`. Falls through to the production client in real runs.
+
+See [Testing](/ai-chat/testing).
+
+## `runInMockTaskContext` — lower-level test harness
+
+`@trigger.dev/core/v3/test` now exports `runInMockTaskContext` for unit-testing any task code offline (not just chat agents). Installs in-memory managers for `locals`, `lifecycleHooks`, `runtime`, `inputStreams`, and `realtimeStreams`, plus a mock `TaskContext`. Drivers let you push data into input streams and inspect chunks written to output streams.
+
+</Update>
+
+<Update label="April 17, 2026" description="0.0.0-chat-prerelease-20260417152143" tags={["SDK"]}>
+
+## Multi-tab coordination
+
+Prevent duplicate messages when the same chat is open in multiple browser tabs. Enable with `multiTab: true` on the transport.
+
+```tsx
+const transport = useTriggerChatTransport({ task: "my-chat", multiTab: true, accessToken });
+const { messages, setMessages } = useChat({ id: chatId, transport });
+const { isReadOnly } = useMultiTabChat(transport, chatId, messages, setMessages);
+```
+
+Only one tab can send at a time. Other tabs enter read-only mode with real-time message updates via `BroadcastChannel`. When the active tab's turn completes, any tab can send next. Crashed tabs are detected via heartbeat timeout (10s).
+
+See [Multi-tab coordination](/ai-chat/frontend#multi-tab-coordination) and [`useMultiTabChat`](/ai-chat/reference#usemultitabchat).
+
+## Error stack truncation
+
+Large error stacks no longer OOM the worker process. Stacks are capped at 50 frames (top 5 + bottom 45), individual lines at 1024 chars, messages at 1000 chars. Applied in `parseError`, `sanitizeError`, and OTel span recording.
+
+</Update>
+
+<Update label="April 15, 2026" description="0.0.0-chat-prerelease-20260415164455" tags={["SDK"]}>
+
+## Fix: `resume: true` hangs on completed turns
+
+When refreshing a page after a turn completed, `useChat` with `resume: true` would hang indefinitely — `reconnectToStream` opened an SSE connection that never received data.
+
+Added `isStreaming` to session state. The transport sets it to `true` when streaming starts and `false` on `trigger:turn-complete`. `reconnectToStream` returns `null` immediately when `isStreaming` is false, so `resume: initialMessages.length > 0` is now safe to pass unconditionally.
+
+The flag flows through `onSessionChange` and is restored from `sessions` — no extra persistence code needed.
+
+</Update>
+
+<Update label="April 15, 2026" description="0.0.0-chat-prerelease-20260415152704" tags={["SDK"]}>
+
+## `hydrateMessages` — backend-controlled message history
+
+Load message history from your database on every turn instead of trusting the frontend accumulator. The hook replaces the built-in linear accumulation entirely — the backend is the source of truth.
+
+```ts
+chat.agent({
+  id: "my-chat",
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const stored = await db.getMessages(chatId);
+    if (trigger === "submit-message" && incomingMessages.length > 0) {
+      stored.push(incomingMessages[incomingMessages.length - 1]!);
+      await db.persistMessages(chatId, stored);
+    }
+    return stored;
+  },
+});
+```
+
+Tool approval updates are auto-merged after hydration — no extra handling needed.
+
+See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages).
+
+## `chat.history` — imperative message mutations
+
+Modify the accumulated message history from any hook or `run()`:
+
+```ts
+chat.history.rollbackTo(messageId);  // Undo — keep up to this message
+chat.history.remove(messageId);      // Remove one message
+chat.history.replace(id, newMsg);    // Edit a message
+chat.history.slice(0, -2);           // Remove last 2 messages
+chat.history.all();                  // Read current state
+```
+
+See [chat.history](/ai-chat/backend#chat-history).
+
+## Custom actions — `actionSchema` + `onAction`
+
+Send typed actions (undo, rollback, edit) from the frontend via `transport.sendAction()`. Actions wake the agent, fire `onAction`, then trigger a normal `run()` turn.
+
+```ts
+chat.agent({
+  id: "my-chat",
+  actionSchema: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("undo") }),
+    z.object({ type: z.literal("rollback"), targetMessageId: z.string() }),
+  ]),
+  onAction: async ({ action }) => {
+    if (action.type === "undo") chat.history.slice(0, -2);
+    if (action.type === "rollback") chat.history.rollbackTo(action.targetMessageId);
+  },
+});
+```
+
+Frontend: `transport.sendAction(chatId, { type: "undo" })`
+Server: `agentChat.sendAction({ type: "undo" })`
+
+See [Actions](/ai-chat/actions) and [Sending actions](/ai-chat/frontend#sending-actions).
+
+</Update>
+
+<Update label="April 14, 2026" description="0.0.0-chat-prerelease-20260414181032" tags={["SDK"]}>
+
+## `chat.response` — persistent data parts
+
+Added `chat.response.write()` for writing data parts that both stream to the frontend AND persist in `onTurnComplete`'s `responseMessage` and `uiMessages`.
+
+```ts
+// Persists to responseMessage.parts — available in onTurnComplete
+chat.response.write({ type: "data-handover", data: { context: summary } });
+
+// Transient — streams to frontend only, not in responseMessage
+writer.write({ type: "data-progress", data: { percent: 50 }, transient: true });
+```
+
+Non-transient `data-*` chunks written via lifecycle hook `writer.write()` now automatically persist to the response message, matching the AI SDK's default semantics. Add `transient: true` for ephemeral chunks (progress indicators, status updates).
+
+See [Custom data parts](/ai-chat/features#custom-data-parts).
+
+## Tool approvals
+
+Added support for AI SDK tool approvals (`needsApproval: true`). When the model calls a tool that needs approval, the turn completes and the frontend shows approve/deny buttons. After approval, the updated assistant message is sent back and matched by ID in the accumulator.
+
+```ts
+const sendEmail = tool({
+  description: "Send an email. Requires human approval.",
+  inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
+  needsApproval: true,
+  execute: async ({ to, subject, body }) => { /* ... */ },
+});
+```
+
+Frontend setup requires `sendAutomaticallyWhen` and `addToolApprovalResponse` from `useChat`. See [Tool approvals](/ai-chat/frontend#tool-approvals).
+
+## `transport.stopGeneration(chatId)`
+
+Added `stopGeneration` method to `TriggerChatTransport` for reliable stop after page refresh / stream reconnect. Works regardless of whether the AI SDK passes `abortSignal` through `reconnectToStream`.
+
+```tsx
+const stop = useCallback(() => {
+  transport.stopGeneration(chatId);
+  aiStop(); // also update useChat state
+}, [transport, chatId, aiStop]);
+```
+
+See [Stop generation](/ai-chat/frontend#stop-generation).
+
+## `generateMessageId` support
+
+`generateMessageId` can now be passed via `uiMessageStreamOptions` to control response message ID generation (e.g. UUID-v7). The backend automatically passes `originalMessages` to `toUIMessageStream` so message IDs are consistent between frontend and backend.
+
+## Bug fixes
+
+- **`onTurnComplete` not called**: Fixed `turnCompleteResult?.lastEventId` TypeError that silently skipped `onTurnComplete` when `writeTurnCompleteChunk` returned undefined in dev.
+- **Stop during streaming**: Added 2s timeout on `onFinishPromise` so `onBeforeTurnComplete` and `onTurnComplete` fire even when the AI SDK's `onFinish` doesn't fire after abort.
+- **`toStreamTextOptions` without `chat.prompt.set()`**: `prepareStep` injection (compaction, steering, background context) now works even when the user passes `system` directly to `streamText` instead of using `chat.prompt.set()`.
+- **Background queue vs tool approvals**: Background context injection is now skipped when the last accumulated message is a `tool` message, preventing it from breaking `streamText`'s `collectToolApprovals`.
+
+</Update>

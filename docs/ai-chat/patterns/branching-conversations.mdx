@@ -1,0 +1,279 @@
+---
+title: "Branching conversations"
+sidebarTitle: "Branching conversations"
+description: "Build ChatGPT-style conversation trees with edit, regenerate, undo, and branch switching using hydrateMessages, chat.history, and actions."
+---
+
+Most chat UIs treat conversations as linear sequences. But real conversations branch — users edit previous messages, regenerate responses, undo exchanges, and explore alternative paths. This pattern shows how to build a branching conversation system using `hydrateMessages`, `chat.history`, and custom actions.
+
+## Data model
+
+The standard approach (used by ChatGPT, Open WebUI, LibreChat, and others) stores messages as a tree with parent pointers:
+
+```ts
+// Each message is a node in the tree
+type ChatNode = {
+  id: string;
+  chatId: string;
+  parentId: string | null; // null for root
+  role: "user" | "assistant";
+  message: UIMessage; // the full AI SDK message
+  createdAt: Date;
+};
+```
+
+A conversation is a tree of nodes. The **active branch** is resolved by walking from a leaf node up through `parentId` pointers to the root, then reversing:
+
+```
+root
+├── user: "Hello"
+│   └── assistant: "Hi there!"
+│       ├── user: "What's the weather?" ← branch A
+│       │   └── assistant: "It's sunny!"
+│       └── user: "Tell me a joke" ← branch B (active)
+│           └── assistant: "Why did the..."
+```
+
+Switching branches means changing which leaf is "active" — the same tree, different path.
+
+## Backend setup
+
+### Store: tree operations
+
+Define helpers that read and write the node tree. Adapt to your database:
+
+```ts
+// Resolve the active path: walk from leaf to root, reverse
+async function getActiveBranch(chatId: string): Promise<UIMessage[]> {
+  const nodes = await db.chatNode.findMany({ where: { chatId } });
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+
+  // Find active leaf (most recently created leaf node)
+  const childIds = new Set(nodes.map((n) => n.parentId).filter(Boolean));
+  const leaves = nodes.filter((n) => !childIds.has(n.id));
+  const activeLeaf = leaves.sort((a, b) => b.createdAt - a.createdAt)[0];
+  if (!activeLeaf) return [];
+
+  // Walk to root
+  const path: UIMessage[] = [];
+  let current: ChatNode | undefined = activeLeaf;
+  while (current) {
+    path.unshift(current.message);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+  }
+  return path;
+}
+
+// Append a message as a child of the current leaf
+async function appendMessage(chatId: string, message: UIMessage): Promise<void> {
+  const branch = await getActiveBranch(chatId);
+  const parentId = branch.length > 0 ? branch[branch.length - 1]!.id : null;
+
+  await db.chatNode.create({
+    data: { id: message.id, chatId, parentId, role: message.role, message, createdAt: new Date() },
+  });
+}
+```
+
+### Agent: hydration + actions
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+export const myChat = chat.agent({
+  id: "branching-chat",
+
+  // Load the active branch from the DB on every turn.
+  // The frontend's message array is ignored — the tree is the source of truth.
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    if (trigger === "submit-message" && incomingMessages.length > 0) {
+      await appendMessage(chatId, incomingMessages[incomingMessages.length - 1]!);
+    }
+    return getActiveBranch(chatId);
+  },
+
+  actionSchema: z.discriminatedUnion("type", [
+    // Edit a previous user message — creates a sibling node in the tree
+    z.object({ type: z.literal("edit"), messageId: z.string(), text: z.string() }),
+    // Switch to a different branch by selecting a leaf node
+    z.object({ type: z.literal("switch-branch"), leafId: z.string() }),
+    // Undo the last user + assistant exchange
+    z.object({ type: z.literal("undo") }),
+  ]),
+
+  onAction: async ({ action, chatId }) => {
+    switch (action.type) {
+      case "edit": {
+        // Find the original message's parent, create a sibling with new content
+        const original = await db.chatNode.findUnique({ where: { id: action.messageId } });
+        if (!original) break;
+
+        const newId = generateId();
+        await db.chatNode.create({
+          data: {
+            id: newId,
+            chatId,
+            parentId: original.parentId, // same parent = sibling
+            role: "user",
+            message: { id: newId, role: "user", parts: [{ type: "text", text: action.text }] },
+            createdAt: new Date(),
+          },
+        });
+        // Active branch now resolves through the new sibling (most recent leaf)
+        break;
+      }
+
+      case "switch-branch": {
+        // Mark this leaf as the most recently accessed so getActiveBranch picks it
+        await db.chatNode.update({
+          where: { id: action.leafId },
+          data: { createdAt: new Date() },
+        });
+        break;
+      }
+
+      case "undo": {
+        // Remove the last two nodes (user + assistant) from the active branch
+        const branch = await getActiveBranch(chatId);
+        if (branch.length >= 2) {
+          const lastTwo = branch.slice(-2);
+          await db.chatNode.deleteMany({
+            where: { id: { in: lastTwo.map((m) => m.id) } },
+          });
+        }
+        break;
+      }
+    }
+
+    // Reload the (now modified) active branch into the accumulator
+    const updated = await getActiveBranch(chatId);
+    chat.history.set(updated);
+  },
+
+  onTurnComplete: async ({ chatId, responseMessage }) => {
+    // Persist the assistant's response as a new node
+    if (responseMessage) {
+      await appendMessage(chatId, responseMessage);
+    }
+  },
+
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: openai("gpt-4o"),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+## Frontend
+
+### Sending actions
+
+Wire up edit, undo, and branch switching to the transport:
+
+```tsx
+function MessageActions({ message, chatId }: { message: UIMessage; chatId: string }) {
+  const transport = useTransport();
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+
+  if (message.role !== "user") return null;
+
+  return (
+    <div>
+      {editing ? (
+        <form onSubmit={() => {
+          transport.sendAction(chatId, { type: "edit", messageId: message.id, text: editText });
+          setEditing(false);
+        }}>
+          <input value={editText} onChange={(e) => setEditText(e.target.value)} />
+          <button type="submit">Save</button>
+        </form>
+      ) : (
+        <button onClick={() => { setEditText(getMessageText(message)); setEditing(true); }}>
+          Edit
+        </button>
+      )}
+    </div>
+  );
+}
+```
+
+### Branch navigation
+
+To show the `< 2/3 >` sibling switcher, query the tree for siblings at each fork point. This is a frontend concern — the backend exposes the data, the UI navigates it.
+
+```tsx
+function BranchSwitcher({ message, chatId, siblings }: {
+  message: UIMessage;
+  chatId: string;
+  siblings: { id: string; createdAt: string }[];
+}) {
+  const transport = useTransport();
+  if (siblings.length <= 1) return null;
+
+  const currentIndex = siblings.findIndex((s) => s.id === message.id);
+
+  return (
+    <div>
+      <button
+        disabled={currentIndex === 0}
+        onClick={() => {
+          // Find the leaf of the previous sibling's subtree
+          transport.sendAction(chatId, {
+            type: "switch-branch",
+            leafId: siblings[currentIndex - 1]!.id,
+          });
+        }}
+      >
+        &lt;
+      </button>
+      <span>{currentIndex + 1}/{siblings.length}</span>
+      <button
+        disabled={currentIndex === siblings.length - 1}
+        onClick={() => {
+          transport.sendAction(chatId, {
+            type: "switch-branch",
+            leafId: siblings[currentIndex + 1]!.id,
+          });
+        }}
+      >
+        &gt;
+      </button>
+    </div>
+  );
+}
+```
+
+<Note>
+  The sibling data (which messages share the same parent) needs to come from your database — query it when loading the chat or include it as client data. The agent only returns the active branch via `hydrateMessages`.
+</Note>
+
+## How it works
+
+| Operation | What happens |
+|-----------|-------------|
+| **Send message** | `hydrateMessages` appends the new message as a child of the current leaf, returns the active path |
+| **Edit message** | `onAction` creates a sibling node with the same parent. The new node becomes the latest leaf, so `hydrateMessages` resolves through it. LLM responds to the edited history |
+| **Regenerate** | Same as edit — create a new assistant sibling. The AI SDK's `regenerate()` handles this via `trigger: "regenerate-message"` |
+| **Undo** | `onAction` removes the last two nodes. `chat.history.set()` updates the accumulator. LLM responds to the earlier state |
+| **Switch branch** | `onAction` updates which leaf is "active". `hydrateMessages` loads the new path. LLM responds to the switched context |
+
+## Design notes
+
+- **Messages are immutable** — edits create siblings, not mutations. This preserves full history for analytics and auditing.
+- **The tree lives in your database** — the agent loads a linear path from it via `hydrateMessages`. The agent itself doesn't know about the tree structure.
+- **`hydrateMessages` + `onAction` + `chat.history`** are the three primitives. Hydration loads the active path, actions modify the tree, and `chat.history.set()` syncs the accumulator after tree modifications.
+- **Frontend owns navigation** — the `< 2/3 >` UI, sibling queries, and branch switching triggers are client-side concerns. The backend just processes actions and returns responses.
+
+## See also
+
+- [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) — backend-controlled message history
+- [Actions](/ai-chat/actions) — custom actions with `actionSchema` and `onAction`
+- [`chat.history`](/ai-chat/backend#chat-history) — imperative history mutations
+- [Database persistence](/ai-chat/patterns/database-persistence) — basic persistence pattern (linear)
