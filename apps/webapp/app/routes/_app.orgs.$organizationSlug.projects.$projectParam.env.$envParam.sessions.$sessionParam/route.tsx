@@ -79,6 +79,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
     environmentId: environment.id,
     sessionParam,
+    projectExternalRef: project.externalRef,
+    environmentSlug: environment.slug,
   });
 
   if (!session) {

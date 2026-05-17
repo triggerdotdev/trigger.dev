@@ -19,10 +19,45 @@ import { TriggerChatTransport, createChatTransport } from "./chat.js";
  * parse-once, `=== "object"` → use as-is). We pick the object form
  * here for test simplicity.
  */
+/**
+ * Encode test chunks as a session-stream v2 SSE batch event. Each chunk
+ * becomes one S2 record; chunks of shape `{type: "trigger:turn-complete"}`
+ * or `{type: "trigger:upgrade-required"}` are translated into header-form
+ * control records (empty body, `trigger-control` header) to match the
+ * production wire shape.
+ */
 function sseEncode(chunks: (UIMessageChunk | Record<string, unknown>)[]): string {
-  return chunks
-    .map((chunk, i) => `id: ${i}\ndata: ${JSON.stringify(chunk)}\n\n`)
-    .join("");
+  let nextSeq = 1;
+  const records = chunks.map((chunk, i) => {
+    const partId = `p-${i}`;
+    const type = (chunk as { type?: unknown }).type;
+    if (type === "trigger:turn-complete") {
+      const headers: Array<[string, string]> = [["trigger-control", "turn-complete"]];
+      const token = (chunk as { publicAccessToken?: string }).publicAccessToken;
+      if (token) headers.push(["public-access-token", token]);
+      return {
+        body: "",
+        seq_num: nextSeq++,
+        timestamp: 1700000000000 + i,
+        headers,
+      };
+    }
+    if (type === "trigger:upgrade-required") {
+      return {
+        body: "",
+        seq_num: nextSeq++,
+        timestamp: 1700000000000 + i,
+        headers: [["trigger-control", "upgrade-required"]],
+      };
+    }
+    return {
+      body: JSON.stringify({ data: chunk, id: partId }),
+      seq_num: nextSeq++,
+      timestamp: 1700000000000 + i,
+      headers: [],
+    };
+  });
+  return `event: batch\ndata: ${JSON.stringify({ records })}\n\n`;
 }
 
 function createSSEStream(sseText: string): ReadableStream<Uint8Array> {
@@ -127,7 +162,13 @@ function defaultSseResponse(
 ): Response {
   return new Response(createSSEStream(sseEncode(chunks)), {
     status: 200,
-    headers: { "content-type": "text/event-stream" },
+    headers: {
+      "content-type": "text/event-stream",
+      // Session streams are always v2 in production — batch format
+      // with one S2 record per SSE event. The legacy v1 path is for
+      // run-scoped Redis streams.
+      "X-Stream-Version": "v2",
+    },
   });
 }
 

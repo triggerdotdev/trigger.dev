@@ -46,6 +46,28 @@ export interface SessionStreamManager {
   setLastSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
   /**
+   * Highest sequence number that has been *consumed* on the channel —
+   * delivered to a `once()` waiter or shifted off the buffer into one.
+   * Distinct from {@link lastSeqNum}, which advances on every received
+   * record regardless of whether anything consumed it. Used by
+   * `chat.agent` to persist the `.in` resume cursor on each
+   * `turn-complete` control record so the next worker boot can resume
+   * the channel from this point without replaying processed messages.
+   */
+  lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined;
+
+  /**
+   * Seed the committed-consume cursor at worker boot — e.g. from the
+   * `session-in-event-id` header on the latest `turn-complete` on
+   * `.out`. Monotonic: only ever advances forward, never backwards.
+   */
+  setLastDispatchedSeqNum(
+    sessionId: string,
+    io: SessionChannelIO,
+    seqNum: number
+  ): void;
+
+  /**
    * Set a per-stream lower-bound SSE timestamp. Records whose timestamp
    * is `<= minTimestamp` are dropped before dispatch. Used by chat.agent
    * on OOM-retry boot to skip session.in records belonging to turns

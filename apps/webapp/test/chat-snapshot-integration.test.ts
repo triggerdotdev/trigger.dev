@@ -49,7 +49,6 @@ function makeSnapshot(opts: { messages?: UIMessage[]; lastOutEventId?: string } 
       },
     ],
     lastOutEventId: opts.lastOutEventId ?? "evt-42",
-    lastOutTimestamp: 1_700_000_000_500,
   };
 }
 

@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import {
+  ApiClient,
+  controlSubtype,
+  SSEStreamSubscription,
+  TRIGGER_CONTROL_SUBTYPE,
+} from "@trigger.dev/core/v3";
 import { toolsMetadata } from "../config.js";
 import { CommonProjectsInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
@@ -390,49 +395,73 @@ async function collectAgentResponse(
         session.lastEventId = value.id;
       }
 
+      // Trigger control records (turn-complete, upgrade-required) ride
+      // on headers — see `client-protocol.mdx#records-on-session-out`.
+      // Data records carry UIMessageChunks on `value.chunk`.
+      //
+      // Cross-version bridge: an agent SDK that hasn't been redeployed
+      // yet still writes turn-complete / upgrade-required as
+      // `chunk.type` data records. Map those into `controlValue` so the
+      // existing break / continuation paths fire for both shapes.
+      let controlValue = controlSubtype(value.headers);
+      if (!controlValue && value.chunk && typeof value.chunk === "object") {
+        const chunk = value.chunk as { type?: unknown };
+        if (chunk.type === "trigger:turn-complete") {
+          controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+        } else if (chunk.type === "trigger:upgrade-required") {
+          controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+        } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+          // Unknown legacy `trigger:*` type — drop so it doesn't reach
+          // the chunk handler as a UIMessageChunk.
+          continue;
+        }
+      }
+
+      if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+        break;
+      }
+
+      if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
+        // Agent requested upgrade — trigger continuation. Same session,
+        // new run — reuse sessionId, swap runId. Slim-wire: ship only
+        // the latest user message as the turn-N delta; prior turns
+        // come back via snapshot+replay on the new run's boot.
+        const lastUserMessage = [...session.messages]
+          .reverse()
+          .find((m) => m.role === "user");
+        const previousRunId = session.runId;
+        const result = await session.apiClient.triggerTask(session.agentId, {
+          payload: {
+            message: lastUserMessage,
+            chatId: session.chatId,
+            sessionId: session.sessionId,
+            trigger: "submit-message",
+            metadata: session.clientData,
+            continuation: true,
+            previousRunId,
+          },
+          options: {
+            payloadType: "application/json",
+            tags: [`chat:${session.chatId}`],
+          },
+        });
+        session.runId = result.id;
+        // Keep session.lastEventId pointing at the upgrade-required
+        // record's seq (set above when the part arrived). The recursive
+        // subscribe resumes right after that marker, so we don't replay
+        // the entire session.out stream — which would hit a historical
+        // turn-complete and break the loop with empty/old text. The outer
+        // `finally` block releases the reader before the recursion runs.
+        return collectAgentResponse(session, depth + 1);
+      }
+
       // v2 (session) SSE already parses record.body.data, so `chunk` is
-      // the UIMessageChunk object written by the agent.
+      // the UIMessageChunk object written by the agent. Any legacy
+      // `trigger:*` data record was already mapped to `controlValue`
+      // (and either broke the loop, triggered continuation, or got
+      // dropped) above; we only see real UIMessageChunks here.
       if (value.chunk != null && typeof value.chunk === "object") {
         const chunk = value.chunk as Record<string, unknown>;
-
-        if (chunk.type === "trigger:turn-complete") {
-          break;
-        }
-
-        if (chunk.type === "trigger:upgrade-required") {
-          // Agent requested upgrade — trigger continuation. Same session,
-          // new run — reuse sessionId, swap runId. Slim-wire: ship only
-          // the latest user message as the turn-N delta; prior turns
-          // come back via snapshot+replay on the new run's boot.
-          const lastUserMessage = [...session.messages]
-            .reverse()
-            .find((m) => m.role === "user");
-          const previousRunId = session.runId;
-          const result = await session.apiClient.triggerTask(session.agentId, {
-            payload: {
-              message: lastUserMessage,
-              chatId: session.chatId,
-              sessionId: session.sessionId,
-              trigger: "submit-message",
-              metadata: session.clientData,
-              continuation: true,
-              previousRunId,
-            },
-            options: {
-              payloadType: "application/json",
-              tags: [`chat:${session.chatId}`],
-            },
-          });
-          session.runId = result.id;
-          // Keep session.lastEventId pointing at the trigger:upgrade-required
-          // chunk's id (set at line 370 when the chunk arrived). The recursive
-          // subscribe resumes right after that marker, so we don't replay the
-          // entire session.out stream — which would hit a historical
-          // trigger:turn-complete and break the loop with empty/old text.
-          reader.releaseLock();
-          // Recurse — subscribe to the new run's stream (same session.out URL)
-          return collectAgentResponse(session, depth + 1);
-        }
 
         if (chunk.type === "text-delta" && typeof chunk.delta === "string") {
           text += chunk.delta;

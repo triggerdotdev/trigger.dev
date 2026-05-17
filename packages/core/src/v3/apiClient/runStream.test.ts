@@ -442,3 +442,157 @@ describe("SSEStreamSubscription retry behavior", () => {
     expect(max - min).toBeGreaterThan(2);
   });
 });
+
+describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  type ParsedPart = { id: string; chunk: unknown; headers?: ReadonlyArray<readonly [string, string]> };
+
+  // Build a v2 batch SSE response with the given records and close.
+  function makeBatchResponse(
+    records: Array<{
+      body: string;
+      seq_num: number;
+      timestamp: number;
+      headers?: Array<[string, string]>;
+    }>
+  ) {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(`event: batch\ndata: ${JSON.stringify({ records })}\n\n`)
+        );
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v2" },
+    });
+  }
+
+  async function drain(stream: ReadableStream<ParsedPart>) {
+    const reader = stream.getReader();
+    const parts: ParsedPart[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        reader.releaseLock();
+        return parts;
+      }
+      parts.push(value as ParsedPart);
+    }
+  }
+
+  it("data records flow through with headers and parsed body", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      makeBatchResponse([
+        {
+          body: JSON.stringify({ data: { type: "text-delta", delta: "hi" }, id: "p1" }),
+          seq_num: 5,
+          timestamp: 1700000000000,
+          headers: [],
+        },
+      ])
+    );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const parts = await sub.subscribe().then(drain);
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.id).toBe("5");
+    expect(parts[0]!.chunk).toEqual({ type: "text-delta", delta: "hi" });
+    expect(parts[0]!.headers).toEqual([]);
+  });
+
+  it("S2 command records (empty-name header) are filtered out", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      makeBatchResponse([
+        {
+          body: JSON.stringify({ data: { type: "text-delta", delta: "before" }, id: "p1" }),
+          seq_num: 4,
+          timestamp: 1700000000000,
+          headers: [],
+        },
+        // Trim command record — empty-name header, opaque body.
+        {
+          body: "AAAAAAAAAAQ=",
+          seq_num: 5,
+          timestamp: 1700000000001,
+          headers: [["", "trim"]],
+        },
+        {
+          body: JSON.stringify({ data: { type: "text-delta", delta: "after" }, id: "p2" }),
+          seq_num: 6,
+          timestamp: 1700000000002,
+          headers: [],
+        },
+      ])
+    );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const parts = await sub.subscribe().then(drain);
+
+    // Trim record stripped — only the two data records survive.
+    expect(parts).toHaveLength(2);
+    expect((parts[0]!.chunk as any).delta).toBe("before");
+    expect((parts[1]!.chunk as any).delta).toBe("after");
+  });
+
+  it("trigger-control records flow with headers and undefined chunk", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      makeBatchResponse([
+        {
+          body: "",
+          seq_num: 7,
+          timestamp: 1700000000003,
+          headers: [
+            ["trigger-control", "turn-complete"],
+            ["public-access-token", "eyJ..."],
+          ],
+        },
+      ])
+    );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const parts = await sub.subscribe().then(drain);
+
+    // Control record passes through so consumers can route by header,
+    // but its `chunk` is undefined (empty body).
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.chunk).toBeUndefined();
+    expect(parts[0]!.headers).toEqual([
+      ["trigger-control", "turn-complete"],
+      ["public-access-token", "eyJ..."],
+    ]);
+  });
+
+  it("malformed data record body does not crash; cursor still advances", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      makeBatchResponse([
+        {
+          body: "not json at all",
+          seq_num: 8,
+          timestamp: 1700000000004,
+          headers: [],
+        },
+        {
+          body: JSON.stringify({ data: { type: "text-delta", delta: "x" }, id: "p3" }),
+          seq_num: 9,
+          timestamp: 1700000000005,
+          headers: [],
+        },
+      ])
+    );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const parts = await sub.subscribe().then(drain);
+
+    // Malformed record still propagates with undefined chunk (matches
+    // control-record shape); next data record is fine.
+    expect(parts).toHaveLength(2);
+    expect(parts[0]!.chunk).toBeUndefined();
+    expect((parts[1]!.chunk as any).delta).toBe("x");
+  });
+});

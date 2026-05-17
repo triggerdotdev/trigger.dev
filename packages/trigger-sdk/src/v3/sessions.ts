@@ -31,7 +31,10 @@ import {
   runtime,
   sessionStreams,
   taskContext,
+  trimSessionStream,
+  writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
+import type { ControlEvent, StreamWriteResult } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { tracer } from "./tracer.js";
@@ -390,6 +393,7 @@ export class SessionOutputChannel {
       lastEventId:
         options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
+      onControl: options?.onControl,
       onComplete: options?.onComplete,
       onError: options?.onError,
     });
@@ -463,6 +467,38 @@ export class SessionOutputChannel {
 
       throw error;
     }
+  }
+
+  /**
+   * Write a single Trigger control record to `.out`. The record carries a
+   * `trigger-control` header valued with `subtype` plus any sibling
+   * `extraHeaders`; the body is empty. Control records are filtered out of
+   * the consumer-facing chunk stream by the SDK transport — readers route
+   * them via the `onControl` callback instead.
+   *
+   * The returned `lastEventId` is the S2 seq_num of the written record,
+   * useful for trim chains (e.g. trim back to the previous turn-complete).
+   */
+  async writeControl(
+    subtype: string,
+    extraHeaders?: ReadonlyArray<readonly [string, string]>
+  ): Promise<StreamWriteResult> {
+    const apiClient = apiClientManager.clientOrThrow();
+    return writeSessionControlRecord(apiClient, this.sessionId, "out", subtype, extraHeaders);
+  }
+
+  /**
+   * Append an S2 `trim` command record to `.out`. Records with seq_num
+   * less than `earliestSeqNum` are eventually removed from the stream.
+   *
+   * Idempotent and monotonic at S2's layer (`max(existing, min(provided,
+   * current_tail))`) — backward trims are silently no-ops for deletion
+   * but still consume a seq_num. Used by `chat.agent`'s turn loop to
+   * keep `session.out` bounded to roughly one turn at steady state.
+   */
+  async trimTo(earliestSeqNum: number): Promise<void> {
+    const apiClient = apiClientManager.clientOrThrow();
+    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum);
   }
 }
 
@@ -555,6 +591,20 @@ export class SessionInputChannel {
   /** Non-blocking peek at the head of the `.in` buffer. */
   peek<T = unknown>(): T | undefined {
     return sessionStreams.peek(this.sessionId, "in") as T | undefined;
+  }
+
+  /**
+   * The highest S2 sequence number of any record this channel has
+   * delivered to a `once()` / `wait()` consumer (or had shifted off its
+   * buffer into one). Distinct from "last received" — buffered-but-not-
+   * yet-consumed records don't count.
+   *
+   * Used by `chat.agent` to persist the `.in` resume cursor on each
+   * `turn-complete` control record, so the next worker boot can subscribe
+   * past already-processed user messages.
+   */
+  lastDispatchedSeqNum(): number | undefined {
+    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
   }
 
   /**
@@ -727,6 +777,13 @@ export type SessionSubscribeOptions<T = unknown> = {
   timeoutInSeconds?: number;
   /** Called for each SSE event with the full event metadata (id, timestamp). */
   onPart?: (part: { id: string; chunk: T; timestamp: number }) => void;
+  /**
+   * Called when a `trigger-control` record arrives on the stream (e.g.
+   * `turn-complete`, `upgrade-required`). Control records are filtered
+   * out of the consumer chunk stream — handle them here. See
+   * `docs/ai-chat/client-protocol.mdx` for the wire shape.
+   */
+  onControl?: (event: ControlEvent) => void;
   /** Called when the server signals end-of-stream. */
   onComplete?: () => void;
   /** Called on unrecoverable errors after the retry budget is exhausted. */
