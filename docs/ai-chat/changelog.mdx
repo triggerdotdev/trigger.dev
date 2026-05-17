@@ -31,6 +31,8 @@ body: ""
 
 The control event names ("turn-complete", "upgrade-required") are unchanged conceptually — they just moved from `chunk.type` into a `trigger-control` header value. Body is always empty; metadata that previously rode in the chunk (e.g. `publicAccessToken`) now rides on sibling headers.
 
+`turn-complete` also picks up a new optional sibling header — `["session-in-event-id", "<seq>"]` — carrying the agent's committed-consume cursor on `.in` as of this turn. It's an agent-internal contract that lets the next worker boot seed its `.in` SSE subscription past already-processed user messages, without relying on a wall-clock-derived dedup cutoff. Custom transports should ignore the header; it has no client-side meaning.
+
 ### Custom transport implementers
 
 Built-in SDK transports (`TriggerChatTransport`, `AgentChat`) handle this transparently — `onTurnComplete` fires the same way with the same payload. Custom transports filtering on `chunk.type === "trigger:turn-complete"` need to switch to the header-based filter:
