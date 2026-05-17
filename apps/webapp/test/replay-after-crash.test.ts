@@ -267,7 +267,6 @@ describe("replay after crash (MinIO + SDK helpers)", () => {
           { id: "a-1", role: "assistant", parts: [{ type: "text", text: "stale-assistant" }] },
         ],
         lastOutEventId: "evt-prev",
-        lastOutTimestamp: 1_700_000_000_500,
       };
 
       // Use the SDK's own writer to lay the snapshot down, then swap

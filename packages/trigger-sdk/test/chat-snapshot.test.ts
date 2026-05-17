@@ -29,7 +29,6 @@ function buildSnapshot(count = 1): ChatSnapshotV1 {
       parts: [{ type: "text" as const, text: `hello ${i}` }],
     })),
     lastOutEventId: "evt-42",
-    lastOutTimestamp: 2_000_000,
   };
 }
 
