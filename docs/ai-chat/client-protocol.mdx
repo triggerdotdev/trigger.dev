@@ -369,7 +369,7 @@ Three kinds of records can arrive on the wire. They all share the `batch` envelo
 | Kind | `headers[0][0]` | `headers` carries | `body` |
 | --- | --- | --- | --- |
 | **Data record** | _empty array or non-empty name_ | (currently none from the agent) | JSON envelope `{"data": UIMessageChunk, "id": <partId>}` |
-| **Trigger control record** | `"trigger-control"` | `["trigger-control", <subtype>]` plus subtype-specific siblings (e.g. `["public-access-token", <jwt>]` on `turn-complete`) | empty string |
+| **Trigger control record** | `"trigger-control"` | `["trigger-control", <subtype>]` plus subtype-specific siblings (e.g. `["public-access-token", <jwt>]` and `["session-in-event-id", <seq>]` on `turn-complete`) | empty string |
 | **S2 command record** | `""` (empty name) | `["", "<op>"]` (currently `"trim"`) | opaque bytes — S2-interpreted |
 
 **Uniform filter rule for custom readers:**
@@ -583,6 +583,7 @@ Signals that the agent's turn is finished — stop reading and wait for user inp
 headers:
   ["trigger-control", "turn-complete"]
   ["public-access-token", "eyJ..."]   // optional, refreshed JWT
+  ["session-in-event-id", "42"]       // optional, agent-internal resume cursor
 body: ""
 ```
 
@@ -590,6 +591,7 @@ body: ""
 | --- | --- |
 | `trigger-control: turn-complete` | Always present on this record. |
 | `public-access-token: <jwt>` (optional) | A refreshed JWT with the same session + run scopes. If present, replace your stored token. |
+| `session-in-event-id: <seq>` (optional) | Internal cursor used by the agent to resume `.in` across worker boots without replaying already-processed user messages. Custom transports should ignore this header — it carries no client-side meaning. |
 
 When you receive this record:
 1. Update `publicAccessToken` if one is included on the headers.
