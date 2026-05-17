@@ -398,7 +398,24 @@ async function collectAgentResponse(
       // Trigger control records (turn-complete, upgrade-required) ride
       // on headers — see `client-protocol.mdx#records-on-session-out`.
       // Data records carry UIMessageChunks on `value.chunk`.
-      const controlValue = controlSubtype(value.headers);
+      //
+      // Cross-version bridge: an agent SDK that hasn't been redeployed
+      // yet still writes turn-complete / upgrade-required as
+      // `chunk.type` data records. Map those into `controlValue` so the
+      // existing break / continuation paths fire for both shapes.
+      let controlValue = controlSubtype(value.headers);
+      if (!controlValue && value.chunk && typeof value.chunk === "object") {
+        const chunk = value.chunk as { type?: unknown };
+        if (chunk.type === "trigger:turn-complete") {
+          controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+        } else if (chunk.type === "trigger:upgrade-required") {
+          controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+        } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+          // Unknown legacy `trigger:*` type — drop so it doesn't reach
+          // the chunk handler as a UIMessageChunk.
+          continue;
+        }
+      }
 
       if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
         break;
@@ -439,18 +456,12 @@ async function collectAgentResponse(
       }
 
       // v2 (session) SSE already parses record.body.data, so `chunk` is
-      // the UIMessageChunk object written by the agent.
+      // the UIMessageChunk object written by the agent. Any legacy
+      // `trigger:*` data record was already mapped to `controlValue`
+      // (and either broke the loop, triggered continuation, or got
+      // dropped) above; we only see real UIMessageChunks here.
       if (value.chunk != null && typeof value.chunk === "object") {
         const chunk = value.chunk as Record<string, unknown>;
-
-        // Legacy belt-and-suspenders: prior SDK versions emitted
-        // `trigger:turn-complete` / `trigger:upgrade-required` as
-        // data records (`chunk.type`) instead of header-form control
-        // records. Filter them so an in-flight session whose `.out`
-        // was populated by an older agent doesn't stall this loop.
-        if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
-          continue;
-        }
 
         if (chunk.type === "text-delta" && typeof chunk.delta === "string") {
           text += chunk.delta;
