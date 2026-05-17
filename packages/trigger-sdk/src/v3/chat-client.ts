@@ -719,7 +719,26 @@ export class AgentChat<TAgent = unknown> {
               // Trigger control records (turn-complete, upgrade-required)
               // route by header — see `client-protocol.mdx`. Their bodies
               // are empty; everything substantive is on `value.headers`.
-              const controlValue = controlSubtype(value.headers);
+              //
+              // Cross-version bridge: an old agent SDK still writing
+              // turn-complete / upgrade-required as `chunk.type` data
+              // records would otherwise stall this loop. Fall back to
+              // the legacy chunk-type form when no header is present
+              // so the deploy-skew window between an `AgentChat`
+              // consumer and a not-yet-redeployed agent doesn't hang.
+              let controlValue = controlSubtype(value.headers);
+              if (!controlValue && value.chunk && typeof value.chunk === "object") {
+                const chunk = value.chunk as { type?: unknown };
+                if (chunk.type === "trigger:turn-complete") {
+                  controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+                } else if (chunk.type === "trigger:upgrade-required") {
+                  controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+                } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+                  // Future / unknown `trigger:*` legacy control type —
+                  // drop so it doesn't leak as a UIMessageChunk.
+                  continue;
+                }
+              }
 
               if (state.skipToTurnComplete) {
                 if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {

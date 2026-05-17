@@ -1184,7 +1184,32 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             // routed by header, body is empty. Detect via the
             // `trigger-control` header on the SSE record. Data records
             // (UIMessageChunks) fall through to the chunk path below.
-            const controlValue = controlSubtype(value.headers);
+            //
+            // Cross-version bridge: a customer who redeploys their
+            // Next.js app (new browser SDK) before their next
+            // `trigger deploy` (old agent SDK still writing turn-complete
+            // / upgrade-required as `chunk.type` data records) would
+            // otherwise hang. Fall back to the legacy chunk-type form
+            // when no header is present so the deploy-skew window
+            // closes turns correctly.
+            let controlValue = controlSubtype(value.headers);
+            let legacyChunk:
+              | { type?: string; publicAccessToken?: string }
+              | undefined;
+            if (!controlValue && value.chunk && typeof value.chunk === "object") {
+              const chunk = value.chunk as { type?: unknown; publicAccessToken?: unknown };
+              if (chunk.type === "trigger:turn-complete") {
+                controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+                legacyChunk = chunk as { type?: string; publicAccessToken?: string };
+              } else if (chunk.type === "trigger:upgrade-required") {
+                controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+              } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+                // Future / unknown `trigger:*` legacy control type from
+                // a pre-upgrade agent — drop so it doesn't reach the AI
+                // SDK as an unrecognised UIMessageChunk.
+                continue;
+              }
+            }
 
             if (state.skipToTurnComplete) {
               if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
@@ -1202,7 +1227,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
 
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
-              const refreshedToken = headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER);
+              const refreshedToken =
+                headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
+                legacyChunk?.publicAccessToken;
               if (refreshedToken) {
                 state.publicAccessToken = refreshedToken;
               }
