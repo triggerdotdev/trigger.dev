@@ -113,6 +113,10 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         this.#invokeHandler(handler, data);
       }
       this.buffer.delete(key);
+      // Keep `bufferSeqNums` in lock-step with `buffer` — without this,
+      // the parallel array desyncs and the next `#dispatch` that buffers
+      // a record would shift a stale seqNum into `lastDispatchedSeqNum`.
+      this.bufferSeqNums.delete(key);
     }
 
     return {
