@@ -5,6 +5,11 @@ import { StreamsWriterV1 } from "./streamsWriterV1.js";
 import { StreamsWriterV2 } from "./streamsWriterV2.js";
 import { StreamsWriter, StreamWriteResult } from "./types.js";
 
+export type CreateStreamResponseLike = {
+  version: string;
+  headers?: Record<string, string>;
+};
+
 export type StreamInstanceOptions<T> = {
   apiClient: ApiClient;
   baseUrl: string;
@@ -15,6 +20,14 @@ export type StreamInstanceOptions<T> = {
   requestOptions?: AnyZodFetchOptions;
   target?: "self" | "parent" | "root" | string;
   debug?: boolean;
+  /**
+   * Optional override for the create-stream call. Defaults to
+   * `apiClient.createStream(runId, "self", key, requestOptions)`. The
+   * manager passes a cached version so repeated `pipe()` calls for the
+   * same `(runId, key)` share a single PUT instead of hammering the
+   * server on every chunk.
+   */
+  createStream?: () => Promise<CreateStreamResponseLike>;
 };
 
 type StreamsWriterInstance<T> = StreamsWriterV1<T> | StreamsWriterV2<T>;
@@ -27,12 +40,17 @@ export class StreamInstance<T> implements StreamsWriter {
   }
 
   private async initializeWriter(): Promise<StreamsWriterInstance<T>> {
-    const { version, headers } = await this.options.apiClient.createStream(
-      this.options.runId,
-      "self",
-      this.options.key,
-      this.options?.requestOptions
-    );
+    const createStreamFn =
+      this.options.createStream ??
+      (() =>
+        this.options.apiClient.createStream(
+          this.options.runId,
+          "self",
+          this.options.key,
+          this.options?.requestOptions
+        ));
+
+    const { version, headers } = await createStreamFn();
 
     const parsedResponse = parseCreateStreamResponse(version, headers);
 

@@ -1,7 +1,8 @@
 import { ApiClient } from "../apiClient/index.js";
 import { ensureAsyncIterable, ensureReadableStream } from "../streams/asyncIterableStream.js";
+import { AnyZodFetchOptions } from "../zodfetch.js";
 import { taskContext } from "../task-context-api.js";
-import { StreamInstance } from "./streamInstance.js";
+import { CreateStreamResponseLike, StreamInstance } from "./streamInstance.js";
 import {
   RealtimeStreamInstance,
   RealtimeStreamOperationOptions,
@@ -21,8 +22,39 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     abortController: AbortController;
   }>();
 
+  // Cache of in-flight / resolved `createStream` responses, keyed by
+  // `${runId}:${key}`. S2 v2 access tokens are scoped to the org basin
+  // (default 1-day TTL server-side) so reusing them across repeated
+  // `pipe()` calls for the same `(runId, key)` is safe, and avoids the
+  // per-call PUT that pushes `streamId` onto `TaskRun.realtimeStreams`,
+  // which under chat-agent-style hot-loop writers caused row-lock
+  // contention on the writer DB.
+  private createStreamCache = new Map<string, Promise<CreateStreamResponseLike>>();
+
   reset(): void {
     this.activeStreams.clear();
+    this.createStreamCache.clear();
+  }
+
+  private getCachedCreateStream(
+    runId: string,
+    key: string,
+    requestOptions: AnyZodFetchOptions | undefined
+  ): Promise<CreateStreamResponseLike> {
+    const cacheKey = `${runId}:${key}`;
+    const cached = this.createStreamCache.get(cacheKey);
+    if (cached) return cached;
+
+    const promise = this.apiClient.createStream(runId, "self", key, requestOptions);
+    this.createStreamCache.set(cacheKey, promise);
+    // Evict on failure so the next call retries instead of returning a
+    // poisoned cache entry forever.
+    promise.catch(() => {
+      if (this.createStreamCache.get(cacheKey) === promise) {
+        this.createStreamCache.delete(cacheKey);
+      }
+    });
+    return promise;
   }
 
   public pipe<T>(
@@ -58,6 +90,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       requestOptions: options?.requestOptions,
       target: options?.target,
       debug: this.debug,
+      createStream: () => this.getCachedCreateStream(runId, key, options?.requestOptions),
     });
 
     // Register this stream
