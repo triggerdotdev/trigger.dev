@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --watch  -p tsconfig.build.json",
-    "db:migrate": "docker compose -p triggerdotdev-docker -f ../../docker/docker-compose.yml up clickhouse_migrator --build",
+    "db:migrate": "node ../../scripts/docker.mjs -f docker/docker-compose.yml up clickhouse_migrator --build",
     "db:migrate:down": "GOOSE_COMMAND=down pnpm run db:migrate",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism",
     "test:coverage": "vitest --sequence.concurrent=false --no-file-parallelism --coverage.enabled"

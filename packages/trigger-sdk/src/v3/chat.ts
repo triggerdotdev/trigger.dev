@@ -24,7 +24,14 @@
  */
 
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
-import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import {
+  ApiClient,
+  controlSubtype,
+  headerValue,
+  PUBLIC_ACCESS_TOKEN_HEADER,
+  SSEStreamSubscription,
+  TRIGGER_CONTROL_SUBTYPE,
+} from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 
@@ -991,10 +998,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Open an SSE subscription to the session's `.out` stream and pipe
-   * UIMessageChunks through to the AI SDK. Filters control chunks
-   * (`trigger:turn-complete`, `trigger:upgrade-required`) — the latter
-   * is purely telemetry now since the server handles the run swap
-   * inline (see `end-and-continue`).
+   * UIMessageChunks through to the AI SDK. Trigger control records
+   * (`turn-complete`, `upgrade-required` — see `trigger-control` header
+   * on `client-protocol.mdx#records-on-session-out`) are routed by
+   * header and never reach the consumer. `upgrade-required` is purely
+   * telemetry now since the server handles the run swap inline (see
+   * `end-and-continue`).
    */
   private subscribeToSessionStream(
     state: ChatSessionState,
@@ -1155,7 +1164,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
 
           while (true) {
-            let value: { id: string; chunk: unknown; timestamp: number };
+            let value: {
+              id: string;
+              chunk: unknown;
+              timestamp: number;
+              headers?: ReadonlyArray<readonly [string, string]>;
+            };
             if (primed !== undefined) {
               value = primed;
               primed = undefined;
@@ -1177,32 +1191,45 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
             if (value.id) state.lastEventId = value.id;
 
-            // Session SSE delivers raw record bodies as strings (the
-            // server wraps them in `{data, id}` for S2). Parse so the
-            // rest of the loop can treat chunks as objects.
-            let chunkObj: Record<string, unknown> | null = null;
-            if (value.chunk != null) {
-              if (typeof value.chunk === "string") {
-                try {
-                  chunkObj = JSON.parse(value.chunk) as Record<string, unknown>;
-                } catch {
-                  chunkObj = null;
-                }
-              } else if (typeof value.chunk === "object") {
-                chunkObj = value.chunk as Record<string, unknown>;
+            // Trigger control record (turn-complete, upgrade-required) —
+            // routed by header, body is empty. Detect via the
+            // `trigger-control` header on the SSE record. Data records
+            // (UIMessageChunks) fall through to the chunk path below.
+            //
+            // Cross-version bridge: a customer who redeploys their
+            // Next.js app (new browser SDK) before their next
+            // `trigger deploy` (old agent SDK still writing turn-complete
+            // / upgrade-required as `chunk.type` data records) would
+            // otherwise hang. Fall back to the legacy chunk-type form
+            // when no header is present so the deploy-skew window
+            // closes turns correctly.
+            let controlValue = controlSubtype(value.headers);
+            let legacyChunk:
+              | { type?: string; publicAccessToken?: string }
+              | undefined;
+            if (!controlValue && value.chunk && typeof value.chunk === "object") {
+              const chunk = value.chunk as { type?: unknown; publicAccessToken?: unknown };
+              if (chunk.type === "trigger:turn-complete") {
+                controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+                legacyChunk = chunk as { type?: string; publicAccessToken?: string };
+              } else if (chunk.type === "trigger:upgrade-required") {
+                controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+              } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+                // Future / unknown `trigger:*` legacy control type from
+                // a pre-upgrade agent — drop so it doesn't reach the AI
+                // SDK as an unrecognised UIMessageChunk.
+                continue;
               }
             }
-            if (!chunkObj) continue;
-            const chunk = chunkObj;
 
             if (state.skipToTurnComplete) {
-              if (chunk.type === "trigger:turn-complete") {
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
                 state.skipToTurnComplete = false;
               }
               continue;
             }
 
-            if (chunk.type === "trigger:upgrade-required") {
+            if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
               // Server has already triggered the new run via
               // `end-and-continue`; the next chunks on this same `.out`
               // stream come from v2. Filter the marker for cleanliness
@@ -1210,9 +1237,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               continue;
             }
 
-            if (chunk.type === "trigger:turn-complete") {
-              if (typeof chunk.publicAccessToken === "string") {
-                state.publicAccessToken = chunk.publicAccessToken;
+            if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+              const refreshedToken =
+                headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
+                legacyChunk?.publicAccessToken;
+              if (refreshedToken) {
+                state.publicAccessToken = refreshedToken;
               }
               state.isStreaming = false;
               this.notifySessionChange(chatId, state);
@@ -1232,7 +1262,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               return;
             }
 
-            controller.enqueue(chunk as unknown as UIMessageChunk);
+            // Data record — `value.chunk` is the parsed UIMessageChunk
+            // unwrapped from the S2 record envelope (the parser does the
+            // JSON unwrap). Drop empty/malformed payloads defensively.
+            if (value.chunk == null) continue;
+            controller.enqueue(value.chunk as UIMessageChunk);
           }
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {

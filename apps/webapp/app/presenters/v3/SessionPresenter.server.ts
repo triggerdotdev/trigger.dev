@@ -1,8 +1,11 @@
 import { type Span } from "@opentelemetry/api";
+import { chatSnapshotKeySuffix } from "@trigger.dev/core/v3";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
+import { logger } from "~/services/logger.server";
+import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
@@ -15,6 +18,8 @@ export class SessionPresenter {
     userId: string;
     environmentId: string;
     sessionParam: string;
+    projectExternalRef: string;
+    environmentSlug: string;
   }) {
     return startActiveSpan(
       "SessionPresenter.call",
@@ -33,10 +38,14 @@ export class SessionPresenter {
       userId,
       environmentId,
       sessionParam,
+      projectExternalRef,
+      environmentSlug,
     }: {
       userId: string;
       environmentId: string;
       sessionParam: string;
+      projectExternalRef: string;
+      environmentSlug: string;
     },
     rootSpan: Span
   ) {
@@ -112,6 +121,48 @@ export class SessionPresenter {
     // unused — kept here to match the existing `AgentViewAuth` shape.
     const addressingKey = session.externalId ?? session.friendlyId;
 
+    // Presign a GET URL for the agent's S3 snapshot blob. The browser
+    // fetches it directly, parses + validates, and seeds the
+    // TriggerChatTransport with the full history + lastEventId before
+    // opening the SSE. Presign succeeds regardless of whether the blob
+    // exists; the frontend handles 404 gracefully.
+    //
+    // Snapshots are only written when no `hydrateMessages` hook is
+    // registered — sessions that use `hydrateMessages` will 404 here
+    // and the dashboard falls back to seq=0 SSE (which, post-trim,
+    // shows only the most recent turn — accepted, those customers
+    // have their own DB-backed dashboards).
+    // The agent writes snapshots keyed on the session's friendlyId (the
+    // `session_*` form), which matches what the SDK's `chat.agent` payload
+    // carries as `sessionId`. Use the same key shape here so the dashboard
+    // hits the same S3 object.
+    let snapshotPresignedUrl: string | undefined;
+    try {
+      const signed = await startActiveSpan(
+        "SessionPresenter.presignSnapshot",
+        async () =>
+          generatePresignedUrl(
+            projectExternalRef,
+            environmentSlug,
+            chatSnapshotKeySuffix(session.friendlyId),
+            "GET"
+          )
+      );
+      if (signed.success) {
+        snapshotPresignedUrl = signed.url;
+      } else {
+        logger.warn("SessionPresenter: snapshot presign failed", {
+          sessionId: session.id,
+          error: signed.error,
+        });
+      }
+    } catch (error) {
+      logger.warn("SessionPresenter: snapshot presign threw", {
+        sessionId: session.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     return {
       id: session.id,
       friendlyId: session.friendlyId,
@@ -147,6 +198,7 @@ export class SessionPresenter {
         apiOrigin: env.API_ORIGIN || env.LOGIN_ORIGIN,
         sessionId: addressingKey,
         initialMessages: [],
+        snapshotPresignedUrl,
       },
     };
   }

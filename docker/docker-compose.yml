@@ -1,4 +1,12 @@
-version: "3"
+# Core local-dev stack: the minimum a contributor needs to boot the webapp.
+# For optional services (object store, observability, HTTP/2 proxy, chaos
+# tooling, ClickHouse UI, extra electric shard) see ./docker-compose.extras.yml
+# and the `pnpm run docker:full` script.
+#
+# Every host port is overridable via env vars from the root `.env` so multiple
+# instances (worktrees, branch experiments) can run side by side. See the
+# "Multiple instances" block in `.env.example` for the full set of knobs.
+name: triggerdotdev-docker
 
 volumes:
   database-data:
@@ -7,8 +15,6 @@ volumes:
   minio-data:
   clickhouse-data:
   clickhouse-logs:
-  prometheus-data:
-  grafana-data:
 
 networks:
   app_network:
@@ -16,7 +22,7 @@ networks:
 
 services:
   database:
-    container_name: database
+    container_name: ${CONTAINER_PREFIX:-}database
     build:
       context: .
       dockerfile: Dockerfile.postgres
@@ -30,7 +36,7 @@ services:
     networks:
       - app_network
     ports:
-      - 5432:5432
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     command:
       - -c
       - listen_addresses=*
@@ -40,21 +46,23 @@ services:
       - shared_preload_libraries=pg_partman_bgw
 
   redis:
-    container_name: redis
-    image: redis:7
+    container_name: ${CONTAINER_PREFIX:-}redis
+    image: redis:7@sha256:3e1b24a1a8f24ff926b15e5ace8c38a03e5657fb66e1fc7e5188e315aa5fa094
     restart: always
     volumes:
       - redis-data:/data
     networks:
       - app_network
     ports:
-      - 6379:6379
+      - "${REDIS_HOST_PORT:-6379}:6379"
 
-  # S3-compatible API for local object store (large payloads / packet offload).
-  # Host :9005 = S3 API, :9006 = web console (ClickHouse uses host :9000).
+  # S3-compatible API for the local object store (large payloads / packet
+  # offload). Host :${MINIO_API_HOST_PORT:-9005} = S3 API,
+  # host :${MINIO_CONSOLE_HOST_PORT:-9006} = web console. The webapp only
+  # routes to it when the OBJECT_STORE_* env vars are set (see .env.example).
   minio:
-    container_name: minio
-    image: minio/minio:latest
+    container_name: ${CONTAINER_PREFIX:-}minio
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: always
     command: server /data --console-address ":9001"
     environment:
@@ -63,8 +71,8 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "9005:9000"
-      - "9006:9001"
+      - "${MINIO_API_HOST_PORT:-9005}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9006}:9001"
     networks:
       - app_network
     healthcheck:
@@ -75,7 +83,7 @@ services:
       start_period: 5s
 
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       minio:
         condition: service_healthy
@@ -90,7 +98,7 @@ services:
     restart: "no"
 
   electric:
-    container_name: electric
+    container_name: ${CONTAINER_PREFIX:-}electric
     image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
     restart: always
     environment:
@@ -100,29 +108,14 @@ services:
     networks:
       - app_network
     ports:
-      - "3060:3000"
-    depends_on:
-      - database
-
-  electric-shard-1:
-    container_name: electric-shard-1
-    image: electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36
-    restart: always
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@database:5432/postgres?sslmode=disable
-      ELECTRIC_INSECURE: true
-      ELECTRIC_REPLICATION_STREAM_ID: "triggershard1"
-    networks:
-      - app_network
-    ports:
-      - "3061:3000"
+      - "${ELECTRIC_HOST_PORT:-3060}:3000"
     depends_on:
       - database
 
   clickhouse:
-    image: clickhouse/clickhouse-server:25.6.2
+    image: clickhouse/clickhouse-server:25.6.2@sha256:97f0fe0f8729569e8c9d11069acee23abadeade4889f56ca3dc3df069f28cb85
     restart: always
-    container_name: clickhouse
+    container_name: ${CONTAINER_PREFIX:-}clickhouse
     ulimits:
       nofile:
         soft: 262144
@@ -132,8 +125,8 @@ services:
       CLICKHOUSE_PASSWORD: password
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "${CLICKHOUSE_HTTP_HOST_PORT:-8123}:8123"
+      - "${CLICKHOUSE_TCP_HOST_PORT:-9000}:9000"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - clickhouse-logs:/var/log/clickhouse-server
@@ -172,102 +165,16 @@ services:
       - app_network
     command: ["goose", "${GOOSE_COMMAND:-up}"]
 
-  ch-ui:
-    image: ghcr.io/caioricciuti/ch-ui:latest
-    restart: always
-    ports:
-      - "5521:5521"
-    environment:
-      VITE_CLICKHOUSE_URL: "http://localhost:8123"
-      VITE_CLICKHOUSE_USER: "default"
-      VITE_CLICKHOUSE_PASS: "password"
-    networks:
-      - app_network
-
+  # s2-lite: open-source S2 (https://s2.dev) for local realtime streams v2.
+  # The image is distroless (no shell), so a `wget` / `curl` healthcheck
+  # always reports unhealthy even when the API is responding. No other
+  # service depends on this one, so the healthcheck is omitted.
   s2:
-    image: ghcr.io/s2-streamstore/s2
+    image: ghcr.io/s2-streamstore/s2:latest@sha256:d6ded5ca7dd619fa7c946f06e39a98f9c95c6883c8bb884e5eaa129f232c920c
     command: ["lite", "--init-file", "/s2-spec.json"]
     volumes:
       - ./config/s2-spec.json:/s2-spec.json:ro
     ports:
-      - "4566:80"
+      - "${S2_HOST_PORT:-4566}:80"
     networks:
       - app_network
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/v1/basins?limit=1 || exit 1"]
-      interval: 2s
-      timeout: 3s
-      retries: 5
-      start_period: 3s
-
-  toxiproxy:
-    container_name: toxiproxy
-    image: ghcr.io/shopify/toxiproxy:latest
-    restart: always
-    volumes:
-      - ./config/toxiproxy.json:/config/toxiproxy.json
-    ports:
-      - "30303:30303" # Proxied webapp port
-      - "8474:8474" # Toxiproxy API port
-    networks:
-      - app_network
-    command: ["-host", "0.0.0.0", "-config", "/config/toxiproxy.json"]
-
-  nginx-h2:
-    image: nginx:1.27
-    container_name: nginx-h2
-    restart: unless-stopped
-    ports:
-      - "8443:8443"
-    volumes:
-      - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./config/certs:/etc/nginx/certs:ro
-
-  # Observability stack for local development
-  otel-collector:
-    container_name: otel-collector
-    image: otel/opentelemetry-collector-contrib:0.96.0
-    restart: always
-    command: ["--config", "/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    ports:
-      - "4317:4317" # OTLP gRPC receiver
-      - "4318:4318" # OTLP HTTP receiver
-      - "8889:8889" # Prometheus exporter
-    networks:
-      - app_network
-
-  prometheus:
-    container_name: prometheus
-    image: prom/prometheus:v2.54.1
-    restart: always
-    volumes:
-      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - app_network
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-lifecycle"
-
-  grafana:
-    container_name: grafana
-    image: grafana/grafana:11.3.0
-    restart: always
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
-    ports:
-      - "3001:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: false
-    networks:
-      - app_network
-    depends_on:
-      - prometheus
