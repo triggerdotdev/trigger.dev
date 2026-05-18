@@ -77,7 +77,7 @@ import type { ResolvedSkill } from "./skill.js";
 // never touches `ai.ts`'s module graph, so the `node:*` builtins
 // pulled in transitively here never reach a client chunk.
 import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
-import { streams } from "./streams.js";
+import { streams, markChatAgentRunForStreamsWarning } from "./streams.js";
 import {
   sessions,
   type SessionHandle,
@@ -4495,6 +4495,7 @@ function chatCustomAgent<
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
       return userRun(payload, runOptions);
@@ -4591,6 +4592,7 @@ function chatAgent<
       // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
       // and is the trim target for the NEXT turn's trim record.
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
+      markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
 
       // Stamp `gen_ai.conversation.id` on the run-level span. Every
