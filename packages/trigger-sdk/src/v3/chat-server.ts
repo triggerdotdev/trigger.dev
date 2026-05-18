@@ -54,7 +54,12 @@
  * helpers like `stepCountIs` / `convertToModelMessages`).
  */
 
-import { ApiClient, SessionStreamInstance, apiClientManager } from "@trigger.dev/core/v3";
+import {
+  ApiClient,
+  SessionStreamInstance,
+  TRIGGER_CONTROL_SUBTYPE,
+  apiClientManager,
+} from "@trigger.dev/core/v3";
 import {
   convertToModelMessages,
   generateId as generateAssistantMessageId,
@@ -551,7 +556,24 @@ async function openHandoverSession(opts: {
           // transport can hydrate `state.lastEventId` for turn 2's
           // subscribe — without it, turn 2 reads session.out from the
           // start and replays turn 1 to the user.
+          //
+          // The agent's `turn-complete` control record is now header-
+          // form on S2 (see `client-protocol.mdx`), so the
+          // `for await (const chunk of agentStream)` loop below NEVER
+          // sees it as a data chunk — `subscribeToSessionStream` routes
+          // it to `onControl`. Use that to know when to stop and
+          // synthesise the data-chunk shape the browser bridge still
+          // expects (this HTTP response stream is NOT S2 and keeps the
+          // legacy chunk shape for the customer-server-to-browser hop).
           let latestEventId: string | undefined;
+          let turnComplete = false;
+          // Dedicated abort signal for this agent subscription. Aborted
+          // from `onControl` the moment turn-complete fires so the
+          // `for await` loop below exits immediately instead of blocking
+          // until S2's long-poll closes (~60s). Combined with the outer
+          // `abortController.signal` via `AbortSignal.any` so a request-
+          // wide abort still tears the subscription down.
+          const subscriptionAbort = new AbortController();
           const agentStream = await apiClient.subscribeToSessionStream<UIMessageChunk>(
             chatId,
             "out",
@@ -559,26 +581,43 @@ async function openHandoverSession(opts: {
               ...(customerLastEventId != null
                 ? { lastEventId: customerLastEventId }
                 : {}),
-              signal: abortController.signal,
+              signal: AbortSignal.any([abortController.signal, subscriptionAbort.signal]),
               onPart: (part) => {
                 if (part.id) latestEventId = part.id;
+              },
+              onControl: (event) => {
+                if (event.subtype === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+                  turnComplete = true;
+                  // Synthesise the data-chunk shape for the browser
+                  // bridge. The customer-server-to-browser response is
+                  // not S2; it keeps the legacy chunk shape so the
+                  // browser's transport can recognise turn-complete the
+                  // same way it always has.
+                  controller.enqueue({
+                    type: "trigger:turn-complete",
+                  } as unknown as UIMessageChunk);
+                  // Stop the SSE read now. Without this the `for await`
+                  // can't see the control event (control records are
+                  // never enqueued into the data stream) and would idle
+                  // until S2's long-poll timeout closes the connection.
+                  subscriptionAbort.abort();
+                }
               },
             }
           );
 
-          for await (const chunk of agentStream) {
-            controller.enqueue(chunk);
-            // The agent's run-loop emits `trigger:turn-complete` when
-            // the turn finishes. That's our cue to close — anything
-            // after is the next turn (which goes via the direct
-            // `session.in`/`session.out` path, not this endpoint).
-            if (
-              chunk &&
-              typeof chunk === "object" &&
-              (chunk as { type?: unknown }).type === "trigger:turn-complete"
-            ) {
-              break;
+          try {
+            for await (const chunk of agentStream) {
+              // Data records only — control records are routed via
+              // `onControl` above and trigger the subscription abort.
+              controller.enqueue(chunk);
+              if (turnComplete) break;
             }
+          } catch (err) {
+            // AbortError from `subscriptionAbort` is the expected exit
+            // path once turn-complete fires; surface anything else.
+            const isAbort = err instanceof Error && err.name === "AbortError";
+            if (!isAbort || !turnComplete) throw err;
           }
 
           // Final control chunk: hand the browser transport the

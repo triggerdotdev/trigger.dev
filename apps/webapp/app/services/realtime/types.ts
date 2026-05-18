@@ -2,6 +2,13 @@ export type StreamRecord = {
   data: string;
   id: string;
   seqNum: number;
+  /**
+   * S2 record headers, when the underlying backend is the v2 (S2) shape.
+   * Undefined or empty for run-scoped Redis streams. First-header empty-name
+   * is an S2 command record (trim/fence); the parser strips those before
+   * surfacing the record, so callers never see them.
+   */
+  headers?: Array<[string, string]>;
 };
 
 // Interface for stream ingestion
@@ -36,8 +43,10 @@ export type StreamResponseOptions = {
   /**
    * Session-stream-only. When `true`, the responder MAY peek the tail
    * of `.out` and short-circuit to `wait=0` + `X-Session-Settled: true`
-   * if the last chunk is a terminal marker (e.g. `trigger:turn-complete`).
-   * Used by `TriggerChatTransport.reconnectToStream` on page reload.
+   * if the last record is a terminal marker (a `trigger-control`
+   * `turn-complete` control record, ignoring any trailing S2 trim
+   * command record). Used by `TriggerChatTransport.reconnectToStream`
+   * on page reload.
    *
    * When absent/false, the responder keeps the unconditional long-poll
    * behavior — required on the active send-a-message path where the

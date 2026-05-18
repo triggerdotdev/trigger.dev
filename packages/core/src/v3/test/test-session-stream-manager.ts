@@ -145,6 +145,21 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.seqNums.set(keyFor(sessionId, io), seqNum);
   }
 
+  lastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
+    // The test harness drives records via `__sendFromTest` without seq
+    // numbers, so the committed-consume cursor stays undefined. Tests
+    // that need cursor behaviour exercise it via the real manager.
+    return undefined;
+  }
+
+  setLastDispatchedSeqNum(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _seqNum: number
+  ): void {
+    // no-op — see comment on `lastDispatchedSeqNum`.
+  }
+
   setMinTimestamp(
     _sessionId: string,
     _io: SessionChannelIO,
