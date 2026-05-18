@@ -89,15 +89,21 @@ async function asyncPool<T>(
  * @example  Combined contention — fan-out + tags + child work
  * { "count": 1000, "concurrency": 250, "childSleepMs": 500, "tags": ["combined"] }
  *
- * @example  Mollifier end-to-end smoke — enough volume to trip the proposed defaults
- *           (MOLLIFIER_TRIP_THRESHOLD=100 / MOLLIFIER_TRIP_WINDOW_MS=200), but only
- *           matters once phase 3 wires the buffer write. In phase 1, this still goes
- *           through the existing engine.trigger() path because the gate is no-op.
+ * @example  Mollifier end-to-end (Phase 2 live) — enough volume to trip the
+ *           default trip thresholds (TRIGGER_MOLLIFIER_TRIP_THRESHOLD=100 /
+ *           TRIGGER_MOLLIFIER_TRIP_WINDOW_MS=200). The webapp must be running
+ *           with TRIGGER_MOLLIFIER_ENABLED=1, TRIGGER_MOLLIFIER_SHADOW_MODE=0,
+ *           and the per-org `mollifierEnabled` flag set on the test org. The
+ *           burst should produce a mix of pass-through triggers (under the
+ *           rate ceiling) and synthesised `mollifier.queued` responses
+ *           (over the ceiling, written to the buffer and replayed by the
+ *           drainer). Observe `mollifier.decisions{outcome="mollify"}` and
+ *           dwell_ms on the resulting runs.
  * { "count": 500, "concurrency": 500 }
  *
  * @example  Shadow-mode trip observation — fire a 500-fan-out and watch the webapp logs
  *           for `mollifier.would_mollify` entries. Requires the webapp running with
- *           MOLLIFIER_ENABLED=1 MOLLIFIER_SHADOW_MODE=1.
+ *           TRIGGER_MOLLIFIER_ENABLED=1 TRIGGER_MOLLIFIER_SHADOW_MODE=1.
  * { "count": 500, "concurrency": 500 }
  */
 export const fanOutTriggerTask = task({
