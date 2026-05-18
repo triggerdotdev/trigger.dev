@@ -8,6 +8,7 @@ import type {
   aiChatRaw,
   aiChatSession,
   upgradeTestAgent,
+  cfTrustTestAgent,
 } from "@/trigger/chat";
 import type { ChatUiMessage } from "@/lib/chat-tools-schemas";
 import { prisma } from "@/lib/prisma";
@@ -20,7 +21,8 @@ export type ChatReferenceTaskId =
   | "ai-chat-hydrated"
   | "ai-chat-raw"
   | "ai-chat-session"
-  | "upgrade-test";
+  | "upgrade-test"
+  | "cf-trust-test";
 
 function isChatReferenceTaskId(id: string): id is ChatReferenceTaskId {
   return (
@@ -28,7 +30,8 @@ function isChatReferenceTaskId(id: string): id is ChatReferenceTaskId {
     id === "ai-chat-hydrated" ||
     id === "ai-chat-raw" ||
     id === "ai-chat-session" ||
-    id === "upgrade-test"
+    id === "upgrade-test" ||
+    id === "cf-trust-test"
   );
 }
 
@@ -38,7 +41,8 @@ type TaskIdentifierForChat =
   | (typeof aiChatHydrated)["id"]
   | (typeof aiChatRaw)["id"]
   | (typeof aiChatSession)["id"]
-  | (typeof upgradeTestAgent)["id"];
+  | (typeof upgradeTestAgent)["id"]
+  | (typeof cfTrustTestAgent)["id"];
 
 /**
  * Server-mediated start: creates the Session row + triggers the first
@@ -70,6 +74,7 @@ const startActionByTaskId: Record<
   "ai-chat-raw": startChatSessionFor("ai-chat-raw"),
   "ai-chat-session": startChatSessionFor("ai-chat-session"),
   "upgrade-test": startChatSessionFor("upgrade-test"),
+  "cf-trust-test": startChatSessionFor("cf-trust-test"),
 };
 
 export async function startChatSession(input: {

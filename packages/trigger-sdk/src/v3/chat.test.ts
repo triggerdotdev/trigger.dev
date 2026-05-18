@@ -609,6 +609,94 @@ describe("TriggerChatTransport", () => {
       expect(subscribe!).toContain("/realtime/v1/sessions/chat-by-chatid/out");
     });
 
+    it("functional baseURL dispatches per endpoint (in vs out)", async () => {
+      const requests: Array<{ url: string; ctxEndpoint: string | undefined }> = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push({ url: urlStr, ctxEndpoint: undefined });
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const baseURLFn = vi.fn(({ endpoint }: { endpoint: "in" | "out"; chatId: string }) =>
+        endpoint === "out"
+          ? "https://stream.example.com"
+          : "https://api.example.com"
+      );
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: baseURLFn,
+        sessions: { "chat-fn": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fn",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      const appendCalls = baseURLFn.mock.calls.filter((c) => c[0].endpoint === "in");
+      const outCalls = baseURLFn.mock.calls.filter((c) => c[0].endpoint === "out");
+      expect(appendCalls.length).toBeGreaterThanOrEqual(1);
+      expect(outCalls.length).toBeGreaterThanOrEqual(1);
+      expect(appendCalls[0]![0].chatId).toBe("chat-fn");
+      expect(outCalls[0]![0].chatId).toBe("chat-fn");
+
+      const append = requests.find((r) => isSessionStreamAppendUrl(r.url));
+      const subscribe = requests.find((r) => isSessionOutSubscribeUrl(r.url));
+      expect(append!.url.startsWith("https://api.example.com/")).toBe(true);
+      expect(subscribe!.url.startsWith("https://stream.example.com/")).toBe(true);
+    });
+
+    it("fetch override is invoked for both .in/append and .out SSE with endpoint ctx", async () => {
+      const fetchCalls: Array<{ url: string; endpoint: string; chatId: string }> = [];
+
+      const customFetch = vi.fn(
+        async (
+          url: string,
+          init: RequestInit,
+          ctx: { endpoint: "in" | "out"; chatId: string }
+        ) => {
+          fetchCalls.push({ url, endpoint: ctx.endpoint, chatId: ctx.chatId });
+          if (isSessionStreamAppendUrl(url)) return defaultAppendResponse();
+          if (isSessionOutSubscribeUrl(url)) return defaultSseResponse();
+          throw new Error(`Unexpected URL: ${url}`);
+        }
+      );
+
+      global.fetch = vi.fn().mockRejectedValue(new Error("global fetch should not be called"));
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://api.test.trigger.dev",
+        fetch: customFetch,
+        sessions: { "chat-fetch": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fetch",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      const inCalls = fetchCalls.filter((c) => c.endpoint === "in");
+      const outCalls = fetchCalls.filter((c) => c.endpoint === "out");
+      expect(inCalls.length).toBeGreaterThanOrEqual(1);
+      expect(outCalls.length).toBeGreaterThanOrEqual(1);
+      expect(inCalls[0]!.chatId).toBe("chat-fetch");
+      expect(outCalls[0]!.chatId).toBe("chat-fetch");
+    });
+
     it("routes .out SSE through streamBaseURL while appends stay on baseURL", async () => {
       const requests: string[] = [];
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
