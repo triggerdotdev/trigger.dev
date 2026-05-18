@@ -363,6 +363,88 @@ describe("MollifierDrainer resilience to transient buffer errors", () => {
     expect(result.failed).toBe(1);
     expect(handled).toEqual(["run_good"]);
   });
+
+  it("a requeue failure during retry recovery doesn't poison the rest of the batch", async () => {
+    // Regression: handler throws a retryable error → processEntry calls
+    // buffer.requeue() inside its catch block. If requeue() itself throws
+    // (Redis blip during error recovery), the rejection used to escape
+    // processOneFromEnv unwrapped and reject the runOnce Promise.all,
+    // dropping handler results from sibling envs in the same tick.
+    const handled: string[] = [];
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(["bad", "good"]),
+      pop: async (envId: string) =>
+        ({
+          runId: envId === "bad" ? "run_bad" : "run_good",
+          envId,
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        }) as any,
+      requeue: async () => {
+        throw new Error("simulated requeue failure");
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+        if (input.runId === "run_bad") throw new Error("transient");
+      },
+      concurrency: 5,
+      maxAttempts: 3,
+      isRetryable: () => true,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const result = await drainer.runOnce();
+    // Two envs scheduled, one handler succeeded (drained), one handler threw
+    // and its recovery requeue threw too — counted as failed, batch not poisoned.
+    expect(result.drained).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(new Set(handled)).toEqual(new Set(["run_bad", "run_good"]));
+  });
+
+  it("a fail() throw during terminal recovery doesn't poison the rest of the batch", async () => {
+    // Regression: handler throws a non-retryable error → processEntry calls
+    // buffer.fail() inside its catch block. If fail() itself throws, the
+    // rejection used to escape unwrapped and reject runOnce's Promise.all.
+    const handled: string[] = [];
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(["bad", "good"]),
+      pop: async (envId: string) =>
+        ({
+          runId: envId === "bad" ? "run_bad" : "run_good",
+          envId,
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        }) as any,
+      fail: async () => {
+        throw new Error("simulated fail() failure");
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+        if (input.runId === "run_bad") throw new Error("terminal");
+      },
+      concurrency: 5,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const result = await drainer.runOnce();
+    expect(result.drained).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(new Set(handled)).toEqual(new Set(["run_bad", "run_good"]));
+  });
 });
 
 describe("MollifierDrainer per-tick org cap", () => {
