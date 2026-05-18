@@ -511,8 +511,8 @@ Options for the frontend transport constructor and `useTriggerChatTransport` hoo
 | `task`                 | `string`                                                             | required                    | Task ID the transport's session is bound to. Threaded into `startSession`'s params. |
 | `accessToken`          | `(params: AccessTokenParams) => string \| Promise<string>`           | required                    | Pure refresh — mints a fresh session-scoped PAT. Called on 401/403. See [callback shape](#accesstoken-callback). |
 | `startSession`         | `(params: StartSessionParams<TClientData>) => Promise<StartSessionResult>` | optional                    | Creates the chat Session and returns the session-scoped PAT. Called on `transport.preload(chatId)` and lazily on the first `sendMessage` for any chatId without a cached PAT. See [callback shape](#startsession-callback). |
-| `baseURL`              | `string`                                                             | `"https://api.trigger.dev"` | API base URL (for self-hosted)                                              |
-| `streamBaseURL`        | `string`                                                             | falls back to `baseURL`     | Base URL for the SSE stream subscription only (`GET .../sessions/{chatId}/out`). Route the long-lived stream through a custom proxy (e.g. a Cloudflare worker capturing JA4 fingerprints for bot detection) while keeping append POSTs direct to `baseURL`. |
+| `baseURL`              | `string \| (ctx: { endpoint: "in" \| "out"; chatId: string }) => string` | `"https://api.trigger.dev"` | API base URL. String form applies to every endpoint; function form lets you pick per endpoint — e.g. route `.in/append` through a trusted edge proxy while keeping `.out` SSE direct (see [Trusted edge signals](/ai-chat/patterns/trusted-edge-signals)). |
+| `fetch`                | `(url: string, init: RequestInit, ctx: { endpoint: "in" \| "out"; chatId: string }) => Promise<Response>` | —                           | Per-request fetch override. Invoked for both `.in/append` POSTs and the `.out` SSE GET. Use for header injection (tracing), custom retries, or proxy rewrites beyond what `baseURL` can express. |
 | `headers`              | `Record<string, string>`                                             | —                           | Extra headers for API requests                                              |
 | `streamTimeoutSeconds` | `number`                                                             | `120`                       | How long to wait for stream data                                            |
 | `clientData`           | Typed by `clientDataSchema`                                          | —                           | Default client data merged into per-turn `metadata` and threaded through `startSession`'s params (so the first run's `payload.metadata` matches per-turn `metadata`). Live-updated when the option value changes. |
@@ -692,6 +692,34 @@ const transport = useTriggerChatTransport<typeof myChat>({
 ```
 
 The transport is created once on first render and reused across re-renders. Pass a type parameter for compile-time validation of the task ID.
+
+## AgentChat options
+
+Options for the server-side chat client constructor. Import `AgentChat` from `@trigger.dev/sdk/chat`.
+
+| Option                 | Type                                                                 | Default                                | Description                                                                 |
+| ---------------------- | -------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------- |
+| `agent`                | `string`                                                             | required                               | Task ID of the chat agent to converse with.                                 |
+| `id`                   | `string`                                                             | `crypto.randomUUID()`                  | Conversation ID. Used as the Session `externalId` and for tagging runs.     |
+| `clientData`           | Typed by `clientDataSchema`                                          | —                                      | Client data included in every request. Same shape as the agent's `clientDataSchema`. |
+| `session`              | `ChatSession`                                                        | —                                      | Restore a previous session (pass `lastEventId` to resume SSE).              |
+| `triggerConfig`        | `Partial<SessionTriggerConfig>`                                      | —                                      | Default trigger config used when starting a new session (machine, tags, etc.). |
+| `streamTimeoutSeconds` | `number`                                                             | `120`                                  | SSE timeout in seconds.                                                     |
+| `onTriggered`          | `(event) => void \| Promise<void>`                                   | —                                      | Fires when a new run is triggered for this session.                         |
+| `onTurnComplete`       | `(event) => void \| Promise<void>`                                   | —                                      | Fires when a turn completes. Persist `event.lastEventId` for stream resumption. |
+| `baseURL`              | `string \| (ctx: { endpoint: "in" \| "out"; chatId: string }) => string` | `apiClientManager.baseURL`             | API base URL. String form applies to every endpoint; function form picks per endpoint. Defaults to whatever `@trigger.dev/sdk` was configured with (typically `TRIGGER_API_URL`). |
+| `fetch`                | `(url: string, init: RequestInit, ctx: { endpoint: "in" \| "out"; chatId: string }) => Promise<Response>` | —                                      | Per-request fetch override. Invoked for both `.in/append` POSTs and the `.out` SSE GET. Use for header injection, custom retries, or proxy rewrites. |
+
+## createStartSessionAction options
+
+Second argument to `chat.createStartSessionAction(taskId, options?)`. Controls how the server-mediated session-create call reaches the trigger.dev API.
+
+| Option           | Type                                                                                 | Default                       | Description                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------ | ----------------------------- | --------------------------------------------------------------------------- |
+| `tokenTTL`       | `string \| number \| Date`                                                           | `"1h"`                        | TTL for the session-scoped public access token returned to the browser.     |
+| `triggerConfig`  | `Partial<SessionTriggerConfig>`                                                      | —                             | Default trigger config (machine, tags, queue, etc.). Per-call config shallow-merges on top. |
+| `baseURL`        | `string \| (ctx: { endpoint: "sessions" \| "auth"; chatId: string }) => string`      | `apiClientManager.baseURL`    | API base URL. `endpoint` is `"sessions"` for `POST /api/v1/sessions` or `"auth"` for `POST /api/v1/auth/jwt/claims` (only fires when `tokenTTL` is set). |
+| `fetch`          | `(url: string, init: RequestInit, ctx: { endpoint: "sessions" \| "auth"; chatId: string }) => Promise<Response>` | —                             | Per-request fetch override. Use to route session-create through a trusted edge proxy so `basePayload.metadata` is rewritten before reaching `api.trigger.dev`. |
 
 ## useMultiTabChat
 

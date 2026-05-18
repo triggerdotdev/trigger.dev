@@ -552,3 +552,12 @@ const transport = useTriggerChatTransport({
   baseURL: "https://your-trigger-instance.com",
 });
 ```
+
+`baseURL` also accepts a function so you can route per endpoint — useful when fronting `.in/append` with an edge proxy (e.g. to inject server-trusted signal into the wire) while keeping `.out` SSE direct:
+
+```ts
+baseURL: ({ endpoint }) =>
+  endpoint === "out" ? "https://api.trigger.dev" : "https://chat-proxy.example.com",
+```
+
+For per-request control beyond URL routing (header injection, custom retries, tracing), pass a `fetch` override. See [Trusted edge signals](/ai-chat/patterns/trusted-edge-signals) for a full proxy walkthrough.

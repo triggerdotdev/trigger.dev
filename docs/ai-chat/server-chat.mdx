@@ -246,6 +246,8 @@ const stream = await chat.reconnect();
 | `streamKey` | `string` | `"chat"` | Output stream key |
 | `streamTimeoutSeconds` | `number` | `120` | SSE timeout in seconds |
 | `triggerOptions` | `object` | `undefined` | Tags, queue, machine, priority |
+| `baseURL` | `string \| (ctx: { endpoint: "in" \| "out"; chatId: string }) => string` | `apiClientManager.baseURL` | API base URL. String form applies to every endpoint; function form picks per endpoint — useful for routing `.in/append` through an edge proxy while keeping `.out` SSE direct. Defaults to whatever `@trigger.dev/sdk` was configured with (typically `TRIGGER_API_URL`). |
+| `fetch` | `(url: string, init: RequestInit, ctx: { endpoint: "in" \| "out"; chatId: string }) => Promise<Response>` | `undefined` | Per-request fetch override. Invoked for both `.in/append` POSTs and the `.out` SSE GET. Use for header injection, custom retries, or proxy rewrites. |
 
 ## ChatStream methods
 
