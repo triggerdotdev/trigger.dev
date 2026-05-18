@@ -4,6 +4,10 @@ import { AnyZodFetchOptions } from "../zodfetch.js";
 import { StreamsWriterV2 } from "./streamsWriterV2.js";
 import { StreamsWriter, StreamWriteResult } from "./types.js";
 
+export type InitializeSessionStreamResponseLike = {
+  headers?: Record<string, string>;
+};
+
 export type SessionStreamInstanceOptions<T> = {
   apiClient: ApiClient;
   baseUrl: string;
@@ -13,6 +17,14 @@ export type SessionStreamInstanceOptions<T> = {
   signal?: AbortSignal;
   requestOptions?: AnyZodFetchOptions;
   debug?: boolean;
+  /**
+   * Optional override for the initialize-session-stream call. Defaults to
+   * `apiClient.initializeSessionStream(sessionId, io, requestOptions)`. The
+   * channel passes a cached version so repeated `pipe()` / `writer()`
+   * calls for the same `(sessionId, io)` share a single PUT instead of
+   * hammering the server on every chunk.
+   */
+  initializeSession?: () => Promise<InitializeSessionStreamResponseLike>;
 };
 
 /**
@@ -31,11 +43,16 @@ export class SessionStreamInstance<T> implements StreamsWriter {
   }
 
   private async initializeWriter(): Promise<StreamsWriterV2<T>> {
-    const response = await this.options.apiClient.initializeSessionStream(
-      this.options.sessionId,
-      this.options.io,
-      this.options?.requestOptions
-    );
+    const initializeFn =
+      this.options.initializeSession ??
+      (() =>
+        this.options.apiClient.initializeSessionStream(
+          this.options.sessionId,
+          this.options.io,
+          this.options?.requestOptions
+        ));
+
+    const response = await initializeFn();
 
     const headers = response.headers ?? {};
     const accessToken = headers["x-s2-access-token"];

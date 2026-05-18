@@ -19,6 +19,7 @@ import {
   ManualWaitpointPromise,
   WaitpointTimeoutError,
   runtime,
+  logger,
   type RealtimeDefinedInputStream,
   type InputStreamSubscription,
   type InputStreamOnceOptions,
@@ -32,9 +33,42 @@ import {
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
+import { locals } from "./locals.js";
 import { SpanStatusCode } from "@opentelemetry/api";
 
 const DEFAULT_STREAM_KEY = "default";
+
+// `chat.agent` sets this once at the top of every run via
+// `markChatAgentRunForStreamsWarning`. The flag lives on the run's
+// AsyncLocalStorage frame, so it naturally resets between runs and stays
+// invisible to subtasks (where `streams.*` is a normal API).
+const inChatAgentRunKey = locals.create<boolean>("streams.inChatAgentRun");
+// Once-per-run dedup. `streams.*` callers inside a chat.agent run get the
+// nudge on the first call and silence afterwards; a single tight loop
+// won't spam the logs.
+const chatAgentStreamsWarnedKey = locals.create<boolean>("streams.chatAgentWarned");
+
+/**
+ * Marks the current run as a `chat.agent` run so subsequent `streams.pipe` /
+ * `streams.append` / `streams.read` calls can warn the user that they're
+ * writing to a run-scoped stream rather than the chat's `session.out`.
+ *
+ * Called from inside the `chat.agent` task wrapper at the top of every run.
+ *
+ * @internal
+ */
+export function markChatAgentRunForStreamsWarning(): void {
+  locals.set(inChatAgentRunKey, true);
+}
+
+function warnIfChatAgentStreamsMisuse(method: "pipe" | "append" | "read" | "writer"): void {
+  if (!locals.get(inChatAgentRunKey)) return;
+  if (locals.get(chatAgentStreamsWarnedKey)) return;
+  locals.set(chatAgentStreamsWarnedKey, true);
+  logger.warn(
+    `streams.${method}() was called inside a chat.agent run. This writes to a run-scoped realtime stream and is NOT visible on the chat session, so the chat UI will not see these chunks. For chat output use chat.response.write() or chat.stream.* instead. See https://trigger.dev/docs/ai-chat/patterns/large-payloads. (Logged once per run; subsequent streams.${method}() calls in this run are silent.)`
+  );
+}
 
 /**
  * Pipes data to a realtime stream using the default stream key (`"default"`).
@@ -154,6 +188,7 @@ function pipeInternal<T>(
   opts: PipeStreamOptions | undefined,
   spanName: string
 ): PipeStreamResult<T> {
+  warnIfChatAgentStreamsMisuse(spanName === "streams.writer()" ? "writer" : "pipe");
   const runId = getRunIdForOptions(opts);
 
   if (!runId) {
@@ -325,6 +360,7 @@ async function readStreamImpl<T>(
   key: string,
   options?: ReadStreamOptions
 ): Promise<AsyncIterableStream<T>> {
+  warnIfChatAgentStreamsMisuse("read");
   const apiClient = apiClientManager.clientOrThrow();
 
   const span = tracer.startSpan("streams.read()", {
@@ -403,6 +439,7 @@ async function appendInternal<TPart extends BodyInit>(
   part: TPart,
   options?: AppendStreamOptions
 ): Promise<void> {
+  warnIfChatAgentStreamsMisuse("append");
   const runId = getRunIdForOptions(options);
 
   if (!runId) {

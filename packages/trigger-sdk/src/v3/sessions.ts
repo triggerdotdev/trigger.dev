@@ -34,7 +34,11 @@ import {
   trimSessionStream,
   writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
-import type { ControlEvent, StreamWriteResult } from "@trigger.dev/core/v3";
+import type {
+  ControlEvent,
+  InitializeSessionStreamResponseLike,
+  StreamWriteResult,
+} from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { tracer } from "./tracer.js";
@@ -266,7 +270,29 @@ export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
  * internally by `pipe`/`writer` — there's no public `initialize()`.
  */
 export class SessionOutputChannel {
+  // Cache of the in-flight / resolved `initializeSessionStream` PUT for
+  // this channel. Every `pipe()` / `writer()` call needs the same S2
+  // credentials, so we share a single promise instead of re-PUTing on
+  // every chunk. Hot-loop writers (per-chunk `chat.response.write` /
+  // direct `session.out.writer` calls) drop from N PUTs to 1 PUT for
+  // the lifetime of the channel. The S2 access token has a 1-day TTL
+  // server-side so reusing it across calls within a single run is safe.
+  // Evicts on failure (so the next call retries) and on `reset()`.
+  #initPromise?: Promise<InitializeSessionStreamResponseLike>;
+
   constructor(public readonly sessionId: string) {}
+
+  /**
+   * Drop the cached `initializeSessionStream` response. Surfaces for
+   * tests and lifecycle hooks that need the next write to re-mint S2
+   * credentials. The cache also self-evicts on `initializeSession`
+   * rejection, so callers don't need to invoke this on failures.
+   *
+   * @internal
+   */
+  reset(): void {
+    this.#initPromise = undefined;
+  }
 
   /**
    * Append a single record. Routes through {@link writer} internally so
@@ -429,6 +455,28 @@ export class SessionOutputChannel {
       ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
       : abortController.signal;
 
+    // Resolve the init promise eagerly so we can capture which one this
+    // writer uses for reactive invalidation below.
+    const writerInitPromise = ((): Promise<InitializeSessionStreamResponseLike> => {
+      if (this.#initPromise) {
+        return this.#initPromise;
+      }
+      const fresh = apiClient.initializeSessionStream(
+        this.sessionId,
+        "out",
+        options?.requestOptions
+      );
+      this.#initPromise = fresh;
+      // Evict on failure so the next call retries instead of returning a
+      // poisoned cache entry forever.
+      fresh.catch((err) => {
+        if (this.#initPromise === fresh) {
+          this.#initPromise = undefined;
+        }
+      });
+      return fresh;
+    })();
+
     try {
       const instance = new SessionStreamInstance<T>({
         apiClient,
@@ -438,11 +486,28 @@ export class SessionOutputChannel {
         source: readableStreamSource,
         signal: combinedSignal,
         requestOptions: options?.requestOptions,
+        initializeSession: () => writerInitPromise,
       });
 
-      instance.wait().finally(() => {
-        span.end();
-      });
+      // Single internal chain that handles span lifecycle AND reactive
+      // invalidation. On rejection we evict the cached init promise so
+      // the next pipe()/writer() re-PUTs and recovers (e.g. when a
+      // cached S2 access token expired mid-process). Compare by identity
+      // so a concurrent caller's fresh promise isn't accidentally cleared.
+      // Customer awaiters still observe the rejection via the returned
+      // `waitUntilComplete()`; this chain just keeps the cleanup path
+      // from surfacing as unhandled.
+      instance.wait().then(
+        () => {
+          span.end();
+        },
+        () => {
+          if (this.#initPromise === writerInitPromise) {
+            this.#initPromise = undefined;
+          }
+          span.end();
+        }
+      );
 
       return {
         stream: instance.stream,
