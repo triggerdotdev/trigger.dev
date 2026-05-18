@@ -6,6 +6,25 @@ import { singleton } from "~/utils/singleton";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 import type { BufferedTriggerPayload } from "./bufferedTriggerPayload.server";
 
+// Distinct error class for the deterministic "fail loud at boot" throws
+// below. The bootstrap in `mollifierDrainerWorker.server.ts` catches
+// transient/init errors and logs them so an unrelated Redis blip doesn't
+// crash the webapp, but it RETHROWS this class — a misconfigured
+// shutdown timeout or missing buffer is a deploy-time mistake that
+// should fail health checks and roll back, not silently disable a
+// half-rolled-out feature.
+//
+// The `name` getter is set explicitly so cross-realm `instanceof` checks
+// (e.g. when Remix dev hot-reloads the module and the consumer keeps a
+// reference to the old class) can fall back to `error.name === ...` and
+// still recognise the marker.
+export class MollifierConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MollifierConfigurationError";
+  }
+}
+
 function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> {
   const buffer = getMollifierBuffer();
   if (!buffer) {
@@ -15,7 +34,9 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     // the buffer can't initialise (e.g. TRIGGER_MOLLIFIER_REDIS_HOST resolves
     // to nothing). Crashing surfaces the misconfig immediately rather
     // than silently leaving entries un-drained.
-    throw new Error("MollifierDrainer initialised without a buffer — env vars inconsistent");
+    throw new MollifierConfigurationError(
+      "MollifierDrainer initialised without a buffer — env vars inconsistent",
+    );
   }
 
   // Validate BEFORE start() so a misconfigured shutdown timeout fails
@@ -37,7 +58,7 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS >=
     env.GRACEFUL_SHUTDOWN_TIMEOUT - shutdownMarginMs
   ) {
-    throw new Error(
+    throw new MollifierConfigurationError(
       `TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS (${env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS}) must be at least ${shutdownMarginMs}ms below GRACEFUL_SHUTDOWN_TIMEOUT (${env.GRACEFUL_SHUTDOWN_TIMEOUT}); otherwise the primary's hard exit shadows the drainer's deadline.`,
     );
   }

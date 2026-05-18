@@ -1,7 +1,10 @@
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
-import { getMollifierDrainer } from "./mollifier/mollifierDrainer.server";
+import {
+  getMollifierDrainer,
+  MollifierConfigurationError,
+} from "./mollifier/mollifierDrainer.server";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -79,6 +82,30 @@ export function initMollifierDrainerWorker(): void {
       drainer.start();
     }
   } catch (error) {
+    // Deterministic misconfig (shutdown-timeout vs GRACEFUL_SHUTDOWN_TIMEOUT,
+    // missing buffer client) is a deploy-time mistake the operator must
+    // see immediately — rethrow so the process crashes, health checks
+    // fail, and the orchestrator rolls the deploy back. Phase 1 is
+    // monitoring-only and the silent-fallback was tempting, but Phase 2/3
+    // make the drainer the source of truth for diverted triggers, where a
+    // silently-disabled drainer means data loss. Better to fail loud now
+    // than retrofit later.
+    //
+    // We accept both `instanceof` and `error.name === ...` so Remix dev
+    // hot-reload (where the consumer can hold a stale class reference)
+    // still recognises the marker.
+    if (
+      error instanceof MollifierConfigurationError ||
+      (error instanceof Error && error.name === "MollifierConfigurationError")
+    ) {
+      logger.error("Mollifier drainer misconfiguration — failing loud", {
+        error: error.message,
+      });
+      throw error;
+    }
+    // Anything else (transient Redis blip, unexpected runtime error) is
+    // logged but kept non-fatal — the rest of the webapp shouldn't go
+    // down because the buffer's Redis cluster is briefly unreachable.
     logger.error("Failed to initialise mollifier drainer", { error });
   }
 }
