@@ -399,7 +399,7 @@ A specific run-failing error worth flagging on its own. Anything written through
 
 The error carries `chunkType`, `chunkSize`, and `maxSize`. Catch with the `isChatChunkTooLargeError` guard and route oversized values out-of-band.
 
-See [Large payloads in chat.agent](/ai-chat/patterns/large-payloads) for the two patterns that work around the cap (ID-reference + run-scoped `streams.writer()`).
+See [Large payloads in chat.agent](/ai-chat/patterns/large-payloads) for the ID-reference pattern that works around the cap, plus guidance on transient data parts and out-of-band logging.
 
 ## See also
 

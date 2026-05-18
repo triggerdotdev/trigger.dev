@@ -40,10 +40,10 @@ sequenceDiagram
     Task->>Task: onTurnStart({ chatId, messages })
     Task->>LLM: streamText({ model, messages, abortSignal })
     LLM-->>Task: Stream response chunks
-    Task->>API: streams.pipe("chat", uiStream)
+    Task->>API: Write chunks to session.out
     API-->>useChat: SSE: UIMessageChunks
     useChat-->>User: Render streaming text
-    Task->>API: Write trigger:turn-complete
+    Task->>API: Write turn-complete control record
     API-->>useChat: SSE: turn complete + refreshed token
     useChat->>useChat: Close stream, update session
     Task->>Task: onTurnComplete({ messages, stopped: false })
@@ -73,10 +73,10 @@ sequenceDiagram
     Task->>Task: onTurnStart({ turn: 1 })
     Task->>LLM: streamText({ messages: [all accumulated] })
     LLM-->>Task: Stream response
-    Task->>API: streams.pipe("chat", uiStream)
+    Task->>API: Write chunks to session.out
     API-->>useChat: SSE: UIMessageChunks
     useChat-->>User: Render streaming text
-    Task->>API: Write trigger:turn-complete
+    Task->>API: Write turn-complete control record
     Task->>Task: onTurnComplete({ turn: 1 })
     Task->>Task: Wait for next message (idle → suspend)
 ```
