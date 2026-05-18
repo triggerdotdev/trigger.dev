@@ -15,6 +15,7 @@ const ParamsSchema = z.object({
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
+  try {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
@@ -91,5 +92,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     logger.error("Failed to create alert channel", { error });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
+  }
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create alert channel (outer)", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

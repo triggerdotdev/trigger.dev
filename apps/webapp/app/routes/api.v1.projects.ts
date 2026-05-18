@@ -8,6 +8,7 @@ import { authenticateApiRequestWithPersonalAccessToken } from "~/services/person
 export async function loader({ request }: LoaderFunctionArgs) {
   logger.info("get projects", { url: request.url });
 
+  try {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
@@ -51,4 +52,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }));
 
   return json(result);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to list projects", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

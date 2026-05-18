@@ -12,6 +12,7 @@ const ParamsSchema = z.object({
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
+  try {
   // Authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -39,5 +40,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   } catch (error) {
     logger.error("Failed to load batch results", { error });
     return json({ error: "Something went wrong, please try again." }, { status: 500 });
+  }
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load batch results (outer)", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -21,6 +21,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
+  try {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -49,4 +50,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
     { status: 200 }
   );
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to fail deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

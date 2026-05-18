@@ -23,6 +23,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
+  try {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -75,5 +76,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     logger.error("Failed to create background worker", { error: e });
 
     return json({ error: "Failed to create background worker" }, { status: 500 });
+  }
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create deployment background worker", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

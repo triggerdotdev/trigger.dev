@@ -13,6 +13,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Method Not Allowed" }, { status: 405 });
   }
 
+  try {
   const authenticationResult = await authenticateRequest(request, {
     apiKey: true,
     organizationAccessToken: false,
@@ -88,4 +89,9 @@ export async function action({ request }: ActionFunctionArgs) {
         }
       }
     );
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create artifact", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

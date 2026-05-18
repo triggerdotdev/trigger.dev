@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { z } from "zod";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 
@@ -14,6 +15,7 @@ const RequestBodySchema = z.object({
 });
 
 export async function action({ request }: LoaderFunctionArgs) {
+  try {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -46,4 +48,9 @@ export async function action({ request }: LoaderFunctionArgs) {
   });
 
   return json({ token: jwt });
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to mint auth jwt", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

@@ -16,6 +16,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
+  try {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -82,4 +83,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           }))
         : undefined,
   } satisfies GetDeploymentResponseBody);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

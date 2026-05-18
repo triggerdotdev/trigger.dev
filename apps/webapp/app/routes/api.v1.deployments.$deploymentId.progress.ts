@@ -20,6 +20,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
+  try {
   const authenticationResult = await authenticateRequest(request, {
     apiKey: true,
     organizationAccessToken: false,
@@ -78,4 +79,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       }
     );
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to progress deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

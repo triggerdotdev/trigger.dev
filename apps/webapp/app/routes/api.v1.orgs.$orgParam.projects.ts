@@ -20,6 +20,7 @@ const ParamsSchema = z.object({
 export async function loader({ request, params }: LoaderFunctionArgs) {
   logger.info("get projects", { url: request.url });
 
+  try {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
@@ -66,9 +67,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }));
 
   return json(result);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to list org projects", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
+  try {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
@@ -110,7 +117,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   );
 
   if (error) {
-    return json({ error: error.message }, { status: 400 });
+    logger.error("Failed to create project", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 
   const result: GetProjectResponseBody = {
@@ -128,6 +136,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
   };
 
   return json(result);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create org project", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
 
 function orgParamWhereClause(orgParam: string) {

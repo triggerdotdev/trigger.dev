@@ -5,6 +5,7 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  try {
   // Next authenticate the request
   const authenticationResult = await authenticateApiRequest(request);
 
@@ -38,4 +39,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     imageReference: deployment.imageReference,
     errorData: deployment.errorData,
   });
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load latest deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

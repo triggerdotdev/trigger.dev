@@ -29,6 +29,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return apiCors(request, json({}));
   }
 
+  try {
   const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
   if (!authenticationResult) {
@@ -143,5 +144,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       },
     })
   );
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to fetch Vercel projects", { error });
+    return apiCors(request, json({ error: "Internal Server Error" }, { status: 500 }));
+  }
 }
 
