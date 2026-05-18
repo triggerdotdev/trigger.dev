@@ -59,6 +59,7 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { Callout } from "~/components/primitives/Callout";
@@ -77,12 +78,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    throw new Error("Project not found");
+    throwNotFound("Project not found");
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throwNotFound("Environment not found");
   }
 
   const filters = await getRunFiltersFromRequest(request);
