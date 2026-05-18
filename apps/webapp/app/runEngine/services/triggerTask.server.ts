@@ -40,6 +40,18 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
+import { env } from "~/env.server";
+import {
+  evaluateGate as defaultEvaluateGate,
+  type GateOutcome,
+  type MollifierEvaluateGate,
+} from "~/v3/mollifier/mollifierGate.server";
+import {
+  getMollifierBuffer as defaultGetMollifierBuffer,
+  type MollifierGetBuffer,
+} from "~/v3/mollifier/mollifierBuffer.server";
+import { buildBufferedTriggerPayload } from "~/v3/mollifier/bufferedTriggerPayload.server";
+import { serialiseSnapshot } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
@@ -59,6 +71,14 @@ export class RunEngineTriggerTaskService {
   private readonly traceEventConcern: TraceEventConcern;
   private readonly triggerRacepointSystem: TriggerRacepointSystem;
   private readonly metadataMaximumSize: number;
+  // Mollifier hooks are DI'd so tests can drive the call-site's mollify branch
+  // deterministically (stub the gate to return mollify, inject a real or fake
+  // buffer, force the global-enabled predicate to true so the call site
+  // doesn't short-circuit on an unset env). In production all three default
+  // to the live module-level singletons + env read.
+  private readonly evaluateGate: MollifierEvaluateGate;
+  private readonly getMollifierBuffer: MollifierGetBuffer;
+  private readonly isMollifierGloballyEnabled: () => boolean;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -71,6 +91,9 @@ export class RunEngineTriggerTaskService {
     tracer: Tracer;
     metadataMaximumSize: number;
     triggerRacepointSystem?: TriggerRacepointSystem;
+    evaluateGate?: MollifierEvaluateGate;
+    getMollifierBuffer?: MollifierGetBuffer;
+    isMollifierGloballyEnabled?: () => boolean;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -82,6 +105,10 @@ export class RunEngineTriggerTaskService {
     this.traceEventConcern = opts.traceEventConcern;
     this.metadataMaximumSize = opts.metadataMaximumSize;
     this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
+    this.evaluateGate = opts.evaluateGate ?? defaultEvaluateGate;
+    this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
+    this.isMollifierGloballyEnabled =
+      opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
   }
 
   public async call({
@@ -316,6 +343,25 @@ export class RunEngineTriggerTaskService {
         taskKind: taskKind ?? "STANDARD",
       };
 
+      // Short-circuit before the gate when mollifier is globally off (the
+      // default for every deployment that hasn't opted in). Avoids the
+      // GateInputs allocation, the deps spread inside `evaluateGate`, and
+      // the `mollifier.decisions{outcome=pass_through}` OTel increment on
+      // every trigger — `triggerTask` is the highest-throughput code path
+      // in the system. The check goes through a DI'd predicate so unit
+      // tests that inject a custom `evaluateGate` can also override the
+      // gate-on check (the default reads `env.TRIGGER_MOLLIFIER_ENABLED`,
+      // which is "0" in CI where no .env file is present).
+      const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
+        ? await this.evaluateGate({
+            envId: environment.id,
+            orgId: environment.organizationId,
+            taskId,
+            orgFeatureFlags:
+              (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
+          })
+        : null;
+
       try {
         return await this.traceEventConcern.traceRun(
           triggerRequest,
@@ -327,6 +373,74 @@ export class RunEngineTriggerTaskService {
             span.setAttribute("runId", runFriendlyId);
 
             const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+
+            // Phase 1 dual-write: if the org has the mollifier feature flag
+            // enabled and the per-env trip evaluator says divert, write the
+            // canonical replay payload to the buffer AND continue through
+            // engine.trigger as normal. The buffer entry is an audit/preview
+            // copy; the drainer's no-op handler consumes it to prove the
+            // dequeue mechanism works. Phase 2 will replace engine.trigger
+            // (below) with a synthesised 200 response and rely on the
+            // drainer to perform the Postgres write via replay.
+            if (mollifierOutcome?.action === "mollify") {
+              const buffer = this.getMollifierBuffer();
+              if (buffer) {
+                const canonicalPayload = buildBufferedTriggerPayload({
+                  runFriendlyId,
+                  taskId,
+                  envId: environment.id,
+                  envType: environment.type,
+                  envSlug: environment.slug,
+                  orgId: environment.organizationId,
+                  orgSlug: environment.organization.slug,
+                  projectId: environment.projectId,
+                  projectRef: environment.project.externalRef,
+                  body,
+                  idempotencyKey: idempotencyKey ?? null,
+                  idempotencyKeyExpiresAt: idempotencyKey
+                    ? idempotencyKeyExpiresAt ?? null
+                    : null,
+                  tags,
+                  parentRunFriendlyId: parentRun?.friendlyId ?? null,
+                  traceContext: event.traceContext,
+                  triggerSource,
+                  triggerAction,
+                  serviceOptions: options,
+                  createdAt: new Date(),
+                });
+
+                try {
+                  const serialisedPayload = serialiseSnapshot(canonicalPayload);
+                  await buffer.accept({
+                    runId: runFriendlyId,
+                    envId: environment.id,
+                    orgId: environment.organizationId,
+                    payload: serialisedPayload,
+                  });
+                  // Light log on the hot path — keep this synchronous work
+                  // O(1) per trigger. The drainer computes the payload hash
+                  // off-path; operators correlate `mollifier.buffered` →
+                  // `mollifier.drained` by runId.
+                  logger.debug("mollifier.buffered", {
+                    runId: runFriendlyId,
+                    envId: environment.id,
+                    orgId: environment.organizationId,
+                    taskId,
+                    payloadBytes: serialisedPayload.length,
+                  });
+                } catch (err) {
+                  // Fail-open: buffer write must never block the customer's
+                  // trigger. engine.trigger below is the primary write path
+                  // in Phase 1 — the customer still gets a valid run.
+                  logger.error("mollifier.buffer_accept_failed", {
+                    runId: runFriendlyId,
+                    envId: environment.id,
+                    taskId,
+                    err: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              }
+            }
 
             const taskRun = await this.engine.trigger(
               {
