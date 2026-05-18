@@ -101,17 +101,32 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const payload = Object.fromEntries(await clonedRequest.formData());
 
-  const data = z
+  const result = z
     .discriminatedUnion("action", [
       z.object({
         action: z.literal("send"),
-        email: z.string().trim().toLowerCase(),
+        email: z.string().trim().toLowerCase().email(),
       }),
       z.object({
         action: z.literal("reset"),
       }),
     ])
-    .parse(payload);
+    .safeParse(payload);
+
+  if (!result.success) {
+    const session = await getUserSession(request);
+    session.set("auth:error", {
+      message: "Please enter a valid email address.",
+    });
+
+    return redirect("/login/magic", {
+      headers: {
+        "Set-Cookie": await commitSession(session),
+      },
+    });
+  }
+
+  const data = result.data;
 
   switch (data.action) {
     case "send": {
