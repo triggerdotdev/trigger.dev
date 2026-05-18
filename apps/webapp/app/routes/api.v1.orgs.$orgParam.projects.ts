@@ -118,7 +118,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   if (error) {
     logger.error("Failed to create project", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
+    return json({ error: "Failed to create project" }, { status: 400 });
   }
 
   const result: GetProjectResponseBody = {
