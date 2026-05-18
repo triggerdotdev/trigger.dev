@@ -236,6 +236,10 @@ export class SSEStreamSubscription implements StreamSubscription {
       // permanently. `404` (stream gone) and `410` (session closed)
       // are sensible defaults; tune per-caller for other 4xx.
       nonRetryableStatuses?: readonly number[];
+      // Optional fetch override. Used by transports that need to route
+      // the SSE connect through a custom path (proxy, custom headers,
+      // tracing). Defaults to global `fetch`.
+      fetchClient?: typeof fetch;
     }
   ) {
     this.lastEventId = options.lastEventId;
@@ -331,7 +335,8 @@ export class SSEStreamSubscription implements StreamSubscription {
         headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
       }
 
-      const response = await fetch(this.url, {
+      const fetchClient = this.options.fetchClient ?? fetch;
+      const response = await fetchClient(this.url, {
         headers,
         signal: this.internalAbort.signal,
       });

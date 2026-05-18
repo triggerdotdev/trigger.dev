@@ -35,6 +35,7 @@ import {
   type TaskWithSchema,
   SESSION_IN_EVENT_ID_HEADER,
   TRIGGER_CONTROL_SUBTYPE,
+  generateJWT,
   type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import type {
@@ -8411,6 +8412,32 @@ export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 /**
  * Options for {@link createChatStartSessionAction}.
  */
+/**
+ * Discriminator for per-endpoint `baseURL` / `fetch` callbacks on
+ * `createChatStartSessionAction`.
+ *
+ * - `"sessions"` — `POST /api/v1/sessions` (session create + first run trigger).
+ * - `"auth"` — `POST /api/v1/auth/jwt/claims` (only fired when
+ *   `tokenTTL` is set; otherwise the publicAccessToken from session create
+ *   is reused as-is).
+ */
+export type ChatStartSessionEndpoint = "sessions" | "auth";
+
+export type ChatStartSessionEndpointContext = {
+  endpoint: ChatStartSessionEndpoint;
+  chatId: string;
+};
+
+export type ChatStartSessionBaseURLResolver = (
+  ctx: ChatStartSessionEndpointContext
+) => string;
+
+export type ChatStartSessionFetchOverride = (
+  url: string,
+  init: RequestInit,
+  ctx: ChatStartSessionEndpointContext
+) => Promise<Response>;
+
 export type CreateChatStartSessionActionOptions = {
   /** TTL for the session-scoped public access token. @default "1h" */
   tokenTTL?: string | number | Date;
@@ -8419,6 +8446,21 @@ export type CreateChatStartSessionActionOptions = {
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
+  /**
+   * Override the Trigger.dev API base URL. String applies to both
+   * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
+   * endpoint. When unset, falls back to `apiClientManager.baseURL`
+   * (typically the `TRIGGER_API_URL` env var). Set this to route session
+   * create through a trusted edge proxy that injects server-side signal
+   * into `basePayload.metadata` before forwarding upstream.
+   */
+  baseURL?: string | ChatStartSessionBaseURLResolver;
+  /**
+   * Per-request fetch override. Receives the resolved URL, RequestInit,
+   * and endpoint context. Use for header injection, proxy routing, or
+   * custom retry. Applies to both session-create and JWT-claims POSTs.
+   */
+  fetch?: ChatStartSessionFetchOverride;
 };
 
 /**
@@ -8542,13 +8584,26 @@ function createChatStartSessionAction(
         : {}),
     };
 
-    const created = await sessions.start({
-      type: "chat.agent",
+    const startBody = {
+      type: "chat.agent" as const,
       externalId: params.chatId,
       taskIdentifier: taskId,
       triggerConfig,
       metadata: params.metadata,
-    });
+    };
+
+    const baseURLOption = options?.baseURL;
+    const fetchOverride = options?.fetch;
+    const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
+
+    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+      ? await callSessionsCreateWithOverride({
+          chatId: params.chatId,
+          body: startBody,
+          baseURLOption,
+          fetchOverride,
+        })
+      : await sessions.start(startBody);
 
     // Session create returns a session PAT directly when called with a
     // start token, but when the SDK call goes via the secret key we still
@@ -8556,13 +8611,20 @@ function createChatStartSessionAction(
     // re-minting here lets the customer override `tokenTTL`).
     const publicAccessToken =
       options?.tokenTTL !== undefined
-        ? await auth.createPublicToken({
-            scopes: {
-              read: { sessions: params.chatId },
-              write: { sessions: params.chatId },
-            },
-            expirationTime: options.tokenTTL,
-          })
+        ? hasOverride
+          ? await mintPublicTokenWithOverride({
+              chatId: params.chatId,
+              expirationTime: options.tokenTTL,
+              baseURLOption,
+              fetchOverride,
+            })
+          : await auth.createPublicToken({
+              scopes: {
+                read: { sessions: params.chatId },
+                write: { sessions: params.chatId },
+              },
+              expirationTime: options.tokenTTL,
+            })
         : created.publicAccessToken;
 
     return {
@@ -8571,6 +8633,93 @@ function createChatStartSessionAction(
       sessionId: created.id,
     };
   };
+}
+
+function resolveChatStartBaseURL(
+  endpoint: ChatStartSessionEndpoint,
+  chatId: string,
+  option: string | ChatStartSessionBaseURLResolver | undefined
+): string {
+  const fallback = apiClientManager.baseURL ?? "https://api.trigger.dev";
+  const raw =
+    typeof option === "function"
+      ? option({ endpoint, chatId })
+      : option ?? fallback;
+  return raw.replace(/\/$/, "");
+}
+
+async function callSessionsCreateWithOverride(args: {
+  chatId: string;
+  body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
+  baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
+  fetchOverride: ChatStartSessionFetchOverride | undefined;
+}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+  const accessToken = apiClientManager.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured. Set TRIGGER_SECRET_KEY or call apiClientManager.setGlobalAPIClientConfiguration before invoking the action."
+    );
+  }
+  const ctx: ChatStartSessionEndpointContext = { endpoint: "sessions", chatId: args.chatId };
+  const url = `${resolveChatStartBaseURL("sessions", args.chatId, args.baseURLOption)}/api/v1/sessions`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "x-trigger-source": "sdk",
+    },
+    body: JSON.stringify(args.body),
+  };
+  const response = args.fetchOverride
+    ? await args.fetchOverride(url, init, ctx)
+    : await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`sessions.start failed: ${response.status} ${text}`);
+  }
+  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  return json;
+}
+
+async function mintPublicTokenWithOverride(args: {
+  chatId: string;
+  expirationTime: string | number | Date;
+  baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
+  fetchOverride: ChatStartSessionFetchOverride | undefined;
+}): Promise<string> {
+  const accessToken = apiClientManager.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured for JWT mint."
+    );
+  }
+  const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
+  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "x-trigger-source": "sdk",
+    },
+  };
+  const response = args.fetchOverride
+    ? await args.fetchOverride(url, init, ctx)
+    : await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`auth.createPublicToken failed: ${response.status} ${text}`);
+  }
+  const claims = (await response.json()) as Record<string, unknown>;
+  return generateJWT({
+    secretKey: accessToken,
+    payload: {
+      ...claims,
+      scopes: [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`],
+    },
+    expirationTime: args.expirationTime,
+  });
 }
 
 export const chat = {

@@ -20,7 +20,6 @@ import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
 import { readUIMessageStream } from "ai";
 import {
-  ApiClient,
   apiClientManager,
   controlSubtype,
   SSEStreamSubscription,
@@ -52,6 +51,26 @@ export type ChatSession = {
   /** Last SSE event ID seen on `session.out` — used to resume without replay. */
   lastEventId?: string;
 };
+
+/**
+ * Discriminator passed to per-endpoint `baseURL` and `fetch` callbacks on
+ * `AgentChat`. Same shape as the type on `TriggerChatTransport` — these
+ * mirror so customers can share a single resolver between the two clients.
+ */
+export type AgentChatEndpoint = "in" | "out";
+
+export type AgentChatEndpointContext = {
+  endpoint: AgentChatEndpoint;
+  chatId: string;
+};
+
+export type AgentChatBaseURLResolver = (ctx: AgentChatEndpointContext) => string;
+
+export type AgentChatFetchOverride = (
+  url: string,
+  init: RequestInit,
+  ctx: AgentChatEndpointContext
+) => Promise<Response>;
 
 export type AgentChatOptions<TAgent = unknown> = {
   /** The agent task ID to trigger. */
@@ -89,6 +108,26 @@ export type AgentChatOptions<TAgent = unknown> = {
    * chat. Folded into `sessions.start({...triggerConfig})` body.
    */
   triggerConfig?: SessionTriggerConfig;
+  /**
+   * Override the Trigger.dev API base URL for the chat's `.in/append` and
+   * `.out` SSE endpoints. String form applies to both; pass a function to
+   * pick per endpoint. Defaults to `apiClientManager.baseURL` (whatever
+   * `@trigger.dev/sdk` was configured with — typically `TRIGGER_API_URL`
+   * env var).
+   *
+   * Session creation (`POST /api/v1/sessions`) and token mint
+   * (`POST /api/v1/auth/jwt/claims`) still flow through
+   * `apiClientManager` — pass equivalent options to
+   * `chat.createStartSessionAction` if you need those routed too.
+   */
+  baseURL?: string | AgentChatBaseURLResolver;
+  /**
+   * Optional per-request fetch override. Receives the resolved URL, the
+   * RequestInit, and endpoint context. Use this for header injection
+   * (tracing), proxy routing, or custom retries. Applies to both the
+   * `.in/append` POSTs and the `.out` SSE GET.
+   */
+  fetch?: AgentChatFetchOverride;
 };
 
 // ─── ChatStream ────────────────────────────────────────────────────
@@ -272,6 +311,8 @@ export class AgentChat<TAgent = unknown> {
   private readonly triggerConfigDefault: SessionTriggerConfig | undefined;
   private readonly onTriggered: AgentChatOptions["onTriggered"];
   private readonly onTurnComplete: AgentChatOptions["onTurnComplete"];
+  private readonly baseURLResolver: AgentChatBaseURLResolver;
+  private readonly fetchOverride: AgentChatFetchOverride | undefined;
 
   private state: SessionState;
 
@@ -283,6 +324,11 @@ export class AgentChat<TAgent = unknown> {
     this.triggerConfigDefault = options.triggerConfig;
     this.onTriggered = options.onTriggered;
     this.onTurnComplete = options.onTurnComplete;
+    const baseURLOption = options.baseURL;
+    this.baseURLResolver = typeof baseURLOption === "function"
+      ? baseURLOption
+      : () => baseURLOption ?? apiClientManager.baseURL ?? "https://api.trigger.dev";
+    this.fetchOverride = options.fetch;
 
     // Hydration: a non-empty `session` means the caller knows the
     // session already exists (started in a previous request). Mark
@@ -378,12 +424,7 @@ export class AgentChat<TAgent = unknown> {
       metadata: this.clientData,
     } as ChatTaskWirePayload;
 
-    const api = this.createApiClient();
-    await api.appendToSessionStream(
-      this.chatId,
-      "in",
-      serializeInputChunk({ kind: "message", payload })
-    );
+    await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
 
     return this.subscribeToSessionStream(options?.abortSignal);
   }
@@ -404,15 +445,7 @@ export class AgentChat<TAgent = unknown> {
     };
 
     try {
-      const api = this.createApiClient();
-      await api.appendToSessionStream(
-        this.chatId,
-        "in",
-        serializeInputChunk({
-          kind: "message",
-          payload,
-        })
-      );
+      await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
       return true;
     } catch {
       return false;
@@ -424,14 +457,7 @@ export class AgentChat<TAgent = unknown> {
     if (!this.state.started) return;
 
     this.state.skipToTurnComplete = true;
-    const api = this.createApiClient();
-    await api
-      .appendToSessionStream(
-        this.chatId,
-        "in",
-        serializeInputChunk({ kind: "stop" })
-      )
-      .catch(() => {});
+    await this.appendInputChunk(serializeInputChunk({ kind: "stop" })).catch(() => {});
   }
 
   /**
@@ -459,10 +485,7 @@ export class AgentChat<TAgent = unknown> {
      */
     isFinal: boolean;
   }): Promise<void> {
-    const api = this.createApiClient();
-    await api.appendToSessionStream(
-      this.chatId,
-      "in",
+    await this.appendInputChunk(
       serializeInputChunk({
         kind: "handover",
         partialAssistantMessage: args.partialAssistantMessage,
@@ -481,12 +504,7 @@ export class AgentChat<TAgent = unknown> {
    * surface.
    */
   async sendHandoverSkip(): Promise<void> {
-    const api = this.createApiClient();
-    await api.appendToSessionStream(
-      this.chatId,
-      "in",
-      serializeInputChunk({ kind: "handover-skip" })
-    );
+    await this.appendInputChunk(serializeInputChunk({ kind: "handover-skip" }));
   }
 
   /**
@@ -531,15 +549,7 @@ export class AgentChat<TAgent = unknown> {
     };
 
     try {
-      const api = this.createApiClient();
-      await api.appendToSessionStream(
-        this.chatId,
-        "in",
-        serializeInputChunk({
-          kind: "message",
-          payload,
-        })
-      );
+      await this.appendInputChunk(serializeInputChunk({ kind: "message", payload }));
     } catch {
       throw new Error("Failed to send action. The session may have ended.");
     }
@@ -553,10 +563,7 @@ export class AgentChat<TAgent = unknown> {
     if (!this.state.started) return false;
 
     try {
-      const api = this.createApiClient();
-      await api.appendToSessionStream(
-        this.chatId,
-        "in",
+      await this.appendInputChunk(
         serializeInputChunk({
           kind: "message",
           payload: {
@@ -582,10 +589,32 @@ export class AgentChat<TAgent = unknown> {
 
   // ─── Private ───────────────────────────────────────────────────
 
-  private createApiClient(): ApiClient {
-    const baseURL = apiClientManager.baseURL ?? "https://api.trigger.dev";
+  private resolveBaseURL(endpoint: AgentChatEndpoint): string {
+    return this.baseURLResolver({ endpoint, chatId: this.chatId }).replace(/\/$/, "");
+  }
+
+  private async doFetch(
+    ctx: AgentChatEndpointContext,
+    url: string,
+    init: RequestInit
+  ): Promise<Response> {
+    return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
+  }
+
+  private async appendInputChunk(body: string): Promise<void> {
     const accessToken = apiClientManager.accessToken ?? "";
-    return new ApiClient(baseURL, accessToken);
+    const ctx: AgentChatEndpointContext = { endpoint: "in", chatId: this.chatId };
+    const url = `${this.resolveBaseURL("in")}/realtime/v1/sessions/${encodeURIComponent(this.chatId)}/in/append`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      "x-trigger-source": "sdk",
+    };
+    const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`appendToSessionStream failed: ${response.status} ${text}`);
+    }
   }
 
   /**
@@ -650,10 +679,18 @@ export class AgentChat<TAgent = unknown> {
     options?: { sendStopOnAbort?: boolean }
   ): ReadableStream<UIMessageChunk> {
     const state = this.state;
-    const baseURL = apiClientManager.baseURL ?? "https://api.trigger.dev";
     const accessToken = apiClientManager.accessToken ?? "";
     const onTurnComplete = this.onTurnComplete;
     const chatId = this.chatId;
+    const sseCtx: AgentChatEndpointContext = { endpoint: "out", chatId };
+    const sseFetchClient: typeof fetch | undefined = this.fetchOverride
+      ? ((input, init) =>
+          this.fetchOverride!(
+            typeof input === "string" ? input : (input as URL | Request).toString(),
+            init ?? {},
+            sseCtx
+          )) as typeof fetch
+      : undefined;
 
     const internalAbort = new AbortController();
     const combinedSignal = abortSignal
@@ -666,14 +703,7 @@ export class AgentChat<TAgent = unknown> {
         () => {
           if (options?.sendStopOnAbort !== false) {
             state.skipToTurnComplete = true;
-            const api = new ApiClient(baseURL, accessToken);
-            api
-              .appendToSessionStream(
-                chatId,
-                "in",
-                serializeInputChunk({ kind: "stop" })
-              )
-              .catch(() => {});
+            this.appendInputChunk(serializeInputChunk({ kind: "stop" })).catch(() => {});
           }
           internalAbort.abort();
         },
@@ -681,7 +711,7 @@ export class AgentChat<TAgent = unknown> {
       );
     }
 
-    const streamUrl = `${baseURL}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -693,6 +723,7 @@ export class AgentChat<TAgent = unknown> {
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
             lastEventId: state.lastEventId,
+            fetchClient: sseFetchClient,
           });
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();

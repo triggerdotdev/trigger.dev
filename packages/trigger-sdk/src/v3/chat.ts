@@ -25,7 +25,6 @@
 
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
 import {
-  ApiClient,
   controlSubtype,
   headerValue,
   PUBLIC_ACCESS_TOKEN_HEADER,
@@ -37,6 +36,43 @@ import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
+
+/**
+ * Discriminator passed to per-endpoint `baseURL` and `fetch` callbacks.
+ *
+ * - `"in"` — `POST /realtime/v1/sessions/{chatId}/in/append` (user messages,
+ *   stops, actions).
+ * - `"out"` — `GET /realtime/v1/sessions/{chatId}/out` (SSE response stream).
+ *
+ * Other endpoints (`/api/v1/sessions`, `/api/v1/auth/jwt/claims`) are reached
+ * from the server-side `chat.createStartSessionAction` and `accessToken`
+ * callback, not the transport — they accept the same callback shape on their
+ * own option objects.
+ */
+export type ChatTransportEndpoint = "in" | "out";
+
+/** Context passed to `baseURL` and `fetch` callbacks. */
+export type ChatTransportEndpointContext = {
+  endpoint: ChatTransportEndpoint;
+  chatId: string;
+};
+
+/** Resolver form of `baseURL` — return the base for the given endpoint. */
+export type ChatBaseURLResolver = (ctx: ChatTransportEndpointContext) => string;
+
+/**
+ * Per-request fetch override. Receives the fully-resolved URL and the
+ * RequestInit the transport would have used, plus endpoint context for
+ * routing decisions. Customers can rewrite the URL, inject headers, or
+ * delegate to a custom transport (e.g. a Cloudflare worker fronting
+ * `api.trigger.dev`). Must return a `Response` semantically equivalent to
+ * what `globalThis.fetch(url, init)` would have returned.
+ */
+export type ChatFetchOverride = (
+  url: string,
+  init: RequestInit,
+  ctx: ChatTransportEndpointContext
+) => Promise<Response>;
 
 /**
  * Detect 401/403 from realtime/input-stream calls without relying on `instanceof`
@@ -229,17 +265,44 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
     >
   ) => Promise<StartSessionResult>;
 
-  /** Base URL for the Trigger.dev API. @default "https://api.trigger.dev" */
-  baseURL?: string;
+  /**
+   * Base URL for the Trigger.dev API. Either a single string applied to every
+   * endpoint, or a function called per request that picks a base URL from the
+   * endpoint discriminator and chat ID. @default "https://api.trigger.dev"
+   *
+   * @example Route appends through a proxy, SSE direct:
+   * ```ts
+   * baseURL: ({ endpoint }) =>
+   *   endpoint === "out" ? "https://api.trigger.dev" : "https://proxy.example.com",
+   * ```
+   */
+  baseURL?: string | ChatBaseURLResolver;
 
   /**
    * Base URL for the SSE stream subscription only (`GET .../sessions/{chatId}/out`).
-   * Falls back to `baseURL` when unset. Set this to route the long-lived
-   * stream through a custom proxy (e.g. a Cloudflare worker capturing JA4
-   * fingerprints for bot detection) while keeping append POSTs direct to
-   * `baseURL` to avoid an extra hop on every user message.
+   * @deprecated Pass a function for `baseURL` instead and branch on
+   * `endpoint === "out"`. `streamBaseURL` continues to work for backwards
+   * compatibility and wins over `baseURL` for the SSE endpoint when both
+   * are set.
    */
   streamBaseURL?: string;
+
+  /**
+   * Optional per-request fetch override. Called with the resolved URL and the
+   * RequestInit the transport built, plus endpoint context. Use this to
+   * inject custom headers (e.g. distributed tracing), redirect via a proxy,
+   * or wrap fetch with retries/logging.
+   *
+   * @example Add a tracing header to every chat request:
+   * ```ts
+   * fetch: (url, init, ctx) => {
+   *   init.headers = new Headers(init.headers);
+   *   init.headers.set("traceparent", currentTraceparent());
+   *   return globalThis.fetch(url, init);
+   * },
+   * ```
+   */
+  fetch?: ChatFetchOverride;
 
   /** Additional headers included in every API request. */
   headers?: Record<string, string>;
@@ -361,8 +424,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly resolveStartSession:
     | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
     | undefined;
-  private readonly baseURL: string;
-  private readonly streamBaseURL: string;
+  private readonly resolveBaseURLFn: ChatBaseURLResolver;
+  private readonly fetchOverride: ChatFetchOverride | undefined;
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
@@ -383,8 +446,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.resolveStartSession = options.startSession as
       | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
       | undefined;
-    this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
-    this.streamBaseURL = options.streamBaseURL ?? this.baseURL;
+    const baseURLOption = options.baseURL ?? DEFAULT_BASE_URL;
+    const streamOverride = options.streamBaseURL;
+    this.resolveBaseURLFn = typeof baseURLOption === "function"
+      ? (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption(ctx))
+      : (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption);
+    this.fetchOverride = options.fetch;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
     this.defaultMetadata = options.clientData;
@@ -528,10 +595,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state = await this.ensureSessionState(chatId);
 
     const sendChatMessage = async (token: string) => {
-      const apiClient = new ApiClient(this.baseURL, token);
-      await apiClient.appendToSessionStream(
+      await this.appendInputChunk(
         chatId,
-        "in",
+        token,
         this.serializeInputChunk({ kind: "message", payload: wirePayload })
       );
     };
@@ -708,10 +774,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const send = async (token: string) => {
-      const apiClient = new ApiClient(this.baseURL, token);
-      await apiClient.appendToSessionStream(
+      await this.appendInputChunk(
         chatId,
-        "in",
+        token,
         this.serializeInputChunk({ kind: "message", payload: wirePayload })
       );
     };
@@ -768,12 +833,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (!state) return false;
 
     const send = async (token: string) => {
-      const api = new ApiClient(this.baseURL, token);
-      await api.appendToSessionStream(
-        chatId,
-        "in",
-        this.serializeInputChunk({ kind: "stop" })
-      );
+      await this.appendInputChunk(chatId, token, this.serializeInputChunk({ kind: "stop" }));
     };
 
     try {
@@ -822,8 +882,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const send = async (token: string) => {
-      const apiClient = new ApiClient(this.baseURL, token);
-      await apiClient.appendToSessionStream(chatId, "in", body);
+      await this.appendInputChunk(chatId, token, body);
     };
 
     await this.callWithAuthRetry(chatId, state, send);
@@ -978,6 +1037,41 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    * Run `op` with the session's stored PAT. On 401/403, refresh the PAT
    * via `accessToken` and retry once. Surfaces non-auth errors as-is.
    */
+  private resolveBaseURL(ctx: ChatTransportEndpointContext): string {
+    const raw = this.resolveBaseURLFn(ctx);
+    return raw.replace(/\/$/, "");
+  }
+
+  private async doFetch(
+    ctx: ChatTransportEndpointContext,
+    url: string,
+    init: RequestInit
+  ): Promise<Response> {
+    return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
+  }
+
+  private async appendInputChunk(chatId: string, token: string, body: string): Promise<void> {
+    const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
+    const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-trigger-source": "sdk",
+      ...this.extraHeaders,
+    };
+    const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      const err = new Error(`appendToSessionStream failed: ${response.status} ${text}`) as Error & {
+        name: string;
+        status: number;
+      };
+      err.name = "TriggerApiError";
+      err.status = response.status;
+      throw err;
+    }
+  }
+
   private async callWithAuthRetry(
     chatId: string,
     state: ChatSessionState,
@@ -1026,14 +1120,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         () => {
           if (options?.sendStopOnAbort !== false) {
             state.skipToTurnComplete = true;
-            const api = new ApiClient(this.baseURL, state.publicAccessToken);
-            api
-              .appendToSessionStream(
-                chatId,
-                "in",
-                this.serializeInputChunk({ kind: "stop" })
-              )
-              .catch(() => {});
+            this.appendInputChunk(
+              chatId,
+              state.publicAccessToken,
+              this.serializeInputChunk({ kind: "stop" })
+            ).catch(() => {});
           }
           internalAbort.abort();
         },
@@ -1041,7 +1132,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const streamUrl = `${this.streamBaseURL}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = `${this.resolveBaseURL({ endpoint: "out", chatId })}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -1099,6 +1190,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               })()
             : () => {};
 
+        const sseCtx: ChatTransportEndpointContext = { endpoint: "out", chatId };
+        const sseFetchClient: typeof fetch | undefined = this.fetchOverride
+          ? ((input, init) =>
+              this.fetchOverride!(
+                typeof input === "string" ? input : (input as URL | Request).toString(),
+                init ?? {},
+                sseCtx
+              )) as typeof fetch
+          : undefined;
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
@@ -1113,6 +1213,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             // keepalive) arrives in 60s, force reconnect. Sized
             // generously over typical agent thinking pauses.
             stallTimeoutMs: 60_000,
+            fetchClient: sseFetchClient,
           });
           currentSubscription = subscription;
           const sseStream = await subscription.subscribe();
