@@ -960,7 +960,7 @@ export class VercelIntegrationRepository {
               key: "TRIGGER_SECRET_KEY",
               value: runtimeEnv.apiKey,
               target: vercelTarget,
-              type: "encrypted",
+              type: "sensitive",
               environmentType: runtimeEnv.type,
             });
           }
@@ -1054,6 +1054,10 @@ export class VercelIntegrationRepository {
           return;
         }
 
+        // TODO: Vercel rejects type changes on existing env vars (encrypted -> sensitive),
+        //   so for projects whose TRIGGER_SECRET_KEY was created before this change, the
+        //   editProjectEnv call will keep the previous type. Recreate via delete-then-create
+        //   to force the upgrade once we're ready to do it project-wide.
         await this.upsertVercelEnvVar({
           client,
           vercelProjectId: projectIntegration.externalEntityId,
@@ -1061,7 +1065,7 @@ export class VercelIntegrationRepository {
           key: "TRIGGER_SECRET_KEY",
           value: params.apiKey,
           target: vercelTarget,
-          type: "encrypted",
+          type: "sensitive",
         });
 
         logger.info("Synced regenerated API key to Vercel", {

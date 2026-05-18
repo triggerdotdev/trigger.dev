@@ -42,6 +42,9 @@ export type VercelSettingsResult = {
   autoAssignCustomDomains?: boolean | null;
   /** URL to manage Vercel integration access (project sharing) on vercel.com */
   vercelManageAccessUrl?: string;
+  /** The currently pinned TRIGGER_VERSION on Vercel production, if set. Used to surface
+   * the pin in the UI and prompt the user to clear it when atomic deployments are disabled. */
+  currentTriggerVersion?: string | null;
 };
 
 export type VercelAvailableProject = {
@@ -248,13 +251,14 @@ export class VercelSettingsPresenter extends BasePresenter {
           customEnvironments: VercelCustomEnvironment[];
           autoAssignCustomDomains: boolean | null;
           vercelManageAccessUrl?: string;
+          currentTriggerVersion: string | null;
         }> => {
           if (!orgIntegration) {
-            return { customEnvironments: [], autoAssignCustomDomains: null };
+            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null };
           }
           const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
           if (clientResult.isErr()) {
-            return { customEnvironments: [], autoAssignCustomDomains: null };
+            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null };
           }
           const client = clientResult.value;
           const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
@@ -275,10 +279,10 @@ export class VercelSettingsPresenter extends BasePresenter {
           }
 
           if (!connectedProject) {
-            return { customEnvironments: [], autoAssignCustomDomains: null, vercelManageAccessUrl };
+            return { customEnvironments: [], autoAssignCustomDomains: null, vercelManageAccessUrl, currentTriggerVersion: null };
           }
 
-          const [customEnvsResult, autoAssignResult] = await Promise.all([
+          const [customEnvsResult, autoAssignResult, triggerVersionResult] = await Promise.all([
             VercelIntegrationRepository.getVercelCustomEnvironments(
               client,
               connectedProject.vercelProjectId,
@@ -289,18 +293,41 @@ export class VercelSettingsPresenter extends BasePresenter {
               connectedProject.vercelProjectId,
               teamId
             ),
+            VercelIntegrationRepository.getVercelEnvironmentVariableValues(
+              client,
+              connectedProject.vercelProjectId,
+              teamId,
+              "production",
+              (key) => key === "TRIGGER_VERSION"
+            ),
           ]);
+
+          let currentTriggerVersion: string | null = null;
+          if (triggerVersionResult.isOk()) {
+            const match = triggerVersionResult.value.find(
+              (envVar) => envVar.key === "TRIGGER_VERSION" && envVar.target.includes("production")
+            );
+            currentTriggerVersion = match?.value ?? null;
+          } else {
+            logger.warn("Failed to fetch current TRIGGER_VERSION from Vercel — continuing without it", {
+              projectId,
+              vercelProjectId: connectedProject.vercelProjectId,
+              error: triggerVersionResult.error.message,
+            });
+          }
+
           return {
             customEnvironments: customEnvsResult.isOk() ? customEnvsResult.value : [],
             autoAssignCustomDomains: autoAssignResult.isOk() ? autoAssignResult.value : null,
             vercelManageAccessUrl,
+            currentTriggerVersion,
           };
         };
 
         return fromPromise(
           fetchVercelData(),
           (error) => ({ type: "other" as const, cause: error })
-        ).map(({ customEnvironments, autoAssignCustomDomains, vercelManageAccessUrl }) => ({
+        ).map(({ customEnvironments, autoAssignCustomDomains, vercelManageAccessUrl, currentTriggerVersion }) => ({
           enabled: true,
           hasOrgIntegration,
           authInvalid: false,
@@ -311,6 +338,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           customEnvironments,
           autoAssignCustomDomains,
           vercelManageAccessUrl,
+          currentTriggerVersion,
         } as VercelSettingsResult));
       }).mapErr((error) => {
         // Log the error and return a safe fallback

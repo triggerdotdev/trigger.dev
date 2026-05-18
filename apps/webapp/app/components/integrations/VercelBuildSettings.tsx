@@ -23,6 +23,9 @@ type BuildSettingsFieldsProps = {
   disabledEnvSlugs?: Partial<Record<EnvSlug, string>>;
   autoPromote?: boolean;
   onAutoPromoteChange?: (value: boolean) => void;
+  /** The currently pinned TRIGGER_VERSION on Vercel production, if any. Shown under the
+   * Atomic deployments toggle so the user knows what version is set on Vercel right now. */
+  currentTriggerVersion?: string | null;
   /** Hide the section-level master toggles for "Pull env vars" and "Discover new env vars". */
   hideSectionToggles?: boolean;
 };
@@ -39,6 +42,7 @@ export function BuildSettingsFields({
   disabledEnvSlugs,
   autoPromote,
   onAutoPromoteChange,
+  currentTriggerVersion,
   hideSectionToggles,
 }: BuildSettingsFieldsProps) {
   const isSlugDisabled = (slug: EnvSlug) => !!disabledEnvSlugs?.[slug];
@@ -208,6 +212,13 @@ export function BuildSettingsFields({
           </TextLink>
           .
         </Hint>
+        {currentTriggerVersion && (
+          <Hint className="pr-6">
+            Currently pinned to{" "}
+            <span className="font-mono text-text-bright">{currentTriggerVersion}</span> in Vercel
+            production.
+          </Hint>
+        )}
       </div>
 
       {/* Auto promotion — only visible when atomic deployments are on */}
