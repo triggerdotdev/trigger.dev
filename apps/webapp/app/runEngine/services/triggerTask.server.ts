@@ -388,11 +388,23 @@ export class RunEngineTriggerTaskService {
                 mollifierOutcome.decision.threshold
               );
               mollifierSpan.setAttribute("runId", runFriendlyId);
+              mollifierSpan.setAttribute("taskRunId", runFriendlyId);
 
               const payloadPacket = await this.payloadProcessor.process(triggerRequest);
               const taskEventStore = parentRun?.taskEventStore ?? "taskEvent";
+              // Seed the W3C `traceparent` from the queued span so downstream
+              // `recordRunDebugLog` calls (engine QUEUED/EXECUTING/FINISHED,
+              // run:notify, etc.) emit TaskEvent rows that join the run's trace.
+              // Pass-through gets this for free via `traceEventConcern.traceRun`
+              // populating `event.traceContext`; the mollifier path skips that
+              // wrapper so we have to build the same shape ourselves.
               const traceContext = this.#propagateExternalTraceContext(
-                {},
+                {
+                  traceparent: serializeTraceparent(
+                    mollifierSpan.spanContext().traceId,
+                    mollifierSpan.spanContext().spanId
+                  ),
+                },
                 parentRun?.traceContext,
                 undefined
               );

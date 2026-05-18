@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { trace } from "@opentelemetry/api";
 
 vi.mock("~/db.server", () => ({
   prisma: {},
@@ -53,6 +54,40 @@ describe("createDrainerHandler", () => {
     expect(trigger).toHaveBeenCalledOnce();
     const callArg = trigger.mock.calls[0][0] as { taskIdentifier: string };
     expect(callArg.taskIdentifier).toBe("t");
+  });
+
+  it("re-attaches the snapshot's traceId so engine.trigger inherits the original trace", async () => {
+    // Captures the active traceId at the moment engine.trigger is invoked.
+    // Without context propagation it would be a fresh traceId, leaving the
+    // run-detail page with only the root span.
+    let observedTraceId: string | undefined;
+    const trigger = vi.fn(async () => {
+      observedTraceId = trace.getActiveSpan()?.spanContext().traceId;
+      return { friendlyId: "run_x" };
+    });
+
+    const handler = createDrainerHandler({
+      engine: { trigger } as any,
+      prisma: {} as any,
+    });
+
+    const snapshotTraceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const snapshotSpanId = "bbbbbbbbbbbbbbbb";
+
+    await handler({
+      runId: "run_x",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: {
+        taskIdentifier: "t",
+        traceId: snapshotTraceId,
+        spanId: snapshotSpanId,
+      },
+      attempts: 0,
+      createdAt: new Date(),
+    } as any);
+
+    expect(observedTraceId).toBe(snapshotTraceId);
   });
 
   it("propagates engine.trigger errors so MollifierDrainer can classify them", async () => {

@@ -1355,7 +1355,26 @@ describe("RunEngineTriggerTaskService", () => {
       // input). Schema is internal to the engine, so we only assert that
       // it parses and references the friendlyId — anything more specific
       // would couple the mollifier-layer test to engine-layer fields.
-      expect(() => JSON.parse(buffer.accepted[0]!.payload)).not.toThrow();
+      const snapshot = JSON.parse(buffer.accepted[0]!.payload) as {
+        traceId?: string;
+        spanId?: string;
+        traceContext?: { traceparent?: string };
+      };
+
+      // Regression guard for the dashboard trace-tree bug: the mollifier
+      // snapshot MUST carry a W3C `traceparent` in `traceContext`, seeded
+      // from the queued span. Without it, the drainer replays through
+      // engine.trigger with empty traceContext and every downstream
+      // `recordRunDebugLog` (QUEUED/EXECUTING/FINISHED/run:notify…) gets a
+      // fresh traceId + null parentId — the run-detail page can only show
+      // the root span. Pass-through gets this for free via
+      // `traceEventConcern.traceRun`; the mollifier path doesn't enter
+      // that wrapper so the seeding has to happen at the call site.
+      expect(snapshot.traceContext?.traceparent).toMatch(
+        /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/
+      );
+      expect(snapshot.traceContext!.traceparent).toContain(snapshot.traceId);
+      expect(snapshot.traceContext!.traceparent).toContain(snapshot.spanId);
 
       // Postgres has NOT been written: engine.trigger was never called on
       // the mollify path. The run materialises only when the drainer

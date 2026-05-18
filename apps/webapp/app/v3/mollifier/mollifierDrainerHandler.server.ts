@@ -1,4 +1,4 @@
-import { trace } from "@opentelemetry/api";
+import { context, trace, TraceFlags } from "@opentelemetry/api";
 import type { RunEngine } from "@internal/run-engine";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { MollifierDrainerHandler } from "@trigger.dev/redis-worker";
@@ -25,13 +25,36 @@ export function createDrainerHandler(deps: {
   return async (input) => {
     const dwellMs = Date.now() - input.createdAt.getTime();
 
-    await startSpan(tracer, "mollifier.drained", async (span) => {
-      span.setAttribute("mollifier.drained", true);
-      span.setAttribute("mollifier.dwell_ms", dwellMs);
-      span.setAttribute("mollifier.attempts", input.attempts);
-      span.setAttribute("mollifier.run_friendly_id", input.runId);
+    // Re-attach to the trace started by the caller's mollifier.queued span
+    // (its traceId + spanId were captured into the snapshot at buffer time).
+    // Without this the drainer would emit mollifier.drained in a brand-new
+    // trace and the engine.trigger instrumentation would inherit an empty
+    // active context — leaving the run-detail page with only the root span.
+    const snapshotTraceId =
+      typeof input.payload.traceId === "string" ? input.payload.traceId : undefined;
+    const snapshotSpanId =
+      typeof input.payload.spanId === "string" ? input.payload.spanId : undefined;
 
-      await deps.engine.trigger(input.payload as any, deps.prisma);
+    const parentContext =
+      snapshotTraceId && snapshotSpanId
+        ? trace.setSpanContext(context.active(), {
+            traceId: snapshotTraceId,
+            spanId: snapshotSpanId,
+            traceFlags: TraceFlags.SAMPLED,
+            isRemote: true,
+          })
+        : context.active();
+
+    await context.with(parentContext, async () => {
+      await startSpan(tracer, "mollifier.drained", async (span) => {
+        span.setAttribute("mollifier.drained", true);
+        span.setAttribute("mollifier.dwell_ms", dwellMs);
+        span.setAttribute("mollifier.attempts", input.attempts);
+        span.setAttribute("mollifier.run_friendly_id", input.runId);
+        span.setAttribute("taskRunId", input.runId);
+
+        await deps.engine.trigger(input.payload as any, deps.prisma);
+      });
     });
   };
 }
