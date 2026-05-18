@@ -613,7 +613,16 @@ export class AgentChat<TAgent = unknown> {
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new Error(`appendToSessionStream failed: ${response.status} ${text}`);
+      // Match the error shape that ApiClient/zodfetch produced before the
+      // inline-POST refactor so callers inspecting `error.name ===
+      // "TriggerApiError"` or `error.status` keep working.
+      const err = new Error(`appendToSessionStream failed: ${response.status} ${text}`) as Error & {
+        name: string;
+        status: number;
+      };
+      err.name = "TriggerApiError";
+      err.status = response.status;
+      throw err;
     }
   }
 
