@@ -175,17 +175,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    RATE_LIMIT_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    RATE_LIMIT_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     RATE_LIMIT_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -207,17 +196,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    CACHE_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    CACHE_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     CACHE_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -263,17 +241,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    REALTIME_STREAMS_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    REALTIME_STREAMS_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     REALTIME_STREAMS_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -303,17 +270,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    PUBSUB_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    PUBSUB_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     PUBSUB_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -567,17 +523,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    ALERT_RATE_LIMITER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    ALERT_RATE_LIMITER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     ALERT_RATE_LIMITER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -779,17 +724,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    RUN_ENGINE_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -812,17 +746,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    RUN_ENGINE_RUN_QUEUE_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    RUN_ENGINE_RUN_QUEUE_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     RUN_ENGINE_RUN_QUEUE_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -845,17 +768,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    RUN_ENGINE_RUN_LOCK_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    RUN_ENGINE_RUN_LOCK_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     RUN_ENGINE_RUN_LOCK_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -878,17 +790,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    RUN_ENGINE_DEV_PRESENCE_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    RUN_ENGINE_DEV_PRESENCE_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     RUN_ENGINE_DEV_PRESENCE_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -980,17 +881,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     LEGACY_RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1026,17 +916,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    COMMON_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    COMMON_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     COMMON_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1076,17 +955,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    BATCH_TRIGGER_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    BATCH_TRIGGER_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     BATCH_TRIGGER_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1140,17 +1008,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    ADMIN_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    ADMIN_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     ADMIN_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1181,17 +1038,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    ALERTS_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    ALERTS_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     ALERTS_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1223,17 +1069,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    SCHEDULE_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    SCHEDULE_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     SCHEDULE_WORKER_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1274,17 +1109,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    RUN_REPLICATION_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    RUN_REPLICATION_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     RUN_REPLICATION_REDIS_PORT: z.coerce
       .number()
       .optional()
@@ -1483,17 +1307,6 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_HOST),
-    REQUEST_IDEMPOTENCY_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    REQUEST_IDEMPOTENCY_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
     REQUEST_IDEMPOTENCY_REDIS_PORT: z.coerce
       .number()
       .optional()
