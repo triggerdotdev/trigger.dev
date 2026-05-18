@@ -1141,6 +1141,7 @@ const CommonRunFields = {
   durationMs: z.number(),
   metadata: z.record(z.any()).optional(),
   taskKind: z.string().optional(),
+  region: z.string().optional(),
 };
 
 const RetrieveRunCommandFields = {

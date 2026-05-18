@@ -11,6 +11,12 @@ import {
 // into the core package's internals.
 export { SessionStreamInstance } from "./sessionStreamInstance.js";
 export type { SessionStreamInstanceOptions } from "./sessionStreamInstance.js";
+export {
+  trimSessionStream,
+  writeSessionControlRecord,
+  writeTurnCompleteRecord,
+  writeUpgradeRequiredRecord,
+} from "./sessionStreamOneshot.js";
 
 const API_NAME = "realtime-streams";
 

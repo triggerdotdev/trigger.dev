@@ -3,4 +3,4 @@ area: webapp
 type: feature
 ---
 
-Add an Agent view to the run details page for runs whose `taskKind` annotation is `AGENT`. The view renders the agent's `UIMessage` conversation by subscribing to the backing Session's `.out` and `.in` channels — the same data source as the Agent Playground content view. Switching is via a `Trace view` / `Agent view` segmented control above the run body, and the selected view is reflected in the URL via `?view=agent` so it's shareable.
+Run detail page gains an Agent view alongside the Trace view, rendering the agent's `UIMessage` conversation in real time from the backing Session for any run whose `taskKind` is `AGENT`.

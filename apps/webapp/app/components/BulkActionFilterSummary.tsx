@@ -215,6 +215,19 @@ export function BulkActionFilterSummary({
                     />
                   );
                 }
+                case "regions": {
+                  const values = Array.isArray(value) ? value : [`${value}`];
+                  return (
+                    <AppliedFilter
+                      variant="minimal/medium"
+                      key={key}
+                      label={filterTitle(key)}
+                      icon={filterIcon(key)}
+                      value={appliedSummary(values)}
+                      removable={false}
+                    />
+                  );
+                }
                 case "machines": {
                   const values = Array.isArray(value) ? value : [`${value}`];
                   return (

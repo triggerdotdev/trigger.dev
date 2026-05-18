@@ -40,8 +40,10 @@ import type {
   TriggerTaskRequest,
   TriggerTaskValidator,
 } from "../types";
+import { env } from "~/env.server";
 import {
   evaluateGate as defaultEvaluateGate,
+  type GateOutcome,
   type MollifierEvaluateGate,
 } from "~/v3/mollifier/mollifierGate.server";
 import {
@@ -71,9 +73,12 @@ export class RunEngineTriggerTaskService {
   private readonly metadataMaximumSize: number;
   // Mollifier hooks are DI'd so tests can drive the call-site's mollify branch
   // deterministically (stub the gate to return mollify, inject a real or fake
-  // buffer). In production both default to the live module-level singletons.
+  // buffer, force the global-enabled predicate to true so the call site
+  // doesn't short-circuit on an unset env). In production all three default
+  // to the live module-level singletons + env read.
   private readonly evaluateGate: MollifierEvaluateGate;
   private readonly getMollifierBuffer: MollifierGetBuffer;
+  private readonly isMollifierGloballyEnabled: () => boolean;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -88,6 +93,7 @@ export class RunEngineTriggerTaskService {
     triggerRacepointSystem?: TriggerRacepointSystem;
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
+    isMollifierGloballyEnabled?: () => boolean;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -101,6 +107,8 @@ export class RunEngineTriggerTaskService {
     this.triggerRacepointSystem = opts.triggerRacepointSystem ?? new NoopTriggerRacepointSystem();
     this.evaluateGate = opts.evaluateGate ?? defaultEvaluateGate;
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
+    this.isMollifierGloballyEnabled =
+      opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
   }
 
   public async call({
@@ -335,19 +343,30 @@ export class RunEngineTriggerTaskService {
         taskKind: taskKind ?? "STANDARD",
       };
 
-      const mollifierOutcome = await this.evaluateGate({
-        envId: environment.id,
-        orgId: environment.organizationId,
-        taskId,
-        orgFeatureFlags:
-          (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
-        options: {
-          debounce: body.options?.debounce,
-          oneTimeUseToken: options.oneTimeUseToken,
-          parentTaskRunId: body.options?.parentRunId,
-          resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-        },
-      });
+      // Short-circuit before the gate when mollifier is globally off (the
+      // default for every deployment that hasn't opted in). Avoids the
+      // GateInputs allocation, the deps spread inside `evaluateGate`, and
+      // the `mollifier.decisions{outcome=pass_through}` OTel increment on
+      // every trigger — `triggerTask` is the highest-throughput code path
+      // in the system. The check goes through a DI'd predicate so unit
+      // tests that inject a custom `evaluateGate` can also override the
+      // gate-on check (the default reads `env.TRIGGER_MOLLIFIER_ENABLED`,
+      // which is "0" in CI where no .env file is present).
+      const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
+        ? await this.evaluateGate({
+            envId: environment.id,
+            orgId: environment.organizationId,
+            taskId,
+            orgFeatureFlags:
+              (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
+            options: {
+              debounce: body.options?.debounce,
+              oneTimeUseToken: options.oneTimeUseToken,
+              parentTaskRunId: body.options?.parentRunId,
+              resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+            },
+          })
+        : null;
 
       // Phase 2: real divert path. When the gate says mollify, write the
       // engine.trigger input snapshot into the Redis buffer and return a
@@ -355,7 +374,7 @@ export class RunEngineTriggerTaskService {
       // Postgres; the drainer materialises the run later by replaying
       // engine.trigger against the snapshot. Skip traceRun entirely — the
       // run span is created by the drainer when it eventually runs.
-      if (mollifierOutcome.action === "mollify") {
+      if (mollifierOutcome?.action === "mollify") {
         const mollifierBuffer = this.getMollifierBuffer();
         if (mollifierBuffer && !body.options?.debounce) {
           const synthetic = await startSpan(

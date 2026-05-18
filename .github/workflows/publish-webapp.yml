@@ -53,12 +53,6 @@ jobs:
           ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
           image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
-          # if tag is a semver, also tag it as v4
-          if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
-            # TODO: switch to v4 tag on GA
-            image_tags=$image_tags,$ref_without_tag:v4-beta
-          fi
-
           # when pushing the mutable main tag, also push an immutable-by-convention
           # full-commit-sha tag so a commit can be resolved to a specific digest
           if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" == "main" ]]; then

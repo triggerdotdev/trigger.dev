@@ -7,6 +7,7 @@ import { prisma } from "~/db.server";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
+import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getCachedUsage, getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
@@ -88,7 +89,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   firstDayOfNextMonth.setUTCDate(1);
   firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
-  const [plan, usage, customDashboards] = await Promise.all([
+  const shouldLoadRegions =
+    !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
+
+  const [plan, usage, customDashboards, regions] = await Promise.all([
     getCurrentPlan(organization.id),
     getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
     prisma.metricsDashboard.findMany({
@@ -100,6 +104,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       },
       orderBy: { createdAt: "desc" },
     }),
+    shouldLoadRegions
+      ? new RegionsPresenter()
+          .call({ userId: user.id, projectSlug: projectParam! })
+          .then(({ regions }) => regions)
+          .catch(() => [] as Region[])
+      : Promise.resolve([] as Region[]),
   ]);
 
   let hasExceededFreeTier = false;
@@ -147,6 +157,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organization,
     project,
     environment,
+    regions,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
     customDashboards: customDashboardsWithWidgetCount,

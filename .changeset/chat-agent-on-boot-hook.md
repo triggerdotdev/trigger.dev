@@ -18,4 +18,4 @@ export const myChat = chat.agent({
 });
 ```
 
-If you previously initialized `chat.local` in `onChatStart`, move it to `onBoot` — `onChatStart` is once-per-chat and won't fire on a continuation, leaving `chat.local` uninitialized when `run()` tries to use it. See the upgrade guide for the migration pattern.
+Use `onBoot` (not `onChatStart`) for state setup that must run every time a worker picks up the chat — `onChatStart` fires once per chat and won't run on continuation, leaving `chat.local` uninitialized when `run()` tries to use it.

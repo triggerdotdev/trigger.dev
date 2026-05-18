@@ -22,7 +22,7 @@ import { assertNever } from "assert-never";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { FlagIcon } from "~/assets/icons/RegionIcons";
+import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -972,12 +972,7 @@ function RunBody({
                   <Property.Item>
                     <Property.Label>Region</Property.Label>
                     <Property.Value>
-                      <span className="flex items-center gap-1">
-                        {run.region.location ? (
-                          <FlagIcon region={run.region.location} className="size-5" />
-                        ) : null}
-                        {run.region.name}
-                      </span>
+                      <RegionLabel region={run.region} />
                     </Property.Value>
                   </Property.Item>
                 )}

@@ -1,3 +1,24 @@
+/**
+ * ⚠️ LEGACY — Graphile-worker / ZodWorker setup. Do not touch.
+ *
+ * This file wires the original background-job system the webapp was
+ * built on (`@internal/zod-worker` → graphile-worker → Postgres). It is
+ * now in deprecation mode: every task in `workerCatalog` below is
+ * annotated with `@deprecated, moved to <new home>` and the live jobs
+ * for new features all run on `@trigger.dev/redis-worker` instead.
+ *
+ * Where to put new things:
+ *   - Background jobs / queues → use redis-worker, alongside
+ *     `~/v3/commonWorker.server.ts`, `~/v3/alertsWorker.server.ts`, or
+ *     `~/v3/batchTriggerWorker.server.ts`.
+ *   - Run lifecycle → `@internal/run-engine` via `~/v3/runEngine.server`.
+ *   - Custom polling loops with their own Redis connection → keep them
+ *     in their own lifecycle module (e.g. `~/v3/mollifierDrainerWorker.server.ts`)
+ *     and wire the bootstrap from `entry.server.tsx`. Don't reach into
+ *     `init()` below.
+ *
+ * Edit only when removing legacy paths.
+ */
 import { ZodWorker } from "@internal/zod-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
@@ -26,7 +47,6 @@ import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "~/v3/services/resumeTaskDependency.server";
 import { RetryAttemptService } from "~/v3/services/retryAttempt.server";
 import { TimeoutDeploymentService } from "~/v3/services/timeoutDeployment.server";
-import { getMollifierDrainer } from "~/v3/mollifier/mollifierDrainer.server";
 import { GraphileMigrationHelperService } from "./db/graphileMigrationHelper.server";
 import { sendEmail } from "./email.server";
 import { logger } from "./logger.server";
@@ -107,7 +127,6 @@ let workerQueue: ZodWorker<typeof workerCatalog>;
 
 declare global {
   var __worker__: ZodWorker<typeof workerCatalog>;
-  var __mollifierShutdownRegistered__: boolean | undefined;
 }
 
 // this is needed because in development we don't want to restart
@@ -129,55 +148,6 @@ export async function init() {
 
   if (env.WORKER_ENABLED === "true") {
     await workerQueue.initialize();
-  }
-
-  // Only the worker role drains the mollifier buffer. API-only replicas
-  // still produce into the buffer via the trigger hot path, but the
-  // polling loop + Redis consumer connection only belongs on workers —
-  // otherwise every webapp replica races for the same entries.
-  if (env.WORKER_ENABLED !== "true") {
-    return;
-  }
-
-  try {
-    // getMollifierDrainer() runs the singleton factory, which validates the
-    // shutdown-timeout reconciliation against GRACEFUL_SHUTDOWN_TIMEOUT and
-    // throws BEFORE constructing the drainer if it's misconfigured. The
-    // outer catch below logs and aborts drainer registration on either that
-    // validation error or a Redis init failure — no half-started state. The
-    // returned drainer is configured-but-stopped; start() runs below, AFTER
-    // the SIGTERM/SIGINT handlers are registered, so a signal landing during
-    // boot can never find the polling loop running without a graceful-stop
-    // path. Same `__mollifierShutdownRegistered__` guard owns both the
-    // handler registration and the start() call so dev hot-reloads don't
-    // double-register or double-start.
-    const drainer = getMollifierDrainer();
-    if (drainer && !global.__mollifierShutdownRegistered__) {
-      // The drainer owns a polling loop and a Redis client; let it drain
-      // in-flight pops on shutdown rather than tearing the process down
-      // mid-handler. `init()` is called per request from entry.server.tsx,
-      // and `process.once()` only removes its listener after it fires — so
-      // without a process-global guard, dev hot-reloads would stack a fresh
-      // listener pair every request. Mirrors the `__worker__` singleton
-      // pattern above.
-      // Bound shutdown so a hung handler can't block process exit past the
-      // pod's termination grace period. `drainer.stop({ timeoutMs })` logs a
-      // warning and returns if the deadline is hit while a handler is still
-      // in flight.
-      const stopDrainer = () => {
-        drainer
-          .stop({ timeoutMs: env.MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS })
-          .catch((error) => {
-            logger.error("Failed to stop mollifier drainer", { error });
-          });
-      };
-      process.once("SIGTERM", stopDrainer);
-      process.once("SIGINT", stopDrainer);
-      global.__mollifierShutdownRegistered__ = true;
-      drainer.start();
-    }
-  } catch (error) {
-    logger.error("Failed to initialise mollifier drainer", { error });
   }
 }
 

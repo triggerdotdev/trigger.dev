@@ -62,31 +62,41 @@ const { action } = createActionApiRoute(
 
     if (request.method === "PUT") {
       // This is the "create" endpoint
-      const updatedRun = await prisma.taskRun.update({
+      const target = await prisma.taskRun.findFirst({
         where: {
           friendlyId: targetId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-        data: {
-          realtimeStreams: {
-            push: params.streamId,
-          },
-        },
         select: {
+          id: true,
+          realtimeStreams: true,
           realtimeStreamsVersion: true,
           completedAt: true,
         },
       });
 
-      if (updatedRun.completedAt) {
+      if (!target) {
+        return new Response("Run not found", { status: 404 });
+      }
+
+      if (target.completedAt) {
         return new Response("Cannot initialize a realtime stream on a completed run", {
           status: 400,
         });
       }
 
+      if (!target.realtimeStreams.includes(params.streamId)) {
+        await prisma.taskRun.update({
+          where: { id: target.id },
+          data: {
+            realtimeStreams: { push: params.streamId },
+          },
+        });
+      }
+
       const realtimeStream = getRealtimeStreamInstance(
         authentication.environment,
-        updatedRun.realtimeStreamsVersion,
+        target.realtimeStreamsVersion,
         basinContext
       );
 
@@ -94,7 +104,7 @@ const { action } = createActionApiRoute(
 
       return json(
         {
-          version: updatedRun.realtimeStreamsVersion,
+          version: target.realtimeStreamsVersion,
         },
         { status: 202, headers: responseHeaders }
       );

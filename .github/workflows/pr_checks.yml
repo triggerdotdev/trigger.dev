@@ -17,16 +17,21 @@ jobs:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ steps.code_filter.outputs.code }}
+      typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
       webapp: ${{ steps.filter.outputs.webapp }}
       packages: ${{ steps.filter.outputs.packages }}
       internal: ${{ steps.filter.outputs.internal }}
       cli: ${{ steps.filter.outputs.cli }}
       sdk: ${{ steps.filter.outputs.sdk }}
     steps:
+      # `code` uses `every` semantics so the negation patterns actually subtract.
+      # With the default `some` quantifier, `**` matches every file and the
+      # subsequent `!...` patterns are no-ops (each pattern is OR'd, not AND'd).
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        id: filter
+        id: code_filter
         with:
+          predicate-quantifier: every
           filters: |
             code:
               - '**'
@@ -37,6 +42,11 @@ jobs:
               - '!references/**'
               - '!**/*.md'
               - '!**/.env.example'
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            typecheck_self:
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/typecheck.yml'
             webapp:
@@ -95,7 +105,7 @@ jobs:
 
   typecheck:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.typecheck_self == 'true'
     uses: ./.github/workflows/typecheck.yml
 
   webapp:

@@ -33,6 +33,7 @@ export type RunListOptions = {
   batchId?: string;
   runId?: string[];
   queues?: string[];
+  regions?: string[];
   machines?: MachinePresetName[];
   errorId?: string;
   sources?: string[];
@@ -72,6 +73,7 @@ export class NextRunListPresenter {
       batchId,
       runId,
       queues,
+      regions,
       machines,
       errorId,
       sources,
@@ -102,6 +104,7 @@ export class NextRunListPresenter {
       batchId !== undefined ||
       (runId !== undefined && runId.length > 0) ||
       (queues !== undefined && queues.length > 0) ||
+      (regions !== undefined && regions.length > 0) ||
       (machines !== undefined && machines.length > 0) ||
       (errorId !== undefined && errorId !== "") ||
       typeof isTest === "boolean" ||
@@ -188,6 +191,7 @@ export class NextRunListPresenter {
       runId,
       bulkId,
       queues,
+      regions,
       machines,
       errorId,
       taskKinds: sources,
@@ -255,6 +259,7 @@ export class NextRunListPresenter {
             name: run.queue.replace("task/", ""),
             type: run.queue.startsWith("task/") ? "task" : "custom",
           },
+          region: run.workerQueue ? run.workerQueue : undefined,
           taskKind: RunAnnotations.safeParse(run.annotations).data?.taskKind ?? "STANDARD",
         };
       }),

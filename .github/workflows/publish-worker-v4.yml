@@ -68,12 +68,6 @@ jobs:
           ref_without_tag=ghcr.io/triggerdotdev/${STEPS_GET_REPOSITORY_OUTPUTS_REPO}
           image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
-          # if tag is a semver, also tag it as v4
-          if [[ "${STEPS_GET_TAG_OUTPUTS_IS_SEMVER}" == true ]]; then
-            # TODO: switch to v4 tag on GA
-            image_tags=$image_tags,$ref_without_tag:v4-beta
-          fi
-
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
         env:
           STEPS_GET_REPOSITORY_OUTPUTS_REPO: ${{ steps.get_repository.outputs.repo }}
