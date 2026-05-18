@@ -10,7 +10,10 @@ import {
 // `SessionOutputChannel.pipe` / `.writer` can construct it without reaching
 // into the core package's internals.
 export { SessionStreamInstance } from "./sessionStreamInstance.js";
-export type { SessionStreamInstanceOptions } from "./sessionStreamInstance.js";
+export type {
+  SessionStreamInstanceOptions,
+  InitializeSessionStreamResponseLike,
+} from "./sessionStreamInstance.js";
 export {
   trimSessionStream,
   writeSessionControlRecord,

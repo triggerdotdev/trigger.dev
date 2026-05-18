@@ -118,6 +118,7 @@ export function ChatSidebar({
             <option value="ai-chat-session">ai-chat-session (session)</option>
             <option value="upgrade-test">upgrade-test (requestUpgrade after 3 turns)</option>
             <option value="stress-emit">stress-emit (UI stress test)</option>
+            <option value="cf-trust-test">cf-trust-test (Cloudflare proxy trust)</option>
           </select>
         </div>
         <label
