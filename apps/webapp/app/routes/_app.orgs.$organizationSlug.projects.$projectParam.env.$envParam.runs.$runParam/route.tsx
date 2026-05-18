@@ -67,6 +67,7 @@ import {
   useTree,
 } from "~/components/primitives/TreeView/TreeView";
 import { type NodesState } from "~/components/primitives/TreeView/reducer";
+import { MollifierBanner } from "~/components/runs/MollifierBanner";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
@@ -381,7 +382,7 @@ async function tryMollifiedRunFallback(args: {
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
+  const { run, trace, maximumLiveReloadingSetting, runsList, resizable, isMollified } =
     useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -501,6 +502,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
+        {isMollified ? <MollifierBanner className="mx-3 mt-3" /> : null}
         {trace ? (
           <TraceView
             run={run}
