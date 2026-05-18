@@ -1152,7 +1152,14 @@ function getOutputOptions({
     return outputOptions;
   }
 
-  const outputOptions: string[] = ["type=image", "oci-mediatypes=true", "rewrite-timestamp=true"];
+  // `rewrite-timestamp` is incompatible with the buildx docker driver's
+  // implicit `unpack=true` on push (used by e.g. orbstack's default builder).
+  // Provide an env-var escape hatch so local-dev deploys can opt out.
+  const skipRewriteTimestamp = process.env.TRIGGER_BUILD_SKIP_REWRITE_TIMESTAMP === "1";
+  const outputOptions: string[] = ["type=image", "oci-mediatypes=true"];
+  if (!skipRewriteTimestamp) {
+    outputOptions.push("rewrite-timestamp=true");
+  }
 
   if (imageTag) {
     outputOptions.push(`name=${imageTag}`);
