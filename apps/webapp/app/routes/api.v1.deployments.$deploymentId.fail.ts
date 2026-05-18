@@ -52,6 +52,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   } catch (error) {
     if (error instanceof Response) throw error;
+    if (error instanceof SyntaxError) {
+      return json({ error: "Invalid JSON body" }, { status: 400 });
+    }
     logger.error("Failed to fail deployment", { error });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
