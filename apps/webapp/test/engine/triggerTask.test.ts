@@ -1246,6 +1246,7 @@ describe("RunEngineTriggerTaskService", () => {
         metadataMaximumSize: 1024 * 1024,
         evaluateGate: evaluateGateSpy,
         getMollifierBuffer: () => buffer as never,
+        isMollifierGloballyEnabled: () => true,
       });
 
       await expect(
@@ -1309,6 +1310,7 @@ describe("RunEngineTriggerTaskService", () => {
         metadataMaximumSize: 1024 * 1024,
         evaluateGate: async () => ({ action: "mollify", decision: trippedDecision }),
         getMollifierBuffer: () => buffer as never,
+        isMollifierGloballyEnabled: () => true,
       });
 
       const result = await triggerTaskService.call({
@@ -1376,6 +1378,7 @@ describe("RunEngineTriggerTaskService", () => {
         metadataMaximumSize: 1024 * 1024,
         evaluateGate: async () => ({ action: "pass_through" }),
         getMollifierBuffer: getBufferSpy,
+        isMollifierGloballyEnabled: () => true,
       });
 
       const result = await triggerTaskService.call({
@@ -1475,6 +1478,7 @@ describe("RunEngineTriggerTaskService", () => {
           },
         }),
         getMollifierBuffer: () => buffer as never,
+        isMollifierGloballyEnabled: () => true,
       });
 
       await expect(
@@ -1581,6 +1585,7 @@ describe("RunEngineTriggerTaskService", () => {
         metadataMaximumSize: 1024 * 1024,
         evaluateGate: evaluateGateSpy,
         getMollifierBuffer: () => buffer as never,
+        isMollifierGloballyEnabled: () => true,
       });
 
       const cached = await mollifierService.call({
@@ -1709,6 +1714,7 @@ describe("RunEngineTriggerTaskService", () => {
           },
         }),
         getMollifierBuffer: () => buffer as never,
+        isMollifierGloballyEnabled: () => true,
       });
 
       const debounced = await mollifierService.call({
