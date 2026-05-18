@@ -40,6 +40,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
@@ -78,7 +79,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    throwNotFound("Project not found");
+    return redirectWithErrorMessage("/", request, "Project not found");
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
