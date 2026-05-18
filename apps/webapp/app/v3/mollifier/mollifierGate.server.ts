@@ -99,7 +99,7 @@ function logDivertDecision(
   inputs: GateInputs,
   decision: Extract<TripDecision, { divert: true }>,
 ): void {
-  logger.info(message, {
+  logger.debug(message, {
     envId: inputs.envId,
     orgId: inputs.orgId,
     taskId: inputs.taskId,
