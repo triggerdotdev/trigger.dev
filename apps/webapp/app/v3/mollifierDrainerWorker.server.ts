@@ -43,13 +43,25 @@ declare global {
  *     master kill switch; the new flag only controls WHICH replicas
  *     run the drainer when the system is on.
  */
-export function initMollifierDrainerWorker(): void {
-  if (env.TRIGGER_MOLLIFIER_DRAINER_ENABLED !== "1") {
+export function initMollifierDrainerWorker(
+  opts: {
+    // Test seams. Production callers pass nothing; the defaults read the
+    // live env and resolve the live singleton. Tests inject overrides so
+    // the misconfig-rethrow / transient-swallow branches can be driven
+    // without manipulating module-level env state.
+    isEnabled?: () => boolean;
+    getDrainer?: typeof getMollifierDrainer;
+  } = {},
+): void {
+  const isEnabled = opts.isEnabled ?? (() => env.TRIGGER_MOLLIFIER_DRAINER_ENABLED === "1");
+  const getDrainer = opts.getDrainer ?? getMollifierDrainer;
+
+  if (!isEnabled()) {
     return;
   }
 
   try {
-    const drainer = getMollifierDrainer();
+    const drainer = getDrainer();
     if (drainer && !global.__mollifierShutdownRegistered__) {
       // `__mollifierShutdownRegistered__` guards against double-register
       // on dev hot-reloads (this bootstrap is called from
