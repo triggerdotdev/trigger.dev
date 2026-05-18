@@ -173,6 +173,13 @@ export async function evaluateGate(
   // future evaluators may not — keep the contract symmetric with the org
   // flag resolution above so the trigger hot path can never be broken by a
   // gate-internal failure.
+  //
+  // Note: the evaluator INCRs the per-env Redis counter (`mollifier:rate:${envId}`)
+  // in *both* shadow-only and flag-on modes — shadow mode is observation-only at
+  // the user-visible level (no diversion), but not Redis-passive. It has to write
+  // because the threshold is computed from a counter, and a counter that doesn't
+  // increment isn't a counter. There's no cross-org bleed: `RuntimeEnvironment`
+  // is 1:1 with `Organization`, so the per-env counter is effectively per-org.
   let decision: TripDecision;
   try {
     decision = await d.evaluator(inputs);
