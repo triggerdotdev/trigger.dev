@@ -16,38 +16,38 @@ const RequestBodySchema = z.object({
 
 export async function action({ request }: LoaderFunctionArgs) {
   try {
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+    // Next authenticate the request
+    const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
 
-  const parsedBody = RequestBodySchema.safeParse(await request.json());
+    const parsedBody = RequestBodySchema.safeParse(await request.json());
 
-  if (!parsedBody.success) {
-    return json(
-      { error: "Invalid request body", issues: parsedBody.error.issues },
-      { status: 400 }
-    );
-  }
+    if (!parsedBody.success) {
+      return json(
+        { error: "Invalid request body", issues: parsedBody.error.issues },
+        { status: 400 }
+      );
+    }
 
-  const claims = {
-    sub: authenticationResult.environment.id,
-    pub: true,
-    ...parsedBody.data.claims,
-  };
+    const claims = {
+      sub: authenticationResult.environment.id,
+      pub: true,
+      ...parsedBody.data.claims,
+    };
 
-  // Sign with the environment's current canonical key, not the raw header key,
-  // so JWTs minted with a revoked (grace-window) key still validate — validation
-  // in jwtAuth.server.ts uses environment.apiKey.
-  const jwt = await internal_generateJWT({
-    secretKey: authenticationResult.environment.apiKey,
-    payload: claims,
-    expirationTime: parsedBody.data.expirationTime ?? "1h",
-  });
+    // Sign with the environment's current canonical key, not the raw header key,
+    // so JWTs minted with a revoked (grace-window) key still validate — validation
+    // in jwtAuth.server.ts uses environment.apiKey.
+    const jwt = await internal_generateJWT({
+      secretKey: authenticationResult.environment.apiKey,
+      payload: claims,
+      expirationTime: parsedBody.data.expirationTime ?? "1h",
+    });
 
-  return json({ token: jwt });
+    return json({ token: jwt });
   } catch (error) {
     if (error instanceof Response) throw error;
     logger.error("Failed to mint auth jwt", { error });
