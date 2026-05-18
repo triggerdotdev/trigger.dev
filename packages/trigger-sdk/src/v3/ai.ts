@@ -8648,6 +8648,22 @@ function resolveChatStartBaseURL(
   return raw.replace(/\/$/, "");
 }
 
+function overrideRequestHeaders(accessToken: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "x-trigger-source": "sdk",
+  };
+  // Forward the preview-branch hint so override-mode requests land on the
+  // same env the standard ApiClient path would have routed to. Mirrors
+  // ApiClient.#getHeaders. Read from TRIGGER_PREVIEW_BRANCH /
+  // VERCEL_GIT_COMMIT_REF via apiClientManager.branchName.
+  if (apiClientManager.branchName) {
+    headers["x-trigger-branch"] = apiClientManager.branchName;
+  }
+  return headers;
+}
+
 async function callSessionsCreateWithOverride(args: {
   chatId: string;
   body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
@@ -8664,11 +8680,7 @@ async function callSessionsCreateWithOverride(args: {
   const url = `${resolveChatStartBaseURL("sessions", args.chatId, args.baseURLOption)}/api/v1/sessions`;
   const init: RequestInit = {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      "x-trigger-source": "sdk",
-    },
+    headers: overrideRequestHeaders(accessToken),
     body: JSON.stringify(args.body),
   };
   const response = args.fetchOverride
@@ -8698,11 +8710,7 @@ async function mintPublicTokenWithOverride(args: {
   const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;
   const init: RequestInit = {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-      "x-trigger-source": "sdk",
-    },
+    headers: overrideRequestHeaders(accessToken),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)

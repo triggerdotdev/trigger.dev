@@ -1191,13 +1191,29 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             : () => {};
 
         const sseCtx: ChatTransportEndpointContext = { endpoint: "out", chatId };
-        const sseFetchClient: typeof fetch | undefined = this.fetchOverride
-          ? ((input, init) =>
-              this.fetchOverride!(
-                typeof input === "string" ? input : (input as URL | Request).toString(),
-                init ?? {},
+        const fetchOverride = this.fetchOverride;
+        const sseFetchClient: typeof fetch | undefined = fetchOverride
+          ? ((input, init) => {
+              if (typeof input === "string") {
+                return fetchOverride(input, init ?? {}, sseCtx);
+              }
+              if (input instanceof URL) {
+                return fetchOverride(input.toString(), init ?? {}, sseCtx);
+              }
+              // Request — preserve its url + intrinsic init, let any
+              // provided init override on top (matches fetch(Request, init)
+              // semantics).
+              return fetchOverride(
+                input.url,
+                {
+                  method: input.method,
+                  headers: input.headers,
+                  signal: input.signal,
+                  ...(init ?? {}),
+                },
                 sseCtx
-              )) as typeof fetch
+              );
+            }) as typeof fetch
           : undefined;
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
