@@ -226,10 +226,11 @@ export class MollifierDrainer<TPayload = unknown> {
     return sorted[idx]!;
   }
 
-  // A `pop()` failure for one env (e.g. a Redis hiccup mid-batch) must not
+  // A failure for one env (e.g. a Redis hiccup mid-batch in `pop`, or in
+  // `requeue`/`fail` during error recovery inside `processEntry`) must not
   // poison the rest of the batch — `Promise.all` would otherwise reject and
-  // bubble all the way to `loop()`. Catch here so the failed env is just
-  // counted as "failed" for this tick and we move on.
+  // bubble all the way to `loop()`. Catch both stages here so the failed env
+  // is just counted as "failed" for this tick and we move on.
   private async processOneFromEnv(envId: string): Promise<"drained" | "failed" | "empty"> {
     let entry: BufferEntry | null;
     try {
@@ -239,7 +240,16 @@ export class MollifierDrainer<TPayload = unknown> {
       return "failed";
     }
     if (!entry) return "empty";
-    return this.processEntry(entry);
+    try {
+      return await this.processEntry(entry);
+    } catch (err) {
+      this.logger.error("MollifierDrainer.processEntry failed", {
+        envId,
+        runId: entry.runId,
+        err,
+      });
+      return "failed";
+    }
   }
 
   private async processEntry(entry: BufferEntry): Promise<"drained" | "failed"> {
