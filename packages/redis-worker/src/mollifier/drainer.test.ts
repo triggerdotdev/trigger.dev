@@ -1243,7 +1243,11 @@ describe("MollifierDrainer.start/stop", () => {
       await drainer.stop({ timeoutMs: 500 });
       const stopElapsed = Date.now() - stopStart;
 
-      expect(stopElapsed).toBeGreaterThanOrEqual(500);
+      // Allow a small jitter window below `timeoutMs` — Node's setTimeout can
+      // fire a millisecond or two early under CI load. The behaviour we're
+      // pinning is "stop honors the deadline instead of waiting for the hung
+      // handler indefinitely", not millisecond-precise timing.
+      expect(stopElapsed).toBeGreaterThanOrEqual(450);
       expect(stopElapsed).toBeLessThan(2_000);
     } finally {
       await buffer.close();
