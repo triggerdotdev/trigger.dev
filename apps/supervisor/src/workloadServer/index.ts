@@ -88,6 +88,8 @@ type WorkloadServerOptions = {
   computeManager?: ComputeWorkloadManager;
   tracing?: OtlpTraceService;
   wideEventOpts: WideEventOptions;
+  /** When true, high-frequency HTTP routes also emit wide events. */
+  wideEventsNoisyRoutes: boolean;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -96,6 +98,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
   private readonly wideEventOpts: WideEventOptions;
+  private readonly wideEventsNoisyRoutes: boolean;
 
   private readonly httpServer: HttpServer;
   private readonly websocketServer: Namespace<
@@ -126,6 +129,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
     this.wideEventOpts = opts.wideEventOpts;
+    this.wideEventsNoisyRoutes = opts.wideEventsNoisyRoutes;
 
     if (opts.computeManager?.snapshotsEnabled) {
       this.snapshotService = new ComputeSnapshotService({
@@ -183,16 +187,25 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    * `traceparent` and `x-request-id` from `req.headers`, attaches `run_id` /
    * `snapshot_id` / `deployment_id` meta from `params` when present, and
    * captures the response status from `res.statusCode` after `fn` returns.
+   *
+   * Pass `highFrequency: true` for noisy routes (heartbeat, polling). Those
+   * still go through the wrapper but only emit when
+   * `TRIGGER_WIDE_EVENTS_NOISY_ROUTES` is on, so prod can keep them dark
+   * while test envs capture full-fidelity traffic for debugging.
    */
   private wideRoute<T>(
     ctx: { req: IncomingMessage; res: ServerResponse; params?: unknown },
     route: string,
     method: string,
-    fn: () => Promise<T> | T
+    fn: () => Promise<T> | T,
+    routeOpts: { highFrequency?: boolean } = {}
   ): Promise<T> {
+    const enabled =
+      this.wideEventOpts.enabled && (!routeOpts.highFrequency || this.wideEventsNoisyRoutes);
     return runWideEvent(
       {
         ...this.wideEventOpts,
+        enabled,
         route,
         method,
         traceparent: this.headerValueFromRequest(ctx.req, "traceparent"),
@@ -324,7 +337,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 reply.json({
                   ok: true,
                 } satisfies WorkloadHeartbeatResponseBody);
-              }
+              },
+              { highFrequency: true }
             ),
         }
       )
@@ -494,7 +508,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 reply.json({
                   snapshots: sinceSnapshotResponse.data.snapshots.map(legacifyCheckpointType),
                 } satisfies WorkloadRunSnapshotsSinceResponseBody);
-              }
+              },
+              { highFrequency: true }
             ),
         }
       )
@@ -550,7 +565,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 body,
                 this.runnerIdFromRequest(req)
               );
-            }
+            },
+            { highFrequency: true }
           ),
       });
     } else {
@@ -563,7 +579,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             "POST",
             async () => {
               ctx.reply.empty(204);
-            }
+            },
+            { highFrequency: true }
           ),
       });
     }
@@ -654,6 +671,26 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         };
       };
 
+      const emitSocketLifecycle = (
+        event: "run_connected" | "run_disconnected",
+        friendlyId: string,
+        disconnectReason?: string
+      ) => {
+        emitOneShot({
+          ...this.wideEventOpts,
+          populate: (state) => {
+            state.extras.event = event;
+            setMeta(state, "run_id", friendlyId);
+            if (socket.data.deploymentId) {
+              setMeta(state, "deployment_id", socket.data.deploymentId);
+            }
+            if (socket.data.runnerId) setMeta(state, "runner_id", socket.data.runnerId);
+            state.extras.socket_id = socket.id;
+            if (disconnectReason) state.extras.disconnect_reason = disconnectReason;
+          },
+        });
+      };
+
       const runConnected = (friendlyId: string) => {
         socketLogger.debug("runConnected", { ...getSocketMetadata() });
 
@@ -664,20 +701,22 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             newRunId: friendlyId,
             oldRunId: socket.data.runFriendlyId,
           });
-          runDisconnected(socket.data.runFriendlyId);
+          runDisconnected(socket.data.runFriendlyId, "socket_run_replaced");
         }
 
         this.runSockets.set(friendlyId, socket);
         this.emit("runConnected", { run: { friendlyId } });
         socket.data.runFriendlyId = friendlyId;
+        emitSocketLifecycle("run_connected", friendlyId);
       };
 
-      const runDisconnected = (friendlyId: string) => {
+      const runDisconnected = (friendlyId: string, reason: string) => {
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
 
         this.runSockets.delete(friendlyId);
         this.emit("runDisconnected", { run: { friendlyId } });
         socket.data.runFriendlyId = undefined;
+        emitSocketLifecycle("run_disconnected", friendlyId, reason);
       };
 
       socketLogger.debug("wsServer socket connected", { ...getSocketMetadata() });
@@ -695,7 +734,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         });
 
         if (socket.data.runFriendlyId) {
-          runDisconnected(socket.data.runFriendlyId);
+          runDisconnected(socket.data.runFriendlyId, `socket_disconnecting:${reason}`);
         }
       });
 
@@ -725,18 +764,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
         try {
           runConnected(message.run.friendlyId);
-          emitOneShot({
-            ...this.wideEventOpts,
-            populate: (state) => {
-              state.extras.event = "run:start";
-              setMeta(state, "run_id", message.run.friendlyId);
-              if (socket.data.deploymentId) {
-                setMeta(state, "deployment_id", socket.data.deploymentId);
-              }
-              if (socket.data.runnerId) setMeta(state, "runner_id", socket.data.runnerId);
-              state.extras.socket_id = socket.id;
-            },
-          });
         } catch (error) {
           log.error("run:start error", { error });
         }
@@ -752,22 +779,10 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         log.debug("Handling run:stop");
 
         try {
-          runDisconnected(message.run.friendlyId);
+          runDisconnected(message.run.friendlyId, "run_stop_message");
           // Don't delete trace context here - run:stop fires after each snapshot/shutdown
           // but the run may be restored on a new VM and snapshot again. Trace context is
           // re-populated on dequeue, and entries are small (4 strings per run).
-          emitOneShot({
-            ...this.wideEventOpts,
-            populate: (state) => {
-              state.extras.event = "run:stop";
-              setMeta(state, "run_id", message.run.friendlyId);
-              if (socket.data.deploymentId) {
-                setMeta(state, "deployment_id", socket.data.deploymentId);
-              }
-              if (socket.data.runnerId) setMeta(state, "runner_id", socket.data.runnerId);
-              state.extras.socket_id = socket.id;
-            },
-          });
         } catch (error) {
           log.error("run:stop error", { error });
         }
