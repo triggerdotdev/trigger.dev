@@ -4,11 +4,11 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
-<Update label="May 16, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
+<Update label="May 16, 2026" description="0.0.0-chat-prerelease-20260519091352" tags={["SDK", "Breaking"]}>
 
 ## `session.out` is now bounded — header-form control records + per-turn trim
 
-Long-lived chats were accumulating `session.out` records forever (every turn appends; nothing trimmed). The Sessions dashboard re-streamed the entire history from `seq_num=0` on every page load, and OOM-retry boot scanned the whole stream to find the last turn-complete. Surfaced by Arena AI: "what's the lifetime of these streams?"
+Long-lived chats were accumulating `session.out` records forever (every turn appends; nothing trimmed). The Sessions dashboard re-streamed the entire history from `seq_num=0` on every page load, and OOM-retry boot scanned the whole stream to find the last turn-complete.
 
 After this release `session.out` stays roughly **one turn long forever** at steady state. After each `turn-complete`, the agent appends an S2 `trim` command record pointing back to the previous turn-complete's seq_num. Full conversation history continues to live in the durable S3 snapshot, not on the stream. Resume across a single turn boundary still works (the previous `turn-complete` is still on the stream and S2's eventually-consistent trim window gives 10-60s of grace); resume across multiple turns of inactivity falls back to the snapshot.
 
@@ -67,7 +67,7 @@ Hard cutover — no compat shim. v4.5 is prerelease.
 
 </Update>
 
-<Update label="May 8, 2026" description="0.0.0-chat-prerelease-pending" tags={["SDK", "Breaking"]}>
+<Update label="May 8, 2026" description="0.0.0-chat-prerelease-20260519091352" tags={["SDK", "Breaking"]}>
 
 ## 512 KiB `/in/append` ceiling removed for long chats — slim wire + S3 snapshot
 
