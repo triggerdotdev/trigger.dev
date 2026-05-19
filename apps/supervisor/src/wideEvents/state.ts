@@ -21,7 +21,6 @@ export type State = {
   commitSha?: string;
   region?: string;
   nodeId?: string;
-  instanceId?: string;
 
   // Caller-attached opaque metadata, flattened to `meta.<key>` on emit.
   meta: Record<string, string>;
