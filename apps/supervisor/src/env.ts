@@ -261,6 +261,10 @@ const Env = z
     // line per natural unit of work (dequeue iteration, HTTP request, socket
     // lifecycle). High-QPS hotpath, so the kill switch must be honoured.
     TRIGGER_WIDE_EVENTS_ENABLED: BoolEnv.default(false),
+    // When true, also emit wide events for high-frequency HTTP routes
+    // (heartbeat, snapshots-since, logs/debug). Off in prod to keep event
+    // volume manageable; on in test environments for full-fidelity debugging.
+    TRIGGER_WIDE_EVENTS_NOISY_ROUTES: BoolEnv.default(false),
   })
   .superRefine((data, ctx) => {
     if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_METADATA_URL) {

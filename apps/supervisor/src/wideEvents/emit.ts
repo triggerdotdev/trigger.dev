@@ -26,7 +26,6 @@ export function emit(state: State): void {
   appendIfSet(out, "commit_sha", state.commitSha);
   appendIfSet(out, "region", state.region);
   appendIfSet(out, "node_id", state.nodeId);
-  appendIfSet(out, "instance_id", state.instanceId);
 
   out.ok = state.ok;
   if (state.statusCode !== 0) out.status = state.statusCode;

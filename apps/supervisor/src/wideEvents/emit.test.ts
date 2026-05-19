@@ -43,7 +43,6 @@ describe("emit", () => {
     expect(out).not.toHaveProperty("trace_id");
     expect(out).not.toHaveProperty("version");
     expect(out).not.toHaveProperty("commit_sha");
-    expect(out).not.toHaveProperty("instance_id");
     expect(out).not.toHaveProperty("error.code");
   });
 
