@@ -170,6 +170,28 @@ spec:
               value: {{ .Values.supervisor.config.kubernetes.forceEnabled | quote }}
             - name: KUBERNETES_WORKER_NODETYPE_LABEL
               value: {{ .Values.supervisor.config.kubernetes.workerNodetypeLabel | quote }}
+            {{- if .Values.supervisor.config.kubernetes.workerServiceAccount }}
+            - name: KUBERNETES_WORKER_SERVICE_ACCOUNT
+              value: {{ .Values.supervisor.config.kubernetes.workerServiceAccount | quote }}
+            {{- end }}
+            - name: KUBERNETES_WORKER_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN
+              value: {{ .Values.supervisor.config.kubernetes.workerAutomountServiceAccountToken | quote }}
+            {{- if .Values.supervisor.config.kubernetes.workerPodAnnotations }}
+            - name: KUBERNETES_WORKER_POD_ANNOTATIONS
+              value: {{ .Values.supervisor.config.kubernetes.workerPodAnnotations | toJson | quote }}
+            {{- end }}
+            {{- if .Values.supervisor.config.kubernetes.workerPodSecurityContext }}
+            - name: KUBERNETES_WORKER_POD_SECURITY_CONTEXT
+              value: {{ .Values.supervisor.config.kubernetes.workerPodSecurityContext | toJson | quote }}
+            {{- end }}
+            {{- if .Values.supervisor.config.kubernetes.workerContainerSecurityContext }}
+            - name: KUBERNETES_WORKER_CONTAINER_SECURITY_CONTEXT
+              value: {{ .Values.supervisor.config.kubernetes.workerContainerSecurityContext | toJson | quote }}
+            {{- end }}
+            {{- if .Values.supervisor.config.kubernetes.workerEnvFromSecret }}
+            - name: KUBERNETES_WORKER_ENV_FROM_SECRET
+              value: {{ .Values.supervisor.config.kubernetes.workerEnvFromSecret | quote }}
+            {{- end }}
             {{- $registryAuthEnabled := false }}
             {{- if .Values.registry.deploy }}
               {{- $registryAuthEnabled = .Values.registry.auth.enabled }}

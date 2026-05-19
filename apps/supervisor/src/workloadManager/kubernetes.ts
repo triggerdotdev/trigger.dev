@@ -117,6 +117,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
               "app.kubernetes.io/part-of": "trigger-worker",
               "app.kubernetes.io/component": "create",
             },
+            ...(Object.keys(env.KUBERNETES_WORKER_POD_ANNOTATIONS).length > 0
+              ? {
+                  annotations: {
+                    ...env.KUBERNETES_WORKER_POD_ANNOTATIONS,
+                  } as Record<string, string>,
+                }
+              : {}),
           },
           spec: {
             ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
@@ -133,6 +140,16 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                 ],
                 resources: this.#getResourcesForMachine(opts.machine),
+                ...(Object.keys(env.KUBERNETES_WORKER_CONTAINER_SECURITY_CONTEXT).length > 0
+                  ? { securityContext: env.KUBERNETES_WORKER_CONTAINER_SECURITY_CONTEXT }
+                  : {}),
+                ...(env.KUBERNETES_WORKER_ENV_FROM_SECRET
+                  ? {
+                      envFrom: [
+                        { secretRef: { name: env.KUBERNETES_WORKER_ENV_FROM_SECRET } },
+                      ],
+                    }
+                  : {}),
                 env: [
                   {
                     name: "TRIGGER_DEQUEUED_AT_MS",
@@ -307,12 +324,20 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
     return {
       restartPolicy: "Never",
-      automountServiceAccountToken: false,
+      // Explicit control over service account token mounting (defaults to false for security)
+      automountServiceAccountToken: env.KUBERNETES_WORKER_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN,
       imagePullSecrets: this.getImagePullSecrets(),
       ...(env.KUBERNETES_SCHEDULER_NAME
         ? {
             schedulerName: env.KUBERNETES_SCHEDULER_NAME,
           }
+        : {}),
+      // Optionally specify a service account for the worker pods
+      ...(env.KUBERNETES_WORKER_SERVICE_ACCOUNT
+        ? { serviceAccountName: env.KUBERNETES_WORKER_SERVICE_ACCOUNT }
+        : {}),
+      ...(Object.keys(env.KUBERNETES_WORKER_POD_SECURITY_CONTEXT).length > 0
+        ? { securityContext: env.KUBERNETES_WORKER_POD_SECURITY_CONTEXT }
         : {}),
       ...(env.KUBERNETES_WORKER_NODETYPE_LABEL
         ? {

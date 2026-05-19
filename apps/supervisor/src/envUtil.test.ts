@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { BoolEnv, AdditionalEnvVars } from "./envUtil.js";
+import { z } from "zod";
+import { BoolEnv, AdditionalEnvVars, JsonObjectEnv, JsonAny } from "./envUtil.js";
 
 describe("BoolEnv", () => {
   it("should parse string 'true' as true", () => {
@@ -76,5 +77,80 @@ describe("AdditionalEnvVars", () => {
     expect(AdditionalEnvVars.parse("FOO=,BAR=value")).toEqual({
       BAR: "value",
     });
+  });
+});
+
+describe("JsonObjectEnv (string-valued)", () => {
+  const schema = JsonObjectEnv("TEST_ENV");
+
+  it("returns empty object for default (no value)", () => {
+    expect(schema.parse(undefined)).toEqual({});
+  });
+
+  it("parses a simple string-valued JSON object", () => {
+    expect(schema.parse('{"a":"1","b":"2"}')).toEqual({ a: "1", b: "2" });
+  });
+
+  it("parses an empty JSON object", () => {
+    expect(schema.parse("{}")).toEqual({});
+  });
+
+  it("rejects non-JSON input", () => {
+    expect(() => schema.parse("not json")).toThrowError(/not valid JSON/);
+  });
+
+  it("rejects JSON arrays", () => {
+    expect(() => schema.parse("[]")).toThrowError(/must be a JSON object \(got array\)/);
+  });
+
+  it("rejects JSON primitives", () => {
+    expect(() => schema.parse('"foo"')).toThrowError(/must be a JSON object \(got string\)/);
+    expect(() => schema.parse("42")).toThrowError(/must be a JSON object \(got number\)/);
+    expect(() => schema.parse("null")).toThrowError(/must be a JSON object \(got object\)/);
+  });
+
+  it("rejects values that are not strings (with default validator)", () => {
+    expect(() => schema.parse('{"a": 1}')).toThrowError(/has invalid value/);
+    expect(() => schema.parse('{"a": true}')).toThrowError(/has invalid value/);
+  });
+});
+
+describe("JsonObjectEnv (arbitrary-value)", () => {
+  const schema = JsonObjectEnv("TEST_ANY", { valueValidator: JsonAny });
+
+  it("accepts nested objects", () => {
+    expect(
+      schema.parse(
+        JSON.stringify({
+          runAsNonRoot: true,
+          runAsUser: 1000,
+          capabilities: { drop: ["ALL"] },
+        })
+      )
+    ).toEqual({
+      runAsNonRoot: true,
+      runAsUser: 1000,
+      capabilities: { drop: ["ALL"] },
+    });
+  });
+
+  it("accepts mixed value types", () => {
+    expect(schema.parse('{"s":"x","n":1,"b":true,"a":[1,2],"o":{"k":"v"}}')).toEqual({
+      s: "x",
+      n: 1,
+      b: true,
+      a: [1, 2],
+      o: { k: "v" },
+    });
+  });
+
+  it("still rejects non-object roots", () => {
+    expect(() => schema.parse('"x"')).toThrowError(/must be a JSON object/);
+    expect(() => schema.parse("[1,2,3]")).toThrowError(/must be a JSON object/);
+  });
+
+  it("includes the env var name in error messages", () => {
+    const named = JsonObjectEnv("KUBERNETES_WORKER_POD_SECURITY_CONTEXT");
+    expect(() => named.parse("{notjson")).toThrowError(/KUBERNETES_WORKER_POD_SECURITY_CONTEXT/);
   });
 });

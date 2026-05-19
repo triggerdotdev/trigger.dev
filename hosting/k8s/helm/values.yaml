@@ -291,6 +291,45 @@ supervisor:
       forceEnabled: true
       namespace: "" # Default: uses release namespace
       workerNodetypeLabel: "" # When set, runs will only be scheduled on nodes with "nodetype=<label>"
+      # Service account name for worker pods. Empty = use the namespace's
+      # "default" SA. Set to e.g. "trigger-worker" to pin a dedicated SA
+      # (useful for IRSA / Workload Identity, image-pull secrets, etc.).
+      # Operators are expected to create the SA themselves; this chart
+      # does not manage worker SAs.
+      workerServiceAccount: ""
+      # Whether to mount the SA token inside worker pods. Defaults to
+      # false; only enable if your worker tasks need to call the
+      # Kubernetes API.
+      workerAutomountServiceAccountToken: false
+      # Annotations applied to every worker pod (e.g. service-mesh
+      # sidecar opt-out, audit tags). Empty by default.
+      workerPodAnnotations: {}
+      # Pod-level securityContext applied to every worker pod
+      # (V1PodSecurityContext shape). Empty by default. Set this on
+      # clusters that enforce pod-security admission "restricted",
+      # OpenShift restricted SCCs, FedRAMP/IL5, etc. Example:
+      #   workerPodSecurityContext:
+      #     runAsNonRoot: true
+      #     runAsUser: 1000
+      #     fsGroup: 1000
+      workerPodSecurityContext: {}
+      # Container-level securityContext applied to the worker container
+      # of every worker pod (V1SecurityContext shape). Example:
+      #   workerContainerSecurityContext:
+      #     runAsNonRoot: true
+      #     runAsUser: 1000
+      #     allowPrivilegeEscalation: false
+      #     capabilities:
+      #       drop: [ALL]
+      #     seccompProfile:
+      #       type: RuntimeDefault
+      workerContainerSecurityContext: {}
+      # Name of a Kubernetes Secret to envFrom-mount into every worker
+      # pod's container. Pulls every key/value pair in the secret as env
+      # vars on the worker. Empty disables. Resolved by the kubelet at
+      # pod creation; the supervisor never reads the secret values, so
+      # no extra RBAC is required.
+      workerEnvFromSecret: ""
       ephemeralStorageSizeLimit: "" # Default: 10Gi
       ephemeralStorageSizeRequest: "" # Default: 2Gi´
     podCleaner:

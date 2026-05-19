@@ -45,3 +45,83 @@ export const AdditionalEnvVars = z.preprocess((val) => {
     return undefined;
   }
 }, z.record(z.string(), z.string()).optional());
+
+/**
+ * Factory for env vars that hold a JSON object. The default is the empty object,
+ * so callers can spread the parsed result into Kubernetes manifests without
+ * branching on undefined.
+ *
+ * `valueValidator` constrains the shape of the parsed values:
+ *   - `JsonStringMap` for `Record<string, string>` (e.g. annotations, labels)
+ *   - `JsonAny` for arbitrary nested objects (e.g. `securityContext`)
+ *
+ * @example
+ *   KUBERNETES_WORKER_POD_ANNOTATIONS: JsonObjectEnv("KUBERNETES_WORKER_POD_ANNOTATIONS", {
+ *     valueValidator: JsonStringMap,
+ *   }),
+ */
+export const JsonStringMap = z.record(z.string(), z.string());
+export const JsonAny: z.ZodTypeAny = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonAny),
+    z.record(z.string(), JsonAny),
+  ])
+);
+
+type JsonObjectEnvOpts<TSchema extends z.ZodTypeAny> = {
+  /**
+   * Schema applied to each *value* in the parsed object. Defaults to
+   * `JsonStringMap` (string values).
+   */
+  valueValidator?: TSchema;
+};
+
+export const JsonObjectEnv = <TSchema extends z.ZodTypeAny = typeof JsonStringMap>(
+  envName: string,
+  opts: JsonObjectEnvOpts<TSchema> = {}
+) => {
+  const valueValidator = (opts.valueValidator ?? JsonStringMap) as TSchema;
+
+  return z
+    .string()
+    .default("{}")
+    .transform((raw, ctx) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${envName} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+        });
+        return z.NEVER;
+      }
+
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${envName} must be a JSON object (got ${
+            Array.isArray(parsed) ? "array" : typeof parsed
+          })`,
+        });
+        return z.NEVER;
+      }
+
+      const validated = z.record(z.string(), valueValidator).safeParse(parsed);
+      if (!validated.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${envName} has invalid value(s): ${validated.error.message}`,
+        });
+        return z.NEVER;
+      }
+
+      return validated.data as z.infer<TSchema> extends z.ZodTypeAny
+        ? Record<string, z.infer<TSchema>>
+        : Record<string, unknown>;
+    });
+};
