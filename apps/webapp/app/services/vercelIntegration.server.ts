@@ -402,9 +402,6 @@ export class VercelIntegrationService {
         return;
       }
 
-      // TODO: Vercel rejects type changes on existing env vars (encrypted -> sensitive),
-      //   so projects whose staging TRIGGER_SECRET_KEY was created before this change will
-      //   retain their previous type until the var is recreated.
       const upsertResult = await VercelIntegrationRepository.upsertEnvVarForCustomEnvironment({
         orgIntegration,
         vercelProjectId,
@@ -717,11 +714,17 @@ export class VercelIntegrationService {
     });
   }
 
-  async clearTriggerVersionFromVercelProduction(projectId: string): Promise<void> {
+  /**
+   * Returns true when TRIGGER_VERSION is no longer pinned on Vercel production after the call
+   * (either we cleared it or it wasn't set to begin with). Returns false when we failed to
+   * verify or perform the delete — callers should surface that to the user so they can clear
+   * it manually.
+   */
+  async clearTriggerVersionFromVercelProduction(projectId: string): Promise<boolean> {
     const orgIntegration =
       await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
     if (!orgIntegration) {
-      return;
+      return false;
     }
 
     const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
@@ -730,7 +733,7 @@ export class VercelIntegrationService {
         projectId,
         error: clientResult.error.message,
       });
-      return;
+      return false;
     }
     const client = clientResult.value;
     const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
@@ -747,7 +750,7 @@ export class VercelIntegrationService {
     });
 
     if (!projectIntegration) {
-      return;
+      return false;
     }
 
     const vercelProjectId = projectIntegration.externalEntityId;
@@ -764,7 +767,7 @@ export class VercelIntegrationService {
         vercelProjectId,
         error: envVarsResult.error.message,
       });
-      return;
+      return false;
     }
 
     const existingTriggerVersion = envVarsResult.value.find(
@@ -776,7 +779,7 @@ export class VercelIntegrationService {
         projectId,
         vercelProjectId,
       });
-      return;
+      return true;
     }
 
     const removeResult = await ResultAsync.fromPromise(
@@ -797,13 +800,14 @@ export class VercelIntegrationService {
             ? removeResult.error.message
             : String(removeResult.error),
       });
-      return;
+      return false;
     }
 
     logger.info("Cleared TRIGGER_VERSION from Vercel production", {
       projectId,
       vercelProjectId,
     });
+    return true;
   }
 
   async disconnectVercelProject(projectId: string): Promise<boolean> {

@@ -45,6 +45,10 @@ export type VercelSettingsResult = {
   /** The currently pinned TRIGGER_VERSION on Vercel production, if set. Used to surface
    * the pin in the UI and prompt the user to clear it when atomic deployments are disabled. */
   currentTriggerVersion?: string | null;
+  /** True when the Vercel lookup for TRIGGER_VERSION failed (network/auth/etc). Distinct
+   * from "no pin set" — the UI uses this to warn the user and still prompt them on disable
+   * so they can manually verify that production isn't pinned. */
+  currentTriggerVersionFetchFailed?: boolean;
 };
 
 export type VercelAvailableProject = {
@@ -252,13 +256,16 @@ export class VercelSettingsPresenter extends BasePresenter {
           autoAssignCustomDomains: boolean | null;
           vercelManageAccessUrl?: string;
           currentTriggerVersion: string | null;
+          currentTriggerVersionFetchFailed: boolean;
         }> => {
           if (!orgIntegration) {
-            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null };
+            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null, currentTriggerVersionFetchFailed: false };
           }
           const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
           if (clientResult.isErr()) {
-            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null };
+            // We couldn't even build a Vercel client — treat as fetch failure so the UI
+            // still prompts the user when they disable atomic deployments.
+            return { customEnvironments: [], autoAssignCustomDomains: null, currentTriggerVersion: null, currentTriggerVersionFetchFailed: true };
           }
           const client = clientResult.value;
           const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
@@ -279,7 +286,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           }
 
           if (!connectedProject) {
-            return { customEnvironments: [], autoAssignCustomDomains: null, vercelManageAccessUrl, currentTriggerVersion: null };
+            return { customEnvironments: [], autoAssignCustomDomains: null, vercelManageAccessUrl, currentTriggerVersion: null, currentTriggerVersionFetchFailed: false };
           }
 
           const [customEnvsResult, autoAssignResult, triggerVersionResult] = await Promise.all([
@@ -303,13 +310,15 @@ export class VercelSettingsPresenter extends BasePresenter {
           ]);
 
           let currentTriggerVersion: string | null = null;
+          let currentTriggerVersionFetchFailed = false;
           if (triggerVersionResult.isOk()) {
             const match = triggerVersionResult.value.find(
               (envVar) => envVar.key === "TRIGGER_VERSION" && envVar.target.includes("production")
             );
             currentTriggerVersion = match?.value ?? null;
           } else {
-            logger.warn("Failed to fetch current TRIGGER_VERSION from Vercel — continuing without it", {
+            currentTriggerVersionFetchFailed = true;
+            logger.warn("Failed to fetch current TRIGGER_VERSION from Vercel — surfacing as unknown", {
               projectId,
               vercelProjectId: connectedProject.vercelProjectId,
               error: triggerVersionResult.error.message,
@@ -321,13 +330,14 @@ export class VercelSettingsPresenter extends BasePresenter {
             autoAssignCustomDomains: autoAssignResult.isOk() ? autoAssignResult.value : null,
             vercelManageAccessUrl,
             currentTriggerVersion,
+            currentTriggerVersionFetchFailed,
           };
         };
 
         return fromPromise(
           fetchVercelData(),
           (error) => ({ type: "other" as const, cause: error })
-        ).map(({ customEnvironments, autoAssignCustomDomains, vercelManageAccessUrl, currentTriggerVersion }) => ({
+        ).map(({ customEnvironments, autoAssignCustomDomains, vercelManageAccessUrl, currentTriggerVersion, currentTriggerVersionFetchFailed }) => ({
           enabled: true,
           hasOrgIntegration,
           authInvalid: false,
@@ -339,6 +349,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           autoAssignCustomDomains,
           vercelManageAccessUrl,
           currentTriggerVersion,
+          currentTriggerVersionFetchFailed,
         } as VercelSettingsResult));
       }).mapErr((error) => {
         // Log the error and return a safe fallback

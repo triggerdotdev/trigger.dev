@@ -92,6 +92,12 @@ function parseVercelStagingEnvironment(
   );
 }
 
+// Sentinel values for the clearTriggerVersion hidden input. Used by the schema transform,
+// the input's defaultValue, and the modal's submit helper — keep all three reading the same
+// constants so they cannot drift.
+const CLEAR_TRIGGER_VERSION_YES = "true";
+const CLEAR_TRIGGER_VERSION_NO = "false";
+
 const UpdateVercelConfigFormSchema = z.object({
   action: z.literal("update-config"),
   atomicBuilds: envSlugArrayField,
@@ -99,7 +105,10 @@ const UpdateVercelConfigFormSchema = z.object({
   discoverEnvVars: envSlugArrayField,
   vercelStagingEnvironment: z.string().nullable().optional(),
   autoPromote: z.string().optional().transform((val) => val !== "false"),
-  clearTriggerVersion: z.string().optional().transform((val) => val === "true"),
+  clearTriggerVersion: z
+    .string()
+    .optional()
+    .transform((val) => val === CLEAR_TRIGGER_VERSION_YES),
 });
 
 const DisconnectVercelFormSchema = z.object({
@@ -275,8 +284,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
         // When atomic deployments are being disabled and the user confirmed clearing the pin,
         // remove TRIGGER_VERSION from Vercel production so future deploys don't stay pinned.
+        // If the Vercel API call fails we still consider the settings save itself successful,
+        // but tell the user so they can clear the env var manually from the Vercel dashboard.
         if (clearTriggerVersion && !atomicBuilds?.includes("prod")) {
-          await vercelService.clearTriggerVersionFromVercelProduction(project.id);
+          const cleared = await vercelService.clearTriggerVersionFromVercelProduction(project.id);
+          if (!cleared) {
+            return redirectWithErrorMessage(
+              settingsPath,
+              request,
+              "Vercel settings saved, but failed to clear TRIGGER_VERSION on Vercel — please remove it manually from your Vercel project settings."
+            );
+          }
         }
 
         return redirectWithSuccessMessage(settingsPath, request, "Vercel settings updated successfully");
@@ -582,6 +600,7 @@ function ConnectedVercelProjectForm({
   customEnvironments,
   autoAssignCustomDomains,
   currentTriggerVersion,
+  currentTriggerVersionFetchFailed,
   organizationSlug,
   projectSlug,
   environmentSlug,
@@ -592,6 +611,7 @@ function ConnectedVercelProjectForm({
   customEnvironments: Array<{ id: string; slug: string }>;
   autoAssignCustomDomains: boolean | null;
   currentTriggerVersion: string | null;
+  currentTriggerVersionFetchFailed: boolean;
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
@@ -661,14 +681,20 @@ function ConnectedVercelProjectForm({
 
   // Modal trigger uses the page-load state of atomicBuilds, not whatever changed in-session,
   // because clearing TRIGGER_VERSION only makes sense when atomic was actually on at load time.
+  // If the Vercel lookup failed we still prompt — we don't know whether a pin exists, so the
+  // user needs to make the call explicitly rather than silently leaving prod pinned.
   const wasAtomicEnabledAtLoad = originalAtomicBuilds.includes("prod");
   const isAtomicNowDisabled = !configValues.atomicBuilds.includes("prod");
   const shouldPromptClearOnSave =
-    wasAtomicEnabledAtLoad && isAtomicNowDisabled && Boolean(currentTriggerVersion);
+    wasAtomicEnabledAtLoad &&
+    isAtomicNowDisabled &&
+    (Boolean(currentTriggerVersion) || currentTriggerVersionFetchFailed);
 
   const submitWithClearChoice = (clear: boolean) => {
     if (clearTriggerVersionInputRef.current) {
-      clearTriggerVersionInputRef.current.value = clear ? "true" : "false";
+      clearTriggerVersionInputRef.current.value = clear
+        ? CLEAR_TRIGGER_VERSION_YES
+        : CLEAR_TRIGGER_VERSION_NO;
     }
     setShowClearDialog(false);
     // Conform owns the form's React ref via {...configForm.props}, so look it up by id
@@ -774,11 +800,11 @@ function ConnectedVercelProjectForm({
           name="autoPromote"
           value={String(configValues.autoPromote)}
         />
-        {/* Toggled to "true" by the clear-pinned-version modal; defaults to "false". */}
+        {/* Flipped to CLEAR_TRIGGER_VERSION_YES by the clear-pinned-version modal on submit. */}
         <input
           type="hidden"
           name="clearTriggerVersion"
-          defaultValue="false"
+          defaultValue={CLEAR_TRIGGER_VERSION_NO}
           ref={clearTriggerVersionInputRef}
         />
 
@@ -859,6 +885,7 @@ function ConnectedVercelProjectForm({
                   setConfigValues((prev) => ({ ...prev, autoPromote: value }))
                 }
                 currentTriggerVersion={currentTriggerVersion}
+                currentTriggerVersionFetchFailed={currentTriggerVersionFetchFailed}
                 hideSectionToggles
               />
 
@@ -927,12 +954,22 @@ function ConnectedVercelProjectForm({
         <DialogContent className="max-w-md">
           <DialogHeader>Clear TRIGGER_VERSION from Vercel?</DialogHeader>
           <div className="flex flex-col gap-3 pt-3">
-            <Paragraph className="mb-1">
-              Atomic deployments are being turned off. The{" "}
-              <span className="font-mono text-text-bright">TRIGGER_VERSION</span> env var on your
-              Vercel production environment is currently set to{" "}
-              <span className="font-mono text-text-bright">{currentTriggerVersion}</span>.
-            </Paragraph>
+            {currentTriggerVersion ? (
+              <Paragraph className="mb-1">
+                Atomic deployments are being turned off. The{" "}
+                <span className="font-mono text-text-bright">TRIGGER_VERSION</span> env var on
+                your Vercel production environment is currently set to{" "}
+                <span className="font-mono text-text-bright">{currentTriggerVersion}</span>.
+              </Paragraph>
+            ) : (
+              <Paragraph className="mb-1">
+                Atomic deployments are being turned off. We couldn't reach Vercel to confirm
+                whether{" "}
+                <span className="font-mono text-text-bright">TRIGGER_VERSION</span> is currently
+                set on your Vercel production environment, so please verify in the Vercel
+                dashboard.
+              </Paragraph>
+            )}
             <Paragraph className="mb-1">
               If you leave it, your Vercel project will stay pinned to this version. Since atomic
               deployments will be off, Trigger.dev will no longer update this variable, and future
@@ -1038,6 +1075,7 @@ function VercelSettingsPanel({
           customEnvironments={data.customEnvironments}
           autoAssignCustomDomains={data.autoAssignCustomDomains ?? null}
           currentTriggerVersion={data.currentTriggerVersion ?? null}
+          currentTriggerVersionFetchFailed={data.currentTriggerVersionFetchFailed ?? false}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}
