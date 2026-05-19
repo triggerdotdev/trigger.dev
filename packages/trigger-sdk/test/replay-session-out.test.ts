@@ -40,18 +40,19 @@ function partialTurn(id: string, text: string): UIMessageChunk[] {
 /**
  * Stub `apiClientManager.clientOrThrow().readSessionStreamRecords` so the
  * helper sees a `{ records: StreamRecord[] }` response. Each StreamRecord
- * is `{ data: string, id, seqNum }` — `data` is the JSON-encoded chunk
- * body the runtime then `JSON.parse`s.
+ * is `{ data, id, seqNum }` — `data` is the parsed chunk OBJECT (the wire
+ * writer puts chunks directly into the record envelope; the route
+ * forwards them as-is; the schema declares `data: z.unknown()`).
  *
- * Pass either a `UIMessageChunk` (will be JSON.stringify'd) or a raw
- * string (used as `data` directly — for tests that need pre-stringified
- * or deliberately-malformed bodies).
+ * Pass either a chunk OBJECT (used as `data` directly) or a string
+ * (used as `data` directly — for tests that need deliberately-malformed
+ * bodies; the consumer filters non-objects out).
  *
  * Captures the `afterEventId` argument for resume-from-cursor assertions.
  */
 function stubReadRecordsWithChunks(chunks: unknown[]) {
   const records = chunks.map((chunk, i) => ({
-    data: typeof chunk === "string" ? chunk : JSON.stringify(chunk),
+    data: chunk,
     id: `evt-${i + 1}`,
     seqNum: i + 1,
   }));
@@ -228,30 +229,12 @@ describe("replaySessionOutTail", () => {
     expect(text).toBe("fully-finished");
   });
 
-  it("JSON-decodes each record.data (every record arrives pre-serialized)", async () => {
-    // The records endpoint hands each chunk back as a JSON string in
-    // `record.data` — the agent JSON.parses it client-side so the
-    // server's hot path doesn't pay the parse cost. Verify a normal
-    // turn round-trips through JSON encode→decode.
-    const stringChunks = textTurn("a-1", "from-string").map((c) => JSON.stringify(c));
-    stubReadRecordsWithChunks(stringChunks);
-
-    const result = await replaySessionOutTail("string-chunks");
-    expect(result).toHaveLength(1);
-    const text = (result[0]!.parts as Array<{ type: string; text?: string }>)
-      .filter((p) => p.type === "text")
-      .map((p) => p.text)
-      .join("");
-    expect(text).toBe("from-string");
-  });
-
-  it("skips records whose data is unparseable JSON", async () => {
-    // The replay helper wraps the per-record JSON.parse in try/catch so
-    // a single malformed record can't sink the rest of the replay. The
-    // server should never serve a malformed `data`, but the defensive
-    // catch lets a poisoned record skip cleanly.
+  it("skips records whose data is a string (the wire delivers objects)", async () => {
+    // The writer puts chunk objects directly into the record envelope;
+    // the route forwards them as-is. A string body is malformed — the
+    // consumer drops it defensively rather than JSON.parsing.
     stubReadRecordsWithChunks([
-      "not-json-{[",
+      "not-an-object",
       ...textTurn("a-1", "survived"),
     ]);
 
@@ -260,14 +243,14 @@ describe("replaySessionOutTail", () => {
     expect(result[0]!.id).toBe("a-1");
   });
 
-  it("skips records whose decoded data is not an object", async () => {
-    // After JSON.parse, the helper requires `chunk` to be a non-null
-    // object with a string `type` field. Records that decode to
-    // primitives (number, string, etc.) are dropped silently.
+  it("skips records whose data is not an object", async () => {
+    // The consumer requires `chunk` to be a non-null object with a
+    // string `type` field. Records that arrive as primitives
+    // (number, null, string) are dropped silently.
     stubReadRecordsWithChunks([
-      JSON.stringify(42),
-      JSON.stringify(null),
-      JSON.stringify("just-a-string"),
+      42,
+      null,
+      "just-a-string",
       ...textTurn("a-1", "survived"),
     ]);
 
