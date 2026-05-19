@@ -2585,7 +2585,8 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
             debounce: options?.debounce,
           },
         },
-        requestOptions ?? {}
+        {},
+        requestOptions
       );
 
       // Set attributes after trigger so the dashboard can link to the child run
