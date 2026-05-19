@@ -451,9 +451,26 @@ export class SessionOutputChannel {
     const readableStreamSource = ensureReadableStream(value);
 
     const abortController = new AbortController();
-    const combinedSignal = options?.signal
-      ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
-      : abortController.signal;
+    // `AbortSignal.any` lands in Node 20.3; the SDK still supports Node
+    // 18.20+. On older runtimes fall back to wiring `options.signal` into
+    // `abortController` manually so caller-driven cancellation propagates.
+    let combinedSignal: AbortSignal = abortController.signal;
+    if (options?.signal) {
+      if (typeof AbortSignal.any === "function") {
+        combinedSignal = AbortSignal.any([options.signal, abortController.signal]);
+      } else {
+        const callerSignal = options.signal;
+        if (callerSignal.aborted) {
+          abortController.abort(callerSignal.reason);
+        } else {
+          callerSignal.addEventListener(
+            "abort",
+            () => abortController.abort(callerSignal.reason),
+            { once: true }
+          );
+        }
+      }
+    }
 
     // Resolve the init promise eagerly so we can capture which one this
     // writer uses for reactive invalidation below.
