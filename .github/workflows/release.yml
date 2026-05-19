@@ -302,6 +302,13 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm run generate
 
+      - name: Exit changeset pre mode (if active)
+        run: |
+          if [ -f .changeset/pre.json ]; then
+            echo "Repo is in changeset pre mode; exiting so snapshot release can run"
+            pnpm exec changeset pre exit
+          fi
+
       - name: Snapshot version
         run: pnpm exec changeset version --snapshot "${GITHUB_EVENT_INPUTS_PRERELEASE_TAG}"
         env:
