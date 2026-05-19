@@ -79,9 +79,11 @@ If your agent uses [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages)
 
 ## Without `hydrateMessages`
 
-The retry filter still prevents duplicate processing — turns 1..N-1 aren't re-run — but the OOM'd turn's accumulator is whatever the chat.agent's default flow can rebuild from `payload.messages` (typically just the first user message of the chat). The model context is **incomplete**: it doesn't see prior assistant responses. The conversation continues but a multi-turn OOM'd recovery may produce a less coherent reply.
+Recovery boot reconstructs context automatically. The boot reads both the durable `session.out` snapshot (settled turns) and the `session.out` tail past the snapshot cursor (the partial assistant chunks the OOM'd turn streamed before dying). When the new attempt processes the OOM'd user message, the model sees the full prior conversation **plus** the partial assistant that was cut off — so a "keep going" follow-up continues naturally, and any other follow-up has the same context the original turn had.
 
-If conversation continuity matters, use `hydrateMessages`.
+`hydrateMessages` is still the right choice if you want a single source of truth in your own database (branching conversations, message-level access control, etc.). It's no longer required for OOM continuity.
+
+For full control over recovery — drop the partial, synthesize tool results for an interrupted tool call, emit a recovery banner to the UI — register [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot).
 
 ## Tool execute idempotency
 
@@ -109,5 +111,6 @@ export const sendEmail = tool({
 
 ## See also
 
+- [Recovery boot](/ai-chat/patterns/recovery-boot) — the underlying hook + smart default that gives OOM recovery its full-context behavior
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — `onChatResume` fires on every retry attempt with `phase: "preload"` or `"turn"`
-- [Database persistence](/ai-chat/patterns/database-persistence) — the `hydrateMessages` pattern this builds on for full continuity
+- [Database persistence](/ai-chat/patterns/database-persistence) — the `hydrateMessages` pattern for branching, ACL, and DB-as-source-of-truth scenarios

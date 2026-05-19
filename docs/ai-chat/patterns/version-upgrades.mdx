@@ -156,8 +156,13 @@ This upgrades on **every** deploy, not just breaking changes. Good for fast-movi
 - **`chat.agent()`** and **`chat.createSession()`** — use `chat.requestUpgrade()` as shown above
 - **`chat.customAgent()`** — you control the turn loop, so just `return` from `run()` when you want to exit
 
+## Interaction with recovery boot
+
+`chat.requestUpgrade()` is a graceful exit — the old run returns cleanly, never writing a partial assistant. The new continuation run boots with an empty `session.out` tail (no `partialAssistant`) and the upgrade-trigger message on `session.in`. The smart default in [Recovery boot](/ai-chat/patterns/recovery-boot) requires both a partial AND in-flight users to splice, so on the upgrade path it doesn't fire — the chain stays at `settledMessages` and the in-flight user dispatches as a fresh turn on the new version. `onRecoveryBoot` still fires (there's an in-flight user) if you want to emit an "upgraded" banner.
+
 ## See also
 
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — where `onTurnStart` and `onChatResume` fit in the turn cycle
+- [Recovery boot](/ai-chat/patterns/recovery-boot) — the hook that also fires on the upgraded run
 - [Database persistence](/ai-chat/patterns/database-persistence) — how continuations interact with session state
 - [Client Protocol](/ai-chat/client-protocol#step-4-handle-continuations) — how clients handle continuations at the wire level

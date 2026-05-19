@@ -135,6 +135,7 @@
                       "ai-chat/patterns/large-payloads",
                       "ai-chat/patterns/skills",
                       "ai-chat/patterns/oom-resilience",
+                      "ai-chat/patterns/recovery-boot",
                       "ai-chat/patterns/trusted-edge-signals"
                     ]
                   },

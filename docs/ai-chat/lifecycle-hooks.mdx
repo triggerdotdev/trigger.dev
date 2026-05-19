@@ -14,11 +14,12 @@ description: "Hook into every stage of a chat agent's run: preload, turn start, 
 
 **Suspend / resume:** `onChatSuspend` fires when the run transitions from idle to suspended (waiting on the next message); `onChatResume` fires on wake.
 
-**Three scopes to keep straight:**
+**Four scopes to keep straight:**
 
 | Scope | Fires when | Use for |
 | --- | --- | --- |
 | **Process** ([`onBoot`](#onboot)) | Every fresh worker boots — initial, preloaded, and reactive continuation (post-cancel/crash/`endRun`/upgrade). | Initialize `chat.local`, open per-process resources, re-hydrate state from your DB on continuation. |
+| **Recovery** ([`onRecoveryBoot`](#onrecoveryboot)) | Continuation boot where the dead run left state behind — a partial assistant on `session.out` or in-flight users on `session.in`. | Override the smart default — drop the partial, synthesize tool results, emit a recovery banner. |
 | **Chat** ([`onChatStart`](#onchatstart)) | First message of a chat's lifetime. Does NOT fire on continuation runs or OOM retries. | One-time DB rows for the chat, resources tied to the chat's lifetime. |
 | **Turn** ([`onTurnStart`](#onturnstart), [`onTurnComplete`](#onturncomplete), etc.) | Every turn. | Persist messages, post-process responses. |
 
@@ -81,6 +82,48 @@ export const myChat = chat.agent({
 
 <Tip>
   `onBoot` and `onChatStart` are complementary — keep DB-row creation in `onChatStart` (it only needs to happen once per chat) and put process-level setup (`chat.local`, connections, caches) in `onBoot` (it needs to happen on every fresh worker).
+</Tip>
+
+## onRecoveryBoot
+
+Fires once on a continuation boot when the dead predecessor left state behind — a partial assistant on `session.out`, in-flight user messages on `session.in`, or both. The runtime reconstructs context automatically via a smart default; this hook is the override path for policies that need something different.
+
+The hook does NOT fire when there's nothing to recover (clean continuation after `chat.endRun()`, fresh chat, OOM retry on top of a complete snapshot). It does NOT fire when [`hydrateMessages`](#hydratemessages) is registered (the customer owns persistence).
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onRecoveryBoot: async ({ partialAssistant, inFlightUsers, writer, cause, previousRunId }) => {
+    writer.write({
+      type: "data-chat-recovery",
+      data: { cause, previousRunId, partialPresent: partialAssistant !== undefined },
+      transient: true,
+    });
+    // Return nothing → fall through to the smart default
+    // (splice partial + first user into chain, dispatch the rest).
+  },
+  run: async ({ messages, signal }) =>
+    streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+});
+```
+
+| Field              | Type                                                              | Description                                                                                          |
+| ------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ctx`              | `TaskRunContext`                                                  | Full task run context                                                                                |
+| `chatId`           | `string`                                                          | Chat session ID                                                                                      |
+| `runId`            | `string`                                                          | The Trigger.dev run ID for this run boot                                                             |
+| `previousRunId`    | `string`                                                          | Public id of the prior run that died                                                                 |
+| `cause`            | `"cancelled" \| "crashed" \| "unknown"`                           | Best-effort cause. Currently always `"unknown"` — don't branch on it                                 |
+| `settledMessages`  | `TUIMessage[]`                                                    | The chain persisted by the predecessor's last `onTurnComplete`                                       |
+| `inFlightUsers`    | `TUIMessage[]`                                                    | User messages on `session.in` past the cursor — the message(s) the predecessor never acknowledged    |
+| `partialAssistant` | `TUIMessage \| undefined`                                         | The trailing assistant message whose stream never received `finish`                                  |
+| `pendingToolCalls` | `Array<{ toolCallId, toolName, input, partIndex }>`               | Tool calls in `input-available` state extracted from `partialAssistant`                              |
+| `writer`           | `ChatWriter`                                                      | Lazy session.out writer — write a recovery banner / signal here                                      |
+
+Returns `{ chain?, recoveredTurns?, beforeBoot? }` — every field optional. Omitted fields fall through to the smart default. See [Recovery boot](/ai-chat/patterns/recovery-boot) for the full guide, examples (drop partial, synthesize tool results, persist before boot), and interaction notes.
+
+<Tip>
+  Don't put `chat.local` initialization in `onRecoveryBoot` — use [`onBoot`](#onboot). `onRecoveryBoot` is for recovery decisions, not per-process setup. `onBoot` fires first.
 </Tip>
 
 ## onPreload

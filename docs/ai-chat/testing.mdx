@@ -434,6 +434,57 @@ await harness.sendMessage(/* ... */);
 expect(onChatStart).not.toHaveBeenCalled();
 ```
 
+### Testing recovery boot
+
+`onRecoveryBoot` fires when the dead predecessor left state behind — a partial assistant on `session.out`, in-flight users on `session.in`, or both. The harness exposes two seeders to drive this state at boot time:
+
+- `harness.seedSessionOutPartial(message)` — pre-seed a trailing partial assistant. The next boot's replay surfaces it as `event.partialAssistant`.
+- `harness.seedSessionInTail(messages)` — pre-seed user messages on the input tail. The next boot's replay surfaces them as `event.inFlightUsers`.
+
+Combined with `continuation: true`, this drives the full recovery boot path:
+
+```ts
+import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
+
+const onRecoveryBoot = vi.fn(async () => {
+  // accept smart default
+});
+
+const agent = chat.agent({
+  id: "my-chat",
+  onRecoveryBoot,
+  run: async ({ messages, signal }) =>
+    streamText({ model, messages, abortSignal: signal }),
+});
+
+const harness = mockChatAgent(agent, {
+  chatId: "test-recovery",
+  continuation: true,
+  previousRunId: "run_prior",
+});
+
+// Predecessor was answering "write an essay" and got cut off mid-stream
+// after producing some text. Customer then sent a follow-up.
+harness.seedSessionOutPartial({
+  id: "a-orphan",
+  role: "assistant",
+  parts: [{ type: "text", text: "Espresso originated in..." }],
+});
+harness.seedSessionInTail([
+  { id: "u-1", role: "user", parts: [{ type: "text", text: "Write an essay about espresso." }] },
+  { id: "u-2", role: "user", parts: [{ type: "text", text: "keep going" }] },
+]);
+
+await new Promise((r) => setTimeout(r, 50));
+
+expect(onRecoveryBoot).toHaveBeenCalledTimes(1);
+const event = onRecoveryBoot.mock.calls[0]![0];
+expect(event.partialAssistant?.id).toBe("a-orphan");
+expect(event.inFlightUsers).toHaveLength(2);
+```
+
+Use `harness.seedSnapshot({ messages: [...] })` alongside these to model a continuation where settled history exists. See the [Recovery boot](/ai-chat/patterns/recovery-boot) pattern for what each field means and what the smart default does with it.
+
 ## Testing against a database
 
 Most agents call into a database from `hydrateMessages` or `onTurnComplete` to load history and persist replies. You shouldn't pass database clients through `clientData` — that's wire-data from the browser. Use **`locals` for dependency injection** instead.
@@ -583,7 +634,9 @@ The harness's initial wire payload depends on `mode`:
 | `sendAction(action)`                  | Route a custom action through `actionSchema` + `onAction`.                                             |
 | `sendStop(message?)`                  | Fire a stop signal. Does not wait for the turn — the run's `signal.aborted` becomes `true`.            |
 | `seedSnapshot(snapshot)`              | Pre-seed the snapshot read for the next boot. Effective on the next run boot only.                     |
-| `seedSessionOutTail(chunks?)`         | Pre-seed `session.out` chunks for the next boot's replay.                                              |
+| `seedSessionOutTail(chunks?)`         | Pre-seed `session.out` chunks for the next boot's replay. Reduces to settled assistant turns.          |
+| `seedSessionOutPartial(message?)`     | Pre-seed a trailing partial assistant for the next boot's replay. Surfaces as `event.partialAssistant` in `onRecoveryBoot`. |
+| `seedSessionInTail(messages)`         | Pre-seed user messages on `session.in` for the next boot. Surfaces as `event.inFlightUsers` in `onRecoveryBoot`. |
 | `getSnapshot()`                       | The most recently written snapshot, or `undefined` if no snapshot was written.                         |
 | `close()`                             | Send a `close` trigger, abort the signal, wait for `run()` to return. Always call at end of test.      |
 | `allChunks`                           | Every `UIMessageChunk` emitted since the harness was created.                                          |

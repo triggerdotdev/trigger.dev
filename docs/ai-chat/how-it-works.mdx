@@ -48,7 +48,7 @@ The engine restores the suspended run from its checkpoint. The same JS process p
 
 ### Continuation (after exit)
 
-If the run has fully exited (because it hit `maxTurns`, the customer called `chat.endRun()` or `chat.requestUpgrade()`, or it was cancelled or crashed), the next user message can't resume it — there is nothing to resume. Instead, the server triggers a brand-new run with `continuation: true`. The new run does a cold boot but reads the prior conversation's S3 snapshot and replays any `.out` chunks after the snapshot cursor, so the new run starts with the full message history already accumulated. Then it enters **Streaming** with `turn === 0` of the new run but `messageCount > 0`.
+If the run has fully exited (because it hit `maxTurns`, the customer called `chat.endRun()` or `chat.requestUpgrade()`, or it was cancelled or crashed), the next user message can't resume it — there is nothing to resume. Instead, the server triggers a brand-new run with `continuation: true`. The new run does a cold boot, reads the prior conversation's S3 snapshot, replays any `.out` chunks after the snapshot cursor, AND replays any `.in` records past the last `turn-complete` cursor (the user messages a dead run never acknowledged). If the predecessor died mid-stream and left a partial assistant response in `.out`, the smart default splices `[firstInFlightUser, partialAssistant]` onto the chain so any follow-up has full context — see [Recovery boot](/ai-chat/patterns/recovery-boot). The new run then enters **Streaming** with `turn === 0` of the new run but `messageCount > 0`.
 
 ### Closed
 

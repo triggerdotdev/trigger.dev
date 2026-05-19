@@ -14,6 +14,7 @@ Options for `chat.agent()`.
 | `run`                         | `(payload: ChatTaskRunPayload) => Promise<unknown>`         | required                       | Handler for each turn                                                                               |
 | `clientDataSchema`            | `TaskSchema`                                                | —                              | Schema for validating and typing `clientData`                                                       |
 | `onBoot`                      | `(event: BootEvent) => Promise<void> \| void`               | —                              | Fires once per worker process — initial, preloaded, AND reactive continuation. Use for `chat.local` init and per-process resources. See [onBoot](/ai-chat/lifecycle-hooks#onboot). |
+| `onRecoveryBoot`              | `(event: RecoveryBootEvent) => Promise<RecoveryBootResult \| void> \| RecoveryBootResult \| void` | — | Fires on a continuation boot when the dead predecessor left recovered state (partial assistant or in-flight users). Override the smart default — drop partial, synthesize tool results, emit a recovery banner. See [Recovery boot](/ai-chat/patterns/recovery-boot). |
 | `onPreload`                   | `(event: PreloadEvent) => Promise<void> \| void`            | —                              | Fires on preloaded runs before the first message                                                    |
 | `onChatStart`                 | `(event: ChatStartEvent) => Promise<void> \| void`          | —                              | Fires once per chat, on the very first user message. Does NOT fire on continuation runs or OOM-retries — see [onChatStart](/ai-chat/lifecycle-hooks#onchatstart). |
 | `onValidateMessages`          | `(event: ValidateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                | Validate/transform UIMessages before model conversion. See [onValidateMessages](/ai-chat/lifecycle-hooks#onvalidatemessages) |
@@ -95,6 +96,42 @@ Passed to the `onBoot` callback.
 | `continuation`    | `boolean`                   | `true` when this run is taking over from a prior dead run (cancel / crash / `endRun` / OOM retry)    |
 | `previousRunId`   | `string \| undefined`       | Public id of the prior run when `continuation` is true                                               |
 | `preloaded`       | `boolean`                   | Whether this run was triggered as a preload                                                          |
+
+## RecoveryBootEvent
+
+Passed to the `onRecoveryBoot` callback. See [Recovery boot](/ai-chat/patterns/recovery-boot) for the full guide.
+
+| Field              | Type                                                              | Description                                                                                          |
+| ------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `ctx`              | `TaskRunContext`                                                  | Full task run context — see [Task context](#task-context-ctx)                                         |
+| `chatId`           | `string`                                                          | Chat session ID                                                                                      |
+| `runId`            | `string`                                                          | The Trigger.dev run ID for this run boot                                                             |
+| `previousRunId`    | `string`                                                          | Public id of the prior run that died                                                                 |
+| `cause`            | `"cancelled" \| "crashed" \| "unknown"`                           | Best-effort cause. Currently always `"unknown"` — forward-looking, don't branch on it                |
+| `settledMessages`  | `TUIMessage[]`                                                    | Chain persisted by the predecessor's last `onTurnComplete`                                            |
+| `inFlightUsers`    | `TUIMessage[]`                                                    | User messages on `session.in` past the cursor — the message(s) the predecessor never acknowledged    |
+| `partialAssistant` | `TUIMessage \| undefined`                                         | The trailing assistant message whose stream never received `finish`                                  |
+| `pendingToolCalls` | [`RecoveryPendingToolCall[]`](#recoverypendingtoolcall)           | Tool calls in `input-available` state extracted from `partialAssistant`                              |
+| `writer`           | [`ChatWriter`](#chatwriter)                                       | Lazy session.out writer — emit a recovery banner / signal here                                       |
+
+## RecoveryBootResult
+
+Return value of `onRecoveryBoot`. Every field is optional — omit to accept the smart default.
+
+| Field            | Type                          | Description                                                                                                                                   |
+| ---------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chain`          | `TUIMessage[]`                | Replaces the seed chain. Default: `[...settledMessages, firstInFlightUser, partialAssistant]` when both present; `settledMessages` otherwise. |
+| `recoveredTurns` | `TUIMessage[]`                | User messages to dispatch as fresh turns. Default: `inFlightUsers.slice(1)` when smart-default fires; `inFlightUsers` otherwise.              |
+| `beforeBoot`     | `() => Promise<void>`         | Runs after the writer flushes and before the first recovered turn fires. Use for blocking persistence work.                                   |
+
+## RecoveryPendingToolCall
+
+| Field         | Type      | Description                                                  |
+| ------------- | --------- | ------------------------------------------------------------ |
+| `toolCallId`  | `string`  | The AI SDK tool call id                                      |
+| `toolName`    | `string`  | The tool name (the `tool-${name}` suffix on the part type)   |
+| `input`       | `unknown` | The input the model produced for the call                    |
+| `partIndex`   | `number`  | Index into `partialAssistant.parts` for in-place edits       |
 
 ## PreloadEvent
 

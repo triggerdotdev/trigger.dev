@@ -71,13 +71,23 @@ A new run boots when the user sends `u2`. Run 1 has long since exited. Run 2 has
     GET the JSON blob. On 404 (no snapshot yet — first-ever turn) or read error or version mismatch, treat as empty and continue. Snapshot misses are non-fatal — replay alone may still be sufficient.
   </Step>
   <Step title="Replay session.out tail">
-    Subscribe to `session.out` with `wait=0` starting from `snapshot.lastOutEventId`. Drain whatever's there and close. In the steady state this returns empty (the snapshot already captured everything from turn 1). In a crash-recovery state — Run 1 emitted chunks but never wrote a snapshot — replay catches them.
+    Subscribe to `session.out` with `wait=0` starting from `snapshot.lastOutEventId`. Drain whatever's there and close. Returns:
+    - **Settled messages** — closed assistant turns past the snapshot cursor (the chunks of a turn that completed after the snapshot was written but before the run exited cleanly).
+    - **A partial assistant** — the trailing message if its stream never received a `finish` chunk. The dead run was mid-response when it died. `cleanupAbortedParts` has already stripped streaming-in-progress fragments.
+
+    In the steady state this returns empty. In recovery, it returns whatever the dead run was in the middle of.
   </Step>
-  <Step title="Merge by id, replay wins">
-    Snapshot messages and replayed messages are merged by `id`. On collision, the replayed copy wins — `session.out` is the freshest representation of any assistant message.
+  <Step title="Replay session.in tail">
+    GET `session.in` records past the last `turn-complete`'s `session-in-event-id` cursor. Returns the user messages the dead run hadn't acknowledged — typically the message that triggered the cancelled / crashed turn, plus anything the customer typed after.
   </Step>
-  <Step title="Clean up partial trailing assistants">
-    If the trailing assistant message has no `finish-step` (a turn that crashed mid-stream), `cleanupAbortedParts` truncates the partial parts. If nothing remains, drop the message entirely.
+  <Step title="Reconstruct the chain (smart default)">
+    Snapshot messages merge with the settled replay (replay wins on `id` collision). Then:
+
+    - If there's a partial assistant **and** at least one in-flight user message, splice `[firstInFlightUser, partialAssistant]` onto the end of the chain. The model sees the prior turn's incomplete attempt and can continue, abandon, or pivot based on the next user message.
+    - Remaining in-flight users dispatch as fresh turns after the recovered first one.
+    - If there's no partial OR no in-flight users, the chain is just the settled chain and any in-flight users dispatch normally.
+
+    Customers can override this entirely via [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot).
   </Step>
   <Step title="Append the new wire message">
     Append `u2` from the wire payload, exactly as on turn 1.
@@ -88,15 +98,15 @@ The model now sees `[u1, a1, u2]` and produces `a2`. After `onTurnComplete`, the
 
 ### Crash mid-turn — replay carries the load
 
-Suppose Run 1's turn 1 streams partial assistant chunks to `session.out` and then OOMs before `onTurnComplete` fires. No snapshot was written. The next attempt boots and:
+Suppose Run 1's turn 1 streams partial assistant chunks to `session.out` and then crashes (OOM, exception, server-side cancel) before `onTurnComplete` fires. No snapshot was written. The next run boots and:
 
 1. Snapshot read returns 404 → empty.
-2. Replay reads from seq 0, picks up the partial assistant chunks emitted before the crash.
-3. `cleanupAbortedParts` strips the in-flight parts (or drops the whole message if nothing usable remains).
-4. The accumulator is empty (or has just the prior user message — depends on what the runtime wrote before the crash).
-5. The new attempt re-runs the OOM'd turn from scratch, on the [larger `oomMachine`](/ai-chat/patterns/oom-resilience).
+2. `session.out` tail replay picks up the partial assistant chunks emitted before the crash. `cleanupAbortedParts` strips streaming-in-progress fragments but keeps the cleaned trailing message as the `partialAssistant`.
+3. `session.in` tail replay finds the user message the dead run was answering (no `turn-complete` was written, so the cursor never advanced past it).
+4. Smart default splices `[firstInFlightUser, partialAssistant]` onto the chain. Any later user messages (including the customer's follow-up) dispatch as fresh turns.
+5. The model sees full prior context and responds in kind — continuing a cut-off essay on "keep going", answering a fresh question on "actually, what's 7+8?", abandoning the prior work on "scrap that, do X instead".
 
-Replay-only is correct but slower. The snapshot is an optimization layered on top, not a correctness boundary.
+Replay carries the conversation across the crash boundary with zero customer code. For policies different from "preserve context" — drop the partial entirely, synthesize tool results for an interrupted tool call, write a recovery banner to the UI — register [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot).
 
 ## OOM-retry interaction
 

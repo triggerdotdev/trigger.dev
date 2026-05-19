@@ -4,6 +4,42 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 19, 2026" tags={["SDK"]}>
+
+## Recovery boot — context-preserving continuation after cancel / crash / OOM
+
+When a `chat.agent` run dies mid-stream (the user cancels, the worker OOMs, an unhandled exception kills the process), the next continuation run now reconstructs the conversation context automatically. Follow-ups like "keep going" continue the partial response; fresh follow-ups like "scrap that, what's 7+8?" abandon it and answer the new question. No customer code required.
+
+Under the hood: the boot now reads BOTH stream tails — `session.out` for any partial assistant the dead run was streaming, `session.in` for any user messages it never acknowledged — and splices `[firstInFlightUser, partialAssistant]` onto the chain when both are present. The model sees full prior context plus the latest user message.
+
+For policies different from "preserve context" — drop the partial entirely, synthesize tool results for an interrupted tool call, emit a recovery banner to the UI — register the new `onRecoveryBoot` hook:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onRecoveryBoot: async ({ partialAssistant, inFlightUsers, writer, cause, previousRunId }) => {
+    writer.write({
+      type: "data-chat-recovery",
+      data: { cause, previousRunId, partialPresent: partialAssistant !== undefined },
+      transient: true,
+    });
+    // return nothing → smart default applies
+  },
+  run: async ({ messages, signal }) =>
+    streamText({ model, messages, abortSignal: signal }),
+});
+```
+
+The hook receives `settledMessages`, `inFlightUsers`, `partialAssistant`, `pendingToolCalls`, `previousRunId`, `cause`, and a lazy `writer`. Return any of `chain`, `recoveredTurns`, or `beforeBoot` to override the default. Agents using `hydrateMessages` skip the hook — customer-owned persistence is the source of truth.
+
+Also retracts the OOM resilience caveat: model context on retry is no longer "incomplete" without `hydrateMessages`. The smart default reconstructs full context from `session.out` replay.
+
+See [Recovery boot](/ai-chat/patterns/recovery-boot) for the full guide.
+
+</Update>
+
 <Update label="May 16, 2026" description="0.0.0-chat-prerelease-20260519091352" tags={["SDK", "Breaking"]}>
 
 ## `session.out` is now bounded — header-form control records + per-turn trim
