@@ -20,53 +20,59 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateRequest(request, {
-    apiKey: true,
-    organizationAccessToken: false,
-    personalAccessToken: false,
-  });
+  try {
+    const authenticationResult = await authenticateRequest(request, {
+      apiKey: true,
+      organizationAccessToken: false,
+      personalAccessToken: false,
+    });
 
-  if (!authenticationResult || !authenticationResult.result.ok) {
-    logger.info("Invalid or missing api key", { url: request.url });
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
+    if (!authenticationResult || !authenticationResult.result.ok) {
+      logger.info("Invalid or missing api key", { url: request.url });
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
 
-  const { environment: authenticatedEnv } = authenticationResult.result;
-  const { deploymentId } = parsedParams.data;
+    const { environment: authenticatedEnv } = authenticationResult.result;
+    const { deploymentId } = parsedParams.data;
 
-  const [, rawBody] = await tryCatch(request.json());
-  const body = CancelDeploymentRequestBody.safeParse(rawBody ?? {});
+    const [, rawBody] = await tryCatch(request.json());
+    const body = CancelDeploymentRequestBody.safeParse(rawBody ?? {});
 
-  if (!body.success) {
-    return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
-  }
+    if (!body.success) {
+      return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
+    }
 
-  const deploymentService = new DeploymentService();
+    const deploymentService = new DeploymentService();
 
-  return await deploymentService
-    .cancelDeployment(authenticatedEnv, deploymentId, {
-      canceledReason: body.data.reason,
-    })
-    .match(
-      () => {
-        return new Response(null, { status: 204 });
-      },
-      (error) => {
-        switch (error.type) {
-          case "deployment_not_found":
-            return json({ error: "Deployment not found" }, { status: 404 });
-          case "failed_to_delete_deployment_timeout":
-            return new Response(null, { status: 204 }); // not a critical error, ignore
-          case "deployment_cannot_be_cancelled":
-            return json(
-              { error: "Deployment is already in a final state and cannot be canceled" },
-              { status: 409 }
-            );
-          case "other":
-          default:
-            error.type satisfies "other";
-            return json({ error: "Internal server error" }, { status: 500 });
+    return await deploymentService
+      .cancelDeployment(authenticatedEnv, deploymentId, {
+        canceledReason: body.data.reason,
+      })
+      .match(
+        () => {
+          return new Response(null, { status: 204 });
+        },
+        (error) => {
+          switch (error.type) {
+            case "deployment_not_found":
+              return json({ error: "Deployment not found" }, { status: 404 });
+            case "failed_to_delete_deployment_timeout":
+              return new Response(null, { status: 204 }); // not a critical error, ignore
+            case "deployment_cannot_be_cancelled":
+              return json(
+                { error: "Deployment is already in a final state and cannot be canceled" },
+                { status: 409 }
+              );
+            case "other":
+            default:
+              error.type satisfies "other";
+              return json({ error: "Internal server error" }, { status: 500 });
+          }
         }
-      }
-    );
+      );
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to cancel deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

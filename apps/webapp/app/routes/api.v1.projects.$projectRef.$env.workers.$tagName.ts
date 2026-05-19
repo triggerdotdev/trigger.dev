@@ -9,6 +9,7 @@ import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
 } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -23,34 +24,37 @@ const HeadersSchema = z.object({
 type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  const authenticationResult = await authenticateRequest(request, {
-    personalAccessToken: true,
-    organizationAccessToken: true,
-    apiKey: false,
-  });
+  try {
+    const authenticationResult = await authenticateRequest(request, {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: false,
+    });
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    }
 
-  const parsedParams = ParamsSchema.safeParse(params);
+    const parsedParams = ParamsSchema.safeParse(params);
 
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
-  const { projectRef, env } = parsedParams.data;
+    if (!parsedParams.success) {
+      return json({ error: "Invalid Params" }, { status: 400 });
+    }
+    const { projectRef, env } = parsedParams.data;
 
-  const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
-  const triggerBranch = parsedHeaders.success ? parsedHeaders.data["x-trigger-branch"] : undefined;
+    const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
+    const triggerBranch = parsedHeaders.success
+      ? parsedHeaders.data["x-trigger-branch"]
+      : undefined;
 
-  const runtimeEnv = await authenticatedEnvironmentForAuthentication(
-    authenticationResult,
-    projectRef,
-    env,
-    triggerBranch
-  );
+    const runtimeEnv = await authenticatedEnvironmentForAuthentication(
+      authenticationResult,
+      projectRef,
+      env,
+      triggerBranch
+    );
 
-  const currentWorker = await findCurrentWorkerFromEnvironment(
+    const currentWorker = await findCurrentWorkerFromEnvironment(
     {
       id: runtimeEnv.id,
       type: runtimeEnv.type,
@@ -109,5 +113,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     urls,
   };
 
-  return json(response);
+    return json(response);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load worker by tag", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
