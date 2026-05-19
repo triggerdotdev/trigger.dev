@@ -194,34 +194,31 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
     }
   });
 
-  it("fires when there are in-flight users (no partial)", async () => {
-    const captured: { event?: RecoveryBootEvent } = {};
+  it("does NOT fire when there are in-flight users but no partial (graceful exit path)", async () => {
+    // chat.requestUpgrade(), chat.endRun() before processing, and similar
+    // graceful exits leave an unacknowledged user on session.in but no
+    // partial assistant on session.out. That's not recovery — the next
+    // run just dispatches the message normally.
+    const onRecoveryBoot = vi.fn();
     const model = new MockLanguageModelV3({
       doStream: async () => ({ stream: textStream("ok") }),
     });
     const u1 = userMessage("buffered while dead", "u-buffered");
     const agent = chat.agent({
-      id: "recovery-boot.inflight-users",
-      onRecoveryBoot: async (event) => {
-        captured.event = event;
-        return {};
-      },
+      id: "recovery-boot.inflight-users-no-partial",
+      onRecoveryBoot,
       run: async ({ messages, signal }) =>
         streamText({ model, messages, abortSignal: signal }),
     });
     const harness = mockChatAgent(agent, {
-      chatId: "inflight-users",
+      chatId: "inflight-users-no-partial",
       continuation: true,
       previousRunId: "run_prior",
     });
     harness.seedSessionInTail([u1 as never]);
     try {
       await new Promise((r) => setTimeout(r, 50));
-      expect(captured.event).toBeDefined();
-      expect(captured.event!.inFlightUsers).toHaveLength(1);
-      expect(captured.event!.inFlightUsers[0]!.id).toBe("u-buffered");
-      expect(captured.event!.partialAssistant).toBeUndefined();
-      expect(captured.event!.pendingToolCalls).toEqual([]);
+      expect(onRecoveryBoot).not.toHaveBeenCalled();
     } finally {
       await harness.close();
     }
@@ -316,6 +313,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
         return { stream: textStream(`reply ${turnCount}`) };
       },
     });
+    const partial = assistantMessage("partial answer", "a-partial");
     const u1 = userMessage("buffered", "u-1");
     const agent = chat.agent({
       id: "recovery-boot.suppress-dispatch",
@@ -328,6 +326,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       continuation: true,
       previousRunId: "run_prior",
     });
+    harness.seedSessionOutPartial(partial as never);
     harness.seedSessionInTail([u1 as never]);
     try {
       // No turn should fire from the boot-injected queue.
@@ -345,6 +344,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       doStream: async () => ({ stream: textStream("acked") }),
     });
     const custom = assistantMessage("custom-recovered-history", "a-custom");
+    const partial = assistantMessage("partial", "a-partial");
     const u1 = userMessage("buffered", "u-1");
     let observedMessageCount = 0;
     const agent = chat.agent({
@@ -364,6 +364,7 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       continuation: true,
       previousRunId: "run_prior",
     });
+    harness.seedSessionOutPartial(partial as never);
     harness.seedSessionInTail([u1 as never]);
     try {
       await new Promise((r) => setTimeout(r, 50));
@@ -412,7 +413,9 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
         return { stream: textStream("ok") };
       },
     });
-    const u1 = userMessage("buffered", "u-1");
+    const partial = assistantMessage("partial", "a-partial");
+    const u1 = userMessage("buffered original", "u-1");
+    const u2 = userMessage("followup", "u-2");
     const agent = chat.agent({
       id: "recovery-boot.before-boot",
       onRecoveryBoot: async (): Promise<RecoveryBootResult> => ({
@@ -428,7 +431,9 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       continuation: true,
       previousRunId: "run_prior",
     });
-    harness.seedSessionInTail([u1 as never]);
+    harness.seedSessionOutPartial(partial as never);
+    // Two users — smart default consumes u1 into the chain, leaves u2 for dispatch
+    harness.seedSessionInTail([u1 as never, u2 as never]);
     try {
       await new Promise((r) => setTimeout(r, 50));
       expect(order).toEqual(["beforeBoot", "turn"]);
@@ -445,7 +450,9 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
         return { stream: textStream("ok") };
       },
     });
-    const u1 = userMessage("buffered", "u-1");
+    const partial = assistantMessage("partial", "a-partial");
+    const u1 = userMessage("buffered original", "u-1");
+    const u2 = userMessage("followup", "u-2");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const agent = chat.agent({
       id: "recovery-boot.hook-throws",
@@ -460,7 +467,9 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       continuation: true,
       previousRunId: "run_prior",
     });
-    harness.seedSessionInTail([u1 as never]);
+    harness.seedSessionOutPartial(partial as never);
+    // Two users so smart default leaves u2 to dispatch (u1 spliced into chain)
+    harness.seedSessionInTail([u1 as never, u2 as never]);
     try {
       await new Promise((r) => setTimeout(r, 100));
       // Default behavior: the in-flight user is re-dispatched as a turn

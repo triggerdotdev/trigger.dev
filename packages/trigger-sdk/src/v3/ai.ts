@@ -5168,8 +5168,12 @@ function chatAgent<
         );
         const inFlightUsers = replayedInTail.map((r) => r.message);
         const partialAssistant = replayedPartial;
-        const hasRecoveredState =
-          partialAssistant !== undefined || inFlightUsers.length > 0;
+        // Fire the hook only when there's a partial assistant — the
+        // mid-stream-died signal. In-flight users alone (no partial)
+        // cover graceful exits like `chat.requestUpgrade()` where the
+        // predecessor chose to end before processing the message;
+        // those route through the normal continuation-wait path.
+        const hasRecoveredState = partialAssistant !== undefined;
 
         let hookChain: TUIMessage[] | undefined;
         let hookRecoveredTurns: TUIMessage[] | undefined;
