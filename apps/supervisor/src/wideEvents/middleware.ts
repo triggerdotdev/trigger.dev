@@ -57,10 +57,10 @@ export async function runWideEvent<T>(
   });
   if (opts.route) state.extras.route = opts.route;
   if (opts.method) state.extras.method = opts.method;
-  if (opts.setup) opts.setup(state);
 
   const start = performance.now();
   try {
+    if (opts.setup) opts.setup(state);
     const result = await wideEventStorage.run(state, () => Promise.resolve(fn()));
     state.durationMs = Math.round(performance.now() - start);
     if (finalize) finalize(state);
