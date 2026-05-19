@@ -31,6 +31,14 @@ import {
 } from "../services/computeSnapshotService.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
+import type { ServerResponse } from "node:http";
+import {
+  emitOneShot,
+  runWideEvent,
+  setMeta,
+  type State,
+  type WideEventOptions,
+} from "../wideEvents/index.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -79,6 +87,7 @@ type WorkloadServerOptions = {
   checkpointClient?: CheckpointClient;
   computeManager?: ComputeWorkloadManager;
   tracing?: OtlpTraceService;
+  wideEventOpts: WideEventOptions;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
@@ -86,6 +95,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private readonly snapshotService?: ComputeSnapshotService;
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
+  private readonly wideEventOpts: WideEventOptions;
 
   private readonly httpServer: HttpServer;
   private readonly websocketServer: Namespace<
@@ -115,6 +125,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
+    this.wideEventOpts = opts.wideEventOpts;
 
     if (opts.computeManager?.snapshotsEnabled) {
       this.snapshotService = new ComputeSnapshotService({
@@ -154,6 +165,47 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     return this.headerValueFromRequest(req, WORKLOAD_HEADERS.PROJECT_REF);
   }
 
+  /**
+   * Sets common route meta on the wide-event state from URL params.
+   */
+  private attachRouteMeta(state: State, params: unknown): void {
+    if (!params || typeof params !== "object") return;
+    const p = params as Record<string, unknown>;
+    if (typeof p.runFriendlyId === "string") setMeta(state, "run_id", p.runFriendlyId);
+    if (typeof p.snapshotFriendlyId === "string") {
+      setMeta(state, "snapshot_id", p.snapshotFriendlyId);
+    }
+    if (typeof p.deploymentId === "string") setMeta(state, "deployment_id", p.deploymentId);
+  }
+
+  /**
+   * Wraps an HTTP route handler body with the wide-event lifecycle. Reads
+   * `traceparent` and `x-request-id` from `req.headers`, attaches `run_id` /
+   * `snapshot_id` / `deployment_id` meta from `params` when present, and
+   * captures the response status from `res.statusCode` after `fn` returns.
+   */
+  private wideRoute<T>(
+    ctx: { req: IncomingMessage; res: ServerResponse; params?: unknown },
+    route: string,
+    method: string,
+    fn: () => Promise<T> | T
+  ): Promise<T> {
+    return runWideEvent(
+      {
+        ...this.wideEventOpts,
+        route,
+        method,
+        traceparent: this.headerValueFromRequest(ctx.req, "traceparent"),
+        inboundRequestId: this.headerValueFromRequest(ctx.req, "x-request-id"),
+        setup: (state) => this.attachRouteMeta(state, ctx.params),
+      },
+      fn,
+      (state) => {
+        state.statusCode = ctx.res.statusCode;
+      }
+    );
+  }
+
   private createHttpServer({ host, port }: { host: string; port: number }) {
     const httpServer = new HttpServer({
       port,
@@ -174,26 +226,33 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           bodySchema: WorkloadRunAttemptStartRequestBody,
-          handler: async ({ req, reply, params, body }) => {
-            const startResponse = await this.workerClient.startRunAttempt(
-              params.runFriendlyId,
-              params.snapshotFriendlyId,
-              body,
-              this.runnerIdFromRequest(req)
-            );
+          handler: async (ctx) =>
+            this.wideRoute(
+              ctx,
+              "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/attempts/start",
+              "POST",
+              async () => {
+                const { req, reply, params, body } = ctx;
+                const startResponse = await this.workerClient.startRunAttempt(
+                  params.runFriendlyId,
+                  params.snapshotFriendlyId,
+                  body,
+                  this.runnerIdFromRequest(req)
+                );
 
-            if (!startResponse.success) {
-              this.logger.error("Failed to start run", {
-                params,
-                error: startResponse.error,
-              });
-              reply.empty(500);
-              return;
-            }
+                if (!startResponse.success) {
+                  this.logger.error("Failed to start run", {
+                    params,
+                    error: startResponse.error,
+                  });
+                  reply.empty(500);
+                  return;
+                }
 
-            reply.json(startResponse.data satisfies WorkloadRunAttemptStartResponseBody);
-            return;
-          },
+                reply.json(startResponse.data satisfies WorkloadRunAttemptStartResponseBody);
+                return;
+              }
+            ),
         }
       )
       .route(
@@ -202,26 +261,35 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           bodySchema: WorkloadRunAttemptCompleteRequestBody,
-          handler: async ({ req, reply, params, body }) => {
-            const completeResponse = await this.workerClient.completeRunAttempt(
-              params.runFriendlyId,
-              params.snapshotFriendlyId,
-              body,
-              this.runnerIdFromRequest(req)
-            );
+          handler: async (ctx) =>
+            this.wideRoute(
+              ctx,
+              "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/attempts/complete",
+              "POST",
+              async () => {
+                const { req, reply, params, body } = ctx;
+                const completeResponse = await this.workerClient.completeRunAttempt(
+                  params.runFriendlyId,
+                  params.snapshotFriendlyId,
+                  body,
+                  this.runnerIdFromRequest(req)
+                );
 
-            if (!completeResponse.success) {
-              this.logger.error("Failed to complete run", {
-                params,
-                error: completeResponse.error,
-              });
-              reply.empty(500);
-              return;
-            }
+                if (!completeResponse.success) {
+                  this.logger.error("Failed to complete run", {
+                    params,
+                    error: completeResponse.error,
+                  });
+                  reply.empty(500);
+                  return;
+                }
 
-            reply.json(completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody);
-            return;
-          },
+                reply.json(
+                  completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody
+                );
+                return;
+              }
+            ),
         }
       )
       .route(
@@ -230,27 +298,34 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           bodySchema: WorkloadHeartbeatRequestBody,
-          handler: async ({ req, reply, params, body }) => {
-            const heartbeatResponse = await this.workerClient.heartbeatRun(
-              params.runFriendlyId,
-              params.snapshotFriendlyId,
-              body,
-              this.runnerIdFromRequest(req)
-            );
+          handler: async (ctx) =>
+            this.wideRoute(
+              ctx,
+              "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/heartbeat",
+              "POST",
+              async () => {
+                const { req, reply, params, body } = ctx;
+                const heartbeatResponse = await this.workerClient.heartbeatRun(
+                  params.runFriendlyId,
+                  params.snapshotFriendlyId,
+                  body,
+                  this.runnerIdFromRequest(req)
+                );
 
-            if (!heartbeatResponse.success) {
-              this.logger.error("Failed to heartbeat run", {
-                params,
-                error: heartbeatResponse.error,
-              });
-              reply.empty(500);
-              return;
-            }
+                if (!heartbeatResponse.success) {
+                  this.logger.error("Failed to heartbeat run", {
+                    params,
+                    error: heartbeatResponse.error,
+                  });
+                  reply.empty(500);
+                  return;
+                }
 
-            reply.json({
-              ok: true,
-            } satisfies WorkloadHeartbeatResponseBody);
-          },
+                reply.json({
+                  ok: true,
+                } satisfies WorkloadHeartbeatResponseBody);
+              }
+            ),
         }
       )
       .route(
@@ -258,87 +333,94 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         "GET",
         {
           paramsSchema: WorkloadActionParams,
-          handler: async ({ reply, params, req }) => {
-            const runnerId = this.runnerIdFromRequest(req);
-            const deploymentVersion = this.deploymentVersionFromRequest(req);
-            const projectRef = this.projectRefFromRequest(req);
+          handler: async (ctx) =>
+            this.wideRoute(
+              ctx,
+              "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/suspend",
+              "GET",
+              async () => {
+                const { reply, params, req } = ctx;
+                const runnerId = this.runnerIdFromRequest(req);
+                const deploymentVersion = this.deploymentVersionFromRequest(req);
+                const projectRef = this.projectRefFromRequest(req);
 
-            this.logger.debug("Suspend request", {
-              params,
-              runnerId,
-              deploymentVersion,
-              projectRef,
-            });
+                this.logger.debug("Suspend request", {
+                  params,
+                  runnerId,
+                  deploymentVersion,
+                  projectRef,
+                });
 
-            if (!runnerId || !deploymentVersion || !projectRef) {
-              this.logger.error("Invalid headers for suspend request", {
-                ...params,
-                runnerId,
-                deploymentVersion,
-                projectRef,
-              });
-              reply.json(
-                {
-                  ok: false,
-                  error: "Invalid headers",
-                } satisfies WorkloadSuspendRunResponseBody,
-                false,
-                400
-              );
-              return;
-            }
+                if (!runnerId || !deploymentVersion || !projectRef) {
+                  this.logger.error("Invalid headers for suspend request", {
+                    ...params,
+                    runnerId,
+                    deploymentVersion,
+                    projectRef,
+                  });
+                  reply.json(
+                    {
+                      ok: false,
+                      error: "Invalid headers",
+                    } satisfies WorkloadSuspendRunResponseBody,
+                    false,
+                    400
+                  );
+                  return;
+                }
 
-            if (this.snapshotService) {
-              // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
-              // If the run continues before the delay expires, the snapshot is cancelled.
-              reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
+                if (this.snapshotService) {
+                  // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
+                  // If the run continues before the delay expires, the snapshot is cancelled.
+                  reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 
-              this.snapshotService.schedule(params.runFriendlyId, {
-                runnerId,
-                runFriendlyId: params.runFriendlyId,
-                snapshotFriendlyId: params.snapshotFriendlyId,
-              });
+                  this.snapshotService.schedule(params.runFriendlyId, {
+                    runnerId,
+                    runFriendlyId: params.runFriendlyId,
+                    snapshotFriendlyId: params.snapshotFriendlyId,
+                  });
 
-              return;
-            }
+                  return;
+                }
 
-            if (!this.checkpointClient) {
-              reply.json(
-                {
-                  ok: false,
-                  error: "Checkpoints disabled",
-                } satisfies WorkloadSuspendRunResponseBody,
-                false,
-                400
-              );
-              return;
-            }
+                if (!this.checkpointClient) {
+                  reply.json(
+                    {
+                      ok: false,
+                      error: "Checkpoints disabled",
+                    } satisfies WorkloadSuspendRunResponseBody,
+                    false,
+                    400
+                  );
+                  return;
+                }
 
-            reply.json(
-              {
-                ok: true,
-              } satisfies WorkloadSuspendRunResponseBody,
-              false,
-              202
-            );
+                reply.json(
+                  {
+                    ok: true,
+                  } satisfies WorkloadSuspendRunResponseBody,
+                  false,
+                  202
+                );
 
-            const suspendResult = await this.checkpointClient.suspendRun({
-              runFriendlyId: params.runFriendlyId,
-              snapshotFriendlyId: params.snapshotFriendlyId,
-              body: {
-                runnerId,
-                runId: params.runFriendlyId,
-                snapshotId: params.snapshotFriendlyId,
-                projectRef,
-                deploymentVersion,
-              },
-            });
+                const suspendResult = await this.checkpointClient.suspendRun({
+                  runFriendlyId: params.runFriendlyId,
+                  snapshotFriendlyId: params.snapshotFriendlyId,
+                  body: {
+                    runnerId,
+                    runId: params.runFriendlyId,
+                    snapshotId: params.snapshotFriendlyId,
+                    projectRef,
+                    deploymentVersion,
+                  },
+                });
 
-            if (!suspendResult) {
-              this.logger.error("Failed to suspend run", { params });
-              return;
-            }
-          },
+                if (!suspendResult) {
+                  this.logger.error("Failed to suspend run", { params });
+                  return;
+                }
+              }
+            ),
         }
       )
       .route(
@@ -346,33 +428,40 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         "GET",
         {
           paramsSchema: WorkloadActionParams,
-          handler: async ({ req, reply, params }) => {
-            this.logger.debug("Run continuation request", { params });
+          handler: async (ctx) =>
+            this.wideRoute(
+              ctx,
+              "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/continue",
+              "GET",
+              async () => {
+                const { req, reply, params } = ctx;
+                this.logger.debug("Run continuation request", { params });
 
-            // Cancel any pending delayed snapshot for this run
-            this.snapshotService?.cancel(params.runFriendlyId);
+                // Cancel any pending delayed snapshot for this run
+                this.snapshotService?.cancel(params.runFriendlyId);
 
-            const continuationResult = await this.workerClient.continueRunExecution(
-              params.runFriendlyId,
-              params.snapshotFriendlyId,
-              this.runnerIdFromRequest(req)
-            );
+                const continuationResult = await this.workerClient.continueRunExecution(
+                  params.runFriendlyId,
+                  params.snapshotFriendlyId,
+                  this.runnerIdFromRequest(req)
+                );
 
-            if (!continuationResult.success) {
-              this.logger.error("Failed to continue run execution", { params });
-              reply.json(
-                {
-                  ok: false,
-                  error: "Failed to continue run execution",
-                },
-                false,
-                400
-              );
-              return;
-            }
+                if (!continuationResult.success) {
+                  this.logger.error("Failed to continue run execution", { params });
+                  reply.json(
+                    {
+                      ok: false,
+                      error: "Failed to continue run execution",
+                    },
+                    false,
+                    400
+                  );
+                  return;
+                }
 
-            reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
-          },
+                reply.json(continuationResult.data as WorkloadContinueRunExecutionResponseBody);
+              }
+            ),
         }
       )
       .route(
@@ -380,26 +469,33 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         "GET",
         {
           paramsSchema: WorkloadActionParams,
-          handler: async ({ req, reply, params }) => {
-            const sinceSnapshotResponse = await this.workerClient.getSnapshotsSince(
-              params.runFriendlyId,
-              params.snapshotFriendlyId,
-              this.runnerIdFromRequest(req)
-            );
+          handler: async (ctx) =>
+            this.wideRoute(
+              ctx,
+              "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/since/:snapshotFriendlyId",
+              "GET",
+              async () => {
+                const { req, reply, params } = ctx;
+                const sinceSnapshotResponse = await this.workerClient.getSnapshotsSince(
+                  params.runFriendlyId,
+                  params.snapshotFriendlyId,
+                  this.runnerIdFromRequest(req)
+                );
 
-            if (!sinceSnapshotResponse.success) {
-              this.logger.error("Failed to get snapshots since", {
-                runId: params.runFriendlyId,
-                error: sinceSnapshotResponse.error,
-              });
-              reply.empty(500);
-              return;
-            }
+                if (!sinceSnapshotResponse.success) {
+                  this.logger.error("Failed to get snapshots since", {
+                    runId: params.runFriendlyId,
+                    error: sinceSnapshotResponse.error,
+                  });
+                  reply.empty(500);
+                  return;
+                }
 
-            reply.json({
-              snapshots: sinceSnapshotResponse.data.snapshots.map(legacifyCheckpointType),
-            } satisfies WorkloadRunSnapshotsSinceResponseBody);
-          },
+                reply.json({
+                  snapshots: sinceSnapshotResponse.data.snapshots.map(legacifyCheckpointType),
+                } satisfies WorkloadRunSnapshotsSinceResponseBody);
+              }
+            ),
         }
       )
       .route("/api/v1/workload-actions/deployments/:deploymentId/dequeue", "GET", {
@@ -407,63 +503,85 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           deploymentId: z.string(),
         }),
 
-        handler: async ({ req, reply, params }) => {
-          const dequeueResponse = await this.workerClient.dequeueFromVersion(
-            params.deploymentId,
-            1,
-            this.runnerIdFromRequest(req)
-          );
+        handler: async (ctx) =>
+          this.wideRoute(
+            ctx,
+            "/api/v1/workload-actions/deployments/:deploymentId/dequeue",
+            "GET",
+            async () => {
+              const { req, reply, params } = ctx;
+              const dequeueResponse = await this.workerClient.dequeueFromVersion(
+                params.deploymentId,
+                1,
+                this.runnerIdFromRequest(req)
+              );
 
-          if (!dequeueResponse.success) {
-            this.logger.error("Failed to get latest snapshot", {
-              deploymentId: params.deploymentId,
-              error: dequeueResponse.error,
-            });
-            reply.empty(500);
-            return;
-          }
+              if (!dequeueResponse.success) {
+                this.logger.error("Failed to get latest snapshot", {
+                  deploymentId: params.deploymentId,
+                  error: dequeueResponse.error,
+                });
+                reply.empty(500);
+                return;
+              }
 
-          reply.json(
-            dequeueResponse.data.map(legacifyCheckpointType) satisfies WorkloadDequeueFromVersionResponseBody
-          );
-        },
+              reply.json(
+                dequeueResponse.data.map(legacifyCheckpointType) satisfies WorkloadDequeueFromVersionResponseBody
+              );
+            }
+          ),
       });
 
     if (env.SEND_RUN_DEBUG_LOGS) {
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
         paramsSchema: WorkloadActionParams.pick({ runFriendlyId: true }),
         bodySchema: WorkloadDebugLogRequestBody,
-        handler: async ({ req, reply, params, body }) => {
-          reply.empty(204);
+        handler: async (ctx) =>
+          this.wideRoute(
+            ctx,
+            "/api/v1/workload-actions/runs/:runFriendlyId/logs/debug",
+            "POST",
+            async () => {
+              const { req, reply, params, body } = ctx;
+              reply.empty(204);
 
-          await this.workerClient.sendDebugLog(
-            params.runFriendlyId,
-            body,
-            this.runnerIdFromRequest(req)
-          );
-        },
+              await this.workerClient.sendDebugLog(
+                params.runFriendlyId,
+                body,
+                this.runnerIdFromRequest(req)
+              );
+            }
+          ),
       });
     } else {
       // Lightweight mock route without schemas
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
-        handler: async ({ reply }) => {
-          reply.empty(204);
-        },
+        handler: async (ctx) =>
+          this.wideRoute(
+            ctx,
+            "/api/v1/workload-actions/runs/:runFriendlyId/logs/debug",
+            "POST",
+            async () => {
+              ctx.reply.empty(204);
+            }
+          ),
       });
     }
 
-    // Compute snapshot callback endpoint
+    // Snapshot callback endpoint (inbound from compute path)
     httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
       bodySchema: SnapshotCallbackPayloadSchema,
-      handler: async ({ reply, body }) => {
-        if (!this.snapshotService) {
-          reply.empty(404);
-          return;
-        }
+      handler: async (ctx) =>
+        this.wideRoute(ctx, "/api/v1/compute/snapshot-complete", "POST", async () => {
+          const { reply, body } = ctx;
+          if (!this.snapshotService) {
+            reply.empty(404);
+            return;
+          }
 
-        const result = await this.snapshotService.handleCallback(body);
-        reply.empty(result.status);
-      },
+          const result = await this.snapshotService.handleCallback(body);
+          reply.empty(result.status);
+        }),
     });
 
     return httpServer;
@@ -607,6 +725,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
         try {
           runConnected(message.run.friendlyId);
+          emitOneShot({
+            ...this.wideEventOpts,
+            populate: (state) => {
+              state.extras.event = "run:start";
+              setMeta(state, "run_id", message.run.friendlyId);
+              if (socket.data.deploymentId) {
+                setMeta(state, "deployment_id", socket.data.deploymentId);
+              }
+              if (socket.data.runnerId) setMeta(state, "runner_id", socket.data.runnerId);
+              state.extras.socket_id = socket.id;
+            },
+          });
         } catch (error) {
           log.error("run:start error", { error });
         }
@@ -626,6 +756,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           // Don't delete trace context here - run:stop fires after each snapshot/shutdown
           // but the run may be restored on a new VM and snapshot again. Trace context is
           // re-populated on dequeue, and entries are small (4 strings per run).
+          emitOneShot({
+            ...this.wideEventOpts,
+            populate: (state) => {
+              state.extras.event = "run:stop";
+              setMeta(state, "run_id", message.run.friendlyId);
+              if (socket.data.deploymentId) {
+                setMeta(state, "deployment_id", socket.data.deploymentId);
+              }
+              if (socket.data.runnerId) setMeta(state, "runner_id", socket.data.runnerId);
+              state.extras.socket_id = socket.id;
+            },
+          });
         } catch (error) {
           log.error("run:stop error", { error });
         }
