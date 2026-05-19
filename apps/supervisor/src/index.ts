@@ -63,6 +63,7 @@ class ManagedSupervisor {
     env: { nodeId: env.TRIGGER_WORKER_INSTANCE_NAME },
     enabled: env.TRIGGER_WIDE_EVENTS_ENABLED,
   };
+  private readonly wideEventsNoisyRoutes = env.TRIGGER_WIDE_EVENTS_NOISY_ROUTES;
 
   constructor() {
     const {
@@ -260,7 +261,7 @@ class ManagedSupervisor {
             ...this.wideEventOpts,
             traceparent,
             setup: (state) => {
-              setMeta(state, "run_id", message.run.id);
+              setMeta(state, "run_id", message.run.friendlyId);
               setMeta(state, "env_id", message.environment.id);
               setMeta(state, "org_id", message.organization.id);
               setMeta(state, "project_id", message.project.id);
@@ -472,6 +473,7 @@ class ManagedSupervisor {
       computeManager: this.computeManager,
       tracing: this.tracing,
       wideEventOpts: this.wideEventOpts,
+      wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
     });
 
     this.workloadServer.on("runConnected", this.onRunConnected.bind(this));
