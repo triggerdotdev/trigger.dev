@@ -671,17 +671,23 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
 
     // Hydrate session state from response headers so subsequent turns
-    // skip the endpoint and write directly to session.in.
+    // skip the endpoint and write directly to session.in. Failing fast
+    // when the header is missing avoids a quiet degraded state where
+    // every later turn re-runs the handover route instead of taking
+    // the slim-wire path.
     const accessToken = response.headers.get("X-Trigger-Chat-Access-Token");
     const chatId = args.chatId;
-    if (accessToken) {
-      const state: ChatSessionState = {
-        publicAccessToken: accessToken,
-        isStreaming: true,
-      };
-      this.sessions.set(chatId, state);
-      this.notifySessionChange(chatId, state);
+    if (!accessToken) {
+      throw new Error(
+        "chat.handover response is missing the X-Trigger-Chat-Access-Token header. chat.agent's handover endpoint must echo the session PAT so the transport can hydrate."
+      );
     }
+    const state: ChatSessionState = {
+      publicAccessToken: accessToken,
+      isStreaming: true,
+    };
+    this.sessions.set(chatId, state);
+    this.notifySessionChange(chatId, state);
 
     // Filter the parsed UIMessage stream:
     //   - Drop control chunks (`trigger:turn-complete`,
@@ -953,6 +959,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.coordinator?.removeMessagesListener(fn);
   }
   dispose(): void {
+    // Tear down any open session.out subscriptions before the coordinator
+    // goes away. Otherwise controllers in `activeStreams` keep reading
+    // until they time out, leaking network and memory on every
+    // unmount/navigation.
+    for (const controller of this.activeStreams.values()) {
+      controller.abort();
+    }
+    this.activeStreams.clear();
     this.coordinator?.dispose();
     this.coordinator = null;
   }
