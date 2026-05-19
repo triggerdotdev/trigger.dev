@@ -39,7 +39,6 @@ import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
 import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
-import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { singleton } from "~/utils/singleton";
 
 class OTLPExporter {

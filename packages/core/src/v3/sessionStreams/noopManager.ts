@@ -31,6 +31,16 @@ export class NoopSessionStreamManager implements SessionStreamManager {
 
   setLastSeqNum(_sessionId: string, _io: SessionChannelIO, _seqNum: number): void {}
 
+  lastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
+    return undefined;
+  }
+
+  setLastDispatchedSeqNum(
+    _sessionId: string,
+    _io: SessionChannelIO,
+    _seqNum: number
+  ): void {}
+
   setMinTimestamp(
     _sessionId: string,
     _io: SessionChannelIO,

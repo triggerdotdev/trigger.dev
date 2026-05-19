@@ -242,6 +242,39 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
         "inspect `harness.allChunks` / `harness.allRawChunks` instead."
     );
   }
+
+  /**
+   * Override the one-shot control-record path. In production this goes
+   * direct to S2 with header-form records; in tests we project it back
+   * into the chunk-shape the harness already understands (the listener
+   * watches for `{type: "trigger:turn-complete"}` to drive turn-complete
+   * latches). Returns an empty `StreamWriteResult` — tests don't observe
+   * the seq_num, and trim seeding only matters in production.
+   */
+  async writeControl(
+    subtype: string,
+    extraHeaders?: ReadonlyArray<readonly [string, string]>
+  ): Promise<StreamWriteResult> {
+    const synthetic: Record<string, unknown> = { type: `trigger:${subtype}` };
+    if (extraHeaders) {
+      for (const [name, value] of extraHeaders) {
+        if (name === "public-access-token") {
+          synthetic.publicAccessToken = value;
+        }
+      }
+    }
+    notify(this.state, synthetic);
+    return {};
+  }
+
+  /**
+   * No-op in the mock harness. Production trims keep `session.out` bounded;
+   * the in-memory `state.chunks` array doesn't need trimming and tests
+   * that care about trim behaviour exercise it via the real S2 code path.
+   */
+  async trimTo(_earliestSeqNum: number): Promise<void> {
+    // Intentionally a no-op for the mock harness.
+  }
 }
 
 /**

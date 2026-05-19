@@ -8,6 +8,7 @@ export const FEATURE_FLAG = {
   hasAiAccess: "hasAiAccess",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
+  mollifierEnabled: "mollifierEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -18,6 +19,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
+  [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

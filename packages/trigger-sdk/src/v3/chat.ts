@@ -24,12 +24,55 @@
  */
 
 import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
-import { ApiClient, SSEStreamSubscription } from "@trigger.dev/core/v3";
+import {
+  controlSubtype,
+  headerValue,
+  PUBLIC_ACCESS_TOKEN_HEADER,
+  SSEStreamSubscription,
+  TRIGGER_CONTROL_SUBTYPE,
+} from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
+
+/**
+ * Discriminator passed to per-endpoint `baseURL` and `fetch` callbacks.
+ *
+ * - `"in"` — `POST /realtime/v1/sessions/{chatId}/in/append` (user messages,
+ *   stops, actions).
+ * - `"out"` — `GET /realtime/v1/sessions/{chatId}/out` (SSE response stream).
+ *
+ * Other endpoints (`/api/v1/sessions`, `/api/v1/auth/jwt/claims`) are reached
+ * from the server-side `chat.createStartSessionAction` and `accessToken`
+ * callback, not the transport — they accept the same callback shape on their
+ * own option objects.
+ */
+export type ChatTransportEndpoint = "in" | "out";
+
+/** Context passed to `baseURL` and `fetch` callbacks. */
+export type ChatTransportEndpointContext = {
+  endpoint: ChatTransportEndpoint;
+  chatId: string;
+};
+
+/** Resolver form of `baseURL` — return the base for the given endpoint. */
+export type ChatBaseURLResolver = (ctx: ChatTransportEndpointContext) => string;
+
+/**
+ * Per-request fetch override. Receives the fully-resolved URL and the
+ * RequestInit the transport would have used, plus endpoint context for
+ * routing decisions. Customers can rewrite the URL, inject headers, or
+ * delegate to a custom transport (e.g. a Cloudflare worker fronting
+ * `api.trigger.dev`). Must return a `Response` semantically equivalent to
+ * what `globalThis.fetch(url, init)` would have returned.
+ */
+export type ChatFetchOverride = (
+  url: string,
+  init: RequestInit,
+  ctx: ChatTransportEndpointContext
+) => Promise<Response>;
 
 /**
  * Detect 401/403 from realtime/input-stream calls without relying on `instanceof`
@@ -222,8 +265,44 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
     >
   ) => Promise<StartSessionResult>;
 
-  /** Base URL for the Trigger.dev API. @default "https://api.trigger.dev" */
-  baseURL?: string;
+  /**
+   * Base URL for the Trigger.dev API. Either a single string applied to every
+   * endpoint, or a function called per request that picks a base URL from the
+   * endpoint discriminator and chat ID. @default "https://api.trigger.dev"
+   *
+   * @example Route appends through a proxy, SSE direct:
+   * ```ts
+   * baseURL: ({ endpoint }) =>
+   *   endpoint === "out" ? "https://api.trigger.dev" : "https://proxy.example.com",
+   * ```
+   */
+  baseURL?: string | ChatBaseURLResolver;
+
+  /**
+   * Base URL for the SSE stream subscription only (`GET .../sessions/{chatId}/out`).
+   * @deprecated Pass a function for `baseURL` instead and branch on
+   * `endpoint === "out"`. `streamBaseURL` continues to work for backwards
+   * compatibility and wins over `baseURL` for the SSE endpoint when both
+   * are set.
+   */
+  streamBaseURL?: string;
+
+  /**
+   * Optional per-request fetch override. Called with the resolved URL and the
+   * RequestInit the transport built, plus endpoint context. Use this to
+   * inject custom headers (e.g. distributed tracing), redirect via a proxy,
+   * or wrap fetch with retries/logging.
+   *
+   * @example Add a tracing header to every chat request:
+   * ```ts
+   * fetch: (url, init, ctx) => {
+   *   init.headers = new Headers(init.headers);
+   *   init.headers.set("traceparent", currentTraceparent());
+   *   return globalThis.fetch(url, init);
+   * },
+   * ```
+   */
+  fetch?: ChatFetchOverride;
 
   /** Additional headers included in every API request. */
   headers?: Record<string, string>;
@@ -345,7 +424,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly resolveStartSession:
     | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
     | undefined;
-  private readonly baseURL: string;
+  private readonly resolveBaseURLFn: ChatBaseURLResolver;
+  private readonly fetchOverride: ChatFetchOverride | undefined;
   private readonly extraHeaders: Record<string, string>;
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
@@ -366,7 +446,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.resolveStartSession = options.startSession as
       | ((params: StartSessionParams<Record<string, unknown>>) => Promise<StartSessionResult>)
       | undefined;
-    this.baseURL = options.baseURL ?? DEFAULT_BASE_URL;
+    const baseURLOption = options.baseURL ?? DEFAULT_BASE_URL;
+    const streamOverride = options.streamBaseURL;
+    this.resolveBaseURLFn = typeof baseURLOption === "function"
+      ? (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption(ctx))
+      : (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption);
+    this.fetchOverride = options.fetch;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
     this.defaultMetadata = options.clientData;
@@ -510,10 +595,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state = await this.ensureSessionState(chatId);
 
     const sendChatMessage = async (token: string) => {
-      const apiClient = new ApiClient(this.baseURL, token);
-      await apiClient.appendToSessionStream(
+      await this.appendInputChunk(
         chatId,
-        "in",
+        token,
         this.serializeInputChunk({ kind: "message", payload: wirePayload })
       );
     };
@@ -690,10 +774,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const send = async (token: string) => {
-      const apiClient = new ApiClient(this.baseURL, token);
-      await apiClient.appendToSessionStream(
+      await this.appendInputChunk(
         chatId,
-        "in",
+        token,
         this.serializeInputChunk({ kind: "message", payload: wirePayload })
       );
     };
@@ -750,12 +833,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (!state) return false;
 
     const send = async (token: string) => {
-      const api = new ApiClient(this.baseURL, token);
-      await api.appendToSessionStream(
-        chatId,
-        "in",
-        this.serializeInputChunk({ kind: "stop" })
-      );
+      await this.appendInputChunk(chatId, token, this.serializeInputChunk({ kind: "stop" }));
     };
 
     try {
@@ -804,8 +882,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const send = async (token: string) => {
-      const apiClient = new ApiClient(this.baseURL, token);
-      await apiClient.appendToSessionStream(chatId, "in", body);
+      await this.appendInputChunk(chatId, token, body);
     };
 
     await this.callWithAuthRetry(chatId, state, send);
@@ -960,6 +1037,41 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    * Run `op` with the session's stored PAT. On 401/403, refresh the PAT
    * via `accessToken` and retry once. Surfaces non-auth errors as-is.
    */
+  private resolveBaseURL(ctx: ChatTransportEndpointContext): string {
+    const raw = this.resolveBaseURLFn(ctx);
+    return raw.replace(/\/$/, "");
+  }
+
+  private async doFetch(
+    ctx: ChatTransportEndpointContext,
+    url: string,
+    init: RequestInit
+  ): Promise<Response> {
+    return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
+  }
+
+  private async appendInputChunk(chatId: string, token: string, body: string): Promise<void> {
+    const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
+    const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "x-trigger-source": "sdk",
+      ...this.extraHeaders,
+    };
+    const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      const err = new Error(`appendToSessionStream failed: ${response.status} ${text}`) as Error & {
+        name: string;
+        status: number;
+      };
+      err.name = "TriggerApiError";
+      err.status = response.status;
+      throw err;
+    }
+  }
+
   private async callWithAuthRetry(
     chatId: string,
     state: ChatSessionState,
@@ -980,10 +1092,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Open an SSE subscription to the session's `.out` stream and pipe
-   * UIMessageChunks through to the AI SDK. Filters control chunks
-   * (`trigger:turn-complete`, `trigger:upgrade-required`) — the latter
-   * is purely telemetry now since the server handles the run swap
-   * inline (see `end-and-continue`).
+   * UIMessageChunks through to the AI SDK. Trigger control records
+   * (`turn-complete`, `upgrade-required` — see `trigger-control` header
+   * on `client-protocol.mdx#records-on-session-out`) are routed by
+   * header and never reach the consumer. `upgrade-required` is purely
+   * telemetry now since the server handles the run swap inline (see
+   * `end-and-continue`).
    */
   private subscribeToSessionStream(
     state: ChatSessionState,
@@ -1006,14 +1120,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         () => {
           if (options?.sendStopOnAbort !== false) {
             state.skipToTurnComplete = true;
-            const api = new ApiClient(this.baseURL, state.publicAccessToken);
-            api
-              .appendToSessionStream(
-                chatId,
-                "in",
-                this.serializeInputChunk({ kind: "stop" })
-              )
-              .catch(() => {});
+            this.appendInputChunk(
+              chatId,
+              state.publicAccessToken,
+              this.serializeInputChunk({ kind: "stop" })
+            ).catch(() => {});
           }
           internalAbort.abort();
         },
@@ -1021,7 +1132,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const streamUrl = `${this.baseURL}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const streamUrl = `${this.resolveBaseURL({ endpoint: "out", chatId })}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -1079,6 +1190,31 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               })()
             : () => {};
 
+        const sseCtx: ChatTransportEndpointContext = { endpoint: "out", chatId };
+        const fetchOverride = this.fetchOverride;
+        const sseFetchClient: typeof fetch | undefined = fetchOverride
+          ? ((input, init) => {
+              if (typeof input === "string") {
+                return fetchOverride(input, init ?? {}, sseCtx);
+              }
+              if (input instanceof URL) {
+                return fetchOverride(input.toString(), init ?? {}, sseCtx);
+              }
+              // Request — preserve its url + intrinsic init, let any
+              // provided init override on top (matches fetch(Request, init)
+              // semantics).
+              return fetchOverride(
+                input.url,
+                {
+                  method: input.method,
+                  headers: input.headers,
+                  signal: input.signal,
+                  ...(init ?? {}),
+                },
+                sseCtx
+              );
+            }) as typeof fetch
+          : undefined;
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
@@ -1093,6 +1229,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             // keepalive) arrives in 60s, force reconnect. Sized
             // generously over typical agent thinking pauses.
             stallTimeoutMs: 60_000,
+            fetchClient: sseFetchClient,
           });
           currentSubscription = subscription;
           const sseStream = await subscription.subscribe();
@@ -1144,7 +1281,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
 
           while (true) {
-            let value: { id: string; chunk: unknown; timestamp: number };
+            let value: {
+              id: string;
+              chunk: unknown;
+              timestamp: number;
+              headers?: ReadonlyArray<readonly [string, string]>;
+            };
             if (primed !== undefined) {
               value = primed;
               primed = undefined;
@@ -1166,32 +1308,45 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
             if (value.id) state.lastEventId = value.id;
 
-            // Session SSE delivers raw record bodies as strings (the
-            // server wraps them in `{data, id}` for S2). Parse so the
-            // rest of the loop can treat chunks as objects.
-            let chunkObj: Record<string, unknown> | null = null;
-            if (value.chunk != null) {
-              if (typeof value.chunk === "string") {
-                try {
-                  chunkObj = JSON.parse(value.chunk) as Record<string, unknown>;
-                } catch {
-                  chunkObj = null;
-                }
-              } else if (typeof value.chunk === "object") {
-                chunkObj = value.chunk as Record<string, unknown>;
+            // Trigger control record (turn-complete, upgrade-required) —
+            // routed by header, body is empty. Detect via the
+            // `trigger-control` header on the SSE record. Data records
+            // (UIMessageChunks) fall through to the chunk path below.
+            //
+            // Cross-version bridge: a customer who redeploys their
+            // Next.js app (new browser SDK) before their next
+            // `trigger deploy` (old agent SDK still writing turn-complete
+            // / upgrade-required as `chunk.type` data records) would
+            // otherwise hang. Fall back to the legacy chunk-type form
+            // when no header is present so the deploy-skew window
+            // closes turns correctly.
+            let controlValue = controlSubtype(value.headers);
+            let legacyChunk:
+              | { type?: string; publicAccessToken?: string }
+              | undefined;
+            if (!controlValue && value.chunk && typeof value.chunk === "object") {
+              const chunk = value.chunk as { type?: unknown; publicAccessToken?: unknown };
+              if (chunk.type === "trigger:turn-complete") {
+                controlValue = TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE;
+                legacyChunk = chunk as { type?: string; publicAccessToken?: string };
+              } else if (chunk.type === "trigger:upgrade-required") {
+                controlValue = TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED;
+              } else if (typeof chunk.type === "string" && chunk.type.startsWith("trigger:")) {
+                // Future / unknown `trigger:*` legacy control type from
+                // a pre-upgrade agent — drop so it doesn't reach the AI
+                // SDK as an unrecognised UIMessageChunk.
+                continue;
               }
             }
-            if (!chunkObj) continue;
-            const chunk = chunkObj;
 
             if (state.skipToTurnComplete) {
-              if (chunk.type === "trigger:turn-complete") {
+              if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
                 state.skipToTurnComplete = false;
               }
               continue;
             }
 
-            if (chunk.type === "trigger:upgrade-required") {
+            if (controlValue === TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED) {
               // Server has already triggered the new run via
               // `end-and-continue`; the next chunks on this same `.out`
               // stream come from v2. Filter the marker for cleanliness
@@ -1199,9 +1354,12 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               continue;
             }
 
-            if (chunk.type === "trigger:turn-complete") {
-              if (typeof chunk.publicAccessToken === "string") {
-                state.publicAccessToken = chunk.publicAccessToken;
+            if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+              const refreshedToken =
+                headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
+                legacyChunk?.publicAccessToken;
+              if (refreshedToken) {
+                state.publicAccessToken = refreshedToken;
               }
               state.isStreaming = false;
               this.notifySessionChange(chatId, state);
@@ -1221,7 +1379,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               return;
             }
 
-            controller.enqueue(chunk as unknown as UIMessageChunk);
+            // Data record — `value.chunk` is the parsed UIMessageChunk
+            // unwrapped from the S2 record envelope (the parser does the
+            // JSON unwrap). Drop empty/malformed payloads defensively.
+            if (value.chunk == null) continue;
+            controller.enqueue(value.chunk as UIMessageChunk);
           }
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {

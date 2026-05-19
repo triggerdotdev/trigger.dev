@@ -31,6 +31,13 @@ import {
   runtime,
   sessionStreams,
   taskContext,
+  trimSessionStream,
+  writeSessionControlRecord,
+} from "@trigger.dev/core/v3";
+import type {
+  ControlEvent,
+  InitializeSessionStreamResponseLike,
+  StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -263,7 +270,29 @@ export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
  * internally by `pipe`/`writer` — there's no public `initialize()`.
  */
 export class SessionOutputChannel {
+  // Cache of the in-flight / resolved `initializeSessionStream` PUT for
+  // this channel. Every `pipe()` / `writer()` call needs the same S2
+  // credentials, so we share a single promise instead of re-PUTing on
+  // every chunk. Hot-loop writers (per-chunk `chat.response.write` /
+  // direct `session.out.writer` calls) drop from N PUTs to 1 PUT for
+  // the lifetime of the channel. The S2 access token has a 1-day TTL
+  // server-side so reusing it across calls within a single run is safe.
+  // Evicts on failure (so the next call retries) and on `reset()`.
+  #initPromise?: Promise<InitializeSessionStreamResponseLike>;
+
   constructor(public readonly sessionId: string) {}
+
+  /**
+   * Drop the cached `initializeSessionStream` response. Surfaces for
+   * tests and lifecycle hooks that need the next write to re-mint S2
+   * credentials. The cache also self-evicts on `initializeSession`
+   * rejection, so callers don't need to invoke this on failures.
+   *
+   * @internal
+   */
+  reset(): void {
+    this.#initPromise = undefined;
+  }
 
   /**
    * Append a single record. Routes through {@link writer} internally so
@@ -390,6 +419,7 @@ export class SessionOutputChannel {
       lastEventId:
         options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
+      onControl: options?.onControl,
       onComplete: options?.onComplete,
       onError: options?.onError,
     });
@@ -425,6 +455,28 @@ export class SessionOutputChannel {
       ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
       : abortController.signal;
 
+    // Resolve the init promise eagerly so we can capture which one this
+    // writer uses for reactive invalidation below.
+    const writerInitPromise = ((): Promise<InitializeSessionStreamResponseLike> => {
+      if (this.#initPromise) {
+        return this.#initPromise;
+      }
+      const fresh = apiClient.initializeSessionStream(
+        this.sessionId,
+        "out",
+        options?.requestOptions
+      );
+      this.#initPromise = fresh;
+      // Evict on failure so the next call retries instead of returning a
+      // poisoned cache entry forever.
+      fresh.catch((err) => {
+        if (this.#initPromise === fresh) {
+          this.#initPromise = undefined;
+        }
+      });
+      return fresh;
+    })();
+
     try {
       const instance = new SessionStreamInstance<T>({
         apiClient,
@@ -434,11 +486,28 @@ export class SessionOutputChannel {
         source: readableStreamSource,
         signal: combinedSignal,
         requestOptions: options?.requestOptions,
+        initializeSession: () => writerInitPromise,
       });
 
-      instance.wait().finally(() => {
-        span.end();
-      });
+      // Single internal chain that handles span lifecycle AND reactive
+      // invalidation. On rejection we evict the cached init promise so
+      // the next pipe()/writer() re-PUTs and recovers (e.g. when a
+      // cached S2 access token expired mid-process). Compare by identity
+      // so a concurrent caller's fresh promise isn't accidentally cleared.
+      // Customer awaiters still observe the rejection via the returned
+      // `waitUntilComplete()`; this chain just keeps the cleanup path
+      // from surfacing as unhandled.
+      instance.wait().then(
+        () => {
+          span.end();
+        },
+        () => {
+          if (this.#initPromise === writerInitPromise) {
+            this.#initPromise = undefined;
+          }
+          span.end();
+        }
+      );
 
       return {
         stream: instance.stream,
@@ -463,6 +532,38 @@ export class SessionOutputChannel {
 
       throw error;
     }
+  }
+
+  /**
+   * Write a single Trigger control record to `.out`. The record carries a
+   * `trigger-control` header valued with `subtype` plus any sibling
+   * `extraHeaders`; the body is empty. Control records are filtered out of
+   * the consumer-facing chunk stream by the SDK transport — readers route
+   * them via the `onControl` callback instead.
+   *
+   * The returned `lastEventId` is the S2 seq_num of the written record,
+   * useful for trim chains (e.g. trim back to the previous turn-complete).
+   */
+  async writeControl(
+    subtype: string,
+    extraHeaders?: ReadonlyArray<readonly [string, string]>
+  ): Promise<StreamWriteResult> {
+    const apiClient = apiClientManager.clientOrThrow();
+    return writeSessionControlRecord(apiClient, this.sessionId, "out", subtype, extraHeaders);
+  }
+
+  /**
+   * Append an S2 `trim` command record to `.out`. Records with seq_num
+   * less than `earliestSeqNum` are eventually removed from the stream.
+   *
+   * Idempotent and monotonic at S2's layer (`max(existing, min(provided,
+   * current_tail))`) — backward trims are silently no-ops for deletion
+   * but still consume a seq_num. Used by `chat.agent`'s turn loop to
+   * keep `session.out` bounded to roughly one turn at steady state.
+   */
+  async trimTo(earliestSeqNum: number): Promise<void> {
+    const apiClient = apiClientManager.clientOrThrow();
+    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum);
   }
 }
 
@@ -555,6 +656,20 @@ export class SessionInputChannel {
   /** Non-blocking peek at the head of the `.in` buffer. */
   peek<T = unknown>(): T | undefined {
     return sessionStreams.peek(this.sessionId, "in") as T | undefined;
+  }
+
+  /**
+   * The highest S2 sequence number of any record this channel has
+   * delivered to a `once()` / `wait()` consumer (or had shifted off its
+   * buffer into one). Distinct from "last received" — buffered-but-not-
+   * yet-consumed records don't count.
+   *
+   * Used by `chat.agent` to persist the `.in` resume cursor on each
+   * `turn-complete` control record, so the next worker boot can subscribe
+   * past already-processed user messages.
+   */
+  lastDispatchedSeqNum(): number | undefined {
+    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
   }
 
   /**
@@ -727,6 +842,13 @@ export type SessionSubscribeOptions<T = unknown> = {
   timeoutInSeconds?: number;
   /** Called for each SSE event with the full event metadata (id, timestamp). */
   onPart?: (part: { id: string; chunk: T; timestamp: number }) => void;
+  /**
+   * Called when a `trigger-control` record arrives on the stream (e.g.
+   * `turn-complete`, `upgrade-required`). Control records are filtered
+   * out of the consumer chunk stream — handle them here. See
+   * `docs/ai-chat/client-protocol.mdx` for the wire shape.
+   */
+  onControl?: (event: ControlEvent) => void;
   /** Called when the server signals end-of-stream. */
   onComplete?: () => void;
   /** Called on unrecoverable errors after the retry budget is exhausted. */

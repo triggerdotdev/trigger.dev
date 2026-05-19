@@ -2,7 +2,9 @@ import {
   accessoryAttributes,
   AnyTask,
   apiClientManager,
+  controlSubtype,
   getSchemaParseFn,
+  headerValue,
   InputStreamOncePromise,
   type InputStreamOnceOptions,
   type InputStreamWaitOptions,
@@ -31,6 +33,9 @@ import {
   type TaskSchema,
   type TaskRunContext,
   type TaskWithSchema,
+  SESSION_IN_EVENT_ID_HEADER,
+  TRIGGER_CONTROL_SUBTYPE,
+  generateJWT,
   type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import type {
@@ -42,7 +47,7 @@ import type {
   UIMessageStreamOptions,
   LanguageModelUsage,
 } from "ai";
-import type { StreamWriteResult } from "@trigger.dev/core/v3";
+import type { ChatSnapshotV1, StreamWriteResult } from "@trigger.dev/core/v3";
 import {
   convertToModelMessages,
   dynamicTool,
@@ -73,7 +78,7 @@ import type { ResolvedSkill } from "./skill.js";
 // never touches `ai.ts`'s module graph, so the `node:*` builtins
 // pulled in transitively here never reach a client chunk.
 import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
-import { streams } from "./streams.js";
+import { streams, markChatAgentRunForStreamsWarning } from "./streams.js";
 import {
   sessions,
   type SessionHandle,
@@ -132,73 +137,87 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
 
 /**
- * Scan `session.out` for the latest `trigger:turn-complete` chunk and
- * return its SSE timestamp. Used at OOM-retry boot to derive a
- * lower-bound timestamp for the `session.in` filter — records older
- * than `T_last_complete` belong to turns that already completed on the
- * prior attempt and are dropped before they reach the turn loop.
+ * S2 seq_num of the most recent `turn-complete` control record written by
+ * this worker. Read by `writeTurnCompleteChunk` to know what to trim back
+ * to when the next turn finishes, keeping `session.out` bounded to ~one
+ * turn at steady state.
  *
- * Implementation is a streaming scan: subscribes via the existing SSE
- * endpoint with a short `timeoutInSeconds`, processes each part inline,
- * and discards the chunk body so memory stays O(1) regardless of how
- * many records are on `session.out`. Bandwidth scales linearly with
- * stream length but the scan only fires on retry — a rare event.
- *
- * Returns `undefined` if no `trigger:turn-complete` chunk has been
- * written yet (first-turn OOM, no completed turns to dedup against).
+ * Seeded at boot from `ChatSnapshotV1.lastOutEventId` (which is exactly
+ * the previous turn-complete's seq_num). Wrapped in a mutable holder so
+ * `writeTurnCompleteChunk` can advance it without going through a setter.
  * @internal
  */
-async function findLatestTurnCompleteTimestamp(
+const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
+  "chat.lastTurnCompleteSeqNum"
+);
+
+/**
+ * Scan `session.out` for the latest `turn-complete` control record and
+ * return its `session-in-event-id` header value — the committed-consume
+ * cursor on `.in` as of that turn-complete. Used at worker boot to seed
+ * the `.in` subscription so already-processed user messages don't get
+ * replayed from S2.
+ *
+ * Implementation streams the SSE endpoint and listens for `turn-complete`
+ * via the transport's `onControl` callback; the data-chunk for-await is
+ * just there to drive the stream. The scan is O(1 turn) because
+ * `session.out` is bounded to roughly one turn at steady state — every
+ * successful turn-complete is followed by an S2 trim back to the
+ * previous one (see `writeTurnCompleteChunk`).
+ *
+ * Returns `undefined` if no `turn-complete` carrying the header has been
+ * written yet — first-turn-ever, first turn post-OOM-with-no-prior-runs,
+ * or a `turn-complete` written before this header existed (cross-version
+ * boot). Callers fall back to subscribing `.in` from seq 0 in that case;
+ * the slim-wire merge handles any dedup against snapshot-restored
+ * messages.
+ * @internal
+ */
+async function findLatestSessionInCursor(
   chatId: string
 ): Promise<number | undefined> {
   const apiClient = apiClientManager.clientOrThrow();
-  let latestTs: number | undefined;
+  let latestCursor: number | undefined;
   const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
-    timeoutInSeconds: 1,
-    onPart: (part) => {
-      let chunk: unknown = part.chunk;
-      if (typeof chunk === "string") {
-        try {
-          chunk = JSON.parse(chunk);
-        } catch {
-          return;
-        }
-      }
-      if (chunk && typeof chunk === "object" && (chunk as { type?: unknown }).type === "trigger:turn-complete") {
-        latestTs = part.timestamp;
-      }
+    // 5s rather than 1s: S2 trim is eventually-consistent (10-60s
+    // window), so a worker booting just after a trim could still see
+    // pre-trim records and need a bit longer to drain them all before
+    // the SSE long-poll closes. Without enough headroom the scan would
+    // fall back to `undefined`, the `.in` cursor wouldn't be seeded,
+    // and the next subscribe would replay messages already processed.
+    timeoutInSeconds: 5,
+    onControl: (event) => {
+      if (event.subtype !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) return;
+      const raw = headerValue(event.headers, SESSION_IN_EVENT_ID_HEADER);
+      if (!raw) return;
+      const parsed = Number.parseInt(raw, 10);
+      if (Number.isFinite(parsed)) latestCursor = parsed;
     },
   });
-  // Drain the stream to drive `onPart`. We don't accumulate the chunks —
-  // each iteration discards the data immediately, so a long session.out
-  // doesn't blow memory on the retry-boot worker.
+  // Drain the stream so the underlying SSE reader runs to completion. We
+  // don't accumulate chunks; `onControl` fires inline as turn-complete
+  // records arrive.
   for await (const _ of stream) {
     // intentionally empty
   }
-  return latestTs;
+  return latestCursor;
 }
 
 /**
  * Versioned blob written to S3 after every turn completes (when no
  * `hydrateMessages` hook is registered). Read at run boot to seed the
  * accumulator with prior conversation state, replacing the old wire-borne
- * full-history seed. Only the runtime owns this format — customers never
- * touch it.
+ * full-history seed.
  *
- * `lastOutEventId` is the SSE Last-Event-ID after the snapshot's final
- * chunk, used to resume `session.out` replay from precisely after the
- * snapshot. `lastOutTimestamp` is the same chunk's timestamp, used to
- * skip `findLatestTurnCompleteTimestamp` on OOM retry boot.
+ * The shape is shared with the Sessions dashboard (which reads the same
+ * blob to render the full conversation transcript) via
+ * `@trigger.dev/core/v3`. Customer code shouldn't reach in here — the
+ * SDK transports surface the messages through the standard `messages`
+ * accumulator.
  *
  * @internal
  */
-export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
-  version: 1;
-  savedAt: number;
-  messages: TUIMessage[];
-  lastOutEventId?: string;
-  lastOutTimestamp?: number;
-};
+export type { ChatSnapshotV1 } from "@trigger.dev/core/v3";
 
 /**
  * S3 key suffix for a session's snapshot blob. The webapp's presigned-URL
@@ -4477,6 +4496,7 @@ function chatCustomAgent<
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
       return userRun(payload, runOptions);
@@ -4570,6 +4590,10 @@ function chatAgent<
       // `chat.createStartSessionAction` or browser-direct) before this
       // run is triggered — no client-side upsert needed here.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
+      // and is the trim target for the NEXT turn's trim record.
+      locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
+      markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
 
       // Stamp `gen_ai.conversation.id` on the run-level span. Every
@@ -4651,6 +4675,20 @@ function chatAgent<
           });
         }
 
+        // Seed the trim chain from the snapshot's `lastOutEventId` (the SSE
+        // id of the previous turn's `turn-complete` control record). The
+        // first turn-complete this worker writes will then trim back to it.
+        // Without seeding, the new worker would emit no trim on its first
+        // turn (chain self-bootstraps from turn 2), so this is purely an
+        // optimization to keep continuation runs bounded from the first turn.
+        if (bootSnapshot?.lastOutEventId !== undefined) {
+          const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
+          if (Number.isFinite(seeded)) {
+            const slot = locals.get(lastTurnCompleteSeqNumKey);
+            if (slot) slot.value = seeded;
+          }
+        }
+
         try {
           replayed = await tracer.startActiveSpan("chat.boot.replay", async () =>
             replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
@@ -4665,47 +4703,46 @@ function chatAgent<
         }
       }
 
-      // ── session.in dedup cutoff ────────────────────────────────────
+      // ── session.in resume cursor ───────────────────────────────────
       //
       // A fresh worker subscribes to `session.in` from seq 0 and would
       // re-deliver every record ever appended — including user messages
-      // from turns already completed on a prior run. Without dedup, the
-      // loop would re-process them as fresh turns and the slim-wire merge
-      // would replace-by-id against the snapshot-restored copies, yielding
-      // no-op replaces while the customer's actual new message waits in
-      // the queue.
+      // from turns already completed on a prior run. Without a cursor,
+      // the loop would re-process them as fresh turns and the slim-wire
+      // merge would replace-by-id against snapshot-restored copies,
+      // yielding no-op replaces while the customer's actual new message
+      // waits in the queue.
       //
-      // The cutoff is the timestamp of the last `trigger:turn-complete`
-      // chunk on `session.out`. When we have a snapshot, that timestamp is
-      // already in `lastOutTimestamp` — use it directly to skip the
-      // O(stream-length) scan. Fall back to the scan only when no snapshot
-      // is available (first-ever OOM retry, or `hydrateMessages`
-      // short-circuited the snapshot read).
+      // The cursor is the seq_num of the last `.in` record the prior
+      // worker committed to processing, persisted on each `turn-complete`
+      // control record as a `session-in-event-id` sibling header. The
+      // boot scan reads the header off `.out`'s latest turn-complete and
+      // seeds the manager so the upcoming `.in` SSE subscribe opens with
+      // `Last-Event-ID: <cursor>` — S2 starts after that seq and old
+      // messages never reach this worker.
       //
-      // Applies in three cases (any of which means session.in has records
+      // Applies in three cases (any of which means `.in` has records
       // belonging to completed turns the new run should skip):
       //  - OOM retry (`ctx.attempt.number > 1`)
       //  - Continuation run (`payload.continuation === true`) — prior run
       //    crashed / was canceled / requested upgrade
       //  - Snapshot exists at all (catches edge cases where the wire
       //    didn't set `continuation` but a snapshot indicates prior turns)
-      const needsDedupCutoff =
+      const needsResumeCursor =
         ctx.attempt.number > 1 ||
         payload.continuation === true ||
         bootSnapshot !== undefined;
 
-      if (needsDedupCutoff) {
+      if (needsResumeCursor) {
         try {
-          let cutoff = bootSnapshot?.lastOutTimestamp;
-          if (cutoff === undefined) {
-            cutoff = await findLatestTurnCompleteTimestamp(payload.chatId);
-          }
-          if (cutoff !== undefined) {
-            sessionStreams.setMinTimestamp(payload.chatId, "in", cutoff);
+          const cursor = await findLatestSessionInCursor(payload.chatId);
+          if (cursor !== undefined) {
+            sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
+            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
           }
         } catch (error) {
           logger.warn(
-            "chat.agent: session.in dedup cutoff lookup failed; old messages may replay",
+            "chat.agent: session.in resume cursor lookup failed; old messages may replay",
             { error: error instanceof Error ? error.message : String(error) }
           );
         }
@@ -6409,16 +6446,7 @@ function chatAgent<
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
-                            // `StreamWriteResult` exposes `lastEventId` only;
-                            // use the snapshot save time as the
-                            // `lastOutTimestamp` cutoff hint. The OOM-retry
-                            // optimization compares this to SSE chunk
-                            // timestamps (ms epoch on the server) — Date.now()
-                            // here is the closest cheap approximation
-                            // available client-side and is consistent with
-                            // the existing turn-complete chunk emission.
                             lastOutEventId: turnCompleteResult?.lastEventId,
-                            lastOutTimestamp: Date.now(),
                           });
                         },
                         {
@@ -8386,6 +8414,32 @@ export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 /**
  * Options for {@link createChatStartSessionAction}.
  */
+/**
+ * Discriminator for per-endpoint `baseURL` / `fetch` callbacks on
+ * `createChatStartSessionAction`.
+ *
+ * - `"sessions"` — `POST /api/v1/sessions` (session create + first run trigger).
+ * - `"auth"` — `POST /api/v1/auth/jwt/claims` (only fired when
+ *   `tokenTTL` is set; otherwise the publicAccessToken from session create
+ *   is reused as-is).
+ */
+export type ChatStartSessionEndpoint = "sessions" | "auth";
+
+export type ChatStartSessionEndpointContext = {
+  endpoint: ChatStartSessionEndpoint;
+  chatId: string;
+};
+
+export type ChatStartSessionBaseURLResolver = (
+  ctx: ChatStartSessionEndpointContext
+) => string;
+
+export type ChatStartSessionFetchOverride = (
+  url: string,
+  init: RequestInit,
+  ctx: ChatStartSessionEndpointContext
+) => Promise<Response>;
+
 export type CreateChatStartSessionActionOptions = {
   /** TTL for the session-scoped public access token. @default "1h" */
   tokenTTL?: string | number | Date;
@@ -8394,6 +8448,21 @@ export type CreateChatStartSessionActionOptions = {
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
+  /**
+   * Override the Trigger.dev API base URL. String applies to both
+   * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
+   * endpoint. When unset, falls back to `apiClientManager.baseURL`
+   * (typically the `TRIGGER_API_URL` env var). Set this to route session
+   * create through a trusted edge proxy that injects server-side signal
+   * into `basePayload.metadata` before forwarding upstream.
+   */
+  baseURL?: string | ChatStartSessionBaseURLResolver;
+  /**
+   * Per-request fetch override. Receives the resolved URL, RequestInit,
+   * and endpoint context. Use for header injection, proxy routing, or
+   * custom retry. Applies to both session-create and JWT-claims POSTs.
+   */
+  fetch?: ChatStartSessionFetchOverride;
 };
 
 /**
@@ -8517,13 +8586,26 @@ function createChatStartSessionAction(
         : {}),
     };
 
-    const created = await sessions.start({
-      type: "chat.agent",
+    const startBody = {
+      type: "chat.agent" as const,
       externalId: params.chatId,
       taskIdentifier: taskId,
       triggerConfig,
       metadata: params.metadata,
-    });
+    };
+
+    const baseURLOption = options?.baseURL;
+    const fetchOverride = options?.fetch;
+    const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
+
+    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+      ? await callSessionsCreateWithOverride({
+          chatId: params.chatId,
+          body: startBody,
+          baseURLOption,
+          fetchOverride,
+        })
+      : await sessions.start(startBody);
 
     // Session create returns a session PAT directly when called with a
     // start token, but when the SDK call goes via the secret key we still
@@ -8531,13 +8613,20 @@ function createChatStartSessionAction(
     // re-minting here lets the customer override `tokenTTL`).
     const publicAccessToken =
       options?.tokenTTL !== undefined
-        ? await auth.createPublicToken({
-            scopes: {
-              read: { sessions: params.chatId },
-              write: { sessions: params.chatId },
-            },
-            expirationTime: options.tokenTTL,
-          })
+        ? hasOverride
+          ? await mintPublicTokenWithOverride({
+              chatId: params.chatId,
+              expirationTime: options.tokenTTL,
+              baseURLOption,
+              fetchOverride,
+            })
+          : await auth.createPublicToken({
+              scopes: {
+                read: { sessions: params.chatId },
+                write: { sessions: params.chatId },
+              },
+              expirationTime: options.tokenTTL,
+            })
         : created.publicAccessToken;
 
     return {
@@ -8546,6 +8635,101 @@ function createChatStartSessionAction(
       sessionId: created.id,
     };
   };
+}
+
+function resolveChatStartBaseURL(
+  endpoint: ChatStartSessionEndpoint,
+  chatId: string,
+  option: string | ChatStartSessionBaseURLResolver | undefined
+): string {
+  const fallback = apiClientManager.baseURL ?? "https://api.trigger.dev";
+  const raw =
+    typeof option === "function"
+      ? option({ endpoint, chatId })
+      : option ?? fallback;
+  return raw.replace(/\/$/, "");
+}
+
+function overrideRequestHeaders(accessToken: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "x-trigger-source": "sdk",
+  };
+  // Forward the preview-branch hint so override-mode requests land on the
+  // same env the standard ApiClient path would have routed to. Mirrors
+  // ApiClient.#getHeaders. Read from TRIGGER_PREVIEW_BRANCH /
+  // VERCEL_GIT_COMMIT_REF via apiClientManager.branchName.
+  if (apiClientManager.branchName) {
+    headers["x-trigger-branch"] = apiClientManager.branchName;
+  }
+  return headers;
+}
+
+async function callSessionsCreateWithOverride(args: {
+  chatId: string;
+  body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
+  baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
+  fetchOverride: ChatStartSessionFetchOverride | undefined;
+}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+  const accessToken = apiClientManager.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured. Set TRIGGER_SECRET_KEY or call apiClientManager.setGlobalAPIClientConfiguration before invoking the action."
+    );
+  }
+  const ctx: ChatStartSessionEndpointContext = { endpoint: "sessions", chatId: args.chatId };
+  const url = `${resolveChatStartBaseURL("sessions", args.chatId, args.baseURLOption)}/api/v1/sessions`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: overrideRequestHeaders(accessToken),
+    body: JSON.stringify(args.body),
+  };
+  const response = args.fetchOverride
+    ? await args.fetchOverride(url, init, ctx)
+    : await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`sessions.start failed: ${response.status} ${text}`);
+  }
+  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  return json;
+}
+
+async function mintPublicTokenWithOverride(args: {
+  chatId: string;
+  expirationTime: string | number | Date;
+  baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
+  fetchOverride: ChatStartSessionFetchOverride | undefined;
+}): Promise<string> {
+  const accessToken = apiClientManager.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured for JWT mint."
+    );
+  }
+  const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
+  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: overrideRequestHeaders(accessToken),
+  };
+  const response = args.fetchOverride
+    ? await args.fetchOverride(url, init, ctx)
+    : await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`auth.createPublicToken failed: ${response.status} ${text}`);
+  }
+  const claims = (await response.json()) as Record<string, unknown>;
+  return generateJWT({
+    secretKey: accessToken,
+    payload: {
+      ...claims,
+      scopes: [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`],
+    },
+    expirationTime: args.expirationTime,
+  });
 }
 
 export const chat = {
@@ -8657,27 +8841,74 @@ export const chat = {
 };
 
 /**
- * Writes a turn-complete control chunk to the chat output stream.
- * The frontend transport intercepts this to close the ReadableStream for the current turn.
+ * Writes a `turn-complete` control record to the chat output stream and,
+ * if we have a prior turn-complete's seq_num, appends an S2 `trim` command
+ * record back to it — keeping `session.out` bounded to roughly one turn
+ * at steady state.
+ *
+ * The control record's body is empty; `trigger-control: turn-complete`
+ * plus an optional `public-access-token` ride on the headers (see
+ * `docs/ai-chat/client-protocol.mdx`). SDK transports filter it from the
+ * consumer chunk stream and surface it via `onControl` / `onTurnComplete`.
+ *
+ * Trim is opportunistic and monotonic at S2's layer. A failed trim is
+ * logged and swallowed; the next turn will retry against a fresher
+ * target seq_num.
+ *
  * @internal
  */
 async function writeTurnCompleteChunk(
-  chatId?: string,
+  _chatId?: string,
   publicAccessToken?: string
 ): Promise<StreamWriteResult> {
-  const { waitUntilComplete } = chatStream.writer({
-    spanName: "turn complete",
-    collapsed: true,
-    execute: ({ write }) => {
-      // Transport-intercepted control chunk — not a valid UIMessageChunk
-      // type but travels on the same session.out stream.
-      write({
-        type: "trigger:turn-complete",
-        ...(publicAccessToken ? { publicAccessToken } : {}),
-      } as unknown as UIMessageChunk);
-    },
-  });
-  return await waitUntilComplete();
+  const session = getChatSession();
+
+  // 1. Write the turn-complete control record. The ack's `lastEventId` is
+  //    this record's seq_num — that's the trim target for the NEXT turn.
+  //
+  //    Sibling headers:
+  //    - `public-access-token` (optional): refresh token surfaced to
+  //      browser-side transports via `onTurnComplete`.
+  //    - `session-in-event-id` (optional): the committed-consume cursor
+  //      on `.in` as of this turn-complete. On next worker boot, the
+  //      boot scan reads this back and seeds the `.in` subscription so
+  //      already-processed user messages aren't re-delivered.
+  const extraHeaders: Array<[string, string]> = [];
+  if (publicAccessToken) {
+    extraHeaders.push(["public-access-token", publicAccessToken]);
+  }
+  const inCursor = session.in.lastDispatchedSeqNum();
+  if (inCursor !== undefined) {
+    extraHeaders.push([SESSION_IN_EVENT_ID_HEADER, String(inCursor)]);
+  }
+  const result = await session.out.writeControl(
+    TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE,
+    extraHeaders
+  );
+  const T_N = result.lastEventId ? Number.parseInt(result.lastEventId, 10) : undefined;
+
+  // 2. Trim back to the previous turn-complete, if we have one. Skipping on
+  //    first-turn-ever (or first turn post-OOM without a snapshot seed) is
+  //    fine — the chain catches up next turn.
+  const slot = locals.get(lastTurnCompleteSeqNumKey);
+  const prev = slot?.value;
+  if (slot && prev !== undefined) {
+    try {
+      await session.out.trimTo(prev);
+    } catch (err) {
+      logger.warn("chat.agent: trim failed; will retry next turn", {
+        error: err instanceof Error ? err.message : String(err),
+        prev,
+      });
+    }
+  }
+
+  // 3. Advance the slot so the next turn-complete trims back to this one.
+  if (slot && T_N !== undefined && Number.isFinite(T_N)) {
+    slot.value = T_N;
+  }
+
+  return result;
 }
 
 /**
@@ -8725,16 +8956,8 @@ async function writeUpgradeRequiredChunk(): Promise<StreamWriteResult> {
     }
   }
 
-  const { waitUntilComplete } = chatStream.writer({
-    spanName: "upgrade required",
-    collapsed: true,
-    execute: ({ write }) => {
-      write({
-        type: "trigger:upgrade-required",
-      } as unknown as UIMessageChunk);
-    },
-  });
-  return await waitUntilComplete();
+  const session = getChatSession();
+  return session.out.writeControl(TRIGGER_CONTROL_SUBTYPE.UPGRADE_REQUIRED);
 }
 
 /**
