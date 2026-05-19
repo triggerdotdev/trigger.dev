@@ -12,32 +12,38 @@ const ParamsSchema = z.object({
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
-  // Authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
-  }
-
-  const parsed = ParamsSchema.safeParse(params);
-
-  if (!parsed.success) {
-    return json({ error: "Invalid or missing run ID" }, { status: 400 });
-  }
-
-  const { batchParam } = parsed.data;
-
   try {
-    const presenter = new ApiBatchResultsPresenter();
-    const result = await presenter.call(batchParam, authenticationResult.environment);
+    // Authenticate the request
+    const authenticationResult = await authenticateApiRequest(request);
 
-    if (!result) {
-      return json({ error: "Batch not found" }, { status: 404 });
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing API Key" }, { status: 401 });
     }
 
-    return json(result);
+    const parsed = ParamsSchema.safeParse(params);
+
+    if (!parsed.success) {
+      return json({ error: "Invalid or missing run ID" }, { status: 400 });
+    }
+
+    const { batchParam } = parsed.data;
+
+    try {
+      const presenter = new ApiBatchResultsPresenter();
+      const result = await presenter.call(batchParam, authenticationResult.environment);
+
+      if (!result) {
+        return json({ error: "Batch not found" }, { status: 404 });
+      }
+
+      return json(result);
+    } catch (error) {
+      logger.error("Failed to load batch results", { error });
+      return json({ error: "Something went wrong, please try again." }, { status: 500 });
+    }
   } catch (error) {
-    logger.error("Failed to load batch results", { error });
-    return json({ error: "Something went wrong, please try again." }, { status: 500 });
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load batch results (outer)", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
