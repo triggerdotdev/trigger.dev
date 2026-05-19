@@ -212,7 +212,9 @@ If your agent registers [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemess
 
 ### Hooks throwing
 
-If `onRecoveryBoot` throws, the runtime logs a warning and falls back to the smart default. The run does not fail. Customers who want stricter error handling should try/catch internally.
+If the body of `onRecoveryBoot` throws (or rejects), the runtime logs a warning and falls back to the smart default — the run does not fail. Wrap your own try/catch if you want stricter handling.
+
+`beforeBoot` is the exception: it's the contract you opted into for blocking persistence, so errors thrown there **bubble** and fail the run rather than dispatch recovered turns against half-persisted state. Wrap it yourself if you want to soft-fail.
 
 ## See also
 
