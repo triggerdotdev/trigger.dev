@@ -158,11 +158,11 @@ This upgrades on **every** deploy, not just breaking changes. Good for fast-movi
 
 ## Interaction with recovery boot
 
-`chat.requestUpgrade()` is a graceful exit — the old run returns cleanly, never writing a partial assistant. The new continuation run boots with an empty `session.out` tail (no `partialAssistant`) and the upgrade-trigger message on `session.in`. The smart default in [Recovery boot](/ai-chat/patterns/recovery-boot) requires both a partial AND in-flight users to splice, so on the upgrade path it doesn't fire — the chain stays at `settledMessages` and the in-flight user dispatches as a fresh turn on the new version. `onRecoveryBoot` still fires (there's an in-flight user) if you want to emit an "upgraded" banner.
+`chat.requestUpgrade()` is a graceful exit — the old run returns cleanly, never writing a partial assistant. The new continuation run boots with an empty `session.out` tail and the upgrade-trigger message on `session.in`. The trigger message dispatches as turn 1 on the new version via the normal continuation-wait path. [`onRecoveryBoot`](/ai-chat/patterns/recovery-boot) does NOT fire on this path — the hook is reserved for mid-stream interruptions (cancel / crash / OOM) where a partial assistant exists on the tail.
 
 ## See also
 
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — where `onTurnStart` and `onChatResume` fit in the turn cycle
-- [Recovery boot](/ai-chat/patterns/recovery-boot) — the hook that also fires on the upgraded run
+- [Recovery boot](/ai-chat/patterns/recovery-boot) — the sibling hook for mid-stream interruptions (does NOT fire on `requestUpgrade`)
 - [Database persistence](/ai-chat/patterns/database-persistence) — how continuations interact with session state
 - [Client Protocol](/ai-chat/client-protocol#step-4-handle-continuations) — how clients handle continuations at the wire level

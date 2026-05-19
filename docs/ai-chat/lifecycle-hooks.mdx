@@ -19,7 +19,7 @@ description: "Hook into every stage of a chat agent's run: preload, turn start, 
 | Scope | Fires when | Use for |
 | --- | --- | --- |
 | **Process** ([`onBoot`](#onboot)) | Every fresh worker boots — initial, preloaded, and reactive continuation (post-cancel/crash/`endRun`/upgrade). | Initialize `chat.local`, open per-process resources, re-hydrate state from your DB on continuation. |
-| **Recovery** ([`onRecoveryBoot`](#onrecoveryboot)) | Continuation boot where the dead run left state behind — a partial assistant on `session.out` or in-flight users on `session.in`. | Override the smart default — drop the partial, synthesize tool results, emit a recovery banner. |
+| **Recovery** ([`onRecoveryBoot`](#onrecoveryboot)) | Continuation boot where the dead run was mid-stream — a partial assistant survives on `session.out`. | Override the smart default — drop the partial, synthesize tool results, emit a recovery banner. |
 | **Chat** ([`onChatStart`](#onchatstart)) | First message of a chat's lifetime. Does NOT fire on continuation runs or OOM retries. | One-time DB rows for the chat, resources tied to the chat's lifetime. |
 | **Turn** ([`onTurnStart`](#onturnstart), [`onTurnComplete`](#onturncomplete), etc.) | Every turn. | Persist messages, post-process responses. |
 
@@ -86,9 +86,9 @@ export const myChat = chat.agent({
 
 ## onRecoveryBoot
 
-Fires once on a continuation boot when the dead predecessor left state behind — a partial assistant on `session.out`, in-flight user messages on `session.in`, or both. The runtime reconstructs context automatically via a smart default; this hook is the override path for policies that need something different.
+Fires once on a continuation boot when the dead predecessor was mid-stream — a partial assistant survives on `session.out`. The runtime reconstructs context automatically via a smart default; this hook is the override path for policies that need something different.
 
-The hook does NOT fire when there's nothing to recover (clean continuation after `chat.endRun()`, fresh chat, OOM retry on top of a complete snapshot). It does NOT fire when [`hydrateMessages`](#hydratemessages) is registered (the customer owns persistence).
+The hook does NOT fire when there's no partial — clean continuations after `chat.endRun()` or `chat.requestUpgrade()`, fresh chats, OOM retries on top of a complete snapshot. Those paths dispatch any in-flight user message as a normal turn on the new run without involving the hook. It also does NOT fire when [`hydrateMessages`](#hydratemessages) is registered (the customer owns persistence).
 
 ```ts
 export const myChat = chat.agent({

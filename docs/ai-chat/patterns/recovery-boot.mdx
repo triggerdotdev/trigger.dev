@@ -82,17 +82,20 @@ export const myChat = chat.agent({
 
 ### Fires when
 
-The hook fires once on a continuation boot, AFTER both stream tails have been read, AND only when there's recovered state to act on:
+The hook fires once on a continuation boot, AFTER both stream tails have been read, AND only when there's a partial assistant — the mid-stream-died signal:
 
 ```ts
-const shouldFire = partialAssistant !== undefined || inFlightUsers.length > 0;
+const shouldFire = partialAssistant !== undefined;
 ```
+
+In-flight users alone don't fire the hook. Graceful exits like `chat.requestUpgrade()` and `chat.endRun()` may leave an unacknowledged user on `session.in` (the message that triggered the upgrade, the next message after endRun), but no partial — that's a normal continuation, not recovery. The next message just dispatches as turn 1 on the new run via the normal session.in pump.
 
 Skipped scenarios (where the hook does NOT fire):
 
 - A clean continuation after `chat.endRun()` with no buffered follow-up.
 - A fresh chat (no continuation, attempt 1).
-- An OOM retry that booted onto a complete snapshot (no in-flight tail).
+- An OOM retry that booted onto a complete snapshot (no partial on the tail).
+- `chat.requestUpgrade()` graceful exit — predecessor ended cleanly before processing, no partial.
 - An agent with [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) registered. Customers using `hydrateMessages` own persistence — recovery decisions live in their own DB query.
 
 ### Event shape
