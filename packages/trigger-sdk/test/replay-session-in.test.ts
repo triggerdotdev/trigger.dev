@@ -43,16 +43,24 @@ describe("replaySessionInTail", () => {
     const u1 = userMessage("u-1", "hello");
     const u2 = userMessage("u-2", "again");
     stubReadRecords([
-      { kind: "message", payload: { chatId: "c1", trigger: "submit-message", message: u1 } },
-      { kind: "message", payload: { chatId: "c1", trigger: "submit-message", message: u2 } },
+      {
+        kind: "message",
+        payload: { chatId: "c1", trigger: "submit-message", message: u1, metadata: { userId: "a" } },
+      },
+      {
+        kind: "message",
+        payload: { chatId: "c1", trigger: "submit-message", message: u2, metadata: { userId: "b" } },
+      },
     ]);
 
     const result = await replaySessionInTail("sess");
     expect(result).toHaveLength(2);
     expect(result[0]!.message.id).toBe("u-1");
     expect(result[0]!.seqNum).toBe(1);
+    expect(result[0]!.metadata).toEqual({ userId: "a" });
     expect(result[1]!.message.id).toBe("u-2");
     expect(result[1]!.seqNum).toBe(2);
+    expect(result[1]!.metadata).toEqual({ userId: "b" });
   });
 
   it("ignores non-message variants (stop, handover, handover-skip)", async () => {

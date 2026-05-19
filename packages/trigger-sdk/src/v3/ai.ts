@@ -688,7 +688,7 @@ export async function __replaySessionOutTailProductionPathForTests<
 type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
-) => Promise<{ message: TUIMessage; seqNum: number }[]>;
+) => Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]>;
 let replaySessionInTailImpl: ReplaySessionInTailImpl | undefined;
 
 export function __setReplaySessionInTailImplForTests(
@@ -724,7 +724,7 @@ export function __setReplaySessionInTailImplForTests(
 async function replaySessionInTail<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
-): Promise<{ message: TUIMessage; seqNum: number }[]> {
+): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
   if (replaySessionInTailImpl) {
     return await replaySessionInTailImpl<TUIMessage>(sessionId, options);
   }
@@ -732,7 +732,7 @@ async function replaySessionInTail<TUIMessage extends UIMessage>(
   const response = await apiClient.readSessionStreamRecords(sessionId, "in", {
     afterEventId: options?.lastEventId,
   });
-  const out: { message: TUIMessage; seqNum: number }[] = [];
+  const out: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
   for (const record of response.records) {
     // session.in writers POST `JSON.stringify(chunk)` directly; the
     // webapp wraps that in `{ data: <string>, id }` and stores it on
@@ -752,11 +752,19 @@ async function replaySessionInTail<TUIMessage extends UIMessage>(
     if (!chunk || typeof chunk !== "object") continue;
     const kind = (chunk as { kind?: unknown }).kind;
     if (kind !== "message") continue;
-    const payload = (chunk as { payload?: { trigger?: unknown; message?: unknown } }).payload;
+    const payload = (
+      chunk as {
+        payload?: { trigger?: unknown; message?: unknown; metadata?: unknown };
+      }
+    ).payload;
     if (!payload || payload.trigger !== "submit-message") continue;
     const message = payload.message;
     if (!message || typeof message !== "object") continue;
-    out.push({ message: message as TUIMessage, seqNum: record.seqNum });
+    out.push({
+      message: message as TUIMessage,
+      metadata: payload.metadata,
+      seqNum: record.seqNum,
+    });
   }
   return out;
 }
@@ -773,7 +781,7 @@ export async function __replaySessionInTailProductionPathForTests<
 >(
   sessionId: string,
   options?: { lastEventId?: string }
-): Promise<{ message: TUIMessage; seqNum: number }[]> {
+): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
   const saved = replaySessionInTailImpl;
   replaySessionInTailImpl = undefined;
   try {
@@ -4964,7 +4972,7 @@ function chatAgent<
       let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
-      let replayedInTail: { message: TUIMessage; seqNum: number }[] = [];
+      let replayedInTail: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
       // Wire payloads to dispatch as turns before the regular session.in
       // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
       // default, `inFlightUsers`). The turn-loop checks this queue ahead of
@@ -5222,14 +5230,11 @@ function chatAgent<
         } else {
           recoveredTurns = inFlightUsers;
         }
+        // `beforeBoot` errors bubble — the customer opted into blocking
+        // persistence and a failure there should fail the run rather than
+        // dispatch recovered turns against half-persisted state.
         if (hookBeforeBoot) {
-          try {
-            await hookBeforeBoot();
-          } catch (error) {
-            logger.warn("chat.agent: onRecoveryBoot.beforeBoot threw; continuing", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          }
+          await hookBeforeBoot();
         }
 
         // Advance the session.in cursor past every recovered user so
@@ -5247,6 +5252,14 @@ function chatAgent<
         // pops these ahead of `messagesInput.waitWithIdleTimeout` so they
         // dispatch as normal turns with the existing hook stack.
         //
+        // Per-record metadata preservation: each session.in record
+        // carries its own `payload.metadata` (the transport sets it at
+        // send time). Look up the original by message id so a recovered
+        // turn dispatches with the metadata its writer actually sent.
+        // Fall back to the boot payload's metadata for hook-synthesized
+        // messages (customer returned a recoveredTurn with no matching
+        // session.in record).
+        //
         // OOM-retry dedup: if `payload.message` is the same user message
         // the queue is about to redispatch (the wire payload survives
         // across attempts, but session.in records it once), the wire
@@ -5254,12 +5267,19 @@ function chatAgent<
         // so we don't fire the same turn twice.
         const wireMessageId =
           (payload.message as { id?: string } | undefined)?.id;
+        const metadataById = new Map<string, unknown>();
+        for (const entry of replayedInTail) {
+          metadataById.set(entry.message.id, entry.metadata);
+        }
         for (const msg of recoveredTurns) {
           if (wireMessageId && msg.id === wireMessageId) continue;
+          const recoveredMetadata = metadataById.has(msg.id)
+            ? metadataById.get(msg.id)
+            : payload.metadata;
           bootInjectedQueue.push({
             chatId: payload.chatId,
             sessionId: payload.sessionId,
-            metadata: payload.metadata,
+            metadata: recoveredMetadata,
             trigger: "submit-message",
             message: msg,
             messageId: msg.id,
@@ -7159,6 +7179,14 @@ function chatAgent<
                 locals.get(chatEndRunRequestedKey)
               ) {
                 return;
+              }
+
+              // Drain remaining recovered turns before idling — a thrown
+              // recovered turn shouldn't strand the rest of the boot queue
+              // until an unrelated live message arrives.
+              if (bootInjectedQueue.length > 0) {
+                currentWirePayload = bootInjectedQueue.shift()!;
+                continue;
               }
 
               // Wait for the next message — same as after a successful turn
