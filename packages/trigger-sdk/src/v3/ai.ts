@@ -510,6 +510,13 @@ type ReplaySessionOutTailResult<TUIMessage extends UIMessage> = {
    * the tail ended cleanly (every segment closed).
    */
   partial: TUIMessage | undefined;
+  /**
+   * The trailing assistant message BEFORE `cleanupAbortedParts` ran. Same
+   * `undefined` semantics as `partial`. Use this when you need to inspect
+   * tool parts the cleanup would strip (e.g. `input-available` /
+   * `input-streaming` orphans surfaced via `pendingToolCalls`).
+   */
+  partialRaw: TUIMessage | undefined;
 };
 
 type ReplaySessionOutTailImpl = <TUIMessage extends UIMessage>(
@@ -581,7 +588,7 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     if (type.startsWith("trigger:")) continue;
     collected.push(chunk as UIMessageChunk);
   }
-  if (collected.length === 0) return { settled: [], partial: undefined };
+  if (collected.length === 0) return { settled: [], partial: undefined, partialRaw: undefined };
 
   // Split chunks into per-message segments. A `start` chunk demarcates the
   // beginning of an assistant message; chunks before any `start` (rare —
@@ -612,6 +619,7 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
 
   const settled: TUIMessage[] = [];
   let partial: TUIMessage | undefined;
+  let partialRaw: TUIMessage | undefined;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
     const isTrailing = i === segments.length - 1 && !seg.closed;
@@ -641,11 +649,16 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
       const cleaned = cleanupAbortedParts(last as TUIMessage);
       if (cleaned.parts.length === 0) continue;
       partial = cleaned;
+      // Keep the raw pre-cleanup message too — recovery boot extracts
+      // `pendingToolCalls` from it, since `cleanupAbortedParts` strips
+      // exactly the input-streaming / input-available tool parts that
+      // we want to surface.
+      partialRaw = last as TUIMessage;
     } else {
       settled.push(last as TUIMessage);
     }
   }
-  return { settled, partial };
+  return { settled, partial, partialRaw };
 }
 
 /**
@@ -4972,6 +4985,7 @@ function chatAgent<
       let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
       let replayedSettled: TUIMessage[] = [];
       let replayedPartial: TUIMessage | undefined;
+      let replayedPartialRaw: TUIMessage | undefined;
       let replayedInTail: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
       // Wire payloads to dispatch as turns before the regular session.in
       // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
@@ -5036,6 +5050,7 @@ function chatAgent<
               );
               replayedSettled = replayResult.settled;
               replayedPartial = replayResult.partial;
+              replayedPartialRaw = replayResult.partialRaw;
             } catch (error) {
               logger.warn(
                 "chat.agent: session.out replay failed; using snapshot only",
@@ -5160,7 +5175,11 @@ function chatAgent<
         let hookRecoveredTurns: TUIMessage[] | undefined;
         let hookBeforeBoot: (() => Promise<void>) | undefined;
         if (couldHavePriorState && hasRecoveredState && onRecoveryBoot) {
-          const pendingToolCalls = extractPendingToolCallsFromPartial(partialAssistant);
+          // Extract from the RAW partial (pre-cleanup). `cleanupAbortedParts`
+          // strips exactly the input-streaming / input-available tool parts
+          // we want to surface here, so the cleaned `partialAssistant` would
+          // always report zero pending tool calls.
+          const pendingToolCalls = extractPendingToolCallsFromPartial(replayedPartialRaw);
           const previousRunIdForHook = previousRunId ?? "";
           let hookResult: RecoveryBootResult<TUIMessage> | void = undefined;
           const { writer: hookWriter, flush: hookFlush } = createLazyChatWriter();

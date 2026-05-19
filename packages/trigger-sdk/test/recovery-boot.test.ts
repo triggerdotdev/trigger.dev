@@ -5,6 +5,7 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { chat } from "../src/v3/ai.js";
 import type { RecoveryBootEvent, RecoveryBootResult } from "../src/v3/ai.js";
+import { __setReplaySessionOutTailImplForTests } from "../src/v3/ai.js";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
@@ -120,6 +121,74 @@ describe("onRecoveryBoot — chat.agent recovery hook", () => {
       expect(captured.event!.pendingToolCalls[0]!.toolName).toBe("search");
       expect(captured.event!.previousRunId).toBe("run_prior");
       expect(captured.event!.cause).toBe("unknown");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("pendingToolCalls is extracted from the RAW partial (pre-cleanupAbortedParts)", async () => {
+    // Real-world scenario: cancel-mid-tool-call. Session.out has tool-call
+    // chunks but the tool never returned. cleanupAbortedParts strips the
+    // input-available tool part from the partial used for the chain (you
+    // don't want orphan tool calls poisoning the model context), but
+    // `pendingToolCalls` should still surface what was happening.
+    const cleanedPartial = {
+      id: "a-orphan",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: "Let me look that up" }],
+    };
+    const rawPartial = {
+      id: "a-orphan",
+      role: "assistant" as const,
+      parts: [
+        { type: "text" as const, text: "Let me look that up" },
+        {
+          type: "tool-search" as const,
+          toolCallId: "tc-pending",
+          state: "input-available" as const,
+          input: { q: "vietnamese pho" },
+        },
+      ],
+    } as unknown as typeof cleanedPartial;
+
+    const captured: { event?: RecoveryBootEvent } = {};
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+    const u1 = userMessage("buffered", "u-1");
+    const agent = chat.agent({
+      id: "recovery-boot.pending-tool-from-raw",
+      onRecoveryBoot: async (event) => {
+        captured.event = event;
+        return {};
+      },
+      run: async ({ messages, signal }) =>
+        streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, {
+      chatId: "pending-tool-from-raw",
+      continuation: true,
+      previousRunId: "run_prior",
+    });
+    harness.seedSessionInTail([u1 as never]);
+    // Install AFTER mockChatAgent — its constructor sets its own default
+    // override that we want to replace for this test.
+    __setReplaySessionOutTailImplForTests(async () =>
+      ({
+        settled: [],
+        partial: cleanedPartial,
+        partialRaw: rawPartial,
+      }) as never
+    );
+    try {
+      await new Promise((r) => setTimeout(r, 50));
+      expect(captured.event).toBeDefined();
+      // Cleaned partial → chain (no input-available tool part)
+      expect(captured.event!.partialAssistant?.parts).toHaveLength(1);
+      // pendingToolCalls → from raw (input-available tool part visible)
+      expect(captured.event!.pendingToolCalls).toHaveLength(1);
+      expect(captured.event!.pendingToolCalls[0]!.toolCallId).toBe("tc-pending");
+      expect(captured.event!.pendingToolCalls[0]!.toolName).toBe("search");
     } finally {
       await harness.close();
     }

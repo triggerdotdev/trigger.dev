@@ -416,7 +416,14 @@ export function mockChatAgent(
       seededReplayChunks.length === 0
         ? []
         : ((await reduceChunksToMessages(seededReplayChunks)) as unknown[]);
-    return { settled, partial: seededReplayPartial } as never;
+    // For the mock harness, `partialRaw` is the same as `partial` — we
+    // don't model cleanupAbortedParts separately. Recovery tests that
+    // need a partialRaw distinct from partial install their own stub.
+    return {
+      settled,
+      partial: seededReplayPartial,
+      partialRaw: seededReplayPartial,
+    } as never;
   });
 
   // session.in tail override: each seeded UIMessage becomes a
