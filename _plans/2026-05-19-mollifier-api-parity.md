@@ -17,8 +17,8 @@
 | **Phase B2 — drainer ack grace TTL** | ✅ **Done** | `22dbbc90f` | `ack` → `HSET materialised=true; EXPIRE 30s`. Accept refuses materialised entries (defense-in-depth) |
 | **Phase B3 — mutateSnapshot Lua** | ✅ **Done** | `08f20c65f` | Three return codes, four patch types. Lua atomicity per-runId verified by 50-way concurrent test |
 | **Phase B4 — SyntheticRun replay fields** | ✅ **Done** | `612babf6c` | Adds id / runtimeEnvironmentId / engine / workerQueue / queue / concurrencyKey / machinePreset / realtimeStreamsVersion / seedMetadata / seedMetadataType / runTags. Also closes a pre-existing typecheck gap in `synthesiseFoundRunFromBuffer` (workerQueue default `"main"`) |
-| Phase B5 — mutateWithFallback helper | ⏳ Next | — | Composes B3 (snapshot patch) + writer-side spin-wait per Q3 |
-| Phase B6 — idempotency lookup | ⏳ Pending | — | SETNX in accept Lua, lookup + reset methods, trigger-time dedup checks both stores |
+| **Phase B5 — mutateWithFallback helper** | ✅ **Done** | `dea1c7c0d` | Discriminated outcome (pg/snapshot/not_found/timed_out); never throws Response so it's route-agnostic and unit-tested in isolation |
+| Phase B6 — idempotency lookup | ⏳ Next | — | SETNX in accept Lua, lookup + reset methods, trigger-time dedup checks both stores |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
