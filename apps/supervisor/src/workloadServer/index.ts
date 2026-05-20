@@ -124,6 +124,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         computeManager: opts.computeManager,
         workerClient: opts.workerClient,
         tracing: opts.tracing,
+        wideEventOpts: this.wideEventOpts,
       });
     }
 
