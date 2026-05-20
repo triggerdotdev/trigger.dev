@@ -1,4 +1,9 @@
-export { MollifierBuffer, type MollifierBufferOptions } from "./buffer.js";
+export {
+  MollifierBuffer,
+  type MollifierBufferOptions,
+  type SnapshotPatch,
+  type MutateSnapshotResult,
+} from "./buffer.js";
 export {
   MollifierDrainer,
   type MollifierDrainerOptions,
