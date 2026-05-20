@@ -1,4 +1,4 @@
-import { BeakerIcon, CpuChipIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import { BeakerIcon, CpuChipIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/node";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
@@ -7,10 +7,10 @@ import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Header2 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -26,6 +26,7 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -75,9 +76,13 @@ export default function AgentsPage() {
   const project = useProject();
   const environment = useEnvironment();
 
-  const { filterText, setFilterText, filteredItems } = useFuzzyFilter({
+  const { value } = useSearchParams();
+  const searchText = value("search") ?? "";
+
+  const { filteredItems } = useFuzzyFilter({
     items: agents,
     keys: ["slug", "filePath"],
+    filterText: searchText,
   });
 
   if (agents.length === 0) {
@@ -111,16 +116,8 @@ export default function AgentsPage() {
         <div className="grid h-full grid-rows-1">
           <div className="flex min-w-0 max-w-full flex-col">
             <div className="max-h-full overflow-hidden">
-              <div className="flex items-center gap-1 p-2">
-                <Input
-                  placeholder="Search agents"
-                  variant="tertiary"
-                  icon={MagnifyingGlassIcon}
-                  fullWidth={true}
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                  autoFocus
-                />
+              <div className="flex items-center gap-1.5 border-b border-grid-bright p-2">
+                <SearchInput placeholder="Search agents…" autoFocus />
               </div>
               <Table containerClassName="max-h-full pb-[2.5rem]">
                 <TableHeader>
