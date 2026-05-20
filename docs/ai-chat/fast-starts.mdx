@@ -4,6 +4,10 @@ sidebarTitle: "Fast starts"
 description: "Two ways to cut first-turn TTFC: Preload eagerly triggers the run before the first message; Head Start runs step 1 in your warm server while the agent boots in parallel."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 The first turn of a brand-new conversation pays for the chat.agent run's cold start: dequeue, process boot, `onPreload` / `onChatStart` hooks, and only then the LLM call. Two features address this from different angles.
 
 ## Picking an approach
@@ -62,7 +66,7 @@ export function Chat({ chatId }) {
 
 Preload is a no-op if a session already exists for this chatId.
 
-When the transport needs a trigger token for preload, your `accessToken` callback receives `{ chatId, purpose: "preload" }` (same as for a normal trigger, but `purpose` is `"trigger"` when starting a run from `sendMessages`). See [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
+Your `accessToken` callback receives `{ chatId }` and is invoked the same way on preload as on any other refresh — no special branching by purpose. See [TriggerChatTransport options](/ai-chat/reference#triggerchattransport-options).
 
 ### Backend
 
@@ -118,7 +122,7 @@ When the first turn is pure text (no tool calls), the agent run boots and exits 
 
 ### Measured TTFC
 
-3 runs each, prompt `"say hi in five words"`, same model both sides (`claude-sonnet-4-6`):
+3 runs each, prompt `"say hi in five words"`, same model both sides (Anthropic Claude Sonnet 4):
 
 | | Without Head Start | With Head Start | Δ |
 | --- | --- | --- | --- |

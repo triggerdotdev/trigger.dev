@@ -4,6 +4,10 @@ sidebarTitle: "Code sandbox"
 description: "Warm an isolated sandbox on each chat turn, run an AI SDK executeCode tool, and tear down right before the run suspends — using chat.agent hooks and chat.local."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 Use a **hosted code sandbox** (for example [E2B](https://e2b.dev)) when the model should run short scripts to analyze tool output (PostHog queries, CSV-like data, math) without executing arbitrary code on the Trigger worker host.
 
 This page describes a **durable chat** pattern that fits `chat.agent()`:
@@ -59,7 +63,7 @@ onTurnStart: async ({ runId, ctx, ...rest }) => {
 
 ### 3. `chat.local` — run id for tools
 
-Tool `execute` functions do not receive hook payloads. Use [`chat.local()`](/ai-chat/features#per-run-data-with-chatlocal) to store the current run id for the sandbox key, **initialized from `onTurnStart`** (same `runId` as the map):
+Tool `execute` functions do not receive hook payloads. Use [`chat.local()`](/ai-chat/chat-local) to store the current run id for the sandbox key, **initialized from `onTurnStart`** (same `runId` as the map):
 
 ```ts
 // In the same task module as your tools
@@ -119,4 +123,4 @@ The alias **`Context`** is also exported from `@trigger.dev/sdk` and is the same
 - [Database persistence for chat](/ai-chat/patterns/database-persistence) — conversation + session rows, hooks, token renewal
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks)
 - [API Reference — `ctx` on events](/ai-chat/reference#task-context-ctx)
-- [Per-run data with `chat.local`](/ai-chat/features#per-run-data-with-chatlocal)
+- [Per-run data with `chat.local`](/ai-chat/chat-local)

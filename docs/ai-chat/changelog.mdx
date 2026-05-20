@@ -364,7 +364,7 @@ See the [Sessions Upgrade Guide](/ai-chat/upgrade-guide) for the full step-by-st
 - Rewritten [Client Protocol](/ai-chat/client-protocol) — full wire format for the new `/realtime/v1/sessions/{sessionId}/...` endpoints, JWT scopes, S2 direct-write credentials, and `Last-Event-ID` resume.
 - [Database persistence pattern](/ai-chat/patterns/database-persistence) — new `chatId`-keyed `ChatSession` shape (no more `runId`) and a warning on the `onTurnComplete` race that requires a single atomic write of `messages` + `lastEventId`.
 - [Reference](/ai-chat/reference) — added `chat.createStartSessionAction`, `chat.createAccessToken`, `ChatInputChunk`, `TriggerChatTaskResult.sessionId`, `ChatTaskRunPayload.sessionId`. The old run-scoped stream-ID constants are gone.
-- Refreshed [Backend](/ai-chat/backend), [Frontend](/ai-chat/frontend), [Server Chat](/ai-chat/server-chat), [Quick start](/ai-chat/quick-start), [Overview](/ai-chat/overview), [Features](/ai-chat/features), [Types](/ai-chat/types), [Error handling](/ai-chat/error-handling), and [Testing](/ai-chat/testing) for the session-based wiring.
+- Refreshed [Backend](/ai-chat/backend), [Frontend](/ai-chat/frontend), [Server Chat](/ai-chat/server-chat), [Quick start](/ai-chat/quick-start), [Overview](/ai-chat/overview), [Types](/ai-chat/types), [Error handling](/ai-chat/error-handling), and [Testing](/ai-chat/testing) for the session-based wiring.
 
 </Update>
 
@@ -592,7 +592,7 @@ writer.write({ type: "data-progress", data: { percent: 50 }, transient: true });
 
 Non-transient `data-*` chunks written via lifecycle hook `writer.write()` now automatically persist to the response message, matching the AI SDK's default semantics. Add `transient: true` for ephemeral chunks (progress indicators, status updates).
 
-See [Custom data parts](/ai-chat/features#custom-data-parts).
+See [Custom data parts](/ai-chat/backend#custom-data-parts).
 
 ## Tool approvals
 

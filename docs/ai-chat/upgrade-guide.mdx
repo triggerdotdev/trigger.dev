@@ -4,12 +4,9 @@ sidebarTitle: "Sessions Upgrade Guide"
 description: "Migrating chat.agent code from the prerelease API to the Sessions-as-run-manager release."
 ---
 
-<Note>
-  **Not released yet.** This guide describes an upcoming release of `chat.agent`
-  on top of the new Sessions primitive. The packages and server-side support
-  are still rolling out — we'll remove this banner once the release ships and
-  publish the matching `@trigger.dev/sdk` prerelease tag.
-</Note>
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
 
 This guide is for customers who tried `chat.agent` during the prerelease period.
 The public surface of `chat.agent({...})`, `useTriggerChatTransport`,
@@ -344,7 +341,7 @@ A few new things worth verifying once you've cut over:
 If any of those misfire, check that:
 
 - Your `accessToken` callback returns a token minted via
-  `auth.createPublicToken({scopes: {sessions: chatId}})`, **not**
+  `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })`, **not**
   `chat.createAccessToken` or `auth.createTriggerPublicToken`. The
   transport rejects trigger tokens now.
 - Your `startSession` callback returns

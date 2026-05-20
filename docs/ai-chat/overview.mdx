@@ -4,6 +4,10 @@ sidebarTitle: "Overview"
 description: "Run AI SDK chat completions as durable Trigger.dev agents with built-in realtime streaming, multi-turn conversations, and message persistence."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 ## Overview
 
 The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) for the Vercel AI SDK's `useChat` hook. This lets you run chat completions as **durable Trigger.dev agents** instead of fragile API routes — with automatic retries, observability, and realtime streaming built in.
@@ -108,10 +112,6 @@ sequenceDiagram
 
 </Accordion>
 
-<Note>
-  Requires `@trigger.dev/sdk` version **4.4.0 or later** and the `ai` package **v5.0.0 or later**.
-</Note>
-
 ## How multi-turn works
 
 ### One conversation, many runs
@@ -139,7 +139,7 @@ If no message arrives within the turn timeout, the run ends gracefully. The sess
 
 Because the session outlives the run, a chat you were in yesterday resumes against the same session today — even after the original run has idle-timed out or crashed. Pass `resume: true` to `useChat` on page load and the transport reconnects via `sessionId` + `lastEventId`, kicking off a new run only if the user sends a message.
 
-You can also enumerate every chat in your environment with `sessions.list`:
+You can also enumerate every chat in your environment with [`sessions.list`](/ai-chat/sessions#sessions-list-options-requestoptions):
 
 ```ts
 import { sessions } from "@trigger.dev/sdk";
@@ -161,7 +161,7 @@ The accumulated messages are available in:
 - `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persisting after the response
 
 <Warning>
-  **Always spread `chat.toStreamTextOptions()` into every `streamText` call.** It wires up the `prepareStep` callback that drives compaction, steering, and background injection. Skipping the spread silently disables those features. See [Backend → chat.agent()](/ai-chat/backend#chatagent).
+  **Always spread `chat.toStreamTextOptions()` into every `streamText` call.** It wires up the `prepareStep` callback that drives compaction, steering, and background injection. Skipping the spread silently disables those features. See [Backend → chat.agent()](/ai-chat/backend#chat-agent).
 </Warning>
 
 Agents appear in the **Agents** section of the dashboard (not Tasks) and can be tested via the **Playground**.
@@ -172,8 +172,8 @@ There are three ways to build the backend, from most opinionated to most flexibl
 
 | Approach | Use when | What you get |
 |----------|----------|--------------|
-| [chat.agent()](/ai-chat/backend#chatagent) | Most apps | Auto-piping, lifecycle hooks, message accumulation, stop handling |
-| [chat.createSession()](/ai-chat/backend#chatcreatesession) | Need a loop but not hooks | Async iterator with per-turn helpers, message accumulation, stop handling |
+| [chat.agent()](/ai-chat/backend#chat-agent) | Most apps | Auto-piping, lifecycle hooks, message accumulation, stop handling |
+| [chat.createSession()](/ai-chat/backend#chat-createsession) | Need a loop but not hooks | Async iterator with per-turn helpers, message accumulation, stop handling |
 | [Raw task + primitives](/ai-chat/backend#raw-task-with-primitives) | Full control | Manual control of every step — use `chat.messages`, `chat.createStopSignal()`, etc. |
 
 ## Related
@@ -184,5 +184,7 @@ There are three ways to build the backend, from most opinionated to most flexibl
 - [Backend](/ai-chat/backend) — Backend approaches in detail
 - [Frontend](/ai-chat/frontend) — Transport setup, sessions, client data
 - [Types](/ai-chat/types) — TypeScript patterns, including custom `UIMessage` with `chat.withUIMessage`
-- [Features](/ai-chat/features) — Per-run data, deferred work, streaming, subtasks
+- [`chat.local`](/ai-chat/chat-local) — Per-run typed state across hooks, run, tools, subtasks
+- [Sub-agents pattern](/ai-chat/patterns/sub-agents) — Subtask-as-tool, `target: "root"` streaming, `ai.toolExecute` helpers
+- [Background injection](/ai-chat/background-injection) — `chat.inject()` and `chat.defer()` for between-turn work
 - [API Reference](/ai-chat/reference) — Complete reference tables

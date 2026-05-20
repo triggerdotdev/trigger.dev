@@ -4,6 +4,10 @@ sidebarTitle: "Large payloads"
 description: "Why a single chunk on the chat stream is capped at ~1 MiB, what error you'll see, and how to work around it with ID references."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 The realtime stream that backs `chat.agent` enforces a **per-record cap of ~1 MiB** (`1048576` bytes minus a small envelope reserve). Anything written through the chat output — auto-piped LLM chunks, `chat.response.write`, custom `writer.write` parts — counts as one record per chunk and is rejected if it crosses the cap.
 
 This is a platform-level limit and cannot be raised per project or per stream.
@@ -152,9 +156,9 @@ For genuinely high-volume diagnostic data (per-token traces, large debug dumps),
 
 These calls don't go through the realtime stream and have no per-record cap:
 
-- [`chat.history.set` / `slice` / `replace` / `remove`](/ai-chat/features#chathistory) — locals-only mutations on the in-memory message list.
-- [`chat.inject`](/ai-chat/features#chatinject) — appends to the run's pending message queue, not the stream.
-- [`chat.defer`](/ai-chat/features#chatdefer) — promise registry; awaited at turn boundaries, never serialized to the stream.
+- [`chat.history.set` / `slice` / `replace` / `remove`](/ai-chat/backend#chat-history) — locals-only mutations on the in-memory message list.
+- [`chat.inject`](/ai-chat/background-injection#chat-inject) — appends to the run's pending message queue, not the stream.
+- [`chat.defer`](/ai-chat/background-injection#chat-defer-standalone) — promise registry; awaited at turn boundaries, never serialized to the stream.
 
 The control markers `chat.agent` emits internally (`trigger:turn-complete`, `trigger:upgrade-required`) are tiny by construction.
 

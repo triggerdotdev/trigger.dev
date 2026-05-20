@@ -4,6 +4,10 @@ sidebarTitle: "Quick Start"
 description: "Get a working AI agent in 3 steps — define an agent, generate a token, and wire up the frontend."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 <Steps>
   <Step title="Define a chat agent">
     Use `chat.agent` from `@trigger.dev/sdk/ai` to define an agent that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
@@ -80,6 +84,7 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
     ```tsx app/components/chat.tsx
     "use client";
 
+    import { useState } from "react";
     import { useChat } from "@ai-sdk/react";
     import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
     import type { myChat } from "@/trigger/chat";
@@ -94,6 +99,7 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
       });
 
       const { messages, sendMessage, stop, status } = useChat({ transport });
+      const [input, setInput] = useState("");
 
       return (
         <div>
@@ -109,14 +115,17 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const input = e.currentTarget.querySelector("input");
-              if (input?.value) {
-                sendMessage({ text: input.value });
-                input.value = "";
+              if (input.trim()) {
+                sendMessage({ text: input });
+                setInput("");
               }
             }}
           >
-            <input placeholder="Type a message..." />
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type a message..."
+            />
             <button type="submit" disabled={status === "streaming"}>
               Send
             </button>
@@ -139,4 +148,6 @@ description: "Get a working AI agent in 3 steps — define an agent, generate a 
 - [Backend](/ai-chat/backend) — Lifecycle hooks, persistence, session iterator, raw task primitives
 - [Frontend](/ai-chat/frontend) — Session management, client data, reconnection
 - [Types](/ai-chat/types) — `chat.withUIMessage`, `InferChatUIMessage`, and related typing
-- [Features](/ai-chat/features) — Per-run data, deferred work, streaming, subtasks
+- [`chat.local`](/ai-chat/chat-local) — Per-run typed state across hooks, run, tools, subtasks
+- [Sub-agents pattern](/ai-chat/patterns/sub-agents) — Subtask-as-tool, `target: "root"` streaming, `ai.toolExecute` helpers
+- [Background injection](/ai-chat/background-injection) — `chat.inject()` and `chat.defer()` for between-turn work

@@ -4,6 +4,10 @@ sidebarTitle: "Backend"
 description: "Three approaches to building your chat backend — chat.agent(), session iterator, or raw task primitives."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 ## chat.agent()
 
 The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
@@ -86,6 +90,85 @@ async function runAgentLoop(messages: ModelMessage[]) {
   await chat.pipe(result);
 }
 ```
+
+### Custom data parts
+
+Add custom `data-*` parts to the assistant's response message via `chat.response.write()` (from `run()`) or the `writer` parameter in lifecycle hooks. Non-transient `data-*` chunks are automatically added to `responseMessage.parts` and surface in `onTurnComplete` for persistence:
+
+```ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  onBeforeTurnComplete: async ({ writer, turn }) => {
+    // This data part will be in responseMessage.parts in onTurnComplete
+    writer.write({
+      type: "data-metadata",
+      data: { turn, model: "gpt-4o", timestamp: Date.now() },
+    });
+  },
+  onTurnComplete: async ({ responseMessage }) => {
+    // responseMessage.parts includes the data-metadata part
+    await db.messages.save(responseMessage);
+  },
+  run: async ({ messages, signal }) => {
+    // Also works from run() via chat.response
+    chat.response.write({
+      type: "data-context",
+      data: { searchResults: results },
+    });
+
+    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  },
+});
+```
+
+Add `transient: true` to data chunks that should stream to the frontend but NOT persist in the response message. Use this for progress indicators, loading states, and other temporary UI:
+
+```ts
+// Transient — frontend sees it, but NOT in onTurnComplete's responseMessage
+writer.write({
+  type: "data-progress",
+  id: "search",
+  data: { percent: 50 },
+  transient: true,
+});
+```
+
+<Info>
+  This matches the AI SDK's semantics: `data-*` chunks persist to `message.parts` by default. Only `transient: true` chunks are ephemeral. Non-data chunks (`text-delta`, `tool-*`, etc.) are handled by `streamText` and captured via `onFinish` — they don't need `chat.response`.
+</Info>
+
+<Note>
+  `chat.response` and the `writer` accumulation behavior work with `chat.agent` and `chat.createSession`. If you're using [`chat.customAgent`](#raw-task-with-primitives), you own the accumulator — see the raw-task example for the manual pattern.
+</Note>
+
+### Raw streaming with `chat.stream`
+
+For low-level stream access (piping from subtasks, reading streams by run ID), use `chat.stream`. Chunks written via `chat.stream` go directly to the realtime output — they are **NOT** accumulated into the response message regardless of the `transient` flag.
+
+```ts
+// Raw stream — always ephemeral, never in responseMessage
+const { waitUntilComplete } = chat.stream.writer({
+  execute: ({ write }) => {
+    write({ type: "data-status", data: { message: "Processing..." } });
+  },
+});
+await waitUntilComplete();
+```
+
+<Tip>
+  Use `data-*` chunk types (e.g. `data-status`, `data-progress`) for custom data. The AI SDK processes these into `DataUIPart` objects in `message.parts` on the frontend. Writing the same `type` + `id` again updates the existing part instead of creating a new one — useful for live progress.
+</Tip>
+
+`chat.stream` exposes the full stream API:
+
+| Method | Description |
+|--------|-------------|
+| `chat.stream.writer(options)` | Write individual chunks via a callback |
+| `chat.stream.pipe(stream, options?)` | Pipe a `ReadableStream` or `AsyncIterable` |
+| `chat.stream.append(value, options?)` | Append raw data |
+| `chat.stream.read(runId, options?)` | Read the stream by run ID |
+
+For piping streams from subtasks to the parent chat (via `target: "root"`), see the [Sub-agents pattern](/ai-chat/patterns/sub-agents).
 
 ### Lifecycle hooks
 

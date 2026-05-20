@@ -4,6 +4,10 @@ sidebarTitle: "Error handling"
 description: "How errors flow through chat.agent — stream errors, hook errors, run failures — and how to recover."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 `chat.agent` errors fall into four layers, each with different recovery semantics. The default behavior is **conversation-preserving**: a thrown error in a hook or `run()` does not kill the chat. The current turn ends with an error chunk, and the agent waits for the user's next message.
 
 ## Error layers at a glance
@@ -346,7 +350,7 @@ uiMessageStreamOptions: {
 ```
 
 <Tip>
-  For richer error structures, use [`chat.response.write()`](/ai-chat/features#custom-data-parts) with a custom `data-error` part type. This lets you ship structured error metadata (codes, retry hints, etc.) instead of stringly-typed messages.
+  For richer error structures, use [`chat.response.write()`](/ai-chat/backend#custom-data-parts) with a custom `data-error` part type. This lets you ship structured error metadata (codes, retry hints, etc.) instead of stringly-typed messages.
 </Tip>
 
 ### Errors from `accessToken` / `startSession`

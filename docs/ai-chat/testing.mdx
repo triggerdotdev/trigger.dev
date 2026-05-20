@@ -4,6 +4,10 @@ sidebarTitle: "Testing"
 description: "Drive a chat.agent through real turns in unit tests — no network, no task runtime, no mocking the SDK."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 ## Overview
 
 `@trigger.dev/sdk/ai/test` exports `mockChatAgent`, an offline harness that runs your `chat.agent` definition's `run()` function inside an in-memory task runtime. You send messages, actions, and stop signals through driver methods and assert against the chunks the agent emits.
@@ -644,10 +648,10 @@ The harness's initial wire payload depends on `mode`:
 
 ### runInMockTaskContext
 
-`mockChatAgent` is a higher-level wrapper around `runInMockTaskContext`, exported from `@trigger.dev/core/v3/test`. Use it directly when you need to drive a non-chat task offline:
+`mockChatAgent` is a higher-level wrapper around `runInMockTaskContext`, re-exported from `@trigger.dev/sdk/ai/test` so you don't need to depend on `@trigger.dev/core` directly. Use it when you need to drive a non-chat task offline:
 
 ```ts
-import { runInMockTaskContext } from "@trigger.dev/core/v3/test";
+import { runInMockTaskContext } from "@trigger.dev/sdk/ai/test";
 
 await runInMockTaskContext(
   async ({ inputs, outputs, ctx }) => {

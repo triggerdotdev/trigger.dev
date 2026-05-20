@@ -4,6 +4,10 @@ sidebarTitle: "Database persistence"
 description: "Split conversation state and live session metadata across hooks — preload, turn start, turn complete — without tying the pattern to a specific ORM or schema."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 Durable chat runs can span **hours** and **many turns**. You usually want:
 
 1. **Conversation state** — full **`UIMessage[]`** (or equivalent) keyed by **`chatId`**, so reloads and history views work.
@@ -30,7 +34,7 @@ Storing the current **`runId`** is optional — useful for telemetry / dashboard
 
 ## Where each hook writes
 
-This pattern covers **durable DB rows** (the conversation and the active session). Per-process in-memory state ([`chat.local`](/ai-chat/reference#chatlocal), DB connection pools, sandboxes, etc.) belongs in [`onBoot`](/ai-chat/lifecycle-hooks#onboot) — it fires on every fresh worker including continuation runs, where `onPreload` and `onChatStart` do not.
+This pattern covers **durable DB rows** (the conversation and the active session). Per-process in-memory state ([`chat.local`](/ai-chat/chat-local), DB connection pools, sandboxes, etc.) belongs in [`onBoot`](/ai-chat/lifecycle-hooks#onboot) — it fires on every fresh worker including continuation runs, where `onPreload` and `onChatStart` do not.
 
 ### `onPreload` (optional)
 
@@ -55,7 +59,7 @@ If you skip preload, do the equivalent in **`onChatStart`** when **`preloaded`**
 - **`await`** persist **`uiMessages`** (full accumulated history including the new user turn) **before** the hook returns — `chat.agent` does not begin streaming until `onTurnStart` resolves, so this is what bounds "user message is durable before the stream".
 
 <Warning>
-**Don't use [`chat.defer()`](/ai-chat/features#chat-defer) for the message write here.** `chat.defer` is fire-and-forget — the hook resolves before the write lands and the stream starts immediately. If the user refreshes mid-stream, the next page load reads `[]` from your DB, the resumed SSE stream pushes the assistant into an empty array, and the user's message disappears from the rendered conversation forever.
+**Don't use [`chat.defer()`](/ai-chat/background-injection#chat-defer-standalone) for the message write here.** `chat.defer` is fire-and-forget — the hook resolves before the write lands and the stream starts immediately. If the user refreshes mid-stream, the next page load reads `[]` from your DB, the resumed SSE stream pushes the assistant into an empty array, and the user's message disappears from the rendered conversation forever.
 
 ```ts
 // ❌ Bad — non-blocking write, mid-stream refresh drops the user message.
@@ -389,5 +393,5 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
 
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks)
 - [Session management](/ai-chat/frontend#session-management) — `resume`, `lastEventId`, transport
-- [`chat.defer()`](/ai-chat/features#chat-defer) — non-blocking writes during a turn
+- [`chat.defer()`](/ai-chat/background-injection#chat-defer-standalone) — non-blocking writes during a turn
 - [Code execution sandbox](/ai-chat/patterns/code-sandbox) — combines **`onWait`** / **`onComplete`** with this persistence model

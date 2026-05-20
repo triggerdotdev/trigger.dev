@@ -4,6 +4,10 @@ sidebarTitle: "Client Protocol"
 description: "The wire protocol for building custom chat transports — how clients communicate with chat agents over Sessions and SSE."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 This page documents the protocol that chat clients use to communicate with `chat.agent()` tasks. Use this if you're building a custom transport (e.g., for a Slack bot, CLI tool, or native app) instead of using the built-in `TriggerChatTransport` or `AgentChat`.
 
 <Note>
@@ -1037,7 +1041,7 @@ The `publicAccessToken` returned in the body of `POST /api/v1/sessions` carries 
 
 ## FAQ
 
-<Expandable title="After sending `kind: \"stop\"`, can I immediately send the next message?">
+<Expandable title="After sending `kind: stop`, can I immediately send the next message?">
 Yes. `.in` records are processed in arrival order — the agent's stop handler aborts the in-flight `streamText`, emits a `turn-complete` control record, and reads the next record. You don't have to wait for `turn-complete` on the wire before posting the next `.in/append`. In practice you usually do anyway, because your UI is gated on the stream coming back to ready.
 </Expandable>
 

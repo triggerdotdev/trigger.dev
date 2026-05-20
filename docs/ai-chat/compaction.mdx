@@ -4,6 +4,10 @@ sidebarTitle: "Compaction"
 description: "Automatic context compaction to keep long conversations within token limits."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 ## Overview
 
 Long conversations accumulate tokens across turns. Eventually the context window fills up, causing errors or degraded responses. Compaction solves this by automatically summarizing the conversation when token usage exceeds a threshold, then using that summary as the context for future turns.
@@ -258,11 +262,16 @@ Actions fire `onAction`, apply any `chat.history.*` mutations, then call `run()`
 Call `transport.sendAction()` from a button or slash command:
 
 ```tsx
-import { useTriggerChatTransport } from "@trigger.dev/react-hooks";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useChat } from "@ai-sdk/react";
 
-function ChatView({ chatId, accessToken }: { chatId: string; accessToken: string }) {
-  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+function ChatView({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
   const { messages } = useChat({ id: chatId, transport });
 
   return (
@@ -294,7 +303,7 @@ onAction: async ({ action, uiMessages }) => {
 },
 ```
 
-See [Raw streaming with chat.stream](/ai-chat/features#raw-streaming-with-chatstream) for the full API.
+See [Raw streaming with `chat.stream`](/ai-chat/backend#raw-streaming-with-chat-stream) for the full API.
 
 ## Using with chat.createSession()
 

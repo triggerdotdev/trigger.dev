@@ -4,6 +4,10 @@ sidebarTitle: "Lifecycle hooks"
 description: "Hook into every stage of a chat agent's run: preload, turn start, turn complete, suspend, resume, and more."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 `chat.agent({ ... })` accepts a set of lifecycle hooks for persisting state, validating input, transforming messages, and reacting to suspension and resumption. They fire at well-defined points in the chat agent's lifetime.
 
 **Once per worker process (every fresh run boot):** `onBoot` → `onPreload` (preloaded runs only).
@@ -27,15 +31,13 @@ description: "Hook into every stage of a chat agent's run: preload, turn start, 
 
 Every chat lifecycle callback and the `run` payload include `ctx`: the same run context object as `task({ run: (payload, { ctx }) => ... })`. Import the type with `import type { TaskRunContext } from "@trigger.dev/sdk"` (the `Context` export is the same type). Use `ctx` for tags, metadata, or any API that needs the full run record. The string `runId` on chat events is always `ctx.run.id` (both are provided for convenience). See [Task context (`ctx`)](/ai-chat/reference#task-context-ctx) in the API reference.
 
-Standard [task lifecycle hooks](/tasks/overview) such as `onWait`, `onResume`, `onComplete`, and `onFailure` are also available on `chat.agent()` with the same shapes as on a normal `task()`.
-
-Chat agents also have two dedicated suspension hooks, `onChatSuspend` and `onChatResume`, that fire at the idle-to-suspended transition with full chat context. Use them for resource cleanup (e.g. tearing down sandboxes) and re-initialization. See [onChatSuspend / onChatResume](#onchatsuspend--onchatresume) and the [Code execution sandbox](/ai-chat/patterns/code-sandbox) pattern.
+Standard [task lifecycle hooks](/tasks/overview) such as `onWait`, `onResume`, `onComplete`, and `onFailure` are also available on `chat.agent()` with the same shapes as on a normal `task()` — but prefer the chat-specific [`onChatSuspend` / `onChatResume`](#onchatsuspend--onchatresume) for any chat-related work. The generic hooks fire on every wait/resume (including ones the runtime uses internally for non-chat reasons); the chat-specific ones fire only at the idle-to-suspended transition you actually care about and carry full chat context.
 
 ## onBoot
 
 Fires **once per worker process picking up the chat** — for the initial run, for preloaded runs, AND for reactive continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry). Does NOT fire when the same run resumes from snapshot via the idle-window suspend/resume path — use [`onChatResume`](#onchatsuspend--onchatresume) for that.
 
-This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/reference#chatlocal) state, DB connections, sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
+This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/chat-local) state, DB connections, sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
 
 <Warning>
   If you initialize `chat.local` only in `onChatStart`, your `run()` will crash on continuation runs with `chat.local can only be modified after initialization`. `onChatStart` is once-per-chat by contract; `chat.local` is per-process and needs `onBoot`.
@@ -132,7 +134,7 @@ Fires when a **preloaded run** starts, before any messages arrive. Use it to eag
 
 Preloaded runs are triggered by calling `transport.preload(chatId)` on the frontend. See [Preload](/ai-chat/fast-starts#preload) for details.
 
-Per-process state (anything in [`chat.local`](/ai-chat/reference#chatlocal), DB connections, etc.) belongs in [`onBoot`](#onboot) — `onBoot` fires before `onPreload` on every fresh worker, including on continuation runs where `onPreload` never fires.
+Per-process state (anything in [`chat.local`](/ai-chat/chat-local), DB connections, etc.) belongs in [`onBoot`](#onboot) — `onBoot` fires before `onPreload` on every fresh worker, including on continuation runs where `onPreload` never fires.
 
 ```ts
 export const myChat = chat.agent({
@@ -173,7 +175,7 @@ export const myChat = chat.agent({
 | `clientData`      | Typed by `clientDataSchema`                   | Custom data from the frontend    |
 | `writer`          | [`ChatWriter`](/ai-chat/reference#chatwriter) | Stream writer for custom chunks  |
 
-Every lifecycle callback receives a `writer`, a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend. Non-transient `data-*` chunks written via the `writer` are automatically added to the response message and available in `onTurnComplete`. Add `transient: true` for ephemeral chunks (progress indicators, etc.) that should not persist. See [Custom data parts](/ai-chat/features#custom-data-parts).
+Every lifecycle callback receives a `writer`, a lazy stream writer that lets you send custom `UIMessageChunk` parts (like `data-*` parts) to the frontend. Non-transient `data-*` chunks written via the `writer` are automatically added to the response message and available in `onTurnComplete`. Add `transient: true` for ephemeral chunks (progress indicators, etc.) that should not persist. See [Custom data parts](/ai-chat/backend#custom-data-parts).
 
 ## onChatStart
 
@@ -187,7 +189,7 @@ Fires **exactly once per chat**, on the very first user message of the chat's li
 For per-process state that has to be initialized on every fresh worker (including continuation runs), use [`onBoot`](#onboot). For per-turn setup, use [`onTurnStart`](#onturnstart).
 
 <Warning>
-  Do not initialize [`chat.local`](/ai-chat/reference#chatlocal) here. `chat.local` is per-process state that must survive continuation runs, but `onChatStart` only fires on the chat's very first message. Use [`onBoot`](#onboot) instead.
+  Do not initialize [`chat.local`](/ai-chat/chat-local) here. `chat.local` is per-process state that must survive continuation runs, but `onChatStart` only fires on the chat's very first message. Use [`onBoot`](#onboot) instead.
 </Warning>
 
 The `preloaded` field tells you whether [`onPreload`](#onpreload) already ran for this chat — useful for skipping setup work that's already done.

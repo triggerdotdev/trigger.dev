@@ -4,6 +4,10 @@ sidebarTitle: "Frontend"
 description: "Transport setup, session management, client data, and frontend patterns for AI Chat."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 ## Transport setup
 
 Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
@@ -31,7 +35,7 @@ The transport is created once on first render and reused across re-renders. Pass
 
 The two callbacks have distinct responsibilities:
 
-- **`accessToken`** is a *pure* PAT mint — the transport invokes it on a 401/403 to refresh the session-scoped token. Customer wraps `auth.createPublicToken({ scopes: { sessions: chatId } })`.
+- **`accessToken`** is a *pure* PAT mint — the transport invokes it on a 401/403 to refresh the session-scoped token. Customer wraps `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })`.
 - **`startSession`** wraps `chat.createStartSessionAction(taskId)` and is called when the transport needs to *create* the session (`transport.preload(chatId)`, or lazily on the first `sendMessage` for a chatId without a cached PAT). The customer's server controls authorization here, alongside any DB writes paired with session creation.
 
 See [Quick start](/ai-chat/quick-start) for the matching server actions.
@@ -86,7 +90,7 @@ const transport = useTriggerChatTransport({
 });
 ```
 
-The fetch handlers on the server side wrap the same SDK helpers as the server-action variant: `auth.createPublicToken({ scopes: { sessions: chatId } })` for refresh and `chat.createStartSessionAction(taskId)` for create.
+The fetch handlers on the server side wrap the same SDK helpers as the server-action variant: `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })` for refresh and `chat.createStartSessionAction(taskId)` for create.
 
 ## Session management
 

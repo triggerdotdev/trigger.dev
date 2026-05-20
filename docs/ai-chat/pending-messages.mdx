@@ -4,6 +4,10 @@ sidebarTitle: "Pending Messages"
 description: "Inject user messages mid-execution to steer agents between tool-call steps."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 ## Overview
 
 When an AI agent is executing tool calls, users may want to send a message that **steers the agent mid-execution** — adding context, correcting course, or refining the request without waiting for the response to finish.
@@ -195,8 +199,13 @@ The `usePendingMessages` hook manages all the frontend complexity — tracking p
 import { useChat } from "@ai-sdk/react";
 import { useTriggerChatTransport, usePendingMessages } from "@trigger.dev/sdk/chat/react";
 
-function Chat({ chatId }) {
-  const transport = useTriggerChatTransport({ task: "my-chat", accessToken });
+function Chat({ chatId }: { chatId: string }) {
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
 
   const { messages, setMessages, sendMessage, stop, status } = useChat({
     id: chatId,

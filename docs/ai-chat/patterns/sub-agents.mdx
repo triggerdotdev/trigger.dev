@@ -4,6 +4,10 @@ sidebarTitle: "Sub-Agents"
 description: "Delegate work to durable sub-agents from within a parent agent's tool calls, with streaming preliminary results."
 ---
 
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
 Sub-agents let a parent agent delegate work to other agents running as durable Trigger.dev tasks. The sub-agent's response streams back through the parent as preliminary tool results, so the frontend sees the sub-agent working inside the parent's tool call card.
 
 This builds on the AI SDK's [async generator tool pattern](https://ai-sdk.dev/docs/agents/subagents) and Trigger.dev's [AgentChat](/ai-chat/server-chat) for server-side agent interaction.
@@ -246,3 +250,125 @@ export const myAgent = chat.agent({
 ```
 
 For `chat.customAgent()`, define the tool and sub-agent Map inside the `run` closure so they survive across turns.
+
+## Streaming progress from a subtask to the parent chat
+
+When a tool invokes a subtask via `triggerAndWait`, the subtask can stream custom data parts directly to the parent chat using `chat.stream.writer({ target: "root" })`. The frontend receives these as `DataUIPart` objects in `message.parts` on the **parent's** message stream:
+
+```ts
+import { chat, ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { streamText, tool, generateId } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+export const researchTask = schemaTask({
+  id: "research",
+  schema: z.object({ query: z.string() }),
+  run: async ({ query }) => {
+    const partId = generateId();
+
+    // Stream a data-* chunk to the root run's chat stream.
+    const { waitUntilComplete } = chat.stream.writer({
+      target: "root",
+      execute: ({ write }) => {
+        write({
+          type: "data-research-status",
+          id: partId,
+          data: { query, status: "in-progress" },
+        });
+      },
+    });
+    await waitUntilComplete();
+
+    const result = await doResearch(query);
+
+    // Update the same part with the final status — same type + id replaces it.
+    const { waitUntilComplete: waitDone } = chat.stream.writer({
+      target: "root",
+      execute: ({ write }) => {
+        write({
+          type: "data-research-status",
+          id: partId,
+          data: { query, status: "done", resultCount: result.length },
+        });
+      },
+    });
+    await waitDone();
+
+    return result;
+  },
+});
+
+const research = tool({
+  description: researchTask.description ?? "",
+  inputSchema: researchTask.schema!,
+  execute: ai.toolExecute(researchTask),
+});
+```
+
+On the frontend, render the custom data part:
+
+```tsx
+{message.parts.map((part, i) => {
+  if (part.type === "data-research-status") {
+    const { query, status, resultCount } = part.data;
+    return (
+      <div key={i}>
+        {status === "done" ? `Found ${resultCount} results` : `Researching "${query}"...`}
+      </div>
+    );
+  }
+  // ...other part types
+})}
+```
+
+The `target` option accepts:
+- `"self"` — current run (default)
+- `"parent"` — parent task's run
+- `"root"` — root task's run (the chat agent)
+- A specific run ID string
+
+## Inside `ai.toolExecute`: accessing tool + chat context
+
+When a subtask runs via `execute: ai.toolExecute(task)`, it can read the parent's tool call ID and chat context from inside the subtask body:
+
+```ts
+import { ai, chat } from "@trigger.dev/sdk/ai";
+import type { myChat } from "./chat";
+
+export const mySubtask = schemaTask({
+  id: "my-subtask",
+  schema: z.object({ query: z.string() }),
+  run: async ({ query }) => {
+    // The AI SDK tool call ID — useful as a stable `data-*` chunk id
+    const toolCallId = ai.toolCallId();
+
+    // Typed chat context — `clientData` is typed off your chat's `clientDataSchema`
+    const { chatId, clientData } = ai.chatContextOrThrow<typeof myChat>();
+
+    const { waitUntilComplete } = chat.stream.writer({
+      target: "root",
+      execute: ({ write }) => {
+        write({
+          type: "data-progress",
+          id: toolCallId,
+          data: { status: "working", query, userId: clientData?.userId },
+        });
+      },
+    });
+    await waitUntilComplete();
+
+    return { result: "done" };
+  },
+});
+```
+
+| Helper | Returns | Description |
+|--------|---------|-------------|
+| `ai.toolCallId()` | `string \| undefined` | The AI SDK tool call ID |
+| `ai.chatContext<typeof myChat>()` | `{ chatId, turn, continuation, clientData } \| undefined` | Chat context with typed `clientData`. Returns `undefined` if not in a chat context. |
+| `ai.chatContextOrThrow<typeof myChat>()` | `{ chatId, turn, continuation, clientData }` | Same as above but throws if not in a chat context |
+| `ai.currentToolOptions()` | `ToolCallExecutionOptions \| undefined` | Full tool execution options |
+
+The subtask body also has read-only access to any [`chat.local`](/ai-chat/chat-local) values initialized in the parent — auto-hydrated from the parent's metadata on first access.

@@ -97,51 +97,62 @@
             ]
           },
           {
-            "group": "AI",
+            "group": "Agents",
             "pages": [
-              "ai/prompts",
+              "ai-chat/overview",
+              "ai-chat/quick-start",
               {
-                "group": "Agents",
+                "group": "Building agents",
                 "pages": [
-                  "ai-chat/overview",
-                  "ai-chat/changelog",
-                  "ai-chat/quick-start",
                   "ai-chat/how-it-works",
                   "ai-chat/backend",
                   "ai-chat/lifecycle-hooks",
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
-                  "ai-chat/types",
-                  "ai-chat/features",
+                  "ai-chat/sessions",
+                  "ai-chat/chat-local",
+                  "ai-chat/types"
+                ]
+              },
+              {
+                "group": "Features",
+                "pages": [
+                  "ai/prompts",
                   "ai-chat/fast-starts",
                   "ai-chat/compaction",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/actions",
-                  "ai-chat/error-handling",
-                  "ai-chat/mcp",
-                  "ai-chat/testing",
-                  {
-                    "group": "Patterns",
-                    "pages": [
-                      "ai-chat/patterns/sub-agents",
-                      "ai-chat/patterns/version-upgrades",
-                      "ai-chat/patterns/database-persistence",
-                      "ai-chat/patterns/persistence-and-replay",
-                      "ai-chat/patterns/branching-conversations",
-                      "ai-chat/patterns/code-sandbox",
-                      "ai-chat/patterns/human-in-the-loop",
-                      "ai-chat/patterns/tool-result-auditing",
-                      "ai-chat/patterns/large-payloads",
-                      "ai-chat/patterns/skills",
-                      "ai-chat/patterns/oom-resilience",
-                      "ai-chat/patterns/recovery-boot",
-                      "ai-chat/patterns/trusted-edge-signals"
-                    ]
-                  },
-                  "ai-chat/client-protocol",
+                  "ai-chat/error-handling"
+                ]
+              },
+              {
+                "group": "Patterns",
+                "pages": [
+                  "ai-chat/patterns/sub-agents",
+                  "ai-chat/patterns/version-upgrades",
+                  "ai-chat/patterns/database-persistence",
+                  "ai-chat/patterns/persistence-and-replay",
+                  "ai-chat/patterns/branching-conversations",
+                  "ai-chat/patterns/code-sandbox",
+                  "ai-chat/patterns/human-in-the-loop",
+                  "ai-chat/patterns/tool-result-auditing",
+                  "ai-chat/patterns/large-payloads",
+                  "ai-chat/patterns/skills",
+                  "ai-chat/patterns/oom-resilience",
+                  "ai-chat/patterns/recovery-boot",
+                  "ai-chat/patterns/trusted-edge-signals"
+                ]
+              },
+              {
+                "group": "Reference",
+                "pages": [
                   "ai-chat/reference",
-                  "ai-chat/upgrade-guide"
+                  "ai-chat/client-protocol",
+                  "ai-chat/testing",
+                  "ai-chat/mcp",
+                  "ai-chat/upgrade-guide",
+                  "ai-chat/changelog"
                 ]
               }
             ]

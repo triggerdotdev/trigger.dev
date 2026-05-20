@@ -78,7 +78,7 @@ await myTask.trigger({ name: "Alice", age: 30, dob: "2020-01-01" }); // this is 
 
 ## Task-backed AI tools
 
-Use a `schemaTask` as the implementation of a Vercel [AI SDK](https://vercel.com/docs/ai-sdk) tool: the model calls the tool, and Trigger runs your task as a **subtask** with tool-call metadata, optional [chat context](/ai-chat/features#task-tool-subtasks), and the same payload validation as a normal trigger.
+Use a `schemaTask` as the implementation of a Vercel [AI SDK](https://vercel.com/docs/ai-sdk) tool: the model calls the tool, and Trigger runs your task as a **subtask** with tool-call metadata, optional [chat context](/ai-chat/patterns/sub-agents), and the same payload validation as a normal trigger.
 
 ### Recommended: `ai.toolExecute` with `tool()`
 
