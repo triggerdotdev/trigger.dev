@@ -38,6 +38,14 @@ Speed up batch queue processing by removing stalls and fixing retry race
 
 The body text (below the frontmatter) is a one-line description of the change. Keep it concise — it will appear in release notes.
 
+### Writing guidance
+
+These entries are public-facing - they ship verbatim in user-visible release notes. A few rules to keep them clean:
+
+- **One sentence is usually enough.** The body is the bullet in the changelog. If you need a paragraph, you're probably describing the implementation rather than the change.
+- **Describe behavior, not implementation.** Skip internal scopes, middleware names, library specifics, framework internals. Users care about what's different for them, not how it's wired.
+- **Never name internal tools or infra.** Observability stacks, internal services, infra components, monitoring backends, CI surfaces, AWS specifics - none of these belong in user-facing notes.
+
 ## Lifecycle
 
 1. Engineer adds a `.server-changes/` file in their PR
