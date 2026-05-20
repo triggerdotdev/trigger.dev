@@ -960,7 +960,7 @@ export class VercelIntegrationRepository {
               key: "TRIGGER_SECRET_KEY",
               value: runtimeEnv.apiKey,
               target: vercelTarget,
-              type: "encrypted",
+              type: "sensitive",
               environmentType: runtimeEnv.type,
             });
           }
@@ -1061,7 +1061,7 @@ export class VercelIntegrationRepository {
           key: "TRIGGER_SECRET_KEY",
           value: params.apiKey,
           target: vercelTarget,
-          type: "encrypted",
+          type: "sensitive",
         });
 
         logger.info("Synced regenerated API key to Vercel", {
@@ -1115,28 +1115,26 @@ export class VercelIntegrationRepository {
             return (env as any).customEnvironmentIds?.includes(customEnvironmentId);
           });
 
+          // Always delete-then-create rather than editProjectEnv, because Vercel rejects
+          // in-place type changes (e.g. encrypted -> sensitive).
           if (existingEnv && existingEnv.id) {
-            await client.projects.editProjectEnv({
-              idOrName: vercelProjectId,
-              id: existingEnv.id,
-              ...(teamId && { teamId }),
-              requestBody: {
-                value,
-                type,
-              },
-            });
-          } else {
-            await client.projects.createProjectEnv({
+            await client.projects.batchRemoveProjectEnv({
               idOrName: vercelProjectId,
               ...(teamId && { teamId }),
-              requestBody: {
-                key,
-                value,
-                type,
-                customEnvironmentIds: [customEnvironmentId],
-              } as any,
+              requestBody: { ids: [existingEnv.id] },
             });
           }
+
+          await client.projects.createProjectEnv({
+            idOrName: vercelProjectId,
+            ...(teamId && { teamId }),
+            requestBody: {
+              key,
+              value,
+              type,
+              customEnvironmentIds: [customEnvironmentId],
+            } as any,
+          });
         })(),
         (error) => toVercelApiError(error)
       )
@@ -1709,29 +1707,27 @@ export class VercelIntegrationRepository {
       return target.length === envTargets.length && target.every((t) => envTargets.includes(t));
     });
 
+    // Always delete-then-create rather than editProjectEnv, because Vercel rejects
+    // in-place type changes (e.g. encrypted -> sensitive). Same approach used by
+    // syncApiKeysToVercel via removeAllVercelEnvVarsByKey.
     if (existingEnv && existingEnv.id) {
-      await client.projects.editProjectEnv({
-        idOrName: vercelProjectId,
-        id: existingEnv.id,
-        ...(teamId && { teamId }),
-        requestBody: {
-          value,
-          target: target as any,
-          type,
-        },
-      });
-    } else {
-      await client.projects.createProjectEnv({
+      await client.projects.batchRemoveProjectEnv({
         idOrName: vercelProjectId,
         ...(teamId && { teamId }),
-        requestBody: {
-          key,
-          value,
-          target: target as any,
-          type,
-        },
+        requestBody: { ids: [existingEnv.id] },
       });
     }
+
+    await client.projects.createProjectEnv({
+      idOrName: vercelProjectId,
+      ...(teamId && { teamId }),
+      requestBody: {
+        key,
+        value,
+        target: target as any,
+        type,
+      },
+    });
   }
 
   static getAutoAssignCustomDomains(

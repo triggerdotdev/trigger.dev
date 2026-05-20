@@ -19,6 +19,7 @@ import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.serve
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 
 export const meta: MetaFunction = () => {
   return [
@@ -39,7 +40,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throwNotFound("Environment not found");
   }
 
   const filters = getSessionFiltersFromRequest(request);

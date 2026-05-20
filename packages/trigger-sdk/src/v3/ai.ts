@@ -35,6 +35,7 @@ import {
   type TaskWithSchema,
   SESSION_IN_EVENT_ID_HEADER,
   TRIGGER_CONTROL_SUBTYPE,
+  generateJWT,
   type WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import type {
@@ -77,7 +78,7 @@ import type { ResolvedSkill } from "./skill.js";
 // never touches `ai.ts`'s module graph, so the `node:*` builtins
 // pulled in transitively here never reach a client chunk.
 import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
-import { streams } from "./streams.js";
+import { streams, markChatAgentRunForStreamsWarning } from "./streams.js";
 import {
   sessions,
   type SessionHandle,
@@ -499,10 +500,29 @@ export function __mergeByIdReplaceWinsForTests<TUIMessage extends UIMessage>(
  * part of the public API.
  * @internal
  */
+type ReplaySessionOutTailResult<TUIMessage extends UIMessage> = {
+  /** Messages whose `finish` chunk landed before the run died. Safe to seed the chain. */
+  settled: TUIMessage[];
+  /**
+   * The trailing assistant message whose `finish` chunk never arrived —
+   * an orphan from a cancel / crash / OOM. `cleanupAbortedParts` has
+   * already stripped streaming-in-progress fragments. `undefined` if
+   * the tail ended cleanly (every segment closed).
+   */
+  partial: TUIMessage | undefined;
+  /**
+   * The trailing assistant message BEFORE `cleanupAbortedParts` ran. Same
+   * `undefined` semantics as `partial`. Use this when you need to inspect
+   * tool parts the cleanup would strip (e.g. `input-available` /
+   * `input-streaming` orphans surfaced via `pendingToolCalls`).
+   */
+  partialRaw: TUIMessage | undefined;
+};
+
 type ReplaySessionOutTailImpl = <TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
-) => Promise<TUIMessage[]>;
+) => Promise<ReplaySessionOutTailResult<TUIMessage>>;
 let replaySessionOutTailImpl: ReplaySessionOutTailImpl | undefined;
 
 export function __setReplaySessionOutTailImplForTests(
@@ -543,7 +563,7 @@ export function __setReplaySessionOutTailImplForTests(
 async function replaySessionOutTail<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
-): Promise<TUIMessage[]> {
+): Promise<ReplaySessionOutTailResult<TUIMessage>> {
   if (replaySessionOutTailImpl) {
     return await replaySessionOutTailImpl<TUIMessage>(sessionId, options);
   }
@@ -553,16 +573,12 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
   });
   const collected: UIMessageChunk[] = [];
   for (const record of response.records) {
-    // Each record's `data` is the JSON-encoded chunk body the agent
-    // wrote at append time. The records endpoint returns it as an
-    // opaque string so the parsing cost is paid here, not on the
-    // server's hot path.
-    let chunk: unknown;
-    try {
-      chunk = JSON.parse(record.data);
-    } catch {
-      continue;
-    }
+    // `data` is the chunk object as written by the SDK's session-out
+    // writer (an AI SDK `UIMessageChunk` or a Trigger control object).
+    // The route forwards it as-is — no JSON envelope to unwrap here.
+    // Defensive shape checks below tolerate malformed records by
+    // skipping them instead of throwing.
+    const chunk: unknown = record.data;
     if (!chunk || typeof chunk !== "object") continue;
     const type = (chunk as { type?: unknown }).type;
     if (typeof type !== "string") continue;
@@ -572,7 +588,7 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     if (type.startsWith("trigger:")) continue;
     collected.push(chunk as UIMessageChunk);
   }
-  if (collected.length === 0) return [];
+  if (collected.length === 0) return { settled: [], partial: undefined, partialRaw: undefined };
 
   // Split chunks into per-message segments. A `start` chunk demarcates the
   // beginning of an assistant message; chunks before any `start` (rare —
@@ -601,7 +617,9 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     }
   }
 
-  const messages: TUIMessage[] = [];
+  const settled: TUIMessage[] = [];
+  let partial: TUIMessage | undefined;
+  let partialRaw: TUIMessage | undefined;
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
     const isTrailing = i === segments.length - 1 && !seg.closed;
@@ -630,12 +648,17 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
     if (isTrailing) {
       const cleaned = cleanupAbortedParts(last as TUIMessage);
       if (cleaned.parts.length === 0) continue;
-      messages.push(cleaned);
+      partial = cleaned;
+      // Keep the raw pre-cleanup message too — recovery boot extracts
+      // `pendingToolCalls` from it, since `cleanupAbortedParts` strips
+      // exactly the input-streaming / input-available tool parts that
+      // we want to surface.
+      partialRaw = last as TUIMessage;
     } else {
-      messages.push(last as TUIMessage);
+      settled.push(last as TUIMessage);
     }
   }
-  return messages;
+  return { settled, partial, partialRaw };
 }
 
 /**
@@ -662,9 +685,122 @@ export async function __replaySessionOutTailProductionPathForTests<
   const saved = replaySessionOutTailImpl;
   replaySessionOutTailImpl = undefined;
   try {
-    return await replaySessionOutTail<TUIMessage>(sessionId, options);
+    const { settled, partial } = await replaySessionOutTail<TUIMessage>(sessionId, options);
+    return partial !== undefined ? [...settled, partial] : settled;
   } finally {
     replaySessionOutTailImpl = saved;
+  }
+}
+
+/**
+ * Test-only override hook for `replaySessionInTail`. Mirrors
+ * `__setReplaySessionOutTailImplForTests` so unit tests can drive the boot
+ * loop's chain-reconstruction logic without an HTTP round-trip.
+ * @internal
+ */
+type ReplaySessionInTailImpl = <TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+) => Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]>;
+let replaySessionInTailImpl: ReplaySessionInTailImpl | undefined;
+
+export function __setReplaySessionInTailImplForTests(
+  impl: ReplaySessionInTailImpl | undefined
+): void {
+  replaySessionInTailImpl = impl;
+}
+
+/**
+ * Drain `session.in` from `lastEventId` (or the start) and surface the user
+ * messages that landed past the cursor. Mirror of `replaySessionOutTail` —
+ * both reads run at continuation boot so the SDK can reconstruct
+ * conversational order across a dead run that never wrote `onTurnComplete`.
+ *
+ * `session.in` carries the {@link ChatInputChunk} tagged union:
+ *   - `kind: "message"` — a `ChatTaskWirePayload` envelope for a new user
+ *     message (`trigger: "submit-message"`) or a regeneration. Only the
+ *     submit-message records carry a `payload.message`; regenerations,
+ *     preload / close / action / handover-prepare have no message.
+ *   - `kind: "stop"` — mid-turn cancellation signal. Not a message.
+ *   - `kind: "handover"` / `kind: "handover-skip"` — head-start signals.
+ *     Not user messages.
+ *
+ * This function filters to the first variant and returns the embedded
+ * `UIMessage`s in seq_num order, paired with their seq_num so the caller
+ * can advance the session.in cursor past them.
+ *
+ * Errors are propagated to the caller (the boot loop wraps in try/catch
+ * and `logger.warn`s); we don't swallow here so test code can observe
+ * failures directly.
+ * @internal
+ */
+async function replaySessionInTail<TUIMessage extends UIMessage>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
+  if (replaySessionInTailImpl) {
+    return await replaySessionInTailImpl<TUIMessage>(sessionId, options);
+  }
+  const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(sessionId, "in", {
+    afterEventId: options?.lastEventId,
+  });
+  const out: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
+  for (const record of response.records) {
+    // session.in writers POST `JSON.stringify(chunk)` directly; the
+    // webapp wraps that in `{ data: <string>, id }` and stores it on
+    // S2. The records endpoint hands `data` back as the original
+    // string — unlike session.out (where the writer puts a chunk
+    // OBJECT into the envelope and the route forwards it as an
+    // object). Defensive: handle both shapes so future writer changes
+    // on either side don't silently lose records.
+    let chunk: unknown = record.data;
+    if (typeof chunk === "string") {
+      try {
+        chunk = JSON.parse(chunk);
+      } catch {
+        continue;
+      }
+    }
+    if (!chunk || typeof chunk !== "object") continue;
+    const kind = (chunk as { kind?: unknown }).kind;
+    if (kind !== "message") continue;
+    const payload = (
+      chunk as {
+        payload?: { trigger?: unknown; message?: unknown; metadata?: unknown };
+      }
+    ).payload;
+    if (!payload || payload.trigger !== "submit-message") continue;
+    const message = payload.message;
+    if (!message || typeof message !== "object") continue;
+    out.push({
+      message: message as TUIMessage,
+      metadata: payload.metadata,
+      seqNum: record.seqNum,
+    });
+  }
+  return out;
+}
+
+/**
+ * Test-only entry point that bypasses
+ * `__setReplaySessionInTailImplForTests` and reaches the real
+ * `apiClient.readSessionStreamRecords` + filter pipeline. Mirrors
+ * `__replaySessionOutTailProductionPathForTests`.
+ * @internal
+ */
+export async function __replaySessionInTailProductionPathForTests<
+  TUIMessage extends UIMessage,
+>(
+  sessionId: string,
+  options?: { lastEventId?: string }
+): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
+  const saved = replaySessionInTailImpl;
+  replaySessionInTailImpl = undefined;
+  try {
+    return await replaySessionInTail<TUIMessage>(sessionId, options);
+  } finally {
+    replaySessionInTailImpl = saved;
   }
 }
 
@@ -1897,6 +2033,40 @@ function* iterateToolParts(
       state: part.state,
     };
   }
+}
+
+/**
+ * Walk a partial assistant message and surface the tool calls the model
+ * had started but never received a result for. Used at recovery boot to
+ * populate `RecoveryBootEvent.pendingToolCalls`.
+ *
+ * The partial assistant in question is the orphan from a dead run — its
+ * `turn-complete` never fired, so any `input-available` tool part is
+ * truly orphan (NOT a stable HITL pause; HITL parts live on settled
+ * messages, not on the partial).
+ *
+ * @internal
+ */
+function extractPendingToolCallsFromPartial(
+  partial: UIMessage | undefined
+): RecoveryPendingToolCall[] {
+  if (!partial) return [];
+  const out: RecoveryPendingToolCall[] = [];
+  const parts = (partial.parts ?? []) as any[];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!isToolUIPart(part)) continue;
+    if (!isPendingToolState(part.state)) continue;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    out.push({
+      toolCallId,
+      toolName: getToolName(part),
+      input: part.input,
+      partIndex: i,
+    });
+  }
+  return out;
 }
 
 /**
@@ -3531,6 +3701,126 @@ export type BootEvent<TClientData = unknown> = {
 };
 
 /**
+ * A tool call extracted from the partial assistant message of a dead run.
+ * Surfaced on `RecoveryBootEvent.pendingToolCalls` so the customer can
+ * decide how to repair the chain (synthesize a result, drop the partial,
+ * etc.).
+ */
+export type RecoveryPendingToolCall = {
+  /** The AI SDK tool call id. */
+  toolCallId: string;
+  /** The tool name (the `tool-${name}` suffix). */
+  toolName: string;
+  /** The input the model produced for the tool call. */
+  input: unknown;
+  /** The part index inside `partialAssistant.parts` for in-place edits. */
+  partIndex: number;
+};
+
+/**
+ * Event passed to the `onRecoveryBoot` callback.
+ *
+ * Fires once at boot when a continuation run inherits in-flight state from
+ * a dead predecessor (cancel / crash / OOM / deploy eviction / graceful
+ * `chat.requestUpgrade`). The runtime reads both `session.in` and
+ * `session.out` past the last `turn-complete` cursor and surfaces the
+ * recovered pieces here so the customer can shape the conversational
+ * chain before the first turn fires.
+ *
+ * Does NOT fire when there's nothing to recover (clean continuation after
+ * `chat.endRun()` with no buffered user messages, fresh chat, OOM retry
+ * after a successful turn-complete with no in-flight tail).
+ *
+ * Does NOT fire when `hydrateMessages` is registered (the customer owns
+ * persistence; recovery decisions live in their own DB query).
+ */
+export type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
+  /** Task run context — same as `task({ run })` second-argument `ctx`. */
+  ctx: TaskRunContext;
+  /** The unique identifier for the chat session. */
+  chatId: string;
+  /** The Trigger.dev run ID for this run boot. */
+  runId: string;
+  /** Public id of the prior run that died. */
+  previousRunId: string;
+  /**
+   * Best-effort cause of the predecessor's death. Currently always
+   * `"unknown"` — the run engine doesn't yet plumb the real reason
+   * into the continuation payload. Future SDK versions will narrow
+   * this. Don't branch behavior on it yet.
+   */
+  cause: "cancelled" | "crashed" | "unknown";
+  /**
+   * The conversation chain that was successfully persisted by the
+   * predecessor's last `onTurnComplete`. Empty if the predecessor died
+   * before turn 1 ever completed.
+   */
+  settledMessages: TUIM[];
+  /**
+   * User messages that arrived on `session.in` past the cursor — i.e.
+   * the message(s) the predecessor was processing or had queued when
+   * it died. The runtime's default is to re-dispatch each as a fresh
+   * turn after the chain is restored. Return a different list via
+   * `recoveredTurns` to skip / reorder / collapse them.
+   */
+  inFlightUsers: TUIM[];
+  /**
+   * The trailing assistant message the predecessor was streaming when
+   * it died — the orphan whose `turn-complete` never fired. Undefined
+   * if the predecessor died before any assistant output reached
+   * `session.out` (cancel-before-first-token, snapshot-only path).
+   */
+  partialAssistant: TUIM | undefined;
+  /**
+   * Tool calls extracted from `partialAssistant.parts` that the model
+   * had started but the tool runtime never resolved. Empty when
+   * `partialAssistant` is undefined or carries no `input-available`
+   * tool parts.
+   */
+  pendingToolCalls: RecoveryPendingToolCall[];
+  /**
+   * Lazy session.out writer — identical to the `writer` passed to
+   * `onTurnStart` / `onTurnComplete` / `onChatStart`. Use this to emit
+   * a recovery signal (e.g. a `data-chat-recovery` UIMessage chunk)
+   * BEFORE the first recovered turn fires so the bridge can render a
+   * "recovering..." banner. Lazy: no overhead if unused.
+   */
+  writer: ChatWriter;
+};
+
+/**
+ * Return shape for the `onRecoveryBoot` callback. Every field is optional —
+ * omit one to accept the default.
+ */
+export type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
+  /**
+   * The chain the new run boots with. Replaces the default
+   * (`settledMessages`). Use this to keep the partial assistant in
+   * context, mutate its tool parts to inject synthesized results,
+   * collapse history, etc.
+   *
+   * Ignored when `hydrateMessages` is registered (the hydrate hook
+   * runs per-turn and overwrites the chain).
+   */
+  chain?: TUIM[];
+  /**
+   * The user messages to re-dispatch as fresh turns after the chain is
+   * restored. Default: `inFlightUsers` (re-process every in-flight
+   * user). Return `[]` to suppress all of them; return a filtered /
+   * reordered subset to skip specific ones.
+   */
+  recoveredTurns?: TUIM[];
+  /**
+   * Awaitable run AFTER the writer flushes and BEFORE the first
+   * recovered turn fires. Use for blocking persistence (e.g. write the
+   * partial assistant to your DB so a follow-up turn can reference
+   * it). Errors bubble — wrap your own try/catch if you want to soft-
+   * fail.
+   */
+  beforeBoot?: () => Promise<void>;
+};
+
+/**
  * Event passed to the `onChatStart` callback.
  *
  * Fires exactly once per chat, on the very first user message of the chat's
@@ -4016,6 +4306,43 @@ export type ChatAgentOptions<
   onBoot?: (event: BootEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void;
 
   /**
+   * Recovery boot hook — fires once on a continuation run that inherited
+   * in-flight state from a dead predecessor (cancel / crash / OOM /
+   * deploy eviction / `chat.requestUpgrade()`). The runtime reads both
+   * stream tails past the last `turn-complete` cursor and hands the
+   * customer the recovered pieces (settled chain, in-flight users,
+   * partial assistant, pending tool calls) so the chain can be shaped
+   * before the first recovered turn fires.
+   *
+   * Does NOT fire when there's nothing to recover — e.g. a clean
+   * continuation after `chat.endRun()` with no buffered user, a fresh
+   * chat, or an OOM retry on top of a complete snapshot.
+   *
+   * Does NOT fire when `hydrateMessages` is registered — that hook owns
+   * the per-turn chain and overlapping recovery decisions belong in the
+   * customer's DB.
+   *
+   * Defaults (returned when the hook is omitted or returns no field):
+   *   - `chain` = `settledMessages` (drop the orphan partial)
+   *   - `recoveredTurns` = `inFlightUsers` (re-dispatch every user)
+   *
+   * @example
+   * ```ts
+   * onRecoveryBoot: async ({ partialAssistant, inFlightUsers, writer, cause }) => {
+   *   writer.write({
+   *     type: "data-chat-recovery",
+   *     id: generateId(),
+   *     data: { cause, partial: partialAssistant?.id },
+   *   });
+   *   return {}; // accept defaults: drop partial, re-dispatch users
+   * }
+   * ```
+   */
+  onRecoveryBoot?: (
+    event: RecoveryBootEvent<TUIMessage>
+  ) => Promise<RecoveryBootResult<TUIMessage> | void> | RecoveryBootResult<TUIMessage> | void;
+
+  /**
    * Called when a preloaded run starts, before the first message arrives.
    *
    * Use this to initialize state, create DB records, and load context early —
@@ -4495,6 +4822,7 @@ function chatCustomAgent<
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
       return userRun(payload, runOptions);
@@ -4524,6 +4852,7 @@ function chatAgent<
     run: userRun,
     clientDataSchema,
     onBoot,
+    onRecoveryBoot,
     onPreload,
     onChatStart,
     onValidateMessages,
@@ -4591,6 +4920,7 @@ function chatAgent<
       // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
       // and is the trim target for the NEXT turn's trim record.
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
+      markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
 
       // Stamp `gen_ai.conversation.id` on the run-level span. Every
@@ -4653,51 +4983,136 @@ function chatAgent<
       // swallow errors internally; the agent stays available either way.
       const sessionIdForSnapshot = payload.sessionId ?? payload.chatId;
       let bootSnapshot: ChatSnapshotV1<TUIMessage> | undefined;
-      let replayed: TUIMessage[] = [];
+      let replayedSettled: TUIMessage[] = [];
+      let replayedPartial: TUIMessage | undefined;
+      let replayedPartialRaw: TUIMessage | undefined;
+      let replayedInTail: { message: TUIMessage; metadata: unknown; seqNum: number }[] = [];
+      // Wire payloads to dispatch as turns before the regular session.in
+      // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
+      // default, `inFlightUsers`). The turn-loop checks this queue ahead of
+      // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
+      const bootInjectedQueue: ChatTaskWirePayload<
+        TUIMessage,
+        inferSchemaIn<TClientDataSchema>
+      >[] = [];
       const couldHavePriorState =
         payload.continuation === true || ctx.attempt.number > 1;
 
       if (!hydrateMessages && couldHavePriorState) {
-        try {
-          bootSnapshot = await tracer.startActiveSpan(
-            "chat.boot.snapshot.read",
-            async () => readChatSnapshot<TUIMessage>(sessionIdForSnapshot)
-          );
-        } catch (error) {
-          // `readChatSnapshot` already swallows + warns internally; this catch
-          // is just belt-and-suspenders against tracer/span errors.
-          logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
-            error: error instanceof Error ? error.message : String(error),
-            sessionId: sessionIdForSnapshot,
-          });
-        }
+        // Single parent span for the whole boot read phase — snapshot
+        // read, session.out replay, session.in replay. Per-phase timing
+        // + result counts are attributes on the span.
+        await tracer.startActiveSpan(
+          "chat.boot",
+          async (bootSpan) => {
+            // snapshot read
+            const snapStart = Date.now();
+            try {
+              bootSnapshot = await readChatSnapshot<TUIMessage>(sessionIdForSnapshot);
+            } catch (error) {
+              // `readChatSnapshot` already swallows + warns internally; this catch
+              // is just belt-and-suspenders against tracer/span errors.
+              logger.warn(
+                "chat.agent: snapshot read failed; continuing without snapshot",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  sessionId: sessionIdForSnapshot,
+                }
+              );
+            }
+            bootSpan.setAttribute("chat.boot.snapshot.durationMs", Date.now() - snapStart);
+            bootSpan.setAttribute("chat.boot.snapshot.present", !!bootSnapshot);
+            bootSpan.setAttribute(
+              "chat.boot.snapshot.messageCount",
+              bootSnapshot?.messages?.length ?? 0
+            );
 
-        // Seed the trim chain from the snapshot's `lastOutEventId` (the SSE
-        // id of the previous turn's `turn-complete` control record). The
-        // first turn-complete this worker writes will then trim back to it.
-        // Without seeding, the new worker would emit no trim on its first
-        // turn (chain self-bootstraps from turn 2), so this is purely an
-        // optimization to keep continuation runs bounded from the first turn.
-        if (bootSnapshot?.lastOutEventId !== undefined) {
-          const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
-          if (Number.isFinite(seeded)) {
-            const slot = locals.get(lastTurnCompleteSeqNumKey);
-            if (slot) slot.value = seeded;
+            // Seed the trim chain from the snapshot's `lastOutEventId` (the SSE
+            // id of the previous turn's `turn-complete` control record). The
+            // first turn-complete this worker writes will then trim back to it.
+            // Without seeding, the new worker would emit no trim on its first
+            // turn (chain self-bootstraps from turn 2), so this is purely an
+            // optimization to keep continuation runs bounded from the first turn.
+            if (bootSnapshot?.lastOutEventId !== undefined) {
+              const seeded = Number.parseInt(bootSnapshot.lastOutEventId, 10);
+              if (Number.isFinite(seeded)) {
+                const slot = locals.get(lastTurnCompleteSeqNumKey);
+                if (slot) slot.value = seeded;
+              }
+            }
+
+            // session.out replay
+            const replayOutStart = Date.now();
+            try {
+              const replayResult = await replaySessionOutTail<TUIMessage>(
+                sessionIdForSnapshot,
+                { lastEventId: bootSnapshot?.lastOutEventId }
+              );
+              replayedSettled = replayResult.settled;
+              replayedPartial = replayResult.partial;
+              replayedPartialRaw = replayResult.partialRaw;
+            } catch (error) {
+              logger.warn(
+                "chat.agent: session.out replay failed; using snapshot only",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  sessionId: sessionIdForSnapshot,
+                }
+              );
+            }
+            bootSpan.setAttribute(
+              "chat.boot.replay.out.durationMs",
+              Date.now() - replayOutStart
+            );
+            bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
+            bootSpan.setAttribute(
+              "chat.boot.replay.out.partialPresent",
+              replayedPartial !== undefined
+            );
+
+            // session.in tail read
+            //
+            // session.in carries the user-side of the conversation
+            // (ChatInputChunk records). On a continuation boot we read past
+            // the last turn-complete's `session-in-event-id` header so any
+            // user message the dead predecessor hadn't acknowledged surfaces
+            // here. Without this read, in-flight user messages would only be
+            // visible via the live SSE subscription — by which point they
+            // would arrive AFTER the partial-assistant orphan and look like
+            // brand-new turns to the model, producing inverted chains.
+            const replayInStart = Date.now();
+            const lastInEventId = await findLatestSessionInCursor(payload.chatId)
+              .then((cursor) => (cursor !== undefined ? String(cursor) : undefined))
+              .catch(() => undefined);
+            try {
+              replayedInTail = await replaySessionInTail<TUIMessage>(payload.chatId, {
+                lastEventId: lastInEventId,
+              });
+            } catch (error) {
+              logger.warn(
+                "chat.agent: session.in replay failed; in-flight users may not be recovered",
+                { error: error instanceof Error ? error.message : String(error) }
+              );
+            }
+            bootSpan.setAttribute(
+              "chat.boot.replay.in.durationMs",
+              Date.now() - replayInStart
+            );
+            bootSpan.setAttribute(
+              "chat.boot.replay.in.userCount",
+              replayedInTail.length
+            );
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "tabler-rotate-clockwise",
+              [SemanticInternalAttributes.COLLAPSED]: true,
+              "chat.id": payload.chatId,
+              "chat.continuation": payload.continuation ?? false,
+              "chat.attempt": ctx.attempt.number,
+            },
           }
-        }
-
-        try {
-          replayed = await tracer.startActiveSpan("chat.boot.replay", async () =>
-            replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
-              lastEventId: bootSnapshot?.lastOutEventId,
-            })
-          );
-        } catch (error) {
-          logger.warn("chat.agent: session.out replay failed; using snapshot only", {
-            error: error instanceof Error ? error.message : String(error),
-            sessionId: sessionIdForSnapshot,
-          });
-        }
+        );
       }
 
       // ── session.in resume cursor ───────────────────────────────────
@@ -4745,12 +5160,158 @@ function chatAgent<
         }
       }
 
-      // ── Merge + head-start bootstrap ────────────────────────────────
+      // ── Recovery boot + chain reconstruction ────────────────────────
       if (!hydrateMessages) {
-        accumulatedUIMessages = mergeByIdReplaceWins<TUIMessage>(
+        const settledMessages = mergeByIdReplaceWins<TUIMessage>(
           (bootSnapshot?.messages as TUIMessage[]) ?? [],
-          replayed
+          replayedSettled
         );
+        const inFlightUsers = replayedInTail.map((r) => r.message);
+        const partialAssistant = replayedPartial;
+        // Fire the hook only when there's a partial assistant — the
+        // mid-stream-died signal. In-flight users alone (no partial)
+        // cover graceful exits like `chat.requestUpgrade()` where the
+        // predecessor chose to end before processing the message;
+        // those route through the normal continuation-wait path.
+        const hasRecoveredState = partialAssistant !== undefined;
+
+        let hookChain: TUIMessage[] | undefined;
+        let hookRecoveredTurns: TUIMessage[] | undefined;
+        let hookBeforeBoot: (() => Promise<void>) | undefined;
+        if (couldHavePriorState && hasRecoveredState && onRecoveryBoot) {
+          // Extract from the RAW partial (pre-cleanup). `cleanupAbortedParts`
+          // strips exactly the input-streaming / input-available tool parts
+          // we want to surface here, so the cleaned `partialAssistant` would
+          // always report zero pending tool calls.
+          const pendingToolCalls = extractPendingToolCallsFromPartial(replayedPartialRaw);
+          const previousRunIdForHook = previousRunId ?? "";
+          let hookResult: RecoveryBootResult<TUIMessage> | void = undefined;
+          const { writer: hookWriter, flush: hookFlush } = createLazyChatWriter();
+          try {
+            hookResult = await tracer.startActiveSpan(
+              "onRecoveryBoot()",
+              async () =>
+                onRecoveryBoot({
+                  ctx,
+                  chatId: payload.chatId,
+                  runId: ctx.run.id,
+                  previousRunId: previousRunIdForHook,
+                  cause: "unknown",
+                  settledMessages,
+                  inFlightUsers,
+                  partialAssistant,
+                  pendingToolCalls,
+                  writer: hookWriter,
+                }),
+              {
+                attributes: {
+                  [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                  [SemanticInternalAttributes.COLLAPSED]: true,
+                  "chat.id": payload.chatId,
+                },
+              }
+            );
+          } catch (error) {
+            logger.warn("chat.agent: onRecoveryBoot threw; using defaults", {
+              error: error instanceof Error ? error.message : String(error),
+              chatId: payload.chatId,
+            });
+          }
+          // Flush any chunks the hook wrote so they land on session.out
+          // BEFORE the first recovered turn fires.
+          try {
+            await hookFlush();
+          } catch (error) {
+            logger.warn("chat.agent: onRecoveryBoot writer flush failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          if (hookResult && typeof hookResult === "object") {
+            if (Array.isArray(hookResult.chain)) hookChain = hookResult.chain;
+            if (Array.isArray(hookResult.recoveredTurns))
+              hookRecoveredTurns = hookResult.recoveredTurns;
+            if (typeof hookResult.beforeBoot === "function")
+              hookBeforeBoot = hookResult.beforeBoot;
+          }
+        }
+
+        // Default: splice partial + the user it was answering into
+        // the chain so follow-ups like "keep going" still have context.
+        let seedChain: TUIMessage[];
+        let recoveredTurns: TUIMessage[];
+        if (hookChain !== undefined) {
+          seedChain = hookChain;
+        } else if (partialAssistant !== undefined && inFlightUsers.length > 0) {
+          seedChain = [...settledMessages, inFlightUsers[0]!, partialAssistant];
+        } else {
+          seedChain = settledMessages;
+        }
+        if (hookRecoveredTurns !== undefined) {
+          recoveredTurns = hookRecoveredTurns;
+        } else if (partialAssistant !== undefined && inFlightUsers.length > 0) {
+          recoveredTurns = inFlightUsers.slice(1);
+        } else {
+          recoveredTurns = inFlightUsers;
+        }
+        // `beforeBoot` errors bubble — the customer opted into blocking
+        // persistence and a failure there should fail the run rather than
+        // dispatch recovered turns against half-persisted state.
+        if (hookBeforeBoot) {
+          await hookBeforeBoot();
+        }
+
+        // Advance the session.in cursor past every recovered user so
+        // the live subscription doesn't re-deliver them.
+        if (replayedInTail.length > 0) {
+          const lastRecoveredSeq = replayedInTail[replayedInTail.length - 1]!.seqNum;
+          const currentCursor = sessionStreams.lastSeqNum(payload.chatId, "in");
+          if (currentCursor === undefined || lastRecoveredSeq > currentCursor) {
+            sessionStreams.setLastSeqNum(payload.chatId, "in", lastRecoveredSeq);
+            sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", lastRecoveredSeq);
+          }
+        }
+
+        // Synthesize wire payloads for each recoveredTurn. The turn-loop
+        // pops these ahead of `messagesInput.waitWithIdleTimeout` so they
+        // dispatch as normal turns with the existing hook stack.
+        //
+        // Per-record metadata preservation: each session.in record
+        // carries its own `payload.metadata` (the transport sets it at
+        // send time). Look up the original by message id so a recovered
+        // turn dispatches with the metadata its writer actually sent.
+        // Fall back to the boot payload's metadata for hook-synthesized
+        // messages (customer returned a recoveredTurn with no matching
+        // session.in record).
+        //
+        // OOM-retry dedup: if `payload.message` is the same user message
+        // the queue is about to redispatch (the wire payload survives
+        // across attempts, but session.in records it once), the wire
+        // payload already runs turn 0 — drop the duplicate from the queue
+        // so we don't fire the same turn twice.
+        const wireMessageId =
+          (payload.message as { id?: string } | undefined)?.id;
+        const metadataById = new Map<string, unknown>();
+        for (const entry of replayedInTail) {
+          metadataById.set(entry.message.id, entry.metadata);
+        }
+        for (const msg of recoveredTurns) {
+          if (wireMessageId && msg.id === wireMessageId) continue;
+          const recoveredMetadata = metadataById.has(msg.id)
+            ? metadataById.get(msg.id)
+            : payload.metadata;
+          bootInjectedQueue.push({
+            chatId: payload.chatId,
+            sessionId: payload.sessionId,
+            metadata: recoveredMetadata,
+            trigger: "submit-message",
+            message: msg,
+            messageId: msg.id,
+            continuation: payload.continuation,
+            previousRunId: payload.previousRunId,
+          } as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>);
+        }
+
+        accumulatedUIMessages = seedChain;
 
         // ── Head-start bootstrap ─────────────────────────────────────
         //
@@ -5122,6 +5683,15 @@ function chatAgent<
             parseClientData ? await parseClientData(payload.metadata) : payload.metadata
           ) as inferSchemaOut<TClientDataSchema>;
 
+          // Recovery-boot injection: if `onRecoveryBoot` (or its default
+          // `inFlightUsers`) populated `bootInjectedQueue`, dispatch the
+          // first synthesized payload as the very first turn instead of
+          // waiting on the live session.in. Subsequent recovered turns
+          // get drained by the end-of-turn picker below.
+          if (bootInjectedQueue.length > 0) {
+            currentWirePayload = bootInjectedQueue.shift()!;
+          } else {
+
           const effectiveIdleTimeout =
             idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
           const effectiveTurnTimeout =
@@ -5194,6 +5764,7 @@ function chatAgent<
           if (currentWirePayload.trigger === "close") {
             return;
           }
+          } // end else (no boot-injected first turn)
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
@@ -6475,6 +7046,15 @@ function chatAgent<
                   // before the next message, their injected context is picked up in prepareStep.
                   // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
 
+                  // Recovery-boot injection: drain remaining recovered turns
+                  // before any other source. `onRecoveryBoot` (or its default)
+                  // produced these from in-flight user messages on session.in
+                  // that the dead predecessor never acknowledged.
+                  if (bootInjectedQueue.length > 0) {
+                    currentWirePayload = bootInjectedQueue.shift()!;
+                    return "continue";
+                  }
+
                   // If messages arrived during streaming (without pendingMessages config),
                   // use the first one immediately as the next turn.
                   if (pendingMessages.length > 0) {
@@ -6622,6 +7202,14 @@ function chatAgent<
                 locals.get(chatEndRunRequestedKey)
               ) {
                 return;
+              }
+
+              // Drain remaining recovered turns before idling — a thrown
+              // recovered turn shouldn't strand the rest of the boot queue
+              // until an unrelated live message arrives.
+              if (bootInjectedQueue.length > 0) {
+                currentWirePayload = bootInjectedQueue.shift()!;
+                continue;
               }
 
               // Wait for the next message — same as after a successful turn
@@ -6943,6 +7531,7 @@ function createChatBuilder<
         ...(config.clientDataSchema ? { clientDataSchema: config.clientDataSchema } : {}),
         uiMessageStreamOptions: mergedUiStream,
         onBoot: composeHooks(config.hooks.onBoot, options.onBoot),
+        onRecoveryBoot: options.onRecoveryBoot,
         onPreload: composeHooks(config.hooks.onPreload, options.onPreload),
         onChatStart: composeHooks(config.hooks.onChatStart, options.onChatStart),
         onTurnStart: composeHooks(config.hooks.onTurnStart, options.onTurnStart),
@@ -8411,6 +9000,32 @@ export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 /**
  * Options for {@link createChatStartSessionAction}.
  */
+/**
+ * Discriminator for per-endpoint `baseURL` / `fetch` callbacks on
+ * `createChatStartSessionAction`.
+ *
+ * - `"sessions"` — `POST /api/v1/sessions` (session create + first run trigger).
+ * - `"auth"` — `POST /api/v1/auth/jwt/claims` (only fired when
+ *   `tokenTTL` is set; otherwise the publicAccessToken from session create
+ *   is reused as-is).
+ */
+export type ChatStartSessionEndpoint = "sessions" | "auth";
+
+export type ChatStartSessionEndpointContext = {
+  endpoint: ChatStartSessionEndpoint;
+  chatId: string;
+};
+
+export type ChatStartSessionBaseURLResolver = (
+  ctx: ChatStartSessionEndpointContext
+) => string;
+
+export type ChatStartSessionFetchOverride = (
+  url: string,
+  init: RequestInit,
+  ctx: ChatStartSessionEndpointContext
+) => Promise<Response>;
+
 export type CreateChatStartSessionActionOptions = {
   /** TTL for the session-scoped public access token. @default "1h" */
   tokenTTL?: string | number | Date;
@@ -8419,6 +9034,21 @@ export type CreateChatStartSessionActionOptions = {
    * Per-call `params.triggerConfig` shallow-merges on top.
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
+  /**
+   * Override the Trigger.dev API base URL. String applies to both
+   * `/api/v1/sessions` and `/api/v1/auth/jwt/claims`; function picks per
+   * endpoint. When unset, falls back to `apiClientManager.baseURL`
+   * (typically the `TRIGGER_API_URL` env var). Set this to route session
+   * create through a trusted edge proxy that injects server-side signal
+   * into `basePayload.metadata` before forwarding upstream.
+   */
+  baseURL?: string | ChatStartSessionBaseURLResolver;
+  /**
+   * Per-request fetch override. Receives the resolved URL, RequestInit,
+   * and endpoint context. Use for header injection, proxy routing, or
+   * custom retry. Applies to both session-create and JWT-claims POSTs.
+   */
+  fetch?: ChatStartSessionFetchOverride;
 };
 
 /**
@@ -8542,13 +9172,26 @@ function createChatStartSessionAction(
         : {}),
     };
 
-    const created = await sessions.start({
-      type: "chat.agent",
+    const startBody = {
+      type: "chat.agent" as const,
       externalId: params.chatId,
       taskIdentifier: taskId,
       triggerConfig,
       metadata: params.metadata,
-    });
+    };
+
+    const baseURLOption = options?.baseURL;
+    const fetchOverride = options?.fetch;
+    const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
+
+    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+      ? await callSessionsCreateWithOverride({
+          chatId: params.chatId,
+          body: startBody,
+          baseURLOption,
+          fetchOverride,
+        })
+      : await sessions.start(startBody);
 
     // Session create returns a session PAT directly when called with a
     // start token, but when the SDK call goes via the secret key we still
@@ -8556,13 +9199,20 @@ function createChatStartSessionAction(
     // re-minting here lets the customer override `tokenTTL`).
     const publicAccessToken =
       options?.tokenTTL !== undefined
-        ? await auth.createPublicToken({
-            scopes: {
-              read: { sessions: params.chatId },
-              write: { sessions: params.chatId },
-            },
-            expirationTime: options.tokenTTL,
-          })
+        ? hasOverride
+          ? await mintPublicTokenWithOverride({
+              chatId: params.chatId,
+              expirationTime: options.tokenTTL,
+              baseURLOption,
+              fetchOverride,
+            })
+          : await auth.createPublicToken({
+              scopes: {
+                read: { sessions: params.chatId },
+                write: { sessions: params.chatId },
+              },
+              expirationTime: options.tokenTTL,
+            })
         : created.publicAccessToken;
 
     return {
@@ -8571,6 +9221,101 @@ function createChatStartSessionAction(
       sessionId: created.id,
     };
   };
+}
+
+function resolveChatStartBaseURL(
+  endpoint: ChatStartSessionEndpoint,
+  chatId: string,
+  option: string | ChatStartSessionBaseURLResolver | undefined
+): string {
+  const fallback = apiClientManager.baseURL ?? "https://api.trigger.dev";
+  const raw =
+    typeof option === "function"
+      ? option({ endpoint, chatId })
+      : option ?? fallback;
+  return raw.replace(/\/$/, "");
+}
+
+function overrideRequestHeaders(accessToken: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${accessToken}`,
+    "x-trigger-source": "sdk",
+  };
+  // Forward the preview-branch hint so override-mode requests land on the
+  // same env the standard ApiClient path would have routed to. Mirrors
+  // ApiClient.#getHeaders. Read from TRIGGER_PREVIEW_BRANCH /
+  // VERCEL_GIT_COMMIT_REF via apiClientManager.branchName.
+  if (apiClientManager.branchName) {
+    headers["x-trigger-branch"] = apiClientManager.branchName;
+  }
+  return headers;
+}
+
+async function callSessionsCreateWithOverride(args: {
+  chatId: string;
+  body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
+  baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
+  fetchOverride: ChatStartSessionFetchOverride | undefined;
+}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+  const accessToken = apiClientManager.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured. Set TRIGGER_SECRET_KEY or call apiClientManager.setGlobalAPIClientConfiguration before invoking the action."
+    );
+  }
+  const ctx: ChatStartSessionEndpointContext = { endpoint: "sessions", chatId: args.chatId };
+  const url = `${resolveChatStartBaseURL("sessions", args.chatId, args.baseURLOption)}/api/v1/sessions`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: overrideRequestHeaders(accessToken),
+    body: JSON.stringify(args.body),
+  };
+  const response = args.fetchOverride
+    ? await args.fetchOverride(url, init, ctx)
+    : await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`sessions.start failed: ${response.status} ${text}`);
+  }
+  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  return json;
+}
+
+async function mintPublicTokenWithOverride(args: {
+  chatId: string;
+  expirationTime: string | number | Date;
+  baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
+  fetchOverride: ChatStartSessionFetchOverride | undefined;
+}): Promise<string> {
+  const accessToken = apiClientManager.accessToken;
+  if (!accessToken) {
+    throw new Error(
+      "chat.createStartSessionAction: no API access token configured for JWT mint."
+    );
+  }
+  const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
+  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;
+  const init: RequestInit = {
+    method: "POST",
+    headers: overrideRequestHeaders(accessToken),
+  };
+  const response = args.fetchOverride
+    ? await args.fetchOverride(url, init, ctx)
+    : await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`auth.createPublicToken failed: ${response.status} ${text}`);
+  }
+  const claims = (await response.json()) as Record<string, unknown>;
+  return generateJWT({
+    secretKey: accessToken,
+    payload: {
+      ...claims,
+      scopes: [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`],
+    },
+    expirationTime: args.expirationTime,
+  });
 }
 
 export const chat = {

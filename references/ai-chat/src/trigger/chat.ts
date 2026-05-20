@@ -296,6 +296,34 @@ export const aiChat = chat
     },
     // #endregion
 
+    // #region onRecoveryBoot — emit a data-chat-recovery banner chunk
+    onRecoveryBoot: async ({
+      chatId,
+      previousRunId,
+      cause,
+      settledMessages,
+      inFlightUsers,
+      partialAssistant,
+      pendingToolCalls,
+      writer,
+    }) => {
+      logger.info("onRecoveryBoot fired", {
+        chatId,
+        previousRunId,
+        cause,
+        settledCount: settledMessages.length,
+        inFlightUserCount: inFlightUsers.length,
+        partialAssistantPresent: partialAssistant !== undefined,
+        pendingToolCallCount: pendingToolCalls.length,
+      });
+      writer.write({
+        type: "data-chat-recovery",
+        data: { cause, previousRunId, partialPresent: partialAssistant !== undefined },
+        transient: true,
+      });
+    },
+    // #endregion
+
     // #region onPreload — eagerly create chat/session DB rows before the first message
     onPreload: async ({ chatId, chatAccessToken, clientData }) => {
       if (!clientData) return;
@@ -998,3 +1026,41 @@ export const upgradeTestAgent = chat.agent({
     });
   },
 });
+
+// ============================================================================
+// cf-trust-test — validates that a trusted edge proxy (Cloudflare Worker) can
+// inject a namespaced metadata field that flows through `/api/v1/sessions` +
+// `/in/append` and lands typed in `clientData.__cf` on every turn.
+// ============================================================================
+
+export const cfTrustTestAgent = chat
+  .withClientData({
+    schema: z.object({
+      userId: z.string(),
+      __cf: z.object({
+        botScore: z.number(),
+        ja4: z.string(),
+        asn: z.number(),
+        country: z.string(),
+      }),
+    }),
+  })
+  .agent({
+    id: "cf-trust-test",
+    idleTimeoutInSeconds: 60,
+    onTurnStart: async ({ turn, clientData }) => {
+      logger.info("cf-trust-test turn", { turn, cf: clientData.__cf, userId: clientData.userId });
+    },
+    run: async ({ messages, clientData, signal }) => {
+      const cf = clientData.__cf;
+      return streamText({
+        model: openai("gpt-4o-mini"),
+        system:
+          "You are a test agent verifying trusted Cloudflare signal propagation. " +
+          "Echo the trust signal you were given on this turn exactly in this format, then stop:\n" +
+          `CF botScore=${cf.botScore} ja4=${cf.ja4} asn=${cf.asn} country=${cf.country}`,
+        messages,
+        abortSignal: signal,
+      });
+    },
+  });
