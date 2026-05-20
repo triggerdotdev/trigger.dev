@@ -2020,6 +2020,7 @@ model EnvironmentVariableValue {
   lastUpdatedBy Json?
 
   @@unique([variableId, environmentId])
+  @@index([environmentId])
 }
 
 model Checkpoint {
