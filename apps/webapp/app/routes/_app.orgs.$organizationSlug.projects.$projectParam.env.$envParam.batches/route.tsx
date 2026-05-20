@@ -54,6 +54,7 @@ import {
   v3BatchPath,
   v3BatchRunsPath,
 } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 
 export const meta: MetaFunction = () => {
   return [
@@ -74,7 +75,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throwNotFound("Environment not found");
   }
 
   const url = new URL(request.url);
