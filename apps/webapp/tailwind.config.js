@@ -178,6 +178,10 @@ const bulkActions = colors.emerald[500];
 const aiPrompts = colors.blue[500];
 const aiMetrics = colors.green[500];
 const errors = colors.amber[500];
+const agents = colors.blue[500];
+const sessions = colors.cyan[500];
+const playgrounds = colors.fuchsia[500];
+const models = colors.violet[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -264,6 +268,10 @@ module.exports = {
         aiPrompts,
         aiMetrics,
         errors,
+        agents,
+        sessions,
+        playgrounds,
+        models,
         // shadcn/ui color tokens used by streamdown's internal components
         // (link safety modal, code block actions, etc.)
         // Values are defined via CSS variables in .streamdown-container

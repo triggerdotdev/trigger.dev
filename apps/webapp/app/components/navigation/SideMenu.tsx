@@ -11,7 +11,6 @@ import {
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
-  CpuChipIcon,
   CubeIcon,
   ExclamationTriangleIcon,
   FolderIcon,
@@ -36,6 +35,7 @@ import simplur from "simplur";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
@@ -474,17 +474,17 @@ export function SideMenu({
               >
                 <SideMenuItem
                   name="Agents"
-                  icon={CpuChipIcon}
-                  activeIconColor="text-indigo-500"
-                  inactiveIconColor="text-indigo-500"
+                  icon={CubeSparkleIcon}
+                  activeIconColor="text-agents"
+                  inactiveIconColor="text-agents"
                   to={v3AgentsPath(organization, project, environment)}
                   isCollapsed={isCollapsed}
                 />
                 <SideMenuItem
                   name="Sessions"
                   icon={ArrowsRightLeftIcon}
-                  activeIconColor="text-teal-500"
-                  inactiveIconColor="text-teal-500"
+                  activeIconColor="text-sessions"
+                  inactiveIconColor="text-sessions"
                   to={v3SessionsPath(organization, project, environment)}
                   data-action="sessions"
                   isCollapsed={isCollapsed}
@@ -492,8 +492,8 @@ export function SideMenu({
                 <SideMenuItem
                   name="Playground"
                   icon={BeakerIcon}
-                  activeIconColor="text-indigo-400"
-                  inactiveIconColor="text-indigo-400"
+                  activeIconColor="text-playgrounds"
+                  inactiveIconColor="text-playgrounds"
                   to={v3PlaygroundPath(organization, project, environment)}
                   isCollapsed={isCollapsed}
                 />
@@ -511,8 +511,8 @@ export function SideMenu({
                   <SideMenuItem
                     name="Models"
                     icon={CubeIcon}
-                    activeIconColor="text-purple-500"
-                    inactiveIconColor="text-purple-500"
+                    activeIconColor="text-models"
+                    inactiveIconColor="text-models"
                     to={v3ModelsPath(organization, project, environment)}
                     data-action="models"
                     isCollapsed={isCollapsed}
