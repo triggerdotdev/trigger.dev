@@ -2,7 +2,112 @@
 
 **Branch:** `mollifier-phase-3` (continuation)
 **Date:** 2026-05-19
-**Status:** Q1, Q2, Q3, Q4, Q5 all locked. Endpoint inventory complete. Ready for TDD implementation.
+**Status:** Q1, Q2, Q3, Q4, Q5 all locked. Endpoint inventory complete. **Phase A complete.** Phase B is the next chunk.
+
+## Progress tracking
+
+> Always update this section after each phase commits, so a fresh session can resume cleanly without rereading every git log entry.
+
+| Phase | Status | Commits | Notes |
+|---|---|---|---|
+| Merge of origin/main | ✅ Done | `8c01cf0eb` | 8 conflicts resolved; phase-3 versions kept; picked up one doc comment from main about shadow-mode counter writes |
+| Design docs + parity script | ✅ Done | `c8d036aa0` | 6 plan docs + `scripts/mollifier-api-parity.sh` |
+| **Phase A — read endpoints** | ✅ **Done** | `6b8a54e43`, `e21dbee5e` | See "Phase A patterns established" below |
+| Phase B — shared infrastructure | ⏳ Next | — | ZSET migration, drainer ack semantics, mutateSnapshot Lua, helpers |
+| Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
+| Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
+| Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
+| Phase F — test surface lockdown | ⏳ Pending | — | strict parity script + integration tests |
+
+## Phase A patterns established (reference for B/C/D)
+
+Six read endpoints implemented in A1-A6. Three got new code, two needed nothing, one had a pre-existing route bug fixed:
+
+| # | Endpoint | Implementation | Pattern used |
+|---|---|---|---|
+| A1 | `GET /api/v1/runs/{id}/trace` | `findResource` discriminated union → empty trace shape for buffered | New pattern (see below) |
+| A2 | `GET /api/v1/runs/{id}/spans/{spanId}` | Same discriminated union → minimal span shape if spanId matches snapshot, 404 otherwise | Same as A1 |
+| A3 | `GET /api/v1/runs/{id}/events` | **No change** — works via `ApiRetrieveRunPresenter.findRun`'s existing buffer fallback; querying events for a buffered traceId returns `{events:[]}` naturally | Inherits existing infra |
+| A4 | `GET /api/v1/runs/{id}/result` | **No change** — existing 404 message "Run either doesn't exist or is not finished" already covers buffered (not-in-PG) and PG-delayed (not-finished) cases | No-op |
+| A5 | `GET /api/v1/runs/{id}/attempts` | Added missing `loader` (route only had `action`); returns `{attempts:[]}` for both PG and buffered | New loader + parity stub |
+| A6 | `GET /api/v1/runs/{id}/metadata` | Same: added missing `loader`; returns `{metadata, metadataType}` from PG or buffer snapshot | New loader + buffer probe |
+
+### The discriminated union pattern (for A1, A2, and reusable for Phase B/C/D mutations)
+
+```ts
+type ResolvedRun =
+  | { source: "pg"; run: <Prisma TaskRun shape> }
+  | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
+
+findResource: async (params, auth): Promise<ResolvedRun | null> => {
+  const pgRun = await $replica.taskRun.findFirst({...});
+  if (pgRun) return { source: "pg", run: pgRun };
+
+  const buffered = await findRunByIdWithMollifierFallback({
+    runId, environmentId: auth.environment.id, organizationId: auth.environment.organizationId,
+  });
+  if (buffered) return { source: "buffer", run: buffered };
+  return null;
+}
+
+authorization.resource: (resolved) => {
+  if (resolved.source === "pg") { /* existing PG-shape resources */ }
+  else { /* synthetic from SyntheticRun shape (no batchId; tags from buffered.tags) */ }
+}
+
+handler: async ({ resource: resolved }) => {
+  if (resolved.source === "buffer") {
+    // synthesise endpoint-specific empty/minimal shape
+    return json({...}, { status: 200 });
+  }
+  // existing PG handler logic
+}
+```
+
+**Important detail:** `SyntheticRun` (in `apps/webapp/app/v3/mollifier/readFallback.server.ts`) lacks a `batchId` field. Buffered runs have no `batch` (batchTrigger bypasses the gate by design). The authorization branch for buffer source must not include batch resources.
+
+### What's NOT in `SyntheticRun` today
+
+If Phase B/C endpoints need additional fields from the buffer snapshot, extend `SyntheticRun` in `readFallback.server.ts`. Current fields cover: friendlyId, status, taskIdentifier, createdAt, payload, payloadType, metadata, metadataType, idempotencyKey, idempotencyKeyOptions, isTest, depth, ttl, tags, lockedToVersion, resumeParentOnCompletion, parentTaskRunId, traceId, spanId, parentSpanId, error. Missing: `taskEventStore`, `runtimeEnvironmentId`, `concurrencyKey`, `machinePreset`, `workerQueue`, `realtimeStreamsVersion`, `idempotencyKeyExpiresAt`, `seedMetadata`, `seedMetadataType`, `parentSpanId` etc. needed by various downstream services (replay, etc).
+
+Q2 (replay) explicitly calls out the synthesiser extension — when implementing Phase C5 (replay), extend `SyntheticRun` with the full set of fields `ReplayTaskRunService` reads.
+
+## Phase B — shared infrastructure (NEXT)
+
+Start here. Implements the building blocks that unblock Phase C. Detailed in [`2026-05-19-mollifier-listing-design.md`](2026-05-19-mollifier-listing-design.md) (Q1), [`2026-05-19-mollifier-mutation-race-design.md`](2026-05-19-mollifier-mutation-race-design.md) (Q3), and [`2026-05-19-mollifier-idempotency-design.md`](2026-05-19-mollifier-idempotency-design.md) (Q5).
+
+Order:
+
+- **B1.** ZSET migration in `packages/redis-worker/src/mollifier/buffer.ts`. `acceptMollifierEntry` Lua → `ZADD queue createdAtMicros runId`. `popAndMarkDraining` Lua → `ZPOPMIN`. `requeueMollifierEntry` Lua → `ZADD`. Listing read goes via `ZREVRANGEBYSCORE`. **Forward-compat:** ship drainer-side changes first, API-side second.
+- **B2.** Drainer ack semantics — replace `DEL entry` with atomic `HSET materialised=true; EXPIRE +30s`. Touches `MollifierBuffer.ack` + the underlying Lua.
+- **B3.** `MollifierBuffer.mutateSnapshot(runId, patch)` — atomic Lua. Three return codes: `applied_to_snapshot`, `not_found`, `busy`. Patch types: `append_tags`, `set_metadata`, `set_delay`, `mark_cancelled`. Idempotency-key patch comes in Q5 work.
+- **B4.** Snapshot-to-TaskRun synthesiser extension — extend `SyntheticRun` in `readFallback.server.ts` to include the fields `ReplayTaskRunService` reads (see Q2 doc table). The Phase C5 work depends on this.
+- **B5.** `mutateWithFallback` helper in `apps/webapp/app/v3/mollifier/mutateWithFallback.server.ts`. Signature in Q3 doc (`bufferPatch`, `pgMutation`, `synthesisedResponse`, optional `maxWaitMs`). Composes Lua call + writer-side spin-wait for the busy case.
+- **B6.** Idempotency lookup wiring per Q5 — extend `acceptMollifierEntry` Lua with SETNX on `mollifier:idempotency:{env}:{task}:{key}`; extend ack Lua with DEL of same; add `lookupIdempotency` and `resetIdempotency` methods.
+
+Phase B has no customer-visible API changes by itself. It's the substrate for Phase C.
+
+## Phase C — mutation endpoints (after B)
+
+Order:
+
+- **C1.** Cancel — drives the drainer-bifurcation work in `engine.createCancelledRun` (Q4 design). Hardest first.
+- **C2.** Tags — fixes the live 500 documented in the parity script results.
+- **C3.** Metadata PUT — straight snapshot patch.
+- **C4.** Reschedule — snapshot patch on `delayUntil`; PG-side terminal-status rejection (status !== "DELAYED") inherits naturally via wait-and-bounce.
+- **C5.** Replay — extend `SyntheticRun` (B4), pass synthesised TaskRun to existing `ReplayTaskRunService`.
+
+## Resuming guidance for a fresh session
+
+If context is lost and a new session needs to resume:
+
+1. `git log --oneline -10 mollifier-phase-3` to see what's been done.
+2. Read this master plan's **Progress tracking** section.
+3. For each unfinished phase, read its companion design doc.
+4. The bash parity script (`scripts/mollifier-api-parity.sh`) is the integration regression guard — run it after each phase to see drift count drop.
+5. The discriminated-union pattern from Phase A is the reference shape for Phase B/C `findResource` work. Don't reinvent.
+6. `SyntheticRun` in `readFallback.server.ts` is the canonical "what fields does the buffer snapshot expose to consumers" type. Extend it (never recreate) when Phase C endpoints need more fields.
+7. **All five Q-docs are locked** — don't relitigate decisions. If a design corner needs revision, update the relevant Q doc + bump the master plan's status line.
 
 ## Why this exists
 
