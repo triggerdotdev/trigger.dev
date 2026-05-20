@@ -451,9 +451,30 @@ export class SessionOutputChannel {
     const readableStreamSource = ensureReadableStream(value);
 
     const abortController = new AbortController();
-    const combinedSignal = options?.signal
-      ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
-      : abortController.signal;
+    // `AbortSignal.any` lands in Node 20.3; the SDK still supports Node
+    // 18.20+. On older runtimes fall back to wiring `options.signal` into
+    // `abortController` manually so caller-driven cancellation propagates.
+    let combinedSignal: AbortSignal = abortController.signal;
+    // Set in the Node 18 fallback path so the caller's `signal.addEventListener`
+    // registration can be cleared once the stream finishes. Without this, a
+    // long-lived caller signal (e.g. one reused across many `writer()` calls)
+    // accumulates listeners on every completed turn.
+    let removeCallerAbortListener: (() => void) | undefined;
+    if (options?.signal) {
+      if (typeof AbortSignal.any === "function") {
+        combinedSignal = AbortSignal.any([options.signal, abortController.signal]);
+      } else {
+        const callerSignal = options.signal;
+        if (callerSignal.aborted) {
+          abortController.abort(callerSignal.reason);
+        } else {
+          const onCallerAbort = () => abortController.abort(callerSignal.reason);
+          callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+          removeCallerAbortListener = () =>
+            callerSignal.removeEventListener("abort", onCallerAbort);
+        }
+      }
+    }
 
     // Resolve the init promise eagerly so we can capture which one this
     // writer uses for reactive invalidation below.
@@ -499,9 +520,11 @@ export class SessionOutputChannel {
       // from surfacing as unhandled.
       instance.wait().then(
         () => {
+          removeCallerAbortListener?.();
           span.end();
         },
         () => {
+          removeCallerAbortListener?.();
           if (this.#initPromise === writerInitPromise) {
             this.#initPromise = undefined;
           }
@@ -516,6 +539,7 @@ export class SessionOutputChannel {
         },
       };
     } catch (error) {
+      removeCallerAbortListener?.();
       if (error instanceof Error && error.name === "AbortError") {
         span.end();
         throw error;

@@ -233,8 +233,10 @@ export class SSEStreamSubscription implements StreamSubscription {
       // reset the timer naturally.
       stallTimeoutMs?: number;
       // HTTP statuses that should NOT be retried — fail the stream
-      // permanently. `404` (stream gone) and `410` (session closed)
-      // are sensible defaults; tune per-caller for other 4xx.
+      // permanently. Defaults cover the permanent client-error set:
+      // `400` (bad request), `404` (stream gone), `409` (conflict),
+      // `410` (session closed), `422` (unprocessable). Tune per-caller
+      // for other 4xx.
       nonRetryableStatuses?: readonly number[];
       // Optional fetch override. Used by transports that need to route
       // the SSE connect through a custom path (proxy, custom headers,
@@ -249,7 +251,9 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.retryJitter = options.retryJitter ?? 0.5;
     this.fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
     this.stallTimeoutMs = options.stallTimeoutMs ?? 0;
-    this.nonRetryableStatuses = new Set(options.nonRetryableStatuses ?? [404, 410]);
+    this.nonRetryableStatuses = new Set(
+      options.nonRetryableStatuses ?? [400, 404, 409, 410, 422]
+    );
   }
 
   /**

@@ -296,6 +296,34 @@ export const aiChat = chat
     },
     // #endregion
 
+    // #region onRecoveryBoot — emit a data-chat-recovery banner chunk
+    onRecoveryBoot: async ({
+      chatId,
+      previousRunId,
+      cause,
+      settledMessages,
+      inFlightUsers,
+      partialAssistant,
+      pendingToolCalls,
+      writer,
+    }) => {
+      logger.info("onRecoveryBoot fired", {
+        chatId,
+        previousRunId,
+        cause,
+        settledCount: settledMessages.length,
+        inFlightUserCount: inFlightUsers.length,
+        partialAssistantPresent: partialAssistant !== undefined,
+        pendingToolCallCount: pendingToolCalls.length,
+      });
+      writer.write({
+        type: "data-chat-recovery",
+        data: { cause, previousRunId, partialPresent: partialAssistant !== undefined },
+        transient: true,
+      });
+    },
+    // #endregion
+
     // #region onPreload — eagerly create chat/session DB rows before the first message
     onPreload: async ({ chatId, chatAccessToken, clientData }) => {
       if (!clientData) return;
