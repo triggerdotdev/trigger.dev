@@ -19,6 +19,10 @@ import { API_VERSIONS, getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
+import {
+  tenantContext,
+  tenantContextFromAuthEnvironment,
+} from "~/services/tenantContext.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
 // expected at API boundaries. Log them at `warn` so they stay in stdout
@@ -357,15 +361,19 @@ export function createLoaderApiRoute<
 
       const apiVersion = getApiVersion(request);
 
-      const result = await handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        authentication: authenticationResult,
-        request,
-        resource,
-        apiVersion,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            authentication: authenticationResult,
+            request,
+            resource,
+            apiVersion,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {
@@ -903,15 +911,19 @@ export function createActionApiRoute<
         );
       }
 
-      const result = await handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        body: parsedBody,
-        authentication: authenticationResult,
-        request,
-        resource,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            body: parsedBody,
+            authentication: authenticationResult,
+            request,
+            resource,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {

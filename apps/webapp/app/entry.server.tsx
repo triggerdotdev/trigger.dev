@@ -1,6 +1,8 @@
 import { createReadableStreamFromReadable, type EntryContext } from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
+import * as Sentry from "@sentry/remix";
 import { wrapHandleErrorWithSentry } from "@sentry/remix";
+import { addTenantContextToEvent } from "~/utils/sentryTenantContext.server";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
@@ -289,9 +291,14 @@ process.on("uncaughtException", (error, origin) => {
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 
+if (process.env.SENTRY_DSN) {
+  Sentry.addEventProcessor(addTenantContextToEvent);
+}
+
 export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
+export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 
