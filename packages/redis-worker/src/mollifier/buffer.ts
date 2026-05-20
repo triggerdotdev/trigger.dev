@@ -27,6 +27,21 @@ export type SnapshotPatch =
 
 export type MutateSnapshotResult = "applied_to_snapshot" | "not_found" | "busy";
 
+export type AcceptResult =
+  | { kind: "accepted" }
+  | { kind: "duplicate_run_id" }
+  | { kind: "duplicate_idempotency"; existingRunId: string };
+
+export type IdempotencyLookupInput = {
+  envId: string;
+  taskIdentifier: string;
+  idempotencyKey: string;
+};
+
+function makeIdempotencyLookupKey(input: IdempotencyLookupInput): string {
+  return `mollifier:idempotency:${input.envId}:${input.taskIdentifier}:${input.idempotencyKey}`;
+}
+
 export class MollifierBuffer {
   private readonly redis: Redis;
   private readonly entryTtlSeconds: number;
@@ -54,15 +69,27 @@ export class MollifierBuffer {
     this.#registerCommands();
   }
 
-  // Returns true if the entry was newly written; false if a duplicate runId
-  // was already buffered (idempotent no-op). Callers can use the boolean to
-  // record a duplicate-accept metric without affecting buffer state.
+  // Three outcomes:
+  //   - { kind: "accepted" } — entry was newly written.
+  //   - { kind: "duplicate_run_id" } — runId was already buffered (idempotent
+  //     no-op, same semantic as the previous boolean-false return).
+  //   - { kind: "duplicate_idempotency", existingRunId } — the (env, task,
+  //     idempotencyKey) tuple was already bound to another buffered run.
+  //     The Lua's atomic SETNX is the race-winner; the second caller gets
+  //     the winner's runId so it can return that as the trigger response.
   async accept(input: {
     runId: string;
     envId: string;
     orgId: string;
     payload: string;
-  }): Promise<boolean> {
+    // Optional idempotency-key triple. When all three are present we
+    // SETNX a Redis lookup at `mollifier:idempotency:{env}:{task}:{key}`
+    // pointing at the runId so trigger-time dedup during the buffered
+    // window resolves the same way PG's unique constraint resolves it
+    // post-materialisation (Q5).
+    idempotencyKey?: string;
+    taskIdentifier?: string;
+  }): Promise<AcceptResult> {
     const entryKey = `mollifier:entries:${input.runId}`;
     const queueKey = `mollifier:queue:${input.envId}`;
     const orgsKey = "mollifier:orgs";
@@ -75,6 +102,14 @@ export class MollifierBuffer {
     // listing helper (Phase E) can read a stable per-run timestamp
     // without re-fetching the score.
     const createdAtMicros = nowMs * 1000;
+    const idempotencyLookupKey =
+      input.idempotencyKey && input.taskIdentifier
+        ? makeIdempotencyLookupKey({
+            envId: input.envId,
+            taskIdentifier: input.taskIdentifier,
+            idempotencyKey: input.idempotencyKey,
+          })
+        : "";
     const result = await this.redis.acceptMollifierEntry(
       entryKey,
       queueKey,
@@ -87,8 +122,15 @@ export class MollifierBuffer {
       String(createdAtMicros),
       String(this.entryTtlSeconds),
       "mollifier:org-envs:",
+      idempotencyLookupKey,
     );
-    return result === 1;
+    // Lua returns 1 (accepted), 0 (duplicate runId), or a string runId
+    // (duplicate idempotency — value is the existing winner's runId).
+    if (typeof result === "string" && result.length > 0) {
+      return { kind: "duplicate_idempotency", existingRunId: result };
+    }
+    if (result === 1) return { kind: "accepted" };
+    return { kind: "duplicate_run_id" };
   }
 
   async pop(envId: string): Promise<BufferEntry | null> {
@@ -194,10 +236,41 @@ export class MollifierBuffer {
     throw new Error(`MollifierBuffer.mutateSnapshot: unexpected Lua return value: ${result}`);
   }
 
+  // Resolve a buffered run by (env, task, idempotencyKey) tuple. Used by
+  // `IdempotencyKeyConcern.handleTriggerRequest` after the PG check
+  // misses — same key may belong to a buffered run waiting to drain. The
+  // lookup self-heals: if the lookup points at an entry hash that's
+  // expired, we DEL the lookup and report a miss.
+  async lookupIdempotency(input: IdempotencyLookupInput): Promise<string | null> {
+    const lookupKey = makeIdempotencyLookupKey(input);
+    const runId = await this.redis.get(lookupKey);
+    if (!runId) return null;
+    const entry = await this.getEntry(runId);
+    if (!entry) {
+      await this.redis.del(lookupKey);
+      return null;
+    }
+    return runId;
+  }
+
+  // Clear the idempotency binding from a buffered run. Used by
+  // `ResetIdempotencyKeyService` alongside the existing PG-side
+  // `updateMany`. Returns the runId that was cleared, or null if no
+  // buffered run held this key.
+  async resetIdempotency(input: IdempotencyLookupInput): Promise<{ clearedRunId: string | null }> {
+    const lookupKey = makeIdempotencyLookupKey(input);
+    const clearedRunId = (await this.redis.resetMollifierIdempotency(
+      lookupKey,
+      "mollifier:entries:",
+    )) as string;
+    return { clearedRunId: clearedRunId.length > 0 ? clearedRunId : null };
+  }
+
   // Marks the entry as materialised (PG row written) and resets its TTL to
   // the grace window. Entry hash persists past ack as a read-fallback
   // safety net for the brief PG replica-lag window between drainer-side
-  // write and reader-side visibility (Q1 D2).
+  // write and reader-side visibility (Q1 D2). Also clears the associated
+  // idempotency lookup if one was set on accept (Q5).
   async ack(runId: string): Promise<void> {
     await this.redis.ackMollifierEntry(
       `mollifier:entries:${runId}`,
@@ -266,12 +339,26 @@ export class MollifierBuffer {
         local createdAtMicros = ARGV[6]
         local ttlSeconds = tonumber(ARGV[7])
         local orgEnvsPrefix = ARGV[8]
+        local idempotencyLookupKey = ARGV[9] or ''
 
         -- Idempotent: refuse if an entry for this runId already exists in any
         -- state. Caller-side dedup is also enforced via API idempotency keys,
         -- but the buffer must not double-enqueue if a caller retries.
         if redis.call('EXISTS', entryKey) == 1 then
           return 0
+        end
+
+        -- Idempotency-key dedup (Q5). If the caller passed a lookup key
+        -- and it's already bound to another buffered run, return the
+        -- winner's runId so the loser's API response can echo it as a
+        -- cached hit. Otherwise SET the lookup with the same TTL as the
+        -- entry hash; the drainer ack clears it explicitly.
+        if idempotencyLookupKey ~= '' then
+          local existing = redis.call('GET', idempotencyLookupKey)
+          if existing then
+            return existing
+          end
+          redis.call('SET', idempotencyLookupKey, runId, 'EX', ttlSeconds)
         end
 
         redis.call('HSET', entryKey,
@@ -282,7 +369,8 @@ export class MollifierBuffer {
           'status', 'QUEUED',
           'attempts', '0',
           'createdAt', createdAt,
-          'createdAtMicros', createdAtMicros)
+          'createdAtMicros', createdAtMicros,
+          'idempotencyLookupKey', idempotencyLookupKey)
         redis.call('EXPIRE', entryKey, ttlSeconds)
         -- ZSET keyed by createdAtMicros: ZPOPMIN drains oldest-first
         -- (FIFO); listing pagination uses ZREVRANGEBYSCORE with a
@@ -396,6 +484,44 @@ export class MollifierBuffer {
       `,
     });
 
+    this.redis.defineCommand("resetMollifierIdempotency", {
+      numberOfKeys: 1,
+      lua: `
+        local lookupKey = KEYS[1]
+        local entryPrefix = ARGV[1]
+
+        local runId = redis.call('GET', lookupKey)
+        if not runId then
+          return ''
+        end
+
+        local entryKey = entryPrefix .. runId
+        if redis.call('EXISTS', entryKey) == 0 then
+          -- Stale lookup. Lazy cleanup.
+          redis.call('DEL', lookupKey)
+          return ''
+        end
+
+        -- Clear the idempotency fields on the snapshot payload so the
+        -- drainer's eventual engine.trigger call inserts a PG row
+        -- without the key set.
+        local payloadJson = redis.call('HGET', entryKey, 'payload')
+        if payloadJson then
+          local ok, payload = pcall(cjson.decode, payloadJson)
+          if ok then
+            payload.idempotencyKey = cjson.null
+            payload.idempotencyKeyExpiresAt = cjson.null
+            redis.call('HSET', entryKey, 'payload', cjson.encode(payload))
+          end
+        end
+        -- Clear the denormalised lookup pointer on the hash so a later
+        -- ack doesn't try to DEL a key that's already gone.
+        redis.call('HSET', entryKey, 'idempotencyLookupKey', '')
+        redis.call('DEL', lookupKey)
+        return runId
+      `,
+    });
+
     this.redis.defineCommand("mutateMollifierSnapshot", {
       numberOfKeys: 1,
       lua: `
@@ -467,6 +593,14 @@ export class MollifierBuffer {
           return 0
         end
 
+        -- If the entry was accepted with an idempotency key, the lookup
+        -- string was stored on the hash at accept time. Clear it now —
+        -- PG becomes canonical for the key post-materialisation (Q5).
+        local lookupKey = redis.call('HGET', entryKey, 'idempotencyLookupKey')
+        if lookupKey and lookupKey ~= '' then
+          redis.call('DEL', lookupKey)
+        end
+
         redis.call('HSET', entryKey, 'materialised', 'true')
         redis.call('EXPIRE', entryKey, graceTtlSeconds)
         return 1
@@ -529,8 +663,9 @@ declare module "@internal/redis" {
       createdAtMicros: string,
       ttlSeconds: string,
       orgEnvsPrefix: string,
-      callback?: Callback<number>,
-    ): Result<number, Context>;
+      idempotencyLookupKey: string,
+      callback?: Callback<number | string>,
+    ): Result<number | string, Context>;
     popAndMarkDraining(
       queueKey: string,
       orgsKey: string,
@@ -550,6 +685,11 @@ declare module "@internal/redis" {
     mutateMollifierSnapshot(
       entryKey: string,
       patchJson: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    resetMollifierIdempotency(
+      lookupKey: string,
+      entryPrefix: string,
       callback?: Callback<string>,
     ): Result<string, Context>;
     ackMollifierEntry(

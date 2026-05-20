@@ -56,6 +56,11 @@ export const BufferEntrySchema = z.object({
   // reads (retrieve, trace, etc.) still resolve while PG replica lag
   // settles. Absent on pre-ack entries.
   materialised: stringToBool.default("false"),
+  // Denormalised pointer to the Redis idempotency lookup key (set when
+  // the run was accepted with an idempotency key, empty otherwise). The
+  // ack Lua reads this to DEL the lookup atomically with marking the
+  // entry materialised (Q5).
+  idempotencyLookupKey: z.string().optional().default(""),
   lastError: stringToError.optional(),
 });
 

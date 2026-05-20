@@ -857,8 +857,8 @@ describe("MollifierBuffer.accept idempotency", () => {
           payload: serialiseSnapshot({ first: false }),
         });
 
-        expect(first).toBe(true);
-        expect(second).toBe(false);
+        expect(first).toEqual({ kind: "accepted" });
+        expect(second).toEqual({ kind: "duplicate_run_id" });
 
         // First payload preserved; second was a no-op.
         const stored = await buffer.getEntry("run_dup");
@@ -899,7 +899,7 @@ describe("MollifierBuffer.accept idempotency", () => {
         expect(stored!.status).toBe("DRAINING");
 
         const dup = await buffer.accept({ runId: "run_dr", envId: "env_a", orgId: "org_1", payload: "{}" });
-        expect(dup).toBe(false);
+        expect(dup).toEqual({ kind: "duplicate_run_id" });
 
         const afterDup = await buffer.getEntry("run_dr");
         expect(afterDup!.status).toBe("DRAINING"); // unchanged
@@ -931,7 +931,7 @@ describe("MollifierBuffer.accept idempotency", () => {
         expect(stored!.status).toBe("FAILED");
 
         const dup = await buffer.accept({ runId: "run_fl", envId: "env_a", orgId: "org_1", payload: "{}" });
-        expect(dup).toBe(false);
+        expect(dup).toEqual({ kind: "duplicate_run_id" });
 
         const afterDup = await buffer.getEntry("run_fl");
         expect(afterDup!.status).toBe("FAILED"); // unchanged
@@ -979,8 +979,8 @@ describe("MollifierBuffer.accept idempotency", () => {
           payload: "{}",
         });
 
-        expect(first).toBe(true);
-        expect(reAccept).toBe(false);
+        expect(first).toEqual({ kind: "accepted" });
+        expect(reAccept).toEqual({ kind: "duplicate_run_id" });
 
         const stored = await buffer.getEntry("run_x");
         expect(stored!.materialised).toBe(true);
@@ -1071,6 +1071,302 @@ describe("MollifierBuffer envs set lifecycle", () => {
         await buffer.requeue("r1");
         // requeue must put env_a back so the drainer notices the retry.
         expect(await buffer.listEnvsForOrg("org_1")).toContain("env_a");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
+describe("MollifierBuffer idempotency lookup", () => {
+  redisTest(
+    "accept with idempotencyKey + taskIdentifier writes the lookup with matching TTL",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const result = await buffer.accept({
+          runId: "ri1",
+          envId: "env_i",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "ikey-1",
+          taskIdentifier: "my-task",
+        });
+        expect(result).toEqual({ kind: "accepted" });
+
+        const lookupKey = "mollifier:idempotency:env_i:my-task:ikey-1";
+        const stored = await buffer["redis"].get(lookupKey);
+        expect(stored).toBe("ri1");
+        const ttl = await buffer["redis"].ttl(lookupKey);
+        expect(ttl).toBeGreaterThan(0);
+        expect(ttl).toBeLessThanOrEqual(600);
+
+        const entry = await buffer.getEntry("ri1");
+        expect(entry!.idempotencyLookupKey).toBe(lookupKey);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "second accept with same (env, task, idempotencyKey) returns duplicate_idempotency with the winner's runId",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const first = await buffer.accept({
+          runId: "ri-a",
+          envId: "env_i",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "ikey-2",
+          taskIdentifier: "my-task",
+        });
+        const second = await buffer.accept({
+          runId: "ri-b",
+          envId: "env_i",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "ikey-2",
+          taskIdentifier: "my-task",
+        });
+
+        expect(first).toEqual({ kind: "accepted" });
+        expect(second).toEqual({
+          kind: "duplicate_idempotency",
+          existingRunId: "ri-a",
+        });
+
+        // The loser's runId entry was never created.
+        const loserEntry = await buffer.getEntry("ri-b");
+        expect(loserEntry).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "lookupIdempotency hits when the run is buffered",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "rl1",
+          envId: "env_i",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "k1",
+          taskIdentifier: "t",
+        });
+        const found = await buffer.lookupIdempotency({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "k1",
+        });
+        expect(found).toBe("rl1");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "lookupIdempotency returns null when no lookup is bound",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const found = await buffer.lookupIdempotency({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "absent",
+        });
+        expect(found).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "lookupIdempotency self-heals when the lookup points at an expired entry",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        // Plant a stale lookup pointing at a non-existent entry.
+        const lookupKey = "mollifier:idempotency:env_i:t:stale";
+        await buffer["redis"].set(lookupKey, "rl-stale", "EX", 600);
+        expect(await buffer["redis"].get(lookupKey)).toBe("rl-stale");
+
+        const found = await buffer.lookupIdempotency({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "stale",
+        });
+        expect(found).toBeNull();
+        // Self-healed.
+        expect(await buffer["redis"].get(lookupKey)).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "ack DELs the idempotency lookup along with marking materialised",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "ra1",
+          envId: "env_i",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "ka",
+          taskIdentifier: "t",
+        });
+        await buffer.pop("env_i");
+        await buffer.ack("ra1");
+
+        const lookupKey = "mollifier:idempotency:env_i:t:ka";
+        expect(await buffer["redis"].get(lookupKey)).toBeNull();
+        const entry = await buffer.getEntry("ra1");
+        expect(entry!.materialised).toBe(true);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "resetIdempotency clears snapshot fields + lookup; returns the runId",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "rr1",
+          envId: "env_i",
+          orgId: "org_1",
+          payload: serialiseSnapshot({
+            idempotencyKey: "kr",
+            idempotencyKeyExpiresAt: "2026-12-01T00:00:00Z",
+            other: "field",
+          }),
+          idempotencyKey: "kr",
+          taskIdentifier: "t",
+        });
+
+        const result = await buffer.resetIdempotency({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "kr",
+        });
+        expect(result.clearedRunId).toBe("rr1");
+
+        // Lookup is gone.
+        const lookupKey = "mollifier:idempotency:env_i:t:kr";
+        expect(await buffer["redis"].get(lookupKey)).toBeNull();
+
+        // Snapshot's idempotency fields are nulled, other fields kept.
+        const entry = await buffer.getEntry("rr1");
+        const payload = JSON.parse(entry!.payload) as {
+          idempotencyKey: unknown;
+          idempotencyKeyExpiresAt: unknown;
+          other: string;
+        };
+        expect(payload.idempotencyKey).toBeNull();
+        expect(payload.idempotencyKeyExpiresAt).toBeNull();
+        expect(payload.other).toBe("field");
+        expect(entry!.idempotencyLookupKey).toBe("");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "resetIdempotency returns null when nothing is bound",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const result = await buffer.resetIdempotency({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "absent",
+        });
+        expect(result.clearedRunId).toBeNull();
       } finally {
         await buffer.close();
       }
