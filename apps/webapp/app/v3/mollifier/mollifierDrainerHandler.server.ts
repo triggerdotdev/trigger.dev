@@ -45,6 +45,39 @@ export function createDrainerHandler(deps: {
           })
         : context.active();
 
+    // Cancel-wins-over-trigger (Q4 bifurcation). If a cancel API call
+    // landed on this entry while it was QUEUED, the snapshot carries
+    // `cancelledAt` + `cancelReason`. Skip the normal materialise path
+    // and write a CANCELED PG row directly. The existing runCancelled
+    // handler writes the TaskEvent.
+    const cancelledAtStr =
+      typeof input.payload.cancelledAt === "string" ? input.payload.cancelledAt : undefined;
+    if (cancelledAtStr) {
+      const cancelReason =
+        typeof input.payload.cancelReason === "string"
+          ? input.payload.cancelReason
+          : "Canceled by user";
+      await context.with(parentContext, async () => {
+        await startSpan(tracer, "mollifier.drained.cancelled", async (span) => {
+          span.setAttribute("mollifier.drained", true);
+          span.setAttribute("mollifier.dwell_ms", dwellMs);
+          span.setAttribute("mollifier.attempts", input.attempts);
+          span.setAttribute("mollifier.run_friendly_id", input.runId);
+          span.setAttribute("mollifier.cancel_bifurcation", true);
+          span.setAttribute("taskRunId", input.runId);
+          await deps.engine.createCancelledRun(
+            {
+              snapshot: input.payload as any,
+              cancelledAt: new Date(cancelledAtStr),
+              cancelReason,
+            },
+            deps.prisma,
+          );
+        });
+      });
+      return;
+    }
+
     await context.with(parentContext, async () => {
       await startSpan(tracer, "mollifier.drained", async (span) => {
         span.setAttribute("mollifier.drained", true);

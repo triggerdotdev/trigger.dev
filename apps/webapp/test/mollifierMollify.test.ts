@@ -8,8 +8,10 @@ vi.mock("~/db.server", () => ({
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 
-function fakeBuffer(): { buffer: MollifierBuffer; accept: ReturnType<typeof vi.fn> } {
-  const accept = vi.fn(async () => undefined);
+function fakeBuffer(
+  acceptResult: Awaited<ReturnType<MollifierBuffer["accept"]>> = { kind: "accepted" },
+): { buffer: MollifierBuffer; accept: ReturnType<typeof vi.fn> } {
+  const accept = vi.fn(async () => acceptResult);
   return {
     buffer: { accept } as unknown as MollifierBuffer,
     accept,
@@ -39,6 +41,8 @@ describe("mollifyTrigger", () => {
       envId: "env_a",
       orgId: "org_1",
       payload: expect.any(String),
+      idempotencyKey: undefined,
+      taskIdentifier: undefined,
     });
     expect(result.run.friendlyId).toBe("run_friendly_1");
     expect(result.error).toBeUndefined();
@@ -48,6 +52,26 @@ describe("mollifyTrigger", () => {
       message: expect.stringContaining("burst buffer"),
       docs: expect.stringContaining("trigger.dev/docs"),
     });
+  });
+
+  it("echoes the winner's runId with isCached=true on duplicate_idempotency", async () => {
+    const { buffer } = fakeBuffer({
+      kind: "duplicate_idempotency",
+      existingRunId: "run_winner",
+    });
+    const result = await mollifyTrigger({
+      runFriendlyId: "run_loser",
+      environmentId: "env_a",
+      organizationId: "org_1",
+      engineTriggerInput: { taskIdentifier: "t", payload: "{}" },
+      decision: { divert: true, reason: "per_env_rate", count: 1, threshold: 1 },
+      buffer,
+      idempotencyKey: "key",
+      taskIdentifier: "t",
+    });
+    expect(result.run.friendlyId).toBe("run_winner");
+    expect(result.isCached).toBe(true);
+    expect(result.notice).toBeUndefined();
   });
 
   it("snapshot is round-trippable: payload field is parseable JSON of engineTriggerInput", async () => {
