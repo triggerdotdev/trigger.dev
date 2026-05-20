@@ -1078,6 +1078,357 @@ describe("MollifierBuffer envs set lifecycle", () => {
   );
 });
 
+describe("MollifierBuffer.mutateSnapshot", () => {
+  redisTest(
+    "returns not_found when no entry exists for the runId",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const result = await buffer.mutateSnapshot("nope", {
+          type: "append_tags",
+          tags: ["x"],
+        });
+        expect(result).toBe("not_found");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "append_tags on QUEUED entry appends and dedupes",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r1",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: ["existing"] }),
+        });
+        const first = await buffer.mutateSnapshot("r1", {
+          type: "append_tags",
+          tags: ["existing", "new"],
+        });
+        expect(first).toBe("applied_to_snapshot");
+
+        const entry = await buffer.getEntry("r1");
+        const payload = JSON.parse(entry!.payload) as { tags: string[] };
+        expect(payload.tags).toEqual(["existing", "new"]);
+
+        // Second mutation appends without duplicating
+        const second = await buffer.mutateSnapshot("r1", {
+          type: "append_tags",
+          tags: ["new", "third"],
+        });
+        expect(second).toBe("applied_to_snapshot");
+        const e2 = await buffer.getEntry("r1");
+        const p2 = JSON.parse(e2!.payload) as { tags: string[] };
+        expect(p2.tags).toEqual(["existing", "new", "third"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "append_tags creates payload.tags when absent",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r2",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ taskId: "t" }),
+        });
+        const result = await buffer.mutateSnapshot("r2", {
+          type: "append_tags",
+          tags: ["a", "b"],
+        });
+        expect(result).toBe("applied_to_snapshot");
+        const entry = await buffer.getEntry("r2");
+        const payload = JSON.parse(entry!.payload) as { tags: string[] };
+        expect(payload.tags).toEqual(["a", "b"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "set_metadata replaces metadata + metadataType (last-write-wins)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r3",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ metadata: '{"v":1}', metadataType: "application/json" }),
+        });
+        const result = await buffer.mutateSnapshot("r3", {
+          type: "set_metadata",
+          metadata: '{"v":2}',
+          metadataType: "application/json",
+        });
+        expect(result).toBe("applied_to_snapshot");
+        const entry = await buffer.getEntry("r3");
+        const payload = JSON.parse(entry!.payload) as {
+          metadata: string;
+          metadataType: string;
+        };
+        expect(payload.metadata).toBe('{"v":2}');
+        expect(payload.metadataType).toBe("application/json");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "set_delay sets payload.delayUntil",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r4",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ taskId: "t" }),
+        });
+        const result = await buffer.mutateSnapshot("r4", {
+          type: "set_delay",
+          delayUntil: "2026-06-01T00:00:00.000Z",
+        });
+        expect(result).toBe("applied_to_snapshot");
+        const entry = await buffer.getEntry("r4");
+        const payload = JSON.parse(entry!.payload) as { delayUntil: string };
+        expect(payload.delayUntil).toBe("2026-06-01T00:00:00.000Z");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "mark_cancelled stamps cancelledAt + cancelReason",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r5",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ taskId: "t" }),
+        });
+        const result = await buffer.mutateSnapshot("r5", {
+          type: "mark_cancelled",
+          cancelledAt: "2026-05-19T12:00:00.000Z",
+          cancelReason: "user-initiated",
+        });
+        expect(result).toBe("applied_to_snapshot");
+        const entry = await buffer.getEntry("r5");
+        const payload = JSON.parse(entry!.payload) as {
+          cancelledAt: string;
+          cancelReason: string;
+        };
+        expect(payload.cancelledAt).toBe("2026-05-19T12:00:00.000Z");
+        expect(payload.cancelReason).toBe("user-initiated");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "returns busy when entry is DRAINING",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "rd",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: [] }),
+        });
+        await buffer.pop("env_m");
+        const result = await buffer.mutateSnapshot("rd", {
+          type: "append_tags",
+          tags: ["x"],
+        });
+        expect(result).toBe("busy");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "returns busy when entry is FAILED",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "rf",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: [] }),
+        });
+        await buffer.pop("env_m");
+        await buffer.fail("rf", { code: "X", message: "boom" });
+        const result = await buffer.mutateSnapshot("rf", {
+          type: "append_tags",
+          tags: ["x"],
+        });
+        expect(result).toBe("busy");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "returns busy when entry is materialised (post-ack grace window)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "rm",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: [] }),
+        });
+        await buffer.pop("env_m");
+        await buffer.ack("rm");
+        const result = await buffer.mutateSnapshot("rm", {
+          type: "append_tags",
+          tags: ["x"],
+        });
+        expect(result).toBe("busy");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "Lua atomicity serialises concurrent mutations per-runId",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "rcc",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: [] }),
+        });
+
+        const tagsToAdd = Array.from({ length: 50 }, (_, i) => `t${i}`);
+        await Promise.all(
+          tagsToAdd.map((t) => buffer.mutateSnapshot("rcc", { type: "append_tags", tags: [t] })),
+        );
+
+        const entry = await buffer.getEntry("rcc");
+        const payload = JSON.parse(entry!.payload) as { tags: string[] };
+        expect(payload.tags.sort()).toEqual(tagsToAdd.sort());
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
 describe("MollifierBuffer ZSET storage", () => {
   redisTest(
     "queue key is a ZSET scored by entry's createdAtMicros",

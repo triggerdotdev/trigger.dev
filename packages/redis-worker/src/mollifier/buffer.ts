@@ -19,6 +19,14 @@ export type MollifierBufferOptions = {
 // have a safety net while PG replica lag settles. Q1 D2.
 const ACK_GRACE_TTL_SECONDS = 30;
 
+export type SnapshotPatch =
+  | { type: "append_tags"; tags: string[] }
+  | { type: "set_metadata"; metadata: string; metadataType: string }
+  | { type: "set_delay"; delayUntil: string }
+  | { type: "mark_cancelled"; cancelledAt: string; cancelReason?: string };
+
+export type MutateSnapshotResult = "applied_to_snapshot" | "not_found" | "busy";
+
 export class MollifierBuffer {
   private readonly redis: Redis;
   private readonly entryTtlSeconds: number;
@@ -161,6 +169,29 @@ export class MollifierBuffer {
       if (entry) entries.push(entry);
     }
     return entries;
+  }
+
+  // Atomic snapshot mutation. Used by customer-mutation API endpoints
+  // (tags, metadata-put, reschedule, cancel) when the run is still in
+  // the buffer. Three outcomes:
+  //   - "applied_to_snapshot": entry was QUEUED + not materialised; the
+  //     drainer will read the patched payload on its next pop.
+  //   - "not_found": no entry hash exists for this runId.
+  //   - "busy": entry is DRAINING / FAILED / materialised. The API
+  //     wait-and-bounces through PG (Q3 design).
+  async mutateSnapshot(runId: string, patch: SnapshotPatch): Promise<MutateSnapshotResult> {
+    const result = (await this.redis.mutateMollifierSnapshot(
+      `mollifier:entries:${runId}`,
+      JSON.stringify(patch),
+    )) as string;
+    if (
+      result === "applied_to_snapshot" ||
+      result === "not_found" ||
+      result === "busy"
+    ) {
+      return result;
+    }
+    throw new Error(`MollifierBuffer.mutateSnapshot: unexpected Lua return value: ${result}`);
   }
 
   // Marks the entry as materialised (PG row written) and resets its TTL to
@@ -365,6 +396,65 @@ export class MollifierBuffer {
       `,
     });
 
+    this.redis.defineCommand("mutateMollifierSnapshot", {
+      numberOfKeys: 1,
+      lua: `
+        local entryKey = KEYS[1]
+        local patchJson = ARGV[1]
+
+        if redis.call('EXISTS', entryKey) == 0 then
+          return 'not_found'
+        end
+
+        local status = redis.call('HGET', entryKey, 'status')
+        local materialised = redis.call('HGET', entryKey, 'materialised')
+        if status ~= 'QUEUED' or materialised == 'true' then
+          return 'busy'
+        end
+
+        local payloadJson = redis.call('HGET', entryKey, 'payload')
+        local ok, payload = pcall(cjson.decode, payloadJson)
+        if not ok then return 'busy' end
+
+        local patch = cjson.decode(patchJson)
+
+        if patch.type == 'append_tags' then
+          -- cjson decode of an absent or empty-array field gives nil or
+          -- an empty table; we rebuild as a dense array. Existing tags
+          -- are preserved; new tags are appended only if not present.
+          local existing = payload.tags or {}
+          local seen = {}
+          local merged = {}
+          for _, t in ipairs(existing) do
+            if not seen[t] then
+              seen[t] = true
+              table.insert(merged, t)
+            end
+          end
+          for _, t in ipairs(patch.tags or {}) do
+            if not seen[t] then
+              seen[t] = true
+              table.insert(merged, t)
+            end
+          end
+          payload.tags = merged
+        elseif patch.type == 'set_metadata' then
+          payload.metadata = patch.metadata
+          payload.metadataType = patch.metadataType
+        elseif patch.type == 'set_delay' then
+          payload.delayUntil = patch.delayUntil
+        elseif patch.type == 'mark_cancelled' then
+          payload.cancelledAt = patch.cancelledAt
+          payload.cancelReason = patch.cancelReason
+        else
+          return 'busy'
+        end
+
+        redis.call('HSET', entryKey, 'payload', cjson.encode(payload))
+        return 'applied_to_snapshot'
+      `,
+    });
+
     this.redis.defineCommand("ackMollifierEntry", {
       numberOfKeys: 1,
       lua: `
@@ -457,6 +547,11 @@ declare module "@internal/redis" {
       orgEnvsPrefix: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
+    mutateMollifierSnapshot(
+      entryKey: string,
+      patchJson: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
     ackMollifierEntry(
       entryKey: string,
       graceTtlSeconds: string,
