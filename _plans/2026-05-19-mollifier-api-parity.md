@@ -14,7 +14,8 @@
 | Design docs + parity script | ✅ Done | `c8d036aa0` | 6 plan docs + `scripts/mollifier-api-parity.sh` |
 | **Phase A — read endpoints** | ✅ **Done** | `6b8a54e43`, `e21dbee5e` | See "Phase A patterns established" below |
 | **Phase B1 — ZSET migration** | ✅ **Done** | `709d2f5af` | Score = `createdAtMicros`; requeue keeps original score (createdAt immutable across retries) — see decision below |
-| Phase B2-B6 — drainer ack + mutateSnapshot + helpers | ⏳ Next | — | Drainer ack semantics, mutateSnapshot Lua, SyntheticRun extension, mutateWithFallback, idempotency |
+| **Phase B2 — drainer ack grace TTL** | ✅ **Done** | `22dbbc90f` | `ack` → `HSET materialised=true; EXPIRE 30s`. Accept refuses materialised entries (defense-in-depth) |
+| Phase B3-B6 — mutateSnapshot + helpers | ⏳ Next | — | mutateSnapshot Lua, SyntheticRun extension, mutateWithFallback, idempotency |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
