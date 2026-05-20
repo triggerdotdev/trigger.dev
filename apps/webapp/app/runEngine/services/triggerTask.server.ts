@@ -445,6 +445,10 @@ export class RunEngineTriggerTaskService {
                 engineTriggerInput,
                 decision: mollifierOutcome.decision,
                 buffer: mollifierBuffer,
+                // Idempotency-key triple wires the buffer's SETNX into
+                // the trigger-time dedup symmetric with PG (Q5).
+                idempotencyKey,
+                taskIdentifier: taskId,
               });
 
               logger.info("mollifier.buffered", {

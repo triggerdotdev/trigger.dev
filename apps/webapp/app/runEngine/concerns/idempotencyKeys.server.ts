@@ -4,6 +4,8 @@ import { logger } from "~/services/logger.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import type { RunEngine } from "~/v3/runEngine.server";
 import { shouldIdempotencyKeyBeCleared } from "~/v3/taskStatus";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 export type IdempotencyKeyConcernResult =
@@ -16,6 +18,47 @@ export class IdempotencyKeyConcern {
     private readonly engine: RunEngine,
     private readonly traceEventConcern: TraceEventConcern
   ) {}
+
+  // Q5 buffer-side dedup. Resolves an idempotency key against the
+  // mollifier buffer when PG missed. Returns a SyntheticRun cast to
+  // TaskRun so the route handler (which only reads run.id / run.friendlyId)
+  // can echo the buffered run's friendlyId as a cached hit. Returns null
+  // for any failure or miss — buffer outages must not 500 the trigger
+  // hot path; we fail open to "no cache hit" and let the request through.
+  private async findBufferedRunWithIdempotency(
+    environmentId: string,
+    organizationId: string,
+    taskIdentifier: string,
+    idempotencyKey: string,
+  ): Promise<TaskRun | null> {
+    const buffer = getMollifierBuffer();
+    if (!buffer) return null;
+
+    let bufferedRunId: string | null;
+    try {
+      bufferedRunId = await buffer.lookupIdempotency({
+        envId: environmentId,
+        taskIdentifier,
+        idempotencyKey,
+      });
+    } catch (err) {
+      logger.error("IdempotencyKeyConcern: buffer lookupIdempotency failed", {
+        environmentId,
+        taskIdentifier,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+    if (!bufferedRunId) return null;
+
+    const synthetic = await findRunByIdWithMollifierFallback({
+      runId: bufferedRunId,
+      environmentId,
+      organizationId,
+    });
+    if (!synthetic) return null;
+    return synthetic as unknown as TaskRun;
+  }
 
   async handleTriggerRequest(
     request: TriggerTaskRequest,
@@ -43,6 +86,25 @@ export class IdempotencyKeyConcern {
           },
         })
       : undefined;
+
+    // Buffer fallback per Q5 mollifier-idempotency design. PG missed —
+    // the same key may belong to a buffered run that hasn't materialised
+    // yet. Skipped when `resumeParentOnCompletion` is set: blocking a
+    // parent on a buffered child via waitpoint requires a PG row that
+    // doesn't exist yet. The follow-up accept's SETNX in mollifyTrigger
+    // still dedupes the trigger itself; the waitpoint just doesn't fire
+    // for this rare race window.
+    if (!existingRun && idempotencyKey && !request.body.options?.resumeParentOnCompletion) {
+      const buffered = await this.findBufferedRunWithIdempotency(
+        request.environment.id,
+        request.environment.organizationId,
+        request.taskId,
+        idempotencyKey,
+      );
+      if (buffered) {
+        return { isCached: true, run: buffered };
+      }
+    }
 
     if (existingRun) {
       // The idempotency key has expired
