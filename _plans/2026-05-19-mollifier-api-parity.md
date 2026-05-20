@@ -13,7 +13,8 @@
 | Merge of origin/main | ✅ Done | `8c01cf0eb` | 8 conflicts resolved; phase-3 versions kept; picked up one doc comment from main about shadow-mode counter writes |
 | Design docs + parity script | ✅ Done | `c8d036aa0` | 6 plan docs + `scripts/mollifier-api-parity.sh` |
 | **Phase A — read endpoints** | ✅ **Done** | `6b8a54e43`, `e21dbee5e` | See "Phase A patterns established" below |
-| Phase B — shared infrastructure | ⏳ Next | — | ZSET migration, drainer ack semantics, mutateSnapshot Lua, helpers |
+| **Phase B1 — ZSET migration** | ✅ **Done** | `709d2f5af` | Score = `createdAtMicros`; requeue keeps original score (createdAt immutable across retries) — see decision below |
+| Phase B2-B6 — drainer ack + mutateSnapshot + helpers | ⏳ Next | — | Drainer ack semantics, mutateSnapshot Lua, SyntheticRun extension, mutateWithFallback, idempotency |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
@@ -72,13 +73,17 @@ If Phase B/C endpoints need additional fields from the buffer snapshot, extend `
 
 Q2 (replay) explicitly calls out the synthesiser extension — when implementing Phase C5 (replay), extend `SyntheticRun` with the full set of fields `ReplayTaskRunService` reads.
 
-## Phase B — shared infrastructure (NEXT)
+## Phase B — shared infrastructure (in progress)
 
 Start here. Implements the building blocks that unblock Phase C. Detailed in [`2026-05-19-mollifier-listing-design.md`](2026-05-19-mollifier-listing-design.md) (Q1), [`2026-05-19-mollifier-mutation-race-design.md`](2026-05-19-mollifier-mutation-race-design.md) (Q3), and [`2026-05-19-mollifier-idempotency-design.md`](2026-05-19-mollifier-idempotency-design.md) (Q5).
 
+### B1 — Decision recorded (commit `709d2f5af`)
+
+Q1 underspecified the requeue case. Resolution: **ZSET score == `createdAtMicros`, immutable across retries.** Requeue does not bump the score, so a retried entry continues to pop next (oldest first). The drainer's `maxAttempts` bounds the retry loop. This keeps the listing-pagination invariant (score == createdAt) clean — no need for a separate "lastQueuedMicros" field. The existing "requeue lands at back" test was inverted to assert "requeue lands at front" — that's the correct behavior under this invariant.
+
 Order:
 
-- **B1.** ZSET migration in `packages/redis-worker/src/mollifier/buffer.ts`. `acceptMollifierEntry` Lua → `ZADD queue createdAtMicros runId`. `popAndMarkDraining` Lua → `ZPOPMIN`. `requeueMollifierEntry` Lua → `ZADD`. Listing read goes via `ZREVRANGEBYSCORE`. **Forward-compat:** ship drainer-side changes first, API-side second.
+- **B1.** ✅ Done (`709d2f5af`). ZSET migration in `packages/redis-worker/src/mollifier/buffer.ts`. `acceptMollifierEntry` Lua → `ZADD queue createdAtMicros runId`. `popAndMarkDraining` Lua → `ZPOPMIN`. `requeueMollifierEntry` Lua → `ZADD` reusing the original createdAtMicros. Listing read via `ZREVRANGE`. **Forward-compat note for rollout:** new entries carry the `createdAtMicros` hash field; pre-deploy in-flight entries lack it and would fail schema parse — handle via Phase F4 forward-compat tests when deploying.
 - **B2.** Drainer ack semantics — replace `DEL entry` with atomic `HSET materialised=true; EXPIRE +30s`. Touches `MollifierBuffer.ack` + the underlying Lua.
 - **B3.** `MollifierBuffer.mutateSnapshot(runId, patch)` — atomic Lua. Three return codes: `applied_to_snapshot`, `not_found`, `busy`. Patch types: `append_tags`, `set_metadata`, `set_delay`, `mark_cancelled`. Idempotency-key patch comes in Q5 work.
 - **B4.** Snapshot-to-TaskRun synthesiser extension — extend `SyntheticRun` in `readFallback.server.ts` to include the fields `ReplayTaskRunService` reads (see Q2 doc table). The Phase C5 work depends on this.
