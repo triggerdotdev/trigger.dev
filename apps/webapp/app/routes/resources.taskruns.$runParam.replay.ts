@@ -11,6 +11,9 @@ import { requireUser } from "~/services/session.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import type { TaskRun } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
@@ -174,7 +177,7 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const taskRun = await prisma.taskRun.findFirst({
+    const pgRun = await prisma.taskRun.findFirst({
       where: {
         friendlyId: runParam,
       },
@@ -191,6 +194,45 @@ export const action: ActionFunction = async ({ request, params }) => {
         },
       },
     });
+
+    // Mollifier read-fallback (Q2): if the original isn't in PG yet,
+    // synthesise a TaskRun from the buffered snapshot. The B4-extended
+    // SyntheticRun carries every field ReplayTaskRunService reads. We
+    // also need projectSlug + orgSlug + envSlug for the redirect path,
+    // so look those up via the snapshot's runtimeEnvironmentId.
+    let taskRun:
+      | (TaskRun & {
+          project: { slug: string; organization: { slug: string } };
+          runtimeEnvironment: { slug: string };
+        })
+      | null = pgRun ?? null;
+    if (!taskRun) {
+      const buffer = getMollifierBuffer();
+      const entry = buffer ? await buffer.getEntry(runParam) : null;
+      if (entry) {
+        const synthetic = await findRunByIdWithMollifierFallback({
+          runId: runParam,
+          environmentId: entry.envId,
+          organizationId: entry.orgId,
+        });
+        if (synthetic) {
+          const envRow = await prisma.runtimeEnvironment.findFirst({
+            where: { id: entry.envId },
+            select: {
+              slug: true,
+              project: { select: { slug: true, organization: { select: { slug: true } } } },
+            },
+          });
+          if (envRow) {
+            taskRun = {
+              ...(synthetic as unknown as TaskRun),
+              project: { slug: envRow.project.slug, organization: { slug: envRow.project.organization.slug } },
+              runtimeEnvironment: { slug: envRow.slug },
+            };
+          }
+        }
+      }
+    }
 
     if (!taskRun) {
       return redirectWithErrorMessage(submission.value.failedRedirect, request, "Run not found");
