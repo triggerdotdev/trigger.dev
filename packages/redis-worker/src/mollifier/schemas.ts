@@ -27,6 +27,10 @@ const stringToDate = z.string().transform((v, ctx) => {
   return d;
 });
 
+const stringToBool = z
+  .union([z.literal("true"), z.literal("false")])
+  .transform((v) => v === "true");
+
 const stringToError = z.string().transform((v, ctx) => {
   try {
     return BufferEntryError.parse(JSON.parse(v));
@@ -47,6 +51,11 @@ export const BufferEntrySchema = z.object({
   // Microsecond epoch matching the ZSET queue score. Stable across
   // requeues — the score never moves once set at accept time.
   createdAtMicros: stringToInt,
+  // Drainer-ack flag: `true` once the drainer has materialised this run
+  // into PG. The hash persists for a short grace TTL after ack so direct
+  // reads (retrieve, trace, etc.) still resolve while PG replica lag
+  // settles. Absent on pre-ack entries.
+  materialised: stringToBool.default("false"),
   lastError: stringToError.optional(),
 });
 

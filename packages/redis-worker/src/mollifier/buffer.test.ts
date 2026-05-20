@@ -172,7 +172,41 @@ describe("MollifierBuffer.pop", () => {
 });
 
 describe("MollifierBuffer.ack", () => {
-  redisTest("ack deletes the entry", { timeout: 20_000 }, async ({ redisContainer }) => {
+  redisTest(
+    "ack marks entry materialised and applies the grace TTL — entry persists as a read-fallback safety net",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_x", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        await buffer.ack("run_x");
+
+        const after = await buffer.getEntry("run_x");
+        expect(after).not.toBeNull();
+        expect(after!.materialised).toBe(true);
+
+        // TTL was reset to the grace window — should be at most 30s, well
+        // under the original 600s entryTtlSeconds.
+        const ttl = await buffer.getEntryTtlSeconds("run_x");
+        expect(ttl).toBeGreaterThan(0);
+        expect(ttl).toBeLessThanOrEqual(30);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest("ack on missing entry is a no-op", { timeout: 20_000 }, async ({ redisContainer }) => {
     const buffer = new MollifierBuffer({
       redisOptions: {
         host: redisContainer.getHost(),
@@ -184,12 +218,12 @@ describe("MollifierBuffer.ack", () => {
     });
 
     try {
-      await buffer.accept({ runId: "run_x", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.pop("env_a");
-      await buffer.ack("run_x");
-
-      const after = await buffer.getEntry("run_x");
-      expect(after).toBeNull();
+      await buffer.ack("run_ghost");
+      const stored = await buffer.getEntry("run_ghost");
+      expect(stored).toBeNull();
+      // Critical: no partial hash created.
+      const raw = await buffer["redis"].hgetall("mollifier:entries:run_ghost");
+      expect(Object.keys(raw)).toHaveLength(0);
     } finally {
       await buffer.close();
     }
@@ -909,9 +943,15 @@ describe("MollifierBuffer.accept idempotency", () => {
   );
 
   redisTest(
-    "re-accept after ack works (terminal entry can be re-accepted)",
+    "accept refused while a previously-acked (materialised) entry is still inside its grace TTL",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
+      // After ack, the entry hash persists for the grace window as a
+      // read-fallback safety net (Q1 D2). RunIds are server-generated and
+      // never collide in practice, but defense-in-depth: accept refuses
+      // while *any* entry exists for the runId, including materialised
+      // ones. The entry hash's TTL is now ~30s instead of the original
+      // entryTtlSeconds.
       const buffer = new MollifierBuffer({
         redisOptions: {
           host: redisContainer.getHost(),
@@ -932,7 +972,6 @@ describe("MollifierBuffer.accept idempotency", () => {
         await buffer.pop("env_a");
         await buffer.ack("run_x");
 
-        // Entry is gone — re-accept should succeed.
         const reAccept = await buffer.accept({
           runId: "run_x",
           envId: "env_a",
@@ -941,7 +980,10 @@ describe("MollifierBuffer.accept idempotency", () => {
         });
 
         expect(first).toBe(true);
-        expect(reAccept).toBe(true);
+        expect(reAccept).toBe(false);
+
+        const stored = await buffer.getEntry("run_x");
+        expect(stored!.materialised).toBe(true);
       } finally {
         await buffer.close();
       }

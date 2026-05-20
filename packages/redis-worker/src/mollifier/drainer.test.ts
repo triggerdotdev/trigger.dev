@@ -87,8 +87,11 @@ describe("MollifierDrainer.runOnce", () => {
         payload: { foo: 1 },
       });
 
+      // After ack the entry persists as a read-fallback safety net with
+      // materialised=true and a fresh grace TTL (Q1 D2 / Phase B2).
       const entry = await buffer.getEntry("run_1");
-      expect(entry).toBeNull();
+      expect(entry).not.toBeNull();
+      expect(entry!.materialised).toBe(true);
     } finally {
       await buffer.close();
     }

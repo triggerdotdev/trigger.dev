@@ -14,6 +14,11 @@ export type MollifierBufferOptions = {
   logger?: Logger;
 };
 
+// Grace TTL applied to the entry hash on drainer ack. The entry survives
+// this long after materialisation so direct reads (retrieve, trace, etc.)
+// have a safety net while PG replica lag settles. Q1 D2.
+const ACK_GRACE_TTL_SECONDS = 30;
+
 export class MollifierBuffer {
   private readonly redis: Redis;
   private readonly entryTtlSeconds: number;
@@ -158,8 +163,15 @@ export class MollifierBuffer {
     return entries;
   }
 
+  // Marks the entry as materialised (PG row written) and resets its TTL to
+  // the grace window. Entry hash persists past ack as a read-fallback
+  // safety net for the brief PG replica-lag window between drainer-side
+  // write and reader-side visibility (Q1 D2).
   async ack(runId: string): Promise<void> {
-    await this.redis.del(`mollifier:entries:${runId}`);
+    await this.redis.ackMollifierEntry(
+      `mollifier:entries:${runId}`,
+      String(ACK_GRACE_TTL_SECONDS),
+    );
   }
 
   async requeue(runId: string): Promise<void> {
@@ -353,6 +365,24 @@ export class MollifierBuffer {
       `,
     });
 
+    this.redis.defineCommand("ackMollifierEntry", {
+      numberOfKeys: 1,
+      lua: `
+        local entryKey = KEYS[1]
+        local graceTtlSeconds = tonumber(ARGV[1])
+
+        -- Guard: never create a partial entry. If the hash expired between
+        -- pop and ack, the run is gone — nothing to mark materialised.
+        if redis.call('EXISTS', entryKey) == 0 then
+          return 0
+        end
+
+        redis.call('HSET', entryKey, 'materialised', 'true')
+        redis.call('EXPIRE', entryKey, graceTtlSeconds)
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("failMollifierEntry", {
       numberOfKeys: 1,
       lua: `
@@ -425,6 +455,11 @@ declare module "@internal/redis" {
       queuePrefix: string,
       runId: string,
       orgEnvsPrefix: string,
+      callback?: Callback<number>,
+    ): Result<number, Context>;
+    ackMollifierEntry(
+      entryKey: string,
+      graceTtlSeconds: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     failMollifierEntry(
