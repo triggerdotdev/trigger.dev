@@ -1,4 +1,4 @@
-import { BeakerIcon, CpuChipIcon } from "@heroicons/react/20/solid";
+import { CpuChipIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/node";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
@@ -40,6 +40,8 @@ import {
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3RunsPath, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Agents | Trigger.dev" }];
@@ -146,10 +148,9 @@ export default function AgentsPage() {
                           <TableCell to={path} isTabbableCell>
                             <div className="flex items-center gap-2">
                               <SimpleTooltip
-                                button={
-                                  <CpuChipIcon className="size-[1.125rem] min-w-[1.125rem] text-indigo-500" />
-                                }
+                                button={<CubeSparkleIcon className="size-4 text-agents" />}
                                 content="Agent"
+                                disableHoverableContent
                               />
                               <span>{agent.slug}</span>
                             </div>
@@ -166,9 +167,7 @@ export default function AgentsPage() {
                                 {(data) => {
                                   const state = data[agent.slug];
                                   if (!state || (state.running === 0 && state.suspended === 0)) {
-                                    return (
-                                      <span className="text-text-dimmed">–</span>
-                                    );
+                                    return <span className="text-text-dimmed">–</span>;
                                   }
                                   return (
                                     <span className="flex items-center gap-1.5 text-xs">
@@ -244,19 +243,29 @@ export default function AgentsPage() {
                                   leadingIconClassName="text-runs"
                                 />
                                 <PopoverMenuItem
-                                  icon={BeakerIcon}
-                                  to={v3PlaygroundAgentPath(organization, project, environment, agent.slug)}
+                                  icon={PlaygroundIcon}
+                                  to={v3PlaygroundAgentPath(
+                                    organization,
+                                    project,
+                                    environment,
+                                    agent.slug
+                                  )}
                                   title="Playground"
-                                  leadingIconClassName="text-indigo-400"
+                                  leadingIconClassName="text-playgrounds"
                                 />
                               </>
                             }
                             hiddenButtons={
                               <LinkButton
                                 variant="minimal/small"
-                                LeadingIcon={BeakerIcon}
+                                LeadingIcon={PlaygroundIcon}
                                 leadingIconClassName="text-text-bright"
-                                to={v3PlaygroundAgentPath(organization, project, environment, agent.slug)}
+                                to={v3PlaygroundAgentPath(
+                                  organization,
+                                  project,
+                                  environment,
+                                  agent.slug
+                                )}
                               >
                                 Playground
                               </LinkButton>

@@ -40,6 +40,7 @@ import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
+import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -395,7 +396,7 @@ export function SideMenu({
                 name="Tasks"
                 icon={TaskIconSmall}
                 activeIconColor="text-tasks"
-                inactiveIconColor="text-tasks"
+                inactiveIconColor="text-text-dimmed"
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks"
                 isCollapsed={isCollapsed}
@@ -404,7 +405,7 @@ export function SideMenu({
                 name="Runs"
                 icon={RunsIconExtraSmall}
                 activeIconColor="text-runs"
-                inactiveIconColor="text-runs"
+                inactiveIconColor="text-text-dimmed"
                 to={v3RunsPath(organization, project, environment)}
                 isCollapsed={isCollapsed}
               />
@@ -412,7 +413,7 @@ export function SideMenu({
                 name="Batches"
                 icon={Squares2X2Icon}
                 activeIconColor="text-batches"
-                inactiveIconColor="text-batches"
+                inactiveIconColor="text-text-dimmed"
                 to={v3BatchesPath(organization, project, environment)}
                 data-action="batches"
                 isCollapsed={isCollapsed}
@@ -421,7 +422,7 @@ export function SideMenu({
                 name="Schedules"
                 icon={ClockIcon}
                 activeIconColor="text-schedules"
-                inactiveIconColor="text-schedules"
+                inactiveIconColor="text-text-dimmed"
                 to={v3SchedulesPath(organization, project, environment)}
                 data-action="schedules"
                 isCollapsed={isCollapsed}
@@ -430,7 +431,7 @@ export function SideMenu({
                 name="Queues"
                 icon={RectangleStackIcon}
                 activeIconColor="text-queues"
-                inactiveIconColor="text-queues"
+                inactiveIconColor="text-text-dimmed"
                 to={v3QueuesPath(organization, project, environment)}
                 data-action="queues"
                 isCollapsed={isCollapsed}
@@ -439,7 +440,7 @@ export function SideMenu({
                 name="Waitpoint tokens"
                 icon={WaitpointTokenIcon}
                 activeIconColor="text-sky-500"
-                inactiveIconColor="text-sky-500"
+                inactiveIconColor="text-text-dimmed"
                 to={v3WaitpointTokensPath(organization, project, environment)}
                 isCollapsed={isCollapsed}
               />
@@ -447,7 +448,7 @@ export function SideMenu({
                 name="Deployments"
                 icon={ServerStackIcon}
                 activeIconColor="text-deployments"
-                inactiveIconColor="text-deployments"
+                inactiveIconColor="text-text-dimmed"
                 to={v3DeploymentsPath(organization, project, environment)}
                 data-action="deployments"
                 isCollapsed={isCollapsed}
@@ -457,7 +458,7 @@ export function SideMenu({
                 name="Test"
                 icon={BeakerIcon}
                 activeIconColor="text-tests"
-                inactiveIconColor="text-tests"
+                inactiveIconColor="text-text-dimmed"
                 to={v3TestPath(organization, project, environment)}
                 data-action="test"
                 isCollapsed={isCollapsed}
@@ -476,7 +477,7 @@ export function SideMenu({
                   name="Agents"
                   icon={CubeSparkleIcon}
                   activeIconColor="text-agents"
-                  inactiveIconColor="text-agents"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3AgentsPath(organization, project, environment)}
                   isCollapsed={isCollapsed}
                 />
@@ -484,16 +485,16 @@ export function SideMenu({
                   name="Sessions"
                   icon={ArrowsRightLeftIcon}
                   activeIconColor="text-sessions"
-                  inactiveIconColor="text-sessions"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3SessionsPath(organization, project, environment)}
                   data-action="sessions"
                   isCollapsed={isCollapsed}
                 />
                 <SideMenuItem
                   name="Playground"
-                  icon={BeakerIcon}
+                  icon={PlaygroundIcon}
                   activeIconColor="text-playgrounds"
-                  inactiveIconColor="text-playgrounds"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3PlaygroundPath(organization, project, environment)}
                   isCollapsed={isCollapsed}
                 />
@@ -502,7 +503,7 @@ export function SideMenu({
                   icon={AIPromptsIcon}
                   trailingIconClassName="size-6"
                   activeIconColor="text-aiPrompts"
-                  inactiveIconColor="text-aiPrompts"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3PromptsPath(organization, project, environment)}
                   data-action="prompts"
                   isCollapsed={isCollapsed}
@@ -512,7 +513,7 @@ export function SideMenu({
                     name="Models"
                     icon={CubeIcon}
                     activeIconColor="text-models"
-                    inactiveIconColor="text-models"
+                    inactiveIconColor="text-text-dimmed"
                     to={v3ModelsPath(organization, project, environment)}
                     data-action="models"
                     isCollapsed={isCollapsed}
@@ -523,7 +524,7 @@ export function SideMenu({
                   icon={AIMetricsIcon}
                   trailingIconClassName="size-5"
                   activeIconColor="text-aiMetrics"
-                  inactiveIconColor="text-aiMetrics"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
                   data-action="ai-metrics"
                   isCollapsed={isCollapsed}
@@ -547,7 +548,7 @@ export function SideMenu({
                     name="Logs"
                     icon={LogsIcon}
                     activeIconColor="text-logs"
-                    inactiveIconColor="text-logs"
+                    inactiveIconColor="text-text-dimmed"
                     to={v3LogsPath(organization, project, environment)}
                     data-action="logs"
                     badge={<AlphaBadge />}
@@ -558,7 +559,7 @@ export function SideMenu({
                   name="Errors"
                   icon={IconBugFilled}
                   activeIconColor="text-errors"
-                  inactiveIconColor="text-errors"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3ErrorsPath(organization, project, environment)}
                   data-action="errors"
                   isCollapsed={isCollapsed}
@@ -567,7 +568,7 @@ export function SideMenu({
                   name="Query"
                   icon={TableCellsIcon}
                   activeIconColor="text-query"
-                  inactiveIconColor="text-query"
+                  inactiveIconColor="text-text-dimmed"
                   to={queryPath(organization, project, environment)}
                   data-action="query"
                   isCollapsed={isCollapsed}
@@ -576,7 +577,7 @@ export function SideMenu({
                   name="Dashboards"
                   icon={ChartBarIcon}
                   activeIconColor="text-metrics"
-                  inactiveIconColor="text-metrics"
+                  inactiveIconColor="text-text-dimmed"
                   to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
                   data-action="metrics-overview"
                   isCollapsed={isCollapsed}

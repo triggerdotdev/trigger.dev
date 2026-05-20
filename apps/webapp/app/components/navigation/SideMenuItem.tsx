@@ -41,8 +41,8 @@ export function SideMenuItem({
       to={to}
       target={target}
       className={cn(
-        "flex h-8 w-full items-center gap-2 overflow-hidden rounded pr-2 pl-[0.4375rem] text-text-bright transition-colors hover:bg-charcoal-750 group-hover/menuitem:bg-charcoal-750",
-        isActive ? "bg-tertiary" : ""
+        "group/menulink flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright",
+        isActive ? "bg-tertiary text-text-bright" : "text-text-dimmed"
       )}
     >
       <Icon
@@ -50,6 +50,8 @@ export function SideMenuItem({
         className={cn(
           "size-5 shrink-0",
           isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed",
+          !isActive &&
+            "group-hover/menulink:text-text-bright group-hover/menuitem:text-text-bright",
           iconClassName
         )}
       />
@@ -62,7 +64,7 @@ export function SideMenuItem({
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <span className="truncate select-none text-2sm">{name}</span>
+        <span className="select-none truncate text-2sm">{name}</span>
         {badge && !isCollapsed && (
           <motion.div
             className="ml-1 flex shrink-0 items-center gap-1"
@@ -76,10 +78,7 @@ export function SideMenuItem({
           </motion.div>
         )}
         {trailingIcon && !isCollapsed && (
-          <Icon
-            icon={trailingIcon}
-            className={cn("ml-1 size-4 shrink-0", trailingIconClassName)}
-          />
+          <Icon icon={trailingIcon} className={cn("ml-1 size-4 shrink-0", trailingIconClassName)} />
         )}
       </motion.div>
     </Link>
@@ -99,7 +98,7 @@ export function SideMenuItem({
           disableHoverableContent
         />
         {!isCollapsed && (
-          <div className="absolute top-1 right-1 bottom-1 flex aspect-square items-center justify-center rounded group-hover/menuitem:bg-charcoal-750">
+          <div className="absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded group-hover/menuitem:bg-charcoal-750">
             {action}
           </div>
         )}
