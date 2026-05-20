@@ -18,7 +18,9 @@
 | **Phase B3 — mutateSnapshot Lua** | ✅ **Done** | `08f20c65f` | Three return codes, four patch types. Lua atomicity per-runId verified by 50-way concurrent test |
 | **Phase B4 — SyntheticRun replay fields** | ✅ **Done** | `612babf6c` | Adds id / runtimeEnvironmentId / engine / workerQueue / queue / concurrencyKey / machinePreset / realtimeStreamsVersion / seedMetadata / seedMetadataType / runTags. Also closes a pre-existing typecheck gap in `synthesiseFoundRunFromBuffer` (workerQueue default `"main"`) |
 | **Phase B5 — mutateWithFallback helper** | ✅ **Done** | `dea1c7c0d` | Discriminated outcome (pg/snapshot/not_found/timed_out); never throws Response so it's route-agnostic and unit-tested in isolation |
-| Phase B6 — idempotency lookup | ⏳ Next | — | SETNX in accept Lua, lookup + reset methods, trigger-time dedup checks both stores |
+| **Phase B6a — buffer idempotency primitives** | ✅ **Done** | `0c7c07dd0` | accept SETNXes lookup; ack DELs it; new lookupIdempotency + resetIdempotency methods. accept return shape now discriminated `AcceptResult` |
+| **Phase B6b — trigger/reset integration** | ✅ **Done** | `51b471c12` | IdempotencyKeyConcern checks both stores; ResetIdempotencyKeyService clears both; mollifyTrigger handles `duplicate_idempotency` race-loser case. resumeParentOnCompletion deliberately skipped (waitpoint needs PG row) |
+| **Phase B complete** | ✅ | — | Phase C (mutation endpoints — cancel, tags, metadata PUT, reschedule, replay) is next |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
