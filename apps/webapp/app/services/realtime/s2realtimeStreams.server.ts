@@ -33,6 +33,16 @@ export type S2RealtimeStreamsOptions = {
   }>;
 };
 
+// Ops the issued S2 access token is scoped to. `trim` is a distinct op
+// from `append` even though trim records are appended like any other —
+// without it, `AppendRecord.trim()` 403s with "Operation not permitted".
+// `chat.agent`'s per-turn trim chain depends on it.
+//
+// The fingerprint folds the ops list into the cache key, so any future
+// scope change auto-invalidates pre-deploy cached tokens.
+const S2_TOKEN_OPS = ["append", "create-stream", "trim"] as const;
+const S2_TOKEN_OPS_FINGERPRINT = [...S2_TOKEN_OPS].sort().join(",");
+
 type S2IssueAccessTokenResponse = { access_token: string };
 type S2AppendInput = { records: { body: string }[] };
 type S2AppendAck = {
@@ -564,8 +574,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     }
 
     // Cache key includes basin so per-org basins never collide on
-    // cached tokens. `${basin}:${prefix}` is unique per (org-basin, env).
-    const cacheKey = `${this.basin}:${this.streamPrefix}`;
+    // cached tokens, and the ops fingerprint so a scope change in code
+    // (e.g. adding `trim` in #3644) auto-invalidates pre-deploy entries
+    // instead of returning stale tokens for up to 24h.
+    const cacheKey = `${this.basin}:${this.streamPrefix}:${S2_TOKEN_OPS_FINGERPRINT}`;
     const result = await this.cache.accessToken.swr(cacheKey, async () => {
       return this.s2IssueAccessToken(id);
     });
@@ -591,12 +603,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           basins: {
             exact: this.basin,
           },
-          // S2 treats `trim` as a separate op from `append` even though
-          // trim records are appended like any other record. Verified
-          // empirically: without `"trim"` here, `AppendRecord.trim()`
-          // writes 403 with "Operation not permitted". `chat.agent`'s
-          // per-turn trim chain depends on this.
-          ops: ["append", "create-stream", "trim"],
+          ops: [...S2_TOKEN_OPS],
           streams: {
             prefix: this.streamPrefix,
           },
