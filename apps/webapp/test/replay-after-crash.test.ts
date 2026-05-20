@@ -33,7 +33,7 @@ import {
 import type { UIMessageChunk } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
 import { env } from "~/env.server";
-import { chatSnapshotStoragePathForSession } from "~/services/realtime/sessions.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 
 vi.setConfig({ testTimeout: 60_000 });

@@ -1,10 +1,8 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import {
-  chatSnapshotStoragePathForSession,
-  resolveSessionByIdOrExternalId,
-} from "~/services/realtime/sessions.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
+import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,

@@ -17,10 +17,8 @@ import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
-import {
-  chatSnapshotStoragePathForSession,
-  serializeSession,
-} from "~/services/realtime/sessions.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
+import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
   anyResource,
