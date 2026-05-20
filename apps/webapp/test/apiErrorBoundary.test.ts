@@ -238,6 +238,58 @@ describe("apiErrorBoundary", () => {
     expect(response.body).toEqual({ part1: "hello", part2: "world" });
   });
 
+  // CodeRabbit raised a concern that patchedEnd doesn't re-apply the
+  // isStreamingContentType / MAX_BUFFER_BYTES bypass checks for single-call
+  // `res.end(chunk)` paths. The bypasses exist for streaming pileup; a
+  // single-call end isn't streaming, so the body is fully assembled either
+  // way. These two tests lock in that no harm occurs: bytes flow through
+  // unchanged for the scenarios CodeRabbit named (octet-stream content-type
+  // and >64KB body via single-call res.end).
+  test("preserves bytes for octet-stream body delivered via single-call res.end(chunk)", async () => {
+    const app = buildApp();
+    // Construct binary bytes that span the full 0-255 range to catch any
+    // accidental encoding interpretation.
+    const binary = Buffer.from(Array.from({ length: 512 }, (_, i) => i % 256));
+
+    app.get("/api/v1/octet-end", (_req, res) => {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.end(binary);
+    });
+
+    const response = await request(app)
+      .get("/api/v1/octet-end")
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(response.status).toBe(200);
+    expect(Buffer.compare(response.body as Buffer, binary)).toBe(0);
+  });
+
+  test("preserves bytes for >64KB body delivered via single-call res.end(chunk)", async () => {
+    const app = buildApp();
+    const payload = JSON.stringify({
+      filler: "x".repeat(80 * 1024),
+      marker: "END_OF_LARGE_BODY",
+    });
+
+    app.get("/api/v1/large-end", (_req, res) => {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      res.end(Buffer.from(payload, "utf8"));
+    });
+
+    const response = await request(app).get("/api/v1/large-end");
+
+    expect(response.status).toBe(200);
+    expect(response.body.filler).toHaveLength(80 * 1024);
+    expect(response.body.marker).toBe("END_OF_LARGE_BODY");
+  });
+
   // The actual production leak path: Remix's returnLastResortErrorResponse
   // returns Content-Type: text/plain in non-production mode with the raw
   // error message appended. Our middleware must detect the leak in text/plain
