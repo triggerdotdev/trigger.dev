@@ -55,8 +55,11 @@ function textTurn(id: string, text: string): UIMessageChunk[] {
  *     via the webapp's real `generatePresignedUrl` (so snapshot reads
  *     hit a real S3-compatible backend).
  *   - `readSessionStreamRecords` returns the canonical
- *     `{ records: [{ data, id, seqNum }] }` shape — `data` is the
- *     JSON-encoded chunk body, mirroring the webapp's S2 record shape.
+ *     `{ records: [{ data, id, seqNum }] }` shape. `data` is the parsed
+ *     chunk OBJECT — the SDK writer puts the chunk object directly into
+ *     the record envelope and the webapp route forwards it as-is, so
+ *     the schema now declares `data: z.unknown()` and consumers use it
+ *     without an extra `JSON.parse` step.
  */
 function stubApiClient(opts: {
   projectRef: string;
@@ -64,7 +67,7 @@ function stubApiClient(opts: {
   sessionOutChunks: unknown[];
 }) {
   const records = opts.sessionOutChunks.map((chunk, i) => ({
-    data: typeof chunk === "string" ? chunk : JSON.stringify(chunk),
+    data: chunk,
     id: `evt-${i + 1}`,
     seqNum: i + 1,
   }));
