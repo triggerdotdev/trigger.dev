@@ -123,6 +123,16 @@ function createFunctionCompletions(): Completion[] {
     });
   }
 
+  // Add special TSQL functions not in the ClickHouse function registry
+  functions.push({
+    label: "timeBucket",
+    type: "function",
+    detail: "auto time bucket (0 args)",
+    apply: "timeBucket()",
+    boost: 1.5,
+    info: "Automatically bucket by time using the table's time column. Interval is chosen based on the query's time range.",
+  });
+
   return functions;
 }
 

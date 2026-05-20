@@ -28,6 +28,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     where: {
       service: "SLACK",
       organizationId: project.organizationId,
+      deletedAt: null,
     },
   });
 

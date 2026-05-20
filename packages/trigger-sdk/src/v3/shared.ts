@@ -90,6 +90,7 @@ import type {
   TaskWithToolOptions,
   ToolTask,
   ToolTaskParameters,
+  TriggerAndSubscribeOptions,
   TriggerAndWaitOptions,
   TriggerApiRequestOptions,
   TriggerOptions,
@@ -214,6 +215,26 @@ export function createTask<
           });
       }, params.id);
     },
+    triggerAndSubscribe: (payload, options) => {
+      return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
+        triggerAndSubscribe_internal<TIdentifier, TInput, TOutput>(
+          "triggerAndSubscribe()",
+          params.id,
+          payload,
+          undefined,
+          {
+            queue: params.queue?.name,
+            ...options,
+          }
+        )
+          .then((result) => {
+            resolve(result);
+          })
+          .catch((error) => {
+            reject(error);
+          });
+      }, params.id);
+    },
     batchTriggerAndWait: async (items, options) => {
       return await batchTriggerAndWait_internal<TIdentifier, TInput, TOutput>(
         "batchTriggerAndWait()",
@@ -235,7 +256,10 @@ export function createTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
+    triggerSource: params.triggerSource,
+    agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
+    ttl: params.ttl,
     payloadSchema: params.jsonSchema,
     fns: {
       run: params.run,
@@ -258,7 +282,7 @@ export function createTask<
 }
 
 /**
- * @deprecated use ai.tool() instead
+ * @deprecated Use `schemaTask` plus AI SDK `tool()` with `execute: ai.toolExecute(task)` instead.
  */
 export function createToolTask<
   TIdentifier extends string,
@@ -345,6 +369,26 @@ export function createSchemaTask<
           });
       }, params.id);
     },
+    triggerAndSubscribe: (payload, options) => {
+      return new TaskRunPromise<TIdentifier, TOutput>((resolve, reject) => {
+        triggerAndSubscribe_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
+          "triggerAndSubscribe()",
+          params.id,
+          payload,
+          parsePayload,
+          {
+            queue: params.queue?.name,
+            ...options,
+          }
+        )
+          .then((result) => {
+            resolve(result);
+          })
+          .catch((error) => {
+            reject(error);
+          });
+      }, params.id);
+    },
     batchTriggerAndWait: async (items, options) => {
       return await batchTriggerAndWait_internal<TIdentifier, inferSchemaIn<TSchema>, TOutput>(
         "batchTriggerAndWait()",
@@ -366,7 +410,10 @@ export function createSchemaTask<
     queue: params.queue,
     retry: params.retry ? { ...defaultRetryOptions, ...params.retry } : undefined,
     machine: typeof params.machine === "string" ? { preset: params.machine } : params.machine,
+    triggerSource: params.triggerSource,
+    agentConfig: params.agentConfig,
     maxDuration: params.maxDuration,
+    ttl: params.ttl,
     fns: {
       run: params.run,
       parsePayload,
@@ -448,6 +495,51 @@ export function triggerAndWait<TTask extends AnyTask>(
   return new TaskRunPromise<TaskIdentifier<TTask>, TaskOutput<TTask>>((resolve, reject) => {
     triggerAndWait_internal<TaskIdentifier<TTask>, TaskPayload<TTask>, TaskOutput<TTask>>(
       "tasks.triggerAndWait()",
+      id,
+      payload,
+      undefined,
+      options,
+      requestOptions
+    )
+      .then((result) => {
+        resolve(result);
+      })
+      .catch((error) => {
+        reject(error);
+      });
+  }, id);
+}
+
+/**
+ * Trigger a task and subscribe to its updates via realtime. Unlike `triggerAndWait`,
+ * this does NOT suspend the parent run — the parent stays alive and subscribes to updates.
+ * This enables parallel execution and proper abort signal handling.
+ *
+ * @param id - The id of the task to trigger
+ * @param payload
+ * @param options - Options for the task run, including an optional `signal` to cancel the subscription and child run
+ * @returns TaskRunPromise
+ * @example
+ * ```ts
+ * import { tasks } from "@trigger.dev/sdk/v3";
+ * const result = await tasks.triggerAndSubscribe("my-task", { foo: "bar" });
+ *
+ * if (result.ok) {
+ *   console.log(result.output);
+ * } else {
+ *   console.error(result.error);
+ * }
+ * ```
+ */
+export function triggerAndSubscribe<TTask extends AnyTask>(
+  id: TaskIdentifier<TTask>,
+  payload: TaskPayload<TTask>,
+  options?: TriggerAndSubscribeOptions,
+  requestOptions?: TriggerApiRequestOptions
+): TaskRunPromise<TaskIdentifier<TTask>, TaskOutput<TTask>> {
+  return new TaskRunPromise<TaskIdentifier<TTask>, TaskOutput<TTask>>((resolve, reject) => {
+    triggerAndSubscribe_internal<TaskIdentifier<TTask>, TaskPayload<TTask>, TaskOutput<TTask>>(
+      "tasks.triggerAndSubscribe()",
       id,
       payload,
       undefined,
@@ -936,7 +1028,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -980,7 +1072,7 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -1457,7 +1549,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -1504,7 +1596,7 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items);
+        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
 
         return {
           id: result.id,
@@ -1545,7 +1637,7 @@ async function executeBatchTwoPhase(
     spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
-): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
+): Promise<{ id: string; runCount: number; publicAccessToken: string; taskIdentifiers: string[] }> {
   let batch: Awaited<ReturnType<typeof apiClient.createBatch>> | undefined;
 
   try {
@@ -1588,6 +1680,7 @@ async function executeBatchTwoPhase(
     id: batch.id,
     runCount: batch.runCount,
     publicAccessToken: batch.publicAccessToken,
+    taskIdentifiers: items.map((item) => item.task),
   };
 }
 
@@ -1703,7 +1796,7 @@ async function executeBatchTwoPhaseStreaming(
     spanParentAsLink?: boolean;
   },
   requestOptions?: TriggerApiRequestOptions
-): Promise<{ id: string; runCount: number; publicAccessToken: string }> {
+): Promise<{ id: string; runCount: number; publicAccessToken: string; taskIdentifiers: string[] }> {
   // For streaming, we need to buffer items to get the count first
   // This is because createBatch requires runCount upfront
   // In the future, we could add a streaming-first endpoint that doesn't require this
@@ -2438,6 +2531,153 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
   );
 }
 
+async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload, TOutput>(
+  name: string,
+  id: TIdentifier,
+  payload: TPayload,
+  parsePayload?: SchemaParseFn<TPayload>,
+  options?: TriggerAndSubscribeOptions,
+  requestOptions?: TriggerApiRequestOptions
+): Promise<TaskRunResult<TIdentifier, TOutput>> {
+  const ctx = taskContext.ctx;
+
+  if (!ctx) {
+    throw new Error("triggerAndSubscribe can only be used from inside a task.run()");
+  }
+
+  const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
+
+  const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
+  const payloadPacket = await stringifyIO(parsedPayload);
+
+  const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
+  const idempotencyKeyOptions = processedIdempotencyKey
+    ? getIdempotencyKeyOptions(processedIdempotencyKey)
+    : undefined;
+
+  return await tracer.startActiveSpan(
+    name,
+    async (span) => {
+      const response = await apiClient.triggerTask(
+        id,
+        {
+          payload: payloadPacket.data,
+          options: {
+            lockToVersion: taskContext.worker?.version,
+            queue: options?.queue ? { name: options.queue } : undefined,
+            concurrencyKey: options?.concurrencyKey,
+            test: taskContext.ctx?.run.isTest,
+            payloadType: payloadPacket.dataType,
+            delay: options?.delay,
+            ttl: options?.ttl,
+            tags: options?.tags,
+            maxAttempts: options?.maxAttempts,
+            metadata: options?.metadata,
+            maxDuration: options?.maxDuration,
+            parentRunId: ctx.run.id,
+            // NOTE: no resumeParentOnCompletion — parent stays alive and subscribes
+            idempotencyKey: processedIdempotencyKey?.toString(),
+            idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
+            machine: options?.machine,
+            priority: options?.priority,
+            region: options?.region,
+            debounce: options?.debounce,
+          },
+        },
+        {}
+      );
+
+      // Set attributes after trigger so the dashboard can link to the child run
+      span.setAttribute("messaging.message.id", response.id);
+      span.setAttribute("runId", response.id);
+      span.setAttribute(SemanticInternalAttributes.ENTITY_TYPE, "run");
+      span.setAttribute(SemanticInternalAttributes.ENTITY_ID, response.id);
+
+      // Optionally cancel the child run when the abort signal fires (default: true)
+      const cancelOnAbort = options?.cancelOnAbort !== false;
+      let onAbort: (() => void) | undefined;
+      if (options?.signal && cancelOnAbort) {
+        if (options.signal.aborted) {
+          await apiClient.cancelRun(response.id).catch(() => {});
+          throw new DOMException("Aborted", "AbortError");
+        }
+        onAbort = () => {
+          apiClient.cancelRun(response.id).catch(() => {});
+        };
+        // `{ once: true }` auto-removes the listener on abort, but if the
+        // run completes normally the listener stays attached and pins
+        // `apiClient` + `response.id` until the signal is GC'd. Long-lived
+        // signals shared across many calls accumulate dead listeners; the
+        // `finally` below removes the listener on every exit path.
+        options.signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      try {
+        for await (const run of apiClient.subscribeToRun(response.id, {
+          closeOnComplete: true,
+          signal: options?.signal,
+          skipColumns: ["payload"],
+        })) {
+          if (run.isSuccess) {
+            // run.output from subscribeToRun is already deserialized
+            return {
+              ok: true as const,
+              id: response.id,
+              taskIdentifier: id as TIdentifier,
+              output: run.output as TOutput,
+            };
+          }
+          if (run.isFailed || run.isCancelled) {
+            // Note: this intentionally diverges from `triggerAndWait`'s
+            // error shape. `triggerAndWait` receives a full `TaskRunError`
+            // (with `type` discriminator: BUILT_IN_ERROR, CUSTOM_ERROR,
+            // INTERNAL_ERROR, STRING_ERROR) via the completion message and
+            // passes it through `createErrorTaskError` to preserve the
+            // discriminator. `subscribeToRun` only surfaces a
+            // `SerializedError` (`{ name, message, stackTrace }`) because
+            // `createJsonErrorObject` strips the discriminator before the
+            // record hits the realtime stream. We can't reconstruct the
+            // discriminator here without lossy guessing — callers that
+            // need exact error-type matching should use `triggerAndWait`
+            // instead; subscribers get message + name only.
+            const error = new Error(run.error?.message ?? `Task ${id} failed (${run.status})`);
+            if (run.error?.name) error.name = run.error.name;
+
+            return {
+              ok: false as const,
+              id: response.id,
+              taskIdentifier: id as TIdentifier,
+              error,
+            };
+          }
+        }
+
+        throw new Error(`Task ${id}: subscription ended without completion`);
+      } finally {
+        if (onAbort && options?.signal) {
+          options.signal.removeEventListener("abort", onAbort);
+        }
+      }
+    },
+    {
+      kind: SpanKind.PRODUCER,
+      attributes: {
+        [SemanticInternalAttributes.STYLE_ICON]: "trigger",
+        ...accessoryAttributes({
+          items: [
+            {
+              text: id,
+              variant: "normal",
+            },
+          ],
+          style: "codepath",
+        }),
+      },
+    }
+  );
+}
+
 async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload, TOutput>(
   name: string,
   id: TIdentifier,
@@ -2676,7 +2916,8 @@ async function handleBatchTaskRunExecutionResult<TIdentifier extends string, TOu
 }
 
 async function handleBatchTaskRunExecutionResultV2(
-  items: Array<TaskRunExecutionResult>
+  items: Array<TaskRunExecutionResult>,
+  taskIdentifiers?: string[]
 ): Promise<Array<AnyTaskRunResult>> {
   const someObjectStoreOutputs = items.some(
     (item) => item.ok && item.outputType === "application/store"
@@ -2684,8 +2925,11 @@ async function handleBatchTaskRunExecutionResultV2(
 
   if (!someObjectStoreOutputs) {
     const results = await Promise.all(
-      items.map(async (item) => {
-        return await handleTaskRunExecutionResult(item, item.taskIdentifier ?? "unknown");
+      items.map(async (item, index) => {
+        return await handleTaskRunExecutionResult(
+          item,
+          item.taskIdentifier ?? taskIdentifiers?.[index] ?? "unknown"
+        );
       })
     );
 
@@ -2696,8 +2940,11 @@ async function handleBatchTaskRunExecutionResultV2(
     "store.downloadPayloads",
     async (span) => {
       const results = await Promise.all(
-        items.map(async (item) => {
-          return await handleTaskRunExecutionResult(item, item.taskIdentifier ?? "unknown");
+        items.map(async (item, index) => {
+          return await handleTaskRunExecutionResult(
+            item,
+            item.taskIdentifier ?? taskIdentifiers?.[index] ?? "unknown"
+          );
         })
       );
 

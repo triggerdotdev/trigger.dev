@@ -12,6 +12,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type User } from "~/models/user.server";
 import { getUsername } from "~/utils/username";
 import { processGitMetadata } from "./BranchesPresenter.server";
+import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { S2 } from "@s2-dev/streamstore";
 import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
@@ -156,10 +157,56 @@ export class DeploymentPresenter {
           },
         },
         buildServerMetadata: true,
+        triggeredVia: true,
       },
     });
 
     const gitMetadata = processGitMetadata(deployment.git);
+
+    // Look up Vercel integration data to construct a deployment URL
+    let vercelDeploymentUrl: string | undefined;
+    const vercelProjectIntegration =
+      await this.#prismaClient.organizationProjectIntegration.findFirst({
+        where: {
+          projectId: project.id,
+          deletedAt: null,
+          organizationIntegration: {
+            service: "VERCEL",
+            deletedAt: null,
+          },
+        },
+        select: {
+          integrationData: true,
+        },
+      });
+
+    if (vercelProjectIntegration) {
+      const parsed = VercelProjectIntegrationDataSchema.safeParse(
+        vercelProjectIntegration.integrationData
+      );
+
+      if (parsed.success && parsed.data.vercelTeamSlug) {
+        const integrationDeployment =
+          await this.#prismaClient.integrationDeployment.findFirst({
+            where: {
+              deploymentId: deployment.id,
+              integrationName: "vercel",
+            },
+            select: {
+              integrationDeploymentId: true,
+            },
+            orderBy: {
+              createdAt: "desc",
+            },
+          });
+
+        if (integrationDeployment) {
+          const vercelId = integrationDeployment.integrationDeploymentId;
+          vercelDeploymentUrl = `https://vercel.com/${parsed.data.vercelTeamSlug}/${parsed.data.vercelProjectName}/${vercelId}`;
+        }
+      }
+    }
+
     const externalBuildData = deployment.externalBuildData
       ? ExternalBuildData.safeParse(deployment.externalBuildData)
       : undefined;
@@ -170,7 +217,7 @@ export class DeploymentPresenter {
     let eventStream = undefined;
     if (
       env.S2_ENABLED === "1" &&
-      (buildServerMetadata || gitMetadata?.source === "trigger_github_app")
+      (buildServerMetadata || gitMetadata?.source === "trigger_github_app" || env.S2_DEPLOYMENT_STREAMS_LOCAL === "1")
     ) {
       const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 
@@ -225,6 +272,8 @@ export class DeploymentPresenter {
         isBuilt: !!deployment.builtAt,
         type: deployment.type,
         git: gitMetadata,
+        triggeredVia: deployment.triggeredVia,
+        vercelDeploymentUrl,
       },
     };
   }
@@ -241,9 +290,9 @@ export class DeploymentPresenter {
       return cachedToken;
     }
 
-    const { access_token: accessToken } = await s2.accessTokens.issue({
+    const { accessToken } = await s2.accessTokens.issue({
       id: `${projectRef}-${new Date().getTime()}`,
-      expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
       scope: {
         ops: ["read"],
         basins: {

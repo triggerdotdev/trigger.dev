@@ -2,13 +2,18 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
 import { type WorkerDeployment, type Project } from "@trigger.dev/database";
-import { logger, type GitMeta, type DeploymentEvent } from "@trigger.dev/core/v3";
+import {
+  BuildServerMetadata,
+  logger,
+  type GitMeta,
+  type DeploymentEvent,
+} from "@trigger.dev/core/v3";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 import { createRemoteImageBuild } from "../remoteImageBuilder.server";
 import { FINAL_DEPLOYMENT_STATUSES } from "./failDeployment.server";
 import { enqueueBuild, generateRegistryCredentials } from "~/services/platform.v3.server";
-import { AppendRecord, S2 } from "@s2-dev/streamstore";
+import { AppendInput, AppendRecord, S2 } from "@s2-dev/streamstore";
 import { createRedisClient } from "~/redis.server";
 
 const S2_TOKEN_KEY_PREFIX = "s2-token:read:deployment-event-stream:project:";
@@ -38,9 +43,20 @@ export class DeploymentService extends BaseService {
   public progressDeployment(
     authenticatedEnv: AuthenticatedEnvironment,
     friendlyId: string,
-    updates: Partial<Pick<WorkerDeployment, "contentHash" | "runtime"> & { git: GitMeta }>
+    updates: Partial<
+      Pick<WorkerDeployment, "contentHash" | "runtime"> & {
+        git: GitMeta;
+        buildServerMetadata: BuildServerMetadata;
+      }
+    >
   ) {
-    const validateDeployment = (deployment: Pick<WorkerDeployment, "id" | "status">) => {
+    const { buildServerMetadata: newBuildServerMetadata, ...restUpdates } = updates;
+
+    const validateDeployment = (
+      deployment: Pick<WorkerDeployment, "id" | "status"> & {
+        buildServerMetadata?: BuildServerMetadata;
+      }
+    ) => {
       if (deployment.status !== "PENDING" && deployment.status !== "INSTALLING") {
         logger.warn(
           "Attempted progressing deployment that is not in PENDING or INSTALLING status",
@@ -54,12 +70,24 @@ export class DeploymentService extends BaseService {
       return okAsync(deployment);
     };
 
-    const progressToInstalling = (deployment: Pick<WorkerDeployment, "id">) =>
-      fromPromise(
+    const progressToInstalling = (
+      deployment: Pick<WorkerDeployment, "id"> & { buildServerMetadata?: BuildServerMetadata }
+    ) => {
+      const existingBuildServerMetadata = deployment.buildServerMetadata;
+
+      return fromPromise(
         this._prisma.workerDeployment.updateMany({
           where: { id: deployment.id, status: "PENDING" }, // status could've changed in the meantime, we're not locking the row
           data: {
-            ...updates,
+            ...restUpdates,
+            ...(newBuildServerMetadata
+              ? {
+                  buildServerMetadata: {
+                    ...(existingBuildServerMetadata ?? {}),
+                    ...newBuildServerMetadata,
+                  },
+                }
+              : {}),
             status: "INSTALLING",
             startedAt: new Date(),
           },
@@ -74,22 +102,39 @@ export class DeploymentService extends BaseService {
         }
         return okAsync({ id: deployment.id, status: "INSTALLING" as const });
       });
+    };
 
-    const createRemoteBuild = (deployment: Pick<WorkerDeployment, "id">) =>
-      fromPromise(createRemoteImageBuild(authenticatedEnv.project), (error) => ({
-        type: "failed_to_create_remote_build" as const,
-        cause: error,
-      }));
+    const progressToBuilding = (
+      deployment: Pick<WorkerDeployment, "id"> & { buildServerMetadata?: BuildServerMetadata }
+    ) => {
+      const createRemoteBuildIfNeeded = deployment.buildServerMetadata?.isNativeBuild
+        ? okAsync(undefined)
+        : fromPromise(createRemoteImageBuild(authenticatedEnv.project), (error) => ({
+            type: "failed_to_create_remote_build" as const,
+            cause: error,
+          }));
 
-    const progressToBuilding = (deployment: Pick<WorkerDeployment, "id">) =>
-      createRemoteBuild(deployment)
+      const existingBuildServerMetadata = deployment.buildServerMetadata as
+        | BuildServerMetadata
+        | null
+        | undefined;
+
+      return createRemoteBuildIfNeeded
         .andThen((externalBuildData) =>
           fromPromise(
             this._prisma.workerDeployment.updateMany({
               where: { id: deployment.id, status: "INSTALLING" }, // status could've changed in the meantime, we're not locking the row
               data: {
-                ...updates,
-                externalBuildData,
+                ...restUpdates,
+                ...(newBuildServerMetadata
+                  ? {
+                      buildServerMetadata: {
+                        ...(existingBuildServerMetadata ?? {}),
+                        ...newBuildServerMetadata,
+                      },
+                    }
+                  : {}),
+                ...(externalBuildData ? { externalBuildData } : {}),
                 status: "BUILDING",
                 installedAt: new Date(),
               },
@@ -106,6 +151,7 @@ export class DeploymentService extends BaseService {
           }
           return okAsync({ id: deployment.id, status: "BUILDING" as const });
         });
+    };
 
     const extendTimeout = (deployment: Pick<WorkerDeployment, "id" | "status">) =>
       fromPromise(
@@ -322,7 +368,11 @@ export class DeploymentService extends BaseService {
     );
 
     return fromPromise(
-      stream.append(events.map((event) => AppendRecord.make(JSON.stringify(event)))),
+      stream.append(
+        AppendInput.create(
+          events.map((event) => AppendRecord.string({ body: JSON.stringify(event) }))
+        )
+      ),
       (error) => ({
         type: "failed_to_append_to_event_log" as const,
         cause: error,
@@ -350,9 +400,9 @@ export class DeploymentService extends BaseService {
         type: "failed_to_create_event_stream" as const,
         cause: error,
       })
-    ).map(({ name }) => ({
+    ).map(() => ({
       basin: basin.name,
-      stream: name,
+      stream: `projects/${project.externalRef}/deployments/${deployment.shortCode}`,
     }));
   }
 
@@ -380,7 +430,7 @@ export class DeploymentService extends BaseService {
       fromPromise(
         s2.accessTokens.issue({
           id: `${project.externalRef}-${new Date().getTime()}`,
-          expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
           scope: {
             ops: ["read"],
             basins: {
@@ -395,7 +445,7 @@ export class DeploymentService extends BaseService {
           type: "other" as const,
           cause: error,
         })
-      ).map(({ access_token }) => access_token);
+      ).map(({ accessToken }) => accessToken);
 
     const cacheToken = (token: string) =>
       fromPromise(
@@ -432,6 +482,7 @@ export class DeploymentService extends BaseService {
         select: {
           status: true,
           id: true,
+          buildServerMetadata: true,
           imageReference: true,
           shortCode: true,
           environment: {
@@ -449,11 +500,16 @@ export class DeploymentService extends BaseService {
         type: "other" as const,
         cause: error,
       })
-    ).andThen((deployment) => {
-      if (!deployment) {
-        return errAsync({ type: "deployment_not_found" as const });
-      }
-      return okAsync(deployment);
-    });
+    )
+      .andThen((deployment) => {
+        if (!deployment) {
+          return errAsync({ type: "deployment_not_found" as const });
+        }
+        return okAsync(deployment);
+      })
+      .map((deployment) => ({
+        ...deployment,
+        buildServerMetadata: BuildServerMetadata.safeParse(deployment.buildServerMetadata).data,
+      }));
   }
 }

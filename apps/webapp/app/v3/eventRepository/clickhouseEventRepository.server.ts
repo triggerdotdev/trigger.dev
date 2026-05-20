@@ -1,5 +1,6 @@
 import type {
   ClickHouse,
+  LlmMetricsV1Input,
   TaskEventDetailedSummaryV1Result,
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
@@ -7,6 +8,7 @@ import type {
   TaskEventV2Input,
 } from "@internal/clickhouse";
 import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
+
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -84,6 +86,11 @@ export type ClickhouseEventRepositoryConfig = {
    * - "v2": Uses task_events_v2 (partitioned by inserted_at to avoid "too many parts" errors)
    */
   version?: "v1" | "v2";
+  /** LLM metrics flush scheduler config */
+  llmMetricsBatchSize?: number;
+  llmMetricsFlushInterval?: number;
+  llmMetricsMaxBatchSize?: number;
+  llmMetricsMaxConcurrency?: number;
 };
 
 /**
@@ -94,6 +101,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _clickhouse: ClickHouse;
   private _config: ClickhouseEventRepositoryConfig;
   private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
+  private readonly _llmMetricsFlushScheduler: DynamicFlushScheduler<LlmMetricsV1Input>;
   private _tracer: Tracer;
   private _version: "v1" | "v2";
 
@@ -117,6 +125,17 @@ export class ClickhouseEventRepository implements IEventRepository {
         // Only drop LOG events during load shedding
         return event.kind === "DEBUG_EVENT";
       },
+    });
+
+    this._llmMetricsFlushScheduler = new DynamicFlushScheduler({
+      batchSize: config.llmMetricsBatchSize ?? 5000,
+      flushInterval: config.llmMetricsFlushInterval ?? 2000,
+      callback: this.#flushLlmMetricsBatch.bind(this),
+      minConcurrency: 1,
+      maxConcurrency: config.llmMetricsMaxConcurrency ?? 2,
+      maxBatchSize: config.llmMetricsMaxBatchSize ?? 10000,
+      memoryPressureThreshold: config.llmMetricsMaxBatchSize ?? 10000,
+      loadSheddingEnabled: false,
     });
   }
 
@@ -216,6 +235,63 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
   }
 
+  async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {
+
+    const [insertError] = await this._clickhouse.llmMetrics.insert(rows, {
+      params: {
+        clickhouse_settings: this.#getClickhouseInsertSettings(),
+      },
+    });
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    logger.info("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
+      rows: rows.length,
+    });
+  }
+
+  #createLlmMetricsInput(event: CreateEventInput): LlmMetricsV1Input {
+    const llmMetrics = event._llmMetrics!;
+
+    return {
+      organization_id: event.organizationId,
+      project_id: event.projectId,
+      environment_id: event.environmentId,
+      run_id: event.runId,
+      task_identifier: event.taskSlug,
+      trace_id: event.traceId,
+      span_id: event.spanId,
+      gen_ai_system: llmMetrics.genAiSystem,
+      request_model: llmMetrics.requestModel,
+      response_model: llmMetrics.responseModel,
+      base_response_model: llmMetrics.baseResponseModel,
+      matched_model_id: llmMetrics.matchedModelId,
+      operation_id: llmMetrics.operationId,
+      finish_reason: llmMetrics.finishReason,
+      cost_source: llmMetrics.costSource,
+      pricing_tier_id: llmMetrics.pricingTierId,
+      pricing_tier_name: llmMetrics.pricingTierName,
+      input_tokens: llmMetrics.inputTokens,
+      output_tokens: llmMetrics.outputTokens,
+      total_tokens: llmMetrics.totalTokens,
+      usage_details: llmMetrics.usageDetails,
+      input_cost: llmMetrics.inputCost,
+      output_cost: llmMetrics.outputCost,
+      total_cost: llmMetrics.totalCost,
+      cost_details: llmMetrics.costDetails,
+      provider_cost: llmMetrics.providerCost,
+      ms_to_first_chunk: llmMetrics.msToFirstChunk,
+      tokens_per_second: llmMetrics.tokensPerSecond,
+      metadata: llmMetrics.metadata,
+      prompt_slug: llmMetrics.promptSlug,
+      prompt_version: llmMetrics.promptVersion,
+      start_time: this.#clampAndFormatStartTime(event.startTime.toString()),
+      duration: formatClickhouseUnsignedIntegerString(event.duration ?? 0),
+    };
+  }
+
   #getClickhouseInsertSettings() {
     if (this._config.insertStrategy === "insert") {
       return {};
@@ -236,6 +312,15 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   async insertMany(events: CreateEventInput[]): Promise<void> {
     this.addToBatch(events.flatMap((event) => this.createEventToTaskEventV1Input(event)));
+
+    // Dual-write LLM metrics records for spans with cost enrichment
+    const llmMetricsRows = events
+      .filter((e) => e._llmMetrics != null)
+      .map((e) => this.#createLlmMetricsInput(e));
+
+    if (llmMetricsRows.length > 0) {
+      this._llmMetricsFlushScheduler.addToBatch(llmMetricsRows);
+    }
   }
 
   async insertManyImmediate(events: CreateEventInput[]): Promise<void> {
@@ -266,6 +351,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         expires_at: convertDateToClickhouseDateTime(
           new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) // 1 year
         ),
+        machine_id: event.machineId ?? "",
       },
       ...this.spanEventsToTaskEventV1Input(event),
     ];
@@ -1143,7 +1229,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined> {
-    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 60_000);
 
     const queryBuilder =
       this._version === "v2"
@@ -1281,6 +1367,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (record.kind === "SPAN") {
+        // Prefer SPAN record message for span title (task name); SPAN_EVENT "exception" must not override it
+        span.message = record.message;
         if (record.status === "ERROR") {
           span.isError = true;
           span.isPartial = false;
@@ -1296,24 +1384,29 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (record.status !== "PARTIAL") {
           span.duration =
             typeof record.duration === "number" ? record.duration : Number(record.duration);
-        } else {
-          span.message = record.message;
         }
       }
 
-      if (
-        (span.properties == null ||
-          (typeof span.properties === "object" && Object.keys(span.properties).length === 0)) &&
-        typeof record.attributes_text === "string"
-      ) {
-        const parsedAttributes = this.#parseAttributes(record.attributes_text);
-        const resourceAttributes = parsedAttributes["$resource"];
+      // Parse attributes from the first record that has them, then re-parse for the
+      // completed SPAN record. The completed record's attributes are a superset of the
+      // partial's (includes enriched trigger.llm.* cost data added during ingestion).
+      // This means at most 2x JSON.parse per span detail query, but only on this
+      // read path (span detail view), not on ingestion.
+      if (typeof record.attributes_text === "string") {
+        const shouldUpdate =
+          span.properties == null ||
+          (typeof span.properties === "object" && Object.keys(span.properties).length === 0) ||
+          (record.kind === "SPAN" && record.status !== "PARTIAL");
 
-        // Remove the $resource key from the attributes
-        delete parsedAttributes["$resource"];
+        if (shouldUpdate) {
+          const parsedAttributes = this.#parseAttributes(record.attributes_text);
+          const resourceAttributes = parsedAttributes["$resource"];
 
-        span.properties = parsedAttributes;
-        span.resourceProperties = resourceAttributes as Record<string, unknown> | undefined;
+          delete parsedAttributes["$resource"];
+
+          span.properties = parsedAttributes;
+          span.resourceProperties = resourceAttributes as Record<string, unknown> | undefined;
+        }
       }
     }
 
@@ -1524,10 +1617,18 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (parsedMetadata && "style" in parsedMetadata && parsedMetadata.style) {
-        span.data.style = parsedMetadata.style as TaskEventStyle;
+        const newStyle = parsedMetadata.style as TaskEventStyle;
+        // Merge styles: prefer the most complete value for each field
+        span.data.style = {
+          icon: newStyle.icon ?? span.data.style.icon,
+          variant: newStyle.variant ?? span.data.style.variant,
+          accessory: newStyle.accessory ?? span.data.style.accessory,
+        };
       }
 
       if (record.kind === "SPAN") {
+        // Prefer SPAN record message for span title (task name); SPAN_EVENT "exception" must not override it
+        span.data.message = record.message;
         if (record.status === "ERROR") {
           span.data.isError = true;
           span.data.isPartial = false;
@@ -1543,8 +1644,6 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (record.status !== "PARTIAL") {
           span.data.duration =
             typeof record.duration === "number" ? record.duration : Number(record.duration);
-        } else {
-          span.data.message = record.message;
         }
       }
     }
@@ -1780,6 +1879,8 @@ export class ClickhouseEventRepository implements IEventRepository {
       }
 
       if (record.kind === "SPAN") {
+        // Prefer SPAN record message for span title (task name); SPAN_EVENT "exception" must not override it
+        span.data.message = record.message;
         if (record.status === "ERROR") {
           span.data.isError = true;
           span.data.isPartial = false;
@@ -1795,8 +1896,6 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (record.status !== "PARTIAL") {
           span.data.duration =
             typeof record.duration === "number" ? record.duration : Number(record.duration);
-        } else {
-          span.data.message = record.message;
         }
       }
     }

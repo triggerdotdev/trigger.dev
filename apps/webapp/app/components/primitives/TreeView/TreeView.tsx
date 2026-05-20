@@ -197,6 +197,18 @@ export function useTree<TData, TFilterValue>({
     concreteStateFromInput({ tree, selectedId, collapsedIds, filter })
   );
 
+  //sync external selectedId prop into internal state
+  useEffect(() => {
+    const internalSelectedId = selectedIdFromState(state.nodes);
+    if (selectedId !== internalSelectedId) {
+      if (selectedId === undefined) {
+        dispatch({ type: "DESELECT_ALL_NODES" });
+      } else {
+        dispatch({ type: "SELECT_NODE", payload: { id: selectedId, scrollToNode: false, scrollToNodeFn } });
+      }
+    }
+  }, [selectedId]);
+
   //fire onSelectedIdChanged()
   useEffect(() => {
     const selectedId = selectedIdFromState(state.nodes);

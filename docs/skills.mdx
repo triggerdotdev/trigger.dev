@@ -2,12 +2,17 @@
 title: "Skills"
 description: "Install Trigger.dev skills to teach any AI coding assistant best practices for writing tasks, agents, and workflows."
 sidebarTitle: "Skills"
-tag: "new"
 ---
 
 ## What are agent skills?
 
-Skills are portable instruction sets that teach AI coding assistants how to use Trigger.dev effectively. Unlike vendor-specific config files (`.cursor/rules`, `CLAUDE.md`), skills use an open standard that works across all major AI assistants. For example, Cursor users and Claude Code users can get the same knowledge from a single install. 
+Skills are portable instruction sets that teach AI coding assistants how to use Trigger.dev effectively. Unlike vendor-specific config files (`.cursor/rules`, `CLAUDE.md`), skills use an open standard that works across all major AI assistants. For example, Cursor users and Claude Code users can get the same knowledge from a single install.
+
+<Note>
+  Skills are one of three AI tools we provide. You can also install [Agent Rules](/mcp-agent-rules)
+  for client-specific rule sets or the [MCP Server](/mcp-introduction) for live project interaction.
+  See the [comparison table](/building-with-ai#skills-vs-agent-rules-vs-mcp) for details.
+</Note>
 
 Skills are installed as directories containing a `SKILL.md` file. Each `SKILL.md` includes YAML frontmatter (name, description) and markdown instructions with patterns, examples, and best practices that AI assistants automatically discover and follow.
 
@@ -23,7 +28,6 @@ npx skills add triggerdotdev/skills
 
 The result: your AI assistant understands Trigger.dev's specific patterns for exports, schema validation, error handling, retries, and more.
 
-
 ## Available skills
 
 Install all skills at once, or pick the ones relevant to your current work:
@@ -38,18 +42,20 @@ npx skills add triggerdotdev/skills --skill trigger-agents
 npx skills add triggerdotdev/skills --skill trigger-config
 npx skills add triggerdotdev/skills --skill trigger-realtime
 npx skills add triggerdotdev/skills --skill trigger-setup
+npx skills add triggerdotdev/skills --skill trigger-cost-savings
+
 ```
 
-| Skill | Use for | Covers |
-|-------|---------|--------|
-| `trigger-setup` | First time setup, new projects | SDK install, `npx trigger init`, project structure |
-| `trigger-tasks` | Writing background tasks, async workflows, scheduled tasks | Triggering, waits, queues, retries, cron, metadata |
-| `trigger-agents` | LLM workflows, orchestration, multi-step AI agents | Prompt chaining, routing, parallelization, human-in-the-loop |
-| `trigger-realtime` | Live updates, progress indicators, streaming | React hooks, progress bars, streaming AI responses |
-| `trigger-config` | Project setup, build configuration | `trigger.config.ts`, extensions (Prisma, FFmpeg, Playwright) |
+| Skill                  | Use for                                                     | Covers                                                           |
+| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| `trigger-setup`        | First time setup, new projects                              | SDK install, `npx trigger init`, project structure               |
+| `trigger-tasks`        | Writing background tasks, async workflows, scheduled tasks  | Triggering, waits, queues, retries, cron, metadata               |
+| `trigger-agents`       | LLM workflows, orchestration, multi-step AI agents          | Prompt chaining, routing, parallelization, human-in-the-loop     |
+| `trigger-realtime`     | Live updates, progress indicators, streaming                | React hooks, progress bars, streaming AI responses               |
+| `trigger-config`       | Project setup, build configuration                          | `trigger.config.ts`, extensions (Prisma, FFmpeg, Playwright)     |
+| `trigger-cost-savings` | Cost savings, performance optimization, resource management | Cost optimization, performance optimization, resource management |
 
 Not sure which skill to install? Install `trigger-tasks`; it covers the most common patterns for writing Trigger.dev tasks.
-
 
 ## Supported AI assistants
 
@@ -68,14 +74,14 @@ Skills work with any AI coding assistant that supports the [Agent Skills standar
 ## Next steps
 
 <CardGroup cols={2}>
+  <Card title="Agent Rules" icon="scroll" href="/mcp-agent-rules">
+    Install comprehensive rule sets directly into your AI client.
+  </Card>
   <Card title="MCP Server" icon="sparkles" href="/mcp-introduction">
     Give your AI assistant direct access to Trigger.dev tools and APIs.
   </Card>
   <Card title="Writing tasks" icon="code" href="/tasks/overview">
     Learn the task patterns that skills teach your AI assistant.
-  </Card>
-  <Card title="Building AI agents" icon="brain" href="/guides/ai-agents/overview">
-    Build durable AI workflows with prompt chaining and human-in-the-loop.
   </Card>
   <Card title="skills.sh" icon="box" href="https://skills.sh">
     Browse the full Agent Skills ecosystem.

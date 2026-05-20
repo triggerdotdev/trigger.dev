@@ -6,6 +6,7 @@ import {
   RealtimeStreamInstance,
   RealtimeStreamOperationOptions,
   RealtimeStreamsManager,
+  StreamWriteResult,
 } from "./types.js";
 
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
@@ -16,7 +17,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
   ) {}
   // Track active streams - using a Set allows multiple streams for the same key to coexist
   private activeStreams = new Set<{
-    wait: () => Promise<void>;
+    wait: () => Promise<StreamWriteResult>;
     abortController: AbortController;
   }>();
 

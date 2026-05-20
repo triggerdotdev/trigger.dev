@@ -159,11 +159,14 @@ const runs = colors.indigo[500];
 const batches = colors.pink[500];
 const schedules = colors.yellow[500];
 const queues = colors.purple[500];
+const query = colors.blue[500];
+const metrics = colors.green[500];
+const customDashboards = charcoal[400];
 const deployments = colors.green[500];
 const concurrency = colors.amber[500];
 const limits = colors.purple[500];
 const regions = colors.green[500];
-const logs = colors.blue[500];
+const logs = colors.pink[500];
 const tests = colors.lime[500];
 const apiKeys = colors.amber[500];
 const environmentVariables = colors.pink[500];
@@ -172,13 +175,16 @@ const projectSettings = colors.blue[500];
 const orgSettings = colors.blue[500];
 const docs = colors.blue[500];
 const bulkActions = colors.emerald[500];
+const aiPrompts = colors.blue[500];
+const aiMetrics = colors.green[500];
+const errors = colors.amber[500];
 
 /** Other variables */
 const radius = "0.5rem";
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./app/**/*.{ts,jsx,tsx}"],
+  content: ["./app/**/*.{ts,jsx,tsx}", "./node_modules/streamdown/dist/**/*.js"],
   theme: {
     container: {
       center: true,
@@ -240,6 +246,7 @@ module.exports = {
         schedules,
         concurrency,
         queues,
+        query,
         regions,
         limits,
         deployments,
@@ -252,6 +259,23 @@ module.exports = {
         orgSettings,
         docs,
         bulkActions,
+        metrics,
+        customDashboards,
+        aiPrompts,
+        aiMetrics,
+        errors,
+        // shadcn/ui color tokens used by streamdown's internal components
+        // (link safety modal, code block actions, etc.)
+        // Values are defined via CSS variables in .streamdown-container
+        background: "hsl(var(--background, 230 16% 9%) / <alpha-value>)",
+        foreground: "hsl(var(--foreground, 215 19% 87%) / <alpha-value>)",
+        muted: {
+          DEFAULT: "hsl(var(--muted, 220 8% 17%) / <alpha-value>)",
+          foreground: "hsl(var(--muted-foreground, 220 8% 57%) / <alpha-value>)",
+        },
+        border: "hsl(var(--border, 216 7% 27%) / <alpha-value>)",
+        sidebar: "hsl(var(--sidebar, 228 10% 11%) / <alpha-value>)",
+        "primary-foreground": "hsl(var(--primary-foreground, 230 16% 9%) / <alpha-value>)",
       },
       focusStyles: {
         outline: "1px solid",

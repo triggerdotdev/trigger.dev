@@ -22,6 +22,24 @@ class LoopsClient {
     });
   }
 
+  async vercelIntegrationStarted({
+    userId,
+    email,
+    name,
+  }: {
+    userId: string;
+    email: string;
+    name: string | null;
+  }) {
+    logger.info(`Loops send "vercel-integration" event`, { userId, email, name });
+    return this.#sendEvent({
+      email,
+      userId,
+      firstName: name?.split(" ").at(0),
+      eventName: "vercel-integration",
+    });
+  }
+
   async #sendEvent({
     email,
     userId,

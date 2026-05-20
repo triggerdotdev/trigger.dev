@@ -24,6 +24,12 @@ This guide will show you how to set up [Drizzle ORM](https://orm.drizzle.team/) 
 - Drizzle ORM [installed and initialized](https://orm.drizzle.team/docs/get-started) in your project
 - A `DATABASE_URL` environment variable set in your `.env` file, pointing to your PostgreSQL database (e.g. `postgresql://user:password@localhost:5432/dbname`)
 
+<Tip>
+  If your Postgres lives in a private AWS VPC (e.g. RDS without a public endpoint), connect it via
+  [Private networking](/private-networking/overview) instead of opening it to the public internet
+  (Pro and Enterprise plans).
+</Tip>
+
 ## Initial setup (optional)
 
 Follow these steps if you don't already have Trigger.dev set up in your project.

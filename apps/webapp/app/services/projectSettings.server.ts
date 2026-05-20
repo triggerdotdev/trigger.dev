@@ -30,10 +30,10 @@ export class ProjectSettingsService {
     );
   }
 
-  deleteProject(projectSlug: string, userId: string) {
+  deleteProject(projectId: string, userId: string) {
     const deleteProjectService = new DeleteProjectService(this.#prismaClient);
 
-    return fromPromise(deleteProjectService.call({ projectSlug, userId }), (error) => ({
+    return fromPromise(deleteProjectService.call({ projectId, userId }), (error) => ({
       type: "other" as const,
       cause: error,
     }));

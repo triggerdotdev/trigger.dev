@@ -4,6 +4,10 @@
   "version": "0.0.1",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./webapp": "./src/webapp.ts"
+  },
   "dependencies": {
     "@clickhouse/client": "^1.11.1",
     "@opentelemetry/api": "^1.9.0",
@@ -11,11 +15,11 @@
     "ioredis": "^5.3.2"
   },
   "devDependencies": {
-    "@testcontainers/postgresql": "^10.28.0",
-    "@testcontainers/redis": "^10.28.0",
+    "@testcontainers/postgresql": "^11.14.0",
+    "@testcontainers/redis": "^11.14.0",
     "@trigger.dev/core": "workspace:*",
     "std-env": "^3.9.0",
-    "testcontainers": "^10.28.0",
+    "testcontainers": "^11.14.0",
     "tinyexec": "^0.3.0"
   },
   "scripts": {

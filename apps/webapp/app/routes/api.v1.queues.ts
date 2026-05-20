@@ -2,6 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { type QueueItem } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
+import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 
@@ -35,10 +36,8 @@ export const loader = createLoaderApiRoute(
         return json({ error: error.message }, { status: 422 });
       }
 
-      return json(
-        { error: error instanceof Error ? error.message : "Internal Server Error" },
-        { status: 500 }
-      );
+      logger.error("Failed to list queues", { error });
+      return json({ error: "Something went wrong, please try again." }, { status: 500 });
     }
   }
 );

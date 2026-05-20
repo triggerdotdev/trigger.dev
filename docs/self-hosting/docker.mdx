@@ -189,6 +189,7 @@ docker compose up -d
 To create additional worker groups beyond the bootstrap group, use the admin API endpoint. This requires admin privileges.
 
 **Making a user admin:**
+
 - **New users**: Set `ADMIN_EMAILS` environment variable (regex pattern) before user creation.
 - **Existing users**: Set `admin = true` in the `user` table in your database.
 
@@ -341,6 +342,18 @@ By default, the images will point at the latest versioned release via the `lates
 TRIGGER_IMAGE_TAG=v4.0.0
 ```
 
+## Task events
+
+By default, task events (timeline, logs, spans) are stored in PostgreSQL. For production deployments we recommend storing them in ClickHouse instead, it scales to much higher volumes and avoids unbounded growth of the `TaskEvent` table.
+
+To enable, set on the webapp in your `.env`:
+
+```bash
+EVENT_REPOSITORY_DEFAULT_STORE=clickhouse_v2
+```
+
+This only affects new runs; existing runs continue to read from wherever their events were originally stored.
+
 ## Troubleshooting
 
 - **Deployment fails at the push step.** The machine running `deploy` needs registry access. See the [registry setup](#registry-setup) section for more details.
@@ -353,6 +366,16 @@ TRIGGER_IMAGE_TAG=v4.0.0
   # Run this from the /hosting/docker/webapp directory
   docker compose logs -f webapp
   ```
+
+- **Deploy fails with `ERROR: schema "graphile_worker" does not exist`.** This error occurs when Graphile Worker migrations fail to run during webapp startup. Check the webapp logs for certificate-related errors like `self-signed certificate in certificate chain`. This is often caused by PostgreSQL SSL certificate issues when using an external PostgreSQL instance with SSL enabled. Ensure that both the webapp and supervisor containers have access to the same CA certificate used by your PostgreSQL instance. You can configure this by mounting the certificate file and setting the `NODE_EXTRA_CA_CERTS` environment variable to point to the certificate path. Once the certificate issue is resolved, the migrations will complete and create the required `graphile_worker` schema.
+
+- **ClickHouse migrations say "no migrations to run" but schema is missing.** The goose migration tracker is out of sync. Exec into the webapp container, set the GOOSE env vars (from webapp startup logs), and run `goose reset && goose up`.
+
+  <Warning>
+    **Data Loss Warning:** The `goose reset` command is destructive and will drop the entire schema.
+    Make sure to backup your data and confirm you are running this in a non-production environment
+    before executing this command.
+  </Warning>
 
 ## CLI usage
 

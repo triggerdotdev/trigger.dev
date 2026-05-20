@@ -1,5 +1,6 @@
 import { RadioGroup } from "@headlessui/react";
 import { motion } from "framer-motion";
+import type { ReactNode } from "react";
 import { cn } from "~/utils/cn";
 
 const sizes = {
@@ -63,7 +64,7 @@ const variants = {
 type VariantType = keyof typeof variants;
 
 type Options = {
-  label: string;
+  label: ReactNode;
   value: string;
 };
 

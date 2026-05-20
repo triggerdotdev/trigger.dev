@@ -6,6 +6,20 @@ description: "What's new in v4, how to migrate, and breaking changes."
 import NodeVersions from "/snippets/node-versions.mdx";
 import MigrateV4UsingAi from "/snippets/migrate-v4-using-ai.mdx";
 
+<Warning>
+  **Action required: Trigger.dev v3 deprecation**
+
+We're retiring Trigger.dev v3. **New v3 deploys will stop working from 1 April 2026.** Trigger.dev v4 is stable, fully supported, and recommended for all users.
+
+**Key dates:**
+
+- **1 April 2026** — New v3 deploys will no longer work. Existing v3 runs will continue to execute.
+- **1 July 2026** — v3 will be fully shut down. All v3 runs will stop executing.
+
+**What you need to do:** Migrate to v4 before April to avoid disruption to your task executions. The migration takes about 2 minutes — follow the steps on this page below. If you have questions or need help, [contact us](https://trigger.dev/contact) or reach out in our [Discord](https://trigger.dev/discord).
+
+</Warning>
+
 ## What's new in v4?
 
 | Feature                                                              | Description                                                                                                                                                                                                |
@@ -47,6 +61,10 @@ Note that between steps 4 and 5, runs triggered with the v4 package will continu
   amount of concurrently executing runs. Once the runs drain from the old run engine, the
   concurrency will return to normal.
 </Warning>
+
+<Note>
+  When migrating from v3 to v4, our infrastructure IPs may change. If you use IP allowlisting (e.g. for databases or APIs), [update your allowlists](https://trigger.dev/changelog/static-ips) with the current static IPs before or immediately after switching to v4 to avoid connectivity issues or downtime.
+</Note>
 
 ## Migrate using AI
 

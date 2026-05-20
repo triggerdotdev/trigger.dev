@@ -20,8 +20,18 @@ export function MainBody({ children }: { children: React.ReactNode }) {
 }
 
 /** This container should be placed around the content on a page */
-export function PageContainer({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-rows-[auto_1fr] overflow-hidden">{children}</div>;
+export function PageContainer({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid h-full grid-rows-[auto_1fr] overflow-hidden", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function PageBody({
@@ -50,13 +60,26 @@ export function PageBody({
 export function MainCenteredContainer({
   children,
   className,
+  variant = "default",
 }: {
   children: React.ReactNode;
   className?: string;
+  variant?: "default" | "onboarding";
 }) {
   return (
-    <div className="h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className={cn("mx-auto mt-6 max-w-xs overflow-y-auto p-1 md:mt-[22vh]", className)}>
+    <div
+      className={cn(
+        "h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+        variant === "onboarding" && "flex flex-col p-4 lg:p-0"
+      )}
+    >
+      <div
+        className={cn(
+          "mx-auto max-w-xs p-1",
+          variant === "onboarding" ? "m-auto lg:mx-auto lg:mb-0 lg:mt-[22vh]" : "mt-6 md:mt-[22vh]",
+          className
+        )}
+      >
         {children}
       </div>
     </div>

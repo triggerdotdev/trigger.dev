@@ -1,0 +1,97 @@
+name: "🧪 E2E Tests: Webapp"
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+jobs:
+  e2eTests:
+    name: "🧪 E2E Tests: Webapp"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+      - name: 🔧 Configure docker address pool
+        run: |
+          CONFIG='{
+            "default-address-pools" : [
+              {
+                "base" : "172.17.0.0/12",
+                "size" : 20
+              },
+              {
+                "base" : "192.168.0.0/16",
+                "size" : 24
+              }
+            ]
+          }'
+          mkdir -p /etc/docker
+          echo "$CONFIG" | sudo tee /etc/docker/daemon.json
+
+      - name: 🔧 Restart docker daemon
+        run: sudo systemctl restart docker
+
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20.20.0
+          cache: "pnpm"
+
+      # ..to avoid rate limits when pulling images
+      - name: 🐳 Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: 🐳 Skipping DockerHub login (no secrets available)
+        if: ${{ !env.DOCKERHUB_USERNAME }}
+        run: echo "DockerHub login skipped because secrets are not available."
+
+      - name: 🐳 Pre-pull testcontainer images
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        run: |
+          echo "Pre-pulling Docker images with authenticated session..."
+          docker pull postgres:14
+          docker pull redis:7.2
+          docker pull testcontainers/ryuk:0.11.0
+          echo "Image pre-pull complete"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: 🏗️ Build Webapp
+        run: pnpm run build --filter webapp
+
+      - name: 🧪 Run Webapp E2E Tests
+        run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default
+        env:
+          WEBAPP_TEST_VERBOSE: "1"

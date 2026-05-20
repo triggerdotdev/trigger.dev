@@ -213,6 +213,7 @@ export const WorkerToExecutorMessageCatalog = {
   FLUSH: {
     message: z.object({
       timeoutInMs: z.number(),
+      disableContext: z.boolean().optional(),
     }),
     callback: z.void(),
   },

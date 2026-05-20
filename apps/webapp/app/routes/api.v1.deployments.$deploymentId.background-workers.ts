@@ -60,13 +60,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
       { status: 200 }
     );
   } catch (e) {
-    logger.error("Failed to create background worker", { error: e });
-
+    // Customer-facing validation failures (invalid task config, customer cron
+    // expression, etc.). The handler returns 4xx with the message; system
+    // handles it gracefully, no alert needed.
     if (e instanceof ServiceValidationError) {
+      logger.warn("Failed to create background worker", { error: e.message });
       return json({ error: e.message }, { status: e.status ?? 400 });
-    } else if (e instanceof CreateDeclarativeScheduleError) {
+    }
+    if (e instanceof CreateDeclarativeScheduleError) {
+      logger.warn("Failed to create background worker", { error: e.message });
       return json({ error: e.message }, { status: 400 });
     }
+
+    logger.error("Failed to create background worker", { error: e });
 
     return json({ error: "Failed to create background worker" }, { status: 500 });
   }

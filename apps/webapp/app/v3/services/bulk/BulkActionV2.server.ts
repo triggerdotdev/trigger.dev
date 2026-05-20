@@ -138,11 +138,13 @@ export class BulkActionService extends BaseService {
     }
 
     // 2. Parse the params
+    const rawParams = group.params && typeof group.params === "object" ? group.params : {};
+    const finalizeRun = "finalizeRun" in rawParams && (rawParams as any).finalizeRun === true;
     const filters = parseRunListInputOptions({
       organizationId: group.project.organizationId,
       projectId: group.projectId,
       environmentId: group.environmentId,
-      ...(group.params && typeof group.params === "object" ? group.params : {}),
+      ...rawParams,
     });
 
     const runsRepository = new RunsRepository({
@@ -199,6 +201,7 @@ export class BulkActionService extends BaseService {
               cancelService.call(run, {
                 reason: `Bulk action ${group.friendlyId} cancelled run`,
                 bulkActionId: bulkActionId,
+                finalizeRun,
               })
             );
             if (error) {
@@ -239,6 +242,7 @@ export class BulkActionService extends BaseService {
             const [error, result] = await tryCatch(
               replayService.call(run, {
                 bulkActionId: bulkActionId,
+                triggerSource: "dashboard",
               })
             );
             if (error) {

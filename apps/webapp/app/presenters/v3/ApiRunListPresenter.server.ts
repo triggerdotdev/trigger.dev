@@ -116,6 +116,12 @@ export const ApiRunListSearchParams = z.object({
     .transform((value) => {
       return value ? value.split(",") : undefined;
     }),
+  "filter[region]": z
+    .string()
+    .optional()
+    .transform((value) => {
+      return value ? value.split(",") : undefined;
+    }),
   "filter[machine]": z
     .string()
     .optional()
@@ -149,10 +155,10 @@ type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;
 
 export class ApiRunListPresenter extends BasePresenter {
   public async call(
-    project: Project,
+    project: Pick<Project, "id">,
     searchParams: ApiRunListSearchParams,
     apiVersion: API_VERSIONS,
-    environment?: RuntimeEnvironment
+    environment?: Pick<RuntimeEnvironment, "id" | "organizationId">
   ) {
     return this.trace("call", async (span) => {
       const options: RunListOptions = {
@@ -255,6 +261,10 @@ export class ApiRunListPresenter extends BasePresenter {
         options.queues = searchParams["filter[queue]"];
       }
 
+      if (searchParams["filter[region]"]) {
+        options.regions = searchParams["filter[region]"];
+      }
+
       if (searchParams["filter[machine]"]) {
         options.machines = searchParams["filter[machine]"];
       }
@@ -304,6 +314,11 @@ export class ApiRunListPresenter extends BasePresenter {
             durationMs: run.usageDurationMs,
             depth: run.depth,
             metadata,
+            // ClickHouse defaults `task_kind` to "" for pre-migration rows.
+            // Match `NextRunListPresenter`'s "STANDARD" fallback so API
+            // consumers and the dashboard see the same value.
+            taskKind: run.taskKind || "STANDARD",
+            region: run.region ?? undefined,
             ...ApiRetrieveRunPresenter.apiBooleanHelpersFromRunStatus(
               ApiRetrieveRunPresenter.apiStatusFromRunStatus(run.status, apiVersion)
             ),

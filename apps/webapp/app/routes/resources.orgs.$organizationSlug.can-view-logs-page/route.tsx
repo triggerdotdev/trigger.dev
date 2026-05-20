@@ -2,7 +2,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { requireUser } from "~/services/session.server";
 import { prisma } from "~/db.server";
-import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG, validateFeatureFlagValue } from "~/v3/featureFlags";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 
 async function hasLogsPageAccess(

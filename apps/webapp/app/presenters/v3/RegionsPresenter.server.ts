@@ -1,18 +1,23 @@
+import { type WorkloadType } from "@trigger.dev/database";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { FEATURE_FLAG, makeFlag } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { makeFlag } from "~/v3/featureFlags.server";
+import { defaultVisibilityFilter, resolveComputeAccess } from "~/v3/regionAccess.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
 export type Region = {
   id: string;
   name: string;
+  masterQueue: string;
   description?: string;
   cloudProvider?: string;
   location?: string;
   staticIPs?: string | null;
   isDefault: boolean;
   isHidden: boolean;
+  workloadType: WorkloadType;
 };
 
 export class RegionsPresenter extends BasePresenter {
@@ -31,6 +36,9 @@ export class RegionsPresenter extends BasePresenter {
         organizationId: true,
         defaultWorkerGroupId: true,
         allowedWorkerQueues: true,
+        organization: {
+          select: { featureFlags: true },
+        },
       },
       where: {
         slug: projectSlug,
@@ -57,15 +65,22 @@ export class RegionsPresenter extends BasePresenter {
       throw new Error("Default worker instance group not found");
     }
 
+    const hasComputeAccess = await resolveComputeAccess(
+      this._replica,
+      project.organization.featureFlags
+    );
+
     const visibleRegions = await this._replica.workerInstanceGroup.findMany({
       select: {
         id: true,
         name: true,
+        masterQueue: true,
         description: true,
         cloudProvider: true,
         location: true,
         staticIPs: true,
         hidden: true,
+        workloadType: true,
       },
       where: isAdmin
         ? undefined
@@ -74,9 +89,7 @@ export class RegionsPresenter extends BasePresenter {
         ? {
             masterQueue: { in: project.allowedWorkerQueues },
           }
-        : {
-            hidden: false,
-          },
+        : defaultVisibilityFilter(hasComputeAccess),
       orderBy: {
         name: "asc",
       },
@@ -85,12 +98,14 @@ export class RegionsPresenter extends BasePresenter {
     const regions: Region[] = visibleRegions.map((region) => ({
       id: region.id,
       name: region.name,
+      masterQueue: region.masterQueue,
       description: region.description ?? undefined,
       cloudProvider: region.cloudProvider ?? undefined,
       location: region.location ?? undefined,
       staticIPs: region.staticIPs ?? undefined,
       isDefault: region.id === defaultWorkerInstanceGroupId,
       isHidden: region.hidden,
+      workloadType: region.workloadType,
     }));
 
     if (project.defaultWorkerGroupId) {
@@ -98,11 +113,13 @@ export class RegionsPresenter extends BasePresenter {
         select: {
           id: true,
           name: true,
+          masterQueue: true,
           description: true,
           cloudProvider: true,
           location: true,
           staticIPs: true,
           hidden: true,
+          workloadType: true,
         },
         where: { id: project.defaultWorkerGroupId },
       });
@@ -117,12 +134,14 @@ export class RegionsPresenter extends BasePresenter {
         regions.push({
           id: defaultWorkerGroup.id,
           name: defaultWorkerGroup.name,
+          masterQueue: defaultWorkerGroup.masterQueue,
           description: defaultWorkerGroup.description ?? undefined,
           cloudProvider: defaultWorkerGroup.cloudProvider ?? undefined,
           location: defaultWorkerGroup.location ?? undefined,
           staticIPs: defaultWorkerGroup.staticIPs ?? undefined,
           isDefault: true,
           isHidden: defaultWorkerGroup.hidden,
+          workloadType: defaultWorkerGroup.workloadType,
         });
       }
     }

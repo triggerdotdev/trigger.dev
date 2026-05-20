@@ -1,24 +1,49 @@
-# Changesets
+# Changesets and Server Changes
 
-Trigger.dev uses [changesets](https://github.com/changesets/changesets) to manage updated our packages and releasing them to npm.
+Trigger.dev uses [changesets](https://github.com/changesets/changesets) to manage package versions and releasing them to npm. For server-only changes, we use a lightweight `.server-changes/` convention.
 
-## Adding a changeset
+## Adding a changeset (package changes)
 
 To add a changeset, use `pnpm run changeset:add` and follow the instructions [here](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md). Please only ever select one of our public packages when adding a changeset.
 
-## Release instructions (local only)
+## Adding a server change (server-only changes)
 
-Based on the instructions [here](https://github.com/changesets/changesets/blob/main/docs/intro-to-using-changesets.md)
+If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) and does NOT change any published packages, add a `.server-changes/` file instead of a changeset:
 
-1. Run `pnpm run changeset:version`
-2. Run `pnpm run changeset:release`
+```sh
+cat > .server-changes/fix-batch-queue-stalls.md << 'EOF'
+---
+area: webapp
+type: fix
+---
+
+Speed up batch queue processing by removing stalls and fixing retry race
+EOF
+```
+
+- `area`: `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- `type`: `feature` | `fix` | `improvement` | `breaking`
+
+For **mixed PRs** (both packages and server): just add a changeset. No `.server-changes/` file needed.
+
+See `.server-changes/README.md` for full documentation.
+
+## When to add which
+
+| PR changes | What to add |
+|---|---|
+| Only packages (`packages/`) | Changeset (`pnpm run changeset:add`) |
+| Only server (`apps/`) | `.server-changes/` file |
+| Both packages and server | Just the changeset |
 
 ## Release instructions (CI)
 
 Please follow the best-practice of adding changesets in the same commit as the code making the change with `pnpm run changeset:add`, as it will allow our release.yml CI workflow to function properly:
 
-- Anytime new changesets are added in a commit in the `main` branch, the [release.yml](./.github/workflows/release.yml) workflow will run and will automatically create/update a PR with a fresh run of `pnpm run changeset:version`.
-- When the version PR is merged into `main`, the release.yml workflow will automatically run `pnpm run changeset:release` to build and release packages to npm.
+- Anytime new changesets are added in a commit in the `main` branch, the [changesets-pr.yml](./.github/workflows/changesets-pr.yml) workflow will run and will automatically create/update a PR with a fresh run of `pnpm run changeset:version`.
+- The release PR body is automatically enhanced with a clean, deduplicated summary that includes both package changes and `.server-changes/` entries.
+- Consumed `.server-changes/` files are removed on the `changeset-release/main` branch — the same way changesets deletes `.changeset/*.md` files. When the release PR merges, they're gone from main.
+- When the version PR is merged into `main`, the [release.yml](./.github/workflows/release.yml) workflow will automatically build, release packages to npm, and create a single unified GitHub release.
 
 ## Pre-release instructions
 

@@ -1,0 +1,71 @@
+---
+title: "Trigger tasks from Hookdeck webhooks"
+sidebarTitle: "Hookdeck webhooks"
+description: "This example demonstrates how to use Hookdeck to receive webhooks and trigger Trigger.dev tasks."
+---
+
+## Overview
+
+This example shows how to use [Hookdeck](https://hookdeck.com) as your webhook infrastructure to trigger Trigger.dev tasks. Hookdeck receives webhooks from external services, and forwards them directly to the Trigger.dev API. This gives you the best of both worlds: Hookdeck's webhook management, logging, and replay capabilities, combined with Trigger.dev's reliable task execution.
+
+## Key features
+
+- Use Hookdeck as your webhook endpoint for external services
+- Hookdeck forwards webhooks directly to Trigger.dev tasks via the API
+- All webhooks are logged and replayable in Hookdeck
+
+## Setting up Hookdeck
+
+You'll configure everything in the [Hookdeck dashboard](https://dashboard.hookdeck.com). No code changes needed in your app.
+
+### 1. Create a destination
+
+In Hookdeck, create a new [destination](https://hookdeck.com/docs/destinations) with the following settings:
+
+- **URL**: `https://api.trigger.dev/api/v1/tasks/<task-id>/trigger` (replace `<task-id>` with your task ID)
+- **Method**: POST
+- **Authentication**: Bearer token (use your `TRIGGER_SECRET_KEY` from Trigger.dev)
+
+### 2. Add a transformation
+
+Create a [transformation](https://hookdeck.com/docs/transformations) to wrap the webhook body in the `payload` field that Trigger.dev expects:
+
+```javascript
+addHandler("transform", (request, context) => {
+  request.body = { payload: { ...request.body } };
+  return request;
+});
+```
+
+### 3. Create a connection
+
+Create a [connection](https://hookdeck.com/docs/connections) that links your source (where webhooks come from) to the destination and transformation you created above.
+
+## Task code
+
+This task will be triggered when Hookdeck forwards a webhook to the Trigger.dev API.
+
+```ts trigger/webhook-handler.ts
+import { task } from "@trigger.dev/sdk";
+
+export const webhookHandler = task({
+  id: "webhook-handler",
+  run: async (payload: Record<string, unknown>) => {
+    // The payload contains the original webhook data from the external service
+    console.log("Received webhook:", payload);
+
+    // Add your custom logic here
+  },
+});
+```
+
+## Testing your setup
+
+To test everything is working:
+
+1. Set up your destination, transformation, and connection in [Hookdeck](https://dashboard.hookdeck.com)
+2. Send a test webhook to your Hookdeck source URL (use the Hookdeck Console or cURL)
+3. Check the Hookdeck dashboard to verify the webhook was received and forwarded
+4. Check the [Trigger.dev dashboard](https://cloud.trigger.dev) to see the successful run of your task
+
+For more information on setting up Hookdeck, refer to the [Hookdeck Documentation](https://hookdeck.com/docs).

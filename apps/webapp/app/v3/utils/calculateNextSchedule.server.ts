@@ -22,6 +22,20 @@ function calculateNextStep(schedule: string, timezone: string | null, currentDat
     .toDate();
 }
 
+export function previousScheduledTimestamp(
+  schedule: string,
+  timezone: string | null,
+  fromTimestamp: Date = new Date()
+) {
+  return parseExpression(schedule, {
+    currentDate: fromTimestamp,
+    utc: timezone === null,
+    tz: timezone ?? undefined,
+  })
+    .prev()
+    .toDate();
+}
+
 export function nextScheduledTimestamps(
   cron: string,
   timezone: string | null,

@@ -3,9 +3,9 @@ import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
 import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
-import { isValidGitBranchName, sanitizeBranchName } from "~/v3/gitBranch";
+import { isValidGitBranchName, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { logger } from "./logger.server";
-import { getLimit } from "./platform.v3.server";
+import { getCurrentPlan, getLimit } from "./platform.v3.server";
 
 export class UpsertBranchService {
   #prismaClient: PrismaClient;
@@ -177,7 +177,10 @@ export async function checkBranchLimit(
   const count = newBranchName
     ? usedEnvs.filter((env) => env.branchName !== newBranchName).length
     : usedEnvs.length;
-  const limit = await getLimit(organizationId, "branches", 100_000_000);
+  const baseLimit = await getLimit(organizationId, "branches", 100_000_000);
+  const currentPlan = await getCurrentPlan(organizationId);
+  const purchasedBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
+  const limit = baseLimit + purchasedBranches;
 
   return {
     used: count,

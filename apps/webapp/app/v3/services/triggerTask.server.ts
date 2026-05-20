@@ -33,6 +33,8 @@ export type TriggerTaskServiceOptions = {
   replayedFromTaskRunFriendlyId?: string;
   planType?: string;
   realtimeStreamsVersion?: "v1" | "v2";
+  triggerSource?: string;
+  triggerAction?: string;
 };
 
 export class OutOfEntitlementError extends Error {
@@ -97,7 +99,7 @@ export class TriggerTaskService extends WithRunEngine {
     const service = new RunEngineTriggerTaskService({
       prisma: this._prisma,
       engine: this._engine,
-      queueConcern: new DefaultQueueManager(this._prisma, this._engine),
+      queueConcern: new DefaultQueueManager(this._prisma, this._engine, this._replica),
       validator: new DefaultTriggerTaskValidator(),
       payloadProcessor: new DefaultPayloadProcessor(),
       idempotencyKeyConcern: new IdempotencyKeyConcern(

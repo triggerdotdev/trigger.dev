@@ -6,8 +6,10 @@
     "trigger.dev": "workspace:*"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.41",
     "@trigger.dev/build": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
+    "ai": "^6.0.116",
     "arktype": "^2.0.0",
     "openai": "^4.97.0",
     "puppeteer-core": "^24.15.0",

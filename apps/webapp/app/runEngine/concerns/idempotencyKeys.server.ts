@@ -79,11 +79,21 @@ export class IdempotencyKeyConcern {
       }
 
       // We have an idempotent run, so we return it
-      const associatedWaitpoint = existingRun.associatedWaitpoint;
       const parentRunId = request.body.options?.parentRunId;
       const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
+
       //We're using `andWait` so we need to block the parent run with a waitpoint
-      if (associatedWaitpoint && resumeParentOnCompletion && parentRunId) {
+      if (resumeParentOnCompletion && parentRunId) {
+        // Get or create waitpoint lazily (existing run may not have one if it was standalone)
+        let associatedWaitpoint = existingRun.associatedWaitpoint;
+        if (!associatedWaitpoint) {
+          associatedWaitpoint = await this.engine.getOrCreateRunWaitpoint({
+            runId: existingRun.id,
+            projectId: request.environment.projectId,
+            environmentId: request.environment.id,
+          });
+        }
+
         await this.traceEventConcern.traceIdempotentRun(
           request,
           parentStore,
@@ -98,13 +108,13 @@ export class IdempotencyKeyConcern {
               request.options?.parentAsLinkType === "replay"
                 ? event.spanId
                 : event.traceparent?.spanId
-                ? `${event.traceparent.spanId}:${event.spanId}`
-                : event.spanId;
+                  ? `${event.traceparent.spanId}:${event.spanId}`
+                  : event.spanId;
 
             //block run with waitpoint
             await this.engine.blockRunWithWaitpoint({
               runId: RunId.fromFriendlyId(parentRunId),
-              waitpoints: associatedWaitpoint.id,
+              waitpoints: associatedWaitpoint!.id,
               spanIdToComplete: spanId,
               batch: request.options?.batchId
                 ? {

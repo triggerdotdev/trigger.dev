@@ -2,7 +2,7 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { URL } from "node:url";
 import { randomBytes } from "node:crypto";
-import { StreamsWriter } from "./types.js";
+import { StreamsWriter, StreamWriteResult } from "./types.js";
 
 export type StreamsWriterV1Options<T> = {
   baseUrl: string;
@@ -258,8 +258,9 @@ export class StreamsWriterV1<T> implements StreamsWriter {
     await this.makeRequest(0);
   }
 
-  public async wait(): Promise<void> {
-    return this.streamPromise;
+  public async wait(): Promise<StreamWriteResult> {
+    await this.streamPromise;
+    return {};
   }
 
   public [Symbol.asyncIterator]() {

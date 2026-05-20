@@ -46,10 +46,10 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <main className="grid h-full grid-cols-1 md:grid-cols-2">
-      <div className="border-r border-grid-bright bg-background-bright">
-        <div className="flex h-full flex-col items-center justify-between p-6">
-          <div className="flex w-full items-center justify-between">
+    <main className="grid h-full grid-cols-1 lg:grid-cols-2">
+      <div className="bg-background-dimmed lg:border-r lg:border-grid-bright lg:bg-background-bright">
+        <div className="flex h-full flex-col items-center justify-center p-6 lg:justify-between">
+          <div className="hidden w-full items-center justify-between lg:flex">
             <a href="https://trigger.dev">
               <LogoType className="w-36" />
             </a>
@@ -63,12 +63,12 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex h-full max-w-sm items-center justify-center">{children}</div>
           <Paragraph variant="small" className="text-center">
-            Having login issues? <TextLink href="https://@trigger.dev/contact">Email us</TextLink>{" "}
+            Having login issues? <TextLink href="https://trigger.dev/contact">Email us</TextLink>{" "}
             or <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
           </Paragraph>
         </div>
       </div>
-      <div className="hidden grid-rows-[1fr_auto] pb-6 md:grid">
+      <div className="hidden grid-rows-[1fr_auto] pb-6 lg:grid">
         <div className="flex h-full flex-col items-center justify-center px-16">
           <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-charcoal-750 before:content-['❝'] lg-height:text-xl md-height:text-lg">
             {randomQuote?.quote}

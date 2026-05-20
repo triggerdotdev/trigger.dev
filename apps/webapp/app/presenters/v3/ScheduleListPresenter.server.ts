@@ -1,11 +1,15 @@
 import { type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/database";
 import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { getLimit } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
-import { calculateNextScheduledTimestampFromNow } from "~/v3/utils/calculateNextSchedule.server";
+import {
+  calculateNextScheduledTimestampFromNow,
+  previousScheduledTimestamp,
+} from "~/v3/utils/calculateNextSchedule.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type ScheduleListOptions = {
@@ -123,14 +127,10 @@ export class ScheduleListPresenter extends BasePresenter {
     }
 
     //get all possible scheduled tasks
-    const possibleTasks = await this._replica.backgroundWorkerTask.findMany({
-      where: {
-        workerId: latestWorker.id,
-        projectId: project.id,
-        runtimeEnvironmentId: environmentId,
-        triggerSource: "SCHEDULED",
-      },
-    });
+    const allIdentifiers = await getTaskIdentifiers(environmentId);
+    const possibleTasks = allIdentifiers
+      .filter((t) => t.triggerSource === "SCHEDULED" && t.isInLatestDeployment)
+      .map((t) => ({ slug: t.slug }));
 
     //do this here to protect against SQL injection
     search = search && search !== "" ? `%${search}%` : undefined;
@@ -196,8 +196,8 @@ export class ScheduleListPresenter extends BasePresenter {
           },
         },
         active: true,
-        lastRunTriggeredAt: true,
         createdAt: true,
+        updatedAt: true,
       },
       where: {
         projectId: project.id,
@@ -247,6 +247,29 @@ export class ScheduleListPresenter extends BasePresenter {
     });
 
     const schedules: ScheduleListItem[] = rawSchedules.map((schedule) => {
+      // Approximate "last run" from the cron's previous slot. Skip inactive
+      // schedules — the cron's previous slot reflects what *would* have
+      // fired, but a deactivated schedule didn't actually fire there. Skip
+      // when the cron's previous slot predates `updatedAt`: any config
+      // change (cron edited, timezone changed, deactivate/reactivate)
+      // bumps updatedAt, and a slot from before the most recent change
+      // didn't fire under the current configuration. cron-parser throws
+      // on malformed expressions, so degrade to undefined per-row rather
+      // than failing the whole list. UI is best-effort; the runs page is
+      // the source of truth.
+      let lastRun: Date | undefined;
+      if (schedule.active) {
+        try {
+          const cronPrev = previousScheduledTimestamp(
+            schedule.generatorExpression,
+            schedule.timezone
+          );
+          lastRun = cronPrev.getTime() > schedule.updatedAt.getTime() ? cronPrev : undefined;
+        } catch {
+          lastRun = undefined;
+        }
+      }
+
       return {
         id: schedule.id,
         type: schedule.type,
@@ -259,7 +282,7 @@ export class ScheduleListPresenter extends BasePresenter {
         timezone: schedule.timezone,
         active: schedule.active,
         externalId: schedule.externalId,
-        lastRun: schedule.lastRunTriggeredAt ?? undefined,
+        lastRun,
         nextRun: calculateNextScheduledTimestampFromNow(
           schedule.generatorExpression,
           schedule.timezone
@@ -285,7 +308,7 @@ export class ScheduleListPresenter extends BasePresenter {
       totalPages: Math.ceil(totalCount / pageSize),
       totalCount: totalCount,
       schedules,
-      possibleTasks: possibleTasks.map((task) => task.slug).sort((a, b) => a.localeCompare(b)),
+      possibleTasks: possibleTasks.map((task) => task.slug),
       hasFilters,
       limits: {
         used: schedulesCount,

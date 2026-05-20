@@ -205,6 +205,7 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
     compression: options.compression,
     compressionLevel: options.compressionLevel,
     forceCompression: options.forceCompression,
+    isLocalBuild: false,
   });
 
   const args = [
@@ -572,6 +573,7 @@ async function localBuildImage(options: SelfHostedBuildImageOptions): Promise<Bu
     compression,
     compressionLevel,
     forceCompression,
+    isLocalBuild: true,
   });
 
   const args = [
@@ -1161,6 +1163,7 @@ function getOutputOptions({
   compression,
   compressionLevel,
   forceCompression,
+  isLocalBuild,
 }: {
   imageTag?: string;
   push?: boolean;
@@ -1168,9 +1171,33 @@ function getOutputOptions({
   compression?: "zstd" | "gzip";
   compressionLevel?: number;
   forceCompression?: boolean;
+  isLocalBuild: boolean;
 }): string[] {
-  // Always use OCI media types for compatibility
-  const outputOptions: string[] = ["type=image", "oci-mediatypes=true", "rewrite-timestamp=true"];
+  // type=docker exports directly into the local Docker daemon (what --load does).
+  // type=image builds a registry-format image that can be pushed.
+  // They're mutually exclusive: type=docker doesn't support push/compression,
+  // and type=image silently ignores "load=true".
+  // Only use type=docker for local builds to avoid affecting remote builds.
+  // Note: type=docker doesn't support compression options or rewrite-timestamp,
+  // so it will use the actual build time and default compression.
+  if (isLocalBuild && load && !push) {
+    const outputOptions: string[] = ["type=docker"];
+
+    if (imageTag) {
+      outputOptions.push(`name=${imageTag}`);
+    }
+
+    return outputOptions;
+  }
+
+  // `rewrite-timestamp` is incompatible with the buildx docker driver's
+  // implicit `unpack=true` on push (used by e.g. orbstack's default builder).
+  // Provide an env-var escape hatch so local-dev deploys can opt out.
+  const skipRewriteTimestamp = process.env.TRIGGER_BUILD_SKIP_REWRITE_TIMESTAMP === "1";
+  const outputOptions: string[] = ["type=image", "oci-mediatypes=true"];
+  if (!skipRewriteTimestamp) {
+    outputOptions.push("rewrite-timestamp=true");
+  }
 
   if (imageTag) {
     outputOptions.push(`name=${imageTag}`);
@@ -1178,10 +1205,6 @@ function getOutputOptions({
 
   if (push) {
     outputOptions.push("push=true");
-  }
-
-  if (load) {
-    outputOptions.push("load=true");
   }
 
   // Only add compression args when using zstd (gzip is the default, no args needed)

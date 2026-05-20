@@ -6,11 +6,7 @@ import { Button } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
-import {
-  SelectPopover,
-  SelectProvider,
-  SelectTrigger,
-} from "~/components/primitives/Select";
+import { SelectPopover, SelectProvider, SelectTrigger } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { FilterMenuProvider } from "~/components/runs/v3/SharedFilters";
 
@@ -34,8 +30,9 @@ export function LogsRunIdFilter() {
               variant="secondary/small"
               shortcut={shortcut}
               tooltipTitle="Filter by run ID"
+              className="pl-1.5"
             >
-              Run ID
+              <span className="ml-1">Run ID</span>
             </SelectTrigger>
           }
           clearSearchValue={() => setSearch("")}

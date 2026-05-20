@@ -38,6 +38,11 @@ export class ApiKeysPresenter {
             apiKey: true,
           },
         },
+        project: {
+          select: {
+            id: true,
+          },
+        },
       },
       where: {
         project: {
@@ -64,11 +69,22 @@ export class ApiKeysPresenter {
       throw new Error("Environment not found");
     }
 
+    const vercelIntegration =
+      await this.#prismaClient.organizationProjectIntegration.findFirst({
+        where: {
+          projectId: environment.project.id,
+          deletedAt: null,
+          organizationIntegration: { service: "VERCEL", deletedAt: null },
+        },
+        select: { id: true },
+      });
+
     return {
       environment: {
         ...environment,
         apiKey: environment?.parentEnvironment?.apiKey ?? environment?.apiKey,
       },
+      hasVercelIntegration: vercelIntegration !== null,
     };
   }
 }

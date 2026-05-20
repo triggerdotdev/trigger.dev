@@ -4,10 +4,16 @@ import { ClickHouseSettings } from "@clickhouse/client";
 export type QueryParamValue = string | number | boolean | Array<string | number | boolean> | null;
 export type QueryParams = Record<string, QueryParamValue>;
 
+export type WhereCondition = {
+  clause: string;
+  params?: QueryParams;
+};
+
 export class ClickhouseQueryBuilder<TOutput> {
   private name: string;
   private baseQuery: string;
   private whereClauses: string[] = [];
+  private havingClauses: string[] = [];
   private params: QueryParams = {};
   private orderByClause: string | null = null;
   private limitClause: string | null = null;
@@ -30,6 +36,12 @@ export class ClickhouseQueryBuilder<TOutput> {
     this.settings = settings;
   }
 
+  /** Set query parameters without adding a WHERE clause. Use for base queries with inline params. */
+  setParams(params: QueryParams): this {
+    Object.assign(this.params, params);
+    return this;
+  }
+
   where(clause: string, params?: QueryParams): this {
     this.whereClauses.push(clause);
     if (params) {
@@ -45,8 +57,37 @@ export class ClickhouseQueryBuilder<TOutput> {
     return this;
   }
 
+  whereOr(conditions: WhereCondition[]): this {
+    if (conditions.length === 0) {
+      return this;
+    }
+    const combinedClause = conditions.map((c) => `(${c.clause})`).join(" OR ");
+    this.whereClauses.push(`(${combinedClause})`);
+    for (const condition of conditions) {
+      if (condition.params) {
+        Object.assign(this.params, condition.params);
+      }
+    }
+    return this;
+  }
+
   groupBy(clause: string): this {
     this.groupByClause = clause;
+    return this;
+  }
+
+  having(clause: string, params?: QueryParams): this {
+    this.havingClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  havingIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.having(clause, params);
+    }
     return this;
   }
 
@@ -82,6 +123,9 @@ export class ClickhouseQueryBuilder<TOutput> {
     if (this.groupByClause) {
       query += ` GROUP BY ${this.groupByClause}`;
     }
+    if (this.havingClauses.length > 0) {
+      query += " HAVING " + this.havingClauses.join(" AND ");
+    }
     if (this.orderByClause) {
       query += ` ORDER BY ${this.orderByClause}`;
     }
@@ -100,6 +144,7 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
   private settings: ClickHouseSettings | undefined;
   private prewhereClauses: string[] = [];
   private whereClauses: string[] = [];
+  private havingClauses: string[] = [];
   private params: QueryParams = {};
   private orderByClause: string | null = null;
   private limitClause: string | null = null;
@@ -153,8 +198,37 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     return this;
   }
 
+  whereOr(conditions: WhereCondition[]): this {
+    if (conditions.length === 0) {
+      return this;
+    }
+    const combinedClause = conditions.map((c) => `(${c.clause})`).join(" OR ");
+    this.whereClauses.push(`(${combinedClause})`);
+    for (const condition of conditions) {
+      if (condition.params) {
+        Object.assign(this.params, condition.params);
+      }
+    }
+    return this;
+  }
+
   groupBy(clause: string): this {
     this.groupByClause = clause;
+    return this;
+  }
+
+  having(clause: string, params?: QueryParams): this {
+    this.havingClauses.push(clause);
+    if (params) {
+      Object.assign(this.params, params);
+    }
+    return this;
+  }
+
+  havingIf(condition: any, clause: string, params?: QueryParams): this {
+    if (condition) {
+      this.having(clause, params);
+    }
     return this;
   }
 
@@ -191,6 +265,9 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     }
     if (this.groupByClause) {
       query += ` GROUP BY ${this.groupByClause}`;
+    }
+    if (this.havingClauses.length > 0) {
+      query += " HAVING " + this.havingClauses.join(" AND ");
     }
     if (this.orderByClause) {
       query += ` ORDER BY ${this.orderByClause}`;

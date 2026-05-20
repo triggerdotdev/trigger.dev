@@ -28,8 +28,22 @@ export const listPreviewBranchesTool = {
       return respondWithError(branches.error);
     }
 
+    const lines: string[] = [];
+    const branchList = branches.data.branches;
+
+    if (branchList.length === 0) {
+      lines.push("No preview branches found.");
+    } else {
+      lines.push(`Found ${branchList.length} preview branch${branchList.length === 1 ? "" : "es"}`);
+      lines.push("");
+      for (const branch of branchList) {
+        const paused = branch.isPaused ? " (paused)" : "";
+        lines.push(`- ${branch.name}${paused}`);
+      }
+    }
+
     return {
-      content: [{ type: "text", text: JSON.stringify(branches.data, null, 2) }],
+      content: [{ type: "text", text: lines.join("\n") }],
     };
   }),
 };

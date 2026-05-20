@@ -81,12 +81,17 @@ export class LogDetailPresenter {
       // Ignore parse errors
     }
 
+    const durationMs = (typeof log.duration === "number" ? log.duration : Number(log.duration)) / 1_000_000;
+
     return {
       // Use :: separator to match LogsListPresenter format
       id: `${log.trace_id}::${log.span_id}::${log.run_id}::${log.start_time}`,
       runId: log.run_id,
       taskIdentifier: log.task_identifier,
       startTime: convertClickhouseDateTime64ToJsDate(log.start_time).toISOString(),
+      triggeredTimestamp: new Date(
+        convertClickhouseDateTime64ToJsDate(log.start_time).getTime() + durationMs
+      ).toISOString(),
       traceId: log.trace_id,
       spanId: log.span_id,
       parentSpanId: log.parent_span_id || null,

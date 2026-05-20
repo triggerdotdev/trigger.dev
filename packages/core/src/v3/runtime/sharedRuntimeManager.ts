@@ -219,7 +219,7 @@ export class SharedRuntimeManager implements RuntimeManager {
 
   private resolveWaitpoint(waitpoint: CompletedWaitpoint, resolverId?: ResolverId | null): void {
     // This is spammy, don't make this a debug log
-    this.log("resolveWaitpoint", waitpoint);
+    this.log("resolveWaitpoint", { id: waitpoint.id, type: waitpoint.type });
 
     if (waitpoint.type === "BATCH") {
       // We currently ignore these, they're not required to resume after a batch completes

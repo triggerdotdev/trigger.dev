@@ -17,6 +17,9 @@ const constants = {
   DEAD_LETTER_QUEUE_PART: "deadLetter",
   MASTER_QUEUE_PART: "masterQueue",
   WORKER_QUEUE_PART: "workerQueue",
+  CK_INDEX_PART: "ckIndex",
+  LENGTH_COUNTER_PART: "lengthCounter",
+  RUNNING_COUNTER_PART: "runningCounter",
 } as const;
 
 export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
@@ -299,6 +302,43 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
 
   currentConcurrencySetKeyScanPattern(): string {
     return `*:${constants.ENV_PART}:*:queue:*:${constants.CURRENT_CONCURRENCY_PART}`;
+  }
+
+  ttlQueueKeyForShard(shard: number): string {
+    return ["ttl", "shard", shard.toString()].join(":");
+  }
+
+  ckIndexKeyFromQueue(queue: string): string {
+    const baseQueue = queue.replace(/:ck:.+$/, "");
+    return `${baseQueue}:${constants.CK_INDEX_PART}`;
+  }
+
+  baseQueueKeyFromQueue(queue: string): string {
+    return queue.replace(/:ck:.+$/, "");
+  }
+
+  queueLengthCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.LENGTH_COUNTER_PART}`;
+  }
+
+  queueLengthCounterKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.LENGTH_COUNTER_PART}`;
+  }
+
+  queueRunningCounterKey(env: RunQueueKeyProducerEnvironment, queue: string): string {
+    return `${this.queueKey(env, queue)}:${constants.RUNNING_COUNTER_PART}`;
+  }
+
+  queueRunningCounterKeyFromQueue(queue: string): string {
+    return `${this.baseQueueKeyFromQueue(queue)}:${constants.RUNNING_COUNTER_PART}`;
+  }
+
+  isCkWildcard(queue: string): boolean {
+    return queue.endsWith(":ck:*");
+  }
+
+  toCkWildcard(queue: string): string {
+    return queue.replace(/:ck:.+$/, ":ck:*");
   }
 
   descriptorFromQueue(queue: string): QueueDescriptor {

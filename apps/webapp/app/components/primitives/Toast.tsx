@@ -1,7 +1,7 @@
 import { EnvelopeIcon, ExclamationCircleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { useSearchParams } from "@remix-run/react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useTypedLoaderData } from "remix-typedjson";
 import { Toaster, toast } from "sonner";
 import { type ToastMessageAction } from "~/models/message.server";
@@ -43,6 +43,32 @@ export function Toast() {
   return <Toaster />;
 }
 
+export function useToast() {
+  return useMemo(
+    () => ({
+      success(message: string, options?: { title?: string; ephemeral?: boolean }) {
+        const ephemeral = options?.ephemeral ?? true;
+        toast.custom(
+          (t) => (
+            <ToastUI variant="success" message={message} t={t as string} title={options?.title} />
+          ),
+          { duration: ephemeral ? defaultToastDuration : permanentToastDuration }
+        );
+      },
+      error(message: string, options?: { title?: string; ephemeral?: boolean }) {
+        const ephemeral = options?.ephemeral ?? true;
+        toast.custom(
+          (t) => (
+            <ToastUI variant="error" message={message} t={t as string} title={options?.title} />
+          ),
+          { duration: ephemeral ? defaultToastDuration : permanentToastDuration }
+        );
+      },
+    }),
+    []
+  );
+}
+
 export function ToastUI({
   variant,
   message,
@@ -69,21 +95,26 @@ export function ToastUI({
         width: toastWidth,
       }}
     >
-      <div className="flex w-full items-start gap-2 rounded-lg p-3">
+      <div
+        className={cn("flex w-full gap-2 rounded-lg p-3", title ? "items-start" : "items-center")}
+      >
         {variant === "success" ? (
-          <CheckCircleIcon className="mt-1 size-4 min-w-4 text-success" />
+          <CheckCircleIcon className={cn("size-4 min-w-4 text-success", title && "mt-1")} />
         ) : (
-          <ExclamationCircleIcon className="mt-1 size-4 min-w-4 text-error" />
+          <ExclamationCircleIcon className={cn("size-4 min-w-4 text-error", title && "mt-1")} />
         )}
         <div className="flex flex-col">
           {title && <Header2 className="pt-0">{title}</Header2>}
-          <Paragraph variant="small/dimmed" className="pb-1 pt-0.5">
+          <Paragraph
+            variant={title ? "small/dimmed" : "small/bright"}
+            className={title ? "pb-1 pt-0.5" : ""}
+          >
             {message}
           </Paragraph>
           <Action action={action} toastId={t} className="my-2" />
         </div>
         <button
-          className="hover:bg-midnight-800 -mr-1 -mt-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
+          className={cn("-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright", title && "-mt-1")}
           onClick={() => toast.dismiss(t)}
         >
           <XMarkIcon className="size-4" />

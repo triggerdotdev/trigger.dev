@@ -7,8 +7,9 @@ import path from "path";
 import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
-import { expect, TaskContext } from "vitest";
+import type { TaskContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
+import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
 
 export async function createPostgresContainer(network: StartedNetwork) {
@@ -74,7 +75,9 @@ export async function createRedisContainer({
   port?: number;
   network?: StartedNetwork;
 }) {
-  let container = new RedisContainer().withExposedPorts(port ?? 6379).withStartupTimeout(120_000); // 2 minutes
+  let container = new RedisContainer("redis:7.2")
+    .withExposedPorts(port ?? 6379)
+    .withStartupTimeout(120_000); // 2 minutes
 
   if (network) {
     container = container.withNetwork(network).withNetworkAliases("redis");
@@ -96,7 +99,7 @@ export async function createRedisContainer({
   const [error] = await tryCatch(verifyRedisConnection(startedContainer));
 
   if (error) {
-    await startedContainer.stop({ timeout: 30 });
+    await startedContainer.stop({ timeout: 30_000 });
     throw new Error("verifyRedisConnection error", { cause: error });
   }
 
@@ -170,9 +173,34 @@ export async function createElectricContainer(
   };
 }
 
+export async function createMinIOContainer(network: StartedNetwork) {
+  const container = await new MinIOContainer()
+    .withNetwork(network)
+    .withNetworkAliases("minio")
+    .start();
+
+  return {
+    container,
+    network,
+  };
+}
+
 export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
-  expect(value).toBeDefined();
-  expect(value).not.toBeNull();
+  // Plain throw — *not* `vitest.expect`. Two reasons:
+  //   1. This module is imported by globalSetup files that run before any
+  //      vitest worker exists, so `import { expect }` from "vitest" at
+  //      top level can crash on init.
+  //   2. Lazy-loading via `require("vitest")` (the prior fix) collides
+  //      with OTel auto-instrumentation: `@opentelemetry/instrumentation`
+  //      hooks `require()` via `require-in-the-middle`, and vitest is
+  //      ESM-only — the require() throws "Vitest cannot be imported in
+  //      a CommonJS module using require()", failing every test that
+  //      uses `assertNonNullable` after OTel's been touched.
+  // The plain throw still gives vitest a useful failure (the message is
+  // shown in the stack trace) without the instrumentation hazard.
+  if (value === null || value === undefined) {
+    throw new Error(`assertNonNullable: value was ${value === null ? "null" : "undefined"}`);
+  }
 }
 
 export async function withContainerSetup<T>({
@@ -223,7 +251,7 @@ export async function useContainer<TContainer extends StartedTestContainer>(
     metadata.useDurationMs = useDurationMs;
   } finally {
     // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
-    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is second
-    await logCleanup(name, container.stop({ timeout: 10 }), metadata);
+    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is milliseconds (changed from seconds in testcontainers v11)
+    await logCleanup(name, container.stop({ timeout: 10_000 }), metadata);
   }
 }

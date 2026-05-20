@@ -37,17 +37,19 @@ export type TriggerTaskResult = {
 
 export type QueueValidationResult =
   | {
-      ok: true;
-    }
+    ok: true;
+  }
   | {
-      ok: false;
-      maximumSize: number;
-      queueSize: number;
-    };
+    ok: false;
+    maximumSize: number;
+    queueSize: number;
+  };
 
 export type QueueProperties = {
   queueName: string;
   lockedQueueId?: string;
+  taskTtl?: string | null;
+  taskKind?: string;
 };
 
 export type LockedBackgroundWorker = Pick<
@@ -61,15 +63,15 @@ export interface QueueManager {
     request: TriggerTaskRequest,
     lockedBackgroundWorker?: LockedBackgroundWorker
   ): Promise<QueueProperties>;
-  getQueueName(request: TriggerTaskRequest): Promise<string>;
   validateQueueLimits(
     env: AuthenticatedEnvironment,
+    queueName: string,
     itemsToAdd?: number
   ): Promise<QueueValidationResult>;
   getWorkerQueue(
     env: AuthenticatedEnvironment,
     regionOverride?: string
-  ): Promise<string | undefined>;
+  ): Promise<{ masterQueue: string; enableFastPath: boolean } | undefined>;
 }
 
 export interface PayloadProcessor {
@@ -97,22 +99,22 @@ export interface ParentRunValidationParams {
 
 export type ValidationResult =
   | {
-      ok: true;
-    }
+    ok: true;
+  }
   | {
-      ok: false;
-      error: Error;
-    };
+    ok: false;
+    error: Error;
+  };
 
 export type EntitlementValidationResult =
   | {
-      ok: true;
-      plan?: ReportUsagePlan;
-    }
+    ok: true;
+    plan?: ReportUsagePlan;
+  }
   | {
-      ok: false;
-      error: Error;
-    };
+    ok: false;
+    error: Error;
+  };
 
 export interface TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult;

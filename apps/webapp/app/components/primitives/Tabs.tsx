@@ -11,6 +11,7 @@ export type TabsProps = {
   tabs: {
     label: string;
     to: string;
+    end?: boolean;
   }[];
   className?: string;
   layoutId: string;
@@ -21,7 +22,13 @@ export function Tabs({ tabs, className, layoutId, variant = "underline" }: TabsP
   return (
     <TabContainer className={className} variant={variant}>
       {tabs.map((tab, index) => (
-        <TabLink key={index} to={tab.to} layoutId={layoutId} variant={variant}>
+        <TabLink
+          key={index}
+          to={tab.to}
+          layoutId={layoutId}
+          variant={variant}
+          end={tab.end ?? true}
+        >
           {tab.label}
         </TabLink>
       ))}
@@ -62,18 +69,20 @@ export function TabLink({
   children,
   layoutId,
   variant = "underline",
+  end = true,
 }: {
   to: string;
   children: ReactNode;
   layoutId: string;
   variant?: Variants;
+  end?: boolean;
 }) {
   if (variant === "segmented") {
     return (
       <NavLink
         to={to}
         className="group relative flex h-full grow items-center justify-center focus-custom"
-        end
+        end={end}
       >
         {({ isActive, isPending }) => {
           const active = isActive || isPending;
@@ -110,7 +119,7 @@ export function TabLink({
       <NavLink
         to={to}
         className="group flex flex-col items-center border-r border-charcoal-700 px-2 pt-1 focus-custom first:pl-0 last:border-none"
-        end
+        end={end}
       >
         {({ isActive, isPending }) => {
           const active = isActive || isPending;
@@ -131,7 +140,7 @@ export function TabLink({
 
   // underline variant (default)
   return (
-    <NavLink to={to} className="group flex flex-col items-center pt-1 focus-custom" end>
+    <NavLink to={to} className="group flex flex-col items-center pt-1 focus-custom" end={end}>
       {({ isActive, isPending }) => {
         return (
           <>

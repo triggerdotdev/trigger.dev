@@ -48,6 +48,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       contentHash: body.data.contentHash,
       git: body.data.gitMeta,
       runtime: body.data.runtime,
+      buildServerMetadata: body.data.buildServerMetadata,
     })
     .match(
       () => {

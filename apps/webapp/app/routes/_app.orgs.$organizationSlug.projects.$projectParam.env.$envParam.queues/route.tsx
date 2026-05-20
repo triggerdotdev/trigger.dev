@@ -3,7 +3,6 @@ import {
   ArrowUpCircleIcon,
   BookOpenIcon,
   ChatBubbleLeftEllipsisIcon,
-  MagnifyingGlassIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
@@ -32,6 +31,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -59,7 +59,6 @@ import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useThrottle } from "~/hooks/useThrottle";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
@@ -176,9 +175,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const action = formData.get("action");
 
   const url = new URL(request.url);
-  const { page } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
-
-  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues?page=${page}`;
+  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues${url.search}`;
 
   if (environment.archivedAt) {
     return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
@@ -345,7 +342,7 @@ export default function Page() {
             <BigNumber
               title="Queued"
               value={environment.queued}
-              suffix={env.paused && environment.queued > 0 ? "paused" : undefined}
+              suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
               animate
               accessory={
                 <div className="flex items-start gap-1">
@@ -364,14 +361,14 @@ export default function Page() {
                   />
                 </div>
               }
-              valueClassName={env.paused ? "text-warning" : undefined}
+              valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
               compactThreshold={1000000}
             />
             <BigNumber
               title="Running"
               value={environment.running}
               animate
-              valueClassName={limitClassName}
+              valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
                   <span className={cn(limitClassName, "flex items-center gap-1")}>
@@ -438,13 +435,8 @@ export default function Page() {
           </div>
 
           {success ? (
-            <div
-              className={cn(
-                "grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto",
-                pagination.totalPages > 1 && "grid-rows-[auto_1fr_auto]"
-              )}
-            >
-              <div className="flex items-center gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
+            <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
+              <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
                 <QueueFilters />
                 <PaginationControls
                   currentPage={pagination.currentPage}
@@ -509,7 +501,10 @@ export default function Page() {
                   {queues.length > 0 ? (
                     queues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
-                      const isAtLimit = queue.running >= limit;
+                      const isAtConcurrencyLimit = queue.running >= limit;
+                      const isAtQueueLimit =
+                        environment.queueSizeLimit !== null &&
+                        queue.queued >= environment.queueSizeLimit;
                       const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
                         queue.name
                       }`;
@@ -535,7 +530,12 @@ export default function Page() {
                                   Paused
                                 </Badge>
                               ) : null}
-                              {isAtLimit ? (
+                              {isAtQueueLimit ? (
+                                <Badge variant="extra-small" className="text-error">
+                                  At queue limit
+                                </Badge>
+                              ) : null}
+                              {isAtConcurrencyLimit ? (
                                 <Badge variant="extra-small" className="text-warning">
                                   At concurrency limit
                                 </Badge>
@@ -546,7 +546,8 @@ export default function Page() {
                             alignment="right"
                             className={cn(
                               "w-[1%] pl-16 tabular-nums",
-                              queue.paused ? "opacity-50" : undefined
+                              queue.paused ? "opacity-50" : undefined,
+                              isAtQueueLimit && "text-error"
                             )}
                           >
                             {queue.queued}
@@ -557,7 +558,7 @@ export default function Page() {
                               "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
                               queue.running > 0 && "text-text-bright",
-                              isAtLimit && "text-warning"
+                              isAtConcurrencyLimit && "text-warning"
                             )}
                           >
                             {queue.running}
@@ -577,7 +578,7 @@ export default function Page() {
                             className={cn(
                               "w-[1%] pl-16",
                               queue.paused ? "opacity-50" : undefined,
-                              isAtLimit && "text-warning",
+                              isAtConcurrencyLimit && "text-warning",
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
@@ -673,27 +674,6 @@ export default function Page() {
                 </TableBody>
               </Table>
 
-              {pagination.totalPages > 1 && (
-                <div
-                  className={cn(
-                    "grid h-fit max-h-full min-h-full overflow-x-auto",
-                    pagination.totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex min-h-full",
-                      pagination.totalPages > 1 &&
-                        "justify-end border-t border-grid-dimmed px-2 py-3"
-                    )}
-                  >
-                    <PaginationControls
-                      currentPage={pagination.currentPage}
-                      totalPages={pagination.totalPages}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
@@ -1067,39 +1047,7 @@ export function isEnvironmentPauseResumeFormSubmission(
 }
 
 export function QueueFilters() {
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const handleSearchChange = useThrottle((value: string) => {
-    if (value) {
-      setSearchParams((prev) => {
-        prev.set("query", value);
-        prev.delete("page");
-        return prev;
-      });
-    } else {
-      setSearchParams((prev) => {
-        prev.delete("query");
-        prev.delete("page");
-        return prev;
-      });
-    }
-  }, 300);
-
-  const search = searchParams.get("query") ?? "";
-
-  return (
-    <div className="flex grow">
-      <Input
-        name="search"
-        placeholder="Search queue name"
-        icon={MagnifyingGlassIcon}
-        variant="tertiary"
-        className="grow"
-        defaultValue={search}
-        onChange={(e) => handleSearchChange(e.target.value)}
-      />
-    </div>
-  );
+  return <SearchInput placeholder="Search queues…" paramName="query" resetParams={["page"]} />;
 }
 
 function BurstFactorTooltip({

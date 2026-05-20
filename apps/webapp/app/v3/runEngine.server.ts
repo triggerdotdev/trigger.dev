@@ -19,6 +19,8 @@ function createRunEngine() {
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     treatProductionExecutionStallsAsOOM:
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
+    readReplicaSnapshotsSinceEnabled:
+      env.RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED === "1",
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
@@ -80,6 +82,16 @@ function createRunEngine() {
         scanJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_SCAN_JITTER_IN_MS,
         processMarkedJitterInMs: env.RUN_ENGINE_CONCURRENCY_SWEEPER_PROCESS_MARKED_JITTER_IN_MS,
       },
+      ttlSystem: {
+        disabled: env.RUN_ENGINE_TTL_SYSTEM_DISABLED,
+        consumersDisabled: env.RUN_ENGINE_TTL_CONSUMERS_DISABLED,
+        shardCount: env.RUN_ENGINE_TTL_SYSTEM_SHARD_COUNT,
+        pollIntervalMs: env.RUN_ENGINE_TTL_SYSTEM_POLL_INTERVAL_MS,
+        batchSize: env.RUN_ENGINE_TTL_SYSTEM_BATCH_SIZE,
+        workerConcurrency: env.RUN_ENGINE_TTL_WORKER_CONCURRENCY,
+        batchMaxSize: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_SIZE,
+        batchMaxWaitMs: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS,
+      },
     },
     runLock: {
       redis: {
@@ -104,6 +116,7 @@ function createRunEngine() {
     },
     tracer,
     meter,
+    defaultMaxTtl: env.RUN_ENGINE_DEFAULT_MAX_TTL,
     heartbeatTimeoutsMs: {
       PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
       PENDING_CANCEL: env.RUN_ENGINE_TIMEOUT_PENDING_CANCEL,
@@ -153,6 +166,7 @@ function createRunEngine() {
         return {
           isPaying: plan.v3Subscription.isPaying,
           type: plan.v3Subscription.plan.type,
+          hasPrivateLink: plan.v3Subscription.plan.limits.hasPrivateNetworking ?? false,
         };
       },
     },
@@ -187,10 +201,22 @@ function createRunEngine() {
       globalRateLimiter: env.BATCH_QUEUE_GLOBAL_RATE_LIMIT
         ? createBatchGlobalRateLimiter(env.BATCH_QUEUE_GLOBAL_RATE_LIMIT)
         : undefined,
+      // Worker queue depth cap - prevents unbounded growth protecting visibility timeouts
+      workerQueueMaxDepth: env.BATCH_QUEUE_WORKER_QUEUE_MAX_DEPTH,
+      retry: {
+        maxAttempts: 6,
+        minTimeoutInMs: 1_000,
+        maxTimeoutInMs: 30_000,
+        factor: 2,
+        randomize: true,
+      },
     },
     // Debounce configuration
     debounce: {
       maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
+      quantizeNewDelayUntilMs: env.RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS,
+      fastPathSkipEnabled: env.RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED === "1",
+      useReplicaForFastPathRead: env.RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ === "1",
     },
   });
 

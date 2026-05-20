@@ -25,9 +25,11 @@ import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -149,50 +151,6 @@ export default function Page() {
           >
             Schedules docs
           </LinkButton>
-
-          {limits.used >= limits.limit ? (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  LeadingIcon={PlusIcon}
-                  leadingIconClassName="text-background-dimmed"
-                  variant="primary/small"
-                  shortcut={{ key: "n" }}
-                  disabled={possibleTasks.length === 0 || isShowingNewPane}
-                >
-                  New schedule
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>You've exceeded your limit</DialogHeader>
-                <DialogDescription>
-                  You've used {limits.used}/{limits.limit} of your schedules.
-                </DialogDescription>
-                <DialogFooter>
-                  {canUpgrade ? (
-                    <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                      Upgrade
-                    </LinkButton>
-                  ) : (
-                    <Feedback
-                      button={<Button variant="primary/small">Request more</Button>}
-                      defaultValue="help"
-                    />
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          ) : (
-            <LinkButton
-              LeadingIcon={PlusIcon}
-              to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
-              variant="primary/small"
-              shortcut={{ key: "n" }}
-              disabled={possibleTasks.length === 0 || isShowingNewPane}
-            >
-              New schedule
-            </LinkButton>
-          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -217,6 +175,54 @@ export default function Page() {
                         totalPages={totalPages}
                         showPageNumbers={false}
                       />
+                      {limits.used >= limits.limit ? (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              LeadingIcon={PlusIcon}
+                              leadingIconClassName="text-background-dimmed"
+                              variant="primary/small"
+                              shortcut={{ key: "n" }}
+                              disabled={possibleTasks.length === 0 || isShowingNewPane}
+                            >
+                              New schedule
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>You've exceeded your limit</DialogHeader>
+                            <DialogDescription>
+                              You've used {limits.used}/{limits.limit} of your schedules.
+                            </DialogDescription>
+                            <DialogFooter>
+                              {canUpgrade ? (
+                                <LinkButton
+                                  variant="primary/small"
+                                  to={v3BillingPath(organization)}
+                                >
+                                  Upgrade
+                                </LinkButton>
+                              ) : (
+                                <Feedback
+                                  button={
+                                    <Button variant="primary/small">Request more</Button>
+                                  }
+                                  defaultValue="help"
+                                />
+                              )}
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      ) : (
+                        <LinkButton
+                          LeadingIcon={PlusIcon}
+                          to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
+                          variant="primary/small"
+                          shortcut={{ key: "n" }}
+                          disabled={possibleTasks.length === 0 || isShowingNewPane}
+                        >
+                          New schedule
+                        </LinkButton>
+                      )}
                     </div>
                   </div>
 
@@ -304,14 +310,25 @@ export default function Page() {
               )}
             </div>
           </ResizablePanel>
-          {(isShowingNewPane || isShowingSchedule) && (
-            <>
-              <ResizableHandle id="schedules-handle" />
-              <ResizablePanel id="schedules-inspector" min="100px" default="500px">
-                <Outlet />
-              </ResizablePanel>
-            </>
-          )}
+          <ResizableHandle
+            id="schedules-handle"
+            className={collapsibleHandleClassName(isShowingNewPane || isShowingSchedule)}
+          />
+          <ResizablePanel
+            id="schedules-inspector"
+            min="400px"
+            default="500px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!isShowingNewPane && !isShowingSchedule}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 400 }}>
+              <Outlet />
+            </div>
+          </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
@@ -403,58 +420,59 @@ function SchedulesTable({
             }`;
             const isSelected = scheduleParam === schedule.friendlyId;
             const cellClass = schedule.active ? "" : "opacity-50";
+            const selectedActionClass = isSelected ? "text-text-bright" : undefined;
             return (
               <TableRow key={schedule.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={path} isTabbableCell className={cellClass}>
+                <TableCell to={path} isTabbableCell className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.friendlyId}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.taskIdentifier}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   <ScheduleTypeCombo type={schedule.type} />
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.type === "IMPERATIVE"
                     ? schedule.externalId
                       ? schedule.externalId
                       : "–"
                     : "N/A"}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.cron}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.cronDescription}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.timezone}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   <DateTime date={schedule.nextRun} timeZone={schedule.timezone} />
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.lastRun ? (
                     <DateTime date={schedule.lastRun} timeZone={schedule.timezone} />
                   ) : (
                     "–"
                   )}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   {schedule.type === "IMPERATIVE"
                     ? schedule.userProvidedDeduplicationKey
                       ? schedule.deduplicationKey
                       : "–"
                     : "N/A"}
                 </TableCell>
-                <TableCell to={path} className={cellClass}>
+                <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
                   <div className="flex items-center gap-3">
                     {schedule.environments.map((env) => (
                       <EnvironmentCombo key={env.id} environment={env} className="text-xs" />
                     ))}
                   </div>
                 </TableCell>
-                <TableCell to={path}>
+                <TableCell to={path} actionClassName={selectedActionClass}>
                   {schedule.type === "IMPERATIVE" ? (
                     <EnabledStatus enabled={schedule.active} />
                   ) : (

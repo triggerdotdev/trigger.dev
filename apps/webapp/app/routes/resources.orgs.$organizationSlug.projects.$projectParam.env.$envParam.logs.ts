@@ -6,11 +6,11 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { LogsListPresenter, type LogLevel, LogsListOptionsSchema } from "~/presenters/v3/LogsListPresenter.server";
 import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
 // Valid log levels for filtering
-const validLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR"];
+const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
   const levelParams = url.searchParams.getAll("levels").filter((v) => v.length > 0);
@@ -21,7 +21,6 @@ function parseLevelsFromUrl(url: URL): LogLevel[] | undefined {
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
-  const isAdmin = user?.admin || user?.isImpersonating;
 
   const { projectParam, organizationSlug, envParam } = EnvironmentParamSchema.parse(params);
 
@@ -46,7 +45,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const search = url.searchParams.get("search") ?? undefined;
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const levels = parseLevelsFromUrl(url);
-  const showDebug = url.searchParams.get("showDebug") === "true";
   const period = url.searchParams.get("period") ?? undefined;
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
@@ -67,12 +65,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     from,
     to,
     levels,
-    includeDebugLogs: isAdmin && showDebug,
     defaultPeriod: "1h",
     retentionLimitDays,
   }) as any; // Validated by LogsListOptionsSchema at runtime
 
-  const presenter = new LogsListPresenter($replica, clickhouseClient);
+  const presenter = new LogsListPresenter($replica, logsClickhouseClient);
   const result = await presenter.call(project.organizationId, environment.id, options);
 
   return json({

@@ -1,8 +1,10 @@
+import { useState } from "react";
 import type { ColumnSchema } from "@internal/tsql";
 import { Badge } from "~/components/primitives/Badge";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { querySchemas } from "~/v3/querySchemas";
 
 function ColumnHelpItem({ col }: { col: ColumnSchema }) {
@@ -42,26 +44,36 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   );
 }
 
+const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));
+
 export function TableSchemaContent() {
+  const [selectedTable, setSelectedTable] = useState(querySchemas[0].name);
+  const table = querySchemas.find((s) => s.name === selectedTable) ?? querySchemas[0];
+
   return (
     <div>
-      {querySchemas.map((table) => (
-        <div key={table.name} className="mb-6">
-          <div className="mb-2">
-            <Header3 className="font-mono text-text-bright">{table.name}</Header3>
-            {table.description && (
-              <Paragraph variant="small" className="mt-1 text-text-dimmed">
-                {table.description}
-              </Paragraph>
-            )}
-          </div>
-          <div className="flex flex-col gap-2 divide-y divide-grid-dimmed">
-            {Object.values(table.columns).map((col) => (
-              <ColumnHelpItem key={col.name} col={col} />
-            ))}
-          </div>
-        </div>
-      ))}
+      <div className="sticky top-0 z-10 bg-background-bright pb-3">
+        <SegmentedControl
+          name="table-schema-selector"
+          value={selectedTable}
+          options={tableOptions}
+          variant="secondary/small"
+          fullWidth
+          onChange={setSelectedTable}
+        />
+      </div>
+      <div className="mb-2">
+        {table.description && (
+          <Paragraph variant="small" className="text-text-dimmed">
+            {table.description}
+          </Paragraph>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 divide-y divide-grid-dimmed">
+        {Object.values(table.columns).map((col) => (
+          <ColumnHelpItem key={col.name} col={col} />
+        ))}
+      </div>
     </div>
   );
 }

@@ -138,13 +138,36 @@ export const listDeploysTool = {
 
     const result = await apiClient.listDeployments(input);
 
+    const lines: string[] = [];
+    const deploys = result.data;
+
+    lines.push(`Found ${deploys.length} deployment${deploys.length === 1 ? "" : "s"}`);
+    lines.push("");
+
+    for (const deploy of deploys) {
+      const deployedAt = deploy.deployedAt
+        ? new Date(deploy.deployedAt).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC")
+        : "not deployed";
+      const git = deploy.git && typeof deploy.git === "object" && "commitMessage" in deploy.git
+        ? ` | ${deploy.git.commitMessage}`
+        : "";
+      lines.push(
+        `- ${deploy.shortCode} | v${deploy.version} | ${deploy.status} | ${deployedAt}${git}`
+      );
+    }
+
+    if (result.pagination?.next) {
+      lines.push("");
+      lines.push("Next page available →");
+    }
+
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: "text", text: lines.join("\n") }],
     };
   }),
 };
 
-async function resolveCLIExec(context: McpContext, cwd?: string): Promise<[string, string]> {
+export async function resolveCLIExec(context: McpContext, cwd?: string): Promise<[string, string]> {
   // Lets first try to get the version of the CLI package
   const installedCLI = await tryResolveTriggerCLIPath(context, cwd);
 

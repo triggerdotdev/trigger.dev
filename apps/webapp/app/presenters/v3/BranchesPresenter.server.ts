@@ -4,6 +4,7 @@ import { type Prisma, type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
@@ -110,6 +111,11 @@ export class BranchesPresenter {
           limit: 0,
           isAtLimit: true,
         },
+        canPurchaseBranches: false,
+        extraBranches: 0,
+        branchPricing: null,
+        maxBranchQuota: 0,
+        planBranchLimit: 0,
       };
     }
 
@@ -130,6 +136,18 @@ export class BranchesPresenter {
 
     // Limits
     const limits = await checkBranchLimit(this.#prismaClient, project.organizationId, project.id);
+
+    const [currentPlan, plans] = await Promise.all([
+      getCurrentPlan(project.organizationId),
+      getPlans(),
+    ]);
+
+    const canPurchaseBranches =
+      currentPlan?.v3Subscription?.plan?.limits.branches.canExceed === true;
+    const extraBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
+    const maxBranchQuota = currentPlan?.v3Subscription?.addOns?.branches?.quota ?? 0;
+    const planBranchLimit = currentPlan?.v3Subscription?.plan?.limits.branches.number ?? 0;
+    const branchPricing = plans?.addOnPricing.branches ?? null;
 
     const branches = await this.#prismaClient.runtimeEnvironment.findMany({
       select: {
@@ -191,6 +209,11 @@ export class BranchesPresenter {
       }),
       hasFilters,
       limits,
+      canPurchaseBranches,
+      extraBranches,
+      branchPricing,
+      maxBranchQuota,
+      planBranchLimit,
     };
   }
 }

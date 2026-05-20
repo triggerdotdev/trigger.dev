@@ -151,7 +151,7 @@ await myTask.trigger({ foo: "bar" });
 await myTask.trigger({ foo: "bar" }, { queue: "my-queue" });
 
 
-**Lifecycle hooks**: Function signatures have changed to use a single object parameter instead of separate parameters. This is the old version:
+**Lifecycle hooks**: Function signatures have changed to use a single object parameter instead of separate parameters. Prefer `onStartAttempt` over the deprecated `onStart` when you need code to run before each attempt. This is the old version:
 
 
 // Old v3 way
@@ -171,10 +171,10 @@ This is the new version:
 // New v4 way - single object parameter for hooks
 export const myTask = task({
   id: "my-task",
-  onStart: ({ payload, ctx }) => {},
-  onSuccess: ({ payload, output, ctx }) => {},
-  onFailure: ({ payload, error, ctx }) => {},
-  catchError: ({ payload, ctx, error, retry }) => {},
+  onStartAttempt: ({ payload, ctx }) => {},  // prefer over deprecated onStart
+  onSuccess: ({ payload, ctx, task, output }) => {},
+  onFailure: ({ payload, ctx, task, error }) => {},
+  catchError: ({ payload, ctx, task, error, retry, retryAt, retryDelayInMs }) => {},
   run: async (payload, { ctx }) => {}, // run function unchanged
 });
 
@@ -202,6 +202,12 @@ const batchHandle = await tasks.batchTrigger([
 
 const batch = await batch.retrieve(batchHandle.batchId); // Use batch.retrieve()
 console.log(batch.runs);
+
+
+**triggerAndWait / batchTriggerAndWait**: In v4 these return a Result object, not the raw output. Use `if (result.ok) { ... result.output }` or call `.unwrap()` to get the output (throws if the run failed). Do not wrap `triggerAndWait` or `batchTriggerAndWait` in `Promise.all` — this is not supported.
+
+
+**Context (ctx) changes**: `ctx.attempt.id` and `ctx.attempt.status` have been removed; use `ctx.attempt.number` where needed. `ctx.task.exportName` has been removed.
 
 
 Can you help me convert the following code from v3 to v4? Please include the full converted code in the answer, do not truncate it anywhere.

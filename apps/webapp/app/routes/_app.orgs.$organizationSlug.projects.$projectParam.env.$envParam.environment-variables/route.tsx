@@ -4,33 +4,38 @@ import {
   BookOpenIcon,
   InformationCircleIcon,
   LockClosedIcon,
-  MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useFetcher, useNavigation } from "@remix-run/react";
 import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  json,
-} from "@remix-run/server-runtime";
+  Form,
+  type MetaFunction,
+  Outlet,
+  useActionData,
+  useFetcher,
+  useNavigation,
+  useRevalidator,
+} from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -48,6 +53,7 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -70,6 +76,15 @@ import {
   EditEnvironmentVariableValue,
   EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
+import { UserAvatar } from "~/components/UserProfilePhoto";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
+import { fromPromise } from "neverthrow";
+import { logger } from "~/services/logger.server";
+import {
+  shouldSyncEnvVar,
+  isPullEnvVarsEnabledForEnvironment,
+  type TriggerEnvironmentType,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export const meta: MetaFunction = () => {
   return [
@@ -85,15 +100,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments, hasStaging } = await presenter.call({
-      userId,
-      projectSlug: projectParam,
-    });
+    const { environmentVariables, environments, hasStaging, vercelIntegration } =
+      await presenter.call({
+        userId,
+        projectSlug: projectParam,
+      });
 
     return typedjson({
       environmentVariables,
       environments,
       hasStaging,
+      vercelIntegration,
     });
   } catch (error) {
     console.error(error);
@@ -110,6 +127,14 @@ const schema = z.discriminatedUnion("action", [
     action: z.literal("delete"),
     key: z.string(),
     ...DeleteEnvironmentVariableValue.shape,
+  }),
+  z.object({
+    action: z.literal("update-vercel-sync"),
+    key: z.string(),
+    environmentType: z.enum(["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"]),
+    syncEnabled: z
+      .union([z.literal("true"), z.literal("false")])
+      .transform((val) => val === "true"),
   }),
 ]);
 
@@ -151,7 +176,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   switch (submission.value.action) {
     case "edit": {
       const repository = new EnvironmentVariablesRepository(prisma);
-      const result = await repository.editValue(project.id, submission.value);
+      const result = await repository.editValue(project.id, {
+        ...submission.value,
+        lastUpdatedBy: {
+          type: "user",
+          userId,
+        },
+      });
 
       if (!result.success) {
         submission.error.key = [result.error];
@@ -169,6 +200,32 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json(submission);
       }
 
+      // Clean up syncEnvVarsMapping if Vercel integration exists (best-effort)
+      const { environmentId, key } = submission.value;
+      const vercelService = new VercelIntegrationService();
+      await fromPromise(
+        (async () => {
+          const integration = await vercelService.getVercelProjectIntegration(project.id);
+          if (integration) {
+            const runtimeEnv = await prisma.runtimeEnvironment.findUnique({
+              where: { id: environmentId },
+              select: { type: true },
+            });
+            if (runtimeEnv) {
+              await vercelService.removeSyncEnvVarForEnvironment(
+                project.id,
+                key,
+                runtimeEnv.type as TriggerEnvironmentType
+              );
+            }
+          }
+        })(),
+        (error) => error
+      ).mapErr((error) => {
+        logger.error("Failed to remove Vercel sync mapping", { error });
+        return error;
+      });
+
       return redirectWithSuccessMessage(
         v3EnvironmentVariablesPath(
           { slug: organizationSlug },
@@ -179,20 +236,45 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         `Deleted ${submission.value.key} environment variable`
       );
     }
+    case "update-vercel-sync": {
+      const vercelService = new VercelIntegrationService();
+      const integration = await vercelService.getVercelProjectIntegration(project.id);
+
+      if (!integration) {
+        submission.error.key = ["Vercel integration not found"];
+        return json(submission);
+      }
+
+      // Update the sync mapping for the specific env var and environment
+      await vercelService.updateSyncEnvVarForEnvironment(
+        project.id,
+        submission.value.key,
+        submission.value.environmentType,
+        submission.value.syncEnabled
+      );
+
+      return json({ success: true });
+    }
   }
 };
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments, vercelIntegration } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { filterText, setFilterText, filteredItems } =
-    useFuzzyFilter<EnvironmentVariableWithSetValues>({
-      items: environmentVariables,
-      keys: ["key", "value"],
-    });
+  const { value } = useSearchParams();
+  const urlSearch = value("search") ?? "";
+  const { setFilterText, filteredItems } = useFuzzyFilter<EnvironmentVariableWithSetValues>({
+    items: environmentVariables,
+    keys: ["key", "value", "environment.type", "environment.branchName"],
+  });
+
+  useEffect(() => {
+    setFilterText(urlSearch);
+  }, [urlSearch, setFilterText]);
 
   // Add isFirst and isLast to each environment variable
   // They're set based on if they're the first or last time that `key` has been seen in the list
@@ -249,18 +331,10 @@ export default function Page() {
         <div className={cn("flex h-full flex-col")}>
           {environmentVariables.length > 0 && (
             <div className="flex items-center justify-between gap-2 px-2 py-2">
-              <Input
-                placeholder="Search variables"
-                variant="tertiary"
-                icon={MagnifyingGlassIcon}
-                fullWidth={true}
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
-                autoFocus
-              />
-              <div className="flex items-center justify-end gap-2">
+              <SearchInput placeholder="Search variables…" autoFocus />
+              <div className="flex items-center justify-end gap-1.5">
                 <Switch
-                  variant="small"
+                  variant="secondary/small"
                   label="Reveal values"
                   checked={revealAll}
                   onCheckedChange={(e) => setRevealAll(e.valueOf())}
@@ -279,10 +353,41 @@ export default function Page() {
           <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className="w-[25%]">Key</TableHeaderCell>
-                <TableHeaderCell className="w-[55%]">Value</TableHeaderCell>
-                <TableHeaderCell className="w-[20%]">Environment</TableHeaderCell>
-                <TableHeaderCell hiddenLabel className="pl-24">
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
+                  Key
+                </TableHeaderCell>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}>
+                  Value
+                </TableHeaderCell>
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}>
+                  <SimpleTooltip
+                    button={
+                      <span className="flex items-center gap-1">
+                        Environment
+                        <InformationCircleIcon className="size-4 text-text-dimmed" />
+                      </span>
+                    }
+                    content="Dev environment variables specified here will be overridden by ones in your .env file when running locally."
+                    className="max-w-60"
+                  />
+                </TableHeaderCell>
+                {vercelIntegration?.enabled && (
+                  <TableHeaderCell className="w-[8%]">
+                    <SimpleTooltip
+                      button={
+                        <span className="flex items-center gap-1">
+                          Sync
+                          <InformationCircleIcon className="size-4 text-text-dimmed" />
+                        </span>
+                      }
+                      content="When enabled, this variable will be pulled from Vercel during builds. Requires 'Pull env vars before build' to be enabled in settings."
+                    />
+                  </TableHeaderCell>
+                )}
+                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[24%]" : "w-[22%]"}>
+                  Updated
+                </TableHeaderCell>
+                <TableHeaderCell hiddenLabel className="w-0">
                   Actions
                 </TableHeaderCell>
               </TableRow>
@@ -341,9 +446,55 @@ export default function Page() {
                       <TableCell className={cn(cellClassName, borderedCellClassName)}>
                         <EnvironmentCombo environment={variable.environment} className="text-sm" />
                       </TableCell>
+                      {vercelIntegration?.enabled && (
+                        <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                          {variable.environment.type !== "DEVELOPMENT" && (
+                            <VercelSyncCheckbox
+                              envVarKey={variable.key}
+                              environmentType={variable.environment.type as TriggerEnvironmentType}
+                              syncEnabled={shouldSyncEnvVar(
+                                vercelIntegration.syncEnvVarsMapping,
+                                variable.key,
+                                variable.environment.type as TriggerEnvironmentType
+                              )}
+                              pullEnvVarsEnabledForEnv={isPullEnvVarsEnabledForEnvironment(
+                                vercelIntegration.pullEnvVarsBeforeBuild,
+                                variable.environment.type as TriggerEnvironmentType
+                              )}
+                            />
+                          )}
+                        </TableCell>
+                      )}
+                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+                        <div className="flex items-center gap-3">
+                          {variable.updatedByUser ? (
+                            <div className="flex items-center gap-2">
+                              <UserAvatar
+                                avatarUrl={variable.updatedByUser.avatarUrl}
+                                name={variable.updatedByUser.name}
+                                className="size-5"
+                              />
+                              <span className="text-sm">{variable.updatedByUser.name}</span>
+                            </div>
+                          ) : variable.lastUpdatedBy?.type === "integration" &&
+                            variable.lastUpdatedBy?.integration === "vercel" ? (
+                            <div className="flex items-center gap-2">
+                              <VercelLogo className="size-4 text-text-dimmed transition-colors group-hover/table-row:text-text-bright" />
+                              <span className="text-sm capitalize text-text-dimmed transition-colors group-hover/table-row:text-text-bright">
+                                {variable.lastUpdatedBy.integration}
+                              </span>
+                            </div>
+                          ) : null}
+                          {variable.updatedAt ? (
+                            <span className="text-sm text-text-dimmed">
+                              <DateTime date={variable.updatedAt} includeSeconds={false} />
+                            </span>
+                          ) : null}
+                        </div>
+                      </TableCell>
                       <TableCellMenu
-                        className={cn(cellClassName, borderedCellClassName)}
                         isSticky
+                        className="[&:has(.group-hover/table-row:block)]:w-auto w-0"
                         hiddenButtons={
                           <>
                             <EditEnvironmentVariablePanel
@@ -359,7 +510,7 @@ export default function Page() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4}>
+                  <TableCell colSpan={vercelIntegration?.enabled ? 6 : 5}>
                     {environmentVariables.length === 0 ? (
                       <div className="flex flex-col items-center justify-center gap-y-4 py-8">
                         <Header2>You haven't set any environment variables yet.</Header2>
@@ -382,13 +533,6 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
-
-          <div className="-mt-px w-full border-t border-grid-dimmed">
-            <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
-              Dev environment variables specified here will be overridden by ones in your .env file
-              when running locally.
-            </InfoPanel>
-          </div>
         </div>
         <Outlet />
       </PageBody>
@@ -429,9 +573,12 @@ function EditEnvironmentVariablePanel({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
-          Edit
-        </Button>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={PencilSquareIcon}
+          fullWidth
+          textAlignLeft
+        ></Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
@@ -526,8 +673,75 @@ function DeleteEnvironmentVariableButton({
         leadingIconClassName="text-rose-500 group-hover/button:text-text-bright transition-colors"
         className="ml-0.5 transition-colors group-hover/button:bg-error"
       >
-        {isLoading ? "Deleting" : "Delete"}
+        {isLoading ? "Deleting" : ""}
       </Button>
     </Form>
+  );
+}
+
+/**
+ * Toggle component for controlling whether an environment variable is pulled from Vercel.
+ *
+ * When enabled, the variable will be pulled from Vercel during builds.
+ * By default, all variables are pulled unless explicitly disabled.
+ *
+ * Note: If the env slug is missing from syncEnvVarsMapping, all vars are pulled by default.
+ * Only when syncEnvVarsMapping[envSlug][envVarName] = false, the env var is skipped during builds.
+ */
+function VercelSyncCheckbox({
+  envVarKey,
+  environmentType,
+  syncEnabled,
+  pullEnvVarsEnabledForEnv,
+}: {
+  envVarKey: string;
+  environmentType: "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT";
+  syncEnabled: boolean;
+  pullEnvVarsEnabledForEnv: boolean;
+}) {
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
+
+  const isLoading = fetcher.state !== "idle";
+
+  // Revalidate loader data after successful submission (without full page reload)
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data) {
+      const data = fetcher.data as { success?: boolean };
+      if (data.success) {
+        revalidator.revalidate();
+      }
+    }
+  }, [fetcher.state, fetcher.data, revalidator]);
+
+  const handleChange = (checked: boolean) => {
+    fetcher.submit(
+      {
+        action: "update-vercel-sync",
+        key: envVarKey,
+        environmentType,
+        syncEnabled: checked.toString(),
+      },
+      { method: "post" }
+    );
+  };
+
+  // If pull env vars is disabled for this environment, show disabled state
+  if (!pullEnvVarsEnabledForEnv) {
+    return (
+      <SimpleTooltip
+        button={<Switch variant="small" checked={false} disabled onCheckedChange={() => {}} />}
+        content="Enable 'Pull env vars before build' for this environment in Vercel settings."
+      />
+    );
+  }
+
+  return (
+    <Switch
+      variant="small"
+      checked={syncEnabled}
+      disabled={isLoading}
+      onCheckedChange={handleChange}
+    />
   );
 }

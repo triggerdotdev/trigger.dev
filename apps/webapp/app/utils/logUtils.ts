@@ -1,10 +1,10 @@
 import { createElement, Fragment, type ReactNode } from "react";
 import { z } from "zod";
 
-export const LogLevelSchema = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]);
+export const LogLevelSchema = z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
-export const validLogLevels: LogLevel[] = ["DEBUG", "INFO", "WARN", "ERROR",];
+export const validLogLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];
 
 // Default styles for search highlighting
 const DEFAULT_HIGHLIGHT_STYLES: React.CSSProperties = {
@@ -87,6 +87,7 @@ export function kindToLevel(kind: string, status: string): LogLevel {
     case "LOG_LOG":
       return "INFO"; // Changed from "LOG"
     case "SPAN":
+      return "TRACE";
     case "ANCESTOR_OVERRIDE":
     case "SPAN_EVENT":
     default:
@@ -101,6 +102,8 @@ export function getLevelColor(level: LogLevel): string {
       return "text-error bg-error/10 border-error/20";
     case "WARN":
       return "text-warning bg-warning/10 border-warning/20";
+    case "TRACE":
+      return "text-purple-400 bg-purple-500/10 border-purple-500/20";
     case "DEBUG":
       return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     case "INFO":

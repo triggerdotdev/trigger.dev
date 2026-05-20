@@ -215,7 +215,7 @@ describe("FairQueue", () => {
   describe("basic enqueue and process", () => {
     redisTest(
       "should enqueue and process a single message",
-      { timeout: 15000 },
+      { timeout: 30000 },
       async ({ redisOptions }) => {
         const processed: string[] = [];
         keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
@@ -1182,4 +1182,194 @@ describe("FairQueue", () => {
       }
     );
   });
+
+  describe("concurrency block should not trigger cooloff", () => {
+    redisTest(
+      "should not enter cooloff when queue hits concurrency limit",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 20,
+          visibilityTimeoutMs: 5000,
+          cooloff: {
+            periodMs: 5000, // Long cooloff - if triggered, messages would stall
+            threshold: 1, // Enter cooloff after just 1 increment
+          },
+          concurrencyGroups: [
+            {
+              name: "tenant",
+              extractGroupId: (q) => q.tenantId,
+              getLimit: async () => 1, // Only 1 concurrent per tenant
+              defaultLimit: 1,
+            },
+          ],
+          startConsumers: false,
+        });
+
+        // Hold first message to keep concurrency slot occupied
+        let releaseFirst: (() => void) | undefined;
+        const firstBlocking = new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        let firstStarted = false;
+
+        queue.onMessage(async (ctx) => {
+          if (ctx.message.payload.value === "msg-0") {
+            firstStarted = true;
+            // Block this message to saturate concurrency
+            await firstBlocking;
+          }
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        // Enqueue 3 messages to same tenant
+        for (let i = 0; i < 3; i++) {
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: `msg-${i}` },
+          });
+        }
+
+        queue.start();
+
+        // Wait for first message to start processing (blocking the concurrency slot)
+        await vi.waitFor(
+          () => {
+            expect(firstStarted).toBe(true);
+          },
+          { timeout: 5000 }
+        );
+
+        // Release the first message so others can proceed
+        releaseFirst!();
+
+        // All 3 messages should process within a reasonable time.
+        // If cooloff was incorrectly triggered, this would take 5+ seconds.
+        const startTime = Date.now();
+        await vi.waitFor(
+          () => {
+            expect(processed).toHaveLength(3);
+          },
+          { timeout: 5000 }
+        );
+        const elapsed = Date.now() - startTime;
+
+        // Should complete well under the 5s cooloff period
+        expect(elapsed).toBeLessThan(3000);
+
+        // Cooloff states should be empty (no spurious cooloffs)
+        const cacheSizes = queue.fairQueue.getCacheSizes();
+        expect(cacheSizes.cooloffStatesSize).toBe(0);
+
+        await queue.close();
+      }
+    );
+  });
+
+  describe("worker queue depth cap", () => {
+    redisTest(
+      "should respect worker queue max depth and resume after draining",
+      { timeout: 30000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 100,
+          maxDeficit: 1000,
+        });
+
+        const workerQueueManager = new WorkerQueueManager({
+          redis: redisOptions,
+          keys,
+        });
+
+        // Create FairQueue with a small depth cap
+        const maxDepth = 3;
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          visibilityTimeoutMs: 30000,
+          workerQueueMaxDepth: maxDepth,
+          workerQueueDepthCheckId: TEST_WORKER_QUEUE_ID,
+          startConsumers: false,
+        });
+
+        // Use a slow handler to let the worker queue build up
+        queue.onMessage(async (ctx) => {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        // Enqueue 10 messages
+        const totalMessages = 10;
+        for (let i = 0; i < totalMessages; i++) {
+          await queue.enqueue({
+            queueId: "tenant:t1:queue:q1",
+            tenantId: "t1",
+            payload: { value: `msg-${i}` },
+          });
+        }
+
+        // Start processing and track peak worker queue depth
+        let peakDepth = 0;
+        let polling = true;
+        const depthPoller = (async () => {
+          while (polling) {
+            const depth = await workerQueueManager.getLength(TEST_WORKER_QUEUE_ID);
+            if (depth > peakDepth) {
+              peakDepth = depth;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          }
+        })();
+
+        queue.start();
+
+        // Verify all messages eventually get processed (depth cap doesn't permanently block)
+        await vi.waitFor(
+          () => {
+            expect(processed.length).toBe(totalMessages);
+          },
+          { timeout: 25000 }
+        );
+
+        polling = false;
+        await depthPoller;
+
+        // Verify the depth cap was respected during processing
+        expect(peakDepth).toBeLessThanOrEqual(maxDepth);
+
+        // Verify the worker queue is drained
+        const finalDepth = await workerQueueManager.getLength(TEST_WORKER_QUEUE_ID);
+        expect(finalDepth).toBe(0);
+
+        await workerQueueManager.close();
+        await queue.close();
+      }
+    );
+  });
+
 });

@@ -7,7 +7,8 @@ import {
 import { IEventRepository, TraceEventOptions } from "./eventRepository.types";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { FEATURE_FLAG, flag } from "../featureFlags.server";
+import { FEATURE_FLAG } from "../featureFlags";
+import { flag } from "../featureFlags.server";
 import { getTaskEventStore } from "../taskEventStore.server";
 
 export function resolveEventRepositoryForStore(store: string | undefined): IEventRepository {
