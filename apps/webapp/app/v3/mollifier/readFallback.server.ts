@@ -1,4 +1,5 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { logger } from "~/services/logger.server";
 import { deserialiseMollifierSnapshot } from "./mollifierSnapshot.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
@@ -10,6 +11,10 @@ export type ReadFallbackInput = {
 };
 
 export type SyntheticRun = {
+  // Snapshot-derived TaskRun primary key. Used by ReplayTaskRunService
+  // for logging and by callers passing this object where a TaskRun is
+  // expected (cast). Derived deterministically from `friendlyId`.
+  id: string;
   friendlyId: string;
   status: "QUEUED" | "FAILED";
   taskIdentifier: string | undefined;
@@ -19,6 +24,12 @@ export type SyntheticRun = {
   payloadType: string | undefined;
   metadata: unknown;
   metadataType: string | undefined;
+  // Seed-metadata mirrors what `triggerTask.server.ts` writes into the
+  // snapshot: the original metadataPacket data preserved separately from
+  // any later customer mutations. ReplayTaskRunService uses these to
+  // rebuild the replay's metadata.
+  seedMetadata: string | undefined;
+  seedMetadataType: string | undefined;
 
   idempotencyKey: string | undefined;
   idempotencyKeyOptions: string[] | undefined;
@@ -26,6 +37,10 @@ export type SyntheticRun = {
   depth: number;
   ttl: string | undefined;
   tags: string[];
+  // Mirror of `tags` under the PG field name. ReplayTaskRunService reads
+  // `existingTaskRun.runTags`; both names are kept here so a synthetic
+  // run can be passed wherever the PG-shape `runTags` is expected.
+  runTags: string[];
   lockedToVersion: string | undefined;
   resumeParentOnCompletion: boolean;
   parentTaskRunId: string | undefined;
@@ -35,6 +50,17 @@ export type SyntheticRun = {
   traceId: string | undefined;
   spanId: string | undefined;
   parentSpanId: string | undefined;
+
+  // Replay-relevant fields populated from the engine-trigger snapshot.
+  // ReplayTaskRunService reads each of these from the existing TaskRun;
+  // when the original lives in the buffer we synthesise them here.
+  runtimeEnvironmentId: string | undefined;
+  engine: "V2";
+  workerQueue: string | undefined;
+  queue: string | undefined;
+  concurrencyKey: string | undefined;
+  machinePreset: string | undefined;
+  realtimeStreamsVersion: string | undefined;
 
   error?: { code: string; message: string };
 };
@@ -77,7 +103,14 @@ export async function findRunByIdWithMollifierFallback(
       ? asStringArray(idempotencyKeyOptionsRaw)
       : undefined;
 
+    const tags = asStringArray(snapshot.tags);
+    const environment =
+      snapshot.environment && typeof snapshot.environment === "object"
+        ? (snapshot.environment as Record<string, unknown>)
+        : undefined;
+
     return {
+      id: RunId.fromFriendlyId(entry.runId),
       friendlyId: entry.runId,
       status: entry.status === "FAILED" ? "FAILED" : "QUEUED",
       taskIdentifier: asString(snapshot.taskIdentifier),
@@ -87,13 +120,16 @@ export async function findRunByIdWithMollifierFallback(
       payloadType: asString(snapshot.payloadType),
       metadata: snapshot.metadata,
       metadataType: asString(snapshot.metadataType),
+      seedMetadata: asString(snapshot.seedMetadata),
+      seedMetadataType: asString(snapshot.seedMetadataType),
 
       idempotencyKey: asString(snapshot.idempotencyKey),
       idempotencyKeyOptions,
       isTest: snapshot.isTest === true,
       depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
       ttl: asString(snapshot.ttl),
-      tags: asStringArray(snapshot.tags),
+      tags,
+      runTags: tags,
       lockedToVersion: asString(snapshot.lockToVersion),
       resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
       parentTaskRunId: asString(snapshot.parentTaskRunId),
@@ -101,6 +137,15 @@ export async function findRunByIdWithMollifierFallback(
       traceId: asString(snapshot.traceId),
       spanId: asString(snapshot.spanId),
       parentSpanId: asString(snapshot.parentSpanId),
+
+      runtimeEnvironmentId:
+        asString(environment?.id) ?? entry.envId,
+      engine: "V2",
+      workerQueue: asString(snapshot.workerQueue),
+      queue: asString(snapshot.queue),
+      concurrencyKey: asString(snapshot.concurrencyKey),
+      machinePreset: asString(snapshot.machine),
+      realtimeStreamsVersion: asString(snapshot.realtimeStreamsVersion),
 
       error: entry.lastError,
     };

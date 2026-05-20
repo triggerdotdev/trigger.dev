@@ -573,6 +573,7 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     attemptNumber: null,
     engine: "V2",
     taskEventStore: "taskEvent",
+    workerQueue: buffered.workerQueue ?? "main",
     parentTaskRun: null,
     rootTaskRun: null,
     childRuns: [],

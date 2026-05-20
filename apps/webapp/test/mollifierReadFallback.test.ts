@@ -216,4 +216,63 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.traceId).toBeUndefined();
     expect(result!.spanId).toBeUndefined();
   });
+
+  it("populates replay-relevant fields from the snapshot", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "my-task",
+        environment: { id: "env_a" },
+        workerQueue: "default",
+        queue: "task/my-task",
+        concurrencyKey: "tenant-42",
+        machine: "medium-1x",
+        realtimeStreamsVersion: "v2",
+        seedMetadata: '{"k":"v"}',
+        seedMetadataType: "application/json",
+        tags: ["t1", "t2"],
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.id).toBeTypeOf("string");
+    expect(result!.id.length).toBeGreaterThan(0);
+    expect(result!.engine).toBe("V2");
+    expect(result!.runtimeEnvironmentId).toBe("env_a");
+    expect(result!.workerQueue).toBe("default");
+    expect(result!.queue).toBe("task/my-task");
+    expect(result!.concurrencyKey).toBe("tenant-42");
+    expect(result!.machinePreset).toBe("medium-1x");
+    expect(result!.realtimeStreamsVersion).toBe("v2");
+    expect(result!.seedMetadata).toBe('{"k":"v"}');
+    expect(result!.seedMetadataType).toBe("application/json");
+    expect(result!.runTags).toEqual(["t1", "t2"]);
+  });
+
+  it("falls back to entry.envId for runtimeEnvironmentId when snapshot lacks environment.id", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({ taskIdentifier: "t" }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.runtimeEnvironmentId).toBe("env_a");
+    expect(result!.workerQueue).toBeUndefined();
+    expect(result!.queue).toBeUndefined();
+  });
 });
