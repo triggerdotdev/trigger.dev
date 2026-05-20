@@ -27,6 +27,12 @@ export type SnapshotPatch =
 
 export type MutateSnapshotResult = "applied_to_snapshot" | "not_found" | "busy";
 
+export type CasSetMetadataResult =
+  | { kind: "applied"; newVersion: number }
+  | { kind: "version_conflict"; currentVersion: number }
+  | { kind: "not_found" }
+  | { kind: "busy" };
+
 export type AcceptResult =
   | { kind: "accepted" }
   | { kind: "duplicate_run_id" }
@@ -236,6 +242,36 @@ export class MollifierBuffer {
     throw new Error(`MollifierBuffer.mutateSnapshot: unexpected Lua return value: ${result}`);
   }
 
+  // Optimistic compare-and-swap on the snapshot's metadata. Caller reads
+  // the current metadataVersion via getEntry, applies operations in JS via
+  // `applyMetadataOperations`, then calls this with the new metadata + the
+  // expected version. Lua refuses if the version has moved (caller retries
+  // up to N times). Mirrors the PG-side `UpdateMetadataService` retry
+  // loop so concurrent increment/append operations don't lose deltas.
+  async casSetMetadata(input: {
+    runId: string;
+    expectedVersion: number;
+    newMetadata: string;
+    newMetadataType: string;
+  }): Promise<CasSetMetadataResult> {
+    const entryKey = `mollifier:entries:${input.runId}`;
+    const raw = (await this.redis.casSetMollifierMetadata(
+      entryKey,
+      String(input.expectedVersion),
+      input.newMetadata,
+      input.newMetadataType,
+    )) as string;
+    if (raw === "not_found") return { kind: "not_found" };
+    if (raw === "busy") return { kind: "busy" };
+    if (raw.startsWith("conflict:")) {
+      return { kind: "version_conflict", currentVersion: Number(raw.slice("conflict:".length)) };
+    }
+    if (raw.startsWith("applied:")) {
+      return { kind: "applied", newVersion: Number(raw.slice("applied:".length)) };
+    }
+    throw new Error(`MollifierBuffer.casSetMetadata: unexpected Lua return: ${raw}`);
+  }
+
   // Resolve a buffered run by (env, task, idempotencyKey) tuple. Used by
   // `IdempotencyKeyConcern.handleTriggerRequest` after the PG check
   // misses — same key may belong to a buffered run waiting to drain. The
@@ -370,7 +406,8 @@ export class MollifierBuffer {
           'attempts', '0',
           'createdAt', createdAt,
           'createdAtMicros', createdAtMicros,
-          'idempotencyLookupKey', idempotencyLookupKey)
+          'idempotencyLookupKey', idempotencyLookupKey,
+          'metadataVersion', '0')
         redis.call('EXPIRE', entryKey, ttlSeconds)
         -- ZSET keyed by createdAtMicros: ZPOPMIN drains oldest-first
         -- (FIFO); listing pagination uses ZREVRANGEBYSCORE with a
@@ -481,6 +518,49 @@ export class MollifierBuffer {
           -- Orphan queue reference: entry TTL expired while runId was queued.
           -- Discard the reference and loop to the next.
         end
+      `,
+    });
+
+    this.redis.defineCommand("casSetMollifierMetadata", {
+      numberOfKeys: 1,
+      lua: `
+        local entryKey = KEYS[1]
+        local expectedVersion = tonumber(ARGV[1])
+        local newMetadata = ARGV[2]
+        local newMetadataType = ARGV[3]
+
+        if redis.call('EXISTS', entryKey) == 0 then
+          return 'not_found'
+        end
+
+        local status = redis.call('HGET', entryKey, 'status')
+        local materialised = redis.call('HGET', entryKey, 'materialised')
+        if status ~= 'QUEUED' or materialised == 'true' then
+          return 'busy'
+        end
+
+        local currentVersionStr = redis.call('HGET', entryKey, 'metadataVersion') or '0'
+        local currentVersion = tonumber(currentVersionStr) or 0
+        if currentVersion ~= expectedVersion then
+          return 'conflict:' .. tostring(currentVersion)
+        end
+
+        -- Write the new metadata onto the snapshot's payload JSON. We
+        -- keep the rest of the payload intact — only metadata/metadataType
+        -- change. metadataVersion is denormalised on the hash for cheap
+        -- CAS reads; it's intentionally NOT stored inside the payload
+        -- itself (PG-side metadataVersion is a column, not a JSON field).
+        local payloadJson = redis.call('HGET', entryKey, 'payload')
+        local ok, payload = pcall(cjson.decode, payloadJson)
+        if not ok then return 'busy' end
+        payload.metadata = newMetadata
+        payload.metadataType = newMetadataType
+
+        local newVersion = currentVersion + 1
+        redis.call('HSET', entryKey,
+          'payload', cjson.encode(payload),
+          'metadataVersion', tostring(newVersion))
+        return 'applied:' .. tostring(newVersion)
       `,
     });
 
@@ -685,6 +765,13 @@ declare module "@internal/redis" {
     mutateMollifierSnapshot(
       entryKey: string,
       patchJson: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    casSetMollifierMetadata(
+      entryKey: string,
+      expectedVersion: string,
+      newMetadata: string,
+      newMetadataType: string,
       callback?: Callback<string>,
     ): Result<string, Context>;
     resetMollifierIdempotency(

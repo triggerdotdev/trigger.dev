@@ -3,6 +3,7 @@ export {
   type MollifierBufferOptions,
   type SnapshotPatch,
   type MutateSnapshotResult,
+  type CasSetMetadataResult,
 } from "./buffer.js";
 export {
   MollifierDrainer,

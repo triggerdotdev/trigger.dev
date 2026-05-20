@@ -1374,6 +1374,129 @@ describe("MollifierBuffer idempotency lookup", () => {
   );
 });
 
+describe("MollifierBuffer.casSetMetadata", () => {
+  redisTest(
+    "applies when expectedVersion matches; increments version; updates payload",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "cas1",
+          envId: "env_c",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ metadata: '{"v":1}', metadataType: "application/json" }),
+        });
+        const result = await buffer.casSetMetadata({
+          runId: "cas1",
+          expectedVersion: 0,
+          newMetadata: '{"v":2}',
+          newMetadataType: "application/json",
+        });
+        expect(result).toEqual({ kind: "applied", newVersion: 1 });
+
+        const entry = await buffer.getEntry("cas1");
+        expect(entry!.metadataVersion).toBe(1);
+        const payload = JSON.parse(entry!.payload) as { metadata: string };
+        expect(payload.metadata).toBe('{"v":2}');
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "returns version_conflict when expectedVersion is stale",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "cas2",
+          envId: "env_c",
+          orgId: "org_1",
+          payload: serialiseSnapshot({}),
+        });
+        await buffer.casSetMetadata({
+          runId: "cas2",
+          expectedVersion: 0,
+          newMetadata: '{"a":1}',
+          newMetadataType: "application/json",
+        });
+
+        // Second write with stale expectedVersion = 0 must conflict.
+        const result = await buffer.casSetMetadata({
+          runId: "cas2",
+          expectedVersion: 0,
+          newMetadata: '{"a":2}',
+          newMetadataType: "application/json",
+        });
+        expect(result).toEqual({ kind: "version_conflict", currentVersion: 1 });
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "returns not_found / busy on missing or terminal entries",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const nf = await buffer.casSetMetadata({
+          runId: "absent",
+          expectedVersion: 0,
+          newMetadata: "{}",
+          newMetadataType: "application/json",
+        });
+        expect(nf).toEqual({ kind: "not_found" });
+
+        await buffer.accept({
+          runId: "cas3",
+          envId: "env_c",
+          orgId: "org_1",
+          payload: serialiseSnapshot({}),
+        });
+        await buffer.pop("env_c");
+        const busy = await buffer.casSetMetadata({
+          runId: "cas3",
+          expectedVersion: 0,
+          newMetadata: "{}",
+          newMetadataType: "application/json",
+        });
+        expect(busy).toEqual({ kind: "busy" });
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
 describe("MollifierBuffer.mutateSnapshot", () => {
   redisTest(
     "returns not_found when no entry exists for the runId",

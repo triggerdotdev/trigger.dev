@@ -61,6 +61,11 @@ export const BufferEntrySchema = z.object({
   // ack Lua reads this to DEL the lookup atomically with marking the
   // entry materialised (Q5).
   idempotencyLookupKey: z.string().optional().default(""),
+  // Optimistic-lock counter for the snapshot's `metadata` field.
+  // Incremented atomically by the CAS metadata Lua. Matches the
+  // semantic of `TaskRun.metadataVersion` on the PG side (which the
+  // UpdateMetadataService uses for the same retry-on-conflict pattern).
+  metadataVersion: stringToInt.default("0"),
   lastError: stringToError.optional(),
 });
 
