@@ -1168,14 +1168,18 @@ export function createMultiMethodApiRoute<
       }
 
       // Dispatch to method handler
-      const result = await methodConfig.handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        body: parsedBody,
-        authentication: authenticationResult,
-        request,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          methodConfig.handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            body: parsedBody,
+            authentication: authenticationResult,
+            request,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {

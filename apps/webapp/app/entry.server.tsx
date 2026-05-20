@@ -291,7 +291,7 @@ process.on("uncaughtException", (error, origin) => {
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 
-if (process.env.SENTRY_DSN) {
+if (env.SENTRY_DSN) {
   Sentry.addEventProcessor(addTenantContextToEvent);
 }
 
