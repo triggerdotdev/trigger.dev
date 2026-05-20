@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CreateTaskRunAttemptService } from "~/v3/services/createTaskRunAttempt.server";
 
@@ -40,9 +41,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: error.message }, { status: error.status ?? 422 });
     }
 
-    return json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
-      { status: 500 }
-    );
+    logger.error("Failed to create run attempt", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

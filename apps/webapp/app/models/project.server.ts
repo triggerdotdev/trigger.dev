@@ -4,7 +4,7 @@ import { $replica, prisma } from "~/db.server";
 import type { Prisma, Project } from "@trigger.dev/database";
 import { type Organization, createEnvironment } from "./organization.server";
 import { env } from "~/env.server";
-import { projectCreated } from "~/services/platform.v3.server";
+import { projectCreated } from "~/services/projectCreated.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);

@@ -1,0 +1,897 @@
+import type {
+  ApiPromise,
+  ApiRequestOptions,
+  AsyncIterableStream,
+  CloseSessionRequestBody,
+  CreatedSessionResponseBody,
+  CreateSessionRequestBody,
+  InputStreamOnceOptions,
+  InputStreamOnceResult,
+  InputStreamWaitOptions,
+  InputStreamWaitWithIdleTimeoutOptions,
+  ListSessionsOptions,
+  ListedSessionItem,
+  PipeStreamOptions,
+  PipeStreamResult,
+  RetrieveSessionResponseBody,
+  UpdateSessionRequestBody,
+  WriterStreamOptions,
+} from "@trigger.dev/core/v3";
+import {
+  CursorPagePromise,
+  InputStreamOncePromise,
+  ManualWaitpointPromise,
+  SemanticInternalAttributes,
+  SessionStreamInstance,
+  WaitpointTimeoutError,
+  accessoryAttributes,
+  apiClientManager,
+  ensureReadableStream,
+  mergeRequestOptions,
+  runtime,
+  sessionStreams,
+  taskContext,
+  trimSessionStream,
+  writeSessionControlRecord,
+} from "@trigger.dev/core/v3";
+import type {
+  ControlEvent,
+  InitializeSessionStreamResponseLike,
+  StreamWriteResult,
+} from "@trigger.dev/core/v3";
+import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { tracer } from "./tracer.js";
+
+export type {
+  CreatedSessionResponseBody,
+  CreateSessionRequestBody,
+  CloseSessionRequestBody,
+  ListSessionsOptions,
+  ListedSessionItem,
+  RetrieveSessionResponseBody,
+  UpdateSessionRequestBody,
+};
+
+export const sessions = {
+  start: startSession,
+  retrieve: retrieveSession,
+  update: updateSession,
+  close: closeSession,
+  list: listSessions,
+  open,
+};
+
+// Test hook: lets `@trigger.dev/sdk/ai/test` replace `sessions.open()` with
+// an in-memory handle so unit tests don't hit the network. Not part of the
+// public API — only `mockChatAgent` installs it.
+type SessionOpenImpl = (sessionIdOrExternalId: string) => SessionHandle;
+let sessionOpenImpl: SessionOpenImpl | undefined;
+
+export function __setSessionOpenImplForTests(impl: SessionOpenImpl | undefined): void {
+  sessionOpenImpl = impl;
+}
+
+// Test hook for `sessions.start()`. Sessions are task-bound and the
+// `start` call atomically creates the row + triggers the first run on
+// the server; in unit tests there's no live API to hit, so a fixture
+// implementation can be installed via this setter.
+type SessionStartImpl = (
+  body: CreateSessionRequestBody
+) => Promise<CreatedSessionResponseBody> | CreatedSessionResponseBody;
+let sessionStartImpl: SessionStartImpl | undefined;
+
+export function __setSessionStartImplForTests(impl: SessionStartImpl | undefined): void {
+  sessionStartImpl = impl;
+}
+
+/**
+ * Start a {@link Session} — a durable, task-bound, bidirectional I/O
+ * primitive. The server creates the row (idempotent on `externalId`)
+ * and triggers the first run from `triggerConfig` in one round-trip.
+ * Returns the new run's id and a session-scoped public access token
+ * for browser-side use against `.in/append`, `.out` SSE, and
+ * `end-and-continue`.
+ *
+ * If a session with the same `(env, externalId)` already exists,
+ * returns the existing row plus the live (or freshly re-triggered) run.
+ * Two browser tabs of the same chat converge to one session.
+ */
+function startSession(
+  body: CreateSessionRequestBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<CreatedSessionResponseBody> {
+  if (sessionStartImpl) {
+    const result = sessionStartImpl(body);
+    return Promise.resolve(result) as ApiPromise<CreatedSessionResponseBody>;
+  }
+
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "sessions.start()",
+      icon: "sessions",
+      attributes: sessionAttributes(body.externalId ?? body.type, {
+        type: body.type,
+        ...(body.externalId ? { externalId: body.externalId } : {}),
+      }),
+    },
+    requestOptions
+  );
+
+  return apiClient.createSession(body, $requestOptions);
+}
+
+/**
+ * Retrieve a Session by `friendlyId` (`session_*`) or user-supplied
+ * `externalId`. The server disambiguates via the `session_` prefix.
+ */
+function retrieveSession(
+  sessionIdOrExternalId: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<RetrieveSessionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "sessions.retrieve()",
+      icon: "sessions",
+      attributes: sessionAttributes(sessionIdOrExternalId),
+    },
+    requestOptions
+  );
+
+  return apiClient.retrieveSession(sessionIdOrExternalId, $requestOptions);
+}
+
+/** Update mutable fields on a Session (tags, metadata, externalId). */
+function updateSession(
+  sessionIdOrExternalId: string,
+  body: UpdateSessionRequestBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<RetrieveSessionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "sessions.update()",
+      icon: "sessions",
+      attributes: sessionAttributes(sessionIdOrExternalId),
+    },
+    requestOptions
+  );
+
+  return apiClient.updateSession(sessionIdOrExternalId, body, $requestOptions);
+}
+
+/** Mark a Session as closed (terminal, idempotent). */
+function closeSession(
+  sessionIdOrExternalId: string,
+  body?: CloseSessionRequestBody,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<RetrieveSessionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "sessions.close()",
+      icon: "sessions",
+      attributes: sessionAttributes(sessionIdOrExternalId, {
+        ...(body?.reason ? { reason: body.reason } : {}),
+      }),
+    },
+    requestOptions
+  );
+
+  return apiClient.closeSession(sessionIdOrExternalId, body, $requestOptions);
+}
+
+/**
+ * List Sessions in the current environment with filters + cursor pagination.
+ * Returns a {@link CursorPagePromise} so callers can iterate pages with
+ * `for await`.
+ */
+function listSessions(
+  options?: ListSessionsOptions,
+  requestOptions?: ApiRequestOptions
+): CursorPagePromise<typeof ListedSessionItem> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "sessions.list()",
+      icon: "sessions",
+      attributes: {
+        ...(options?.type ? { type: toAttr(options.type) } : {}),
+        ...(options?.tag ? { tag: toAttr(options.tag) } : {}),
+        ...(options?.status ? { status: toAttr(options.status) } : {}),
+        ...(options?.externalId ? { externalId: options.externalId } : {}),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.listSessions(options, $requestOptions);
+}
+
+/**
+ * Open a lightweight handle to a Session's realtime channels. Does not
+ * perform a network call on its own — each channel method hits the
+ * corresponding realtime endpoint.
+ */
+function open(sessionIdOrExternalId: string): SessionHandle {
+  if (sessionOpenImpl) return sessionOpenImpl(sessionIdOrExternalId);
+  return new SessionHandle(sessionIdOrExternalId);
+}
+
+export class SessionHandle {
+  /**
+   * Producer-to-consumer channel: the task writes records; external
+   * clients read them. Mirrors `streams.define` — `append` / `pipe` /
+   * `writer` / `read`.
+   */
+  public readonly out: SessionOutputChannel;
+
+  /**
+   * Consumer-to-producer channel: external clients call `.send()`; the
+   * task consumes via `.on` / `.once` / `.peek` / `.wait` /
+   * `.waitWithIdleTimeout`. Mirrors `streams.input` but keyed on the
+   * session so a conversation can survive across run boundaries.
+   */
+  public readonly in: SessionInputChannel;
+
+  constructor(
+    public readonly id: string,
+    overrides?: { in?: SessionInputChannel; out?: SessionOutputChannel }
+  ) {
+    this.out = overrides?.out ?? new SessionOutputChannel(id);
+    this.in = overrides?.in ?? new SessionInputChannel(id);
+  }
+}
+
+/**
+ * Options accepted by {@link SessionOutputChannel.pipe}. Session-scoped,
+ * so it omits the `target` field (self/parent/root/runId) that run-scoped
+ * {@link PipeStreamOptions} uses — the session is the target.
+ */
+export type SessionPipeStreamOptions = Omit<PipeStreamOptions, "target">;
+
+/**
+ * The `.out` side of a Session's bidirectional channel pair. Mirrors the
+ * consume-side of {@link streams.define}: `pipe` / `writer` / `append`
+ * for the task to produce records, `read` for external clients to
+ * consume via SSE. S2 credentials for direct writes are fetched
+ * internally by `pipe`/`writer` — there's no public `initialize()`.
+ */
+export class SessionOutputChannel {
+  // Cache of the in-flight / resolved `initializeSessionStream` PUT for
+  // this channel. Every `pipe()` / `writer()` call needs the same S2
+  // credentials, so we share a single promise instead of re-PUTing on
+  // every chunk. Hot-loop writers (per-chunk `chat.response.write` /
+  // direct `session.out.writer` calls) drop from N PUTs to 1 PUT for
+  // the lifetime of the channel. The S2 access token has a 1-day TTL
+  // server-side so reusing it across calls within a single run is safe.
+  // Evicts on failure (so the next call retries) and on `reset()`.
+  #initPromise?: Promise<InitializeSessionStreamResponseLike>;
+
+  constructor(public readonly sessionId: string) {}
+
+  /**
+   * Drop the cached `initializeSessionStream` response. Surfaces for
+   * tests and lifecycle hooks that need the next write to re-mint S2
+   * credentials. The cache also self-evicts on `initializeSession`
+   * rejection, so callers don't need to invoke this on failures.
+   *
+   * @internal
+   */
+  reset(): void {
+    this.#initPromise = undefined;
+  }
+
+  /**
+   * Append a single record. Routes through {@link writer} internally so
+   * subscribers receive the same parsed-object shape as multi-record
+   * writes — the server-side append endpoint wraps the body in a string,
+   * which would give SSE consumers a JSON-string instead of an object.
+   * Mirrors how `streams.define.append` delegates to `streams.writer`.
+   */
+  async append<T>(value: T, options?: SessionPipeStreamOptions): Promise<void> {
+    const { waitUntilComplete } = this.writer<T>({
+      ...options,
+      spanName: "sessions.append()",
+      execute: ({ write }) => {
+        write(value);
+      },
+    });
+    await waitUntilComplete();
+  }
+
+  /**
+   * Pipe an `AsyncIterable` / `ReadableStream` directly to S2. Fetches
+   * session S2 credentials internally and streams through
+   * {@link SessionStreamInstance}. Parallel to {@link streams.pipe} but
+   * session-scoped — no `target` option because the session is the target.
+   */
+  pipe<T>(
+    value: AsyncIterable<T> | ReadableStream<T>,
+    options?: SessionPipeStreamOptions
+  ): PipeStreamResult<T> {
+    return this.#pipeInternal(value, options, "sessions.pipe()");
+  }
+
+  /**
+   * Mirror of {@link streams.writer}: runs `execute({ write, merge })`
+   * against an in-memory queue whose records are piped to S2. Returns
+   * `{ stream, waitUntilComplete }` so callers can observe the local
+   * stream and await completion. Span is collapsible via `options.spanName`
+   * / `options.collapsed`.
+   */
+  writer<T>(options: WriterStreamOptions<T>): PipeStreamResult<T> {
+    let controller!: ReadableStreamDefaultController<T>;
+    const ongoingStreamPromises: Promise<void>[] = [];
+
+    const stream = new ReadableStream<T>({
+      start(controllerArg) {
+        controller = controllerArg;
+      },
+    });
+
+    const safeEnqueue = (data: T) => {
+      try {
+        controller.enqueue(data);
+      } catch {
+        // Suppress errors when the stream has been closed.
+      }
+    };
+
+    try {
+      const result = options.execute({
+        write(part) {
+          safeEnqueue(part);
+        },
+        merge(streamArg) {
+          ongoingStreamPromises.push(
+            (async () => {
+              const reader = streamArg.getReader();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                safeEnqueue(value);
+              }
+            })().catch((error) => {
+              console.error(error);
+            })
+          );
+        },
+      });
+
+      if (result) {
+        ongoingStreamPromises.push(
+          result.catch((error) => {
+            console.error(error);
+          })
+        );
+      }
+    } catch (error) {
+      console.error(error);
+    }
+
+    const waitForStreams: Promise<void> = new Promise((resolve, reject) => {
+      (async () => {
+        while (ongoingStreamPromises.length > 0) {
+          await ongoingStreamPromises.shift();
+        }
+        resolve();
+      })().catch(reject);
+    });
+
+    waitForStreams.finally(() => {
+      try {
+        controller.close();
+      } catch {
+        // Already closed.
+      }
+    });
+
+    return this.#pipeInternal(stream, options, options.spanName ?? "sessions.writer()");
+  }
+
+  /**
+   * Subscribe to SSE records on `.out`. Returns an async-iterable stream —
+   * auto-retry, Last-Event-ID resume, and abort propagation come from the
+   * shared {@link SSEStreamSubscription} plumbing used by run-scoped
+   * realtime streams.
+   */
+  async read<T = unknown>(
+    options?: SessionSubscribeOptions<T>
+  ): Promise<AsyncIterableStream<T>> {
+    const apiClient = apiClientManager.clientOrThrow();
+
+    return apiClient.subscribeToSessionStream<T>(this.sessionId, "out", {
+      signal: options?.signal,
+      timeoutInSeconds: options?.timeoutInSeconds,
+      lastEventId:
+        options?.lastEventId != null ? String(options.lastEventId) : undefined,
+      onPart: options?.onPart,
+      onControl: options?.onControl,
+      onComplete: options?.onComplete,
+      onError: options?.onError,
+    });
+  }
+
+  #pipeInternal<T>(
+    value: AsyncIterable<T> | ReadableStream<T>,
+    options: SessionPipeStreamOptions | undefined,
+    spanName: string
+  ): PipeStreamResult<T> {
+    const apiClient = apiClientManager.clientOrThrow();
+    const collapsed = (options as WriterStreamOptions<T> | undefined)?.collapsed;
+
+    const span = tracer.startSpan(spanName, {
+      attributes: {
+        session: this.sessionId,
+        io: "out",
+        [SemanticInternalAttributes.ENTITY_TYPE]: "session-stream",
+        [SemanticInternalAttributes.ENTITY_ID]: `${this.sessionId}:out`,
+        [SemanticInternalAttributes.STYLE_ICON]: "sessions",
+        ...(collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
+        ...accessoryAttributes({
+          items: [{ text: `${this.sessionId}.out`, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    });
+
+    const readableStreamSource = ensureReadableStream(value);
+
+    const abortController = new AbortController();
+    // `AbortSignal.any` lands in Node 20.3; the SDK still supports Node
+    // 18.20+. On older runtimes fall back to wiring `options.signal` into
+    // `abortController` manually so caller-driven cancellation propagates.
+    let combinedSignal: AbortSignal = abortController.signal;
+    // Set in the Node 18 fallback path so the caller's `signal.addEventListener`
+    // registration can be cleared once the stream finishes. Without this, a
+    // long-lived caller signal (e.g. one reused across many `writer()` calls)
+    // accumulates listeners on every completed turn.
+    let removeCallerAbortListener: (() => void) | undefined;
+    if (options?.signal) {
+      if (typeof AbortSignal.any === "function") {
+        combinedSignal = AbortSignal.any([options.signal, abortController.signal]);
+      } else {
+        const callerSignal = options.signal;
+        if (callerSignal.aborted) {
+          abortController.abort(callerSignal.reason);
+        } else {
+          const onCallerAbort = () => abortController.abort(callerSignal.reason);
+          callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+          removeCallerAbortListener = () =>
+            callerSignal.removeEventListener("abort", onCallerAbort);
+        }
+      }
+    }
+
+    // Resolve the init promise eagerly so we can capture which one this
+    // writer uses for reactive invalidation below.
+    const writerInitPromise = ((): Promise<InitializeSessionStreamResponseLike> => {
+      if (this.#initPromise) {
+        return this.#initPromise;
+      }
+      const fresh = apiClient.initializeSessionStream(
+        this.sessionId,
+        "out",
+        options?.requestOptions
+      );
+      this.#initPromise = fresh;
+      // Evict on failure so the next call retries instead of returning a
+      // poisoned cache entry forever.
+      fresh.catch((err) => {
+        if (this.#initPromise === fresh) {
+          this.#initPromise = undefined;
+        }
+      });
+      return fresh;
+    })();
+
+    try {
+      const instance = new SessionStreamInstance<T>({
+        apiClient,
+        baseUrl: apiClientManager.baseURL ?? "",
+        sessionId: this.sessionId,
+        io: "out",
+        source: readableStreamSource,
+        signal: combinedSignal,
+        requestOptions: options?.requestOptions,
+        initializeSession: () => writerInitPromise,
+      });
+
+      // Single internal chain that handles span lifecycle AND reactive
+      // invalidation. On rejection we evict the cached init promise so
+      // the next pipe()/writer() re-PUTs and recovers (e.g. when a
+      // cached S2 access token expired mid-process). Compare by identity
+      // so a concurrent caller's fresh promise isn't accidentally cleared.
+      // Customer awaiters still observe the rejection via the returned
+      // `waitUntilComplete()`; this chain just keeps the cleanup path
+      // from surfacing as unhandled.
+      instance.wait().then(
+        () => {
+          removeCallerAbortListener?.();
+          span.end();
+        },
+        () => {
+          removeCallerAbortListener?.();
+          if (this.#initPromise === writerInitPromise) {
+            this.#initPromise = undefined;
+          }
+          span.end();
+        }
+      );
+
+      return {
+        stream: instance.stream,
+        waitUntilComplete: async () => {
+          return instance.wait();
+        },
+      };
+    } catch (error) {
+      removeCallerAbortListener?.();
+      if (error instanceof Error && error.name === "AbortError") {
+        span.end();
+        throw error;
+      }
+
+      if (error instanceof Error || typeof error === "string") {
+        span.recordException(error);
+      } else {
+        span.recordException(String(error));
+      }
+
+      span.setStatus({ code: SpanStatusCode.ERROR });
+      span.end();
+
+      throw error;
+    }
+  }
+
+  /**
+   * Write a single Trigger control record to `.out`. The record carries a
+   * `trigger-control` header valued with `subtype` plus any sibling
+   * `extraHeaders`; the body is empty. Control records are filtered out of
+   * the consumer-facing chunk stream by the SDK transport — readers route
+   * them via the `onControl` callback instead.
+   *
+   * The returned `lastEventId` is the S2 seq_num of the written record,
+   * useful for trim chains (e.g. trim back to the previous turn-complete).
+   */
+  async writeControl(
+    subtype: string,
+    extraHeaders?: ReadonlyArray<readonly [string, string]>
+  ): Promise<StreamWriteResult> {
+    const apiClient = apiClientManager.clientOrThrow();
+    return writeSessionControlRecord(apiClient, this.sessionId, "out", subtype, extraHeaders);
+  }
+
+  /**
+   * Append an S2 `trim` command record to `.out`. Records with seq_num
+   * less than `earliestSeqNum` are eventually removed from the stream.
+   *
+   * Idempotent and monotonic at S2's layer (`max(existing, min(provided,
+   * current_tail))`) — backward trims are silently no-ops for deletion
+   * but still consume a seq_num. Used by `chat.agent`'s turn loop to
+   * keep `session.out` bounded to roughly one turn at steady state.
+   */
+  async trimTo(earliestSeqNum: number): Promise<void> {
+    const apiClient = apiClientManager.clientOrThrow();
+    await trimSessionStream(apiClient, this.sessionId, earliestSeqNum);
+  }
+}
+
+/**
+ * The `.in` side of a Session's bidirectional channel pair. Mirrors
+ * {@link streams.input} — consumer-side primitives for the task
+ * (`on`/`once`/`peek`/`wait`/`waitWithIdleTimeout`) plus `send` for
+ * external clients. Keyed on the session rather than the run so a
+ * conversation can survive across run boundaries.
+ */
+export class SessionInputChannel {
+  constructor(public readonly sessionId: string) {}
+
+  /**
+   * Send a single record to the channel. Called by external clients
+   * (browser, server action, another task) producing input for the run.
+   * Matches {@link streams.input.send} but session-scoped — the session
+   * is the address, no `runId` required.
+   */
+  async send(value: unknown, requestOptions?: ApiRequestOptions): Promise<void> {
+    const apiClient = apiClientManager.clientOrThrow();
+    const body = typeof value === "string" ? value : JSON.stringify(value);
+
+    const $requestOptions = mergeRequestOptions(
+      {
+        tracer,
+        name: `sessions.open(${this.sessionId}).in.send()`,
+        icon: "sessions",
+        attributes: sessionAttributes(this.sessionId, { io: "in" }),
+      },
+      requestOptions
+    );
+
+    await apiClient.appendToSessionStream(this.sessionId, "in", body, $requestOptions);
+  }
+
+  /**
+   * Register a handler that fires for every record landing on `.in`.
+   * Handlers are flushed with any buffered records on attach and cleaned
+   * up automatically when the task run completes. Returns `{ off }` to
+   * unsubscribe early.
+   */
+  on<T = unknown>(handler: (data: T) => void | Promise<void>): { off: () => void } {
+    return sessionStreams.on(
+      this.sessionId,
+      "in",
+      handler as (data: unknown) => void | Promise<void>
+    );
+  }
+
+  /**
+   * Wait for the next record on `.in` without suspending the run.
+   * Returns `{ ok: true, output }` on arrival or `{ ok: false, error }`
+   * when the timeout fires. Chain `.unwrap()` to get the data directly.
+   */
+  once<T = unknown>(options?: InputStreamOnceOptions): InputStreamOncePromise<T> {
+    const ctx = taskContext.ctx;
+    const runId = ctx?.run.id;
+
+    const innerPromise = sessionStreams.once(this.sessionId, "in", options);
+
+    return new InputStreamOncePromise<T>((resolve, reject) => {
+      tracer
+        .startActiveSpan(
+          options?.spanName ?? `sessions.open(${this.sessionId}).in.once()`,
+          async () => {
+            const result = await innerPromise;
+            resolve(result as InputStreamOnceResult<T>);
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "sessions",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "session-stream",
+              ...(runId
+                ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${this.sessionId}:in` }
+                : {}),
+              session: this.sessionId,
+              io: "in",
+              ...accessoryAttributes({
+                items: [{ text: `${this.sessionId}.in`, variant: "normal" }],
+                style: "codepath",
+              }),
+            },
+          }
+        )
+        .catch(reject);
+    });
+  }
+
+  /** Non-blocking peek at the head of the `.in` buffer. */
+  peek<T = unknown>(): T | undefined {
+    return sessionStreams.peek(this.sessionId, "in") as T | undefined;
+  }
+
+  /**
+   * The highest S2 sequence number of any record this channel has
+   * delivered to a `once()` / `wait()` consumer (or had shifted off its
+   * buffer into one). Distinct from "last received" — buffered-but-not-
+   * yet-consumed records don't count.
+   *
+   * Used by `chat.agent` to persist the `.in` resume cursor on each
+   * `turn-complete` control record, so the next worker boot can subscribe
+   * past already-processed user messages.
+   */
+  lastDispatchedSeqNum(): number | undefined {
+    return sessionStreams.lastDispatchedSeqNum(this.sessionId, "in");
+  }
+
+  /**
+   * Suspend the current run until the next record arrives on `.in`.
+   * Unlike {@link once}, `wait()` frees compute while blocked — the
+   * run-engine waitpoint holds the run until the session append handler
+   * fires it. Only callable from inside `task.run()`.
+   */
+  wait<T = unknown>(options?: InputStreamWaitOptions): ManualWaitpointPromise<T> {
+    return new ManualWaitpointPromise<T>(async (resolve, reject) => {
+      try {
+        const ctx = taskContext.ctx;
+
+        if (!ctx) {
+          throw new Error("session.in.wait() can only be used from inside a task.run()");
+        }
+
+        const apiClient = apiClientManager.clientOrThrow();
+
+        const response = await apiClient.createSessionStreamWaitpoint(ctx.run.id, {
+          session: this.sessionId,
+          io: "in",
+          timeout: options?.timeout,
+          idempotencyKey: options?.idempotencyKey,
+          idempotencyKeyTTL: options?.idempotencyKeyTTL,
+          tags: options?.tags,
+          lastSeqNum: sessionStreams.lastSeqNum(this.sessionId, "in"),
+        });
+
+        const result = await tracer.startActiveSpan(
+          options?.spanName ?? `sessions.open(${this.sessionId}).in.wait()`,
+          async (span) => {
+            const waitResponse = await apiClient.waitForWaitpointToken({
+              runFriendlyId: ctx.run.id,
+              waitpointFriendlyId: response.waitpointId,
+            });
+
+            if (!waitResponse.success) {
+              throw new Error("Failed to block on session stream waitpoint");
+            }
+
+            // Drop the SSE tail + buffer before suspending so the record
+            // delivered via the waitpoint path isn't re-buffered on resume.
+            sessionStreams.disconnectStream(this.sessionId, "in");
+
+            const waitResult = await runtime.waitUntil(response.waitpointId);
+
+            const data =
+              waitResult.output !== undefined
+                ? await conditionallyImportAndParsePacket(
+                    {
+                      data: waitResult.output,
+                      dataType: waitResult.outputType ?? "application/json",
+                    },
+                    apiClient
+                  )
+                : undefined;
+
+            if (waitResult.ok) {
+              // Advance the seq counter so the SSE tail doesn't replay the
+              // record that was consumed via the waitpoint.
+              const prevSeq = sessionStreams.lastSeqNum(this.sessionId, "in");
+              const nextSeq = (prevSeq ?? -1) + 1;
+              sessionStreams.setLastSeqNum(this.sessionId, "in", nextSeq);
+
+              return { ok: true as const, output: data as T };
+            } else {
+              const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
+              span.recordException(error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+              return { ok: false as const, error };
+            }
+          },
+          {
+            attributes: {
+              [SemanticInternalAttributes.STYLE_ICON]: "wait",
+              [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+              [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
+              session: this.sessionId,
+              io: "in",
+              ...accessoryAttributes({
+                items: [{ text: `${this.sessionId}.in`, variant: "normal" }],
+                style: "codepath",
+              }),
+            },
+          }
+        );
+
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * Wait for a record with an idle-then-suspend strategy. Keeps the run
+   * active (using compute) for `idleTimeoutInSeconds`, then suspends via
+   * {@link wait} if nothing arrives. If a record arrives during the idle
+   * phase the run responds without suspending.
+   */
+  async waitWithIdleTimeout<T = unknown>(
+    options: InputStreamWaitWithIdleTimeoutOptions
+  ): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+    const self = this;
+    const spanName =
+      options.spanName ?? `sessions.open(${this.sessionId}).in.waitWithIdleTimeout()`;
+
+    return tracer.startActiveSpan(
+      spanName,
+      async (span) => {
+        if (options.idleTimeoutInSeconds > 0) {
+          const warm = await sessionStreams.once(self.sessionId, "in", {
+            timeoutMs: options.idleTimeoutInSeconds * 1000,
+          });
+          if (warm.ok) {
+            span.setAttribute("wait.resolved", "idle");
+            return { ok: true as const, output: warm.output as T };
+          }
+        }
+
+        if (options.skipSuspend) {
+          // Match the cold-phase `self.wait()` result shape below so any
+          // caller that does `throw result.error` gets a real error
+          // instead of `undefined`.
+          span.setAttribute("wait.resolved", "skipped");
+          return {
+            ok: false as const,
+            error: new WaitpointTimeoutError(
+              "Idle timeout elapsed and skipSuspend is set"
+            ),
+          };
+        }
+
+        if (options.onSuspend) {
+          await options.onSuspend();
+        }
+
+        span.setAttribute("wait.resolved", "suspended");
+        const waitResult = await self.wait<T>({
+          timeout: options.timeout,
+          spanName: "suspended",
+        });
+
+        if (waitResult.ok && options.onResume) {
+          await options.onResume();
+        }
+
+        return waitResult;
+      },
+      {
+        attributes: {
+          [SemanticInternalAttributes.STYLE_ICON]: "sessions",
+          session: self.sessionId,
+          io: "in",
+          ...accessoryAttributes({
+            items: [{ text: `${self.sessionId}.in`, variant: "normal" }],
+            style: "codepath",
+          }),
+        },
+      }
+    );
+  }
+}
+
+export type SessionSubscribeOptions<T = unknown> = {
+  signal?: AbortSignal;
+  lastEventId?: string | number;
+  /** Timeout in seconds for the underlying long-poll (max 600). */
+  timeoutInSeconds?: number;
+  /** Called for each SSE event with the full event metadata (id, timestamp). */
+  onPart?: (part: { id: string; chunk: T; timestamp: number }) => void;
+  /**
+   * Called when a `trigger-control` record arrives on the stream (e.g.
+   * `turn-complete`, `upgrade-required`). Control records are filtered
+   * out of the consumer chunk stream — handle them here. See
+   * `docs/ai-chat/client-protocol.mdx` for the wire shape.
+   */
+  onControl?: (event: ControlEvent) => void;
+  /** Called when the server signals end-of-stream. */
+  onComplete?: () => void;
+  /** Called on unrecoverable errors after the retry budget is exhausted. */
+  onError?: (error: Error) => void;
+};
+
+// ─── helpers ────────────────────────────────────────────────────────
+
+function sessionAttributes(id: string, extra?: Record<string, string | number | boolean>) {
+  return {
+    session: id,
+    ...(extra ?? {}),
+    ...accessoryAttributes({
+      items: [{ text: id, variant: "normal" }],
+      style: "codepath",
+    }),
+  };
+}
+
+function toAttr(value: string | string[]): string {
+  return Array.isArray(value) ? value.join(",") : value;
+}

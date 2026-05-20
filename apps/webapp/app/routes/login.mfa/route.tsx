@@ -21,6 +21,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
+import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { getSession as getMessageSession } from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { redirectWithErrorMessage, redirectBackWithErrorMessage } from "~/models/message.server";
@@ -162,7 +163,7 @@ async function completeLogin(request: Request, session: Session, userId: string)
   session.unset("pending-mfa-redirect-to");
 
   const headers = new Headers();
-  headers.append("Set-Cookie", await commitSession(session));
+  headers.append("Set-Cookie", await commitAuthenticatedSession(session, userId));
 
   await trackAndClearReferralSource(request, userId, headers);
 

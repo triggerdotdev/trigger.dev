@@ -18,6 +18,7 @@ import { logger } from "~/services/logger.server";
 import { getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  docsPath,
   OrganizationParamsSchema,
   organizationPath,
   v3PrivateConnectionsPath,
@@ -29,6 +30,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { deletePrivateLink } from "~/services/platform.v3.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
+  BookOpenIcon,
   ClipboardDocumentIcon,
   PlusIcon,
   TrashIcon,
@@ -182,6 +184,13 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Private Connections" />
         <PageAccessories>
+          <LinkButton
+            variant="docs/small"
+            LeadingIcon={BookOpenIcon}
+            to={docsPath("private-networking/overview")}
+          >
+            Private connection docs
+          </LinkButton>
           {hasPrivateNetworking && canAdd && (
             <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
               Add Connection

@@ -4,10 +4,13 @@ This file provides guidance to Claude Code when working with this repository. Su
 
 ## Build and Development Commands
 
-This is a pnpm 10.23.0 monorepo using Turborepo. Run commands from root with `pnpm run`.
+This is a pnpm 10.33.2 monorepo using Turborepo. Run commands from root with `pnpm run`.
+
+**Adding dependencies:** Edit `package.json` directly instead of using `pnpm add`, then run `pnpm i` from the repo root. See `.claude/rules/package-installation.md` for the full process.
 
 ```bash
-pnpm run docker              # Start Docker services (PostgreSQL, Redis, Electric)
+pnpm run docker              # Core dev services (Postgres, Redis, Electric, MinIO, ClickHouse, s2-lite)
+# pnpm run docker:full       # Same + observability stack (Prometheus, Grafana, OTEL) and chaos tooling
 pnpm run db:migrate           # Run database migrations
 pnpm run db:seed              # Seed the database (required for reference projects)
 

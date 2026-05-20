@@ -71,6 +71,28 @@ export interface InputStreamManager {
   lastSeqNum(streamId: string): number | undefined;
 
   /**
+   * Advance the last-seen S2 sequence number for the given input stream.
+   * Used after `.wait()` resumes to prevent the SSE tail from replaying
+   * the record that was consumed via the waitpoint path.
+   */
+  setLastSeqNum(streamId: string, seqNum: number): void;
+
+  /**
+   * Remove and discard the first buffered item for the given input stream.
+   * Used after `.wait()` resumes to remove the duplicate that the SSE tail
+   * buffered while the waitpoint was being completed via a separate path.
+   * Returns true if an item was removed, false if the buffer was empty.
+   */
+  shiftBuffer(streamId: string): boolean;
+
+  /**
+   * Disconnect the SSE tail and clear the buffer for a specific input stream.
+   * Used before suspending via `.wait()` so the tail doesn't buffer duplicates
+   * of data that will be delivered through the waitpoint path.
+   */
+  disconnectStream(streamId: string): void;
+
+  /**
    * Clear all persistent `.on()` handlers and abort tails that have no remaining once waiters.
    * Called automatically when a task run completes.
    */

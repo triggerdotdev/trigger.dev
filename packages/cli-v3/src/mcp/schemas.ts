@@ -183,6 +183,12 @@ export const ListRunsInput = CommonProjectsInput.extend({
     .describe("Filter for runs created in the last N time period. e.g. 7d, 30d, 365d")
     .optional(),
   machine: MachinePresetName.describe("Filter for runs that match this machine preset").optional(),
+  region: z
+    .string()
+    .describe(
+      "Filter for runs that executed in this region (the worker instance group masterQueue identifier, e.g. 'us-east-1' or 'main')"
+    )
+    .optional(),
 });
 
 export type ListRunsInput = z.output<typeof ListRunsInput>;

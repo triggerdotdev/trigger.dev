@@ -174,6 +174,7 @@ export const TaskRunInternalError = z.object({
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
     "TASK_RUN_CRASHED",
+    "TASK_RUN_UNCAUGHT_EXCEPTION",
     "MAX_DURATION_EXCEEDED",
     "DISK_SPACE_EXCEEDED",
     "POD_EVICTED",
@@ -215,6 +216,7 @@ export const TaskRun = z.object({
   payloadType: z.string(),
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
+  isReplay: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   /** The user-provided idempotency key (not the hash) */
@@ -378,6 +380,7 @@ export const V3TaskRun = z.object({
   payloadType: z.string(),
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
+  isReplay: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   /** The user-provided idempotency key (not the hash) */
@@ -538,13 +541,13 @@ export type WaitpointTokenResult = z.infer<typeof WaitpointTokenResult>;
 
 export type WaitpointTokenTypedResult<T> =
   | {
-    ok: true;
-    output: T;
-  }
+      ok: true;
+      output: T;
+    }
   | {
-    ok: false;
-    error: Error;
-  };
+      ok: false;
+      error: Error;
+    };
 
 export const SerializedError = z.object({
   message: z.string(),

@@ -115,7 +115,8 @@ export class RealtimeClient {
     runId: string,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     return this.#streamRunsWhere(
       url,
@@ -123,7 +124,8 @@ export class RealtimeClient {
       `id='${runId}'`,
       apiVersion,
       requestOptions,
-      clientVersion
+      clientVersion,
+      signal
     );
   }
 
@@ -133,7 +135,8 @@ export class RealtimeClient {
     batchId: string,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     const whereClauses: string[] = [
       `"runtimeEnvironmentId"='${environment.id}'`,
@@ -148,7 +151,8 @@ export class RealtimeClient {
       whereClause,
       apiVersion,
       requestOptions,
-      clientVersion
+      clientVersion,
+      signal
     );
   }
 
@@ -158,7 +162,8 @@ export class RealtimeClient {
     params: RealtimeRunsParams,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
@@ -180,7 +185,8 @@ export class RealtimeClient {
       whereClause,
       apiVersion,
       requestOptions,
-      clientVersion
+      clientVersion,
+      signal
     );
 
     if (createdAtFilter) {
@@ -274,7 +280,8 @@ export class RealtimeClient {
     whereClause: string,
     apiVersion: API_VERSIONS,
     requestOptions?: RealtimeRequestOptions,
-    clientVersion?: string
+    clientVersion?: string,
+    signal?: AbortSignal
   ) {
     const electricUrl = this.#constructRunsElectricUrl(
       url,
@@ -288,7 +295,7 @@ export class RealtimeClient {
       electricUrl,
       environment,
       apiVersion,
-      undefined,
+      signal,
       clientVersion
     );
   }

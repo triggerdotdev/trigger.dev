@@ -1,4 +1,11 @@
-import { PromptManifest, QueueManifest, TaskManifest, WorkerManifest } from "../schemas/index.js";
+import {
+  PromptManifest,
+  QueueManifest,
+  SkillManifest,
+  SkillMetadata,
+  TaskManifest,
+  WorkerManifest,
+} from "../schemas/index.js";
 import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 
 export interface ResourceCatalog {
@@ -18,4 +25,7 @@ export interface ResourceCatalog {
   listPromptManifests(): Array<PromptManifest>;
   getPrompt(id: string): PromptMetadataWithFunctions | undefined;
   getPromptSchema(id: string): TaskSchema | undefined;
+  registerSkillMetadata(skill: SkillMetadata): void;
+  listSkillManifests(): Array<SkillManifest>;
+  getSkillManifest(id: string): SkillManifest | undefined;
 }

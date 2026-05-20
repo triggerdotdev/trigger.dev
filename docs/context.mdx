@@ -81,6 +81,9 @@ export const parentTask = task({
     <ResponseField name="isTest" type="boolean">
       Whether this is a [test run](/run-tests).
     </ResponseField>
+    <ResponseField name="isReplay" type="boolean">
+      Whether this run is a [replay](/replaying) of a previous run.
+    </ResponseField>
     <ResponseField name="createdAt" type="date">
       The creation time of the task run.
     </ResponseField>

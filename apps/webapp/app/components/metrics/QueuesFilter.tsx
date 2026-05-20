@@ -39,6 +39,7 @@ export function QueuesFilter() {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by queue"
+                className="pl-1.5"
               >
                 <span className="ml-1">Queues</span>
               </SelectTrigger>
@@ -190,6 +191,7 @@ function QueuesDropdown({
                 <SelectItem
                   key={queue.value}
                   value={queue.value}
+                  className="text-text-bright"
                   icon={
                     queue.type === "task" ? (
                       <TaskIcon className="size-4 shrink-0 text-blue-500" />

@@ -25,47 +25,59 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    logger.info("Invalid or missing api key", { url: request.url });
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const authenticatedEnv = authenticationResult.environment;
-
-  const { projectRef } = parsedParams.data;
-
-  const rawBody = await request.json();
-  const body = CreateBackgroundWorkerRequestBody.safeParse(rawBody);
-
-  if (!body.success) {
-    return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
-  }
-
-  const service = new CreateBackgroundWorkerService();
-
   try {
-    const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
+    // Next authenticate the request
+    const authenticationResult = await authenticateApiRequest(request);
 
-    return json(
-      {
-        id: backgroundWorker.friendlyId,
-        version: backgroundWorker.version,
-        contentHash: backgroundWorker.contentHash,
-      },
-      { status: 200 }
-    );
-  } catch (e) {
-    logger.error("Failed to create background worker", { error: JSON.stringify(e) });
-
-    if (e instanceof ServiceValidationError) {
-      return json({ error: e.message }, { status: 400 });
-    } else if (e instanceof CreateDeclarativeScheduleError) {
-      return json({ error: e.message }, { status: 400 });
+    if (!authenticationResult) {
+      logger.info("Invalid or missing api key", { url: request.url });
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
     }
 
-    return json({ error: "Failed to create background worker" }, { status: 500 });
+    const authenticatedEnv = authenticationResult.environment;
+
+    const { projectRef } = parsedParams.data;
+
+    const rawBody = await request.json();
+    const body = CreateBackgroundWorkerRequestBody.safeParse(rawBody);
+
+    if (!body.success) {
+      return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
+    }
+
+    const service = new CreateBackgroundWorkerService();
+
+    try {
+      const backgroundWorker = await service.call(projectRef, authenticatedEnv, body.data);
+
+      return json(
+        {
+          id: backgroundWorker.friendlyId,
+          version: backgroundWorker.version,
+          contentHash: backgroundWorker.contentHash,
+        },
+        { status: 200 }
+      );
+    } catch (e) {
+      // Customer-facing validation failures (invalid task config, customer cron
+      // expression, etc.). The handler returns 4xx with the message; system
+      // handles it gracefully, no alert needed.
+      if (e instanceof ServiceValidationError) {
+        logger.warn("Failed to create background worker", { error: e.message });
+        return json({ error: e.message }, { status: 400 });
+      }
+      if (e instanceof CreateDeclarativeScheduleError) {
+        logger.warn("Failed to create background worker", { error: e.message });
+        return json({ error: e.message }, { status: 400 });
+      }
+
+      logger.error("Failed to create background worker", { error: e });
+
+      return json({ error: "Failed to create background worker" }, { status: 500 });
+    }
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create project background worker", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

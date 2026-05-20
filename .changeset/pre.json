@@ -1,0 +1,22 @@
+{
+  "mode": "pre",
+  "tag": "rc",
+  "initialVersions": {
+    "coordinator": "0.0.1",
+    "docker-provider": "0.0.1",
+    "kubernetes-provider": "0.0.1",
+    "supervisor": "0.0.1",
+    "webapp": "1.0.0",
+    "@trigger.dev/build": "4.4.6",
+    "trigger.dev": "4.4.6",
+    "@trigger.dev/core": "4.4.6",
+    "@trigger.dev/plugins": "4.4.6",
+    "@trigger.dev/python": "4.4.6",
+    "@trigger.dev/react-hooks": "4.4.6",
+    "@trigger.dev/redis-worker": "4.4.6",
+    "@trigger.dev/rsc": "4.4.6",
+    "@trigger.dev/schema-to-json": "4.4.6",
+    "@trigger.dev/sdk": "4.4.6"
+  },
+  "changesets": []
+}

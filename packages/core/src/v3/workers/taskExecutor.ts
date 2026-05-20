@@ -17,6 +17,7 @@ import {
   lifecycleHooks,
   OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT,
   runMetadata,
+  sessionStreams,
   traceContext,
   waitUntil,
 } from "../index.js";
@@ -1048,6 +1049,7 @@ export class TaskExecutor {
   ) {
     await this.#callCleanupFunctions(payload, ctx, initOutput, signal);
     inputStreams.clearHandlers();
+    sessionStreams.clearHandlers();
     await this.#blockForWaitUntil();
   }
 

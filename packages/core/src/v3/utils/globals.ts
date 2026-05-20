@@ -3,6 +3,7 @@ import { Clock } from "../clock/clock.js";
 import { HeartbeatsManager } from "../heartbeats/types.js";
 import type { IdempotencyKeyCatalog } from "../idempotency-key-catalog/catalog.js";
 import { InputStreamManager } from "../inputStreams/types.js";
+import { SessionStreamManager } from "../sessionStreams/types.js";
 import { LifecycleHooksManager } from "../lifecycleHooks/types.js";
 import { LocalsManager } from "../locals/types.js";
 import { RealtimeStreamsManager } from "../realtimeStreams/types.js";
@@ -76,4 +77,5 @@ type TriggerDotDevGlobalAPI = {
   ["heartbeats"]?: HeartbeatsManager;
   ["realtime-streams"]?: RealtimeStreamsManager;
   ["input-streams"]?: InputStreamManager;
+  ["session-streams"]?: SessionStreamManager;
 };

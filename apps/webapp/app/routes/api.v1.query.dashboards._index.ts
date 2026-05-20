@@ -37,8 +37,7 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1,
     authorization: {
       action: "read",
-      resource: () => ({ query: "dashboards" }),
-      superScopes: ["read:query", "read:all", "admin"],
+      resource: () => ({ type: "query", id: "dashboards" }),
     },
   },
   async () => {

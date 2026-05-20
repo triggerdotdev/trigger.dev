@@ -213,4 +213,28 @@ export const toolsMetadata = {
     description:
       "Reactivate a previous dashboard-sourced version as the active override. Use get_prompt_versions to find dashboard versions that can be reactivated.",
   },
+  list_agents: {
+    name: "list_agents",
+    title: "List Agents",
+    description:
+      "List all chat agents in the current worker. Agents are tasks created with chat.agent() or chat.customAgent(). Use start_agent_chat with an agent's slug to start a conversation.",
+  },
+  start_agent_chat: {
+    name: "start_agent_chat",
+    title: "Start Agent Chat",
+    description:
+      "Start a conversation with a chat agent. Returns a chatId you can use with send_agent_message. Optionally preloads the agent so it initializes before the first message.",
+  },
+  send_agent_message: {
+    name: "send_agent_message",
+    title: "Send Agent Message",
+    description:
+      "Send a message to an active agent chat and get the full response text back. Use the chatId from start_agent_chat. The agent remembers full context from previous messages in the same chat.",
+  },
+  close_agent_chat: {
+    name: "close_agent_chat",
+    title: "Close Agent Chat",
+    description:
+      "Close an agent chat conversation. The agent exits its loop gracefully. Without this, the agent will close on its own when its idle timeout expires.",
+  },
 };

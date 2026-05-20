@@ -1,5 +1,26 @@
 # trigger.dev
 
+## 4.4.6
+
+### Patch Changes
+
+- Fix dev workers spinning at 100% CPU after the parent CLI disconnects. Orphaned `trigger-dev-run-worker` (and indexer) processes were caught in an `uncaughtException` feedback loop: a periodic IPC send via `process.send` would throw `ERR_IPC_CHANNEL_CLOSED` once the parent closed the channel, which re-entered the same handler that itself called `process.send`, scheduled via `setImmediate` and amplified by source-map-support's `prepareStackTrace`. Fixed by (1) silently dropping packets in `ZodIpcConnection` when the channel is disconnected, (2) adding a `process.on("disconnect", ...)` handler in dev workers so they exit cleanly when the CLI closes the IPC channel, and (3) wrapping all `uncaughtException`-path `process.send` calls in a `safeSend` guard that checks `process.connected` and swallows synchronous throws. ([#3491](https://github.com/triggerdotdev/trigger.dev/pull/3491))
+- Fail attempts on uncaught exceptions instead of hanging to `MAX_DURATION_EXCEEDED`. A Node `EventEmitter` (e.g. `node-redis`) emitting `"error"` with no `.on("error", ...)` listener escalates to `uncaughtException`, which the worker previously reported but did not act on — runs drifted to maxDuration with empty attempts. They now fail fast with the original error and status `FAILED`, and respect the task's normal retry policy. You should still attach `.on("error", ...)` listeners to long-lived clients to handle errors gracefully. ([#3529](https://github.com/triggerdotdev/trigger.dev/pull/3529))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.6`
+  - `@trigger.dev/build@4.4.6`
+  - `@trigger.dev/schema-to-json@4.4.6`
+
+## 4.4.5
+
+### Patch Changes
+
+- Add `--no-browser` flag to `init` and `login` to skip auto-opening the browser during authentication. Also error loudly when `init` is run without `--yes` under non-TTY stdin (previously default-and-exited silently, leaving the project half-initialized). Both commands now show an `Examples` section in `--help`. ([#3483](https://github.com/triggerdotdev/trigger.dev/pull/3483))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.5`
+  - `@trigger.dev/build@4.4.5`
+  - `@trigger.dev/schema-to-json@4.4.5`
+
 ## 4.4.4
 
 ### Patch Changes

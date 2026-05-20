@@ -22,7 +22,7 @@ import { assertNever } from "assert-never";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { FlagIcon } from "~/assets/icons/RegionIcons";
+import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -53,6 +53,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
@@ -88,6 +89,7 @@ import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
+  v3SessionPath,
   v3DeploymentVersionPath,
   v3LogsPath,
   v3RunDownloadLogsPath,
@@ -124,7 +126,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       linkedRunId,
     });
 
-    return typedjson(result);
+    if (!result) {
+      return redirectWithErrorMessage(
+        v3RunPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam },
+          { friendlyId: runParam }
+        ),
+        request,
+        `Event not found.`
+      );
+    }
+
+    // Reconstruct the discriminated union explicitly. Spreading
+    // `{ ...result }` collapses the union and loses the
+    // `type === "run" | "span"` discriminant downstream in `SpanView`.
+    if (result.type === "run") {
+      return typedjson({ type: "run" as const, run: result.run });
+    }
+    return typedjson({ type: "span" as const, span: result.span });
   } catch (error) {
     logger.error("Error loading span", {
       projectParam,
@@ -618,6 +639,32 @@ function RunBody({
                     </Property.Value>
                   </Property.Item>
                 )}
+                {run.session && (
+                  <Property.Item>
+                    <Property.Label>Session</Property.Label>
+                    <Property.Value>
+                      <SimpleTooltip
+                        button={
+                          <TextLink
+                            to={v3SessionPath(organization, project, environment, {
+                              friendlyId: run.session.friendlyId,
+                            })}
+                            className="group flex flex-wrap items-center gap-x-2 gap-y-0"
+                          >
+                            <CopyableText
+                              value={run.session.externalId ?? run.session.friendlyId}
+                              copyValue={run.session.externalId ?? run.session.friendlyId}
+                              asChild
+                            />
+                            <SessionStatusCombo status={run.session.status} />
+                          </TextLink>
+                        }
+                        content={`Jump to session (${run.session.reason})`}
+                        disableHoverableContent
+                      />
+                    </Property.Value>
+                  </Property.Item>
+                )}
                 <Property.Item>
                   <Property.Label>
                     <div className="flex items-center justify-between">
@@ -925,12 +972,7 @@ function RunBody({
                   <Property.Item>
                     <Property.Label>Region</Property.Label>
                     <Property.Value>
-                      <span className="flex items-center gap-1">
-                        {run.region.location ? (
-                          <FlagIcon region={run.region.location} className="size-5" />
-                        ) : null}
-                        {run.region.name}
-                      </span>
+                      <RegionLabel region={run.region} />
                     </Property.Value>
                   </Property.Item>
                 )}

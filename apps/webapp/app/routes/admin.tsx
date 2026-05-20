@@ -1,20 +1,19 @@
-import { Outlet } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson } from "remix-typedjson";
+import { Outlet, useSearchParams } from "@remix-run/react";
+import { typedjson } from "remix-typedjson";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
-import { requireUser } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
-
-  return typedjson({ user });
-}
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ user }) => typedjson({ user })
+);
 
 export default function Page() {
+  const [searchParams] = useSearchParams();
+  const search = searchParams.get("search");
+  const searchSuffix = search ? `?search=${encodeURIComponent(search)}` : "";
+
   return (
     <div className="h-full w-full">
       <div className="flex items-center justify-between p-4">
@@ -22,11 +21,11 @@ export default function Page() {
           tabs={[
             {
               label: "Users",
-              to: "/admin",
+              to: `/admin${searchSuffix}`,
             },
             {
               label: "Organizations",
-              to: "/admin/orgs",
+              to: `/admin/orgs${searchSuffix}`,
             },
             {
               label: "Concurrency",

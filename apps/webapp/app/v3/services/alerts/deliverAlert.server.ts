@@ -1182,15 +1182,19 @@ export class DeliverAlertService extends BaseService {
   }
 
   #formatTimestamp(date: Date): string {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    }).format(date);
+    const unix = Math.floor(date.getTime() / 1000);
+    const fallback =
+      new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+        timeZone: "UTC",
+      }).format(date) + " UTC";
+    return `<!date^${unix}^{date_short_pretty} {time_secs}|${fallback}>`;
   }
 
   #buildWebhookGitObject(git: GitMetaLinks | null) {

@@ -9,7 +9,10 @@ import { env } from "~/env.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  createActionApiRoute,
+  everyResource,
+} from "~/services/routeBuilders/apiBuilder.server";
 import {
   handleRequestIdempotency,
   saveRequestIdempotency,
@@ -32,10 +35,17 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: env.BATCH_TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "batchTrigger",
-      resource: (_, __, ___, body) => ({
-        tasks: Array.from(new Set(body.items.map((i) => i.task))),
-      }),
-      superScopes: ["write:tasks", "admin"],
+      // Each item in the batch is a distinct task — every one must be
+      // authorized, not just any one of them. `everyResource` flips
+      // the auth check to AND semantics so a JWT scoped to taskA can't
+      // submit a batch that also includes taskB / taskC.
+      resource: (_, __, ___, body) =>
+        everyResource(
+          Array.from(new Set(body.items.map((i) => i.task))).map((id) => ({
+            type: "tasks",
+            id,
+          }))
+        ),
     },
     corsStrategy: "all",
   },
@@ -144,6 +154,18 @@ const { action, loader } = createActionApiRoute(
         headers: $responseHeaders,
       });
     } catch (error) {
+      // Customer-facing validation/quota failures (invalid batch shape,
+      // entitlements exhausted). The handler returns 422 with the message;
+      // system handles it gracefully, no alert needed.
+      if (error instanceof ServiceValidationError) {
+        logger.warn("Batch trigger error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+      if (error instanceof OutOfEntitlementError) {
+        logger.warn("Batch trigger error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+
       logger.error("Batch trigger error", {
         error: {
           message: (error as Error).message,
@@ -151,11 +173,7 @@ const { action, loader } = createActionApiRoute(
         },
       });
 
-      if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof OutOfEntitlementError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
+      if (error instanceof Error) {
         return json(
           { error: error.message },
           { status: 500, headers: { "x-should-retry": "false" } }

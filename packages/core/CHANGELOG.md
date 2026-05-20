@@ -1,5 +1,21 @@
 # internal-platform
 
+## 4.4.6
+
+### Patch Changes
+
+- Fix dev workers spinning at 100% CPU after the parent CLI disconnects. Orphaned `trigger-dev-run-worker` (and indexer) processes were caught in an `uncaughtException` feedback loop: a periodic IPC send via `process.send` would throw `ERR_IPC_CHANNEL_CLOSED` once the parent closed the channel, which re-entered the same handler that itself called `process.send`, scheduled via `setImmediate` and amplified by source-map-support's `prepareStackTrace`. Fixed by (1) silently dropping packets in `ZodIpcConnection` when the channel is disconnected, (2) adding a `process.on("disconnect", ...)` handler in dev workers so they exit cleanly when the CLI closes the IPC channel, and (3) wrapping all `uncaughtException`-path `process.send` calls in a `safeSend` guard that checks `process.connected` and swallows synchronous throws. ([#3491](https://github.com/triggerdotdev/trigger.dev/pull/3491))
+- Fail attempts on uncaught exceptions instead of hanging to `MAX_DURATION_EXCEEDED`. A Node `EventEmitter` (e.g. `node-redis`) emitting `"error"` with no `.on("error", ...)` listener escalates to `uncaughtException`, which the worker previously reported but did not act on — runs drifted to maxDuration with empty attempts. They now fail fast with the original error and status `FAILED`, and respect the task's normal retry policy. You should still attach `.on("error", ...)` listeners to long-lived clients to handle errors gracefully. ([#3529](https://github.com/triggerdotdev/trigger.dev/pull/3529))
+
+## 4.4.5
+
+### Patch Changes
+
+- Add `isReplay` boolean to the run context (`ctx.run.isReplay`), derived from the existing `replayedFromTaskRunFriendlyId` database field. Defaults to `false` for backwards compatibility. ([#3454](https://github.com/triggerdotdev/trigger.dev/pull/3454))
+- Redact the `resolveWaitpoint` runtime log so it only emits `id` and `type` instead of the full completed waitpoint. Previously the log printed the entire waitpoint (including `output`) to stdout in production runs, which could leak sensitive payloads. The value returned by `wait.forToken()` is unchanged. ([#3490](https://github.com/triggerdotdev/trigger.dev/pull/3490))
+- Add `SessionId` friendly ID generator and schemas for the new durable Session primitive. Exported from `@trigger.dev/core/v3/isomorphic` alongside `RunId`, `BatchId`, etc. Ships the `CreateSessionStreamWaitpoint` request/response schemas alongside the main Session CRUD. ([#3417](https://github.com/triggerdotdev/trigger.dev/pull/3417))
+- Truncate large error stacks and messages to prevent OOM crashes. Stack traces are capped at 50 frames (keeping top 5 + bottom 45 with an omission notice), individual stack lines at 1024 chars, and error messages at 1000 chars. Applied in parseError, sanitizeError, and OTel span recording. ([#3405](https://github.com/triggerdotdev/trigger.dev/pull/3405))
+
 ## 4.4.4
 
 ### Patch Changes

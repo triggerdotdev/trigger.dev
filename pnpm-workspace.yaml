@@ -12,6 +12,8 @@ minimumReleaseAgeExclude:
   - "next"
   - "@next/*"
   - "agentcrumbs"
+  - "secure-exec"
+  - "@secure-exec/*"
 preferOffline: true
 
 linkWorkspacePackages: false
@@ -19,3 +21,4 @@ publicHoistPattern:
   - "*prisma*"
 preferWorkspacePackages: true
 sideEffectsCache: false
+blockExoticSubdeps: true

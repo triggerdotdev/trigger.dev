@@ -15,11 +15,11 @@
     "ioredis": "^5.3.2"
   },
   "devDependencies": {
-    "@testcontainers/postgresql": "^10.28.0",
-    "@testcontainers/redis": "^10.28.0",
+    "@testcontainers/postgresql": "^11.14.0",
+    "@testcontainers/redis": "^11.14.0",
     "@trigger.dev/core": "workspace:*",
     "std-env": "^3.9.0",
-    "testcontainers": "^10.28.0",
+    "testcontainers": "^11.14.0",
     "tinyexec": "^0.3.0"
   },
   "scripts": {

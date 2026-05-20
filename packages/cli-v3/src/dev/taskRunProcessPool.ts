@@ -127,7 +127,11 @@ export class TaskRunProcessPool {
     return { taskRunProcess: newProcess, isReused: false };
   }
 
-  async returnProcess(process: TaskRunProcess, version: string): Promise<void> {
+  async returnProcess(
+    process: TaskRunProcess,
+    version: string,
+    options?: { forceKill?: boolean }
+  ): Promise<void> {
     // Remove from busy processes for this version
     const busyProcesses = this.busyProcessesByVersion.get(version);
     if (busyProcesses) {
@@ -139,6 +143,19 @@ export class TaskRunProcessPool {
         process.pid,
         (this.executionCountsPerProcess.get(process.pid) ?? 0) + 1
       );
+    }
+
+    // `forceKill` skips the reuse heuristic and tears the process down. Used
+    // on outcomes that leave the process in a state we can't safely reuse
+    // (OOM in particular — production would get a fresh container, so local
+    // dev should match that).
+    if (options?.forceKill) {
+      logger.debug("[TaskRunProcessPool] Force-killing process", {
+        version,
+        pid: process.pid,
+      });
+      await this.killProcess(process);
+      return;
     }
 
     if (this.shouldReuseProcess(process, version)) {

@@ -15,11 +15,15 @@ export const TriggerAction = z.enum(["trigger", "replay", "test"]).or(anyString)
 
 export type TriggerAction = z.infer<typeof TriggerAction>;
 
+export const TaskKind = z.enum(["STANDARD", "SCHEDULED", "AGENT"]).or(anyString);
+export type TaskKind = z.infer<typeof TaskKind>;
+
 export const RunAnnotations = z.object({
   triggerSource: TriggerSource,
   triggerAction: TriggerAction,
   rootTriggerSource: TriggerSource,
   rootScheduleId: z.string().optional(),
+  taskKind: TaskKind.optional(),
 });
 
 export type RunAnnotations = z.infer<typeof RunAnnotations>;
@@ -277,6 +281,7 @@ export const DequeuedMessage = z.object({
     id: z.string(),
     friendlyId: z.string(),
     isTest: z.boolean(),
+    isReplay: z.boolean().default(false),
     machine: MachinePreset,
     attemptNumber: z.number(),
     masterQueue: z.string(),

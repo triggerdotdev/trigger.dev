@@ -214,6 +214,9 @@ function createRunEngine() {
     // Debounce configuration
     debounce: {
       maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
+      quantizeNewDelayUntilMs: env.RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS,
+      fastPathSkipEnabled: env.RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED === "1",
+      useReplicaForFastPathRead: env.RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ === "1",
     },
   });
 

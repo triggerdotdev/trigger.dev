@@ -31,7 +31,9 @@ export function MachineLabel({
   className?: string;
 }) {
   return (
-    <span className={cn("text-text-dimmed", className)}>{formatMachinePresetName(preset)}</span>
+    <span className={cn("text-text-dimmed group-hover/table-row:text-text-bright", className)}>
+      {formatMachinePresetName(preset)}
+    </span>
   );
 }
 

@@ -1,3 +1,7 @@
+export function throwNotFound(statusText: string): never {
+  throw new Response(undefined, { status: 404, statusText });
+}
+
 export function friendlyErrorDisplay(statusCode: number, statusText?: string) {
   switch (statusCode) {
     case 400:

@@ -11,8 +11,10 @@ export async function longPollingFetch(
   options?: RequestInit,
   rewriteResponseHeaders?: Record<string, string>
 ) {
+  let upstream: Response | undefined;
   try {
-    let response = await fetch(url, options);
+    upstream = await fetch(url, options);
+    let response = upstream;
 
     if (response.headers.get("content-encoding")) {
       const headers = new Headers(response.headers);
@@ -46,16 +48,24 @@ export async function longPollingFetch(
 
     return response;
   } catch (error) {
+    // Release upstream undici socket + buffers explicitly. Without this the
+    // ReadableStream stays open and undici keeps buffering chunks into memory
+    // until the upstream times out (see H1 isolation test — ~44 KB retained
+    // per unconsumed-body fetch in RSS).
+    try { await upstream?.body?.cancel(); } catch {}
+
+    // AbortError is the expected path when downstream disconnects with a
+    // propagated signal — treat as a clean client-close, not a server error.
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Response(null, { status: 499 });
+    }
     if (error instanceof TypeError) {
-      // Network error or other fetch-related errors
       logger.error("Network error:", { error: error.message });
       throw new Response("Network error occurred", { status: 503 });
     } else if (error instanceof Error) {
-      // HTTP errors or other known errors
       logger.error("Fetch error:", { error: error.message });
       throw new Response(error.message, { status: 500 });
     } else {
-      // Unknown errors
       logger.error("Unknown error occurred during fetch");
       throw new Response("An unknown error occurred", { status: 500 });
     }

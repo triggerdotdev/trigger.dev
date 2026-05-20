@@ -1,3 +1,17 @@
+/**
+ * Detects unpaired UTF-16 surrogate escape sequences in JSON-encoded text.
+ *
+ * Returns true if the input contains a `\uD8XX`/`\uD9XX`/`\uDAXX`/`\uDBXX`
+ * high-surrogate escape not immediately followed by a `\uDC..`–`\uDF..` low
+ * surrogate, or a `\uDC..`–`\uDF..` low surrogate not immediately preceded by
+ * a high surrogate. Strict JSON parsers (e.g. ClickHouse `JSONEachRow`)
+ * reject input containing such sequences.
+ *
+ * Surrogate hex ranges (case-insensitive — inputs from `JSON.stringify` are
+ * lowercase):
+ *   - High surrogate (U+D800–U+DBFF):  `\uD[8-B][0-9A-F][0-9A-F]`
+ *   - Low surrogate  (U+DC00–U+DFFF):  `\uD[C-F][0-9A-F][0-9A-F]`
+ */
 export function detectBadJsonStrings(jsonString: string): boolean {
   // Fast path: skip everything if no \u
   let idx = jsonString.indexOf("\\u");
@@ -13,7 +27,7 @@ export function detectBadJsonStrings(jsonString: string): boolean {
     if (jsonString[idx + 1] === "u" && jsonString[idx + 2] === "d") {
       const third = jsonString[idx + 3];
 
-      // High surrogate check
+      // High surrogate check — third nibble is 8, 9, a, or b (U+D800–U+DBFF)
       if (
         /[89ab]/.test(third) &&
         /[0-9a-f]/.test(jsonString[idx + 4]) &&
@@ -28,7 +42,7 @@ export function detectBadJsonStrings(jsonString: string): boolean {
           jsonString[idx + 6] !== "\\" ||
           jsonString[idx + 7] !== "u" ||
           jsonString[idx + 8] !== "d" ||
-          !/[cd]/.test(jsonString[idx + 9]) ||
+          !/[c-f]/.test(jsonString[idx + 9]) ||
           !/[0-9a-f]/.test(jsonString[idx + 10]) ||
           !/[0-9a-f]/.test(jsonString[idx + 11])
         ) {
@@ -36,9 +50,9 @@ export function detectBadJsonStrings(jsonString: string): boolean {
         }
       }
 
-      // Low surrogate check
+      // Low surrogate check — third nibble is c, d, e, or f (U+DC00–U+DFFF)
       if (
-        (third === "c" || third === "d") &&
+        /[c-f]/.test(third) &&
         /[0-9a-f]/.test(jsonString[idx + 4]) &&
         /[0-9a-f]/.test(jsonString[idx + 5])
       ) {

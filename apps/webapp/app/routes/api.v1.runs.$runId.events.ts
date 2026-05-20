@@ -1,7 +1,10 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
@@ -21,13 +24,17 @@ export const loader = createLoaderApiRoute(
     shouldRetryNotFound: true,
     authorization: {
       action: "read",
-      resource: (run) => ({
-        runs: run.friendlyId,
-        tags: run.runTags,
-        batch: run.batch?.friendlyId,
-        tasks: run.taskIdentifier,
-      }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (run) => {
+        const resources = [
+          { type: "runs", id: run.friendlyId },
+          { type: "tasks", id: run.taskIdentifier },
+          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+        ];
+        if (run.batch?.friendlyId) {
+          resources.push({ type: "batch", id: run.batch.friendlyId });
+        }
+        return anyResource(resources);
+      },
     },
   },
   async ({ resource: run, authentication }) => {

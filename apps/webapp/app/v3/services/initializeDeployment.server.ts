@@ -9,13 +9,13 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { createRemoteImageBuild, remoteBuildsEnabled } from "../remoteImageBuilder.server";
-import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { getDeploymentImageRef } from "../getDeploymentImageRef.server";
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig } from "../registryConfig.server";
 import { DeploymentService } from "./deployment.server";
+import { createDeploymentWithNextVersion } from "./initializeDeployment/createDeploymentWithNextVersion.server";
 import { errAsync } from "neverthrow";
 
 const nanoid = customAlphabet("1234567890abcdefghijklmnopqrstuvwxyz", 8);
@@ -97,18 +97,6 @@ export class InitializeDeploymentService extends BaseService {
         });
       }
 
-      const latestDeployment = await this._prisma.workerDeployment.findFirst({
-        where: {
-          environmentId: environment.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 1,
-      });
-
-      const nextVersion = calculateNextBuildVersion(latestDeployment?.version);
-
       if (payload.selfHosted && remoteBuildsEnabled()) {
         throw new ServiceValidationError(
           "Self-hosted deployments are not supported on this instance"
@@ -145,30 +133,6 @@ export class InitializeDeploymentService extends BaseService {
       const registryConfig = getRegistryConfig(isV4Deployment);
 
       const deploymentShortCode = nanoid(8);
-
-      const [imageRefError, imageRefResult] = await tryCatch(
-        getDeploymentImageRef({
-          registry: registryConfig,
-          projectRef: environment.project.externalRef,
-          nextVersion,
-          environmentType: environment.type,
-          deploymentShortCode,
-        })
-      );
-
-      if (imageRefError) {
-        logger.error("Failed to get deployment image ref", {
-          environmentId: environment.id,
-          projectId: environment.projectId,
-          version: nextVersion,
-          triggeredById: triggeredBy?.id,
-          type: payload.type,
-          cause: imageRefError.message,
-        });
-        throw new ServiceValidationError("Failed to get deployment image ref");
-      }
-
-      const { imageRef, isEcr, repoCreated } = imageRefResult;
 
       // We keep using `BUILDING` as the initial status if not explicitly set
       // to avoid changing the behavior for deployments not created in the build server.
@@ -208,20 +172,6 @@ export class InitializeDeploymentService extends BaseService {
           }
         : undefined;
 
-      logger.debug("Creating deployment", {
-        environmentId: environment.id,
-        projectId: environment.projectId,
-        version: nextVersion,
-        triggeredById: triggeredBy?.id,
-        type: payload.type,
-        imageRef,
-        isEcr,
-        repoCreated,
-        initialStatus,
-        artifactKey: payload.isNativeBuild ? payload.artifactKey : undefined,
-        isNativeBuild: payload.isNativeBuild,
-      });
-
       const buildServerMetadata: BuildServerMetadata | undefined =
         payload.isNativeBuild || payload.buildId
           ? {
@@ -238,28 +188,77 @@ export class InitializeDeploymentService extends BaseService {
             }
           : undefined;
 
-      const deployment = await this._prisma.workerDeployment.create({
-        data: {
-          friendlyId: generateFriendlyId("deployment"),
-          contentHash: payload.contentHash,
-          shortCode: deploymentShortCode,
-          version: nextVersion,
-          status: initialStatus,
-          environmentId: environment.id,
-          projectId: environment.projectId,
-          externalBuildData,
-          buildServerMetadata,
-          triggeredById: triggeredBy?.id,
-          type: payload.type,
-          imageReference: imageRef,
-          imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
-          git: payload.gitMeta ?? undefined,
-          commitSHA: payload.gitMeta?.commitSha ?? undefined,
-          runtime: payload.runtime ?? undefined,
-          triggeredVia: payload.triggeredVia ?? undefined,
-          startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
-        },
-      });
+      // Concurrent deploys to the same environment race on the
+      // `(environmentId, version)` unique constraint. The helper retries on
+      // P2002, recomputing the version (and re-running the image ref call so
+      // the persisted imageReference always matches the persisted version)
+      // each attempt.
+      const deployment = await createDeploymentWithNextVersion(
+        this._prisma,
+        environment.id,
+        async (nextVersion) => {
+          const [imageRefError, imageRefResult] = await tryCatch(
+            getDeploymentImageRef({
+              registry: registryConfig,
+              projectRef: environment.project.externalRef,
+              nextVersion,
+              environmentType: environment.type,
+              deploymentShortCode,
+            })
+          );
+
+          if (imageRefError) {
+            logger.error("Failed to get deployment image ref", {
+              environmentId: environment.id,
+              projectId: environment.projectId,
+              version: nextVersion,
+              triggeredById: triggeredBy?.id,
+              type: payload.type,
+              cause: imageRefError.message,
+            });
+            throw new ServiceValidationError("Failed to get deployment image ref");
+          }
+
+          const { imageRef, isEcr, repoCreated } = imageRefResult;
+
+          logger.debug("Creating deployment", {
+            environmentId: environment.id,
+            projectId: environment.projectId,
+            version: nextVersion,
+            triggeredById: triggeredBy?.id,
+            type: payload.type,
+            imageRef,
+            isEcr,
+            repoCreated,
+            initialStatus,
+            artifactKey: payload.isNativeBuild ? payload.artifactKey : undefined,
+            isNativeBuild: payload.isNativeBuild,
+          });
+
+          return {
+            // Regenerated per attempt: each attempt is a fresh `create` that
+            // must satisfy `WorkerDeployment.friendlyId @unique`, so reusing a
+            // friendlyId across retries would risk a spurious P2002 on
+            // friendlyId instead of the version collision we're retrying.
+            friendlyId: generateFriendlyId("deployment"),
+            contentHash: payload.contentHash,
+            shortCode: deploymentShortCode,
+            status: initialStatus,
+            projectId: environment.projectId,
+            externalBuildData,
+            buildServerMetadata,
+            triggeredById: triggeredBy?.id,
+            type: payload.type,
+            imageReference: imageRef,
+            imagePlatform: env.DEPLOY_IMAGE_PLATFORM,
+            git: payload.gitMeta ?? undefined,
+            commitSHA: payload.gitMeta?.commitSha ?? undefined,
+            runtime: payload.runtime ?? undefined,
+            triggeredVia: payload.triggeredVia ?? undefined,
+            startedAt: initialStatus === "BUILDING" ? new Date() : undefined,
+          };
+        }
+      );
 
       const timeoutMs =
         deployment.status === "PENDING" ? env.DEPLOY_QUEUE_TIMEOUT_MS : env.DEPLOY_TIMEOUT_MS;
@@ -309,7 +308,7 @@ export class InitializeDeploymentService extends BaseService {
 
       return {
         deployment,
-        imageRef,
+        imageRef: deployment.imageReference ?? "",
         eventStream,
       };
     });

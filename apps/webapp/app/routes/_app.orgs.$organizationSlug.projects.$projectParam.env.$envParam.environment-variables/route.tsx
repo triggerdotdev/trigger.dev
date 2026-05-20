@@ -4,17 +4,20 @@ import {
   BookOpenIcon,
   InformationCircleIcon,
   LockClosedIcon,
-  MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
   TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form, type MetaFunction, Outlet, useActionData, useFetcher, useNavigation, useRevalidator } from "@remix-run/react";
 import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  json,
-} from "@remix-run/server-runtime";
+  Form,
+  type MetaFunction,
+  Outlet,
+  useActionData,
+  useFetcher,
+  useNavigation,
+  useRevalidator,
+} from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -30,9 +33,9 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -50,6 +53,7 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -76,7 +80,11 @@ import { UserAvatar } from "~/components/UserProfilePhoto";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { fromPromise } from "neverthrow";
 import { logger } from "~/services/logger.server";
-import { shouldSyncEnvVar, isPullEnvVarsEnabledForEnvironment, type TriggerEnvironmentType } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import {
+  shouldSyncEnvVar,
+  isPullEnvVarsEnabledForEnvironment,
+  type TriggerEnvironmentType,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export const meta: MetaFunction = () => {
   return [
@@ -92,10 +100,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new EnvironmentVariablesPresenter();
-    const { environmentVariables, environments, hasStaging, vercelIntegration } = await presenter.call({
-      userId,
-      projectSlug: projectParam,
-    });
+    const { environmentVariables, environments, hasStaging, vercelIntegration } =
+      await presenter.call({
+        userId,
+        projectSlug: projectParam,
+      });
 
     return typedjson({
       environmentVariables,
@@ -123,7 +132,9 @@ const schema = z.discriminatedUnion("action", [
     action: z.literal("update-vercel-sync"),
     key: z.string(),
     environmentType: z.enum(["PRODUCTION", "STAGING", "PREVIEW", "DEVELOPMENT"]),
-    syncEnabled: z.union([z.literal("true"), z.literal("false")]).transform((val) => val === "true"),
+    syncEnabled: z
+      .union([z.literal("true"), z.literal("false")])
+      .transform((val) => val === "true"),
   }),
 ]);
 
@@ -249,15 +260,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 export default function Page() {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments, vercelIntegration } = useTypedLoaderData<typeof loader>();
+  const { environmentVariables, environments, vercelIntegration } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { filterText, setFilterText, filteredItems } =
-    useFuzzyFilter<EnvironmentVariableWithSetValues>({
-      items: environmentVariables,
-      keys: ["key", "value", "environment.type", "environment.branchName"],
-    });
+  const { value } = useSearchParams();
+  const urlSearch = value("search") ?? "";
+  const { setFilterText, filteredItems } = useFuzzyFilter<EnvironmentVariableWithSetValues>({
+    items: environmentVariables,
+    keys: ["key", "value", "environment.type", "environment.branchName"],
+  });
+
+  useEffect(() => {
+    setFilterText(urlSearch);
+  }, [urlSearch, setFilterText]);
 
   // Add isFirst and isLast to each environment variable
   // They're set based on if they're the first or last time that `key` has been seen in the list
@@ -314,18 +331,10 @@ export default function Page() {
         <div className={cn("flex h-full flex-col")}>
           {environmentVariables.length > 0 && (
             <div className="flex items-center justify-between gap-2 px-2 py-2">
-              <Input
-                placeholder="Search variables"
-                variant="tertiary"
-                icon={MagnifyingGlassIcon}
-                fullWidth={true}
-                value={filterText}
-                onChange={(e) => setFilterText(e.target.value)}
-                autoFocus
-              />
-              <div className="flex items-center justify-end gap-2">
+              <SearchInput placeholder="Search variables…" autoFocus />
+              <div className="flex items-center justify-end gap-1.5">
                 <Switch
-                  variant="small"
+                  variant="secondary/small"
                   label="Reveal values"
                   checked={revealAll}
                   onCheckedChange={(e) => setRevealAll(e.valueOf())}
@@ -351,7 +360,16 @@ export default function Page() {
                   Value
                 </TableHeaderCell>
                 <TableHeaderCell className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}>
-                  Environment
+                  <SimpleTooltip
+                    button={
+                      <span className="flex items-center gap-1">
+                        Environment
+                        <InformationCircleIcon className="size-4 text-text-dimmed" />
+                      </span>
+                    }
+                    content="Dev environment variables specified here will be overridden by ones in your .env file when running locally."
+                    className="max-w-60"
+                  />
                 </TableHeaderCell>
                 {vercelIntegration?.enabled && (
                   <TableHeaderCell className="w-[8%]">
@@ -458,10 +476,11 @@ export default function Page() {
                               />
                               <span className="text-sm">{variable.updatedByUser.name}</span>
                             </div>
-                          ) : (variable.lastUpdatedBy?.type === "integration" && variable.lastUpdatedBy?.integration === 'vercel' ) ? (
+                          ) : variable.lastUpdatedBy?.type === "integration" &&
+                            variable.lastUpdatedBy?.integration === "vercel" ? (
                             <div className="flex items-center gap-2">
-                              <VercelLogo className="size-4 text-text-dimmed group-hover/table-row:text-text-bright transition-colors" />
-                              <span className="text-sm text-text-dimmed group-hover/table-row:text-text-bright capitalize transition-colors">
+                              <VercelLogo className="size-4 text-text-dimmed transition-colors group-hover/table-row:text-text-bright" />
+                              <span className="text-sm capitalize text-text-dimmed transition-colors group-hover/table-row:text-text-bright">
                                 {variable.lastUpdatedBy.integration}
                               </span>
                             </div>
@@ -475,7 +494,7 @@ export default function Page() {
                       </TableCell>
                       <TableCellMenu
                         isSticky
-                        className="w-0 [&:has(.group-hover/table-row:block)]:w-auto"
+                        className="[&:has(.group-hover/table-row:block)]:w-auto w-0"
                         hiddenButtons={
                           <>
                             <EditEnvironmentVariablePanel
@@ -514,13 +533,6 @@ export default function Page() {
               )}
             </TableBody>
           </Table>
-
-          <div className="-mt-px w-full border-t border-grid-dimmed">
-            <InfoPanel icon={InformationCircleIcon} variant="minimal" panelClassName="max-w-fit">
-              Dev environment variables specified here will be overridden by ones in your .env file
-              when running locally.
-            </InfoPanel>
-          </div>
         </div>
         <Outlet />
       </PageBody>
@@ -561,9 +573,12 @@ function EditEnvironmentVariablePanel({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="small-menu-item" LeadingIcon={PencilSquareIcon} fullWidth textAlignLeft>
-          
-        </Button>
+        <Button
+          variant="small-menu-item"
+          LeadingIcon={PencilSquareIcon}
+          fullWidth
+          textAlignLeft
+        ></Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
@@ -715,14 +730,7 @@ function VercelSyncCheckbox({
   if (!pullEnvVarsEnabledForEnv) {
     return (
       <SimpleTooltip
-        button={
-          <Switch
-            variant="small"
-            checked={false}
-            disabled
-            onCheckedChange={() => {}}
-          />
-        }
+        button={<Switch variant="small" checked={false} disabled onCheckedChange={() => {}} />}
         content="Enable 'Pull env vars before build' for this environment in Vercel settings."
       />
     );

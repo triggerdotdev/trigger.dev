@@ -143,6 +143,7 @@ interface ZodIpcConnectionOptions<
   process: {
     send?: (message: any) => any;
     on?: (event: "message", listener: (message: any) => void) => void;
+    connected?: boolean;
   };
   handlers?: ZodIpcMessageHandlers<TListenCatalog, TEmitCatalog>;
 }
@@ -257,7 +258,19 @@ export class ZodIpcConnection<
   }
 
   async #sendPacket(packet: Packet) {
-    await this.opts.process.send?.(packet);
+    // When the IPC channel is closed (e.g. parent process exited), there is no
+    // recipient — drop the packet rather than letting `process.send` throw
+    // ERR_IPC_CHANNEL_CLOSED, which would otherwise propagate as an
+    // uncaughtException and re-enter any handler that itself calls `process.send`.
+    if (this.opts.process.connected === false) {
+      return;
+    }
+
+    try {
+      await this.opts.process.send?.(packet);
+    } catch {
+      // swallow: channel raced from open to closed between the check and the send
+    }
   }
 
   async send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(

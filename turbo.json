@@ -35,10 +35,10 @@
     "db:migrate:deploy": {
       "cache": false
     },
-    "db:seed": {
+    "webapp#db:seed": {
       "cache": false,
       "dependsOn": [
-        "build"
+        "webapp#build"
       ]
     },
     "db:studio": {

@@ -40,8 +40,10 @@ const RunListInputOptionsSchema = z.object({
   runId: z.array(z.string()).optional(),
   bulkId: z.string().optional(),
   queues: z.array(z.string()).optional(),
+  regions: z.array(z.string()).optional(),
   machines: MachinePresetName.array().optional(),
   errorId: z.string().optional(),
+  taskKinds: z.array(z.string()).optional(),
 });
 
 export type RunListInputOptions = z.infer<typeof RunListInputOptionsSchema>;
@@ -53,6 +55,7 @@ export type RunListInputFilters = Omit<
 export type ParsedRunFilters = RunListInputFilters & {
   cursor?: string;
   direction?: "forward" | "backward";
+  sources?: string[];
 };
 
 export type FilterRunsOptions = Omit<RunListInputOptions, "period"> & {
@@ -102,6 +105,8 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     metadataType: true;
     machinePreset: true;
     queue: true;
+    workerQueue: true;
+    annotations: true;
   };
 }>;
 
@@ -295,8 +300,9 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
     convertedOptions.runId = options.runId.map((r) => RunId.toFriendlyId(r));
   }
 
-  // Show all runs if we are filtering by batchId or runId
-  if (options.batchId || options.runId?.length || options.scheduleId || options.tasks?.length) {
+  // batchId/runId/scheduleId target specific runs, so rootOnly is meaningless and forced off.
+  // tasks is intentionally excluded so rootOnly can narrow a task filter to root runs only.
+  if (options.batchId || options.runId?.length || options.scheduleId) {
     convertedOptions.rootOnly = false;
   }
 

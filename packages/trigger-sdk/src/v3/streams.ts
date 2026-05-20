@@ -19,20 +19,56 @@ import {
   ManualWaitpointPromise,
   WaitpointTimeoutError,
   runtime,
+  logger,
   type RealtimeDefinedInputStream,
   type InputStreamSubscription,
   type InputStreamOnceOptions,
   InputStreamOncePromise,
   type InputStreamOnceResult,
   type InputStreamWaitOptions,
+  type InputStreamWaitWithIdleTimeoutOptions,
   type SendInputStreamOptions,
   type InferInputStreamType,
+  type StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
+import { locals } from "./locals.js";
 import { SpanStatusCode } from "@opentelemetry/api";
 
 const DEFAULT_STREAM_KEY = "default";
+
+// `chat.agent` sets this once at the top of every run via
+// `markChatAgentRunForStreamsWarning`. The flag lives on the run's
+// AsyncLocalStorage frame, so it naturally resets between runs and stays
+// invisible to subtasks (where `streams.*` is a normal API).
+const inChatAgentRunKey = locals.create<boolean>("streams.inChatAgentRun");
+// Once-per-run dedup. `streams.*` callers inside a chat.agent run get the
+// nudge on the first call and silence afterwards; a single tight loop
+// won't spam the logs.
+const chatAgentStreamsWarnedKey = locals.create<boolean>("streams.chatAgentWarned");
+
+/**
+ * Marks the current run as a `chat.agent` run so subsequent `streams.pipe` /
+ * `streams.append` / `streams.read` calls can warn the user that they're
+ * writing to a run-scoped stream rather than the chat's `session.out`.
+ *
+ * Called from inside the `chat.agent` task wrapper at the top of every run.
+ *
+ * @internal
+ */
+export function markChatAgentRunForStreamsWarning(): void {
+  locals.set(inChatAgentRunKey, true);
+}
+
+function warnIfChatAgentStreamsMisuse(method: "pipe" | "append" | "read" | "writer"): void {
+  if (!locals.get(inChatAgentRunKey)) return;
+  if (locals.get(chatAgentStreamsWarnedKey)) return;
+  locals.set(chatAgentStreamsWarnedKey, true);
+  logger.warn(
+    `streams.${method}() was called inside a chat.agent run. This writes to a run-scoped realtime stream and is NOT visible on the chat session, so the chat UI will not see these chunks. For chat output use chat.response.write() or chat.stream.* instead. See https://trigger.dev/docs/ai-chat/patterns/large-payloads. (Logged once per run; subsequent streams.${method}() calls in this run are silent.)`
+  );
+}
 
 /**
  * Pipes data to a realtime stream using the default stream key (`"default"`).
@@ -139,7 +175,7 @@ function pipe<T>(
     opts = valueOrOptions as PipeStreamOptions | undefined;
   }
 
-  return pipeInternal(key, value, opts, "streams.pipe()");
+  return pipeInternal(key, value, opts, opts?.spanName ?? "streams.pipe()");
 }
 
 /**
@@ -152,6 +188,7 @@ function pipeInternal<T>(
   opts: PipeStreamOptions | undefined,
   spanName: string
 ): PipeStreamResult<T> {
+  warnIfChatAgentStreamsMisuse(spanName === "streams.writer()" ? "writer" : "pipe");
   const runId = getRunIdForOptions(opts);
 
   if (!runId) {
@@ -167,6 +204,7 @@ function pipeInternal<T>(
       [SemanticInternalAttributes.ENTITY_TYPE]: "realtime-stream",
       [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${key}`,
       [SemanticInternalAttributes.STYLE_ICON]: "streams",
+      ...(opts?.collapsed ? { [SemanticInternalAttributes.COLLAPSED]: true } : {}),
       ...accessoryAttributes({
         items: [
           {
@@ -194,7 +232,9 @@ function pipeInternal<T>(
 
     return {
       stream: instance.stream,
-      waitUntilComplete: () => instance.wait(),
+      waitUntilComplete: async () => {
+        return instance.wait();
+      },
     };
   } catch (error) {
     // if the error is a signal abort error, we need to end the span but not record an exception
@@ -320,6 +360,7 @@ async function readStreamImpl<T>(
   key: string,
   options?: ReadStreamOptions
 ): Promise<AsyncIterableStream<T>> {
+  warnIfChatAgentStreamsMisuse("read");
   const apiClient = apiClientManager.clientOrThrow();
 
   const span = tracer.startSpan("streams.read()", {
@@ -398,6 +439,7 @@ async function appendInternal<TPart extends BodyInit>(
   part: TPart,
   options?: AppendStreamOptions
 ): Promise<void> {
+  warnIfChatAgentStreamsMisuse("append");
   const runId = getRunIdForOptions(options);
 
   if (!runId) {
@@ -640,7 +682,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
     }
   });
 
-  return pipeInternal(key, stream, options, "streams.writer()");
+  return pipeInternal(key, stream, options, options.spanName ?? "streams.writer()");
 }
 
 export type RealtimeDefineStreamOptions = {
@@ -656,8 +698,18 @@ function define<TPart>(opts: RealtimeDefineStreamOptions): RealtimeDefinedStream
     read(runId, options) {
       return read(runId, opts.id, options);
     },
-    append(value, options) {
-      return append(opts.id, value as BodyInit, options);
+    async append(value, options) {
+      // Use a single-write writer so objects are serialized the same way
+      // as stream.writer() — the raw append API sends BodyInit which
+      // doesn't serialize objects correctly for SSE consumers.
+      const { waitUntilComplete } = writer(opts.id, {
+        ...options,
+        spanName: "streams.append()",
+        execute: ({ write }) => {
+          write(value);
+        },
+      });
+      await waitUntilComplete();
     },
     writer(options) {
       return writer(opts.id, options);
@@ -713,7 +765,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       return new InputStreamOncePromise<TData>((resolve, reject) => {
         tracer
           .startActiveSpan(
-            `inputStream.once()`,
+            options?.spanName ?? `inputStream.once()`,
             async () => {
               const result = await innerPromise;
               resolve(result as InputStreamOnceResult<TData>);
@@ -750,23 +802,21 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
 
           const apiClient = apiClientManager.clientOrThrow();
 
+          // Create the waitpoint before the span so we have the entity ID upfront
+          const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
+            streamId: opts.id,
+            timeout: options?.timeout,
+            idempotencyKey: options?.idempotencyKey,
+            idempotencyKeyTTL: options?.idempotencyKeyTTL,
+            tags: options?.tags,
+            lastSeqNum: inputStreams.lastSeqNum(opts.id),
+          });
+
           const result = await tracer.startActiveSpan(
-            `inputStream.wait()`,
+            options?.spanName ?? `inputStream.wait()`,
             async (span) => {
-              // 1. Create a waitpoint linked to this input stream
-              const response = await apiClient.createInputStreamWaitpoint(ctx.run.id, {
-                streamId: opts.id,
-                timeout: options?.timeout,
-                idempotencyKey: options?.idempotencyKey,
-                idempotencyKeyTTL: options?.idempotencyKeyTTL,
-                tags: options?.tags,
-                lastSeqNum: inputStreams.lastSeqNum(opts.id),
-              });
 
-              // Set the entity ID now that we have the waitpoint ID
-              span.setAttribute(SemanticInternalAttributes.ENTITY_ID, response.waitpointId);
-
-              // 2. Block the run on the waitpoint
+              // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
                 runFriendlyId: ctx.run.id,
                 waitpointFriendlyId: response.waitpointId,
@@ -775,6 +825,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               if (!waitResponse.success) {
                 throw new Error("Failed to block on input stream waitpoint");
               }
+
+              // 2. Disconnect the SSE tail and clear the buffer before suspending.
+              // Without this, the tail stays alive during the suspension window and
+              // may buffer a copy of the same message that will be delivered via the
+              // waitpoint, causing a duplicate on resume.
+              inputStreams.disconnectStream(opts.id);
 
               // 3. Suspend the task
               const waitResult = await runtime.waitUntil(response.waitpointId);
@@ -792,6 +848,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
                   : undefined;
 
               if (waitResult.ok) {
+                // Advance the seq counter so the SSE tail doesn't replay
+                // the record that was consumed via the waitpoint path when
+                // it lazily reconnects on the next on()/once() call.
+                const prevSeq = inputStreams.lastSeqNum(opts.id);
+                inputStreams.setLastSeqNum(opts.id, (prevSeq ?? -1) + 1);
+
                 return { ok: true as const, output: data as TData };
               } else {
                 const error = new WaitpointTimeoutError(data?.message ?? "Timed out");
@@ -806,6 +868,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "wait",
                 [SemanticInternalAttributes.ENTITY_TYPE]: "waitpoint",
+                [SemanticInternalAttributes.ENTITY_ID]: response.waitpointId,
                 streamId: opts.id,
                 ...accessoryAttributes({
                   items: [
@@ -825,6 +888,70 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           reject(error);
         }
       });
+    },
+    async waitWithIdleTimeout(options) {
+      const self = this;
+      const spanName = options.spanName ?? `inputStream.waitWithIdleTimeout()`;
+
+      return tracer.startActiveSpan(
+        spanName,
+        async (span) => {
+          // Idle phase: keep compute alive
+          if (options.idleTimeoutInSeconds > 0) {
+            const warm = await inputStreams.once(opts.id, {
+              timeoutMs: options.idleTimeoutInSeconds * 1000,
+            });
+            if (warm.ok) {
+              span.setAttribute("wait.resolved", "idle");
+              return { ok: true as const, output: warm.output as TData };
+            }
+          }
+
+          // Skip suspend if requested — return a real WaitpointTimeoutError
+          // so the result shape matches the cold-phase `self.wait()` path
+          // below. Callers that check `if (!result.ok)` work the same as
+          // before; callers that do `throw result.error` get a useful error
+          // instead of `undefined`.
+          if (options.skipSuspend) {
+            span.setAttribute("wait.resolved", "skipped");
+            return {
+              ok: false as const,
+              error: new WaitpointTimeoutError(
+                "Idle timeout elapsed and skipSuspend is set"
+              ),
+            };
+          }
+
+          // Fire onSuspend callback before entering cold phase
+          if (options.onSuspend) {
+            await options.onSuspend();
+          }
+
+          // Cold phase: suspend via .wait() — creates a child span
+          span.setAttribute("wait.resolved", "suspended");
+          const waitResult = await self.wait({
+            timeout: options.timeout,
+            spanName: "suspended",
+          });
+
+          // Fire onResume callback after successful resume
+          if (waitResult.ok && options.onResume) {
+            await options.onResume();
+          }
+
+          return waitResult;
+        },
+        {
+          attributes: {
+            [SemanticInternalAttributes.STYLE_ICON]: "streams",
+            streamId: opts.id,
+            ...accessoryAttributes({
+              items: [{ text: opts.id, variant: "normal" }],
+              style: "codepath",
+            }),
+          },
+        }
+      );
     },
     async send(runId, data, options) {
       return tracer.startActiveSpan(

@@ -17,14 +17,15 @@ export * from "./otel.js";
 export * from "./schemas.js";
 export * from "./heartbeats.js";
 export * from "./streams.js";
+export * from "./sessions.js";
 export * from "./query.js";
 export type { Context };
 
 import type { Context } from "./shared.js";
 
-import type { ApiClientConfiguration } from "@trigger.dev/core/v3";
+import type { ApiClientConfiguration, TaskRunContext } from "@trigger.dev/core/v3";
 
-export type { ApiClientConfiguration };
+export type { ApiClientConfiguration, TaskRunContext };
 
 export {
   ApiError,
@@ -39,6 +40,8 @@ export {
   AbortTaskRunError,
   OutOfMemoryError,
   CompleteTaskWithOutput,
+  ChatChunkTooLargeError,
+  isChatChunkTooLargeError,
   logger,
   type LogLevel,
 } from "@trigger.dev/core/v3";
@@ -54,9 +57,15 @@ export {
   type AnyRetrieveRunResult,
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
+export {
+  deployments,
+  type RetrieveCurrentDeploymentResponseBody,
+  type ApiDeploymentListResponseItem,
+} from "./deployments.js";
 export * as envvars from "./envvars.js";
 export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
 export * as prompts from "./prompts.js";
+export * as skills from "./skills.js";
