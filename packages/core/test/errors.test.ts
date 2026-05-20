@@ -263,6 +263,12 @@ describe("shouldRetryError + shouldLookupRetrySettings", () => {
     expect(shouldLookupRetrySettings(err)).toBe(true);
   });
 
+  it("retries TASK_MIDDLEWARE_ERROR using the task's retry settings", () => {
+    const err = internal("TASK_MIDDLEWARE_ERROR");
+    expect(shouldRetryError(err)).toBe(true);
+    expect(shouldLookupRetrySettings(err)).toBe(true);
+  });
+
   it("still does not retry SIGKILL timeout", () => {
     expect(shouldRetryError(internal("TASK_PROCESS_SIGKILL_TIMEOUT"))).toBe(false);
   });

@@ -427,6 +427,7 @@ export function shouldLookupRetrySettings(error: TaskRunError): boolean {
         case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_SIGSEGV":
         case "TASK_RUN_UNCAUGHT_EXCEPTION":
+        case "TASK_MIDDLEWARE_ERROR":
           return true;
 
         default:
