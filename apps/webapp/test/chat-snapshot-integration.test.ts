@@ -26,6 +26,7 @@ import {
 import type { UIMessage } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
 import { env } from "~/env.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -54,22 +55,21 @@ function makeSnapshot(opts: { messages?: UIMessage[]; lastOutEventId?: string } 
 
 /**
  * Stub `apiClientManager.clientOrThrow()` so the SDK helpers see a fake
- * api client whose `getPayloadUrl` / `createUploadPayloadUrl` return
- * presigned URLs minted by the webapp's real `generatePresignedUrl`
- * (which signs against MinIO).
- *
- * The SDK helpers internally do `fetch(presignedUrl, ...)` to read/write
- * the blob, so MinIO ends up holding the actual bytes.
+ * api client. Mirrors the snapshot-url route: derive the canonical
+ * `sessions/{id}/snapshot.json` key (with optional default-protocol
+ * prefix) and sign it via `generatePresignedUrl` against MinIO.
  */
 function stubApiClient(opts: { projectRef: string; envSlug: string }) {
   vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
-    async getPayloadUrl(filename: string) {
-      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, filename, "GET");
+    async getChatSnapshotUrl(sessionId: string) {
+      const key = chatSnapshotStoragePathForSession(sessionId);
+      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, key, "GET");
       if (!result.success) throw new Error(result.error);
       return { presignedUrl: result.url };
     },
-    async createUploadPayloadUrl(filename: string) {
-      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, filename, "PUT");
+    async createChatSnapshotUploadUrl(sessionId: string) {
+      const key = chatSnapshotStoragePathForSession(sessionId);
+      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, key, "PUT");
       if (!result.success) throw new Error(result.error);
       return { presignedUrl: result.url };
     },
