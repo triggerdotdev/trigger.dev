@@ -77,6 +77,21 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
+    const existingFileMetadata = this._taskFileMetadata.get(task.id);
+
+    if (
+      existingFileMetadata &&
+      (existingFileMetadata.filePath !== this._currentFileContext.filePath ||
+        existingFileMetadata.entryPoint !== this._currentFileContext.entryPoint)
+    ) {
+      throw new Error(
+        `Duplicate Trigger.dev task id "${task.id}" found:\n` +
+          `- ${existingFileMetadata.filePath} (${existingFileMetadata.entryPoint})\n` +
+          `- ${this._currentFileContext.filePath} (${this._currentFileContext.entryPoint})\n\n` +
+          "Task ids must be unique inside a project. Rename or remove one of these task definitions."
+      );
+    }
+
     this._taskFileMetadata.set(task.id, {
       ...this._currentFileContext,
     });
