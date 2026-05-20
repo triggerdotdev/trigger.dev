@@ -44,6 +44,9 @@ export const BufferEntrySchema = z.object({
   status: BufferEntryStatus,
   attempts: stringToInt,
   createdAt: stringToDate,
+  // Microsecond epoch matching the ZSET queue score. Stable across
+  // requeues — the score never moves once set at accept time.
+  createdAtMicros: stringToInt,
   lastError: stringToError.optional(),
 });
 

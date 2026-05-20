@@ -20,12 +20,14 @@ describe("schemas", () => {
       status: "QUEUED",
       attempts: "0",
       createdAt: "2026-05-11T10:00:00.000Z",
+      createdAtMicros: "1747044000000000",
     };
     const parsed = BufferEntrySchema.parse(raw);
     expect(parsed.runId).toBe("run_abc");
     expect(parsed.status).toBe("QUEUED");
     expect(parsed.attempts).toBe(0);
     expect(parsed.createdAt).toBeInstanceOf(Date);
+    expect(parsed.createdAtMicros).toBe(1747044000000000);
   });
 
   it("BufferEntrySchema parses a FAILED entry with lastError", () => {
@@ -37,6 +39,7 @@ describe("schemas", () => {
       status: "FAILED",
       attempts: "3",
       createdAt: "2026-05-11T10:00:00.000Z",
+      createdAtMicros: "1747044000000000",
       lastError: JSON.stringify({ code: "P2024", message: "connection lost" }),
     };
     const parsed = BufferEntrySchema.parse(raw);
@@ -210,7 +213,7 @@ describe("MollifierBuffer.pop orphan handling", () => {
 
       try {
         // Simulate a TTL-expired orphan: queue ref exists, entry hash does not.
-        await buffer["redis"].lpush("mollifier:queue:env_a", "run_orphan");
+        await buffer["redis"].zadd("mollifier:queue:env_a", 1, "run_orphan");
 
         const popped = await buffer.pop("env_a");
         expect(popped).toBeNull();
@@ -220,7 +223,7 @@ describe("MollifierBuffer.pop orphan handling", () => {
         expect(Object.keys(raw)).toHaveLength(0);
 
         // Queue is drained — the loop pops orphans until empty.
-        const qLen = await buffer["redis"].llen("mollifier:queue:env_a");
+        const qLen = await buffer["redis"].zcard("mollifier:queue:env_a");
         expect(qLen).toBe(0);
       } finally {
         await buffer.close();
@@ -243,12 +246,12 @@ describe("MollifierBuffer.pop orphan handling", () => {
       });
 
       try {
-        // Layout (oldest-first, since RPOP takes from tail): orphan, valid, orphan.
-        // LPUSH puts items at the head, so to get RPOP order [orphan_a, valid, orphan_b]
-        // we LPUSH in reverse: orphan_b first, then valid, then orphan_a.
-        await buffer["redis"].lpush("mollifier:queue:env_a", "orphan_b");
+        // Layout by score (lowest-first, since ZPOPMIN takes the min):
+        // orphan_a (score 1) → valid (score = its createdAtMicros, large) → orphan_b (score 1e18).
+        // First pop skips orphan_a, returns valid; orphan_b remains.
+        await buffer["redis"].zadd("mollifier:queue:env_a", 1, "orphan_a");
         await buffer.accept({ runId: "valid", envId: "env_a", orgId: "org_1", payload: "{}" });
-        await buffer["redis"].lpush("mollifier:queue:env_a", "orphan_a");
+        await buffer["redis"].zadd("mollifier:queue:env_a", 1e18, "orphan_b");
 
         const popped = await buffer.pop("env_a");
         expect(popped).not.toBeNull();
@@ -256,7 +259,7 @@ describe("MollifierBuffer.pop orphan handling", () => {
         expect(popped!.status).toBe("DRAINING");
 
         // The trailing orphan_b is still in the queue (single pop call).
-        const remaining = await buffer["redis"].llen("mollifier:queue:env_a");
+        const remaining = await buffer["redis"].zcard("mollifier:queue:env_a");
         expect(remaining).toBe(1);
 
         // A second pop drains the trailing orphan_b. The queue is now
@@ -458,9 +461,13 @@ describe("MollifierBuffer.requeue on missing entry", () => {
 
 describe("MollifierBuffer.requeue ordering", () => {
   redisTest(
-    "requeued entry is popped AFTER other queued entries on the same env (FIFO retry)",
+    "requeued entry retains its original createdAt and pops next (oldest-first by createdAt)",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
+      // Score == createdAtMicros; requeue does not bump the score. The
+      // oldest entry continues to pop first across retries. `maxAttempts`
+      // in the drainer bounds the retry loop for a persistently failing
+      // entry (after which it goes to the `fail` path, not requeue).
       const buffer = new MollifierBuffer({
         redisOptions: {
           host: redisContainer.getHost(),
@@ -473,7 +480,9 @@ describe("MollifierBuffer.requeue ordering", () => {
 
       try {
         await buffer.accept({ runId: "a", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await new Promise((r) => setTimeout(r, 2));
         await buffer.accept({ runId: "b", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await new Promise((r) => setTimeout(r, 2));
         await buffer.accept({ runId: "c", envId: "env_a", orgId: "org_1", payload: "{}" });
 
         const first = await buffer.pop("env_a");
@@ -481,12 +490,13 @@ describe("MollifierBuffer.requeue ordering", () => {
 
         await buffer.requeue("a");
 
+        // a still has the smallest createdAtMicros → pops next.
         const next = await buffer.pop("env_a");
-        expect(next!.runId).toBe("b");
+        expect(next!.runId).toBe("a");
         const after = await buffer.pop("env_a");
-        expect(after!.runId).toBe("c");
+        expect(after!.runId).toBe("b");
         const last = await buffer.pop("env_a");
-        expect(last!.runId).toBe("a");
+        expect(last!.runId).toBe("c");
       } finally {
         await buffer.close();
       }
@@ -1019,6 +1029,124 @@ describe("MollifierBuffer envs set lifecycle", () => {
         await buffer.requeue("r1");
         // requeue must put env_a back so the drainer notices the retry.
         expect(await buffer.listEnvsForOrg("org_1")).toContain("env_a");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
+describe("MollifierBuffer ZSET storage", () => {
+  redisTest(
+    "queue key is a ZSET scored by entry's createdAtMicros",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "z1", envId: "env_z", orgId: "org_1", payload: "{}" });
+
+        // ZSET-only commands must succeed against the queue key.
+        const card = await buffer["redis"].zcard("mollifier:queue:env_z");
+        expect(card).toBe(1);
+
+        const score = await buffer["redis"].zscore("mollifier:queue:env_z", "z1");
+        expect(score).not.toBeNull();
+        const scoreNum = Number(score);
+        expect(Number.isFinite(scoreNum)).toBe(true);
+
+        // Score matches the entry hash's createdAtMicros field.
+        const micros = await buffer["redis"].hget("mollifier:entries:z1", "createdAtMicros");
+        expect(micros).not.toBeNull();
+        expect(Number(micros)).toBe(scoreNum);
+
+        // Score is plausibly recent (within last minute as microseconds).
+        const nowMicros = Date.now() * 1000;
+        expect(scoreNum).toBeGreaterThan(nowMicros - 60_000_000);
+        expect(scoreNum).toBeLessThanOrEqual(nowMicros + 1_000_000);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "pop returns entries in ascending createdAtMicros order (FIFO by time, not by member)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        // Insert runIds in reverse-lex order to prove ordering is by score, not member.
+        await buffer.accept({ runId: "zzz", envId: "env_o", orgId: "org_1", payload: "{}" });
+        await new Promise((r) => setTimeout(r, 5));
+        await buffer.accept({ runId: "mmm", envId: "env_o", orgId: "org_1", payload: "{}" });
+        await new Promise((r) => setTimeout(r, 5));
+        await buffer.accept({ runId: "aaa", envId: "env_o", orgId: "org_1", payload: "{}" });
+
+        const first = await buffer.pop("env_o");
+        expect(first!.runId).toBe("zzz");
+        const second = await buffer.pop("env_o");
+        expect(second!.runId).toBe("mmm");
+        const third = await buffer.pop("env_o");
+        expect(third!.runId).toBe("aaa");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "requeue keeps original score; createdAt is immutable across retries",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        entryTtlSeconds: 600,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "rq", envId: "env_rq", orgId: "org_1", payload: "{}" });
+        const originalScore = Number(
+          await buffer["redis"].zscore("mollifier:queue:env_rq", "rq"),
+        );
+        const originalMicros = Number(
+          await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros"),
+        );
+
+        await buffer.pop("env_rq");
+        await new Promise((r) => setTimeout(r, 5));
+        await buffer.requeue("rq");
+
+        const newScore = Number(
+          await buffer["redis"].zscore("mollifier:queue:env_rq", "rq"),
+        );
+        const newMicros = Number(
+          await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros"),
+        );
+        expect(newScore).toBe(originalScore);
+        expect(newMicros).toBe(originalMicros);
       } finally {
         await buffer.close();
       }
