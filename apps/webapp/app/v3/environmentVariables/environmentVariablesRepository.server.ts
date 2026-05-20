@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { $transaction, prisma } from "~/db.server";
+import { $replica, $transaction, prisma, type PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -47,7 +47,10 @@ function parseSecretKey(key: string) {
 const SecretValue = z.object({ secret: z.string() });
 
 export class EnvironmentVariablesRepository implements Repository {
-  constructor(private prismaClient: PrismaClient = prisma) {}
+  constructor(
+    private prismaClient: PrismaClient = prisma,
+    private replicaClient: PrismaReplicaClient = $replica
+  ) {}
 
   async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
     const project = await this.prismaClient.project.findFirst({
@@ -582,7 +585,7 @@ export class EnvironmentVariablesRepository implements Repository {
     const variables = await this.getEnvironment(projectId, environmentId, parentEnvironmentId);
 
     // Get the keys of all secret variables
-    const secretValues = await this.prismaClient.environmentVariableValue.findMany({
+    const secretValues = await this.replicaClient.environmentVariableValue.findMany({
       where: {
         environmentId: parentEnvironmentId
           ? { in: [environmentId, parentEnvironmentId] }
