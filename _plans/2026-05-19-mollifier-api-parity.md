@@ -15,7 +15,8 @@
 | **Phase A — read endpoints** | ✅ **Done** | `6b8a54e43`, `e21dbee5e` | See "Phase A patterns established" below |
 | **Phase B1 — ZSET migration** | ✅ **Done** | `709d2f5af` | Score = `createdAtMicros`; requeue keeps original score (createdAt immutable across retries) — see decision below |
 | **Phase B2 — drainer ack grace TTL** | ✅ **Done** | `22dbbc90f` | `ack` → `HSET materialised=true; EXPIRE 30s`. Accept refuses materialised entries (defense-in-depth) |
-| Phase B3-B6 — mutateSnapshot + helpers | ⏳ Next | — | mutateSnapshot Lua, SyntheticRun extension, mutateWithFallback, idempotency |
+| **Phase B3 — mutateSnapshot Lua** | ✅ **Done** | `08f20c65f` | Three return codes, four patch types. Lua atomicity per-runId verified by 50-way concurrent test |
+| Phase B4-B6 — SyntheticRun extension + mutateWithFallback + idempotency | ⏳ Next | — | Webapp-side helpers |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
