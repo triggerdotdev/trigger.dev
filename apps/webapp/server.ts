@@ -119,6 +119,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   if (process.env.HTTP_SERVER_DISABLED !== "true") {
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
     const wss: WebSocketServer | undefined = build.entry.module.wss;
+    const apiErrorBoundary: express.RequestHandler = build.entry.module.apiErrorBoundary;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
@@ -167,6 +168,11 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
           next();
         });
       }
+
+      // Universal error boundary for /api/* responses. Sits outside Remix so
+      // it catches leaks regardless of whether the per-route try/catch from
+      // PR #3664 covered them.
+      app.use(apiErrorBoundary);
 
       app.use(apiRateLimiter);
       app.use(engineRateLimiter);

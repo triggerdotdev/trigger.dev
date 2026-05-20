@@ -289,6 +289,7 @@ process.on("uncaughtException", (error, origin) => {
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 
+export { apiErrorBoundary } from "./services/apiErrorBoundary.server";
 export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
