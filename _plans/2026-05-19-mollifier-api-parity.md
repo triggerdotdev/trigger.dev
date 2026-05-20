@@ -23,7 +23,7 @@
 | **Phase B complete** | ✅ | — | — |
 | **Phase C1 — cancel** | ✅ **Done** | `d4f734213` | `engine.createCancelledRun` + drainer bifurcation + route via mutateWithFallback. Q4 design |
 | **Phase C2 — tags** | ✅ **Done** | `3534f1330` | Closes the live 500 the parity script flagged. MAX_TAGS skipped on buffer side (matches today's pre-buffer trigger semantics) |
-| **Phase C3 — metadata PUT** | ⏸️ Deferred | — | The operations API (`operations` / `parentOperations` / `rootOperations` in `FlushedRunMetadata`) needs a product decision for buffered runs — operations are deltas against a materialised TaskRun, so they don't translate cleanly to snapshot patches. The simple replace (`body.metadata` only) case could land via `set_metadata`, but isolating that branch from the operations path requires a route restructure. Pending |
+| **Phase C3 — metadata PUT** | ✅ **Done** | `d5c1e22b1` | New `casSetMetadata` Lua + `applyMetadataMutationToBufferedRun` helper. Reuses existing `applyMetadataOperations` from `@trigger.dev/core` (no Lua re-impl of the 6 operation types). Parent/root operations fanned out via the existing service against snapshot's `parentTaskRunId` |
 | **Phase C4 — reschedule** | ✅ **Done** | `0183e4367` | `set_delay` patch; PG-side `RescheduleTaskRunService` still enforces non-DELAYED rejection via wait-and-bounce |
 | **Phase C5 — replay** | ✅ **Done** | `0183e4367` | Read-fallback after PG miss; SyntheticRun-as-TaskRun cast (B4 work) feeds existing `ReplayTaskRunService`. Also tightens PG lookup to env-scoped findFirst |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
