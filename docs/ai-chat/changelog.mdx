@@ -4,7 +4,7 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
-<Update label="May 19, 2026" tags={["SDK"]}>
+<Update label="May 19, 2026" description="0.0.0-chat-prerelease-20260520150857" tags={["SDK"]}>
 
 ## Recovery boot — context-preserving continuation after cancel / crash / OOM
 
@@ -27,8 +27,7 @@ export const myChat = chat.agent({
     });
     // return nothing → smart default applies
   },
-  run: async ({ messages, signal }) =>
-    streamText({ model, messages, abortSignal: signal }),
+  run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
 });
 ```
 
@@ -160,13 +159,13 @@ Hard cutover — there is no compat shim. v4.5 is prerelease.
 
 Customers building human-in-the-loop tools were re-implementing the same accumulator-walking logic to figure out which tool calls were pending, which were resolved, and which results in an incoming wire message were actually new. Lifted into the SDK as five new methods on `chat.history`:
 
-| Method | Description |
-|---|---|
-| `chat.history.getPendingToolCalls()` | Tool calls on the most recent assistant message in `input-available` state — gates fresh user turns during HITL. |
-| `chat.history.getResolvedToolCalls()` | All tool calls in the chain in `output-available` or `output-error` state. |
+| Method                                        | Description                                                                                                                                                                         |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat.history.getPendingToolCalls()`          | Tool calls on the most recent assistant message in `input-available` state — gates fresh user turns during HITL.                                                                    |
+| `chat.history.getResolvedToolCalls()`         | All tool calls in the chain in `output-available` or `output-error` state.                                                                                                          |
 | `chat.history.extractNewToolResults(message)` | Tool results in `message` whose `toolCallId` is not already resolved on the chain. Most useful in `hydrateMessages` against an incoming wire message, before the runtime merges it. |
-| `chat.history.getChain()` | Same as `chat.history.all()` — alias that reads better alongside parent-aware APIs. |
-| `chat.history.findMessage(messageId)` | Direct lookup; `undefined` if absent. |
+| `chat.history.getChain()`                     | Same as `chat.history.all()` — alias that reads better alongside parent-aware APIs.                                                                                                 |
+| `chat.history.findMessage(messageId)`         | Direct lookup; `undefined` if absent.                                                                                                                                               |
 
 ```ts
 // Refuse a regenerate while a tool call is awaiting an answer
@@ -291,7 +290,7 @@ Tool schemas (`description` + `inputSchema`) live in their own module that impor
 
 ### Compared to Preload
 
-Preload eagerly triggers the run on page load (good when you're confident the user *will* send a message — trades idle compute for fast TTFC). Head Start gates the run on a real first message — no idle compute, customer's process runs step 1 directly. Pick one per chat.
+Preload eagerly triggers the run on page load (good when you're confident the user _will_ send a message — trades idle compute for fast TTFC). Head Start gates the run on a real first message — no idle compute, customer's process runs step 1 directly. Pick one per chat.
 
 ### Works on every runtime
 
@@ -440,7 +439,11 @@ import { myAgent } from "./my-agent";
 
 const harness = mockChatAgent(myAgent, {
   chatId: "test-1",
-  clientData: { model: new MockLanguageModelV3({ /* ... */ }) },
+  clientData: {
+    model: new MockLanguageModelV3({
+      /* ... */
+    }),
+  },
 });
 
 const turn = await harness.sendMessage({
@@ -448,9 +451,7 @@ const turn = await harness.sendMessage({
   role: "user",
   parts: [{ type: "text", text: "hi" }],
 });
-expect(turn.chunks).toContainEqual(
-  expect.objectContaining({ type: "text-delta", delta: "hello" }),
-);
+expect(turn.chunks).toContainEqual(expect.objectContaining({ type: "text-delta", delta: "hello" }));
 await harness.close();
 ```
 
@@ -542,11 +543,11 @@ See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages).
 Modify the accumulated message history from any hook or `run()`:
 
 ```ts
-chat.history.rollbackTo(messageId);  // Undo — keep up to this message
-chat.history.remove(messageId);      // Remove one message
-chat.history.replace(id, newMsg);    // Edit a message
-chat.history.slice(0, -2);           // Remove last 2 messages
-chat.history.all();                  // Read current state
+chat.history.rollbackTo(messageId); // Undo — keep up to this message
+chat.history.remove(messageId); // Remove one message
+chat.history.replace(id, newMsg); // Edit a message
+chat.history.slice(0, -2); // Remove last 2 messages
+chat.history.all(); // Read current state
 ```
 
 See [chat.history](/ai-chat/backend#chat-history).
@@ -603,7 +604,9 @@ const sendEmail = tool({
   description: "Send an email. Requires human approval.",
   inputSchema: z.object({ to: z.string(), subject: z.string(), body: z.string() }),
   needsApproval: true,
-  execute: async ({ to, subject, body }) => { /* ... */ },
+  execute: async ({ to, subject, body }) => {
+    /* ... */
+  },
 });
 ```
 
