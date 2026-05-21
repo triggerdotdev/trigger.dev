@@ -201,6 +201,26 @@ describe("auth.withAuth", () => {
     apiClientManager.disable();
   });
 
+  it("inherits TRIGGER_SECRET_KEY from env when called with a partial config", async () => {
+    vi.stubEnv("TRIGGER_SECRET_KEY", "tr_dev_env_token");
+
+    let observed: string | undefined;
+    await auth.withAuth({ baseURL: "https://override.example.com" }, async () => {
+      observed = apiClientManager.accessToken;
+    });
+
+    // The scoped `inheritContext: true` path falls back to TRIGGER_SECRET_KEY
+    // so callers can override only baseURL without re-passing the token.
+    expect(observed).toBe("tr_dev_env_token");
+    // baseURL override still applies.
+    expect(
+      await auth.withAuth(
+        { baseURL: "https://override.example.com" },
+        async () => apiClientManager.baseURL
+      )
+    ).toBe("https://override.example.com");
+  });
+
   it("does not stomp on a parallel withAuth call with a different config", async () => {
     configure({ accessToken: "tr_global" });
 

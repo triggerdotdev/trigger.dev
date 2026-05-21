@@ -171,7 +171,11 @@
       ]
     }
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/esm/v3/sdkScope/storage-node.js",
+    "./dist/commonjs/v3/sdkScope/storage-node.js",
+    "./src/v3/sdkScope/storage-node.ts"
+  ],
   "scripts": {
     "clean": "rimraf dist .tshy .tshy-build .turbo src/v3/vendor",
     "update-version": "tsx ../../scripts/updateVersion.ts",
