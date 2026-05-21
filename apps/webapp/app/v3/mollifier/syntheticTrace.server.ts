@@ -12,6 +12,7 @@ import type { SyntheticRun } from "./readFallback.server";
 // emitted any events yet.
 export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
   const spanId = run.spanId ?? "";
+  const isCancelled = run.status === "CANCELED";
   const span: SpanSummary = {
     id: spanId,
     parentId: run.parentSpanId,
@@ -23,8 +24,8 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
       startTime: run.createdAt,
       duration: 0,
       isError: false,
-      isPartial: true,
-      isCancelled: false,
+      isPartial: !isCancelled,
+      isCancelled,
       isDebug: false,
       level: "TRACE",
     },
@@ -53,7 +54,7 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     : [];
 
   return {
-    rootSpanStatus: "executing" as const,
+    rootSpanStatus: (isCancelled ? "completed" : "executing") as "executing" | "completed" | "failed",
     events,
     duration: totalDuration,
     rootStartedAt: tree?.data.startTime,

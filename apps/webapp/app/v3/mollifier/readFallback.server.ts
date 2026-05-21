@@ -16,7 +16,15 @@ export type SyntheticRun = {
   // expected (cast). Derived deterministically from `friendlyId`.
   id: string;
   friendlyId: string;
-  status: "QUEUED" | "FAILED";
+  status: "QUEUED" | "FAILED" | "CANCELED";
+  // Set when the customer cancelled the run via the dashboard or API
+  // while it was buffered. The drainer's cancel bifurcation reads this
+  // on next pop and writes a CANCELED PG row directly (skipping
+  // materialisation). Reflected back into the UI by the synthesised
+  // SpanRun so the run-detail page shows the cancelled state even before
+  // the drainer materialises it.
+  cancelledAt: Date | undefined;
+  cancelReason: string | undefined;
   taskIdentifier: string | undefined;
   createdAt: Date;
 
@@ -122,10 +130,21 @@ export async function findRunByIdWithMollifierFallback(
         ? (snapshot.environment as Record<string, unknown>)
         : undefined;
 
+    const cancelledAtRaw = asString(snapshot.cancelledAt);
+    const cancelledAt = cancelledAtRaw ? new Date(cancelledAtRaw) : undefined;
+    const cancelReason = asString(snapshot.cancelReason);
+    const status: SyntheticRun["status"] = cancelledAt
+      ? "CANCELED"
+      : entry.status === "FAILED"
+      ? "FAILED"
+      : "QUEUED";
+
     return {
       id: RunId.fromFriendlyId(entry.runId),
       friendlyId: entry.runId,
-      status: entry.status === "FAILED" ? "FAILED" : "QUEUED",
+      status,
+      cancelledAt,
+      cancelReason,
       taskIdentifier: asString(snapshot.taskIdentifier),
       createdAt: entry.createdAt,
 

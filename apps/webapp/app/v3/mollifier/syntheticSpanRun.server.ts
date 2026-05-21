@@ -52,18 +52,19 @@ export async function buildSyntheticSpanRun(args: {
   const isAgentRun = taskKind === "AGENT";
 
   const queueName = run.queue ?? "task/";
+  const isCancelled = run.status === "CANCELED";
   return {
     id: run.id,
     friendlyId: run.friendlyId,
-    status: "PENDING",
-    statusReason: undefined,
+    status: isCancelled ? "CANCELED" : "PENDING",
+    statusReason: isCancelled ? run.cancelReason ?? undefined : undefined,
     createdAt: run.createdAt,
     startedAt: null,
     executedAt: null,
-    updatedAt: run.createdAt,
+    updatedAt: run.cancelledAt ?? run.createdAt,
     delayUntil: null,
     expiredAt: null,
-    completedAt: null,
+    completedAt: run.cancelledAt ?? null,
     logsDeletedAt: null,
     ttl: run.ttl ?? null,
     taskIdentifier: run.taskIdentifier ?? "",

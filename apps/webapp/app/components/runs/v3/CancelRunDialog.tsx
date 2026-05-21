@@ -28,17 +28,19 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
         <FormButtons
           confirmButton={
             <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">
-              <Button
-                type="submit"
-                name="redirectUrl"
-                value={redirectPath}
-                variant="danger/medium"
-                LeadingIcon={isLoading ? SpinnerWhite : NoSymbolIcon}
-                disabled={isLoading}
-                shortcut={{ modifiers: ["mod"], key: "enter" }}
-              >
-                {isLoading ? "Canceling..." : "Cancel run"}
-              </Button>
+              <DialogClose asChild>
+                <Button
+                  type="submit"
+                  name="redirectUrl"
+                  value={redirectPath}
+                  variant="danger/medium"
+                  LeadingIcon={isLoading ? SpinnerWhite : NoSymbolIcon}
+                  disabled={isLoading}
+                  shortcut={{ modifiers: ["mod"], key: "enter" }}
+                >
+                  {isLoading ? "Canceling..." : "Cancel run"}
+                </Button>
+              </DialogClose>
             </Form>
           }
           cancelButton={
