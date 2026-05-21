@@ -183,4 +183,51 @@ describe("RunEngine.createCancelledRun", () => {
       }
     },
   );
+
+  // Regression: cjson encodes empty Lua tables as `{}`, not `[]`. When
+  // the drainer pops a buffered run that never had a tag set, the
+  // deserialised snapshot's `tags` field is an empty object. The old
+  // implementation passed it straight into Prisma's `runTags:` field;
+  // Prisma misread the object as a relation update op and threw
+  // `Argument 'set' is missing`. The drainer caught the error and
+  // marked the buffer entry FAILED — so the CANCELED PG row never
+  // landed. Found while running the Phase F challenge suite.
+  containerTest(
+    "tolerates snapshot.tags being an empty object (cjson edge case)",
+    async ({ prisma, redisOptions }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = new RunEngine({ prisma, ...baseEngineOptions(redisOptions) });
+      try {
+        const friendlyId = freshRunId();
+        // Cast through unknown to simulate the cjson-decode output shape
+        // for an empty Lua table — TypeScript's snapshot type says
+        // string[], but the buffer Lua delivers {} for the empty case.
+        const result = await engine.createCancelledRun({
+          snapshot: {
+            friendlyId,
+            environment: env,
+            taskIdentifier: "test-task",
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "0000000000000000abcd000000000000",
+            spanId: "1234000000000000",
+            queue: "task/test-task",
+            isTest: false,
+            tags: {} as unknown as string[],
+          },
+          cancelledAt: new Date(),
+          cancelReason: "Cancelled — empty tags",
+        });
+        expect(result.status).toBe("CANCELED");
+        expect(result.friendlyId).toBe(friendlyId);
+        // Prisma normalises the absent-tags case to either [] or null
+        // depending on the column default; assert it's an empty array.
+        expect(result.runTags).toEqual([]);
+      } finally {
+        await engine.quit();
+      }
+    },
+  );
 });
