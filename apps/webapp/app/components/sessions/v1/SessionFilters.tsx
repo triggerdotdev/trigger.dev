@@ -2,12 +2,12 @@ import * as Ariakit from "@ariakit/react";
 import {
   CpuChipIcon,
   FingerPrintIcon,
+  PlusIcon,
   TagIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { ListFilterIcon } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +34,7 @@ import {
 } from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Button } from "../../primitives/Buttons";
 import {
   appliedSummary,
@@ -116,13 +118,21 @@ export function SessionFilters(props: SessionFiltersProps) {
     searchParams.has("tags");
 
   return (
-    <div className="flex flex-row flex-wrap items-center gap-1">
-      <FilterMenu {...props} />
-      <TimeFilter />
+    <div className="flex flex-row flex-wrap items-center gap-1.5">
+      <PermanentStatusFilter />
+      <PermanentTaskIdentifierFilter />
+      <TimeFilter shortcut={{ key: "d" }} />
       <AppliedFilters />
+      <FilterMenu {...props} />
       {hasFilters && (
-        <Form className="h-6">
-          <Button variant="secondary/small" LeadingIcon={XMarkIcon} tooltip="Clear all filters" />
+        <Form className="-ml-1 h-6">
+          <Button
+            variant="minimal/small"
+            LeadingIcon={XMarkIcon}
+            tooltip="Clear all filters"
+            className="group-hover/button:bg-transparent"
+            leadingIconClassName="group-hover/button:text-text-bright"
+          />
         </Form>
       )}
     </div>
@@ -130,17 +140,7 @@ export function SessionFilters(props: SessionFiltersProps) {
 }
 
 const filterTypes = [
-  {
-    name: "statuses",
-    title: "Status",
-    icon: <StatusIcon className="size-4 border-text-bright" />,
-  },
   { name: "types", title: "Type", icon: <CpuChipIcon className="size-4" /> },
-  {
-    name: "taskIdentifiers",
-    title: "Task",
-    icon: <TaskIcon className="size-4" />,
-  },
   {
     name: "externalId",
     title: "External ID",
@@ -160,14 +160,15 @@ function FilterMenu(props: SessionFiltersProps) {
     <SelectTrigger
       icon={
         <div className="flex size-4 items-center justify-center">
-          <ListFilterIcon className="size-3.5" />
+          <PlusIcon className="size-3.5" />
         </div>
       }
       variant={"secondary/small"}
       shortcut={shortcut}
-      tooltipTitle={"Filter sessions"}
+      tooltipTitle={"More filters"}
+      className="pl-1 pr-2"
     >
-      Filter
+      More filters
     </SelectTrigger>
   );
 
@@ -190,9 +191,7 @@ function FilterMenu(props: SessionFiltersProps) {
 function AppliedFilters() {
   return (
     <>
-      <AppliedStatusFilter />
       <AppliedTypeFilter />
-      <AppliedTaskIdentifierFilter />
       <AppliedExternalIdFilter />
       <AppliedTagsFilter />
     </>
@@ -211,14 +210,8 @@ function Menu(props: MenuProps) {
   switch (props.filterType) {
     case undefined:
       return <MainMenu {...props} />;
-    case "statuses":
-      return <StatusDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "types":
       return <TypeDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
-    case "taskIdentifiers":
-      return (
-        <TaskIdentifierDropdown onClose={() => props.setFilterType(undefined)} {...props} />
-      );
     case "externalId":
       return <ExternalIdDropdown onClose={() => props.setFilterType(undefined)} {...props} />;
     case "tags":
@@ -249,7 +242,7 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
               icon={type.icon}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
             >
-              {type.title}
+              <span className="text-text-bright">{type.title}</span>
             </SelectButtonItem>
           ))}
         </SelectList>
@@ -311,7 +304,7 @@ function StatusDropdown({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger className="group flex w-full flex-col py-0">
-                    <SessionStatusCombo status={item.value} iconClassName="animate-none" />
+                    <SessionStatusCombo status={item.value} />
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={9}>
                     <Paragraph variant="extra-small">
@@ -328,28 +321,71 @@ function StatusDropdown({
   );
 }
 
-function AppliedStatusFilter() {
+const statusShortcut = { key: "s" };
+
+function PermanentStatusFilter() {
   const { values, del } = useSearchParams();
   const statuses = values("statuses");
+  const hasStatuses = statuses.length > 0 && !statuses.every((v) => v === "");
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  if (statuses.length === 0) return null;
+  useShortcutKeys({
+    shortcut: statusShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <StatusDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Status"
-                icon={<StatusIcon className="size-3.5" />}
-                value={appliedSummary(
-                  statuses.map((v) => sessionStatusTitle(v as (typeof allSessionStatuses)[number]))
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasStatuses ? (
+                  <AppliedFilter
+                    label="Status"
+                    icon={<StatusIcon className="size-4 border-text-bright" />}
+                    value={appliedSummary(
+                      statuses.map((v) =>
+                        sessionStatusTitle(v as (typeof allSessionStatuses)[number])
+                      )
+                    )}
+                    onRemove={() => del(["statuses", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <div className="grid size-4 place-items-center">
+                      <div className="size-[75%] rounded-full border-2 border-text-bright" />
+                    </div>
+                    <span>Status</span>
+                  </div>
                 )}
-                onRemove={() => del(["statuses", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by status</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={statusShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -434,7 +470,7 @@ function AppliedTypeFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Type"
-                icon={<CpuChipIcon className="size-3.5" />}
+                icon={<CpuChipIcon className="size-4" />}
                 value={appliedSummary(types)}
                 onRemove={() => del(["types", "cursor", "direction"])}
                 variant="secondary/small"
@@ -523,25 +559,65 @@ function TaskIdentifierDropdown({
   );
 }
 
-function AppliedTaskIdentifierFilter() {
+const taskShortcut = { key: "t" };
+
+function PermanentTaskIdentifierFilter() {
   const { values, del } = useSearchParams();
   const taskIdentifiers = values("taskIdentifiers");
-  if (taskIdentifiers.length === 0) return null;
+  const hasTasks = taskIdentifiers.length > 0 && !taskIdentifiers.every((v) => v === "");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: taskShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
 
   return (
     <FilterMenuProvider>
       {(search, setSearch) => (
         <TaskIdentifierDropdown
           trigger={
-            <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-              <AppliedFilter
-                label="Task"
-                icon={<TaskIcon className="size-3.5" />}
-                value={appliedSummary(taskIdentifiers)}
-                onRemove={() => del(["taskIdentifiers", "cursor", "direction"])}
-                variant="secondary/small"
-              />
-            </Ariakit.Select>
+            <Ariakit.TooltipProvider timeout={200}>
+              <Ariakit.TooltipAnchor
+                render={
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  <Ariakit.Select
+                    ref={triggerRef as any}
+                    render={<div className="group cursor-pointer focus-custom" />}
+                  />
+                }
+              >
+                {hasTasks ? (
+                  <AppliedFilter
+                    label="Task"
+                    icon={<TaskIcon className="size-4" />}
+                    value={appliedSummary(taskIdentifiers)}
+                    onRemove={() => del(["taskIdentifiers", "cursor", "direction"])}
+                    variant="secondary/small"
+                    className="pl-1"
+                  />
+                ) : (
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                    <TaskIcon className="size-4" />
+                    <span>Task</span>
+                  </div>
+                )}
+              </Ariakit.TooltipAnchor>
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span>Filter by task</span>
+                  <ShortcutKey
+                    className="size-4 flex-none"
+                    shortcut={taskShortcut}
+                    variant="small"
+                  />
+                </div>
+              </Ariakit.Tooltip>
+            </Ariakit.TooltipProvider>
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
@@ -638,7 +714,7 @@ function AppliedExternalIdFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="External ID"
-                icon={<FingerPrintIcon className="size-3.5" />}
+                icon={<FingerPrintIcon className="size-4" />}
                 value={externalId}
                 onRemove={() => del(["externalId", "cursor", "direction"])}
                 variant="secondary/small"
@@ -747,7 +823,7 @@ function AppliedTagsFilter() {
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
                 label="Tags"
-                icon={<TagIcon className="size-3.5" />}
+                icon={<TagIcon className="size-4" />}
                 value={appliedSummary(tags)}
                 onRemove={() => del(["tags", "cursor", "direction"])}
                 variant="secondary/small"
