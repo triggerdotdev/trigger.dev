@@ -491,8 +491,8 @@ const zodIpc = new ZodIpcConnection({
               async () => {
                 const beforeImport = performance.now();
                 resourceCatalog.setCurrentFileContext(
-                  taskManifest.entryPoint,
-                  taskManifest.filePath
+                  taskManifest.filePath,
+                  taskManifest.entryPoint
                 );
 
                 // Load init file if it exists
