@@ -14,18 +14,14 @@ import * as promptsModule from "./prompts.js";
 import * as queuesModule from "./queues.js";
 import { runs } from "./runs.js";
 import * as schedulesModule from "./schedules/index.js";
-import {
-  batchTrigger,
-  trigger,
-  triggerAndSubscribe,
-} from "./shared.js";
+import { batchTrigger, trigger } from "./shared.js";
 
 export type TriggerClientConfig = ApiClientConfiguration & {
   /** Inherit ambient task context (parentRunId, lockToVersion, isTest) when called from inside a task. Default `false`. */
   inheritContext?: boolean;
 };
 
-const tasksApi = { trigger, batchTrigger, triggerAndSubscribe };
+const tasksApi = { trigger, batchTrigger };
 const batchInstanceKeys = ["trigger", "triggerByTask", "retrieve"] as const;
 const schedulesInstanceKeys = [
   "activate",

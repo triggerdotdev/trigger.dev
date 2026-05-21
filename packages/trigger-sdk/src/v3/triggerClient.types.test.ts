@@ -46,11 +46,13 @@ describe("TriggerClient surface — type-level guarantees", () => {
 describe("TriggerClient surface — curated subsets", () => {
   it("instance.tasks drops inside-task-only and definition-time helpers", () => {
     type Keys = keyof typeof client.tasks;
-    expectTypeOf<Keys>().toEqualTypeOf<"trigger" | "batchTrigger" | "triggerAndSubscribe">();
+    expectTypeOf<Keys>().toEqualTypeOf<"trigger" | "batchTrigger">();
     // @ts-expect-error — triggerAndWait is not on the instance surface.
     client.tasks.triggerAndWait;
     // @ts-expect-error — batchTriggerAndWait is not on the instance surface.
     client.tasks.batchTriggerAndWait;
+    // @ts-expect-error — triggerAndSubscribe requires a task context; not on the instance surface.
+    client.tasks.triggerAndSubscribe;
     // @ts-expect-error — hooks like onStart are task-definition-time, not on the client.
     client.tasks.onStart;
   });
