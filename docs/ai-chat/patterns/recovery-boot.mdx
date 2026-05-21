@@ -1,0 +1,230 @@
+---
+title: "Recovery boot"
+sidebarTitle: "Recovery boot"
+description: "Recover from cancel-mid-stream, crashes, and OOM kills with full conversational context. The smart default Just Works; the onRecoveryBoot hook is the override path for advanced policies."
+---
+
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
+When a `chat.agent` run dies in the middle of streaming a response — the user cancels, the worker OOMs, or an unhandled exception kills the process — the durable streams hold what was in flight. The next run boots as a continuation, reads both stream tails, and reconstructs a chain that preserves the partial response so any follow-up (`keep going`, `actually do X instead`, a new question) has full context.
+
+The behavior is automatic. The `onRecoveryBoot` hook is opt-in for policies that need something different.
+
+## The scenario
+
+```ts
+// Turn 1 is mid-essay when the user clicks Cancel.
+window.__chat.send("Write me a long essay about espresso");
+// ... assistant has written 3000 characters ...
+window.__chat.stop();                              // OR: server-side cancel_run
+
+// User decides what they want next.
+window.__chat.send("keep going");                  // OR: "what's 7+8?", or anything
+```
+
+The cancelled run never wrote `onTurnComplete`. The snapshot is stale or absent. `session.out` has a half-written assistant message. `session.in` has the original user message (the run consumed it but never marked the turn complete) plus the new follow-up.
+
+A naive continuation would either re-run the cancelled essay (the user already chose to stop) or drop everything (no context for the follow-up). Recovery boot handles this without either failure mode.
+
+## The smart default
+
+On a continuation boot, the runtime reads:
+
+- **Snapshot** — settled turns persisted by the last successful `onTurnComplete`.
+- **`session.out` tail past the snapshot cursor** — closed assistant turns plus, optionally, a `partialAssistant` (the trailing message whose stream never received a `finish` chunk). `cleanupAbortedParts` has already stripped streaming-in-progress fragments.
+- **`session.in` tail past the last `turn-complete` cursor** — user messages the dead run hadn't acknowledged.
+
+If both `partialAssistant` and `inFlightUsers` are non-empty, the runtime splices `[firstInFlightUser, partialAssistant]` onto the chain. The remaining in-flight users dispatch as fresh turns. The model sees:
+
+```
+[ ...settledMessages,  // chain through the last completed turn
+  firstInFlightUser,   // the question the dead run was answering
+  partialAssistant,    // the dead run's incomplete response
+  followUpUser ]       // the new turn the customer just sent
+```
+
+Modern instruction-following models prioritize the latest user message. The follow-up determines the response:
+
+| Follow-up | Model behavior |
+|---|---|
+| "keep going" / "continue" / "more" | Continues the partial essay from where it stopped. |
+| "actually, what's 7+8?" | Answers the new question. Prior context doesn't derail it. |
+| "scrap that, do something else" | Abandons the partial work and follows the new direction. |
+
+No customer code needed for any of these.
+
+## When to register `onRecoveryBoot`
+
+The hook fires when recovery state is non-empty (either `partialAssistant` is defined or there's at least one in-flight user). Register it when you need a policy different from "preserve context":
+
+- **Drop the partial entirely.** Your UX means "cancel discards the work — start fresh from the follow-up."
+- **Synthesize tool results.** The partial has tool calls in `input-available` state (HITL was mid-call when the run died). Return a chain that has fabricated `output-available` results so the model can continue.
+- **Emit a recovery banner.** Write a `data-chat-recovery` UIMessage chunk via `ctx.writer` so the frontend can render "Recovering interrupted response..." before the model speaks.
+- **Persist recovered state.** Use `beforeBoot` to flush the partial to your own database before the next turn starts.
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onRecoveryBoot: async ({ partialAssistant, inFlightUsers, writer, cause, previousRunId }) => {
+    writer.write({
+      type: "data-chat-recovery",
+      data: { cause, previousRunId, partialPresent: partialAssistant !== undefined },
+      transient: true,
+    });
+    // Return nothing → fall through to smart default.
+  },
+  run: async ({ messages, signal }) =>
+    streamText({ model, messages, abortSignal: signal }),
+});
+```
+
+## Hook reference
+
+### Fires when
+
+The hook fires once on a continuation boot, AFTER both stream tails have been read, AND only when there's a partial assistant — the mid-stream-died signal:
+
+```ts
+const shouldFire = partialAssistant !== undefined;
+```
+
+In-flight users alone don't fire the hook. Graceful exits like `chat.requestUpgrade()` and `chat.endRun()` may leave an unacknowledged user on `session.in` (the message that triggered the upgrade, the next message after endRun), but no partial — that's a normal continuation, not recovery. The next message just dispatches as turn 1 on the new run via the normal session.in pump.
+
+Skipped scenarios (where the hook does NOT fire):
+
+- A clean continuation after `chat.endRun()` with no buffered follow-up.
+- A fresh chat (no continuation, attempt 1).
+- An OOM retry that booted onto a complete snapshot (no partial on the tail).
+- `chat.requestUpgrade()` graceful exit — predecessor ended cleanly before processing, no partial.
+- An agent with [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) registered. Customers using `hydrateMessages` own persistence — recovery decisions live in their own DB query.
+
+### Event shape
+
+```ts
+type RecoveryBootEvent<TUIM extends UIMessage = UIMessage> = {
+  ctx: TaskRunContext;
+  chatId: string;
+  runId: string;
+  previousRunId: string;
+  cause: "cancelled" | "crashed" | "unknown";
+  settledMessages: TUIM[];
+  inFlightUsers: TUIM[];
+  partialAssistant: TUIM | undefined;
+  pendingToolCalls: Array<{
+    toolCallId: string;
+    toolName: string;
+    input: unknown;
+    partIndex: number;
+  }>;
+  writer: ChatWriter;
+};
+```
+
+<Note>
+  `cause` is currently always `"unknown"` — the run engine doesn't yet plumb the
+  real reason into the continuation payload. The enum is forward-looking; don't
+  branch behavior on it for now.
+</Note>
+
+### Return shape
+
+Every field is optional. Returning `undefined` (or nothing) accepts the smart default for every field.
+
+```ts
+type RecoveryBootResult<TUIM extends UIMessage = UIMessage> = {
+  chain?: TUIM[];
+  recoveredTurns?: TUIM[];
+  beforeBoot?: () => Promise<void>;
+};
+```
+
+- **`chain`** — replaces the seed chain. Defaults to `[...settledMessages, firstInFlightUser, partialAssistant]` when both partial and in-flight users exist, otherwise `settledMessages` alone.
+- **`recoveredTurns`** — user messages to dispatch as fresh turns after the chain is restored. Defaults to `inFlightUsers.slice(1)` when the smart default consumed the first user, otherwise `inFlightUsers`.
+- **`beforeBoot`** — runs after the writer flushes and before the first recovered turn fires. Use for blocking persistence (write the partial to your DB so a later turn can reference it). Errors bubble — wrap your own try/catch if you want to soft-fail.
+
+## Examples
+
+### Drop the partial — strict "cancel means discard"
+
+The customer's UX treats cancel as "throw the work away":
+
+```ts
+onRecoveryBoot: async ({ inFlightUsers, partialAssistant }) => {
+  if (!partialAssistant) return;          // No partial → nothing to drop
+  return {
+    chain: undefined,                      // Use settledMessages, don't splice partial
+    recoveredTurns: inFlightUsers.slice(1) // Still skip the first user (the dead run was answering it)
+  };
+}
+```
+
+### Synthesize tool results for a mid-call interruption
+
+The dead run was processing a tool call when it died. The partial has tool parts in `input-available` state with no `output-available`. Synthesize a result so the model can keep going:
+
+```ts
+onRecoveryBoot: async ({ partialAssistant, pendingToolCalls, settledMessages, inFlightUsers }) => {
+  if (pendingToolCalls.length === 0) return;
+
+  // Rebuild the partial with synthetic outputs for any input-available tool call.
+  const repaired = {
+    ...partialAssistant!,
+    parts: partialAssistant!.parts!.map((part, i) => {
+      const pending = pendingToolCalls.find(p => p.partIndex === i);
+      if (!pending) return part;
+      return {
+        ...part,
+        state: "output-available" as const,
+        output: { interrupted: true, reason: "previous run was cancelled" },
+      };
+    }),
+  };
+
+  return {
+    chain: [...settledMessages, inFlightUsers[0]!, repaired],
+    recoveredTurns: inFlightUsers.slice(1),
+  };
+}
+```
+
+### Persist the partial before the next turn fires
+
+```ts
+onRecoveryBoot: async ({ chatId, partialAssistant }) => {
+  return {
+    beforeBoot: async () => {
+      if (partialAssistant) {
+        await db.partial.create({
+          data: { chatId, partialJson: JSON.stringify(partialAssistant) },
+        });
+      }
+    },
+  };
+}
+```
+
+## Interaction with other features
+
+### `hydrateMessages`
+
+If your agent registers [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages), the runtime skips snapshot read, `session.out` replay, `session.in` replay, AND `onRecoveryBoot`. Your DB is the source of truth — recovery decisions live in your own query. To detect a cancel-recovery scenario yourself, persist a `runState: "in-progress"` flag in `onTurnStart` and check for it in `hydrateMessages`.
+
+### `chat.requestUpgrade()`
+
+[`chat.requestUpgrade()`](/ai-chat/patterns/version-upgrades) is a graceful exit — the old run doesn't crash, it returns cleanly. The new continuation run boots with a clean `session.out` tail (`partialAssistant` is undefined) and the upgrade-trigger message on `session.in` (one in-flight user). The smart default doesn't splice (it requires both partial AND in-flight users), so the chain is just `settledMessages` and the in-flight user dispatches as a fresh turn. `onRecoveryBoot` still fires (there's an in-flight user) — use it to emit an "upgraded" signal to the UI if you want.
+
+### Hooks throwing
+
+If the body of `onRecoveryBoot` throws (or rejects), the runtime logs a warning and falls back to the smart default — the run does not fail. Wrap your own try/catch if you want stricter handling.
+
+`beforeBoot` is the exception: it's the contract you opted into for blocking persistence, so errors thrown there **bubble** and fail the run rather than dispatch recovered turns against half-persisted state. Wrap it yourself if you want to soft-fail.
+
+## See also
+
+- [OOM resilience](/ai-chat/patterns/oom-resilience) — `oomMachine` opt-in for automatic memory-driven recovery; uses the same recovery boot path.
+- [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — the snapshot + dual-tail replay model that recovery boot sits on top of.
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks) — where `onRecoveryBoot` sits in the broader hook taxonomy.
