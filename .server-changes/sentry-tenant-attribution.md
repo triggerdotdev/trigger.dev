@@ -3,4 +3,4 @@ area: webapp
 type: feature
 ---
 
-Attach org / project / environment context to Sentry events so "Users Impacted" counts tenants and events are filterable by org.
+Stamp Sentry events with the signed-in user so "Users Impacted" counts individual humans, and enrich events with org / project / environment tags when that context is available (dashboard URLs, authenticated API requests).
