@@ -15,10 +15,15 @@ type SpanTitleProps = {
   size: "small" | "large";
   hideAccessory?: boolean;
   overrideDimmed?: boolean;
+  /**
+   * Mark the span as belonging to an AGENT-kind task so the label renders
+   * in the agents colour, matching the agent icon in the tree row.
+   */
+  isAgentRun?: boolean;
 };
 
 export function SpanTitle(event: SpanTitleProps) {
-  const textClass = eventTextClassName(event);
+  const textClass = event.isAgentRun ? "text-agents" : eventTextClassName(event);
   const finalTextClass =
     event.overrideDimmed && textClass === "text-text-dimmed" ? "text-text-bright" : textClass;
   // Only dimmed labels brighten on row hover; colored labels (blue/amber/error)

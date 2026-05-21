@@ -902,7 +902,13 @@ function TasksTreeView({
                     <div className="flex w-full items-center justify-between gap-2 pl-1">
                       <div className="flex items-center gap-1.5 overflow-x-hidden">
                         <RunIcon
-                          name={node.data.style?.icon}
+                          name={
+                            node.data.isAgentRun &&
+                            (node.data.style?.icon === "task" ||
+                              node.data.style?.icon === "task-cached")
+                              ? "agent"
+                              : node.data.style?.icon
+                          }
                           spanName={node.data.message}
                           className="size-5 min-h-5 min-w-5"
                         />
@@ -1324,9 +1330,15 @@ function queueAdjustedNs(timeNs: number, queuedDurationNs: number | undefined) {
 
 function NodeText({ node }: { node: TraceEvent }) {
   const className = "truncate";
+  // Only mark task-level spans as agent so the agents colour applies to
+  // the task row itself, not unrelated sub-spans (wait/log/etc.) that
+  // live underneath an agent run.
+  const isAgentTaskRow =
+    node.data.isAgentRun &&
+    (node.data.style?.icon === "task" || node.data.style?.icon === "task-cached");
   return (
     <Paragraph variant="small" className={cn(className)}>
-      <SpanTitle {...node.data} size="small" />
+      <SpanTitle {...node.data} size="small" isAgentRun={isAgentTaskRow} />
     </Paragraph>
   );
 }
