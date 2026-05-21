@@ -18,6 +18,10 @@ export type WideEventOptions = {
 
 /** Per-invocation options layered on top of `WideEventOptions`. */
 export type WideEventLifecycleOptions = WideEventOptions & {
+  /** Operation discriminator (`instance.create`, `dequeue`, ...). Required. */
+  op: string;
+  /** Event shape: `inbound` | `outbound` | `event` | `scheduled`. Optional. */
+  kind?: string;
   /** Route template (HTTP only) captured into `extras.route`. */
   route?: string;
   /** HTTP method captured into `extras.method`. */
@@ -54,6 +58,8 @@ export async function runWideEvent<T>(
     env: opts.env,
     inboundRequestId: opts.inboundRequestId,
     traceparent: opts.traceparent,
+    op: opts.op,
+    kind: opts.kind,
   });
   if (opts.route) state.extras.route = opts.route;
   if (opts.method) state.extras.method = opts.method;
@@ -94,6 +100,8 @@ export async function runWideEvent<T>(
  */
 export function emitOneShot(
   opts: WideEventOptions & {
+    op: string;
+    kind?: string;
     traceparent?: string;
     populate?: (state: State) => void;
   }
@@ -103,6 +111,8 @@ export function emitOneShot(
     service: opts.service,
     env: opts.env,
     traceparent: opts.traceparent,
+    op: opts.op,
+    kind: opts.kind,
   });
   if (opts.populate) opts.populate(state);
   state.ok = true;

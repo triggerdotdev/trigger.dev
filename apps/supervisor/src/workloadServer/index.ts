@@ -208,15 +208,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       {
         ...this.wideEventOpts,
         enabled,
+        op,
+        kind: "inbound",
         route,
         method,
         traceparent: this.headerValueFromRequest(ctx.req, "traceparent"),
         inboundRequestId: this.headerValueFromRequest(ctx.req, "x-request-id"),
-        setup: (state) => {
-          state.extras.op = op;
-          state.extras.kind = "inbound";
-          this.attachRouteMeta(state, ctx.params);
-        },
+        setup: (state) => this.attachRouteMeta(state, ctx.params),
       },
       fn,
       (state) => {
@@ -693,9 +691,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       ) => {
         emitOneShot({
           ...this.wideEventOpts,
+          op: event === "run_connected" ? "socket.run.connected" : "socket.run.disconnected",
+          kind: "event",
           populate: (state) => {
-            state.extras.op = event === "run_connected" ? "socket.run.connected" : "socket.run.disconnected";
-            state.extras.kind = "event";
             state.extras.event = event;
             setMeta(state, "run_id", friendlyId);
             if (socket.data.deploymentId) {
