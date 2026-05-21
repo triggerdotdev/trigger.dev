@@ -28,6 +28,9 @@
 | **Phase C5 — replay** | ✅ **Done** | `0183e4367` | Read-fallback after PG miss; SyntheticRun-as-TaskRun cast (B4 work) feeds existing `ReplayTaskRunService`. Also tightens PG lookup to env-scoped findFirst |
 | **Phase D — dashboard internals** | ✅ **Done** | `39e3bab39` | cancel / replay / idempotencyKey-reset dashboard routes handle buffered runs via org-membership auth |
 | **Phase E — listing endpoints** | ✅ **Done** | `5b118d21e` | `MollifierBuffer.listForEnvWithWatermark` + `callRunListWithBufferMerge` wrapper. Compound base64-JSON cursor with `bufferExhausted` latch. `RecentlyQueuedSection` removed |
+| **Phase F1 — parity script lockdown** | ✅ **Done** | `a871022b7` | Body-shape assertions per endpoint; post-mutation read-back checks; listing probe |
+| **Phase F3 — createCancelledRun integration tests** | ✅ **Done** | `f2ff1a97a` | 3 containerTest cases: PG-row shape, runCancelled emit, P2002 idempotency |
+| Phase F2 / F4 | ⏳ Optional | — | F2: CI invocation of the parity script. F4: forward-compat rolling-update tests (old drainer / new API and vice versa) |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
