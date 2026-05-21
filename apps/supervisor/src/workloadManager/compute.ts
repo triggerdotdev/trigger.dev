@@ -10,7 +10,7 @@ import { ComputeClient, stripImageDigest } from "@internal/compute";
 import { extractTraceparent, getRunnerId } from "../util.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import { tryCatch } from "@trigger.dev/core";
-import { fromContext } from "../wideEvents/index.js";
+import { encodeBaggage, fromContext } from "../wideEvents/index.js";
 
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
   gateway: {
@@ -49,15 +49,21 @@ export class ComputeWorkloadManager implements WorkloadManager {
       timeoutMs: opts.gateway.timeoutMs,
       // Forward the current wide-event scope's traceparent + request_id so the
       // downstream service continues the same trace and joins its own wide
-      // events to ours. When called outside a wide-event scope (or when wide
-      // events are disabled), `fromContext` returns undefined and propagation
-      // is skipped.
+      // events to ours. Additionally serialize caller-supplied meta labels
+      // into the W3C Baggage header so the downstream service auto-stamps
+      // them even on early-error paths that bail before parsing the body.
+      // When called outside a wide-event scope (or when wide events are
+      // disabled), `fromContext` returns undefined and propagation is skipped.
       getPropagationHeaders: () => {
         const state = fromContext();
         if (!state) return {};
         const headers: Record<string, string> = { "x-request-id": state.requestId };
         if (state.traceparent) {
           headers.traceparent = state.traceparent;
+        }
+        const baggage = encodeBaggage(state.meta);
+        if (baggage) {
+          headers.baggage = baggage;
         }
         return headers;
       },
