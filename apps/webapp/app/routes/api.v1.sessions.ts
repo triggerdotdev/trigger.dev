@@ -17,6 +17,7 @@ import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
@@ -181,6 +182,7 @@ const { action } = createActionApiRoute(
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
             streamBasinName: authentication.environment.organization.streamBasinName,
+            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
           },
           update: { triggerConfig: triggerConfigJson },
         });
@@ -201,6 +203,7 @@ const { action } = createActionApiRoute(
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
             streamBasinName: authentication.environment.organization.streamBasinName,
+            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
           },
         });
       }

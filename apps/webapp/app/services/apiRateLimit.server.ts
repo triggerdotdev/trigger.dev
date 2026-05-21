@@ -70,6 +70,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     // customer-facing surface so customer rate limits shouldn't apply.
     /^\/api\/v1\/packets\//,
     /^\/api\/v2\/packets\//,
+    /^\/api\/v1\/sessions\/[^\/]+\/snapshot-url$/,
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",
