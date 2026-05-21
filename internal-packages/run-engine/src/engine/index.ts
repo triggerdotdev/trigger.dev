@@ -511,7 +511,15 @@ export class RunEngine {
             workerQueue: snapshot.workerQueue,
             isTest: snapshot.isTest,
             taskEventStore: snapshot.taskEventStore,
-            runTags: snapshot.tags.length === 0 ? undefined : snapshot.tags,
+            // Defensive: the snapshot comes from a cjson-encoded buffer
+            // payload, where empty Lua tables encode as `{}` not `[]`. If
+            // the drainer pops a buffered run with no tags, snapshot.tags
+            // will be an empty object, which Prisma misreads as a relation
+            // update op. Normalise to a real array (or undefined for the
+            // empty case).
+            runTags: Array.isArray(snapshot.tags) && snapshot.tags.length > 0
+              ? snapshot.tags
+              : undefined,
             oneTimeUseToken: snapshot.oneTimeUseToken,
             parentTaskRunId: snapshot.parentTaskRunId,
             rootTaskRunId: snapshot.rootTaskRunId,
