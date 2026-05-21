@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.5.0-rc.1
+
+### Patch Changes
+
+- Fix `chat.agent` skills silently missing in `trigger dev` for projects whose task files read `process.env` at module top level (e.g. a third-party SDK client initialized at import). Skill folders now bundle into `.trigger/skills/` reliably regardless of which env vars are set when the CLI launches. ([#3690](https://github.com/triggerdotdev/trigger.dev/pull/3690))
+- Fix `COULD_NOT_FIND_EXECUTOR` when a task's definition is loaded via `await import(...)` from inside another task's `run()`. The runtime workers now register such tasks with a sentinel file context, and the catalog logs a one-time warning per task id. ([#3688](https://github.com/triggerdotdev/trigger.dev/pull/3688))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.1`
+  - `@trigger.dev/build@4.5.0-rc.1`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.1`
+
 ## 4.5.0-rc.0
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.5.0-rc.1
+
+### Patch Changes
+
+- Fix `COULD_NOT_FIND_EXECUTOR` when a task's definition is loaded via `await import(...)` from inside another task's `run()`. The runtime workers now register such tasks with a sentinel file context, and the catalog logs a one-time warning per task id. ([#3688](https://github.com/triggerdotdev/trigger.dev/pull/3688))
+
 ## 4.5.0-rc.0
 
 ### Patch Changes
