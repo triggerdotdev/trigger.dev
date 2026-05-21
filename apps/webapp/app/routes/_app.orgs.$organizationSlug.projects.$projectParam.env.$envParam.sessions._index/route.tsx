@@ -90,7 +90,7 @@ export default function Page() {
         ) : (
           <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
             <div className="flex items-start justify-between gap-x-2 p-2">
-              <SessionFilters hasFilters={list.hasFilters} />
+              <SessionFilters hasFilters={list.hasFilters} possibleTasks={list.possibleTasks} />
               <div className="flex items-center justify-end gap-x-2">
                 <ListPagination list={{ pagination: list.pagination }} />
               </div>
