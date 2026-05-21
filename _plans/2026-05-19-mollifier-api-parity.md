@@ -26,6 +26,8 @@
 | **Phase C3 — metadata PUT** | ✅ **Done** | `d5c1e22b1` | New `casSetMetadata` Lua + `applyMetadataMutationToBufferedRun` helper. Reuses existing `applyMetadataOperations` from `@trigger.dev/core` (no Lua re-impl of the 6 operation types). Parent/root operations fanned out via the existing service against snapshot's `parentTaskRunId` |
 | **Phase C4 — reschedule** | ✅ **Done** | `0183e4367` | `set_delay` patch; PG-side `RescheduleTaskRunService` still enforces non-DELAYED rejection via wait-and-bounce |
 | **Phase C5 — replay** | ✅ **Done** | `0183e4367` | Read-fallback after PG miss; SyntheticRun-as-TaskRun cast (B4 work) feeds existing `ReplayTaskRunService`. Also tightens PG lookup to env-scoped findFirst |
+| **Phase D — dashboard internals** | ✅ **Done** | `39e3bab39` | cancel / replay / idempotencyKey-reset dashboard routes handle buffered runs via org-membership auth |
+| **Phase E — listing endpoints** | ✅ **Done** | `5b118d21e` | `MollifierBuffer.listForEnvWithWatermark` + `callRunListWithBufferMerge` wrapper. Compound base64-JSON cursor with `bufferExhausted` latch. `RecentlyQueuedSection` removed |
 | Phase C — mutation endpoints | ⏳ Pending | — | cancel first (drives B), then tags/metadata-put/reschedule/replay |
 | Phase D — dashboard internals | ⏳ Pending | — | reuse C paths |
 | Phase E — listing endpoints | ⏳ Pending | — | Q1 design |
