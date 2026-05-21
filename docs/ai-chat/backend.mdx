@@ -27,10 +27,11 @@ The highest-level approach. Handles message accumulation, stop signals, turn lif
 
   ```ts
   streamText({
-    ...chat.toStreamTextOptions({ registry, tools }),
+    ...chat.toStreamTextOptions(),     // or: chat.toStreamTextOptions({ registry, tools }) — see below
     messages,
     abortSignal: signal,
     // any explicit overrides go here
+    stopWhen: stepCountIs(15),
   });
   ```
 
@@ -43,18 +44,19 @@ Return the `streamText` result from `run` and it's automatically piped to the fr
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const simpleChat = chat.agent({
   id: "simple-chat",
   run: async ({ messages, signal }) => {
     return streamText({
       ...chat.toStreamTextOptions(), // prepareStep, system, telemetry — see callout above
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       system: "You are a helpful assistant.",
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -67,7 +69,7 @@ For complex agent flows where `streamText` is called deep inside your code, use 
 ```ts trigger/agent-chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import type { ModelMessage } from "ai";
 
 export const agentChat = chat.agent({
@@ -82,8 +84,9 @@ async function runAgentLoop(messages: ModelMessage[]) {
   // ... agent logic, tool calls, etc.
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: anthropic("claude-sonnet-4-5"),
     messages,
+    stopWhen: stepCountIs(15),
   });
 
   // Pipe from anywhere — no need to return it
@@ -116,7 +119,7 @@ export const myChat = chat.agent({
       data: { searchResults: results },
     });
 
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -186,14 +189,14 @@ Use [AI Prompts](/ai/prompts) to manage your system prompt as versioned, overrid
 import { chat } from "@trigger.dev/sdk/ai";
 import { prompts } from "@trigger.dev/sdk";
 import { streamText, createProviderRegistry } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
-const registry = createProviderRegistry({ openai });
+const registry = createProviderRegistry({ anthropic });
 
 const systemPrompt = prompts.define({
   id: "my-chat-system",
-  model: "openai:gpt-4o",
+  model: "anthropic:claude-sonnet-4-5",
   config: { temperature: 0.7 },
   variables: z.object({ name: z.string() }),
   content: `You are a helpful assistant for {{name}}.`,
@@ -212,12 +215,22 @@ export const myChat = chat.agent({
       ...chat.toStreamTextOptions({ registry }), // system, model, config, telemetry
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
 ```
 
 `chat.toStreamTextOptions()` returns an object with `system`, `model` (resolved via the registry), `temperature`, and `experimental_telemetry` — all from the stored prompt. Properties you set after the spread (like a client-selected model) take precedence.
+
+**Which form to call:**
+
+| Form | Use when |
+|---|---|
+| `chat.toStreamTextOptions()` | Default. Wires up `prepareStep` (compaction, steering, background injection), the stored prompt's `system` / `model` / `config`, and telemetry metadata. |
+| `chat.toStreamTextOptions({ registry })` | You're using [Prompts](/ai/prompts) with a provider-prefixed model string (e.g. `"anthropic:claude-sonnet-4-5"`). The registry resolves the prefix to a real model instance via `createProviderRegistry({ anthropic, openai, ... })`. |
+| `chat.toStreamTextOptions({ tools })` | You want HITL tool approvals — pass the same `tools` object you give to `streamText`. The SDK then knows which tool calls need to pause on `needsApproval: true`. |
+| `chat.toStreamTextOptions({ registry, tools })` | Both of the above. |
 
 <Tip>
   See [Prompts](/ai/prompts) for the full guide — defining templates, variable schemas, dashboard
@@ -245,9 +258,10 @@ export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal, stopSignal, cancelSignal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal, // Handles both stop and cancel
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -272,7 +286,7 @@ export const myChat = chat.agent({
     });
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -287,7 +301,7 @@ export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
       onFinish: ({ isAborted }) => {
@@ -297,6 +311,7 @@ export const myChat = chat.agent({
           // handle stop — e.g. log analytics
         }
       },
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -339,10 +354,11 @@ export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       tools: { sendEmail },
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -383,6 +399,7 @@ export const myChat = chat.agent({
         /* ... */
       },
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -532,7 +549,7 @@ export const myChat = chat.agent({
     ];
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -559,7 +576,7 @@ chat.agent({
   run: async ({ messages, signal }) => {
     // Single-response agent — exit after this turn.
     chat.endRun();
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -577,7 +594,7 @@ Override how long the run stays suspended waiting for the next message. Call fro
 ```ts
 run: async ({ messages, signal }) => {
   chat.setTurnTimeout("2h"); // Wait longer for this conversation
-  return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
 },
 ```
 
@@ -588,7 +605,7 @@ Override how long the run stays idle (active, using compute) after each turn:
 ```ts
 run: async ({ messages, signal }) => {
   chat.setIdleTimeoutInSeconds(60); // Stay idle for 1 minute
-  return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+  return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
 },
 ```
 
@@ -622,7 +639,7 @@ export const myChat = chat.agent({
     },
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -653,7 +670,7 @@ export const myChat = chat.agent({
     sendSources: true, // Forward source citations (default: false)
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -671,7 +688,7 @@ export const myChat = chat.agent({
     generateMessageId: () => uuidv7(),
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -691,7 +708,7 @@ export const myChat = chat
   .agent({
     id: "my-chat",
     run: async ({ messages, signal }) => {
-      return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+      return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
     },
   });
 ```
@@ -735,7 +752,7 @@ If you need full control over task options, use the standard `task()` with `Chat
 import { task } from "@trigger.dev/sdk";
 import { chat, type ChatTaskPayload } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const manualChat = task({
   id: "manual-chat",
@@ -743,8 +760,9 @@ export const manualChat = task({
   queue: { concurrencyLimit: 10 },
   run: async (payload: ChatTaskPayload) => {
     const result = streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages: payload.messages,
+      stopWhen: stepCountIs(15),
     });
 
     await chat.pipe(result);
@@ -770,7 +788,7 @@ Use `chat.createSession()` inside a standard `task()`:
 import { task } from "@trigger.dev/sdk";
 import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = task({
   id: "my-chat",
@@ -787,9 +805,10 @@ export const myChat = task({
 
     for await (const turn of session) {
       const result = streamText({
-        model: openai("gpt-4o"),
+        model: anthropic("claude-sonnet-4-5"),
         messages: turn.messages,
         abortSignal: turn.signal,
+        stopWhen: stepCountIs(15),
       });
 
       // Pipe, capture, accumulate, and signal turn-complete — all in one call
@@ -845,9 +864,10 @@ For more control, you can do each step manually:
 ```ts
 for await (const turn of session) {
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: anthropic("claude-sonnet-4-5"),
     messages: turn.messages,
     abortSignal: turn.signal,
+    stopWhen: stepCountIs(15),
   });
 
   // Manual: pipe and capture separately
@@ -892,7 +912,7 @@ Raw task mode also lets you call `.toUIMessageStream()` yourself with any option
 import { task } from "@trigger.dev/sdk";
 import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = task({
   id: "my-chat-raw",
@@ -925,9 +945,10 @@ export const myChat = task({
       const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
       const result = streamText({
-        model: openai("gpt-4o"),
+        model: anthropic("claude-sonnet-4-5"),
         messages,
         abortSignal: combinedSignal,
+        stopWhen: stepCountIs(15),
       });
 
       let response;

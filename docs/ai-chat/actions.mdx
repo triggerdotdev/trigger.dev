@@ -49,7 +49,7 @@ export const myChat = chat.agent({
   },
 
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -65,8 +65,9 @@ onAction: async ({ action, messages }) => {
   if (action.type === "regenerate") {
     chat.history.slice(0, -1); // drop the last assistant
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
+      stopWhen: stepCountIs(15),
     });
   }
   // other actions return void → side-effect only
@@ -84,7 +85,7 @@ onAction: async ({ action, messages, signal }) => {
   if (action.type === "regenerate") {
     if (chat.history.getPendingToolCalls().length > 0) return; // gated
     chat.history.slice(0, -1);
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   }
 },
 ```

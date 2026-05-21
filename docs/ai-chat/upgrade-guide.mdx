@@ -33,8 +33,8 @@ accessToken: async ({ chatId, purpose }) => {
 ```ts after.ts
 // Two callbacks: pure refresh + server action that creates the session
 accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-startSession: ({ chatId, taskId, clientData }) =>
-  startChatSession({ chatId, taskId, clientData }),
+startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
 ```
 
 </CodeGroup>
@@ -126,8 +126,8 @@ export function Chat() {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
 
   const { messages, sendMessage, status } = useChat({ transport });
@@ -178,8 +178,8 @@ export const startChatSession = chat.createStartSessionAction("my-chat", {
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
 });
 
 transport.preload(chatId);  // no second arg
@@ -204,8 +204,8 @@ option is now the canonical place to set it. The same value:
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   clientData: {
     userId: currentUser.id,
     plan: currentUser.plan,

@@ -30,8 +30,8 @@ Add `pendingMessages` to your `chat.agent` configuration:
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
@@ -45,6 +45,7 @@ export const myChat = chat.agent({
       messages,
       tools: { /* ... */ },
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -132,10 +133,11 @@ const session = chat.createSession(payload, {
 
 for await (const turn of session) {
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: anthropic("claude-sonnet-4-5"),
     messages: turn.messages,
     abortSignal: turn.signal,
     prepareStep: turn.prepareStep(), // Handles injection + compaction
+    stopWhen: stepCountIs(15),
   });
 
   await turn.complete(result);
@@ -169,9 +171,10 @@ for (let turn = 0; turn < 100; turn++) {
   });
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: anthropic("claude-sonnet-4-5"),
     messages,
     prepareStep: conversation.prepareStep(), // Handles injection + compaction
+    stopWhen: stepCountIs(15),
   });
 
   const response = await chat.pipeAndCapture(result);
@@ -203,8 +206,8 @@ function Chat({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
 
   const { messages, setMessages, sendMessage, stop, status } = useChat({

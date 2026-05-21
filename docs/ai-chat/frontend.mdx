@@ -8,6 +8,18 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 <RcBanner />
 
+## How the transport works
+
+Vanilla `useChat` expects an `api` URL — it POSTs the conversation to your own Next.js route handler, which terminates the stream. `useTriggerChatTransport` replaces that round-trip: instead of an `api` URL, you pass a custom [`ChatTransport`](https://ai-sdk.dev/docs/ai-sdk-ui/transport) that talks directly to the Trigger.dev cloud (or your self-hosted webapp) on behalf of `useChat`.
+
+There's no API route to maintain. The browser uses a short-lived session-scoped PAT (minted by your `accessToken` server action) to:
+
+- **Create the session** via your `startSession` action on the first message (or `transport.preload(chatId)`).
+- **Append the new user message** to the session's durable `.in` stream.
+- **Subscribe to the `.out` SSE stream** for the agent's response chunks (text, tool calls, reasoning, custom `data-*` parts).
+
+The transport handles the auth refresh, reconnect, `Last-Event-ID` resume, and stop-signal plumbing transparently. `useChat` sees the result as `UIMessageChunk`s and renders them unchanged.
+
 ## Transport setup
 
 Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`:
@@ -22,8 +34,8 @@ export function Chat() {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
 
   const { messages, sendMessage, stop, status } = useChat({ transport });
@@ -35,7 +47,7 @@ The transport is created once on first render and reused across re-renders. Pass
 
 The two callbacks have distinct responsibilities:
 
-- **`accessToken`** is a *pure* PAT mint — the transport invokes it on a 401/403 to refresh the session-scoped token. Customer wraps `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })`.
+- **`accessToken`** is a *pure* PAT mint — the transport invokes it on a 401/403 to refresh the session-scoped token. Customer wraps `auth.createPublicToken({ scopes: { read: { sessions: chatId }, write: { sessions: chatId } } })`, which resolves to a `Promise<string>` (the JWT). Return that string from your `accessToken` callback.
 - **`startSession`** wraps `chat.createStartSessionAction(taskId)` and is called when the transport needs to *create* the session (`transport.preload(chatId)`, or lazily on the first `sendMessage` for a chatId without a cached PAT). The customer's server controls authorization here, alongside any DB writes paired with session creation.
 
 See [Quick start](/ai-chat/quick-start) for the matching server actions.
@@ -59,8 +71,8 @@ type Msg = InferChatUIMessage<typeof myChat>;
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
 });
 const { messages } = useChat<Msg>({ transport });
 ```
@@ -112,8 +124,8 @@ Since session creation and updates are handled server-side, the frontend only ne
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   sessions: loadedSessions, // Restored from DB on page load
   onSessionChange: (chatId, session) => {
     if (!session) {
@@ -180,8 +192,8 @@ function ChatClient({ chatId, initialMessages, initialSessions }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     sessions: initialSessions,
     onSessionChange: (id, session) => {
       if (!session) deleteSession(id);
@@ -236,8 +248,8 @@ Set default client data on the transport that's included in every request. When 
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   clientData: { userId: currentUser.id },
 });
 ```
@@ -258,8 +270,8 @@ Instead of manually parsing `clientData` with Zod in every hook, pass a `clientD
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 export const myChat = chat.agent({
@@ -280,6 +292,7 @@ export const myChat = chat.agent({
       model: openai(clientData?.model ?? "gpt-4o"),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -292,8 +305,8 @@ The schema also types the `clientData` option on the frontend transport:
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   clientData: { userId: currentUser.id },
 });
 ```
@@ -441,8 +454,8 @@ function ChatControls({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
 
   const { setMessages } = useChat({ transport });
@@ -495,8 +508,8 @@ function Chat({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     multiTab: true,
   });
 
@@ -551,8 +564,8 @@ If you're self-hosting Trigger.dev, pass the `baseURL` option:
 const transport = useTriggerChatTransport({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   baseURL: "https://your-trigger-instance.com",
 });
 ```

@@ -83,8 +83,8 @@ The **body** is loaded on demand via the `loadSkill` tool when the agent decides
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { skills } from "@trigger.dev/sdk";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 const timeUtilsSkill = skills.define({
   id: "time-utils",
@@ -98,10 +98,11 @@ export const agent = chat.agent({
   },
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
       ...chat.toStreamTextOptions(),
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -169,7 +170,7 @@ If you also define your own AI SDK tools, pass them through `chat.toStreamTextOp
 
 ```ts
 return streamText({
-  model: openai("gpt-4o"),
+  model: anthropic("claude-sonnet-4-5"),
   messages,
   abortSignal: signal,
   ...chat.toStreamTextOptions({
@@ -178,6 +179,7 @@ return streamText({
       deepResearch,   // your tool
     },
   }),
+  stopWhen: stepCountIs(15),
 });
 ```
 

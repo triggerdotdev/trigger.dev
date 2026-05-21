@@ -47,8 +47,8 @@ export function Chat({ chatId }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     clientData: { userId: currentUser.id },
   });
 
@@ -85,7 +85,7 @@ export const myChat = chat.agent({
     // ... fallback initialization for non-preloaded runs
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -268,6 +268,7 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
           ...helper.toStreamTextOptions({ tools: headStartTools }),
           model: anthropic("claude-sonnet-4-6"),
           system: "You are a helpful assistant.",
+          stopWhen: stepCountIs(15),
         }),
     });
     ```
@@ -285,8 +286,8 @@ This is an **import-chain** problem, not a runtime one. A "we'll strip the execu
     const transport = useTriggerChatTransport<typeof myChat>({
       task: "my-chat",
       accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-      startSession: ({ chatId, taskId, clientData }) =>
-        startChatSession({ chatId, taskId, clientData }),
+      startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
       headStart: "/api/chat",
     });
     ```

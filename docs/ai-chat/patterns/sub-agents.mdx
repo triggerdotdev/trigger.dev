@@ -39,7 +39,7 @@ Parent LLM
 The simplest pattern: one tool call, one sub-agent turn, conversation closes.
 
 ```ts
-import { tool } from "ai";
+import { tool, stepCountIs } from "ai";
 import { AgentChat } from "@trigger.dev/sdk/chat";
 import { z } from "zod";
 import type { prReviewAgent } from "./trigger/pr-review";
@@ -84,6 +84,7 @@ const result = streamText({
   model: anthropic("claude-sonnet-4-6"),
   tools: { prReview: prReviewTool },
   prompt: "Review PR #42 on triggerdotdev/trigger.dev",
+  stopWhen: stepCountIs(15),
 });
 ```
 
@@ -244,6 +245,7 @@ export const myAgent = chat.agent({
       messages,
       tools: { research: researchTool },
       abortSignal: stopSignal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -259,7 +261,7 @@ When a tool invokes a subtask via `triggerAndWait`, the subtask can stream custo
 import { chat, ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
 import { streamText, tool, generateId } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 export const researchTask = schemaTask({

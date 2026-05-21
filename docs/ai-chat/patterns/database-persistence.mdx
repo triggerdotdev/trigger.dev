@@ -205,7 +205,7 @@ export const myChat = chat.agent({
     ]);
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -230,8 +230,8 @@ End-to-end implementation across the three files involved: agent task, server ac
 <CodeGroup>
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 
@@ -271,9 +271,10 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -335,8 +336,8 @@ export function Chat({ chatId, initialMessages, initialSessions }) {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     clientData: { userId: currentUser.id }, // Type-checked against clientDataSchema
     sessions: initialSessions,
     onSessionChange: (id, session) => {

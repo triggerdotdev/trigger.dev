@@ -150,7 +150,7 @@ export const myChat = chat.agent({
     await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```

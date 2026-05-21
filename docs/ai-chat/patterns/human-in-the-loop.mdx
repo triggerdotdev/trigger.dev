@@ -42,8 +42,8 @@ A HITL tool has an `inputSchema` describing what the model can ask, but **no `ex
 
 ```ts trigger/my-chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, tool } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, tool, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 const askUser = tool({
@@ -71,10 +71,11 @@ export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       tools: { askUser },
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -95,8 +96,8 @@ function ChatView({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
   const { messages, sendMessage, addToolOutput } = useChat({
     id: chatId,

@@ -26,7 +26,7 @@ The harness exercises the real turn loop, lifecycle hooks, validation, hydration
 import { mockChatAgent } from "@trigger.dev/sdk/ai/test";
 
 import { describe, expect, it } from "vitest";
-import { simulateReadableStream } from "ai";
+import { simulateReadableStream, stepCountIs } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { myChatAgent } from "./my-chat.js";
@@ -99,6 +99,7 @@ export const myChatAgent = chat
         model: clientData?.model ?? "openai/gpt-4o-mini",
         messages,
         abortSignal: signal,
+        stopWhen: stepCountIs(15),
       });
     },
   });
@@ -164,9 +165,10 @@ export const agent = chat
     id: "agent",
     run: async ({ messages, clientData, signal }) => {
       return streamText({
-        model: clientData?.model ?? openai("gpt-4o-mini"),
+        model: clientData?.model ?? anthropic("claude-haiku-4-5"),
         messages,
         abortSignal: signal,
+        stopWhen: stepCountIs(15),
       });
     },
   });
@@ -536,7 +538,7 @@ export const agent = chat.agent({
     });
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```

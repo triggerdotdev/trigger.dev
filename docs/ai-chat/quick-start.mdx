@@ -8,6 +8,8 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 <RcBanner />
 
+These steps assume you already have a Trigger.dev project with the SDK installed and the CLI authenticated — if you don't, follow [Manual setup](/manual-setup) (or `npx trigger.dev@latest init` in an existing project) first. You should be able to run `pnpm exec trigger dev` from your project root before continuing.
+
 <Steps>
   <Step title="Define a chat agent">
     Use `chat.agent` from `@trigger.dev/sdk/ai` to define an agent that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
@@ -16,8 +18,8 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
     ```ts trigger/chat.ts
     import { chat } from "@trigger.dev/sdk/ai";
-    import { streamText } from "ai";
-    import { openai } from "@ai-sdk/openai";
+    import { streamText, stepCountIs } from "ai";
+    import { anthropic } from "@ai-sdk/anthropic";
 
     export const myChat = chat.agent({
       id: "my-chat",
@@ -29,9 +31,10 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
           // Skipping this is the single most common cause of subtle
           // bugs (silent broken compaction, missing steering, etc.).
           ...chat.toStreamTextOptions(),
-          model: openai("gpt-4o"),
+          model: anthropic("claude-sonnet-4-5"),
           messages,
           abortSignal: signal,
+          stopWhen: stepCountIs(15),
         });
       },
     });
@@ -79,7 +82,9 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
   </Step>
 
   <Step title="Use in the frontend">
-    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`. Wire both server actions into the transport's `accessToken` and `startSession` callbacks:
+    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`. Wire both server actions into the transport's `accessToken` and `startSession` callbacks.
+
+    The example below uses the Next.js `@/*` path alias for imports from `@/trigger/chat` and `@/app/actions`. If you're not using Next.js (or haven't configured the alias), swap them for relative imports.
 
     ```tsx app/components/chat.tsx
     "use client";
@@ -94,8 +99,8 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
       const transport = useTriggerChatTransport<typeof myChat>({
         task: "my-chat",
         accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-        startSession: ({ chatId, taskId, clientData }) =>
-          startChatSession({ chatId, taskId, clientData }),
+        startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
       });
 
       const { messages, sendMessage, stop, status } = useChat({ transport });

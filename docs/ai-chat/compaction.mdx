@@ -23,8 +23,8 @@ Provide `shouldCompact` to decide when to compact and `summarize` to generate th
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, generateText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
@@ -32,7 +32,7 @@ export const myChat = chat.agent({
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
     summarize: async ({ messages }) => {
       const result = await generateText({
-        model: openai("gpt-4o-mini"),
+        model: anthropic("claude-haiku-4-5"),
         messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
       });
       return result.text;
@@ -43,6 +43,7 @@ export const myChat = chat.agent({
       ...chat.toStreamTextOptions({ registry }),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -81,7 +82,7 @@ export const myChat = chat.agent({
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
     summarize: async ({ messages }) => {
       return generateText({
-        model: openai("gpt-4o-mini"),
+        model: anthropic("claude-haiku-4-5"),
         messages: [...messages, { role: "user", content: "Summarize." }],
       }).then((r) => r.text);
     },
@@ -95,7 +96,7 @@ export const myChat = chat.agent({
     ],
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -189,7 +190,7 @@ export const myChat = chat.agent({
     });
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -205,13 +206,13 @@ Define a `compact` action that reuses your existing `summarize` function:
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, generateText, generateId, convertToModelMessages } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 // Reusable summarize fn — also used by the automatic compaction config.
 async function summarize(messages: ModelMessage[]) {
   const result = await generateText({
-    model: openai("gpt-4o-mini"),
+    model: anthropic("claude-haiku-4-5"),
     messages: [...messages, { role: "user", content: "Summarize this conversation concisely." }],
   });
   return result.text;
@@ -250,7 +251,7 @@ export const myChat = chat.agent({
     // Compact action doesn't need an LLM response — just exit.
     if (trigger === "action") return;
 
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -269,8 +270,8 @@ function ChatView({ chatId }: { chatId: string }) {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
   const { messages } = useChat({ id: chatId, transport });
 
@@ -317,7 +318,7 @@ const session = chat.createSession(payload, {
   compaction: {
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
     summarize: async ({ messages }) =>
-      generateText({ model: openai("gpt-4o-mini"), messages }).then((r) => r.text),
+      generateText({ model: anthropic("claude-haiku-4-5"), messages }).then((r) => r.text),
     compactUIMessages: ({ uiMessages, summary }) => [
       { id: generateId(), role: "assistant",
         parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
@@ -328,9 +329,10 @@ const session = chat.createSession(payload, {
 
 for await (const turn of session) {
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: anthropic("claude-sonnet-4-5"),
     messages: turn.messages,
     abortSignal: turn.signal,
+    stopWhen: stepCountIs(15),
   });
 
   await turn.complete(result);
@@ -352,7 +354,7 @@ const conversation = new chat.MessageAccumulator({
   compaction: {
     shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
     summarize: async ({ messages }) =>
-      generateText({ model: openai("gpt-4o-mini"), messages }).then((r) => r.text),
+      generateText({ model: anthropic("claude-haiku-4-5"), messages }).then((r) => r.text),
     compactUIMessages: ({ summary }) => [
       { id: generateId(), role: "assistant",
         parts: [{ type: "text", text: `[Summary]\n\n${summary}` }] },
@@ -364,9 +366,10 @@ for (let turn = 0; turn < 100; turn++) {
   const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
 
   const result = streamText({
-    model: openai("gpt-4o"),
+    model: anthropic("claude-sonnet-4-5"),
     messages,
     prepareStep: conversation.prepareStep(), // Inner-loop compaction
+    stopWhen: stepCountIs(15),
   });
 
   const response = await chat.pipeAndCapture(result);
@@ -390,7 +393,7 @@ prepareStep: async ({ messages: stepMessages, steps }) => {
   const result = await chat.compact(stepMessages, steps, {
     threshold: 80_000,
     summarize: async (msgs) =>
-      generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
+      generateText({ model: anthropic("claude-haiku-4-5"), messages: msgs }).then((r) => r.text),
   });
   return result.type === "skipped" ? undefined : result;
 },
@@ -402,7 +405,7 @@ Or use the `chat.compactionStep()` factory:
 prepareStep: chat.compactionStep({
   threshold: 80_000,
   summarize: async (msgs) =>
-    generateText({ model: openai("gpt-4o-mini"), messages: msgs }).then((r) => r.text),
+    generateText({ model: anthropic("claude-haiku-4-5"), messages: msgs }).then((r) => r.text),
 }),
 ```
 

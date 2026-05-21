@@ -631,8 +631,8 @@ export const startChatSession = chat.createStartSessionAction("my-chat");
 ```ts
 const transport = useTriggerChatTransport({
   task: "my-chat",
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
 });
 ```
 
@@ -738,8 +738,8 @@ import type { myChat } from "@/trigger/chat";
 const transport = useTriggerChatTransport<typeof myChat>({
   task: "my-chat",
   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   sessions: savedSessions,
   onSessionChange: handleSessionChange,
 });

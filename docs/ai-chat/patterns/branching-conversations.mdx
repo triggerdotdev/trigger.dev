@@ -83,8 +83,8 @@ async function appendMessage(chatId: string, message: UIMessage): Promise<void> 
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 export const myChat = chat.agent({
@@ -166,9 +166,10 @@ export const myChat = chat.agent({
 
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });

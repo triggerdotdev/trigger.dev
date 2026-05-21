@@ -16,13 +16,18 @@ A `chat.agent` task takes `messages`, calls `streamText`, and returns the result
 
 ```ts trigger/chat.ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const myChat = chat.agent({
   id: "my-chat",
   run: async ({ messages, signal }) =>
-    streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+    streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    }),
 });
 ```
 
@@ -34,8 +39,8 @@ export function Chat() {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
   const { messages, sendMessage } = useChat({ transport });
   // ... render UI

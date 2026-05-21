@@ -143,8 +143,8 @@ The resolved prompt integrates with the [Vercel AI SDK](https://ai-sdk.dev) via 
 
 ```ts
 import { task } from "@trigger.dev/sdk";
-import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { generateText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 export const supportTask = task({
   id: "handle-support",
@@ -186,6 +186,7 @@ export const streamTask = task({
       system: resolved.text,
       prompt: payload.issue,
       ...resolved.toAISDKTelemetry(),
+      stopWhen: stepCountIs(15),
     });
 
     let fullText = "";
@@ -204,7 +205,7 @@ Pass additional metadata to `toAISDKTelemetry()` that will appear on the generat
 
 ```ts
 const result = await generateText({
-  model: openai("gpt-4o"),
+  model: anthropic("claude-sonnet-4-5"),
   prompt: resolved.text,
   ...resolved.toAISDKTelemetry({
     "task.type": "summarization",
@@ -223,14 +224,14 @@ Prompts integrate with `chat.agent()` via `chat.prompt` — a run-scoped store f
 import { chat } from "@trigger.dev/sdk/ai";
 import { prompts } from "@trigger.dev/sdk";
 import { streamText, createProviderRegistry } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { anthropic } from "@ai-sdk/anthropic";
 
-const registry = createProviderRegistry({ openai, anthropic });
+const registry = createProviderRegistry({ anthropic, anthropic });
 
 const systemPrompt = prompts.define({
   id: "my-chat-system",
-  model: "openai:gpt-4o",
+  model: "anthropic:claude-sonnet-4-5",
   config: { temperature: 0.7 },
   variables: z.object({ name: z.string() }),
   content: `You are a helpful assistant for {{name}}.`,
@@ -247,6 +248,7 @@ export const myChat = chat.agent({
       ...chat.toStreamTextOptions({ registry }),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -272,7 +274,7 @@ const options = chat.toStreamTextOptions();
 ```
 
 <Tip>
-  When the user provides a `registry` and the prompt has a `model` string (e.g. `"openai:gpt-4o"`), the model is resolved via `registry.languageModel()` and included in the returned options. This means `streamText` uses the prompt's model by default — no manual model selection needed.
+  When the user provides a `registry` and the prompt has a `model` string (e.g. `"anthropic:claude-sonnet-4-5"`), the model is resolved via `registry.languageModel()` and included in the returned options. This means `streamText` uses the prompt's model by default — no manual model selection needed.
 </Tip>
 
 ### Reading the prompt
@@ -283,13 +285,14 @@ Access the stored prompt from anywhere in the run:
 run: async ({ messages, signal }) => {
   const prompt = chat.prompt(); // Throws if not set
   console.log(prompt.text);     // The compiled prompt
-  console.log(prompt.model);    // "openai:gpt-4o"
+  console.log(prompt.model);    // "anthropic:claude-sonnet-4-5"
   console.log(prompt.version);  // 3
 
   return streamText({
     ...chat.toStreamTextOptions({ registry }),
     messages,
     abortSignal: signal,
+    stopWhen: stepCountIs(15),
   });
 },
 ```

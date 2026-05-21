@@ -28,7 +28,7 @@ Build the type from AI SDK helpers and your tools object:
 
 ```ts
 import type { InferUITools, UIDataTypes, UIMessage } from "ai";
-import { tool } from "ai";
+import { tool, stepCountIs } from "ai";
 import { z } from "zod";
 
 const myTools = {
@@ -57,7 +57,7 @@ Call `withUIMessage` **once**, then chain `.agent({ ... })` instead of `chat.age
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText, tool } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import type { MyChatUIMessage } from "./my-chat-types";
 
@@ -91,10 +91,11 @@ export const myChat = chat
     },
     run: async ({ messages, signal }) => {
       return streamText({
-        model: openai("gpt-4o"),
+        model: anthropic("claude-sonnet-4-5"),
         messages,
         tools: myTools,
         abortSignal: signal,
+        stopWhen: stepCountIs(15),
       });
     },
   });
@@ -121,8 +122,8 @@ export function Chat() {
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
 
   const { messages } = useChat<Msg>({ transport });
@@ -158,6 +159,7 @@ export const myChat = chat
         model: getModel(clientData.model),
         messages,
         abortSignal: signal,
+        stopWhen: stepCountIs(15),
       });
     },
   });
@@ -186,7 +188,7 @@ export const myChat = chat
   .agent({
     id: "my-chat",
     run: async ({ messages, signal }) => {
-      return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+      return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
     },
   });
 ```
@@ -211,7 +213,7 @@ chat
       await createChatRecord(event.chatId);
     },
     run: async ({ messages, signal }) => {
-      return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+      return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
     },
   });
 ```

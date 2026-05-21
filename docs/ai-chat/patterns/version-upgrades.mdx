@@ -56,8 +56,8 @@ export function Chat() {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     // Bump this when you ship a breaking change to the chat UI or tools
     clientData: { userId: user.id, protocolVersion: "v2" },
   });
@@ -72,7 +72,7 @@ On the agent side, declare which versions the current code supports:
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
 import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 
 // The set of frontend protocol versions this agent code supports.
 // When you deploy a breaking change, remove old versions from this set.
@@ -93,7 +93,7 @@ export const myChat = chat
       }
     },
     run: async ({ messages, signal }) => {
-      return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+      return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
     },
   });
 ```
@@ -119,8 +119,8 @@ export function Chat() {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     clientData: { userId: user.id, appVersion: APP_VERSION },
   });
   // ...
@@ -148,7 +148,7 @@ export const myChat = chat
       }
     },
     run: async ({ messages, signal }) => {
-      return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+      return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
     },
   });
 ```

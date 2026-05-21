@@ -20,8 +20,8 @@ Declare locals at module level with a unique `id`, then initialize them inside a
 
 ```ts
 import { chat } from "@trigger.dev/sdk/ai";
-import { streamText, tool } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, tool, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { db } from "@/lib/db";
 
@@ -52,10 +52,11 @@ export const myChat = chat.agent({
     userContext.messageCount++;
 
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       system: `Helping ${userContext.name} (${userContext.plan} plan).`,
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });
@@ -92,7 +93,7 @@ When you use `ai.toolExecute()` inside AI SDK `tool()` to expose a subtask, chat
 import { chat, ai } from "@trigger.dev/sdk/ai";
 import { schemaTask } from "@trigger.dev/sdk";
 import { streamText, tool } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 const userContext = chat.local<{ name: string; plan: "free" | "pro" }>({ id: "userContext" });
@@ -120,10 +121,11 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal }) => {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       tools: { analyzeData },
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   },
 });

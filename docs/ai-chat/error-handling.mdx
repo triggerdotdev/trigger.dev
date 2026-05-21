@@ -41,7 +41,7 @@ export const myChat = chat.agent({
     },
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -77,7 +77,7 @@ export const myChat = chat.agent({
     await db.chat.update({ where: { id: chatId }, data: { messages: uiMessages } });
   },
   run: async ({ messages, signal }) => {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
@@ -110,7 +110,7 @@ onValidateMessages: async ({ messages }) => {
 ```ts
 run: async ({ messages, chatId, signal }) => {
   try {
-    return streamText({ model: openai("gpt-4o"), messages, abortSignal: signal });
+    return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   } catch (err) {
     // Save the failed turn for debugging / undo
     await db.failedTurn.create({
@@ -252,9 +252,10 @@ If the primary model errors, try a fallback model in the same turn:
 run: async ({ messages, signal }) => {
   try {
     return streamText({
-      model: openai("gpt-4o"),
+      model: anthropic("claude-sonnet-4-5"),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   } catch (err) {
     console.warn("Primary model failed, falling back:", err);
@@ -262,6 +263,7 @@ run: async ({ messages, signal }) => {
       model: anthropic("claude-sonnet-4-6"),
       messages,
       abortSignal: signal,
+      stopWhen: stepCountIs(15),
     });
   }
 },
@@ -307,8 +309,8 @@ function Chat() {
   const transport = useTriggerChatTransport({
     task: "my-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
-    startSession: ({ chatId, taskId, clientData }) =>
-      startChatSession({ chatId, taskId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
   });
   const { messages, error, sendMessage } = useChat({ transport });
 
@@ -370,8 +372,8 @@ const transport = useTriggerChatTransport({
       throw new Error(`AUTH_REFRESH: ${err.message}`);
     }
   },
-  startSession: ({ chatId, taskId, clientData }) =>
-    startChatSession({ chatId, taskId, clientData }),
+  startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
 });
 ```
 
