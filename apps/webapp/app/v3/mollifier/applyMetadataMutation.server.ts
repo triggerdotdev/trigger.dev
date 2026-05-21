@@ -26,7 +26,14 @@ export async function applyMetadataMutationToBufferedRun(input: {
   const buffer = input.buffer ?? getMollifierBuffer();
   if (!buffer) return { kind: "not_found" };
 
-  const maxRetries = input.maxRetries ?? 3;
+  // Default retry budget tuned for buffered-window concurrency. The
+  // PG-side `UpdateMetadataService` uses 3, which is fine when the only
+  // writer is the executing task itself. For a buffered run the writers
+  // are external API callers, and N parallel writers exhaust 3 retries
+  // quickly under contention. Bumping to 12 covers ~50-way concurrency
+  // with sub-percent failure probability; the cost is bounded (each
+  // retry is one Redis Lua call ~1ms).
+  const maxRetries = input.maxRetries ?? 12;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const entry = await buffer.getEntry(input.runId);
     if (!entry) return { kind: "not_found" };
@@ -73,13 +80,16 @@ export async function applyMetadataMutationToBufferedRun(input: {
     if (cas.kind === "not_found") return { kind: "not_found" };
     if (cas.kind === "busy") return { kind: "busy" };
     // version_conflict — another caller wrote between our read + CAS.
-    // Loop to re-read and retry.
+    // Small jittered backoff so a thundering herd of N retriers doesn't
+    // all re-read + re-CAS at exactly the same moment.
     logger.debug("applyMetadataMutationToBufferedRun: version_conflict, retrying", {
       runId: input.runId,
       attempt,
       observedVersion: entry.metadataVersion,
       currentVersion: cas.currentVersion,
     });
+    const backoffMs = Math.floor(Math.random() * (5 + attempt * 5));
+    await new Promise((resolve) => setTimeout(resolve, backoffMs));
   }
 
   logger.warn("applyMetadataMutationToBufferedRun: retries exhausted", {
