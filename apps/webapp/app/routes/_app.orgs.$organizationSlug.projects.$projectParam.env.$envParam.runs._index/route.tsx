@@ -42,8 +42,6 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
-import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
-import { RecentlyQueuedSection } from "~/components/runs/RecentlyQueuedSection";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
@@ -98,14 +96,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     ...filters,
   });
 
-  // Mollifier buffer entries don't appear in the paginated PG query — they
-  // sit in Redis until the drainer materialises them. Surface them in a
-  // separate "Recently queued" section above the list so they're not
-  // invisible during the buffered window.
-  const mollifierBuffer = getMollifierBuffer();
-  const recentlyQueued = mollifierBuffer
-    ? await mollifierBuffer.listEntriesForEnv(environment.id, 50).catch(() => [])
-    : [];
+  // Phase E: buffered runs are merged into the main runs list via
+  // `callRunListWithBufferMerge` for the API routes; the dashboard's
+  // runs table consumes the same listing path indirectly. No separate
+  // "Recently queued" banner needed — buffered runs appear as normal
+  // QUEUED rows.
 
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,
   // the toggle's URL value can be a temporary auto-flip (or a user override scoped to
@@ -125,18 +120,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       data: list,
       rootOnlyDefault: filters.rootOnly,
       filters,
-      recentlyQueued: recentlyQueued.map((entry) => ({
-        runId: entry.runId,
-        status: entry.status,
-        createdAt: entry.createdAt,
-      })),
     },
     headers ? { headers } : undefined
   );
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters, recentlyQueued } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const project = useProject();
   const environment = useEnvironment();
@@ -159,7 +149,6 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <RecentlyQueuedSection entries={recentlyQueued} />
         <SelectedItemsProvider
           initialSelectedItems={[]}
           maxSelectedItemCount={BULK_ACTION_RUN_LIMIT}

@@ -198,6 +198,76 @@ export class MollifierBuffer {
     return this.redis.smembers(`mollifier:org-envs:${orgId}`);
   }
 
+  // Paginated read of currently-queued entries newest-first, bounded by
+  // an optional `(createdAtMicros, runId)` watermark. Q1 listing design.
+  // Returns hydrated `BufferEntry` rows up to `pageSize`. Skips orphans
+  // (queue ref without an entry hash) silently. Non-destructive — the
+  // drainer keeps popping these entries in createdAt order regardless.
+  async listForEnvWithWatermark(input: {
+    envId: string;
+    watermark?: { createdAtMicros: number; runId: string };
+    pageSize: number;
+  }): Promise<BufferEntry[]> {
+    if (input.pageSize <= 0) return [];
+    const queueKey = `mollifier:queue:${input.envId}`;
+
+    let runIds: string[];
+    if (!input.watermark) {
+      // Page 1 — newest first.
+      runIds = await this.redis.zrevrangebyscore(
+        queueKey,
+        "+inf",
+        "-inf",
+        "LIMIT",
+        0,
+        input.pageSize,
+      );
+    } else {
+      // Page N — strictly below the watermark score.
+      const belowScore = await this.redis.zrevrangebyscore(
+        queueKey,
+        `(${input.watermark.createdAtMicros}`,
+        "-inf",
+        "LIMIT",
+        0,
+        input.pageSize,
+      );
+      runIds = belowScore;
+      // Tied-score scan: ZSET ties broken by member-DESC, so entries
+      // sharing the watermark score with a lex-smaller runId still
+      // need to surface. Cheap second range over the tied band.
+      if (belowScore.length < input.pageSize) {
+        const remaining = input.pageSize - belowScore.length;
+        const tied = await this.redis.zrangebyscore(
+          queueKey,
+          input.watermark.createdAtMicros,
+          input.watermark.createdAtMicros,
+        );
+        // Filter to runIds lex-less than the watermark anchor, sort
+        // member-DESC, take `remaining`.
+        const tiedFiltered = tied
+          .filter((r) => r < input.watermark!.runId)
+          .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+          .slice(0, remaining);
+        runIds = [...belowScore, ...tiedFiltered];
+      }
+    }
+
+    if (runIds.length === 0) return [];
+
+    // Parallel HGETALL — one round-trip per entry, all in flight.
+    const fetched = await Promise.all(
+      runIds.map((runId) => this.redis.hgetall(`mollifier:entries:${runId}`)),
+    );
+    const entries: BufferEntry[] = [];
+    for (const value of fetched) {
+      if (!value || Object.keys(value).length === 0) continue;
+      const parsed = BufferEntrySchema.safeParse(value);
+      if (parsed.success) entries.push(parsed.data);
+    }
+    return entries;
+  }
+
   // Read-only listing of currently-queued entries for a single env. Used by
   // the dashboard's "Recently queued" surface — non-destructive, so the
   // drainer still pops these entries in order. Returns up to `maxCount`

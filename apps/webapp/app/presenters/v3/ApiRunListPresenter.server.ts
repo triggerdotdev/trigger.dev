@@ -151,7 +151,8 @@ export const ApiRunListSearchParams = z.object({
     }),
 });
 
-type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;
+export type ApiRunListSearchParamsType = z.infer<typeof ApiRunListSearchParams>;
+type ApiRunListSearchParams = ApiRunListSearchParamsType;
 
 export class ApiRunListPresenter extends BasePresenter {
   public async call(
