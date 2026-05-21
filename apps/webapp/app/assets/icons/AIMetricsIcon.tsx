@@ -20,12 +20,12 @@ export function AIMetricsIcon({ className }: { className?: string }) {
         strokeWidth="2"
       />
       <path
-        d="M15 7C15 5.89543 15.8954 5 17 5H19C20.1046 5 21 5.89543 21 7V19C21 20.1046 20.1046 21 19 21H15V7Z"
+        d="M15 7C15 5.89543 15.8954 5 17 5H19C20.1046 5 21 5.89543 21 7V20C21 20.5523 20.5523 21 20 21H15V7Z"
         stroke="currentColor"
         strokeWidth="2"
       />
       <path
-        d="M3 17C3 15.8954 3.89543 15 5 15H7C8.10457 15 9 15.8954 9 17V21H5C3.89543 21 3 20.1046 3 19V17Z"
+        d="M3 17C3 15.8954 3.89543 15 5 15H7C8.10457 15 9 15.8954 9 17V21H4C3.44772 21 3 20.5523 3 20V17Z"
         stroke="currentColor"
         strokeWidth="2"
       />
