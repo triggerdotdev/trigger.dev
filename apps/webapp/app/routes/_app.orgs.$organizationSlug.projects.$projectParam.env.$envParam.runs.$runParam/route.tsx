@@ -6,7 +6,6 @@ import {
   ChevronRightIcon,
   InformationCircleIcon,
   LockOpenIcon,
-  MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
@@ -42,7 +41,7 @@ import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { Input } from "~/components/primitives/Input";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
@@ -512,7 +511,8 @@ function TraceView({
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
   const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
-  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
+  const displayLinkedRunId =
+    (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -771,32 +771,34 @@ function TasksTreeView({
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-2">
         <SearchField onChange={setFilterText} />
-        {isAdmin && (
+        <div className="flex items-center gap-1.5">
+          {isAdmin && (
+            <Switch
+              variant="secondary/small"
+              label="Debug"
+              shortcut={{ modifiers: ["shift"], key: "D" }}
+              checked={showDebug}
+              onCheckedChange={(checked) => {
+                replace({
+                  showDebug: checked ? "true" : "false",
+                });
+              }}
+            />
+          )}
           <Switch
-            variant="small"
-            label="Debug"
-            shortcut={{ modifiers: ["shift"], key: "D" }}
-            checked={showDebug}
-            onCheckedChange={(checked) => {
-              replace({
-                showDebug: checked ? "true" : "false",
-              });
-            }}
+            variant="secondary/small"
+            label="Queue time"
+            checked={showQueueTime}
+            onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
+            shortcut={{ key: "Q" }}
           />
-        )}
-        <Switch
-          variant="small"
-          label="Queue time"
-          checked={showQueueTime}
-          onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
-          shortcut={{ key: "Q" }}
-        />
-        <Switch
-          variant="small"
-          label="Errors only"
-          checked={errorsOnly}
-          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-        />
+          <Switch
+            variant="secondary/small"
+            label="Errors only"
+            checked={errorsOnly}
+            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+          />
+        </div>
       </div>
       <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
@@ -1755,21 +1757,12 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     onChange(text);
   }, 250);
 
-  const updateValue = useCallback((value: string) => {
-    setValue(value);
-    updateFilterText(value);
+  const updateValue = useCallback((next: string) => {
+    setValue(next);
+    updateFilterText(next);
   }, []);
 
-  return (
-    <Input
-      placeholder="Search log"
-      variant="tertiary"
-      icon={MagnifyingGlassIcon}
-      fullWidth={true}
-      value={value}
-      onChange={(e) => updateValue(e.target.value)}
-    />
-  );
+  return <SearchInput placeholder="Search logs…" value={value} onValueChange={updateValue} />;
 }
 
 function useAdjacentRunPaths({
