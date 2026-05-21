@@ -76,9 +76,9 @@ export class ComputeSnapshotService {
     this.timerWheel.submit(runFriendlyId, data);
     emitOneShot({
       ...this.wideEventOpts,
+      op: "snapshot.schedule",
+      kind: "event",
       populate: (state) => {
-        state.extras.op = "snapshot.schedule";
-        state.extras.kind = "event";
         state.meta.run_id = runFriendlyId;
         state.meta.snapshot_id = data.snapshotFriendlyId;
         state.extras.runner_id = data.runnerId;
@@ -98,9 +98,9 @@ export class ComputeSnapshotService {
     if (cancelled) {
       emitOneShot({
         ...this.wideEventOpts,
+        op: "snapshot.canceled",
+        kind: "event",
         populate: (state) => {
-          state.extras.op = "snapshot.canceled";
-          state.extras.kind = "event";
           state.meta.run_id = runFriendlyId;
         },
       });
@@ -121,7 +121,6 @@ export class ComputeSnapshotService {
     // become extras/meta on the same wide event - no nested emission.
     const state = fromContext();
     if (state) {
-      state.extras.op = "snapshot.callback";
       state.extras["snapshot.status"] = body.status;
       if (body.instance_id) state.extras["snapshot.instance_id"] = body.instance_id;
       if (body.duration_ms !== undefined) state.extras["snapshot.duration_ms"] = body.duration_ms;
@@ -247,9 +246,9 @@ export class ComputeSnapshotService {
     await runWideEvent(
       {
         ...this.wideEventOpts,
+        op: "snapshot.dispatch",
+        kind: "scheduled",
         setup: (state) => {
-          state.extras.op = "snapshot.dispatch";
-          state.extras.kind = "scheduled";
           state.meta.run_id = snapshot.runFriendlyId;
           state.meta.snapshot_id = snapshot.snapshotFriendlyId;
           state.extras.runner_id = snapshot.runnerId;

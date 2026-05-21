@@ -37,6 +37,10 @@ export type NewStateOptions = {
   inboundRequestId?: string;
   /** Optional inbound W3C traceparent (HTTP header, queue message field). */
   traceparent?: string;
+  /** Operation discriminator. Dotted `noun.verb`. Defaults to empty (set later). */
+  op?: string;
+  /** Event shape: `inbound` | `outbound` | `event` | `scheduled`. Defaults to empty. */
+  kind?: string;
 };
 
 /**
@@ -62,6 +66,8 @@ export function newState(opts: NewStateOptions): State {
     commitSha: opts.env.commitSha,
     region: opts.env.region,
     nodeId: opts.env.nodeId,
+    op: opts.op ?? "",
+    kind: opts.kind ?? "",
     meta: {},
     phases: [],
     ok: false,

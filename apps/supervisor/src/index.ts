@@ -259,6 +259,8 @@ class ManagedSupervisor {
         await runWideEvent(
           {
             ...this.wideEventOpts,
+            op: "dequeue",
+            kind: "inbound",
             traceparent,
             setup: (state) => {
               setMeta(state, "run_id", message.run.friendlyId);
@@ -269,8 +271,6 @@ class ManagedSupervisor {
                 setMeta(state, "deployment_id", message.deployment.friendlyId);
               }
               setMeta(state, "machine_preset", message.run.machine.name);
-              state.extras.op = "dequeue";
-              state.extras.kind = "inbound";
               state.extras.iteration = "dequeue";
               state.extras.dequeue_response_ms = dequeueResponseMs;
               state.extras.polling_interval_ms = pollingIntervalMs;
