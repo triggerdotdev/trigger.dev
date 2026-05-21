@@ -46,11 +46,12 @@ export TASK_ID=hello-world
 | 12 | `12-state3-replay.sh` | OFF + redis-cli | Direct Redis HSET status=FAILED to manufacture state 3 (Q2). Replay still produces a fresh run. |
 | 13 | `13-resume-parent-guard.sh` | OFF | triggerAndWait with an idempotency key matching a buffered run produces a fresh PG run (B6b guard). |
 | 14 | `14-dashboard-routes.sh` | OFF + session cookie | D1 cancel, D2 replay, D3 idempotencyKey reset via the `/resources/...` dashboard routes (session-cookie auth). |
+| 15 | `15-busy-timeout.sh` | OFF + redis-cli | Force entry into DRAINING / FAILED / materialised=true via direct HSET; verify the mutation API returns 503 after the ~2s safety-net wait. |
 
 **Toggling the drainer:** restart the webapp with `TRIGGER_MOLLIFIER_DRAINER_ENABLED=1`
 for scripts that need it. Scripts 05 and 06 are the only ones that need it ON.
 
-**Script 12 prerequisites:** sets `REDIS_CLI` env var, or has `redis-cli` on PATH,
+**Script 12 / 15 prerequisites:** sets `REDIS_CLI` env var, or has `redis-cli` on PATH,
 or a docker container named `redis` reachable via `docker exec`.
 
 **Script 14 prerequisites:** session-cookie value (the `__session` cookie from a
@@ -72,9 +73,10 @@ These behaviours exist in the implementation but aren't covered by the bash
 suite. They're documented here so future readers know what's checked elsewhere
 vs what's genuinely uncovered.
 
-- **`mutateWithFallback` "busy" wait-and-bounce path.** Triggers only when an
-  entry is in DRAINING state — racy from bash since only the drainer can flip
-  the status. Covered by unit tests in `apps/webapp/test/mollifierMutateWithFallback.test.ts`.
+- **`mutateWithFallback` busy → PG-row-arrives-mid-wait path.** Script 15 covers
+  the timeout side of busy. The "drainer succeeds while the API is waiting"
+  side requires injecting a PG row mid-flight; covered by unit tests in
+  `apps/webapp/test/mollifierMutateWithFallback.test.ts`.
 - **Buffer outage / fail-open.** Stopping Redis takes down the run engine,
   queue, and locks too — the system can't function for a meaningful end-to-end
   scenario. Covered by unit tests that pass a buffer that throws.
