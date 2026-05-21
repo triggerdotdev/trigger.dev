@@ -7,7 +7,6 @@ import {
   BellAlertIcon,
   ChartBarIcon as ChartBarIconHero,
   ChevronRightIcon,
-  ClockIcon,
   Cog8ToothIcon,
   CogIcon,
   ExclamationTriangleIcon,
@@ -19,9 +18,7 @@ import {
   PencilSquareIcon,
   PlusIcon,
   PuzzlePieceIcon,
-  RectangleStackIcon,
   ServerStackIcon,
-  Squares2X2Icon,
   TableCellsIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
@@ -34,15 +31,18 @@ import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
-import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
+import { QueuesIcon } from "~/assets/icons/QueuesIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
@@ -404,7 +404,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Runs"
-                icon={RunsIconExtraSmall}
+                icon={RunsIcon}
                 activeIconColor="text-runs"
                 inactiveIconColor="text-text-dimmed"
                 to={v3RunsPath(organization, project, environment)}
@@ -412,7 +412,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Batches"
-                icon={Squares2X2Icon}
+                icon={BatchesIcon}
                 activeIconColor="text-batches"
                 inactiveIconColor="text-text-dimmed"
                 to={v3BatchesPath(organization, project, environment)}
@@ -430,7 +430,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Queues"
-                icon={RectangleStackIcon}
+                icon={QueuesIcon}
                 activeIconColor="text-queues"
                 inactiveIconColor="text-text-dimmed"
                 to={v3QueuesPath(organization, project, environment)}
