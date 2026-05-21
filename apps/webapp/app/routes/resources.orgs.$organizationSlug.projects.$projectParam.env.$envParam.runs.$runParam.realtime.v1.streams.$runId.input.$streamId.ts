@@ -7,6 +7,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -60,6 +61,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 
   if (!run) {
+    // Fall through to a buffered-run lookup. A buffered run has no input
+    // streams yet; return 204 so the SDK's SSE client treats this as
+    // "stream not yet active" and retries naturally.
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId,
+      environmentId: environment.id,
+      organizationId: project.organizationId,
+    });
+    if (buffered) {
+      return new Response(null, {
+        status: 204,
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+      });
+    }
     return new Response("Run not found", { status: 404 });
   }
 

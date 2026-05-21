@@ -5,6 +5,8 @@ import { $replica } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { deserialiseSnapshot } from "@trigger.dev/redis-worker";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -43,6 +45,45 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 
   if (!run) {
+    // Buffered run isn't on a queue yet (it sits in the mollifier buffer
+    // until the drainer materialises it), so the queue-concurrency fields
+    // don't apply. Return a minimal "buffered" debug payload from the
+    // snapshot so the Debug panel can show *something* instead of 404'ing.
+    const buffer = getMollifierBuffer();
+    if (buffer) {
+      try {
+        const entry = await buffer.getEntry(runParam);
+        if (entry) {
+          const snapshot = deserialiseSnapshot<{
+            taskIdentifier?: string;
+            queue?: string;
+            concurrencyKey?: string;
+          }>(entry.payload);
+          return typedjson({
+            engine: "V2" as const,
+            buffered: true,
+            run: {
+              id: entry.runId,
+              engine: "V2" as const,
+              friendlyId: entry.runId,
+              queue: snapshot.queue ?? null,
+              concurrencyKey: snapshot.concurrencyKey ?? null,
+              queueTimestamp: entry.createdAt,
+              runtimeEnvironment: null,
+            },
+            queueConcurrencyLimit: undefined,
+            envConcurrencyLimit: undefined,
+            queueCurrentConcurrency: undefined,
+            envCurrentConcurrency: undefined,
+            queueReserveConcurrency: undefined,
+            envReserveConcurrency: undefined,
+            keys: [],
+          });
+        }
+      } catch {
+        // fall through to 404 on buffer error
+      }
+    }
     throw new Response("Not Found", { status: 404 });
   }
 

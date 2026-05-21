@@ -9,7 +9,12 @@ export type MollifyNotice = {
 };
 
 export type MollifySyntheticResult = {
-  run: { friendlyId: string };
+  // `spanId` is the root-span id allocated at gate-accept time and stored
+  // in the snapshot. Callers like the dashboard's Test action use it to
+  // build a `v3RunSpanPath` URL that auto-opens the right details panel
+  // — without it, the buffered run lands on the run-detail page with no
+  // span selected (parity gap with PG-resident runs).
+  run: { friendlyId: string; spanId: string };
   error: undefined;
   // The race-loser path (Q5): if accept's SETNX hit an existing
   // buffered run with the same (env, task, idempotencyKey), the
@@ -50,9 +55,12 @@ export async function mollifyTrigger(args: {
 
   if (result.kind === "duplicate_idempotency") {
     // Race loser. Echo the winner's runId so the SDK's response shape
-    // matches PG-side idempotency cache hits.
+    // matches PG-side idempotency cache hits. The winner's spanId isn't
+    // readily available without a second buffer fetch; an empty string
+    // causes `v3RunSpanPath` to omit the `?span=` param, which matches
+    // current behaviour for cached PG responses.
     return {
-      run: { friendlyId: result.existingRunId },
+      run: { friendlyId: result.existingRunId, spanId: "" },
       error: undefined,
       isCached: true,
     };
@@ -62,8 +70,10 @@ export async function mollifyTrigger(args: {
   // visible response: a buffered-trigger acknowledgement. The duplicate
   // runId case is unreachable in practice (runIds are server-generated
   // and unique) but is silently idempotent at the buffer layer either way.
+  const rawSpanId = args.engineTriggerInput.spanId;
+  const spanId = typeof rawSpanId === "string" ? rawSpanId : "";
   return {
-    run: { friendlyId: args.runFriendlyId },
+    run: { friendlyId: args.runFriendlyId, spanId },
     error: undefined,
     isCached: false,
     notice: NOTICE,

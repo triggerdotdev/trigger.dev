@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { rootPath, v3RunPath } from "~/utils/pathBuilder";
+import { findBufferedRunRedirectInfo } from "~/v3/mollifier/syntheticRedirectInfo.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -48,6 +49,26 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 
   if (!run) {
+    // Fall back to the mollifier buffer. Without this a customer clicking
+    // the run link returned by the trigger API gets bounced to the home
+    // page until the drainer materialises the PG row.
+    const buffered = await findBufferedRunRedirectInfo({ runFriendlyId: runParam, userId: user.id });
+    if (buffered) {
+      const url = new URL(request.url);
+      const searchParams = url.searchParams;
+      if (!searchParams.has("span") && buffered.spanId) {
+        searchParams.set("span", buffered.spanId);
+      }
+      return redirect(
+        v3RunPath(
+          { slug: buffered.organizationSlug },
+          { slug: buffered.projectSlug },
+          { slug: buffered.environmentSlug },
+          { friendlyId: runParam },
+          searchParams
+        )
+      );
+    }
     return redirectWithErrorMessage(
       rootPath(),
       request,

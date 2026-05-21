@@ -67,7 +67,6 @@ import {
   useTree,
 } from "~/components/primitives/TreeView/TreeView";
 import { type NodesState } from "~/components/primitives/TreeView/reducer";
-import { MollifierBanner } from "~/components/runs/MollifierBanner";
 import { CancelRunDialog } from "~/components/runs/v3/CancelRunDialog";
 import { ReplayRunDialog } from "~/components/runs/v3/ReplayRunDialog";
 import { getRunFiltersFromSearchParams } from "~/components/runs/v3/RunFilters";
@@ -95,6 +94,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticTraceForBufferedRun } from "~/v3/mollifier/syntheticTrace.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
@@ -297,11 +297,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
       return json({
         run: buffered.run,
-        trace: undefined,
+        trace: buffered.trace,
         maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
         resizable: { parent, tree },
         runsList: null,
-        isMollified: true,
       });
     }
 
@@ -330,7 +329,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tree,
     },
     runsList,
-    isMollified: false,
   });
 };
 
@@ -376,13 +374,14 @@ async function tryMollifiedRunFallback(args: {
         userName: undefined,
       },
     },
+    trace: buildSyntheticTraceForBufferedRun(buffered),
   };
 }
 
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList, resizable, isMollified } =
+  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
     useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -502,7 +501,6 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        {isMollified ? <MollifierBanner className="mx-3 mt-3" /> : null}
         {trace ? (
           <TraceView
             run={run}
@@ -691,9 +689,13 @@ function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
         >
           <div className="grid h-full place-items-center">
             {daysSinceCompleted === undefined ? (
-              <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
+              <InfoPanel
+                variant="info"
+                icon={InformationCircleIcon}
+                title="Waiting to start"
+              >
                 <Paragraph variant="small">
-                  We tidy up older logs to keep things running smoothly.
+                  This run is queued. Logs will appear here once it begins executing.
                 </Paragraph>
               </InfoPanel>
             ) : isWithinLogRetention ? (

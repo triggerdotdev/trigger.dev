@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { impersonate, rootPath, v3RunPath } from "~/utils/pathBuilder";
+import { findBufferedRunRedirectInfo } from "~/v3/mollifier/syntheticRedirectInfo.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -51,6 +52,26 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 
   if (!run) {
+    // Admin impersonation route — bypass org membership so admins can
+    // open any buffered run by friendlyId, mirroring the existing PG
+    // behaviour above (no membership filter on the find).
+    const buffered = await findBufferedRunRedirectInfo({
+      runFriendlyId: runParam,
+      userId: user.id,
+      skipOrgMembershipCheck: true,
+    });
+    if (buffered) {
+      return redirect(
+        impersonate(
+          v3RunPath(
+            { slug: buffered.organizationSlug },
+            { slug: buffered.projectSlug },
+            { slug: buffered.environmentSlug },
+            { friendlyId: runParam }
+          )
+        )
+      );
+    }
     return redirectWithErrorMessage(rootPath(), request, "Run doesn't exist", {
       ephemeral: false,
     });

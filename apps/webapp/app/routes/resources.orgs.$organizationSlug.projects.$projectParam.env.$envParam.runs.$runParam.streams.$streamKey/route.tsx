@@ -24,6 +24,7 @@ import { useProject } from "~/hooks/useProject";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { requireUserId } from "~/services/session.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
 
@@ -75,6 +76,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   if (!run) {
+    // Buffered run has no realtime streams yet. Resolve the env by slug
+    // (so the buffer auth check below carries the same scope a PG hit
+    // would) and return 204 so the SDK's SSE client treats this as
+    // "stream not yet active" and retries on reconnect once the drainer
+    // materialises the row.
+    const env = await $replica.runtimeEnvironment.findFirst({
+      where: { slug: envParam, projectId: project.id },
+      select: { id: true },
+    });
+    if (env) {
+      const buffered = await findRunByIdWithMollifierFallback({
+        runId: runParam,
+        environmentId: env.id,
+        organizationId: project.organizationId,
+      });
+      if (buffered) {
+        return new Response(null, {
+          status: 204,
+          headers: { "content-type": "text/event-stream; charset=utf-8" },
+        });
+      }
+    }
     throw new Response("Not Found", { status: 404 });
   }
 

@@ -2,7 +2,8 @@ import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
-import { v3RunSpanPath } from "~/utils/pathBuilder";
+import { v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import { findBufferedRunRedirectInfo } from "~/v3/mollifier/syntheticRedirectInfo.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -44,6 +45,28 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 
   if (!run) {
+    // Fall back to the mollifier buffer so a /projects/v3/{ref}/runs/{id}
+    // share link works during the buffered window.
+    const buffered = await findBufferedRunRedirectInfo({
+      runFriendlyId: validatedParams.runParam,
+      userId,
+    });
+    if (buffered) {
+      const url = new URL(request.url);
+      const searchParams = url.searchParams;
+      if (!searchParams.has("span") && buffered.spanId) {
+        searchParams.set("span", buffered.spanId);
+      }
+      return redirect(
+        v3RunPath(
+          { slug: buffered.organizationSlug },
+          { slug: buffered.projectSlug },
+          { slug: buffered.environmentSlug },
+          { friendlyId: validatedParams.runParam },
+          searchParams
+        )
+      );
+    }
     throw new Response("Not found", { status: 404 });
   }
 

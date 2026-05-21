@@ -62,6 +62,19 @@ export type SyntheticRun = {
   machinePreset: string | undefined;
   realtimeStreamsVersion: string | undefined;
 
+  // Additional snapshot-sourced fields used when synthesising a SpanRun
+  // for the dashboard's right-side details panel. All optional because
+  // older snapshots may not carry them.
+  maxAttempts: number | undefined;
+  maxDurationInSeconds: number | undefined;
+  replayedFromTaskRunFriendlyId: string | undefined;
+  annotations: unknown;
+  traceContext: unknown;
+  scheduleId: string | undefined;
+  batchId: string | undefined;
+  parentTaskRunFriendlyId: string | undefined;
+  rootTaskRunFriendlyId: string | undefined;
+
   error?: { code: string; message: string };
 };
 
@@ -146,6 +159,19 @@ export async function findRunByIdWithMollifierFallback(
       concurrencyKey: asString(snapshot.concurrencyKey),
       machinePreset: asString(snapshot.machine),
       realtimeStreamsVersion: asString(snapshot.realtimeStreamsVersion),
+
+      maxAttempts: typeof snapshot.maxAttempts === "number" ? snapshot.maxAttempts : undefined,
+      maxDurationInSeconds:
+        typeof snapshot.maxDurationInSeconds === "number"
+          ? snapshot.maxDurationInSeconds
+          : undefined,
+      replayedFromTaskRunFriendlyId: asString(snapshot.replayedFromTaskRunFriendlyId),
+      annotations: snapshot.annotations,
+      traceContext: snapshot.traceContext,
+      scheduleId: asString(snapshot.scheduleId),
+      batchId: asString(snapshot.batchId),
+      parentTaskRunFriendlyId: asString(snapshot.parentTaskRunFriendlyId),
+      rootTaskRunFriendlyId: asString(snapshot.rootTaskRunFriendlyId),
 
       error: entry.lastError,
     };

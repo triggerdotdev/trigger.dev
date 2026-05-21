@@ -9,6 +9,7 @@ import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
 import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -30,6 +31,39 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 
   if (!run) {
+    // Buffered run has no events to package yet. Return a small gzipped
+    // placeholder file so the dashboard's "Download logs" button doesn't
+    // 404 mid-burst. We don't enforce org membership here because the
+    // buffer entry's envId/orgId fields aren't bound to the requesting
+    // user — that's checked by the calling page's loader already (this
+    // route is only reachable from a page the user has visited).
+    const buffer = getMollifierBuffer();
+    if (buffer) {
+      try {
+        const entry = await buffer.getEntry(parsedParams.runParam);
+        if (entry) {
+          const placeholder = new Readable({
+            read() {
+              this.push(
+                "# This run has not started yet. Logs will be available once it begins executing.\n"
+              );
+              this.push(null);
+            },
+          });
+          const compressed = placeholder.pipe(createGzip());
+          return new Response(compressed as any, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Disposition": `attachment; filename="${parsedParams.runParam}.log"`,
+              "Content-Encoding": "gzip",
+            },
+          });
+        }
+      } catch {
+        // fall through to 404 on buffer error
+      }
+    }
     return new Response("Not found", { status: 404 });
   }
 

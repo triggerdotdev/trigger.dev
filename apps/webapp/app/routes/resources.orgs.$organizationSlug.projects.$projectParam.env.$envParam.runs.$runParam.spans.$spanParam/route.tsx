@@ -82,6 +82,10 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { useCanViewLogsPage } from "~/hooks/useCanViewLogsPage";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticSpanRun } from "~/v3/mollifier/syntheticSpanRun.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -117,6 +121,41 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const presenter = new SpanPresenter();
 
+  const tryBufferFallback = async () => {
+    // Fall back to the mollifier buffer when the run isn't in PG yet. We
+    // only synthesise a SpanRun for the root span; child spans don't
+    // exist for a buffered run, so non-root spanParam values resolve to
+    // "Event not found" (correct behaviour).
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    if (!project) return null;
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) return null;
+
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: runParam,
+      environmentId: environment.id,
+      organizationId: project.organizationId,
+    });
+    if (!buffered) return null;
+    if (buffered.spanId !== spanParam) {
+      // The runId is buffered but this spanId doesn't match the root span.
+      // Don't toast "Event not found" — that's noisy for the initial-render
+      // request the dashboard fires before the root span auto-selects.
+      // 204 No Content matches what the PG path returns for the same case.
+      return new Response(null, { status: 204 });
+    }
+
+    const run = await buildSyntheticSpanRun({
+      run: buffered,
+      environment: {
+        id: environment.id,
+        slug: environment.slug,
+        type: environment.type,
+      },
+    });
+    return typedjson({ type: "run" as const, run });
+  };
+
   try {
     const result = await presenter.call({
       projectSlug: projectParam,
@@ -127,6 +166,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
 
     if (!result) {
+      const buffered = await tryBufferFallback();
+      if (buffered) return buffered;
       return redirectWithErrorMessage(
         v3RunPath(
           { slug: organizationSlug },
@@ -147,6 +188,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
     return typedjson({ type: "span" as const, span: result.span });
   } catch (error) {
+    const buffered = await tryBufferFallback();
+    if (buffered) return buffered;
+
     logger.error("Error loading span", {
       projectParam,
       organizationSlug,
