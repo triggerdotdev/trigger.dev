@@ -700,7 +700,7 @@ See [Stop generation](/ai-chat/frontend#stop-generation) for full details.
 
 ### transport.sendAction()
 
-Send a custom action to the agent. Actions wake the agent from suspension, fire `onAction`, then trigger a normal `run()` turn.
+Send a custom action to the agent. Actions wake the agent from suspension and fire `onAction`. They are not turns — `run()` and turn lifecycle hooks do not fire. If `onAction` returns a `StreamTextResult`, the response is auto-piped to the frontend.
 
 ```ts
 transport.sendAction(chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>>

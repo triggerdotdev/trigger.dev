@@ -128,7 +128,7 @@ export function Chat() {
 ```
 
 ```ts title="trigger/chat.ts"
-const initialAppVersion = chat.local<string>({ id: "appVersion" });
+const initialAppVersion = chat.local<{ version: string }>({ id: "appVersion" });
 
 export const myChat = chat
   .withClientData({
@@ -139,11 +139,11 @@ export const myChat = chat
   })
   .agent({
     id: "my-chat",
-    onChatStart: async ({ clientData }) => {
-      initialAppVersion.init(clientData.appVersion);
+    onBoot: async ({ clientData }) => {
+      initialAppVersion.init({ version: clientData.appVersion });
     },
     onTurnStart: async ({ clientData }) => {
-      if (clientData?.appVersion && clientData.appVersion !== initialAppVersion.value) {
+      if (clientData?.appVersion && clientData.appVersion !== initialAppVersion.version) {
         chat.requestUpgrade();
       }
     },

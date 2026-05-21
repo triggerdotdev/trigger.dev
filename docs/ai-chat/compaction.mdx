@@ -247,16 +247,13 @@ export const myChat = chat.agent({
     ]);
   },
 
-  run: async ({ messages, trigger, signal }) => {
-    // Compact action doesn't need an LLM response — just exit.
-    if (trigger === "action") return;
-
+  run: async ({ messages, signal }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
   },
 });
 ```
 
-Actions fire `onAction`, apply any `chat.history.*` mutations, then call `run()`. For compaction there's no new user message to respond to, so `run()` returns early when `trigger === "action"`. `onTurnComplete` still fires with the compacted `uiMessages` — use it to persist the new state.
+Actions fire `onAction` only (plus `hydrateMessages` if set) — `run()` and `onTurnComplete` do not fire for actions. Persist the compacted state directly inside `onAction` after the `chat.history.set` call. See [Actions](/ai-chat/actions) for the full lifecycle.
 
 ### Frontend
 
