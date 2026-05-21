@@ -238,13 +238,12 @@ describe("apiErrorBoundary", () => {
     expect(response.body).toEqual({ part1: "hello", part2: "world" });
   });
 
-  // CodeRabbit raised a concern that patchedEnd doesn't re-apply the
-  // isStreamingContentType / MAX_BUFFER_BYTES bypass checks for single-call
-  // `res.end(chunk)` paths. The bypasses exist for streaming pileup; a
-  // single-call end isn't streaming, so the body is fully assembled either
-  // way. These two tests lock in that no harm occurs: bytes flow through
-  // unchanged for the scenarios CodeRabbit named (octet-stream content-type
-  // and >64KB body via single-call res.end).
+  // patchedWrite applies the isStreamingContentType / MAX_BUFFER_BYTES
+  // bypass checks before buffering; patchedEnd does not, because a
+  // single-call `res.end(chunk)` is one-shot rather than streaming
+  // pileup — the body is fully assembled either way. These tests pin
+  // the byte-integrity contract for that single-call shape: octet-stream
+  // bodies and >64KB bodies both flow through unchanged.
   test("preserves bytes for octet-stream body delivered via single-call res.end(chunk)", async () => {
     const app = buildApp();
     // Construct binary bytes that span the full 0-255 range to catch any
