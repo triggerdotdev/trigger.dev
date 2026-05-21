@@ -2223,6 +2223,19 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
 
+  references/agent-skills:
+    dependencies:
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+    devDependencies:
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+
   references/ai-chat:
     dependencies:
       '@ai-sdk/anthropic':
