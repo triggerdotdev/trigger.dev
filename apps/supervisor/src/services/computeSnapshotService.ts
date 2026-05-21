@@ -78,6 +78,7 @@ export class ComputeSnapshotService {
       ...this.wideEventOpts,
       populate: (state) => {
         state.extras.op = "snapshot.schedule";
+        state.extras.kind = "event";
         state.meta.run_id = runFriendlyId;
         state.meta.snapshot_id = data.snapshotFriendlyId;
         state.extras.runner_id = data.runnerId;
@@ -99,6 +100,7 @@ export class ComputeSnapshotService {
         ...this.wideEventOpts,
         populate: (state) => {
           state.extras.op = "snapshot.canceled";
+          state.extras.kind = "event";
           state.meta.run_id = runFriendlyId;
         },
       });
@@ -247,6 +249,7 @@ export class ComputeSnapshotService {
         ...this.wideEventOpts,
         setup: (state) => {
           state.extras.op = "snapshot.dispatch";
+          state.extras.kind = "scheduled";
           state.meta.run_id = snapshot.runFriendlyId;
           state.meta.snapshot_id = snapshot.snapshotFriendlyId;
           state.extras.runner_id = snapshot.runnerId;
