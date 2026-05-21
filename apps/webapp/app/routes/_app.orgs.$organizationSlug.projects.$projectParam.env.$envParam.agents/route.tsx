@@ -124,7 +124,7 @@ export default function AgentsPage() {
               <Table containerClassName="max-h-full pb-[2.5rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHeaderCell>ID</TableHeaderCell>
+                    <TableHeaderCell>Agent ID</TableHeaderCell>
                     <TableHeaderCell>Type</TableHeaderCell>
                     <TableHeaderCell>File</TableHeaderCell>
                     <TableHeaderCell>Active</TableHeaderCell>

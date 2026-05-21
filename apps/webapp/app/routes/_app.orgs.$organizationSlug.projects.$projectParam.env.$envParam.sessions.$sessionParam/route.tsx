@@ -344,7 +344,7 @@ function OverviewTab({
           </Property.Value>
         </Property.Item>
         <Property.Item>
-          <Property.Label>Task</Property.Label>
+          <Property.Label>Agent ID</Property.Label>
           <Property.Value>
             <span className="font-mono text-xs">{session.taskIdentifier}</span>
           </Property.Value>

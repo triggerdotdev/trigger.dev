@@ -74,7 +74,7 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
             Status
           </TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
-          <TableHeaderCell>Task</TableHeaderCell>
+          <TableHeaderCell>Agent ID</TableHeaderCell>
           <TableHeaderCell>Tags</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Duration</TableHeaderCell>
