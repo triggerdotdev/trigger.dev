@@ -300,6 +300,9 @@ singleton("SentryTenantContextProcessor", () => {
   if (env.SENTRY_DSN) {
     Sentry.addEventProcessor(addTenantContextToEvent);
   }
+  // Return a truthy value — `singleton()` uses `??=` so a `void`
+  // callback would re-execute (and re-register) on every dev reload.
+  return true;
 });
 
 export { apiRateLimiter } from "./services/apiRateLimit.server";
