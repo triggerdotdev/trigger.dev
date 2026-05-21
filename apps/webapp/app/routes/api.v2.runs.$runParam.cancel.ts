@@ -1,13 +1,19 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { $replica } from "~/db.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
 });
+
+type ResolvedCancelTarget =
+  | { source: "pg"; friendlyId: string }
+  | { source: "buffer"; friendlyId: string };
 
 const { action } = createActionApiRoute(
   {
@@ -18,12 +24,29 @@ const { action } = createActionApiRoute(
       action: "write",
       resource: (params) => ({ type: "runs", id: params.runParam }),
     },
-    // PG-side authorisation is performed inside mutateWithFallback. Routing
-    // the resource through findResource (which would require a PG-or-buffer
-    // resolved discriminated union here) would duplicate the resolution
-    // mutateWithFallback already does, so we pass `null` to signal "open"
-    // and let the helper do the lookup atomically with the mutation.
-    findResource: async () => null,
+    // Mirror the Phase A read-fallback discriminated-union pattern. The
+    // route builder 404s if findResource returns null
+    // (`apiBuilder.server.ts:321`), so we must check both stores here.
+    // The action then re-resolves via mutateWithFallback (PG-first →
+    // buffer patch → wait-and-bounce) — slightly redundant lookup but
+    // keeps the helper's atomicity intact.
+    findResource: async (params, auth): Promise<ResolvedCancelTarget | null> => {
+      const pgRun = await $replica.taskRun.findFirst({
+        where: { friendlyId: params.runParam, runtimeEnvironmentId: auth.environment.id },
+        select: { friendlyId: true },
+      });
+      if (pgRun) return { source: "pg", friendlyId: pgRun.friendlyId };
+      const buffer = getMollifierBuffer();
+      const entry = buffer ? await buffer.getEntry(params.runParam) : null;
+      if (
+        entry &&
+        entry.envId === auth.environment.id &&
+        entry.orgId === auth.environment.organizationId
+      ) {
+        return { source: "buffer", friendlyId: params.runParam };
+      }
+      return null;
+    },
   },
   async ({ params, authentication }) => {
     const runId = params.runParam;
