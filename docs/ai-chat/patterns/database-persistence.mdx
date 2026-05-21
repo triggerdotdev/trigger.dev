@@ -258,16 +258,19 @@ export const myChat = chat.agent({
     });
   },
   onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
-    // Persist assistant response + stream position
-    await db.chat.update({
-      where: { id: chatId },
-      data: { messages: uiMessages },
-    });
-    await db.chatSession.upsert({
-      where: { id: chatId },
-      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
-      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
-    });
+    // Persist assistant response + stream position atomically — see the
+    // race-condition warning earlier on this page.
+    await db.$transaction([
+      db.chat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages },
+      }),
+      db.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+      }),
+    ]);
   },
   run: async ({ messages, signal }) => {
     return streamText({

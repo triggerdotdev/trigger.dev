@@ -412,15 +412,18 @@ Fires after each turn completes, after the response is captured and the stream i
 export const myChat = chat.agent({
   id: "my-chat",
   onTurnComplete: async ({ chatId, uiMessages, runId, chatAccessToken, lastEventId }) => {
-    await db.chat.update({
-      where: { id: chatId },
-      data: { messages: uiMessages },
-    });
-    await db.chatSession.upsert({
-      where: { id: chatId },
-      create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
-      update: { runId, publicAccessToken: chatAccessToken, lastEventId },
-    });
+    // Atomic write — see Database persistence for the race-condition rationale
+    await db.$transaction([
+      db.chat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages },
+      }),
+      db.chatSession.upsert({
+        where: { id: chatId },
+        create: { id: chatId, runId, publicAccessToken: chatAccessToken, lastEventId },
+        update: { runId, publicAccessToken: chatAccessToken, lastEventId },
+      }),
+    ]);
   },
   run: async ({ messages, signal }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, abortSignal: signal });
