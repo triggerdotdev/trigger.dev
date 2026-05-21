@@ -594,6 +594,11 @@ export function createLoaderPATApiRoute<
         }
       }
 
+      // PAT auth carries `userId` but no environment — enrich the scope
+      // the Express middleware established with the authenticated user so
+      // Sentry events from this handler get user-level attribution.
+      tenantContext.enrich({ userId: authenticationResult.userId });
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
