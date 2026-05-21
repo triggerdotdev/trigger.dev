@@ -259,7 +259,7 @@ export default function AgentsPage() {
                               <LinkButton
                                 variant="minimal/small"
                                 LeadingIcon={PlaygroundIcon}
-                                leadingIconClassName="text-text-bright"
+                                leadingIconClassName="-mx-2.5 text-text-bright"
                                 to={v3PlaygroundAgentPath(
                                   organization,
                                   project,

@@ -19,6 +19,7 @@ export function SideMenuItem({
   target,
   isCollapsed = false,
   action,
+  disableIconHover = false,
 }: {
   icon?: RenderIcon;
   activeIconColor?: string;
@@ -32,6 +33,7 @@ export function SideMenuItem({
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   isCollapsed?: boolean;
   action?: ReactNode;
+  disableIconHover?: boolean;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
@@ -51,6 +53,7 @@ export function SideMenuItem({
           "size-5 shrink-0",
           isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed",
           !isActive &&
+            !disableIconHover &&
             "group-hover/menulink:text-text-bright group-hover/menuitem:text-text-bright",
           iconClassName
         )}

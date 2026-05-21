@@ -90,7 +90,7 @@ export function CreateDashboardButton({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="flex h-full w-full items-center justify-center rounded text-text-dimmed transition focus-custom hover:bg-charcoal-600 hover:text-text-bright"
+                className="flex h-full w-full items-center justify-center rounded text-text-dimmed focus-custom hover:bg-charcoal-600 hover:text-text-bright"
               >
                 <PlusIcon className="size-4" />
               </button>

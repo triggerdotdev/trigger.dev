@@ -86,8 +86,9 @@ export function DashboardList({
                   inactiveIconColor={isCollapsed ? "text-customDashboards" : undefined}
                   to={v3CustomDashboardPath(organization, project, environment, dashboard)}
                   isCollapsed={isCollapsed}
+                  disableIconHover
                   action={
-                    <div className="sidebar-drag-handle flex h-full w-full cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 transition group-hover/menuitem:opacity-100 hover:text-text-bright active:cursor-grabbing">
+                    <div className="sidebar-drag-handle flex h-full w-full cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 group-hover/menuitem:opacity-100 hover:text-text-bright active:cursor-grabbing">
                       <GripVerticalIcon className="size-3.5" />
                     </div>
                   }
@@ -114,6 +115,7 @@ export function DashboardList({
               inactiveIconColor={isCollapsed ? "text-customDashboards" : "text-charcoal-700"}
               to={v3CustomDashboardPath(organization, project, environment, dashboard)}
               isCollapsed={isCollapsed}
+              disableIconHover
             />
           );
         })
