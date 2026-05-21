@@ -1058,13 +1058,16 @@ const EnvironmentSchema = z
     // Separate switch for the drainer (consumer side) so it can be split
     // off onto a dedicated worker service. Unset → inherits
     // TRIGGER_MOLLIFIER_ENABLED, so single-container self-hosters don't have to
-    // flip two switches. In multi-replica deployments, set this to "0"
-    // explicitly on every replica except the one dedicated drainer
-    // service — otherwise every replica's polling loop races for the
-    // same buffer entries. `TRIGGER_MOLLIFIER_ENABLED` is still the master kill
-    // switch; setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
-    // no-op because the gate-side singleton refuses to construct a
-    // buffer when the system is off.
+    // flip two switches. Multi-replica drainers are correct — `popAndMarkDraining`
+    // is an atomic ZPOPMIN + status flip in one Lua call, so only one replica
+    // can win any given entry — but inefficient: polling load (SMEMBERS +
+    // per-env scans) multiplies by N, and `TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY`
+    // is per-process so engine load also multiplies. Splitting the drainer
+    // onto a dedicated worker keeps that traffic off the request-serving
+    // replicas. `TRIGGER_MOLLIFIER_ENABLED` is still the master kill switch;
+    // setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
+    // no-op because the gate-side singleton refuses to construct a buffer
+    // when the system is off.
     TRIGGER_MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
     TRIGGER_MOLLIFIER_SHADOW_MODE: z.string().default("0"),
     TRIGGER_MOLLIFIER_REDIS_HOST: z
