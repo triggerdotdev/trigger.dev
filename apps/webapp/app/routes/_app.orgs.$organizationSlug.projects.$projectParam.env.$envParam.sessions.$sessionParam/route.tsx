@@ -1,4 +1,4 @@
-import { ArrowsRightLeftIcon, BookOpenIcon, XCircleIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -6,12 +6,10 @@ import { z } from "zod";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
-import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
@@ -19,11 +17,11 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { AgentView } from "~/components/runs/v3/agent/AgentView";
-import { RealtimeStreamViewer } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import {
   descriptionForTaskRunStatus,
@@ -41,9 +39,10 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
-import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
+import { RealtimeStreamViewer } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
+import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
+import { throwNotFound } from "~/utils/httpErrors";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -51,7 +50,6 @@ import {
   v3RunsPath,
   v3SessionsPath,
 } from "~/utils/pathBuilder";
-import { throwNotFound } from "~/utils/httpErrors";
 
 const ParamsSchema = EnvironmentParamSchema.extend({
   sessionParam: z.string(),
@@ -101,8 +99,8 @@ export default function Page() {
     session.closedAt != null
       ? "CLOSED"
       : session.expiresAt != null && new Date(session.expiresAt).getTime() < Date.now()
-        ? "EXPIRED"
-        : "ACTIVE";
+      ? "EXPIRED"
+      : "ACTIVE";
 
   const displayId = session.externalId ?? session.friendlyId;
   const sessionsPath = v3SessionsPath(organization, project, environment);
@@ -131,9 +129,7 @@ export default function Page() {
           {status === "ACTIVE" && (
             <Dialog key={`close-${session.friendlyId}`}>
               <DialogTrigger asChild>
-                <Button variant="danger/small" LeadingIcon={XCircleIcon}>
-                  Close session…
-                </Button>
+                <Button variant="danger/small">Close session…</Button>
               </DialogTrigger>
               <CloseSessionDialog
                 sessionParam={session.friendlyId}
@@ -178,68 +174,63 @@ function ConversationPane({ session }: { session: LoadedSession }) {
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
 
+  const viewToggle = (
+    <SegmentedControl
+      name="conversation-view"
+      value={isRaw ? "raw" : "rendered"}
+      variant="secondary/small"
+      options={[
+        { label: "Rendered", value: "rendered" },
+        { label: "Raw", value: "raw" },
+      ]}
+      onChange={(v) => replace({ raw: v === "raw" ? "1" : undefined })}
+    />
+  );
+
   return (
-    <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center justify-between gap-2 overflow-x-hidden border-b border-grid-bright px-3">
-        <div className="flex items-center gap-2 overflow-x-hidden">
-          <ArrowsRightLeftIcon className="size-4 text-teal-500" />
-          <Header2 className={cn("overflow-x-hidden text-text-bright")}>
-            <span className="truncate">Conversation</span>
-          </Header2>
-        </div>
-        <SegmentedControl
-          name="conversation-view"
-          value={isRaw ? "raw" : "rendered"}
-          variant="secondary/small"
-          options={[
-            { label: "Rendered", value: "rendered" },
-            { label: "Raw", value: "raw" },
-          ]}
-          onChange={(v) => replace({ raw: v === "raw" ? "1" : undefined })}
-        />
-      </div>
+    <div className="flex h-full max-h-full flex-col overflow-hidden bg-background-bright">
       {isRaw ? (
-        <div className="overflow-hidden">
-          <RealtimeStreamViewer
-            key={stream}
-            resourcePath={`${sessionResourceBase}/${stream}`}
-            displayName={`.${stream}`}
-            headerLeft={
-              <TabContainer>
-                <TabButton
-                  isActive={stream === "out"}
-                  layoutId="conversation-stream"
-                  onClick={() => replace({ stream: undefined })}
-                >
-                  Output
-                </TabButton>
-                <TabButton
-                  isActive={stream === "in"}
-                  layoutId="conversation-stream"
-                  onClick={() => replace({ stream: "in" })}
-                >
-                  Input
-                </TabButton>
-              </TabContainer>
-            }
-          />
-        </div>
+        <RealtimeStreamViewer
+          key={stream}
+          resourcePath={`${sessionResourceBase}/${stream}`}
+          displayName={`.${stream}`}
+          hideViewModeToggle
+          headerClassName="bg-charcoal-900"
+          headerLeft={
+            <TabContainer>
+              <TabButton
+                isActive={stream === "out"}
+                layoutId="conversation-stream"
+                onClick={() => replace({ stream: undefined })}
+              >
+                Output
+              </TabButton>
+              <TabButton
+                isActive={stream === "in"}
+                layoutId="conversation-stream"
+                onClick={() => replace({ stream: "in" })}
+              >
+                Input
+              </TabButton>
+            </TabContainer>
+          }
+          headerRight={viewToggle}
+        />
       ) : (
-        <div className="min-w-0 overflow-x-hidden overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <AgentView agentView={session.agentView} />
-        </div>
+        <>
+          <div className="flex items-center justify-end border-b border-grid-bright px-3 py-2.5">
+            {viewToggle}
+          </div>
+          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <AgentView agentView={session.agentView} />
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function InspectorPane({
-  session,
-  status,
-}: {
-  session: LoadedSession;
-  status: SessionStatus;
-}) {
+function InspectorPane({ session, status }: { session: LoadedSession; status: SessionStatus }) {
   const { value, replace } = useSearchParams();
   const tab = value("tab") ?? "overview";
   const organization = useOrganization();
@@ -255,10 +246,7 @@ function InspectorPane({
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3">
         <div className="flex items-center gap-2 overflow-x-hidden">
-          <SessionStatusCombo status={status} />
-          <span className="truncate font-mono text-xs text-text-dimmed">
-            {session.friendlyId}
-          </span>
+          <span className="truncate font-mono text-sm text-text-dimmed">{session.friendlyId}</span>
         </div>
       </div>
       <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -302,13 +290,7 @@ function InspectorPane({
   );
 }
 
-function OverviewTab({
-  session,
-  status,
-}: {
-  session: LoadedSession;
-  status: SessionStatus;
-}) {
+function OverviewTab({ session, status }: { session: LoadedSession; status: SessionStatus }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -326,47 +308,49 @@ function OverviewTab({
         <Property.Item>
           <Property.Label>Friendly ID</Property.Label>
           <Property.Value>
-            <CopyableText value={session.friendlyId} className="font-mono text-xs" />
+            <CopyableText value={session.friendlyId} className="font-mono text-sm" />
           </Property.Value>
         </Property.Item>
         {session.externalId ? (
           <Property.Item>
             <Property.Label>External ID</Property.Label>
             <Property.Value>
-              <CopyableText value={session.externalId} className="font-mono text-xs" />
+              <CopyableText value={session.externalId} className="font-mono text-sm" />
             </Property.Value>
           </Property.Item>
         ) : null}
         <Property.Item>
           <Property.Label>Type</Property.Label>
           <Property.Value>
-            <span className="font-mono text-xs">{session.type}</span>
+            <span className="font-mono text-sm">{session.type}</span>
           </Property.Value>
         </Property.Item>
         <Property.Item>
           <Property.Label>Agent ID</Property.Label>
           <Property.Value>
-            <span className="font-mono text-xs">{session.taskIdentifier}</span>
+            <span className="font-mono text-sm">{session.taskIdentifier}</span>
           </Property.Value>
         </Property.Item>
         {session.currentRun ? (
           <Property.Item>
             <Property.Label>Current run</Property.Label>
             <Property.Value>
-              <TextLink
-                to={v3RunPath(organization, project, environment, {
-                  friendlyId: session.currentRun.friendlyId,
-                })}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="font-mono text-xs">{session.currentRun.friendlyId}</span>
-                  <SimpleTooltip
-                    button={<TaskRunStatusCombo status={session.currentRun.status} />}
-                    content={descriptionForTaskRunStatus(session.currentRun.status)}
-                    disableHoverableContent
-                  />
-                </span>
-              </TextLink>
+              <span className="flex flex-col gap-0.5">
+                <TextLink
+                  to={v3RunPath(organization, project, environment, {
+                    friendlyId: session.currentRun.friendlyId,
+                  })}
+                  className="font-mono text-sm"
+                >
+                  {session.currentRun.friendlyId}
+                </TextLink>
+                <SimpleTooltip
+                  button={<TaskRunStatusCombo status={session.currentRun.status} />}
+                  content={descriptionForTaskRunStatus(session.currentRun.status)}
+                  disableHoverableContent
+                  buttonClassName="w-fit"
+                />
+              </span>
             </Property.Value>
           </Property.Item>
         ) : null}
@@ -446,9 +430,7 @@ function OverviewTab({
             <Property.Item>
               <Property.Label>Stream basin</Property.Label>
               <Property.Value>
-                <span className="font-mono text-xs">
-                  {session.streamBasinName ?? "(global)"}
-                </span>
+                <span className="font-mono text-xs">{session.streamBasinName ?? "(global)"}</span>
               </Property.Value>
             </Property.Item>
           </Property.Table>
@@ -460,23 +442,13 @@ function OverviewTab({
 
 function MetadataTab({ session }: { session: LoadedSession }) {
   if (session.metadata == null) {
-    return (
-      <Paragraph variant="small/dimmed">No metadata.</Paragraph>
-    );
+    return <Paragraph variant="small/dimmed">No metadata.</Paragraph>;
   }
   const json = JSON.stringify(session.metadata, null, 2);
-  return (
-    <CodeBlock code={json} language="json" showLineNumbers={false} showTextWrapping />
-  );
+  return <CodeBlock code={json} language="json" showLineNumbers={false} showTextWrapping />;
 }
 
-function RunsTab({
-  session,
-  allRunsPath,
-}: {
-  session: LoadedSession;
-  allRunsPath: string;
-}) {
+function RunsTab({ session, allRunsPath }: { session: LoadedSession; allRunsPath: string }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -539,4 +511,3 @@ function RunsTab({
     </div>
   );
 }
-
