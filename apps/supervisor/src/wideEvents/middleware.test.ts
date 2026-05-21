@@ -20,7 +20,7 @@ describe("runWideEvent", () => {
   it("emits one event with ok=true when no statusCode is set", async () => {
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: true, route: "/x", method: "POST" },
+        { service: "supervisor", env: {}, enabled: true, op: "test", route: "/x", method: "POST" },
         async () => undefined
       );
     });
@@ -39,7 +39,7 @@ describe("runWideEvent", () => {
   it("derives ok from statusCode set via finalize", async () => {
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: true },
+        { service: "supervisor", env: {}, enabled: true, op: "test" },
         async () => undefined,
         (state) => {
           state.statusCode = 200;
@@ -56,7 +56,7 @@ describe("runWideEvent", () => {
   it("treats 4xx as ok=false", async () => {
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: true },
+        { service: "supervisor", env: {}, enabled: true, op: "test" },
         async () => undefined,
         (state) => {
           state.statusCode = 400;
@@ -73,7 +73,7 @@ describe("runWideEvent", () => {
   it("emits ok=false with error.kind=internal on throw", async () => {
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: true },
+        { service: "supervisor", env: {}, enabled: true, op: "test" },
         async () => {
           throw new Error("boom");
         }
@@ -91,7 +91,7 @@ describe("runWideEvent", () => {
   it("threads state through AsyncLocalStorage", async () => {
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: true },
+        { service: "supervisor", env: {}, enabled: true, op: "test" },
         async () => {
           setMeta(fromContext(), "run_id", "run_abc");
         }
@@ -108,7 +108,7 @@ describe("runWideEvent", () => {
     const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: true, traceparent: tp },
+        { service: "supervisor", env: {}, enabled: true, op: "test", traceparent: tp },
         async () => undefined
       );
     });
@@ -124,7 +124,7 @@ describe("runWideEvent", () => {
         {
           service: "supervisor",
           env: {},
-          enabled: true,
+          enabled: true, op: "test",
           setup: (state) => {
             state.meta.run_id = "run_abc";
             state.extras.iteration = "dequeue";
@@ -144,7 +144,7 @@ describe("runWideEvent", () => {
     let seenState: ReturnType<typeof fromContext> = null;
     const lines = await captureStdout(async () => {
       await runWideEvent(
-        { service: "supervisor", env: {}, enabled: false },
+        { service: "supervisor", env: {}, enabled: false, op: "test" },
         async () => {
           seenState = fromContext();
         }
@@ -159,7 +159,7 @@ describe("runWideEvent", () => {
       await Promise.all(
         ["a", "b", "c"].map((tag) =>
           runWideEvent(
-            { service: "supervisor", env: {}, enabled: true },
+            { service: "supervisor", env: {}, enabled: true, op: "test" },
             async () => {
               const s = fromContext();
               if (!s) throw new Error("no state");
@@ -182,7 +182,7 @@ describe("emitOneShot", () => {
       emitOneShot({
         service: "supervisor",
         env: {},
-        enabled: true,
+        enabled: true, op: "test",
         populate: (s) => {
           s.meta.run_id = "run_abc";
           s.extras.event = "run:start";
@@ -200,7 +200,7 @@ describe("emitOneShot", () => {
 
   it("emits nothing when disabled", async () => {
     const lines = await captureStdout(() => {
-      emitOneShot({ service: "supervisor", env: {}, enabled: false });
+      emitOneShot({ service: "supervisor", env: {}, enabled: false, op: "test" });
     });
     expect(lines).toHaveLength(0);
   });

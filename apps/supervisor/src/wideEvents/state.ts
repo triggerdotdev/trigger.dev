@@ -22,6 +22,22 @@ export type State = {
   region?: string;
   nodeId?: string;
 
+  /**
+   * Operation discriminator. Dotted `noun.verb` (e.g. `instance.create`,
+   * `snapshot.dispatch`). Low cardinality - bounded set per service, not
+   * unbounded. Empty allowed during construction but expected to be set
+   * before emit.
+   */
+  op: string;
+
+  /**
+   * Event shape. `inbound` for received requests, `outbound` for outgoing
+   * calls, `event` for ambient occurrences with no meaningful duration,
+   * `scheduled` for timer-driven work. Empty allowed; omitted from emit
+   * when empty.
+   */
+  kind: string;
+
   // Caller-attached opaque metadata, flattened to `meta.<key>` on emit.
   meta: Record<string, string>;
 

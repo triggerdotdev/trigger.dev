@@ -27,6 +27,9 @@ export function emit(state: State): void {
   appendIfSet(out, "region", state.region);
   appendIfSet(out, "node_id", state.nodeId);
 
+  appendIfSet(out, "op", state.op);
+  appendIfSet(out, "kind", state.kind);
+
   out.ok = state.ok;
   if (state.statusCode !== 0) out.status = state.statusCode;
   out.duration_ms = state.durationMs;
