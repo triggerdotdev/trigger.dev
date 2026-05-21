@@ -104,10 +104,13 @@ export const apiErrorBoundary: RequestHandler = (req, res, next) => {
   };
 
   const patchedEnd = (chunk?: unknown, ...rest: unknown[]) => {
-    // Same guard as patchedWrite: if headers were flushed (e.g. via an
-    // explicit `res.flushHeaders()` before end-with-body), we cannot rewrite
-    // the response — flush buffered chunks unchanged and skip sanitization.
-    if (!bypass && res.headersSent) flushAndBypass();
+    // Mirror patchedWrite's bypass guards. headersSent: if headers were
+    // flushed (e.g. via an explicit `res.flushHeaders()` before end-with-body),
+    // we cannot rewrite the response. isStreamingContentType: if a single-call
+    // `res.end(chunk)` carries a streaming content-type (SSE / octet-stream),
+    // the leak rules are JSON-text heuristics and have no business interpreting
+    // that payload — flush unchanged and skip sanitization.
+    if (!bypass && (res.headersSent || isStreamingContentType())) flushAndBypass();
     if (bypass) {
       return (originalEnd as (c?: unknown, ...r: unknown[]) => typeof res)(chunk, ...rest);
     }

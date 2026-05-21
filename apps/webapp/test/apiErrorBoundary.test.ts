@@ -238,12 +238,45 @@ describe("apiErrorBoundary", () => {
     expect(response.body).toEqual({ part1: "hello", part2: "world" });
   });
 
+  // The streaming-content-type bypass must fire on single-call res.end
+  // too, not only on res.write. If a 5xx response sets a streaming
+  // content-type and delivers its body via res.end(chunk) directly, the
+  // body must pass through untouched — the leak rules are JSON-text
+  // heuristics and have no business interpreting binary or SSE payloads.
+  test("does NOT sanitize a 5xx octet-stream body delivered via single-call res.end(chunk), even if bytes contain leak pattern", async () => {
+    const app = buildApp();
+    // Construct a binary payload whose bytes happen to spell "P1001"
+    // somewhere — proves the streaming bypass fires before the regex.
+    const binary = Buffer.concat([
+      Buffer.from([0x00, 0xff, 0xab]),
+      Buffer.from("P1001", "ascii"),
+      Buffer.from([0xcd, 0xef, 0x00]),
+    ]);
+
+    app.get("/api/v1/octet-5xx", (_req, res) => {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.end(binary);
+    });
+
+    const response = await request(app)
+      .get("/api/v1/octet-5xx")
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+
+    expect(response.status).toBe(500);
+    expect(Buffer.compare(response.body as Buffer, binary)).toBe(0);
+  });
+
   // patchedWrite applies the isStreamingContentType / MAX_BUFFER_BYTES
-  // bypass checks before buffering; patchedEnd does not, because a
-  // single-call `res.end(chunk)` is one-shot rather than streaming
-  // pileup — the body is fully assembled either way. These tests pin
-  // the byte-integrity contract for that single-call shape: octet-stream
-  // bodies and >64KB bodies both flow through unchanged.
+  // bypass checks before buffering; patchedEnd applies the same
+  // streaming-content-type check. These tests pin the byte-integrity
+  // contract for the single-call res.end shape: octet-stream bodies
+  // and >64KB bodies both flow through unchanged.
   test("preserves bytes for octet-stream body delivered via single-call res.end(chunk)", async () => {
     const app = buildApp();
     // Construct binary bytes that span the full 0-255 range to catch any
