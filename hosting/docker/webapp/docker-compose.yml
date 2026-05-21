@@ -43,6 +43,7 @@ services:
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8030}
       LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
       API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
+      RUNTIME_API_ORIGIN: ${RUNTIME_API_ORIGIN:-}
       ELECTRIC_ORIGIN: http://electric:3000
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
