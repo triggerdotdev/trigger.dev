@@ -43,7 +43,7 @@ import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
@@ -395,7 +395,7 @@ export function SideMenu({
             <div className="w-full">
               <SideMenuItem
                 name="Tasks"
-                icon={TaskIconSmall}
+                icon={TaskIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
                 to={v3EnvironmentPath(organization, project, environment)}
@@ -905,7 +905,7 @@ function ProjectSelector({
                 )}
               >
                 <SelectorDivider />
-                <span className="truncate text-2sm font-normal text-text-bright">
+                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {project.name ?? "Select a project"}
                 </span>
               </span>
