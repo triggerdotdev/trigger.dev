@@ -15,6 +15,7 @@ const preview = new TriggerClient({
   previewBranch: "signup-flow",
 });
 
+const payload = { to: "user@example.com" };
 await prod.tasks.trigger("send-email", payload);
 await preview.runs.list({ status: ["COMPLETED"] });
 ```
@@ -50,9 +51,11 @@ If no `accessToken` resolves from either the constructor or env vars, the first 
 Each instance exposes the management surface as namespaced properties: `tasks`, `runs`, `batch`, `schedules`, `envvars`, `queues`, `deployments`, `prompts`, and `auth`.
 
 ```ts
+import type { emailTask } from "./trigger/email";
+
 const client = new TriggerClient();
 
-await client.tasks.trigger<typeof emailTask>("send-email", { to: "..." });
+await client.tasks.trigger<typeof emailTask>("send-email", { to: "user@example.com" });
 await client.runs.list({ status: ["COMPLETED"], limit: 10 });
 await client.schedules.create({ task: "daily-report", cron: "0 9 * * *" });
 await client.envvars.update("proj_1234", "preview", "DATABASE_URL", { value: "..." });

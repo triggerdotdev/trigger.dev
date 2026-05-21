@@ -59,6 +59,7 @@ const preview = new TriggerClient({
   previewBranch: "signup-flow",
 });
 
+const payload = { to: "user@example.com" };
 await prod.tasks.trigger("send-email", payload);
 await preview.runs.list({ status: ["COMPLETED"] });
 ```

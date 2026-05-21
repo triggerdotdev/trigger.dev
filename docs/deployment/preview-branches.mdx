@@ -82,6 +82,7 @@ const checkout = new TriggerClient({
   previewBranch: "checkout-redesign",
 });
 
+const payload = { to: "user@example.com" };
 await Promise.all([
   signupFlow.tasks.trigger("send-email", payload),
   checkout.tasks.trigger("send-email", payload),
