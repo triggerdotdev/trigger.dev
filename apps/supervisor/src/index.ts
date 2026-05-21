@@ -269,6 +269,8 @@ class ManagedSupervisor {
                 setMeta(state, "deployment_id", message.deployment.friendlyId);
               }
               setMeta(state, "machine_preset", message.run.machine.name);
+              state.extras.op = "dequeue";
+              state.extras.kind = "inbound";
               state.extras.iteration = "dequeue";
               state.extras.dequeue_response_ms = dequeueResponseMs;
               state.extras.polling_interval_ms = pollingIntervalMs;

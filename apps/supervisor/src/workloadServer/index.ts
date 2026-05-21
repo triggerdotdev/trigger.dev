@@ -184,6 +184,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
    */
   private wideRoute<T>(
     ctx: { req: IncomingMessage; res: ServerResponse; params?: unknown },
+    op: string,
     route: string,
     method: string,
     fn: () => Promise<T> | T,
@@ -199,7 +200,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         method,
         traceparent: this.headerValueFromRequest(ctx.req, "traceparent"),
         inboundRequestId: this.headerValueFromRequest(ctx.req, "x-request-id"),
-        setup: (state) => this.attachRouteMeta(state, ctx.params),
+        setup: (state) => {
+          state.extras.op = op;
+          state.extras.kind = "inbound";
+          this.attachRouteMeta(state, ctx.params);
+        },
       },
       fn,
       (state) => {
@@ -231,6 +236,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
+              "attempt.start",
               "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/attempts/start",
               "POST",
               async () => {
@@ -266,6 +272,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
+              "attempt.complete",
               "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/attempts/complete",
               "POST",
               async () => {
@@ -303,6 +310,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
+              "heartbeat",
               "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/heartbeat",
               "POST",
               async () => {
@@ -339,6 +347,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
+              "suspend",
               "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/suspend",
               "GET",
               async () => {
@@ -434,6 +443,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
+              "continue",
               "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/:snapshotFriendlyId/continue",
               "GET",
               async () => {
@@ -475,6 +485,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           handler: async (ctx) =>
             this.wideRoute(
               ctx,
+              "snapshots.since",
               "/api/v1/workload-actions/runs/:runFriendlyId/snapshots/since/:snapshotFriendlyId",
               "GET",
               async () => {
@@ -510,6 +521,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         handler: async (ctx) =>
           this.wideRoute(
             ctx,
+            "deployment.dequeue",
             "/api/v1/workload-actions/deployments/:deploymentId/dequeue",
             "GET",
             async () => {
@@ -541,6 +553,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         handler: async (ctx) =>
           this.wideRoute(
             ctx,
+            "logs.debug",
             "/api/v1/workload-actions/runs/:runFriendlyId/logs/debug",
             "POST",
             async () => {
@@ -562,6 +575,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         handler: async (ctx) =>
           this.wideRoute(
             ctx,
+            "logs.debug",
             "/api/v1/workload-actions/runs/:runFriendlyId/logs/debug",
             "POST",
             async () => {
@@ -576,7 +590,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
       bodySchema: SnapshotCallbackPayloadSchema,
       handler: async (ctx) =>
-        this.wideRoute(ctx, "/api/v1/compute/snapshot-complete", "POST", async () => {
+        this.wideRoute(ctx, "snapshot.callback", "/api/v1/compute/snapshot-complete", "POST", async () => {
           const { reply, body } = ctx;
           if (!this.snapshotService) {
             reply.empty(404);
@@ -666,6 +680,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         emitOneShot({
           ...this.wideEventOpts,
           populate: (state) => {
+            state.extras.op = event === "run_connected" ? "socket.run.connected" : "socket.run.disconnected";
+            state.extras.kind = "event";
             state.extras.event = event;
             setMeta(state, "run_id", friendlyId);
             if (socket.data.deploymentId) {
