@@ -120,7 +120,8 @@ export class APIClientManagerAPI {
     config: ApiClientConfiguration,
     fn: R
   ): Promise<ReturnType<R>> {
-    const merged = this.resolveApiClientConfig({ ...this.#getConfig(), ...config });
+    const current = sdkScope.getStore()?.apiClientConfig ?? this.#getConfig();
+    const merged = this.resolveApiClientConfig({ ...current, ...config });
 
     if (sdkScope.hasStorage()) {
       return sdkScope.withScope({ apiClientConfig: merged, inheritContext: true }, fn);

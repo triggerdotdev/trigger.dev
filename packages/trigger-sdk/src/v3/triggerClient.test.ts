@@ -241,6 +241,22 @@ describe("auth.withAuth", () => {
     ).toBe("https://override.example.com");
   });
 
+  it("composes nested withAuth: outer-scope fields flow into the inner scope", async () => {
+    vi.stubEnv("TRIGGER_SECRET_KEY", "tr_env_token");
+
+    let observedBaseURL: string | undefined;
+    let observedAuth: string | undefined;
+    await auth.withAuth({ baseURL: "https://outer.example.com" }, async () => {
+      await auth.withAuth({ accessToken: "tr_inner_token" }, async () => {
+        observedBaseURL = apiClientManager.baseURL;
+        observedAuth = apiClientManager.accessToken;
+      });
+    });
+
+    expect(observedBaseURL).toBe("https://outer.example.com");
+    expect(observedAuth).toBe("tr_inner_token");
+  });
+
   it("does not stomp on a parallel withAuth call with a different config", async () => {
     configure({ accessToken: "tr_global" });
 
