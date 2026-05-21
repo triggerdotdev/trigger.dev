@@ -5,6 +5,11 @@ import {
 } from "@trigger.dev/core/v3";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 
+// Install the Node AsyncLocalStorage-backed storage so `auth.withAuth`
+// (and the public-token helpers that route through it) actually scope
+// API client config. See `triggerClient.ts` for the same import.
+import "@trigger.dev/core/v3/sdk-scope-storage";
+
 /**
  * Register the global API client configuration. Alternatively, you can set the `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` environment variables.
  * @param options The API client configuration.

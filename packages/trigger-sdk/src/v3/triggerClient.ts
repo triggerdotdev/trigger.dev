@@ -3,6 +3,14 @@ import {
   sdkScope,
   type SdkScope,
 } from "@trigger.dev/core/v3";
+
+// Install the Node AsyncLocalStorage-backed storage. Kept as a
+// side-effect import so it is never reached from browser bundles
+// that don't transitively import TriggerClient (relies on
+// `sideEffects: false` in this package + the v3 root not importing
+// storage-node statically).
+import "@trigger.dev/core/v3/sdk-scope-storage";
+
 import { auth } from "./auth.js";
 import { batch } from "./batch.js";
 import { deployments } from "./deployments.js";

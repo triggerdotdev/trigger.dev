@@ -12,6 +12,7 @@
     "directory": "packages/trigger-sdk"
   },
   "type": "module",
+  "sideEffects": false,
   "files": [
     "dist"
   ],

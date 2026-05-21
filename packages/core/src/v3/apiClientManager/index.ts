@@ -111,7 +111,22 @@ export class APIClientManagerAPI {
     fn: R
   ): Promise<ReturnType<R>> {
     const merged: ApiClientConfiguration = { ...this.#getConfig(), ...config };
-    return sdkScope.withScope({ apiClientConfig: merged, inheritContext: true }, fn);
+
+    // Use the AsyncLocalStorage scope when installed (Node-side code
+    // that has loaded TriggerClient or auth) — concurrency-safe.
+    if (sdkScope.hasStorage()) {
+      return sdkScope.withScope({ apiClientConfig: merged, inheritContext: true }, fn);
+    }
+
+    // Fallback: in-place global mutation. Matches pre-existing behavior
+    // and works in any runtime (browser, Edge, Workers, Node without
+    // the storage installed). Not concurrency-safe — parallel callers
+    // with different configs will stomp on each other.
+    const original = this.#getConfig();
+    registerGlobal(API_NAME, merged, true);
+    return fn().finally(() => {
+      registerGlobal(API_NAME, original, true);
+    });
   }
 
   public setGlobalAPIClientConfiguration(config: ApiClientConfiguration): boolean {
