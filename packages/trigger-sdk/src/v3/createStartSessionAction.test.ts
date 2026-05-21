@@ -120,13 +120,11 @@ describe("chat.createStartSessionAction — types", () => {
     const start = chat.createStartSessionAction<typeof fakeChat>("fake-chat");
 
     // The clientData field is typed off the agent's schema.
-    expectTypeOf(start).parameter(0).toHaveProperty("clientData");
-    expectTypeOf(start).parameter(0).extract<{ clientData?: any }>().toEqualTypeOf<{
-      chatId: string;
-      clientData?: { userId: string; plan: "free" | "pro" };
-      triggerConfig?: any;
-      metadata?: Record<string, unknown>;
-    }>();
+    expectTypeOf<Parameters<typeof start>[0]["clientData"]>().toEqualTypeOf<
+      { userId: string; plan: "free" | "pro" } | undefined
+    >();
+    // The agent's typed clientData is strictly narrower than `unknown`.
+    expectTypeOf<Parameters<typeof start>[0]["clientData"]>().not.toEqualTypeOf<unknown>();
   });
 
   it("defaults clientData to unknown when called without a generic", () => {
