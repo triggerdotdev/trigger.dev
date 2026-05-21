@@ -23,16 +23,16 @@ else
   fail "POST /tags status=$(cat "$WORK/last.status")"
 fi
 api GET "/api/v3/runs/$BUFFERED_ID"
-if body_matches '.runTags // [] | (any(. == "challenge-tag-a") and any(. == "challenge-tag-b"))'; then
+if body_matches '.tags // [] | (any(. == "challenge-tag-a") and any(. == "challenge-tag-b"))'; then
   pass "retrieve shows both new tags on the snapshot"
 else
-  fail "retrieve runTags=$(last_body | jq -c '.runTags // []')"
+  fail "retrieve tags=$(last_body | jq -c '.tags // []')"
 fi
 
 # Idempotent dedup
 api POST "/api/v1/runs/$BUFFERED_ID/tags" '{"tags":["challenge-tag-a"]}'
 api GET "/api/v3/runs/$BUFFERED_ID"
-tag_count=$(last_body | jq '.runTags // [] | map(select(. == "challenge-tag-a")) | length')
+tag_count=$(last_body | jq '.tags // [] | map(select(. == "challenge-tag-a")) | length')
 if [[ "$tag_count" == "1" ]]; then
   pass "duplicate tag deduplicated by mutateSnapshot Lua"
 else

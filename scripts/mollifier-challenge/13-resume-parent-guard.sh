@@ -21,7 +21,23 @@ fi
 PARENT_ID=$(last_body | jq -r '.id')
 info "PG parent runId=$PARENT_ID"
 
-# Step 2: burst children with a shared idempotency key → some mollified.
+# Pre-warm the gate. If the gate is cold, the first same-key triggers
+# would pass through to PG and the IdempotencyKeyConcern's PG-first
+# check would find a PG-cached row on the triggerAndWait — defeating
+# the test of the resumeParentOnCompletion guard. Pre-warming ensures
+# the same-key burst all reaches the buffer.
+warm_dir=$WORK/warm
+mkdir -p "$warm_dir"
+for i in $(seq 1 $((BURST_SIZE / 2))); do
+  curl -s -o "$warm_dir/$i.json" -X POST \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"payload\":{\"warm\":$i}}" \
+    "$API_BASE/api/v1/tasks/$TASK_ID/trigger" &
+done
+wait
+
+# Step 2: burst children with a shared idempotency key → all mollified.
 KEY="challenge-andwait-$(date +%s)-$RANDOM"
 BURST_DIR=$WORK/burst
 mkdir -p "$BURST_DIR"

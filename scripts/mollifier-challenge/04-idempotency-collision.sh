@@ -11,9 +11,28 @@ header "Idempotency collision in burst"
 KEY="challenge-idem-$(date +%s)-$RANDOM"
 info "idempotencyKey=$KEY"
 
-# Fire BURST_SIZE triggers simultaneously, all using the same key. With
-# the gate tripped, some will mollify and SETNX the lookup. Subsequent
-# triggers with the same key should return the SETNX winner's runId
+# Pre-warm the gate FIRST. The Q5 design assumes the same-key burst all
+# reaches the buffer — that's where SETNX is the race-winner. If the
+# gate is still cold, the first 1-2 triggers go to PG and the buffer
+# SETNX never sees them, producing two distinct race-winners (one PG,
+# one buffer). That PG+buffer race exists architecturally but it's a
+# separate concern from B6's buffer-side dedup, which is what this
+# script exercises.
+info "pre-warming the gate with $((BURST_SIZE / 2)) no-key triggers"
+warm_dir=$WORK/warm
+mkdir -p "$warm_dir"
+for i in $(seq 1 $((BURST_SIZE / 2))); do
+  curl -s -o "$warm_dir/$i.json" -X POST \
+    -H "Authorization: Bearer $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{\"payload\":{\"warm\":$i}}" \
+    "$API_BASE/api/v1/tasks/$TASK_ID/trigger" &
+done
+wait
+
+# Fire BURST_SIZE same-key triggers simultaneously. The gate is now
+# tripped, so all should mollify. SETNX serialises them — one wins, the
+# rest receive duplicate_idempotency with the winner's runId
 # (kind: duplicate_idempotency → isCached:true).
 burst_dir=$WORK/burst
 mkdir -p "$burst_dir"
