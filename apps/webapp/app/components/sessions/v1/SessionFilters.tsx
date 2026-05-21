@@ -10,14 +10,17 @@ import { Form } from "@remix-run/react";
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import {
   ComboBox,
   SelectButtonItem,
+  SelectGroup,
+  SelectGroupLabel,
   SelectItem,
   SelectList,
   SelectPopover,
@@ -102,9 +105,12 @@ export function getSessionFiltersFromSearchParams(
   return parsed.data;
 }
 
+type PossibleTask = { slug: string; isInLatestDeployment: boolean };
+
 type SessionFiltersProps = {
   hasFilters: boolean;
   possibleTypes?: string[];
+  possibleTasks: PossibleTask[];
 };
 
 export function SessionFilters(props: SessionFiltersProps) {
@@ -120,7 +126,7 @@ export function SessionFilters(props: SessionFiltersProps) {
   return (
     <div className="flex flex-row flex-wrap items-center gap-1.5">
       <PermanentStatusFilter />
-      <PermanentTaskIdentifierFilter />
+      <PermanentTaskIdentifierFilter possibleTasks={props.possibleTasks} />
       <TimeFilter shortcut={{ key: "d" }} />
       <AppliedFilters />
       <FilterMenu {...props} />
@@ -490,32 +496,44 @@ function TaskIdentifierDropdown({
   searchValue,
   clearSearchValue,
   onClose,
+  possibleTasks,
 }: {
   trigger: ReactNode;
   searchValue: string;
   clearSearchValue: () => void;
   onClose?: () => void;
+  possibleTasks: PossibleTask[];
 }) {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const { value, replace } = useSearchParams();
-  const current = value("taskIdentifiers");
-  const [draft, setDraft] = useState(current ?? "");
+  const { values, replace } = useSearchParams();
 
-  const apply = useCallback(() => {
+  const handleChange = (newValues: string[]) => {
     clearSearchValue();
     replace({
-      taskIdentifiers: draft.trim() === "" ? undefined : [draft.trim()],
+      taskIdentifiers: newValues.length > 0 ? newValues : undefined,
       cursor: undefined,
       direction: undefined,
     });
-    setOpen(false);
-  }, [clearSearchValue, draft, replace]);
+  };
+
+  const selected = values("taskIdentifiers");
+
+  const filtered = useMemo(() => {
+    // Surface any selected identifiers that aren't in the registry (deleted
+    // agents) so the dropdown can still show + un-check them.
+    const seen = new Set(possibleTasks.map((t) => t.slug));
+    const extras: PossibleTask[] = selected
+      .filter((slug) => slug && !seen.has(slug))
+      .map((slug) => ({ slug, isInLatestDeployment: false }));
+    return [...possibleTasks, ...extras].filter((task) =>
+      task.slug.toLowerCase().includes(searchValue.toLowerCase())
+    );
+  }, [possibleTasks, searchValue, selected]);
 
   return (
-    <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>
+    <SelectProvider value={selected} setValue={handleChange} virtualFocus={true}>
       {trigger}
       <SelectPopover
-        hideOnEnter={false}
+        className="min-w-0 max-w-[min(360px,var(--popover-available-width))]"
         hideOnEscape={() => {
           if (onClose) {
             onClose();
@@ -523,37 +541,44 @@ function TaskIdentifierDropdown({
           }
           return true;
         }}
-        className="max-w-[min(32ch,var(--popover-available-width))]"
       >
-        <div className="flex flex-col gap-4 p-3">
-          <div className="flex flex-col gap-1">
-            <Label>Task identifier</Label>
-            <Input
-              placeholder="my-task"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              variant="small"
-              className="w-[29ch] font-mono"
-              spellCheck={false}
-            />
-          </div>
-          <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="secondary/small"
-              shortcut={{
-                modifiers: ["mod"],
-                key: "Enter",
-                enabledOnInputElements: true,
-              }}
-              onClick={apply}
-            >
-              Apply
-            </Button>
-          </div>
-        </div>
+        <ComboBox placeholder={"Filter by Agent ID..."} value={searchValue} />
+        <SelectList>
+          {filtered
+            .filter((item) => item.isInLatestDeployment)
+            .map((item) => (
+              <SelectItem
+                key={item.slug}
+                value={item.slug}
+                icon={<CubeSparkleIcon className="size-4 flex-none text-agents" />}
+                className="text-text-bright"
+              >
+                <MiddleTruncate text={item.slug} />
+              </SelectItem>
+            ))}
+          {filtered.some((item) => !item.isInLatestDeployment) && (
+            <SelectGroup>
+              <SelectGroupLabel>Archived</SelectGroupLabel>
+              {filtered
+                .filter((item) => !item.isInLatestDeployment)
+                .map((item) => (
+                  <SelectItem
+                    key={item.slug}
+                    value={item.slug}
+                    icon={
+                      <span className="opacity-50">
+                        <CubeSparkleIcon className="size-4 flex-none text-agents" />
+                      </span>
+                    }
+                    className="text-text-bright"
+                  >
+                    <MiddleTruncate text={item.slug} />
+                  </SelectItem>
+                ))}
+            </SelectGroup>
+          )}
+          {filtered.length === 0 && <SelectItem disabled>No agents found</SelectItem>}
+        </SelectList>
       </SelectPopover>
     </SelectProvider>
   );
@@ -561,7 +586,7 @@ function TaskIdentifierDropdown({
 
 const taskShortcut = { key: "t" };
 
-function PermanentTaskIdentifierFilter() {
+function PermanentTaskIdentifierFilter({ possibleTasks }: { possibleTasks: PossibleTask[] }) {
   const { values, del } = useSearchParams();
   const taskIdentifiers = values("taskIdentifiers");
   const hasTasks = taskIdentifiers.length > 0 && !taskIdentifiers.every((v) => v === "");
@@ -593,8 +618,8 @@ function PermanentTaskIdentifierFilter() {
               >
                 {hasTasks ? (
                   <AppliedFilter
-                    label="Task"
-                    icon={<TaskIcon className="size-4" />}
+                    label="Agent ID"
+                    icon={<CubeSparkleIcon className="size-4 text-text-bright" />}
                     value={appliedSummary(taskIdentifiers)}
                     onRemove={() => del(["taskIdentifiers", "cursor", "direction"])}
                     variant="secondary/small"
@@ -602,14 +627,14 @@ function PermanentTaskIdentifierFilter() {
                   />
                 ) : (
                   <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
-                    <TaskIcon className="size-4" />
-                    <span>Task</span>
+                    <CubeSparkleIcon className="size-4 text-text-bright" />
+                    <span>Agent ID</span>
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
               <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <span>Filter by task</span>
+                  <span>Filter by Agent ID</span>
                   <ShortcutKey
                     className="size-4 flex-none"
                     shortcut={taskShortcut}
@@ -621,6 +646,7 @@ function PermanentTaskIdentifierFilter() {
           }
           searchValue={search}
           clearSearchValue={() => setSearch("")}
+          possibleTasks={possibleTasks}
         />
       )}
     </FilterMenuProvider>

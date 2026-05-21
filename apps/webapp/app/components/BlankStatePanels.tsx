@@ -12,7 +12,7 @@ import {
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
-import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
@@ -716,7 +716,7 @@ export function PromptsNone() {
   return (
     <InfoPanel
       title="Define your first prompt"
-      icon={AIPromptsIcon}
+      icon={AIChatIcon}
       iconClassName="text-aiPrompts"
       panelClassName="max-w-lg"
       accessory={

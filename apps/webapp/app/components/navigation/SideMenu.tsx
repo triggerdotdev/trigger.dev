@@ -2,16 +2,14 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
-  ArrowsRightLeftIcon,
   ArrowTopRightOnSquareIcon,
   BeakerIcon,
   BellAlertIcon,
-  ChartBarIcon,
+  ChartBarIcon as ChartBarIconHero,
   ChevronRightIcon,
   ClockIcon,
   Cog8ToothIcon,
   CogIcon,
-  CubeIcon,
   ExclamationTriangleIcon,
   FolderIcon,
   FolderOpenIcon,
@@ -26,15 +24,18 @@ import {
   Squares2X2Icon,
   TableCellsIcon,
   UsersIcon,
-} from "@heroicons/react/20/solid";
+} from "@heroicons/react/24/outline";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
-import { IconBugFilled } from "@tabler/icons-react";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
-import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
+import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { Box3DIcon } from "~/assets/icons/Box3DIcon";
+import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -483,7 +484,7 @@ export function SideMenu({
                 />
                 <SideMenuItem
                   name="Sessions"
-                  icon={ArrowsRightLeftIcon}
+                  icon={AIChatIcon}
                   activeIconColor="text-sessions"
                   inactiveIconColor="text-text-dimmed"
                   to={v3SessionsPath(organization, project, environment)}
@@ -500,7 +501,7 @@ export function SideMenu({
                 />
                 <SideMenuItem
                   name="Prompts"
-                  icon={AIPromptsIcon}
+                  icon={AIPenIcon}
                   trailingIconClassName="size-6"
                   activeIconColor="text-aiPrompts"
                   inactiveIconColor="text-text-dimmed"
@@ -511,7 +512,7 @@ export function SideMenu({
                 {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
                   <SideMenuItem
                     name="Models"
-                    icon={CubeIcon}
+                    icon={Box3DIcon}
                     activeIconColor="text-models"
                     inactiveIconColor="text-text-dimmed"
                     to={v3ModelsPath(organization, project, environment)}
@@ -557,7 +558,7 @@ export function SideMenu({
                 )}
                 <SideMenuItem
                   name="Errors"
-                  icon={IconBugFilled}
+                  icon={BugIcon}
                   activeIconColor="text-errors"
                   inactiveIconColor="text-text-dimmed"
                   to={v3ErrorsPath(organization, project, environment)}
@@ -742,7 +743,11 @@ export function SideMenu({
               isCollapsed && "items-center"
             )}
           >
-            <HelpAndAI isCollapsed={isCollapsed} organizationId={organization.id} projectId={project.id} />
+            <HelpAndAI
+              isCollapsed={isCollapsed}
+              organizationId={organization.id}
+              projectId={project.id}
+            />
             {isFreeUser && (
               <CollapsibleHeight isCollapsed={isCollapsed}>
                 <FreePlanUsage
@@ -980,7 +985,7 @@ function ProjectSelector({
                 iconSpacing="gap-1.5"
                 className="group-hover/button:border-charcoal-500"
               >
-                <ChartBarIcon className="size-4 text-text-dimmed" />
+                <ChartBarIconHero className="size-4 text-text-dimmed" />
                 <span className="text-text-bright">Usage</span>
               </LinkButton>
             )}
@@ -1192,7 +1197,15 @@ function CollapsibleHeight({
   );
 }
 
-function HelpAndAI({ isCollapsed, organizationId, projectId }: { isCollapsed: boolean; organizationId: string; projectId: string }) {
+function HelpAndAI({
+  isCollapsed,
+  organizationId,
+  projectId,
+}: {
+  isCollapsed: boolean;
+  organizationId: string;
+  projectId: string;
+}) {
   return (
     <LayoutGroup>
       <div
@@ -1202,7 +1215,11 @@ function HelpAndAI({ isCollapsed, organizationId, projectId }: { isCollapsed: bo
         )}
       >
         <ShortcutsAutoOpen />
-        <HelpAndFeedback isCollapsed={isCollapsed} organizationId={organizationId} projectId={projectId} />
+        <HelpAndFeedback
+          isCollapsed={isCollapsed}
+          organizationId={organizationId}
+          projectId={projectId}
+        />
         <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>

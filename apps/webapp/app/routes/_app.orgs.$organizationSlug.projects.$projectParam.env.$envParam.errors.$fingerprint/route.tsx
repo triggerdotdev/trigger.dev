@@ -3,9 +3,9 @@ import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react"
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import {
   IconAlarmSnooze as IconAlarmSnoozeBase,
-  IconBugFilled,
   IconCircleDotted,
 } from "@tabler/icons-react";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { parse } from "@conform-to/zod";
 import { z } from "zod";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
@@ -511,7 +511,7 @@ function ErrorGroupDetail({
               />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                <IconBugFilled className="size-16 text-charcoal-650" />
+                <BugIcon className="size-16 text-charcoal-650" />
                 <Paragraph className="max-w-32 text-center text-text-dimmed">
                   No runs found for this error.
                 </Paragraph>
