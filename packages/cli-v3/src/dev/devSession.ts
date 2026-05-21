@@ -121,6 +121,10 @@ export async function startDevSession({
 
     // Built-in skill bundling — copies registered skill folders into
     // `.trigger/skills/{id}/` so `skill.local()` works at dev runtime.
+    // The indexer pass must match the main worker indexer's env (see
+    // devSupervisor.#getEnvVars) — otherwise task files that read
+    // CLI-injected vars (TRIGGER_API_URL, TRIGGER_SECRET_KEY) at module
+    // top level throw on import here while succeeding in the real worker.
     try {
       const buildManifestPath = join(
         workerDir?.path ?? destination.path,
@@ -131,7 +135,11 @@ export async function startDevSession({
         buildManifest,
         buildManifestPath,
         workingDir: rawConfig.workingDir,
-        env: process.env,
+        env: {
+          ...process.env,
+          TRIGGER_API_URL: client.apiURL,
+          TRIGGER_SECRET_KEY: client.accessToken ?? undefined,
+        },
         logger: buildContext.logger,
       });
       buildManifest = skillsResult.buildManifest;
