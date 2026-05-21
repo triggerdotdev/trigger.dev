@@ -10,7 +10,7 @@
 // Defaults: 1000 chunks × 10 chars, single message.
 
 import { chat } from "@trigger.dev/sdk/ai";
-import { type UIMessage, simulateReadableStream, streamText } from "ai";
+import { type ModelMessage, simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 
@@ -20,10 +20,16 @@ type StressConfig = {
   manyMessages: boolean;
 };
 
-function parseConfig(messages: UIMessage[]): StressConfig {
+function parseConfig(messages: ModelMessage[]): StressConfig {
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  const text =
-    lastUser?.parts?.[0]?.type === "text" ? lastUser.parts[0].text.trim() : "";
+  const content = lastUser?.content;
+  let text = "";
+  if (typeof content === "string") {
+    text = content.trim();
+  } else if (Array.isArray(content)) {
+    const textPart = content.find((p) => p.type === "text");
+    text = textPart && "text" in textPart ? textPart.text.trim() : "";
+  }
   const parts = text.split(/\s+/);
   const chunkCount = Number(parts[0]);
   const chunkSize = Number(parts[1]);

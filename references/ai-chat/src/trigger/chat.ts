@@ -659,7 +659,7 @@ export const aiChatRaw = chat.customAgent({
       stop.reset();
 
       const messages = await conversation.addIncoming(
-        currentPayload.messages,
+        currentPayload.message ? [currentPayload.message] : [],
         currentPayload.trigger,
         turn
       );
@@ -678,8 +678,7 @@ export const aiChatRaw = chat.customAgent({
       const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
 
       const steeringSub = chat.messages.on(async (msg) => {
-        const lastMsg = msg.messages?.[msg.messages.length - 1];
-        if (lastMsg) await conversation.steerAsync(lastMsg);
+        if (msg.message) await conversation.steerAsync(msg.message);
       });
 
       const result = streamText({
@@ -1049,10 +1048,10 @@ export const cfTrustTestAgent = chat
     id: "cf-trust-test",
     idleTimeoutInSeconds: 60,
     onTurnStart: async ({ turn, clientData }) => {
-      logger.info("cf-trust-test turn", { turn, cf: clientData.__cf, userId: clientData.userId });
+      logger.info("cf-trust-test turn", { turn, cf: clientData!.__cf, userId: clientData!.userId });
     },
     run: async ({ messages, clientData, signal }) => {
-      const cf = clientData.__cf;
+      const cf = clientData!.__cf;
       return streamText({
         model: openai("gpt-4o-mini"),
         system:
