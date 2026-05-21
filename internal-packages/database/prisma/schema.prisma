@@ -830,6 +830,11 @@ model Session {
   /// (OSS, or pre-backfill); reads fall back to the global basin.
   streamBasinName String?
 
+  /// Storage URI (with protocol prefix) for this session's chat.agent
+  /// snapshot blob. Set on first snapshot write. Null = pre-column session,
+  /// fall back to computed default path.
+  chatSnapshotStoragePath String?
+
   runs SessionRun[]
 
   /// Idempotency: `(env, externalId)` uniquely identifies a session.

@@ -220,20 +220,6 @@ async function findLatestSessionInCursor(
 export type { ChatSnapshotV1 } from "@trigger.dev/core/v3";
 
 /**
- * S3 key suffix for a session's snapshot blob. The webapp's presigned-URL
- * routes prefix this with `packets/{projectRef}/{envSlug}/` server-side, so
- * the final S3 key lands at
- * `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json`.
- *
- * Stable per session: the friendlyId persists across `chat.requestUpgrade`
- * continuations and idle-suspend restarts.
- * @internal
- */
-function snapshotFilename(sessionId: string): string {
-  return `sessions/${sessionId}/snapshot.json`;
-}
-
-/**
  * Test-only override hook — `mockChatAgent` installs a fake to return
  * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
  * pattern in `sessions.ts`. Not part of the public API.
@@ -285,7 +271,7 @@ async function readChatSnapshot<TUIMessage extends UIMessage>(
   const apiClient = apiClientManager.clientOrThrow();
   let presignedUrl: string;
   try {
-    const resp = await apiClient.getPayloadUrl(snapshotFilename(sessionId));
+    const resp = await apiClient.getChatSnapshotUrl(sessionId);
     presignedUrl = resp.presignedUrl;
   } catch (error) {
     logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
@@ -360,7 +346,7 @@ async function writeChatSnapshot<TUIMessage extends UIMessage>(
   const apiClient = apiClientManager.clientOrThrow();
   let presignedUrl: string;
   try {
-    const resp = await apiClient.createUploadPayloadUrl(snapshotFilename(sessionId));
+    const resp = await apiClient.createChatSnapshotUploadUrl(sessionId);
     presignedUrl = resp.presignedUrl;
   } catch (error) {
     logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
