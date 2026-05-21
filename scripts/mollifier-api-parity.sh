@@ -130,6 +130,47 @@ probe_compare() {
   printf "%s     buffered: %s%s\n"  "$c_dim" "$(body_preview "$WORK/buffered-$label.body")" "$c_reset"
 }
 
+# assert_body LABEL JQ_FILTER EXPECTED_DESCRIPTION
+# Asserts the buffered response body satisfies a jq filter (returns
+# truthy). Use for endpoint-specific contract checks beyond status code.
+# E.g. for metadata-get: '. | has("metadata") and has("metadataType")'.
+assert_body() {
+  local label=$1 jq_filter=$2 desc=$3
+  local body_file=$WORK/buffered-$label.body
+  if jq -e "$jq_filter" "$body_file" >/dev/null 2>&1; then
+    printf "%s     ✓ body shape: %s%s\n" "$c_ok" "$desc" "$c_reset"
+    return 0
+  fi
+  printf "%s     ✗ body shape: expected %s%s\n" "$c_fail" "$desc" "$c_reset"
+  failures+=( "$label  buffered body shape: expected $desc" )
+  fail_count=$((fail_count + 1))
+  return 1
+}
+
+# assert_status_ok LABEL  — buffered status must be 2xx (Phase A/C target)
+assert_status_ok() {
+  local label=$1
+  local status=$(cat "$WORK/buffered-$label.status")
+  if [[ "$status" =~ ^2 ]]; then return 0; fi
+  printf "%s     ✗ status: expected 2xx, got %s%s\n" "$c_fail" "$status" "$c_reset"
+  failures+=( "$label  buffered status: expected 2xx, got $status" )
+  fail_count=$((fail_count + 1))
+  return 1
+}
+
+# probe_buffered LABEL METHOD PATH [DATA]
+# Probe only the buffered run (used for follow-up read-back checks
+# after a mutation). Same body/status capture as probe_compare but no
+# parity comparison against control.
+probe_buffered() {
+  local label=$1 method=$2 path=$3 data=${4:-}
+  call "$method" "${path//\{ID\}/$BUFFERED_ID}" "buffered-$label" "$data"
+  local status=$(cat "$WORK/buffered-$label.status")
+  printf "%s[%-26s]%s %-6s buffered=%-3s\n" \
+    "$c_dim" "$label" "$c_reset" "$method" "$status"
+  printf "%s     buffered: %s%s\n" "$c_dim" "$(body_preview "$WORK/buffered-$label.body")" "$c_reset"
+}
+
 # ----------------------------------------------------------------------
 # 1. Set up CONTROL run — delayed trigger so it lives in PG, never executes
 # ----------------------------------------------------------------------
@@ -196,17 +237,102 @@ echo
 echo "${c_dim}==> Probing endpoints — control vs buffered should match${c_reset}"
 echo
 
+# --- Reads --------------------------------------------------------------
+
 probe_compare "retrieve-v3"  GET  "/api/v3/runs/{ID}"
+assert_status_ok "retrieve-v3"
+assert_body      "retrieve-v3" '.id and .taskIdentifier and .status' \
+                 'id + taskIdentifier + status'
+
 probe_compare "trace"        GET  "/api/v1/runs/{ID}/trace"
+assert_status_ok "trace"
+# Buffered run hasn't executed so the trace is a single root span +
+# empty events. The presenter shape: { trace: { traceId, rootSpan, events } }.
+assert_body      "trace" '.trace and .trace.traceId' \
+                 'trace.traceId present'
+
 probe_compare "events"       GET  "/api/v1/runs/{ID}/events"
+assert_status_ok "events"
+assert_body      "events" '.events | type == "array"' \
+                 'events is an array'
+
 probe_compare "attempts"     GET  "/api/v1/runs/{ID}/attempts"
+assert_status_ok "attempts"
+assert_body      "attempts" '.attempts | type == "array" and length == 0' \
+                 'attempts is empty array'
+
+# `result` is the one read endpoint that's expected to 404 (run is not
+# finished). Contract is { error: "Run either doesn't exist or is not
+# finished" } on both sides.
 probe_compare "result"       GET  "/api/v1/runs/{ID}/result"
+buffered_result_status=$(cat "$WORK/buffered-result.status")
+if [[ "$buffered_result_status" != "404" ]]; then
+  printf "%s     ✗ status: expected 404, got %s%s\n" "$c_fail" "$buffered_result_status" "$c_reset"
+  failures+=( "result  buffered status: expected 404, got $buffered_result_status" )
+  fail_count=$((fail_count + 1))
+fi
+
 probe_compare "metadata-get" GET  "/api/v1/runs/{ID}/metadata"
-probe_compare "metadata-put" PUT  "/api/v1/runs/{ID}/metadata" '{"metadata":{"probe":"true"}}'
-probe_compare "tags-add"     POST "/api/v1/runs/{ID}/tags"     '{"tags":["parity"]}'
+assert_status_ok "metadata-get"
+assert_body      "metadata-get" 'has("metadata") and has("metadataType")' \
+                 '{ metadata, metadataType } keys present'
+
+# --- Mutations + read-back ---------------------------------------------
+
+probe_compare "metadata-put" PUT  "/api/v1/runs/{ID}/metadata" \
+              '{"metadata":{"probe":"true"}}'
+assert_status_ok "metadata-put"
+# Read back: the snapshot should now carry the patched metadata.
+probe_buffered  "metadata-readback" GET "/api/v1/runs/{ID}/metadata"
+assert_body     "metadata-readback" \
+                '(.metadata // "") | tostring | contains("\"probe\":\"true\"")' \
+                'snapshot metadata reflects PUT'
+
+probe_compare "tags-add"     POST "/api/v1/runs/{ID}/tags" \
+              '{"tags":["parity-probe"]}'
+assert_status_ok "tags-add"
+probe_buffered  "tags-readback" GET "/api/v3/runs/{ID}"
+assert_body     "tags-readback" \
+                '.runTags // [] | any(. == "parity-probe")' \
+                'snapshot runTags contains "parity-probe"'
+
+probe_compare "reschedule"   POST "/api/v1/runs/{ID}/reschedule" \
+              '{"delay":"5m"}'
+assert_status_ok "reschedule"
+
 probe_compare "replay"       POST "/api/v1/runs/{ID}/replay"   '{}'
-probe_compare "reschedule"   POST "/api/v1/runs/{ID}/reschedule" '{"delay":"5m"}'
+assert_status_ok "replay"
+assert_body     "replay" '.id and (.id | startswith("run_"))' \
+                'new runId returned'
+
+# Cancel last — it terminates the buffered run's snapshot. Subsequent
+# reads on the original would still synthesise via the snapshot, but
+# the run is now slated for CANCELED materialisation.
 probe_compare "cancel-v2"    POST "/api/v2/runs/{ID}/cancel"   '{}'
+assert_status_ok "cancel-v2"
+
+# --- Listing -----------------------------------------------------------
+
+# Verify the buffered run surfaces in the runs list (Phase E). Pull a
+# generous page and assert our BUFFERED_ID is present.
+call GET "/api/v1/runs?page%5Bsize%5D=100" "list-buffered"
+list_status=$(cat "$WORK/list-buffered.status")
+printf "%s[%-26s]%s %-6s buffered=%-3s\n" \
+  "$c_dim" "list-includes-buffered" "$c_reset" "GET" "$list_status"
+if [[ "$list_status" =~ ^2 ]]; then
+  if jq -e --arg id "$BUFFERED_ID" '.data | any(.id == $id)' "$WORK/list-buffered.body" >/dev/null 2>&1; then
+    printf "%s     ✓ buffered runId appears in /api/v1/runs page%s\n" "$c_ok" "$c_reset"
+    pass_count=$((pass_count + 1))
+  else
+    printf "%s     ✗ buffered runId %s missing from /api/v1/runs page%s\n" "$c_fail" "$BUFFERED_ID" "$c_reset"
+    failures+=( "list-includes-buffered  buffered runId missing from listing" )
+    fail_count=$((fail_count + 1))
+  fi
+else
+  printf "%s     ✗ listing status: expected 2xx, got %s%s\n" "$c_fail" "$list_status" "$c_reset"
+  failures+=( "list-includes-buffered  status: expected 2xx, got $list_status" )
+  fail_count=$((fail_count + 1))
+fi
 
 # ----------------------------------------------------------------------
 # 4. Summary
