@@ -225,9 +225,8 @@ import { chat } from "@trigger.dev/sdk/ai";
 import { prompts } from "@trigger.dev/sdk";
 import { streamText, createProviderRegistry } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { anthropic } from "@ai-sdk/anthropic";
 
-const registry = createProviderRegistry({ anthropic, anthropic });
+const registry = createProviderRegistry({ anthropic });
 
 const systemPrompt = prompts.define({
   id: "my-chat-system",
