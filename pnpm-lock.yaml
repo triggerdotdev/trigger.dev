@@ -2636,6 +2636,28 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cli-v3
 
+  references/multi-client:
+    dependencies:
+      '@trigger.dev/build':
+        specifier: workspace:*
+        version: link:../../packages/build
+      '@trigger.dev/sdk':
+        specifier: workspace:*
+        version: link:../../packages/trigger-sdk
+    devDependencies:
+      '@types/node':
+        specifier: 20.14.14
+        version: 20.14.14
+      trigger.dev:
+        specifier: workspace:*
+        version: link:../../packages/cli-v3
+      tsx:
+        specifier: 4.17.0
+        version: 4.17.0
+      typescript:
+        specifier: 5.5.4
+        version: 5.5.4
+
   references/nextjs-realtime:
     dependencies:
       '@ai-sdk/openai':
@@ -23312,7 +23334,7 @@ snapshots:
 
   '@epic-web/test-server@0.1.0(bufferutil@4.0.9)':
     dependencies:
-      '@hono/node-server': 1.12.2(hono@4.12.15)
+      '@hono/node-server': 1.12.2(hono@4.5.11)
       '@hono/node-ws': 1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)
       '@open-draft/deferred-promise': 2.2.0
       '@types/ws': 8.5.12
@@ -23991,9 +24013,9 @@ snapshots:
     dependencies:
       react: 18.2.0
 
-  '@hono/node-server@1.12.2(hono@4.12.15)':
+  '@hono/node-server@1.12.2(hono@4.5.11)':
     dependencies:
-      hono: 4.12.15
+      hono: 4.5.11
 
   '@hono/node-server@1.19.11(hono@4.12.15)':
     dependencies:
@@ -24009,7 +24031,7 @@ snapshots:
 
   '@hono/node-ws@1.0.4(@hono/node-server@1.12.2(hono@4.5.11))(bufferutil@4.0.9)':
     dependencies:
-      '@hono/node-server': 1.12.2(hono@4.12.15)
+      '@hono/node-server': 1.12.2(hono@4.5.11)
       ws: 8.18.3(bufferutil@4.0.9)
     transitivePeerDependencies:
       - bufferutil

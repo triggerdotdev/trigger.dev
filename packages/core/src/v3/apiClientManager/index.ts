@@ -1,6 +1,7 @@
 import { ApiClient } from "../apiClient/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { getEnvVar } from "../utils/getEnv.js";
+import { sdkScope } from "../sdkScope/index.js";
 import { ApiClientConfiguration } from "./types.js";
 
 const API_NAME = "api-client";
@@ -30,11 +31,27 @@ export class APIClientManagerAPI {
   }
 
   get baseURL(): string | undefined {
+    // baseURL is plumbing (where the API lives), not identity. Scoped
+    // instances read their own config first but still fall back to the
+    // process-level TRIGGER_API_URL so local-dev / CI overrides don't
+    // require passing baseURL into every `new TriggerClient(...)`.
+    const scoped = sdkScope.getStore();
+    if (scoped) {
+      return (
+        scoped.apiClientConfig.baseURL ??
+        getEnvVar("TRIGGER_API_URL") ??
+        "https://api.trigger.dev"
+      );
+    }
     const config = this.#getConfig();
     return config?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
   }
 
   get accessToken(): string | undefined {
+    const scoped = sdkScope.getStore();
+    if (scoped) {
+      return scoped.apiClientConfig.accessToken ?? scoped.apiClientConfig.secretKey;
+    }
     const config = this.#getConfig();
     return (
       config?.secretKey ??
@@ -45,6 +62,11 @@ export class APIClientManagerAPI {
   }
 
   get branchName(): string | undefined {
+    const scoped = sdkScope.getStore();
+    if (scoped) {
+      const value = scoped.apiClientConfig.previewBranch ?? undefined;
+      return value ? value : undefined;
+    }
     const config = this.#getConfig();
     const value =
       config?.previewBranch ??
@@ -59,8 +81,10 @@ export class APIClientManagerAPI {
       return undefined;
     }
 
-    const requestOptions = this.#getConfig()?.requestOptions;
-    const futureFlags = this.#getConfig()?.future;
+    const scoped = sdkScope.getStore();
+    const source = scoped?.apiClientConfig ?? this.#getConfig();
+    const requestOptions = source?.requestOptions;
+    const futureFlags = source?.future;
 
     return new ApiClient(this.baseURL, this.accessToken, this.branchName, requestOptions, futureFlags);
   }
@@ -74,8 +98,10 @@ export class APIClientManagerAPI {
     }
 
     const branchName = config?.previewBranch ?? this.branchName;
-    const requestOptions = config?.requestOptions ?? this.#getConfig()?.requestOptions;
-    const futureFlags = config?.future ?? this.#getConfig()?.future;
+    const scoped = sdkScope.getStore();
+    const source = scoped?.apiClientConfig ?? this.#getConfig();
+    const requestOptions = config?.requestOptions ?? source?.requestOptions;
+    const futureFlags = config?.future ?? source?.future;
 
     return new ApiClient(baseURL, accessToken, branchName, requestOptions, futureFlags);
   }
@@ -84,17 +110,12 @@ export class APIClientManagerAPI {
     config: ApiClientConfiguration,
     fn: R
   ): Promise<ReturnType<R>> {
-    const originalConfig = this.#getConfig();
-    const $config = { ...originalConfig, ...config };
-    registerGlobal(API_NAME, $config, true);
-
-    return fn().finally(() => {
-      registerGlobal(API_NAME, originalConfig, true);
-    });
+    const merged: ApiClientConfiguration = { ...this.#getConfig(), ...config };
+    return sdkScope.withScope({ apiClientConfig: merged, inheritContext: true }, fn);
   }
 
   public setGlobalAPIClientConfiguration(config: ApiClientConfiguration): boolean {
-    return registerGlobal(API_NAME, config);
+    return registerGlobal(API_NAME, config, true);
   }
 
   #getConfig(): ApiClientConfiguration | undefined {
