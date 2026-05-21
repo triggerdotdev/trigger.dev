@@ -1,14 +1,9 @@
 import {
   type ApiClientConfiguration,
+  apiClientManager,
   sdkScope,
   type SdkScope,
 } from "@trigger.dev/core/v3";
-
-// Install the Node AsyncLocalStorage-backed storage. Kept as a
-// side-effect import so it is never reached from browser bundles
-// that don't transitively import TriggerClient (relies on
-// `sideEffects: false` in this package + the v3 root not importing
-// storage-node statically).
 import "@trigger.dev/core/v3/sdk-scope-storage";
 
 import { auth } from "./auth.js";
@@ -26,21 +21,10 @@ import {
 } from "./shared.js";
 
 export type TriggerClientConfig = ApiClientConfiguration & {
-  /**
-   * When `true`, instance methods inherit the ambient task context
-   * (`parentRunId`, `lockToVersion`, `isTest`, current task's `taskContext`)
-   * when invoked from inside a task. Default `false` — instance calls are
-   * fully isolated from the surrounding task runtime, which is what you
-   * want when the instance points at a different project, environment, or
-   * preview branch than the task is running in.
-   */
+  /** Inherit ambient task context (parentRunId, lockToVersion, isTest) when called from inside a task. Default `false`. */
   inheritContext?: boolean;
 };
 
-// Curated instance surfaces — drop methods that are inside-task-only
-// (e.g. `batch.triggerAndWait`, which depends on the runtime manager) or
-// task-definition-time (e.g. `schedules.task`, `prompts.define`), and
-// drop helpers that don't need a client (`schedules.timezones`).
 const tasksApi = { trigger, batchTrigger, triggerAndSubscribe };
 const batchInstanceKeys = ["trigger", "triggerByTask", "retrieve"] as const;
 const schedulesInstanceKeys = [
@@ -89,21 +73,11 @@ export class TriggerClient {
   readonly schedules: SchedulesApi;
   readonly auth: AuthApi;
 
-  constructor(config: TriggerClientConfig) {
-    if (!config.accessToken && !config.secretKey) {
-      throw new Error("TriggerClient: accessToken (or secretKey) is required");
-    }
-
+  constructor(config: TriggerClientConfig = {}) {
+    const { inheritContext, ...partial } = config;
     const scope: SdkScope = {
-      apiClientConfig: {
-        baseURL: config.baseURL,
-        accessToken: config.accessToken,
-        secretKey: config.secretKey,
-        previewBranch: config.previewBranch,
-        requestOptions: config.requestOptions,
-        future: config.future,
-      },
-      inheritContext: config.inheritContext ?? false,
+      apiClientConfig: apiClientManager.resolveApiClientConfig(partial),
+      inheritContext: inheritContext ?? false,
     };
 
     this.tasks = bindToScope(tasksApi, scope);

@@ -31,17 +31,9 @@ export class APIClientManagerAPI {
   }
 
   get baseURL(): string | undefined {
-    // baseURL is plumbing (where the API lives), not identity. Scoped
-    // instances read their own config first but still fall back to the
-    // process-level TRIGGER_API_URL so local-dev / CI overrides don't
-    // require passing baseURL into every `new TriggerClient(...)`.
     const scoped = sdkScope.getStore();
     if (scoped) {
-      return (
-        scoped.apiClientConfig.baseURL ??
-        getEnvVar("TRIGGER_API_URL") ??
-        "https://api.trigger.dev"
-      );
+      return scoped.apiClientConfig.baseURL ?? "https://api.trigger.dev";
     }
     const config = this.#getConfig();
     return config?.baseURL ?? getEnvVar("TRIGGER_API_URL") ?? "https://api.trigger.dev";
@@ -50,18 +42,7 @@ export class APIClientManagerAPI {
   get accessToken(): string | undefined {
     const scoped = sdkScope.getStore();
     if (scoped) {
-      const value = scoped.apiClientConfig.accessToken ?? scoped.apiClientConfig.secretKey;
-      if (value !== undefined) return value;
-      // `inheritContext: true` scopes (e.g. `auth.withAuth` partial
-      // overrides) still fall back to the process env so callers who
-      // rely on TRIGGER_SECRET_KEY don't lose auth when they only
-      // wanted to override baseURL. Isolated scopes (TriggerClient)
-      // intentionally do not fall back — the constructor enforces
-      // accessToken is provided.
-      if (scoped.inheritContext) {
-        return getEnvVar("TRIGGER_SECRET_KEY") ?? getEnvVar("TRIGGER_ACCESS_TOKEN");
-      }
-      return undefined;
+      return scoped.apiClientConfig.accessToken ?? scoped.apiClientConfig.secretKey;
     }
     const config = this.#getConfig();
     return (
@@ -76,16 +57,7 @@ export class APIClientManagerAPI {
     const scoped = sdkScope.getStore();
     if (scoped) {
       const value = scoped.apiClientConfig.previewBranch;
-      if (value) return value;
-      // Same inheritContext gating as accessToken: withAuth-style
-      // scopes inherit env-derived branch; TriggerClient instances
-      // stay isolated from process env for identity.
-      if (scoped.inheritContext) {
-        const envValue =
-          getEnvVar("TRIGGER_PREVIEW_BRANCH") ?? getEnvVar("VERCEL_GIT_COMMIT_REF");
-        return envValue ? envValue : undefined;
-      }
-      return undefined;
+      return value ? value : undefined;
     }
     const config = this.#getConfig();
     const value =
@@ -94,6 +66,24 @@ export class APIClientManagerAPI {
       getEnvVar("VERCEL_GIT_COMMIT_REF") ??
       undefined;
     return value ? value : undefined;
+  }
+
+  public resolveApiClientConfig(partial: ApiClientConfiguration = {}): ApiClientConfiguration {
+    return {
+      baseURL: partial.baseURL ?? getEnvVar("TRIGGER_API_URL"),
+      accessToken:
+        partial.accessToken ??
+        partial.secretKey ??
+        getEnvVar("TRIGGER_SECRET_KEY") ??
+        getEnvVar("TRIGGER_ACCESS_TOKEN"),
+      secretKey: partial.secretKey,
+      previewBranch:
+        partial.previewBranch ??
+        getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
+        getEnvVar("VERCEL_GIT_COMMIT_REF"),
+      requestOptions: partial.requestOptions,
+      future: partial.future,
+    };
   }
 
   get client(): ApiClient | undefined {
@@ -130,18 +120,14 @@ export class APIClientManagerAPI {
     config: ApiClientConfiguration,
     fn: R
   ): Promise<ReturnType<R>> {
-    const merged: ApiClientConfiguration = { ...this.#getConfig(), ...config };
+    const merged = this.resolveApiClientConfig({ ...this.#getConfig(), ...config });
 
-    // Use the AsyncLocalStorage scope when installed (Node-side code
-    // that has loaded TriggerClient or auth) — concurrency-safe.
     if (sdkScope.hasStorage()) {
       return sdkScope.withScope({ apiClientConfig: merged, inheritContext: true }, fn);
     }
 
-    // Fallback: in-place global mutation. Matches pre-existing behavior
-    // and works in any runtime (browser, Edge, Workers, Node without
-    // the storage installed). Not concurrency-safe — parallel callers
-    // with different configs will stomp on each other.
+    // No ALS available (browser, edge, workers). Fall back to in-place
+    // mutation — same as pre-existing behavior, not concurrency-safe.
     const original = this.#getConfig();
     registerGlobal(API_NAME, merged, true);
     return fn().finally(() => {

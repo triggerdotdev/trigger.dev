@@ -52,8 +52,21 @@ describe("TriggerClient", () => {
     vi.unstubAllEnvs();
   });
 
-  it("requires an accessToken at construction", () => {
-    expect(() => new TriggerClient({})).toThrow(/accessToken/);
+  it("throws on first API call when no accessToken is configured anywhere", () => {
+    const client = new TriggerClient();
+    expect(() => client.runs.list({ limit: 1 })).toThrow(/TRIGGER_SECRET_KEY/);
+  });
+
+  it("falls back to env vars when constructor config is empty", async () => {
+    vi.stubEnv("TRIGGER_SECRET_KEY", "tr_dev_env_token");
+    vi.stubEnv("TRIGGER_PREVIEW_BRANCH", "env-branch");
+
+    const client = new TriggerClient();
+    await client.runs.retrieve("run_abc").catch(() => undefined);
+
+    expect(fetchSpy.captured).toHaveLength(1);
+    expect(fetchSpy.captured[0]!.authorization).toBe("Bearer tr_dev_env_token");
+    expect(fetchSpy.captured[0]!.branch).toBe("env-branch");
   });
 
   it("uses the instance accessToken and previewBranch on outgoing requests", async () => {
@@ -70,24 +83,31 @@ describe("TriggerClient", () => {
     expect(req.branch).toBe("signup-flow");
   });
 
-  it("does not fall back to env vars for identity fields, but DOES for baseURL", async () => {
-    vi.stubEnv("TRIGGER_PREVIEW_BRANCH", "from-env-branch");
-    vi.stubEnv("TRIGGER_API_URL", "https://from-env.example.com");
+  it("fills missing fields from env, but explicit constructor values still win", async () => {
+    vi.stubEnv("TRIGGER_SECRET_KEY", "tr_env_token");
+    vi.stubEnv("TRIGGER_PREVIEW_BRANCH", "env-branch");
+    vi.stubEnv("TRIGGER_API_URL", "https://env.example.com");
 
-    const client = new TriggerClient({
-      accessToken: "tr_preview_instance_token",
-      // no previewBranch, no baseURL
+    const explicit = new TriggerClient({
+      accessToken: "tr_explicit",
+      previewBranch: "explicit-branch",
     });
+    const fromEnv = new TriggerClient();
 
-    await client.runs.retrieve("run_abc").catch(() => undefined);
+    await Promise.all([
+      explicit.runs.retrieve("run_a").catch(() => undefined),
+      fromEnv.runs.retrieve("run_b").catch(() => undefined),
+    ]);
 
-    expect(fetchSpy.captured).toHaveLength(1);
-    const req = fetchSpy.captured[0]!;
-    // Identity (branch) must NOT be filled from env when instance is used.
-    expect(req.branch).toBeUndefined();
-    // Plumbing (baseURL) DOES fall back to TRIGGER_API_URL so local-dev /
-    // CI overrides apply without forcing every consumer to pass baseURL.
-    expect(req.url, `actual url=${req.url}`).toMatch(/^https:\/\/from-env\.example\.com\//);
+    const byRun = Object.fromEntries(
+      fetchSpy.captured.map((r) => [r.url.split("/runs/")[1]?.split(/[/?]/)[0], r])
+    );
+
+    expect(byRun["run_a"]!.authorization).toBe("Bearer tr_explicit");
+    expect(byRun["run_a"]!.branch).toBe("explicit-branch");
+    expect(byRun["run_b"]!.authorization).toBe("Bearer tr_env_token");
+    expect(byRun["run_b"]!.branch).toBe("env-branch");
+    expect(byRun["run_a"]!.url.startsWith("https://env.example.com/")).toBe(true);
   });
 
   it("does not leak instance config to the global apiClientManager", async () => {

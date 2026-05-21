@@ -4,10 +4,6 @@ import {
   RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
-
-// Install the Node AsyncLocalStorage-backed storage so `auth.withAuth`
-// (and the public-token helpers that route through it) actually scope
-// API client config. See `triggerClient.ts` for the same import.
 import "@trigger.dev/core/v3/sdk-scope-storage";
 
 /**
