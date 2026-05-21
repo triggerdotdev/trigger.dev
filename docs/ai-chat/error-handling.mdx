@@ -275,15 +275,13 @@ run: async ({ messages, signal }) => {
 
 ## What gets written to the stream on error
 
-When an error occurs at any layer, the frontend receives an error chunk in the SSE stream:
+When an error occurs at any layer, the frontend's `UIMessageChunk` stream surfaces an error chunk:
 
+```json
+{ "type": "error", "errorText": "Rate limited. Please wait a moment and try again." }
 ```
-event: data
-data: {"type":"error","errorText":"Rate limited. Please wait a moment and try again."}
 
-event: data
-data: {"type":"trigger:turn-complete",...}
-```
+A `turn-complete` control record follows on `session.out` (header-form, not a data chunk — see [`turn-complete` control record](/ai-chat/client-protocol#turn-complete-control-record) for the wire format) to mark the turn as done.
 
 The AI SDK's `useChat` processes this and:
 
