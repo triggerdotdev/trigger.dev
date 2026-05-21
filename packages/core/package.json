@@ -163,6 +163,9 @@
       "v3/isomorphic": [
         "dist/commonjs/v3/isomorphic/index.d.ts"
       ],
+      "v3/sdk-scope-storage": [
+        "dist/commonjs/v3/sdkScope/storage-node.d.ts"
+      ],
       "v3/test": [
         "dist/commonjs/v3/test/index.d.ts"
       ]

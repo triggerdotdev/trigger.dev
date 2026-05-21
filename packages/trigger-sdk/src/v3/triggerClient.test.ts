@@ -48,6 +48,7 @@ describe("TriggerClient", () => {
   afterEach(() => {
     fetchSpy.restore();
     apiClientManager.disable();
+    taskContext.disable();
     vi.unstubAllEnvs();
   });
 
@@ -152,8 +153,6 @@ describe("TriggerClient", () => {
     );
 
     expect(observed).toBeUndefined();
-
-    taskContext.disable();
   });
 
   it("exposes taskContext.ctx inside a scope when inheritContext is true", () => {
@@ -171,8 +170,6 @@ describe("TriggerClient", () => {
     );
 
     expect(observed).toBe(fakeCtx);
-
-    taskContext.disable();
   });
 });
 
