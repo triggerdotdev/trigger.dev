@@ -769,7 +769,7 @@ function TasksTreeView({
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
         <SearchField onChange={setFilterText} />
         <div className="flex items-center gap-1.5">
           {isAdmin && (
