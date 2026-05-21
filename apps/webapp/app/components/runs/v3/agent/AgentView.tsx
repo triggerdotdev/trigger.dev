@@ -100,11 +100,11 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const rootRef = useAutoScrollToBottom([messages]);
 
   return (
-    <div ref={rootRef} className="py-3">
+    <div ref={rootRef} className="flex min-h-full flex-col py-3">
       {messages.length === 0 ? (
-        <div className="flex h-full min-h-[12rem] items-center justify-center">
+        <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <Spinner className="size-5" color="muted" />
+            <Spinner className="size-5" color="blue" />
             <Paragraph variant="small" className="text-text-dimmed">
               Loading conversation…
             </Paragraph>
@@ -252,9 +252,7 @@ function useAgentSessionMessages({
   // `pendingRef` is the authoritative, eagerly-updated message state:
   // chunks mutate this synchronously as they arrive. A throttled flush
   // copies it into React state so UI updates are capped at ~10x/sec.
-  const pendingRef = useRef<Map<string, UIMessage>>(
-    new Map(seedMessages.map((m) => [m.id, m]))
-  );
+  const pendingRef = useRef<Map<string, UIMessage>>(new Map(seedMessages.map((m) => [m.id, m])));
   const timestampsRef = useRef<Map<string, number>>(
     new Map(seedMessages.map((m) => [m.id, INITIAL_PAYLOAD_TIMESTAMP]))
   );
@@ -351,7 +349,7 @@ function useAgentSessionMessages({
         signal: abort.signal,
         timeoutInSeconds: 120,
         ...(lastEventId !== undefined ? { lastEventId } : {}),
-      }) as const;
+      } as const);
 
     const commonSubOptions = {
       signal: abort.signal,
@@ -511,8 +509,8 @@ function useAgentSessionMessages({
             const candidates = Array.isArray(payload.messages)
               ? payload.messages
               : payload.message
-                ? [payload.message]
-                : [];
+              ? [payload.message]
+              : [];
             const incomingUsers = candidates.filter(
               (m): m is UIMessage =>
                 m != null && (m as { role?: string }).role === "user" && typeof m.id === "string"
@@ -779,10 +777,7 @@ function withNewPart(msg: UIMessage, part: AnyPart): UIMessage {
   } as UIMessage;
 }
 
-function updatePart(
-  msg: UIMessage,
-  updater: (part: AnyPart) => AnyPart | null
-): UIMessage {
+function updatePart(msg: UIMessage, updater: (part: AnyPart) => AnyPart | null): UIMessage {
   const parts = (msg.parts ?? []) as AnyPart[];
   let changed = false;
   const next = parts.map((p) => {
