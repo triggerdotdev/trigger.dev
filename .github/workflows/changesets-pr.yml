@@ -96,4 +96,4 @@ jobs:
             -f status=completed \
             -f conclusion=success \
             -f 'output[title]=Auto-pass for changeset release PR' \
-            -f 'output[summary]=Required check auto-satisfied for `changeset-release/main` PRs. Full CI ran on the underlying commits before they landed on main.'
+            -f 'output[summary]=Required check auto-satisfied for changeset-release/main PRs. Full CI ran on the underlying commits before they landed on main.'
