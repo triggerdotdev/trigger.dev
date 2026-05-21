@@ -36,7 +36,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(new URL(request.url).searchParams)
   );
 
-  const run = await $replica.taskRun.findFirst({
+  let run = await $replica.taskRun.findFirst({
     select: {
       payload: true,
       payloadType: true,
@@ -90,6 +90,74 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     where: { friendlyId: runParam, project: { organization: { members: { some: { userId } } } } },
   });
+
+  let synthetic:
+    | (Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>> & { __synth: true })
+    | undefined;
+  if (!run) {
+    // Buffered fallback: read the snapshot and look up the env list via
+    // the snapshot's organizationId. Without this the Replay dialog
+    // 404s for runs queued in the mollifier buffer, which dumps the
+    // user back to the task list.
+    const buffer = getMollifierBuffer();
+    const entry = buffer ? await buffer.getEntry(runParam) : null;
+    if (!entry) throw new Response("Not Found", { status: 404 });
+    const member = await prisma.orgMember.findFirst({
+      where: { userId, organizationId: entry.orgId },
+      select: { id: true },
+    });
+    if (!member) throw new Response("Not Found", { status: 404 });
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: runParam,
+      environmentId: entry.envId,
+      organizationId: entry.orgId,
+    });
+    if (!buffered) throw new Response("Not Found", { status: 404 });
+    synthetic = Object.assign(buffered, { __synth: true as const });
+    const orgProject = await $replica.project.findFirst({
+      where: {
+        environments: { some: { id: entry.envId } },
+      },
+      select: {
+        slug: true,
+        environments: {
+          select: {
+            id: true,
+            type: true,
+            slug: true,
+            branchName: true,
+            orgMember: { select: { user: true } },
+          },
+          where: {
+            archivedAt: null,
+            OR: [
+              { type: { in: ["PREVIEW", "STAGING", "PRODUCTION"] } },
+              { type: "DEVELOPMENT", orgMember: { userId } },
+            ],
+          },
+        },
+      },
+    });
+    if (!orgProject) throw new Response("Not Found", { status: 404 });
+    run = {
+      payload: buffered.payload,
+      payloadType: buffered.payloadType ?? "application/json",
+      seedMetadata: buffered.seedMetadata ?? null,
+      seedMetadataType: buffered.seedMetadataType ?? null,
+      runtimeEnvironmentId: entry.envId,
+      concurrencyKey: buffered.concurrencyKey ?? null,
+      maxAttempts: buffered.maxAttempts ?? null,
+      maxDurationInSeconds: buffered.maxDurationInSeconds ?? null,
+      machinePreset: buffered.machinePreset ?? null,
+      workerQueue: buffered.workerQueue ?? null,
+      ttl: buffered.ttl ?? null,
+      idempotencyKey: buffered.idempotencyKey ?? null,
+      runTags: buffered.runTags,
+      queue: buffered.queue ?? "task/",
+      taskIdentifier: buffered.taskIdentifier ?? "",
+      project: orgProject,
+    } as unknown as typeof run;
+  }
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
