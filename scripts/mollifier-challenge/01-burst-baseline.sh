@@ -7,6 +7,26 @@ source "$(dirname "$0")/00-lib.sh"
 
 header "Burst baseline"
 
+# Control trigger FIRST (before any rate-limit hold-down is armed), so it
+# lands in PG cleanly. The burst that follows trips the gate; the control
+# is unaffected because it predates the trip.
+info "control trigger (delay=10m, before any rate-limit hold-down)"
+api POST "/api/v1/tasks/$TASK_ID/trigger" '{"payload":{"control":true},"options":{"delay":"10m"}}'
+if last_status_ok; then
+  CONTROL_ID=$(last_body | jq -r '.id')
+  if [[ -n "$CONTROL_ID" && "$CONTROL_ID" != "null" ]]; then
+    if last_body | jq -e '.notice.code == "mollifier.queued"' >/dev/null 2>&1; then
+      fail "control trigger was mollified — leftover hold-down from previous burst? wait holdMs then retry"
+    else
+      pass "control trigger landed in PG (delayed), runId: $CONTROL_ID"
+    fi
+  else
+    fail "control trigger response missing id"
+  fi
+else
+  fail "control trigger returned $(cat "$WORK/last.status")"
+fi
+
 info "firing $BURST_SIZE concurrent triggers against $TASK_ID"
 BUFFERED_ID=$(capture_buffered_run_id)
 
@@ -36,24 +56,6 @@ if body_matches '.status == "PENDING" or .status == "QUEUED" or .status == "DELA
   pass "retrieve status is QUEUED-equivalent ($(last_body | jq -r .status))"
 else
   fail "retrieve status unexpected: $(last_body | jq -r .status)"
-fi
-
-# Sanity: control trigger with a long delay should be in PG, not mollified.
-header "Control sanity"
-api POST "/api/v1/tasks/$TASK_ID/trigger" '{"payload":{"control":true},"options":{"delay":"10m"}}'
-if last_status_ok; then
-  CONTROL_ID=$(last_body | jq -r '.id')
-  if [[ -n "$CONTROL_ID" && "$CONTROL_ID" != "null" ]]; then
-    if last_body | jq -e '.notice.code == "mollifier.queued"' >/dev/null 2>&1; then
-      fail "control trigger with delay was mollified — check threshold / hold settings"
-    else
-      pass "control trigger landed in PG (delayed), runId: $CONTROL_ID"
-    fi
-  else
-    fail "control trigger response missing id"
-  fi
-else
-  fail "control trigger returned $(cat "$WORK/last.status")"
 fi
 
 summary
