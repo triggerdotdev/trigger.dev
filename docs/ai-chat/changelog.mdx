@@ -4,6 +4,26 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 21, 2026" description="4.5.0-rc.1" tags={["SDK", "Bug fix"]}>
+
+## v4.5.0-rc.1 — two bug fixes
+
+Patch release on top of `4.5.0-rc.0`. Upgrade with:
+
+```sh
+npx trigger.dev@4.5.0-rc.1 update              # npm
+pnpm dlx trigger.dev@4.5.0-rc.1 update         # pnpm
+yarn dlx trigger.dev@4.5.0-rc.1 update         # yarn
+bunx trigger.dev@4.5.0-rc.1 update             # bun
+```
+
+### Fixes
+
+- **Agent Skills silently missing in `trigger dev`** for projects whose task files read `process.env` at module top level (e.g. a third-party SDK client initialized at import). [Skill folders](/ai-chat/patterns/skills) now bundle into `.trigger/skills/` reliably regardless of which env vars are set when the CLI launches. ([#3690](https://github.com/triggerdotdev/trigger.dev/pull/3690))
+- **`COULD_NOT_FIND_EXECUTOR`** when a task's definition is loaded via `await import(...)` from inside another task's `run()` — common when lazy-loading sub-agent tasks. Runtime workers now register such tasks with a sentinel file context, and the catalog logs a one-time warning per task id. ([#3688](https://github.com/triggerdotdev/trigger.dev/pull/3688))
+
+</Update>
+
 <Update label="May 21, 2026" description="4.5.0-rc.0" tags={["SDK", "Release"]}>
 
 ## v4.5.0-rc.0 — AI Agents graduate from chat-prerelease
