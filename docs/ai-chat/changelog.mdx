@@ -4,6 +4,37 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 21, 2026" description="4.5.0-rc.0" tags={["SDK", "Release"]}>
+
+## v4.5.0-rc.0 — AI Agents graduate from chat-prerelease
+
+First release candidate of v4.5. Everything covered by the `0.0.0-chat-prerelease-*` entries below now ships under a stable semver tag. Install:
+
+```bash
+pnpm add @trigger.dev/sdk@rc
+```
+
+(Or pin `4.5.0-rc.0` explicitly.)
+
+### What's in the box
+
+- **`chat.agent`** — multi-turn AI chat backends as durable Trigger.dev tasks. Lifecycle hooks, recovery from cancel/crash/OOM, version upgrades, all in. See [Overview](/ai-chat/overview) and [Quick Start](/ai-chat/quick-start).
+- **Sessions** — the durable bi-directional stream primitive that backs `chat.agent`. Use it directly for any pattern that needs durable bi-directional streaming across runs. See [Sessions](/ai-chat/sessions).
+- **`useTriggerChatTransport`** — a custom AI SDK `ChatTransport` for `useChat`. No API routes. See [Frontend](/ai-chat/frontend).
+- **Head Start** — opt-in route handler that runs the first `streamText` step in your warm server while the agent boots in parallel. Cuts cold-start TTFC roughly in half. See [Fast starts](/ai-chat/fast-starts#head-start).
+- **AI Prompts** — code-defined, deploy-versioned templates with dashboard overrides for text + model. Integrates with `chat.agent` via `chat.prompt.set()` + `chat.toStreamTextOptions()`. See [Prompts](/ai/prompts).
+- **`ai.toolExecute`** — wire any Trigger subtask in as the `execute` of an AI SDK `tool()`. See [Sub-agents](/ai-chat/patterns/sub-agents).
+
+### Compatibility
+
+`@trigger.dev/sdk@4.5.0-rc.0` requires `ai` `^5.0.0 || ^6.0.0` (Vercel AI SDK), React `^18.0 || ^19.0` (for the `chat/react` subpath), and Node.js `>=18.20.0`. Full matrix on the [API Reference](/ai-chat/reference#compatibility).
+
+### Docs
+
+This release ships with a refreshed AI Agents documentation set covering [Backend](/ai-chat/backend), [Frontend](/ai-chat/frontend), [Sessions](/ai-chat/sessions), [Lifecycle hooks](/ai-chat/lifecycle-hooks), [`chat.local`](/ai-chat/chat-local), the [Patterns](/ai-chat/patterns/sub-agents) library, [Testing](/ai-chat/testing), and a full [API Reference](/ai-chat/reference).
+
+</Update>
+
 <Update label="May 19, 2026" description="0.0.0-chat-prerelease-20260520150857" tags={["SDK"]}>
 
 ## Recovery boot — context-preserving continuation after cancel / crash / OOM
