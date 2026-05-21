@@ -22,6 +22,7 @@
     "agent-skills",
     "ai-prompts",
     "ai-tool-helpers",
+    "bundle-skills-single-pass",
     "cap-idempotency-key-length",
     "chat-agent-on-boot-hook",
     "chat-agent",
@@ -35,6 +36,7 @@
     "mock-chat-agent-test-harness",
     "mollifier-redis-worker-primitives",
     "plugin-auth-path",
+    "resource-catalog-runtime-registration",
     "retry-sigsegv",
     "runs-list-region-filter",
     "sessions-primitive"
