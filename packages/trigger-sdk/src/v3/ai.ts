@@ -9040,9 +9040,17 @@ export type CreateChatStartSessionActionOptions = {
 /**
  * Params for the function returned by {@link createChatStartSessionAction}.
  */
-export type ChatStartSessionParams = {
+export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
   /** Conversation id (mapped to the Session's `externalId`). */
   chatId: string;
+  /**
+   * Typed client data — folded into the first run's `payload.metadata` so
+   * `onPreload`, `onChatStart`, etc. see the same `clientData` shape on the
+   * first turn as subsequent turns get via the transport's `clientData`
+   * option. Typed via the agent's `clientDataSchema` when the action is
+   * parameterised with `createStartSessionAction<typeof myChat>(...)`.
+   */
+  clientData?: InferChatClientData<TChat>;
   /**
    * Per-call trigger config. Shallow-merged over the action's default
    * `triggerConfig`. `basePayload` is the customer's wire payload (for
@@ -9050,7 +9058,11 @@ export type ChatStartSessionParams = {
    * which the runtime injects automatically).
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
-  /** Pass-through metadata folded into the session row. */
+  /**
+   * Opaque session-level metadata stored on the Session row. Separate from
+   * the per-turn `clientData` above. Use this when you want to attach
+   * server-side metadata that doesn't go through the agent's `clientDataSchema`.
+   */
   metadata?: Record<string, unknown>;
 };
 
@@ -9078,33 +9090,37 @@ export type ChatStartSessionResult = {
  * Wrap in a Next.js server action (or any server-side handler) so the
  * customer's secret key never crosses to the browser.
  *
+ * Parameterise the action with `<typeof yourChatAgent>` to type the
+ * `clientData` field against your agent's `clientDataSchema`.
+ *
  * @example
  * ```ts
  * // actions.ts
  * "use server";
  * import { chat } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
  *
- * export const startChatSession = chat.createStartSessionAction("my-chat", {
- *   triggerConfig: { machine: "small-1x" },
- * });
+ * export const startChatSession = chat.createStartSessionAction<typeof myChat>(
+ *   "my-chat",
+ *   { triggerConfig: { machine: "small-1x" } }
+ * );
  * ```
  *
- * Then in the browser:
+ * Then in the browser, threading the typed `clientData` from the transport:
  * ```tsx
- * const transport = useTriggerChatTransport({
+ * const transport = useTriggerChatTransport<typeof myChat>({
  *   task: "my-chat",
- *   accessToken: async ({ chatId }) => {
- *     const { publicAccessToken } = await startChatSession({ chatId });
- *     return publicAccessToken;
- *   },
+ *   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+ *   startSession: ({ chatId, clientData }) =>
+ *     startChatSession({ chatId, clientData }),
  * });
  * ```
  */
-function createChatStartSessionAction(
+function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
   taskId: string,
   options?: CreateChatStartSessionActionOptions
-): (params: ChatStartSessionParams) => Promise<ChatStartSessionResult> {
-  return async (params: ChatStartSessionParams): Promise<ChatStartSessionResult> => {
+): (params: ChatStartSessionParams<TChat>) => Promise<ChatStartSessionResult> {
+  return async (params: ChatStartSessionParams<TChat>): Promise<ChatStartSessionResult> => {
     if (!params.chatId) {
       throw new Error(
         "chat.createStartSessionAction: params.chatId is required — used as the session externalId."
@@ -9117,14 +9133,17 @@ function createChatStartSessionAction(
     // `onPreload` fires, the runtime opens its `.in` subscription, the
     // first user message arrives moments later via `.in/append`.
     //
-    // `metadata` is the customer's transport-level `clientData`,
-    // threaded through so the agent's `clientDataSchema` validates on
-    // the very first turn (the typical schema requires `userId` etc.).
+    // `clientData` is folded into `basePayload.metadata` so the agent's
+    // `clientDataSchema` validates on the very first turn against the same
+    // shape per-turn `metadata` carries via the transport.
     // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
     const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
     const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+
+    const clientDataMetadata =
+      params.clientData !== undefined ? { metadata: params.clientData } : {};
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
@@ -9132,6 +9151,7 @@ function createChatStartSessionAction(
         trigger: "preload",
         ...(options?.triggerConfig?.basePayload ?? {}),
         ...(params.triggerConfig?.basePayload ?? {}),
+        ...clientDataMetadata,
         chatId: params.chatId,
       },
       ...(options?.triggerConfig?.machine || params.triggerConfig?.machine
