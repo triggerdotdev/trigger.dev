@@ -99,7 +99,7 @@ export function ErrorBoundary() {
           <Meta />
           <Links />
         </head>
-        <body className="h-full overflow-hidden bg-background-dimmed">
+        <body className="h-full overflow-hidden bg-background-dimmed antialiased">
           <ShortcutsProvider>
             <AppContainer>
               <MainCenteredContainer>
@@ -125,7 +125,7 @@ export default function App() {
           <Meta />
           <Links />
         </head>
-        <body className="h-full overflow-hidden bg-background-dimmed">
+        <body className="h-full overflow-hidden bg-background-dimmed antialiased">
           <ShortcutsProvider>
             <TimezoneSetter />
             <Outlet />
