@@ -26,3 +26,4 @@ export {
   type WideEventOptions,
 } from "./middleware.js";
 export type { ErrorInfo, PhaseRecord, State } from "./state.js";
+export { encodeBaggage } from "./baggage.js";
