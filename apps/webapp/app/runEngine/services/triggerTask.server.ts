@@ -30,7 +30,14 @@ import type {
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
-import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
+import {
+  IdempotencyKeyConcern,
+  type ClaimedIdempotency,
+} from "../concerns/idempotencyKeys.server";
+import {
+  publishClaim as publishMollifierClaim,
+  releaseClaim as releaseMollifierClaim,
+} from "~/v3/mollifier/idempotencyClaim.server";
 import type {
   PayloadProcessor,
   QueueManager,
@@ -124,7 +131,15 @@ export class RunEngineTriggerTaskService {
     options?: TriggerTaskServiceOptions;
     attempt?: number;
   }): Promise<TriggerTaskServiceResult | undefined> {
-    return await startSpan(this.tracer, "RunEngineTriggerTaskService.call()", async (span) => {
+    // Pre-gate idempotency-claim ownership. Set inside the span when
+    // `IdempotencyKeyConcern.handleTriggerRequest` returns `claim:
+    // {...}`. The try/catch below resolves it once the span finishes.
+    let idempotencyClaim: ClaimedIdempotency | undefined;
+    try {
+      const result = await startSpan(
+        this.tracer,
+        "RunEngineTriggerTaskService.call()",
+        async (span) => {
       span.setAttribute("taskId", taskId);
       span.setAttribute("attempt", attempt);
 
@@ -247,7 +262,16 @@ export class RunEngineTriggerTaskService {
         return idempotencyKeyConcernResult;
       }
 
-      const { idempotencyKey, idempotencyKeyExpiresAt } = idempotencyKeyConcernResult;
+      const { idempotencyKey, idempotencyKeyExpiresAt, claim: claimResult } =
+        idempotencyKeyConcernResult;
+
+      // If we own an idempotency claim, the trigger pipeline below MUST
+      // resolve it — publish on success so waiters see our runId,
+      // release on error so the next claimant can retry. Stored in an
+      // outer scope so the try/catch at the bottom of `callV2` can act
+      // on whichever return path or throw the pipeline takes. Plan doc:
+      // _plans/2026-05-21-mollifier-idempotency-claim.md
+      idempotencyClaim = claimResult;
 
       if (idempotencyKey) {
         await this.triggerRacepointSystem.waitForRacepoint({
@@ -604,7 +628,27 @@ export class RunEngineTriggerTaskService {
 
         throw error;
       }
-    });
+        },
+      );
+      // Pipeline returned successfully — publish the claim if we held
+      // one. Waiters polling for our key resolve to this runId.
+      if (idempotencyClaim && result?.run?.friendlyId) {
+        await publishMollifierClaim({
+          envId: idempotencyClaim.envId,
+          taskIdentifier: idempotencyClaim.taskIdentifier,
+          idempotencyKey: idempotencyClaim.idempotencyKey,
+          runId: result.run.friendlyId,
+        });
+      }
+      return result;
+    } catch (err) {
+      // Pipeline threw — release the claim so the next claimant can
+      // retry. Re-throw so the caller sees the original error.
+      if (idempotencyClaim) {
+        await releaseMollifierClaim(idempotencyClaim);
+      }
+      throw err;
+    }
   }
 
   // Build the engine.trigger() input object from the values gathered during

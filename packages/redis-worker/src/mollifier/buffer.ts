@@ -48,6 +48,24 @@ function makeIdempotencyLookupKey(input: IdempotencyLookupInput): string {
   return `mollifier:idempotency:${input.envId}:${input.taskIdentifier}:${input.idempotencyKey}`;
 }
 
+// Pre-gate claim key namespace, distinct from `mollifier:idempotency` so the
+// existing B6a buffer-side dedup stays isolated. The claim is the
+// authoritative cross-store "this idempotency key is in flight or
+// resolved" pointer used by the trigger hot path
+// (`_plans/2026-05-21-mollifier-idempotency-claim.md`). Values:
+//   "pending"   → a trigger pipeline owns the key and hasn't published yet
+//   <runId>     → the winning trigger's runId (resolved)
+export const IDEMPOTENCY_CLAIM_PENDING = "pending";
+
+function makeIdempotencyClaimKey(input: IdempotencyLookupInput): string {
+  return `mollifier:claim:${input.envId}:${input.taskIdentifier}:${input.idempotencyKey}`;
+}
+
+export type IdempotencyClaimResult =
+  | { kind: "claimed" }
+  | { kind: "pending" }
+  | { kind: "resolved"; runId: string };
+
 export class MollifierBuffer {
   private readonly redis: Redis;
   private readonly entryTtlSeconds: number;
@@ -342,6 +360,63 @@ export class MollifierBuffer {
     throw new Error(`MollifierBuffer.casSetMetadata: unexpected Lua return: ${raw}`);
   }
 
+  // Atomic pre-gate claim on a (env, task, idempotencyKey) tuple. One
+  // call across both PG and buffer paths serialises through this claim;
+  // closes the race the buffer-side B6a SETNX leaves open during the
+  // gate-transition burst window (see
+  // `_plans/2026-05-21-mollifier-idempotency-claim.md`).
+  //
+  // - "claimed": we now own the claim, the caller proceeds with the
+  //   trigger pipeline and must `publishClaim` on success or
+  //   `releaseClaim` on failure.
+  // - "pending": another trigger owns the claim and hasn't published
+  //   yet; the caller should poll.
+  // - "resolved": the claim already holds a runId; the caller can
+  //   return that runId as a cached hit.
+  async claimIdempotency(
+    input: IdempotencyLookupInput & { ttlSeconds: number },
+  ): Promise<IdempotencyClaimResult> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    const raw = (await this.redis.claimMollifierIdempotency(
+      claimKey,
+      IDEMPOTENCY_CLAIM_PENDING,
+      String(input.ttlSeconds),
+    )) as string;
+    if (raw === "claimed") return { kind: "claimed" };
+    if (raw === "pending") return { kind: "pending" };
+    if (raw.startsWith("resolved:")) {
+      return { kind: "resolved", runId: raw.slice("resolved:".length) };
+    }
+    throw new Error(`MollifierBuffer.claimIdempotency: unexpected return: ${raw}`);
+  }
+
+  // Publish the winning runId to the claim so subsequent claimants /
+  // waiters see "resolved". TTL bounded by the customer's
+  // `idempotencyKeyExpiresAt` minus now; caller computes.
+  async publishClaim(
+    input: IdempotencyLookupInput & { runId: string; ttlSeconds: number },
+  ): Promise<void> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    await this.redis.set(claimKey, input.runId, "EX", input.ttlSeconds);
+  }
+
+  // Release the claim on pipeline error so waiters can re-claim and
+  // retry. Idempotent.
+  async releaseClaim(input: IdempotencyLookupInput): Promise<void> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    await this.redis.del(claimKey);
+  }
+
+  // Read the current claim value, used by the wait/poll loop on losers
+  // to detect "pending" → "resolved" transitions and timeouts.
+  async readClaim(input: IdempotencyLookupInput): Promise<IdempotencyClaimResult | null> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    const value = await this.redis.get(claimKey);
+    if (value === null) return null;
+    if (value === IDEMPOTENCY_CLAIM_PENDING) return { kind: "pending" };
+    return { kind: "resolved", runId: value };
+  }
+
   // Resolve a buffered run by (env, task, idempotencyKey) tuple. Used by
   // `IdempotencyKeyConcern.handleTriggerRequest` after the PG check
   // misses — same key may belong to a buffered run waiting to drain. The
@@ -634,6 +709,27 @@ export class MollifierBuffer {
       `,
     });
 
+    this.redis.defineCommand("claimMollifierIdempotency", {
+      numberOfKeys: 1,
+      lua: `
+        local claimKey = KEYS[1]
+        local pending = ARGV[1]
+        local ttl = tonumber(ARGV[2])
+
+        -- SETNX-with-TTL: atomic; only one caller can win.
+        local won = redis.call('SET', claimKey, pending, 'NX', 'EX', ttl)
+        if won then
+          return 'claimed'
+        end
+
+        local existing = redis.call('GET', claimKey)
+        if existing == pending then
+          return 'pending'
+        end
+        return 'resolved:' .. existing
+      `,
+    });
+
     this.redis.defineCommand("resetMollifierIdempotency", {
       numberOfKeys: 1,
       lua: `
@@ -847,6 +943,12 @@ declare module "@internal/redis" {
     resetMollifierIdempotency(
       lookupKey: string,
       entryPrefix: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    claimMollifierIdempotency(
+      claimKey: string,
+      pendingMarker: string,
+      ttlSeconds: string,
       callback?: Callback<string>,
     ): Result<string, Context>;
     ackMollifierEntry(
