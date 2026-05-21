@@ -851,7 +851,7 @@ function TasksTreeView({
                 <>
                   <div
                     className={cn(
-                      "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                      "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
                       state.selected
                         ? "bg-grid-dimmed hover:bg-grid-bright"
                         : "bg-transparent hover:bg-grid-dimmed"
