@@ -6,20 +6,20 @@ export function addTenantContextToEvent(event: Event, _hint: EventHint): Event {
   if (!ctx) return event;
   return {
     ...event,
-    user: {
-      ...event.user,
-      id: ctx.org.id,
-      username: ctx.org.slug,
-    },
+    // Only stamp user.id when we have a real user — keeps "Users Impacted"
+    // counting distinct humans rather than mixing in tenants. Events without
+    // a known user (e.g. unauthenticated paths) skip user attribution.
+    ...(ctx.userId ? { user: { ...event.user, id: ctx.userId } } : {}),
     tags: {
       ...event.tags,
-      org_id: ctx.org.id,
-      org_slug: ctx.org.slug,
-      project_id: ctx.project.id,
-      project_ref: ctx.project.ref,
-      environment_id: ctx.environment.id,
-      env_slug: ctx.environment.slug,
-      env_type: ctx.environment.type,
+      ...(ctx.orgSlug ? { org_slug: ctx.orgSlug } : {}),
+      ...(ctx.projectSlug ? { project_slug: ctx.projectSlug } : {}),
+      ...(ctx.envSlug ? { env_slug: ctx.envSlug } : {}),
+      ...(ctx.orgId ? { org_id: ctx.orgId } : {}),
+      ...(ctx.projectId ? { project_id: ctx.projectId } : {}),
+      ...(ctx.projectRef ? { project_ref: ctx.projectRef } : {}),
+      ...(ctx.envId ? { environment_id: ctx.envId } : {}),
+      ...(ctx.envType ? { env_type: ctx.envType } : {}),
       ...(ctx.impersonating ? { impersonating: "true" } : {}),
     },
   };

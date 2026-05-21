@@ -2,31 +2,47 @@ import { describe, it, expect } from "vitest";
 import { tenantContextFromAuthEnvironment } from "../app/services/tenantContext.server";
 import type { AuthenticatedEnvironment } from "../app/services/apiAuth.server";
 
-// Cast through unknown — we only depend on a narrow slice of
-// AuthenticatedEnvironment and don't want to enumerate every field.
-const env = {
+const baseEnv = {
   id: "env_1",
   slug: "prod",
   type: "PRODUCTION" as const,
   organization: { id: "org_1", slug: "acme" },
-  project: { id: "proj_1", externalRef: "proj_abc" },
+  project: { id: "proj_1", slug: "web", externalRef: "proj_abc" },
+};
+
+const envWithOrgMember = {
+  ...baseEnv,
+  orgMember: { userId: "usr_42" },
+} as unknown as AuthenticatedEnvironment;
+
+const envWithoutOrgMember = {
+  ...baseEnv,
+  orgMember: null,
 } as unknown as AuthenticatedEnvironment;
 
 describe("tenantContextFromAuthEnvironment", () => {
-  it("maps org id/slug, project id and externalRef, env id/slug/type", () => {
-    expect(tenantContextFromAuthEnvironment(env)).toEqual({
-      org: { id: "org_1", slug: "acme" },
-      project: { id: "proj_1", ref: "proj_abc" },
-      environment: { id: "env_1", slug: "prod", type: "PRODUCTION" },
+  it("returns the full tenant context (slugs + IDs + env type + userId) when orgMember is present", () => {
+    expect(tenantContextFromAuthEnvironment(envWithOrgMember)).toEqual({
+      userId: "usr_42",
+      orgSlug: "acme",
+      projectSlug: "web",
+      envSlug: "prod",
+      orgId: "org_1",
+      projectId: "proj_1",
+      projectRef: "proj_abc",
+      envId: "env_1",
+      envType: "PRODUCTION",
     });
   });
 
-  it("maps DEVELOPMENT environment type", () => {
-    const dev = { ...env, type: "DEVELOPMENT" as const } as unknown as AuthenticatedEnvironment;
-    expect(tenantContextFromAuthEnvironment(dev).environment.type).toBe("DEVELOPMENT");
+  it("omits userId when there is no orgMember on the environment", () => {
+    const ctx = tenantContextFromAuthEnvironment(envWithoutOrgMember);
+    expect(ctx.userId).toBeUndefined();
+    expect(ctx.orgSlug).toBe("acme");
+    expect(ctx.envSlug).toBe("prod");
   });
 
   it("does not propagate impersonating (auth environments are real, not impersonated)", () => {
-    expect(tenantContextFromAuthEnvironment(env).impersonating).toBeUndefined();
+    expect(tenantContextFromAuthEnvironment(envWithOrgMember).impersonating).toBeUndefined();
   });
 });
