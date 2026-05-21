@@ -1,190 +1,79 @@
 ---
 title: "AI Agents"
 sidebarTitle: "Overview"
-description: "Run AI SDK chat completions as durable Trigger.dev agents with built-in realtime streaming, multi-turn conversations, and message persistence."
+description: "Durable multi-turn AI chats — one Trigger.dev task per conversation, surviving refreshes, deploys, and crashes."
 ---
 
 import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 <RcBanner />
 
-## Overview
+An AI chat isn't a request — it's a session. `chat.agent` runs every conversation as a single long-lived Trigger.dev task: you write the loop, it wakes up when a message arrives, freezes when none do, and the same in-memory state and on-disk workspace survive across page refreshes, deploys, idle gaps, and crashes. The substrate handles the parts most teams stitch together by hand — turn lifecycle, mid-stream resume, recovery from cancel/crash/OOM, HITL approvals, deploy upgrades — so your code is the loop you'd write anyway: messages in, `streamText` out.
 
-The `@trigger.dev/sdk` provides a custom [ChatTransport](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) for the Vercel AI SDK's `useChat` hook. This lets you run chat completions as **durable Trigger.dev agents** instead of fragile API routes — with automatic retries, observability, and realtime streaming built in.
+## A minimal example
 
-**How it works:**
-1. The frontend sends messages via `useChat` through `TriggerChatTransport`
-2. The first message triggers a Trigger.dev agent; subsequent messages resume the **same run** via input streams
-3. The agent streams `UIMessageChunk` events back via Trigger.dev's realtime streams
-4. The AI SDK's `useChat` processes the stream natively — text, tool calls, reasoning, etc.
-5. Between turns, the run stays idle briefly then suspends (freeing compute) until the next message
+A `chat.agent` task takes `messages`, calls `streamText`, and returns the result. The frontend wires the [Vercel AI SDK's `useChat`](https://ai-sdk.dev/docs/reference/ai-sdk-ui/use-chat) to a `TriggerChatTransport`. No API routes.
 
-No custom API routes needed. Your chat backend is a Trigger.dev agent.
+```ts trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
 
-<Accordion title="How it works (sequence diagrams)">
-
-### First message flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant useChat as useChat + Transport
-    participant API as Trigger.dev API
-    participant Task as chat.agent Worker
-    participant LLM as LLM Provider
-
-    User->>useChat: sendMessage("Hello")
-    useChat->>useChat: No session for chatId → trigger new run
-    useChat->>API: triggerTask(payload, tags: [chat:id])
-    API-->>useChat: { runId, publicAccessToken }
-    useChat->>useChat: Store session, subscribe to SSE
-
-    API->>Task: Start run with ChatTaskWirePayload
-    Task->>Task: onChatStart({ chatId, messages, clientData })
-    Task->>Task: onTurnStart({ chatId, messages })
-    Task->>LLM: streamText({ model, messages, abortSignal })
-    LLM-->>Task: Stream response chunks
-    Task->>API: Write chunks to session.out
-    API-->>useChat: SSE: UIMessageChunks
-    useChat-->>User: Render streaming text
-    Task->>API: Write turn-complete control record
-    API-->>useChat: SSE: turn complete + refreshed token
-    useChat->>useChat: Close stream, update session
-    Task->>Task: onTurnComplete({ messages, stopped: false })
-    Task->>Task: Wait for next message (idle → suspend)
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal }) =>
+    streamText({ model: openai("gpt-4o"), messages, abortSignal: signal }),
+});
 ```
 
-### Multi-turn flow
+```tsx app/components/Chat.tsx
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant useChat as useChat + Transport
-    participant API as Trigger.dev API
-    participant Task as chat.agent Worker
-    participant LLM as LLM Provider
-
-    Note over Task: Suspended, waiting for message
-
-    User->>useChat: sendMessage("Tell me more")
-    useChat->>useChat: Session exists → send via input stream
-    useChat->>API: sendInputStream(runId, "chat-messages", payload)
-    Note right of useChat: Only sends new message (not full history)
-
-    API->>Task: Deliver to messagesInput
-    Task->>Task: Wake from suspend
-    Task->>Task: Append to accumulated messages
-    Task->>Task: onTurnStart({ turn: 1 })
-    Task->>LLM: streamText({ messages: [all accumulated] })
-    LLM-->>Task: Stream response
-    Task->>API: Write chunks to session.out
-    API-->>useChat: SSE: UIMessageChunks
-    useChat-->>User: Render streaming text
-    Task->>API: Write turn-complete control record
-    Task->>Task: onTurnComplete({ turn: 1 })
-    Task->>Task: Wait for next message (idle → suspend)
-```
-
-### Stop signal flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant useChat as useChat + Transport
-    participant API as Trigger.dev API
-    participant Task as chat.agent Worker
-    participant LLM as LLM Provider
-
-    Note over Task: Streaming response...
-
-    User->>useChat: Click "Stop"
-    useChat->>API: sendInputStream(runId, "chat-stop", { stop: true })
-    API->>Task: Deliver to stopInput
-    Task->>Task: stopController.abort()
-    LLM-->>Task: Stream ends (AbortError)
-    Task->>Task: cleanupAbortedParts(responseMessage)
-    Note right of Task: Remove partial tool calls,<br/>mark streaming parts as done
-    Task->>API: Write trigger:turn-complete
-    API-->>useChat: SSE: turn complete
-    Task->>Task: onTurnComplete({ stopped: true })
-    Task->>Task: Wait for next message
-```
-
-</Accordion>
-
-## How multi-turn works
-
-### One conversation, many runs
-
-Each chat is backed by a durable Session row — the unit of state that owns the chat's runs across their full lifecycle. The conversation's identity stays keyed on `chatId` across run boundaries; messages flow through the session's `.in` channel; responses stream on `.out`.
-
-Within a session, a single run handles many turns. After each AI response, the run waits for the next message via the session's `.in` channel. The frontend transport handles this automatically — triggers a new run on the session for the first message, and sends subsequent messages into the existing run.
-
-Every turn is a span inside the same run in the Trigger.dev dashboard. The Agents dashboard view also lets you inspect the session directly — all runs that have ever touched it, filterable and resumable.
-
-### Warm and suspended states
-
-After each turn, the run goes through two phases of waiting:
-
-1. **Warm phase** (default 30s) — The run stays active and responds instantly to the next message. Uses compute.
-2. **Suspended phase** (default up to 1h) — The run suspends, freeing compute. It wakes when the next message arrives. There's a brief delay as the run resumes.
-
-If no message arrives within the turn timeout, the run ends gracefully. The session stays open. The next message from the frontend automatically starts a fresh run **on the same session** — chat history and identity persist across the run boundary.
-
-<Info>
-  You are not charged for compute during the suspended phase. Only the idle phase uses compute resources.
-</Info>
-
-### Resume and inbox
-
-Because the session outlives the run, a chat you were in yesterday resumes against the same session today — even after the original run has idle-timed out or crashed. Pass `resume: true` to `useChat` on page load and the transport reconnects via `sessionId` + `lastEventId`, kicking off a new run only if the user sends a message.
-
-You can also enumerate every chat in your environment with [`sessions.list`](/ai-chat/sessions#sessions-list-options-requestoptions):
-
-```ts
-import { sessions } from "@trigger.dev/sdk";
-
-for await (const s of sessions.list({ type: "chat.agent", tag: "user:user-456" })) {
-  console.log(s.id, s.externalId, s.createdAt, s.closedAt);
+export function Chat() {
+  const transport = useTriggerChatTransport<typeof myChat>({
+    task: "my-chat",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, taskId, clientData }) =>
+      startChatSession({ chatId, taskId, clientData }),
+  });
+  const { messages, sendMessage } = useChat({ transport });
+  // ... render UI
 }
 ```
 
-This powers inbox-style UIs (your own chat list page) without maintaining a separate index.
+See [Quick Start](/ai-chat/quick-start) for the matching server actions and a runnable project.
 
-### What the backend accumulates
+## Why use AI Agents on Trigger.dev
 
-The backend automatically accumulates the full conversation history across turns. After the first turn, the frontend transport only sends the new user message — not the entire history. This is handled transparently by the transport and agent.
+- **Resume across refreshes, deploys, and crashes.** A chat in progress when you redeploy keeps streaming on the new version. Mid-stream refreshes pick up where they left off.
+- **Native AI SDK support.** Text, tool calls, reasoning, and custom `data-*` parts all flow through `useChat` over a custom `ChatTransport`. No custom protocol to maintain.
+- **Multi-turn for free.** Each turn is a step inside the same durable task; conversation history accumulates server-side, so clients only ship the new message.
+- **Fast cold starts.** Opt-in [Head Start](/ai-chat/fast-starts#head-start) runs the first `streamText` step in your warm Next.js / Hono / SvelteKit server while the agent boots in parallel — cuts time-to-first-chunk roughly in half.
+- **Production primitives ship in the box.** Stop generation, steering, edits, branching, sub-agents, HITL tool approvals, version upgrades, recovery from cancel/crash/OOM — all first-class.
+- **Observable.** Every turn is a span in the Trigger.dev dashboard. Sessions are queryable via `sessions.list` for inbox-style UIs.
 
-The accumulated messages are available in:
-- `run()` as `messages` (`ModelMessage[]`) — for passing to `streamText`
-- `onTurnStart()` as `uiMessages` (`UIMessage[]`) — for persisting before streaming
-- `onTurnComplete()` as `uiMessages` (`UIMessage[]`) — for persisting after the response
+## How it fits together
 
-<Warning>
-  **Always spread `chat.toStreamTextOptions()` into every `streamText` call.** It wires up the `prepareStep` callback that drives compaction, steering, and background injection. Skipping the spread silently disables those features. See [Backend → chat.agent()](/ai-chat/backend#chat-agent).
-</Warning>
+Three primitives, related but distinct:
 
-Agents appear in the **Agents** section of the dashboard (not Tasks) and can be tested via the **Playground**.
+- **Chat agents** — the SDK surface you define with [`chat.agent()`](/ai-chat/backend#chat-agent). Owns the turn loop, lifecycle hooks, and the response stream.
+- **Sessions** — the durable, bi-directional channel keyed on `chatId` that holds the conversation across run boundaries. A chat agent runs *on top of* a [Session](/ai-chat/sessions).
+- **Sub-agents** — Delegate work from one agent to another via [`AgentChat`](/ai-chat/patterns/sub-agents). The sub-agent runs as its own durable agent on its own session; its response streams back through the parent as preliminary tool results, so the frontend sees the sub-agent working inside the parent's tool card.
 
-## Three approaches
+## Next steps
 
-There are three ways to build the backend, from most opinionated to most flexible:
-
-| Approach | Use when | What you get |
-|----------|----------|--------------|
-| [chat.agent()](/ai-chat/backend#chat-agent) | Most apps | Auto-piping, lifecycle hooks, message accumulation, stop handling |
-| [chat.createSession()](/ai-chat/backend#chat-createsession) | Need a loop but not hooks | Async iterator with per-turn helpers, message accumulation, stop handling |
-| [Raw task + primitives](/ai-chat/backend#raw-task-with-primitives) | Full control | Manual control of every step — use `chat.messages`, `chat.createStopSignal()`, etc. |
-
-## Related
-
-- [Quick Start](/ai-chat/quick-start) — Get a working chat in 3 steps
-- [Database persistence](/ai-chat/patterns/database-persistence) — Conversation + session state across hooks (ORM-agnostic)
-- [Code execution sandbox](/ai-chat/patterns/code-sandbox) — Warm/teardown pattern for E2B (or similar) with `onWait` / `chat.local`
-- [Backend](/ai-chat/backend) — Backend approaches in detail
-- [Frontend](/ai-chat/frontend) — Transport setup, sessions, client data
-- [Types](/ai-chat/types) — TypeScript patterns, including custom `UIMessage` with `chat.withUIMessage`
-- [`chat.local`](/ai-chat/chat-local) — Per-run typed state across hooks, run, tools, subtasks
-- [Sub-agents pattern](/ai-chat/patterns/sub-agents) — Subtask-as-tool, `target: "root"` streaming, `ai.toolExecute` helpers
-- [Background injection](/ai-chat/background-injection) — `chat.inject()` and `chat.defer()` for between-turn work
-- [API Reference](/ai-chat/reference) — Complete reference tables
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/ai-chat/quick-start">
+    Get a working chat in three steps — agent, token, frontend.
+  </Card>
+  <Card title="How it works" icon="diagram-project" href="/ai-chat/how-it-works">
+    Sessions, the turn loop, durable streams, and what survives a refresh.
+  </Card>
+  <Card title="Backend" icon="server" href="/ai-chat/backend">
+    `chat.agent` options, lifecycle hooks, and the raw-task primitives.
+  </Card>
+  <Card title="Patterns" icon="puzzle-piece" href="/ai-chat/patterns/sub-agents">
+    HITL approvals, branching, sub-agents, OOM/crash recovery.
+  </Card>
+</CardGroup>
