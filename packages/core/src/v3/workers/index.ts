@@ -10,7 +10,10 @@ export {
   recordSpanException,
   carrierFromContext,
 } from "../otel/index.js";
-export { StandardResourceCatalog } from "../resource-catalog/standardResourceCatalog.js";
+export {
+  StandardResourceCatalog,
+  NO_FILE_CONTEXT,
+} from "../resource-catalog/standardResourceCatalog.js";
 export {
   TaskContextSpanProcessor,
   TaskContextLogProcessor,
