@@ -205,7 +205,10 @@ function TaskRow({ task }: { task: TaskListItem }) {
       >
         <div className="flex items-center gap-1.5">
           <TaskTriggerSourceIcon source={task.triggerSource} />
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph
+            variant="extra-small"
+            className="text-text-dimmed group-hover/table-row:text-text-bright"
+          >
             {task.taskIdentifier}
           </Paragraph>
         </div>
