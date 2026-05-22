@@ -1,6 +1,5 @@
 ---
-"@trigger.dev/redis-worker": minor
-"@trigger.dev/core": patch
+"@trigger.dev/redis-worker": patch
 ---
 
-Add mollifier — a Redis-backed burst buffer that absorbs trigger storms in front of `engine.trigger` and materialises them into Postgres at a controlled rate via a fair drainer.
+Add MollifierBuffer and MollifierDrainer primitives for burst smoothing (scaffolding only — not active without webapp wiring).
