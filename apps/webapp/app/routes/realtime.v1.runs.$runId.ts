@@ -12,6 +12,7 @@ import {
   isInitialBufferedSubscriptionRequest,
   recordRealtimeBufferedSubscription,
 } from "~/v3/mollifier/mollifierTelemetry.server";
+import { resolveRealtimeRunResource } from "~/v3/mollifier/realtimeRunResource.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -36,7 +37,6 @@ export const loader = createLoaderApiRoute(
           },
         },
       });
-      if (pgRun) return pgRun;
 
       // Buffered fallback. If the run is sitting in the mollifier buffer
       // (no PG row yet), open the Electric subscription anyway: the
@@ -45,28 +45,15 @@ export const loader = createLoaderApiRoute(
       // Without this branch the route 404s, ShapeStream stops on the
       // first response, and the hook silently hangs even after the run
       // materialises (no auto-recovery).
-      const synthetic = await findRunByIdWithMollifierFallback({
-        runId: params.runId,
-        environmentId: authentication.environment.id,
-        organizationId: authentication.environment.organizationId,
-      });
-      if (!synthetic) return null;
+      const bufferedSynthetic = pgRun
+        ? null
+        : await findRunByIdWithMollifierFallback({
+            runId: params.runId,
+            environmentId: authentication.environment.id,
+            organizationId: authentication.environment.organizationId,
+          });
 
-      // Shape findResource expects: friendlyId, taskIdentifier, runTags,
-      // batch (for authorization), and id (for streamRun's WHERE clause).
-      // The synthetic.id is derived from friendlyId via RunId — the same
-      // value engine.trigger will write when the drainer materialises
-      // this run, so the Electric subscription matches on INSERT.
-      // `__bufferedDwellMs` flags this resource as buffer-sourced for
-      // the loader body's observability hook below.
-      return {
-        id: synthetic.id,
-        friendlyId: synthetic.friendlyId,
-        taskIdentifier: synthetic.taskIdentifier ?? "",
-        runTags: synthetic.runTags,
-        batch: null as { friendlyId: string } | null,
-        __bufferedDwellMs: Date.now() - synthetic.createdAt.getTime(),
-      };
+      return resolveRealtimeRunResource({ pgRun, bufferedSynthetic });
     },
     authorization: {
       action: "read",
