@@ -113,7 +113,7 @@ Every chat is backed by a durable Session — the row that owns the chat's runs,
 | Field | Type | Notes |
 | --- | --- | --- |
 | `publicAccessToken` | `string` | Session-scoped JWT (`read:sessions:{chatId} + write:sessions:{chatId}`). Refreshed automatically on 401/403 via `accessToken`. |
-| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. Used to resume mid-stream after a reload. |
+| `lastEventId` | `string \| undefined` | Last SSE event received on `.out`. **Valid for the lifetime of the Session** — keep it across `endRun` / `requestUpgrade` / continuation-run boundaries; only clear when the Session itself closes. The cursor lets the next subscription open past the prior turn's stale `turn-complete` record. |
 | `isStreaming` | `boolean \| undefined` | **Optional.** The transport sets it internally, but you don't have to persist it — the server decides "nothing is streaming" via the session's [`X-Session-Settled`](/ai-chat/client-protocol#x-session-settled-fast-close-on-idle-reconnects) signal on reconnect. If you do persist it, the transport keeps the fast-path short-circuit. If you drop it, reconnects open the SSE and close fast on settled sessions. |
 
 ### Session cleanup (frontend)
