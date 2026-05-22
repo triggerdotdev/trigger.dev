@@ -800,8 +800,8 @@ function toSessionInsertArray(
     session.closedAt ? session.closedAt.getTime() : null,
     session.closedReason ?? "",
     session.expiresAt ? session.expiresAt.getTime() : null,
-    session.createdAt.getTime(),
-    session.updatedAt.getTime(),
+    session.createdAt?.getTime() ?? Date.now(),
+    session.updatedAt?.getTime() ?? Date.now(),
     version.toString(),
     isDeleted ? 1 : 0,
   ];

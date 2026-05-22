@@ -1080,8 +1080,8 @@ export class RunsReplicationService {
       organizationId, // organization_id
       run.projectId, // project_id
       run.id, // run_id
-      run.updatedAt.getTime(), // updated_at
-      run.createdAt.getTime(), // created_at
+      run.updatedAt?.getTime() ?? Date.now(), // updated_at
+      run.createdAt?.getTime() ?? Date.now(), // created_at
       run.status, // status
       environmentType, // environment_type
       run.friendlyId, // friendly_id
@@ -1142,7 +1142,7 @@ export class RunsReplicationService {
     // Return array matching PAYLOAD_COLUMNS order
     return [
       run.id, // run_id
-      run.createdAt.getTime(), // created_at
+      run.createdAt?.getTime() ?? Date.now(), // created_at
       payload, // payload
     ];
   }
