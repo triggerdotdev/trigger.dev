@@ -2,11 +2,21 @@ import { CpuChipIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/node";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
+import {
+  Bar,
+  BarChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  YAxis,
+  type TooltipProps,
+} from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Header2 } from "~/components/primitives/Headers";
+import { formatDateTime } from "~/components/primitives/DateTime";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -23,6 +33,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
@@ -121,7 +132,7 @@ export default function AgentsPage() {
               <div className="flex items-center gap-1.5 border-b border-grid-bright p-2">
                 <SearchInput placeholder="Search agents…" autoFocus />
               </div>
-              <Table containerClassName="max-h-full pb-[2.5rem]">
+              <Table containerClassName="max-h-full pb-[2.5rem]" showTopBorder={false}>
                 <TableHeader>
                   <TableRow>
                     <TableHeaderCell>Agent ID</TableHeaderCell>
@@ -148,7 +159,7 @@ export default function AgentsPage() {
                           <TableCell to={path} isTabbableCell>
                             <div className="flex items-center gap-2">
                               <SimpleTooltip
-                                button={<CubeSparkleIcon className="size-4 text-agents" />}
+                                button={<CubeSparkleIcon className="size-4.5 text-agents" />}
                                 content="Agent"
                                 disableHoverableContent
                               />
@@ -199,6 +210,7 @@ export default function AgentsPage() {
                                   <SparklineWithTotal
                                     data={data[agent.slug]}
                                     formatTotal={formatCount}
+                                    tooltipLabel={(v) => (v === 1 ? "conversation" : "conversations")}
                                   />
                                 )}
                               </TypedAwait>
@@ -213,6 +225,8 @@ export default function AgentsPage() {
                                     formatTotal={formatCost}
                                     color="text-amber-400"
                                     barColor="#F59E0B"
+                                    formatTooltipValue={formatCost}
+                                    tooltipLabel={() => "cost"}
                                   />
                                 )}
                               </TypedAwait>
@@ -227,6 +241,8 @@ export default function AgentsPage() {
                                     formatTotal={formatTokens}
                                     color="text-purple-400"
                                     barColor="#A855F7"
+                                    formatTooltipValue={formatTokens}
+                                    tooltipLabel={(v) => (v === 1 ? "token" : "tokens")}
                                   />
                                 )}
                               </TypedAwait>
@@ -321,19 +337,27 @@ function formatTokens(total: number): string {
 }
 
 function SparklinePlaceholder() {
-  return <div className="h-6 w-24" />;
+  return <div className="h-6 w-[7rem]" />;
 }
+
+type SparklineDatum = { date: Date; count: number };
 
 function SparklineWithTotal({
   data,
   formatTotal,
   color = "text-text-bright",
   barColor = "#3B82F6",
+  tooltipLabel,
+  formatTooltipValue,
 }: {
   data?: number[];
   formatTotal: (total: number) => string;
   color?: string;
   barColor?: string;
+  /** Singular/plural label suffix in the hover tooltip. */
+  tooltipLabel?: (value: number) => string;
+  /** Format raw bucket value for tooltip display (defaults to as-is). */
+  formatTooltipValue?: (value: number) => string;
 }) {
   if (!data || data.every((v) => v === 0)) {
     return <span className="text-text-dimmed">–</span>;
@@ -342,25 +366,74 @@ function SparklineWithTotal({
   const total = data.reduce((sum, v) => sum + v, 0);
   const max = Math.max(...data);
 
+  // Map the 24-bucket array to dated points so the tooltip can show the
+  // hour each bar represents. Bucket i is `23 - i` hours before now.
+  const now = new Date();
+  const chartData: SparklineDatum[] = data.map((count, i) => ({
+    date: new Date(now.getTime() - (data.length - 1 - i) * 3600_000),
+    count,
+  }));
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex h-5 items-end gap-px">
-        {data.map((value, i) => {
-          const height = max > 0 ? Math.max((value / max) * 100, value > 0 ? 8 : 0) : 0;
-          return (
-            <div
-              key={i}
-              className="w-[3px] rounded-t-[1px]"
-              style={{
-                height: `${height}%`,
-                backgroundColor: value > 0 ? barColor : "transparent",
-                opacity: value > 0 ? 0.8 : 0,
-              }}
+    <div className="flex items-start gap-2">
+      <div className="h-6 w-[7rem] rounded-sm">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <YAxis domain={[0, max || 1]} hide />
+            <Tooltip
+              cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+              content={
+                <SparklineTooltip
+                  tooltipLabel={tooltipLabel}
+                  formatTooltipValue={formatTooltipValue}
+                />
+              }
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 1000 }}
+              animationDuration={0}
             />
-          );
-        })}
+            <Bar
+              dataKey="count"
+              fill={barColor}
+              strokeWidth={0}
+              isAnimationActive={false}
+              minPointSize={1}
+            />
+            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            {max > 0 && (
+              <ReferenceLine y={max} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
       </div>
-      <span className={cn("text-xs tabular-nums", color)}>{formatTotal(total)}</span>
+      <span className={cn("-mt-1 text-xs tabular-nums", color)}>{formatTotal(total)}</span>
     </div>
+  );
+}
+
+function SparklineTooltip({
+  active,
+  payload,
+  tooltipLabel,
+  formatTooltipValue,
+}: TooltipProps<number, string> & {
+  tooltipLabel?: (value: number) => string;
+  formatTooltipValue?: (value: number) => string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const entry = payload[0].payload as SparklineDatum;
+  const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
+  const formattedDate = formatDateTime(date, "UTC", [], false, true);
+  const displayValue = formatTooltipValue ? formatTooltipValue(entry.count) : String(entry.count);
+  return (
+    <TooltipPortal active={active}>
+      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <div className="mt-2 text-xs text-text-bright">
+          <span className="tabular-nums">{displayValue}</span>{" "}
+          {tooltipLabel && <span className="text-text-dimmed">{tooltipLabel(entry.count)}</span>}
+        </div>
+      </div>
+    </TooltipPortal>
   );
 }
