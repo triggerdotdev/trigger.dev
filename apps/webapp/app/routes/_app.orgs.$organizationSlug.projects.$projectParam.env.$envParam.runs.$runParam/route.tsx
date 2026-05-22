@@ -480,23 +480,17 @@ export default function Page() {
             />
           </Dialog>
           {run.isFinished ? null : (
-            <Dialog key={`cancel-${run.friendlyId}`}>
-              <DialogTrigger asChild>
-                <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
-                  Cancel run…
-                </Button>
-              </DialogTrigger>
-              <CancelRunDialog
-                runFriendlyId={run.friendlyId}
-                redirectPath={v3RunSpanPath(
-                  organization,
-                  project,
-                  environment,
-                  { friendlyId: run.friendlyId },
-                  { spanId: run.spanId }
-                )}
-              />
-            </Dialog>
+            <ControlledCancelRunDialog
+              key={`cancel-${run.friendlyId}`}
+              runFriendlyId={run.friendlyId}
+              redirectPath={v3RunSpanPath(
+                organization,
+                project,
+                environment,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
+            />
           )}
         </PageAccessories>
       </NavBar>
@@ -657,6 +651,35 @@ function TraceView({
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
+  );
+}
+
+// Controlled wrapper around the cancel dialog. Owns the Radix open state
+// so the dialog closes itself once the cancel action transitions through
+// submission. We can't `<DialogClose asChild>`-wrap the submit button
+// because Radix's onClick handler swallows the button's name=value pair
+// that the form action depends on for `redirectUrl`.
+function ControlledCancelRunDialog({
+  runFriendlyId,
+  redirectPath,
+}: {
+  runFriendlyId: string;
+  redirectPath: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
+          Cancel run…
+        </Button>
+      </DialogTrigger>
+      <CancelRunDialog
+        runFriendlyId={runFriendlyId}
+        redirectPath={redirectPath}
+        onCancelSubmitted={() => setOpen(false)}
+      />
+    </Dialog>
   );
 }
 
