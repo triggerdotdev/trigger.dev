@@ -20,10 +20,6 @@ import { logger } from "@trigger.dev/sdk";
 import { CancelTaskRunService } from "../cancelTaskRun.server";
 import { tryCatch } from "@trigger.dev/core";
 import { ReplayTaskRunService } from "../replayTaskRun.server";
-import {
-  processBufferedCancelBulkAction,
-  processBufferedReplayBulkAction,
-} from "~/v3/mollifier/bulkActionBuffer.server";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
@@ -176,45 +172,6 @@ export class BulkActionService extends BaseService {
     let failureCount = 0;
     // Slice because we fetch an extra for the cursor
     const runIdsToProcess = runIds.slice(0, env.BULK_ACTION_BATCH_SIZE);
-
-    // First-batch only: also process runs that are currently sitting in
-    // the mollifier buffer. They aren't in ClickHouse (no OTEL events
-    // yet) so the listRunIds query never returned them. Gated on the
-    // cursor being null so worker retries don't reprocess the same set.
-    const isFirstBatch = !group.cursor;
-    if (isFirstBatch && group.environmentId) {
-      const bufferedFilters = {
-        tasks: filters.tasks,
-        tags: filters.tags,
-        statuses: filters.statuses,
-        period: filters.period,
-        from: filters.from,
-        to: filters.to,
-        isTest: filters.isTest,
-        runId: filters.runId,
-      };
-      const bufferedCtx = {
-        envId: group.environmentId,
-        organizationId: group.project.organizationId,
-        filters: bufferedFilters,
-      };
-      if (group.type === BulkActionType.CANCEL) {
-        const r = await processBufferedCancelBulkAction({
-          ...bufferedCtx,
-          cancelReason: `Bulk action ${group.friendlyId} cancelled run`,
-        });
-        successCount += r.successCount;
-        failureCount += r.failureCount;
-      } else if (group.type === BulkActionType.REPLAY) {
-        const r = await processBufferedReplayBulkAction({
-          ...bufferedCtx,
-          bulkActionId,
-          prismaClient: this._prisma,
-        });
-        successCount += r.successCount;
-        failureCount += r.failureCount;
-      }
-    }
 
     switch (group.type) {
       case BulkActionType.CANCEL: {
