@@ -183,7 +183,7 @@ export default function AgentsPage() {
                                   return (
                                     <span className="flex items-center gap-1.5 text-xs">
                                       {state.running > 0 && (
-                                        <span className="flex items-center gap-0.5">
+                                        <span className="flex items-center gap-1.5">
                                           <span className="size-1.5 rounded-full bg-success" />
                                           <span>{state.running}</span>
                                         </span>
@@ -192,7 +192,7 @@ export default function AgentsPage() {
                                         <span className="text-text-dimmed">·</span>
                                       )}
                                       {state.suspended > 0 && (
-                                        <span className="flex items-center gap-0.5">
+                                        <span className="flex items-center gap-1.5">
                                           <span className="size-1.5 rounded-full bg-blue-500" />
                                           <span>{state.suspended}</span>
                                         </span>
@@ -210,6 +210,7 @@ export default function AgentsPage() {
                                   <SparklineWithTotal
                                     data={data[agent.slug]}
                                     formatTotal={formatCount}
+                                    color="text-blue-400"
                                     tooltipLabel={(v) => (v === 1 ? "conversation" : "conversations")}
                                   />
                                 )}
