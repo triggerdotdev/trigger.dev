@@ -1,0 +1,173 @@
+---
+title: "chat.local"
+sidebarTitle: "chat.local"
+description: "Typed, run-scoped data accessible from hooks, run(), tools, and subtasks. Survives across turns, auto-cleared between runs, auto-hydrated into subtasks."
+---
+
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
+Use `chat.local` to create typed, run-scoped data that persists across turns and is accessible from anywhere — the run function, tools, nested helpers. Each run gets its own isolated copy, and locals are automatically cleared between runs.
+
+Lifecycle hooks and **`run`** also receive **`ctx`** ([`TaskRunContext`](/ai-chat/reference#task-context-ctx)) — the same object as on a standard `task()` — for tags, metadata, and cleanup that needs the full run record.
+
+When a subtask is invoked via `ai.toolExecute()` (or the deprecated `ai.tool()`), initialized locals are automatically serialized into the subtask's metadata and hydrated on first access — no extra code needed. Subtask changes to hydrated locals are local to the subtask and don't propagate back to the parent.
+
+## Declaring and initializing
+
+Declare locals at module level with a unique `id`, then initialize them inside a lifecycle hook where you have context (chatId, clientData, etc.):
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, tool, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+import { db } from "@/lib/db";
+
+// Declare at module level — each local needs a unique id
+const userContext = chat.local<{
+  userId: string;
+  name: string;
+  plan: "free" | "pro";
+  messageCount: number;
+}>({ id: "userContext" });
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  clientDataSchema: z.object({ userId: z.string() }),
+  onBoot: async ({ clientData }) => {
+    // Initialize with real data from your database
+    const user = await db.user.findUnique({
+      where: { id: clientData.userId },
+    });
+    userContext.init({
+      userId: clientData.userId,
+      name: user.name,
+      plan: user.plan,
+      messageCount: user.messageCount,
+    });
+  },
+  run: async ({ messages, signal }) => {
+    userContext.messageCount++;
+
+    return streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      system: `Helping ${userContext.name} (${userContext.plan} plan).`,
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    });
+  },
+});
+```
+
+<Warning>
+  Initialize `chat.local` in [`onBoot`](/ai-chat/lifecycle-hooks#onboot), not `onChatStart`. `onBoot` fires on every fresh worker — including continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry) — whereas `onChatStart` only fires on the chat's very first message. Initializing in `onChatStart` means `run()` will crash on continuation runs with `chat.local can only be modified after initialization`.
+</Warning>
+
+## Accessing from tools
+
+Locals are accessible from anywhere during task execution — including AI SDK tools:
+
+```ts
+const userContext = chat.local<{ plan: "free" | "pro" }>({ id: "userContext" });
+
+const premiumTool = tool({
+  description: "Access premium features",
+  inputSchema: z.object({ feature: z.string() }),
+  execute: async ({ feature }) => {
+    if (userContext.plan !== "pro") {
+      return { error: "This feature requires a Pro plan." };
+    }
+    // ... premium logic
+  },
+});
+```
+
+## Accessing from subtasks
+
+When you use `ai.toolExecute()` inside AI SDK `tool()` to expose a subtask, chat locals are automatically available read-only:
+
+```ts
+import { chat, ai } from "@trigger.dev/sdk/ai";
+import { schemaTask } from "@trigger.dev/sdk";
+import { streamText, tool } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+
+const userContext = chat.local<{ name: string; plan: "free" | "pro" }>({ id: "userContext" });
+
+export const analyzeDataTask = schemaTask({
+  id: "analyze-data",
+  schema: z.object({ query: z.string() }),
+  run: async ({ query }) => {
+    // userContext.name just works — auto-hydrated from parent metadata
+    console.log(`Analyzing for ${userContext.name}`);
+    // Changes here are local to this subtask and don't propagate back
+  },
+});
+
+const analyzeData = tool({
+  description: analyzeDataTask.description ?? "",
+  inputSchema: analyzeDataTask.schema!,
+  execute: ai.toolExecute(analyzeDataTask),
+});
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onBoot: async ({ clientData }) => {
+    userContext.init({ name: "Alice", plan: "pro" });
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      tools: { analyzeData },
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    });
+  },
+});
+```
+
+<Note>
+  Values must be JSON-serializable for subtask access. Non-serializable values (functions, class instances, etc.) will be lost during transfer.
+</Note>
+
+## Dirty tracking and persistence
+
+The `hasChanged()` method returns `true` if any property was set since the last check, then resets the flag. Use it in lifecycle hooks to only persist when data actually changed:
+
+```ts
+onTurnComplete: async ({ chatId }) => {
+  if (userContext.hasChanged()) {
+    await db.user.update({
+      where: { id: userContext.get().userId },
+      data: {
+        messageCount: userContext.messageCount,
+      },
+    });
+  }
+},
+```
+
+## API
+
+| Method | Description |
+|--------|-------------|
+| `chat.local<T>({ id })` | Create a typed local with a unique id (declare at module level) |
+| `local.init(value)` | Initialize with a value (call in hooks or `run`) |
+| `local.hasChanged()` | Returns `true` if modified since last check, resets flag |
+| `local.get()` | Returns a plain object copy (for serialization) |
+| `local.property` | Direct property access (read/write via Proxy) |
+
+<Note>
+  Locals use shallow proxying. Nested object mutations like `local.prefs.theme = "dark"` won't trigger the dirty flag. Instead, replace the whole property: `local.prefs = { ...local.prefs, theme: "dark" }`.
+</Note>
+
+## See also
+
+- [Lifecycle hooks](/ai-chat/lifecycle-hooks) — `onBoot` is the canonical init site for `chat.local`.
+- [Database persistence pattern](/ai-chat/patterns/database-persistence) — full per-hook breakdown using `chat.local` alongside DB rows.
+- [Code execution sandbox pattern](/ai-chat/patterns/code-sandbox) — example of using `chat.local` to hold a sandbox handle across turns.
