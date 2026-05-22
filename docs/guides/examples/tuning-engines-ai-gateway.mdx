@@ -1,0 +1,85 @@
+---
+title: "Use Tuning Engines as a governed AI endpoint"
+sidebarTitle: "Tuning Engines AI endpoint"
+description: "This example shows how to call Tuning Engines from a Trigger.dev task for governed AI model access."
+---
+
+## Overview
+
+[Tuning Engines](https://tuningengines.com) exposes an OpenAI-compatible
+inference endpoint for governed AI access. Trigger.dev owns the task execution,
+retries, schedules, and run visibility. Tuning Engines owns model routing,
+policy checks, budgets, audit logs, and runtime trace correlation.
+
+Use this pattern when a Trigger.dev task should call a governed model endpoint
+instead of calling a model provider directly.
+
+## Environment variables
+
+Set these variables in your Trigger.dev environment:
+
+```bash
+TE_INFERENCE_KEY=sk-te-your-inference-key
+TE_MODEL=auto
+```
+
+## Task code
+
+```ts trigger/tuning-engines.ts
+import { task } from "@trigger.dev/sdk";
+
+export const governedAiTask = task({
+  id: "tuning-engines-governed-ai",
+  retry: {
+    maxAttempts: 3,
+  },
+  run: async (payload: { prompt: string }, { ctx }) => {
+    const runId = `trigger_${ctx.run.id}`;
+
+    const response = await fetch("https://api.tuningengines.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.TE_INFERENCE_KEY}`,
+        "Content-Type": "application/json",
+        "X-TE-Run-ID": runId,
+      },
+      body: JSON.stringify({
+        model: process.env.TE_MODEL || "auto",
+        messages: [{ role: "user", content: payload.prompt }],
+        metadata: {
+          run_id: runId,
+          request_id: crypto.randomUUID(),
+          runtime: "triggerdev",
+          event_type: "model.call",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Tuning Engines request failed: ${response.status}`);
+    }
+
+    return response.json();
+  },
+});
+```
+
+## Testing your task
+
+To test this task in the dashboard, you can use the following payload:
+
+```json
+{
+  "prompt": "Summarize why durable task retries are useful for AI workflows."
+}
+```
+
+## Notes
+
+- Store `TE_INFERENCE_KEY` as a Trigger.dev environment variable, never in
+  source control.
+- Use the Trigger.dev run id as the Tuning Engines `run_id` so model usage,
+  policy decisions, approvals, and traces can be correlated.
+- If a Tuning Engines policy requires approval, approve the request in Tuning
+  Engines, then retry the same task with the returned approval id in the
+  request headers.

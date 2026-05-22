@@ -588,6 +588,7 @@
               "guides/examples/sharp-image-processing",
               "guides/examples/supabase-database-operations",
               "guides/examples/supabase-storage-upload",
+              "guides/examples/tuning-engines-ai-gateway",
               "guides/examples/vercel-ai-sdk",
               "guides/examples/vercel-sync-env-vars"
             ]
