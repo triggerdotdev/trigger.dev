@@ -1132,6 +1132,44 @@ export class RunEngine {
           });
         }
 
+        // Emit `runFailed` so the alert pipeline picks up the
+        // SYSTEM_FAILURE row and the event-store handler writes the
+        // completion event into the trace. Without this the mollifier
+        // drainer's terminal failures (and batch-trigger's
+        // exceed-limit failures) land in PG silently — visible in the
+        // dashboard list but never reaching customers' configured
+        // ERROR alert channels.
+        this.eventBus.emit("runFailed", {
+          time: taskRun.completedAt ?? new Date(),
+          run: {
+            id: taskRun.id,
+            status: taskRun.status,
+            spanId: taskRun.spanId,
+            error,
+            taskEventStore: taskRun.taskEventStore,
+            createdAt: taskRun.createdAt,
+            completedAt: taskRun.completedAt,
+            updatedAt: taskRun.updatedAt,
+            // This row never attempted execution — it's a synthesised
+            // terminal failure. The alert payload's `attemptNumber=0`
+            // is the signal downstream consumers can use to
+            // distinguish a never-ran failure from a run that
+            // exhausted its retries.
+            attemptNumber: 0,
+            usageDurationMs: 0,
+            costInCents: 0,
+          },
+          organization: {
+            id: environment.organization.id,
+          },
+          project: {
+            id: environment.project.id,
+          },
+          environment: {
+            id: environment.id,
+          },
+        });
+
         return taskRun;
       },
       {
