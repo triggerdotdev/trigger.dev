@@ -18,6 +18,7 @@ import {
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import type { MetricsV1Input } from "@internal/clickhouse";
 import { Prisma, TaskEvent, TaskEventKind } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { Gauge } from "prom-client";
@@ -151,13 +152,15 @@ export class EventRepository implements IEventRepository {
     await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
-  async insertMany(events: CreateEventInput[]) {
+  insertMany(events: CreateEventInput[]) {
     this._flushScheduler.addToBatch(events.map(this.#createableEventToPrismaEvent));
   }
 
   async insertManyImmediate(events: CreateEventInput[]) {
     await this.#flushBatchWithReturn(nanoid(), events.map(this.#createableEventToPrismaEvent));
   }
+
+  insertManyMetrics(_rows: MetricsV1Input[]): void {}
 
   async completeSuccessfulRunEvent({ run, endTime }: { run: CompleteableTaskRun; endTime?: Date }) {
     const startTime = convertDateToNanoseconds(run.createdAt);

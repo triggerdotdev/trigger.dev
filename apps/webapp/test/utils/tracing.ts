@@ -39,6 +39,8 @@ export function createInMemoryTracing() {
   });
   provider.register();
 
+  // Use the provider's tracer so spans hit this exporter even when a global
+  // NodeTracerProvider was already registered (e.g. via tracer.server import chain).
   const tracer = provider.getTracer("test-tracer");
 
   return {

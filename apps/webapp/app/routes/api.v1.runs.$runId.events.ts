@@ -6,7 +6,7 @@ import {
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 const ParamsSchema = z.object({
   runId: z.string(), // This is the run friendly ID
@@ -38,7 +38,10 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ resource: run, authentication }) => {
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const eventRepository = await getEventRepositoryForStore(
+      run.taskEventStore,
+      authentication.environment.organization.id
+    );
 
     const runEvents = await eventRepository.getRunEvents(
       getTaskEventStoreTableForRun(run),

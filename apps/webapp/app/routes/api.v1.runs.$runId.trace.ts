@@ -6,7 +6,7 @@ import {
   anyResource,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
 const ParamsSchema = z.object({
@@ -43,7 +43,10 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ resource: run, authentication }) => {
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const eventRepository = await getEventRepositoryForStore(
+      run.taskEventStore,
+      authentication.environment.organization.id
+    );
 
     const traceSummary = await eventRepository.getTraceDetailedSummary(
       getTaskEventStoreTableForRun(run),

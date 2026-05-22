@@ -3,11 +3,11 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -145,10 +145,13 @@ export class RunPresenter {
       };
     }
 
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const repository = await getEventRepositoryForStore(
+      run.taskEventStore,
+      run.runtimeEnvironment.organizationId
+    );
 
     // get the events
-    let traceSummary = await eventRepository.getTraceSummary(
+    let traceSummary = await repository.getTraceSummary(
       getTaskEventStoreTableForRun(run),
       run.runtimeEnvironment.id,
       run.traceId,
@@ -272,7 +275,7 @@ export class RunPresenter {
         overridesBySpanId: traceSummary.overridesBySpanId,
         linkedRunIdBySpanId,
       },
-      maximumLiveReloadingSetting: eventRepository.maximumLiveReloadingSetting,
+      maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
     };
   }
 }
