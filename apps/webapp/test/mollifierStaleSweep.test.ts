@@ -15,13 +15,21 @@ const SNAPSHOT = {
 
 function spyDeps() {
   const recordedStaleEnvIds: string[] = [];
+  const snapshots: Array<Map<string, number>> = [];
   const warnings: Array<{ message: string; fields: Record<string, unknown> }> = [];
   return {
     recordedStaleEnvIds,
+    snapshots,
     warnings,
     deps: {
       recordStaleEntry: (envId: string) => {
         recordedStaleEnvIds.push(envId);
+      },
+      reportStaleEntrySnapshot: (snapshot: Map<string, number>) => {
+        // Clone so post-sweep assertions see what was reported *at that
+        // call site*, not whatever subsequent passes mutate the source
+        // map into.
+        snapshots.push(new Map(snapshot));
       },
       logger: {
         warn: (message: string, fields: Record<string, unknown>) => {
@@ -37,7 +45,7 @@ describe("runStaleSweepOnce — unit", () => {
     // Mirrors the prod gate: if TRIGGER_MOLLIFIER_ENABLED=0 the buffer
     // singleton is null and the sweep is a no-op. We don't want it to
     // emit a metric (or throw) just because mollifier is disabled.
-    const { deps, recordedStaleEnvIds, warnings } = spyDeps();
+    const { deps, recordedStaleEnvIds, warnings, snapshots } = spyDeps();
     const result = await runStaleSweepOnce(
       { staleThresholdMs: 1000 },
       { ...deps, getBuffer: () => null },
@@ -50,6 +58,10 @@ describe("runStaleSweepOnce — unit", () => {
     });
     expect(recordedStaleEnvIds).toEqual([]);
     expect(warnings).toEqual([]);
+    // An empty snapshot is still reported so any previously-paging env
+    // (from a prior sweep before mollifier was disabled) clears.
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].size).toBe(0);
   });
 });
 
@@ -86,7 +98,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         // the threshold without actually waiting in real time.
         const futureNow = Date.now() + 5 * 60 * 1000;
 
-        const { deps, recordedStaleEnvIds, warnings } = spyDeps();
+        const { deps, recordedStaleEnvIds, warnings, snapshots } = spyDeps();
         const result = await runStaleSweepOnce(
           { staleThresholdMs: 60 * 1000 },
           {
@@ -110,6 +122,42 @@ describe("runStaleSweepOnce — testcontainers", () => {
           expect(w.fields.staleThresholdMs).toBe(60 * 1000);
           expect(w.fields.dwellMs).toBeGreaterThan(60 * 1000);
         }
+        // Snapshot drives the alertable gauge — env_a has 2 stale
+        // entries, env_b has 1. Both must appear so a future alert can
+        // identify which env is paging.
+        expect(snapshots).toHaveLength(1);
+        expect(Object.fromEntries(snapshots[0])).toEqual({
+          env_a: 2,
+          env_b: 1,
+        });
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "snapshot reports zero for envs that have entries but none stale (clears latched alerts)",
+    async ({ redisOptions }) => {
+      // Critical for alert behaviour: a previous sweep reported env_a
+      // stale, alert fired, drainer caught up. The next sweep must
+      // report `env_a -> 0` so the gauge drops below the alert
+      // threshold instead of staying latched at the last stale value.
+      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      try {
+        await buffer.accept({
+          runId: "run_just_arrived",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const { deps, snapshots } = spyDeps();
+        await runStaleSweepOnce(
+          { staleThresholdMs: 60 * 1000 },
+          { ...deps, getBuffer: () => buffer },
+        );
+        expect(snapshots).toHaveLength(1);
+        expect(Object.fromEntries(snapshots[0])).toEqual({ env_a: 0 });
       } finally {
         await buffer.close();
       }

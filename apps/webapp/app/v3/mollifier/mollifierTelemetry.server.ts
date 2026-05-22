@@ -35,9 +35,10 @@ export function recordRealtimeBufferedSubscription(envId: string): void {
 
 // Counts buffer entries that have been waiting in the queue ZSET longer
 // than the configured stale threshold (typically half of entryTtlSeconds).
-// Climbing in lockstep with the queue depth means the drainer is offline
-// or falling behind — alerting hooks into this counter give ops a paging
-// signal before TTL-induced silent loss kicks in.
+// Useful for historical "stale events over time" views, but not directly
+// alertable on its own — a single stuck entry observed by N sweep ticks
+// adds N to the counter, so `rate()` over an alerting window reflects
+// (entries × ticks), not "entries that are stale right now".
 export const staleEntriesCounter = meter.createCounter(
   "mollifier.stale_entries",
   {
@@ -49,6 +50,41 @@ export const staleEntriesCounter = meter.createCounter(
 export function recordStaleEntry(envId: string): void {
   staleEntriesCounter.add(1, { envId });
 }
+
+// Alertable signal: the count of stale entries observed by the latest
+// sweep, per env. The sweep snapshots the full per-env picture on each
+// pass (including zeros for envs that no longer have any stale entries)
+// so an env that was paging can clear when the drainer catches up
+// instead of staying latched. Recommended alert:
+//   mollifier_stale_entries_current{envId=...} > 0 for 5m
+export const staleEntriesGauge = meter.createObservableGauge(
+  "mollifier.stale_entries.current",
+  {
+    description:
+      "Buffer entries whose dwell exceeds the stale threshold, as observed by the latest sweep pass",
+  },
+);
+
+const latestStaleSnapshot = new Map<string, number>();
+
+export function reportStaleEntrySnapshot(snapshot: Map<string, number>): void {
+  // Replace, don't merge — envs absent from the new snapshot have either
+  // drained or no longer exist; leaving their last value cached would
+  // keep alerts latched forever.
+  latestStaleSnapshot.clear();
+  for (const [envId, count] of snapshot) {
+    latestStaleSnapshot.set(envId, count);
+  }
+}
+
+meter.addBatchObservableCallback(
+  (result) => {
+    for (const [envId, count] of latestStaleSnapshot) {
+      result.observe(staleEntriesGauge, count, { envId });
+    }
+  },
+  [staleEntriesGauge],
+);
 
 // Electric SQL's shape-stream protocol adds a `handle=` query param on
 // every reconnect after the initial GET. Gating the realtime-buffered
