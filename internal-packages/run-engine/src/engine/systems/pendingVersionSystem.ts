@@ -176,8 +176,12 @@ export class PendingVersionSystem {
       });
     }
 
-    //enqueue more if needed
-    if (pendingRuns.length > maxCount) {
+    // Reschedule when the lookup returned a full-plus-one batch — that's
+    // the signal there are more candidates to drain. Use `candidateIds`
+    // (the raw lookup result) rather than `pendingRuns` (post-status-guard)
+    // because runs that already left PENDING_VERSION shouldn't suppress
+    // the next batch.
+    if (candidateIds.length > maxCount) {
       await this.scheduleResolvePendingVersionRuns(backgroundWorkerId);
     }
   }
