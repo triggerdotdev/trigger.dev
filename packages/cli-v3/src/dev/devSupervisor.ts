@@ -18,6 +18,7 @@ import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker } from "./backgroundWorker.js";
+import { copySkillFolders } from "../build/bundleSkills.js";
 import { WorkerRuntime } from "./workerRuntime.js";
 import { chalkTask, cliLink, prettyError } from "../utilities/cliOutput.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
@@ -329,6 +330,25 @@ class DevSupervisor implements WorkerRuntime {
     if (!backgroundWorker.manifest) {
       stop();
       throw new Error("Could not initialize worker");
+    }
+
+    // Copy registered skill folders into `${workingDir}/.trigger/skills/{id}/`
+    // so `skill.local()` can read them at runtime. The main indexer already
+    // discovered skills; we just do the file IO here.
+    const discoveredSkills = backgroundWorker.manifest.skills ?? [];
+    if (discoveredSkills.length > 0) {
+      try {
+        await copySkillFolders({
+          skills: discoveredSkills,
+          destinationRoot: join(this.options.config.workingDir, ".trigger", "skills"),
+          workingDir: this.options.config.workingDir,
+          logger,
+        });
+      } catch (err) {
+        prettyError("Skill bundling failed", (err as Error).message);
+        stop();
+        return;
+      }
     }
 
     const validationIssue = validateWorkerManifest(backgroundWorker.manifest);

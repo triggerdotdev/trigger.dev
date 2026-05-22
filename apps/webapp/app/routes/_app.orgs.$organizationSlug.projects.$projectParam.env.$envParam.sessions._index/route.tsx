@@ -16,7 +16,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getSessionFiltersFromRequest } from "~/presenters/SessionFilters.server";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
@@ -45,7 +45,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = getSessionFiltersFromRequest(request);
 
-  const presenter = new SessionListPresenter($replica, clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+  const presenter = new SessionListPresenter($replica, clickhouse);
   const list = await presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,

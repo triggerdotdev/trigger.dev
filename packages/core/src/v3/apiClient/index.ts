@@ -602,6 +602,32 @@ export class ApiClient {
     );
   }
 
+  /** Presigned PUT URL for a `chat.agent` session snapshot. */
+  createChatSnapshotUploadUrl(sessionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/snapshot-url`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /** Presigned GET URL for a `chat.agent` session snapshot. */
+  getChatSnapshotUrl(sessionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/snapshot-url`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   retrieveRun(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       RetrieveRunResponse,

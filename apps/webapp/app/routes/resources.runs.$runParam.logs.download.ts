@@ -8,7 +8,7 @@ import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
@@ -30,7 +30,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     },
   });
 
-  if (!run) {
+  if (!run || !run.organizationId) {
     // Buffered run has no events to package yet. Return a small gzipped
     // placeholder file so the dashboard's "Download logs" button doesn't
     // 404 mid-burst. We don't enforce org membership here because the
@@ -67,7 +67,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+  const eventRepository = await getEventRepositoryForStore(
+    run.taskEventStore,
+    run.organizationId
+  );
 
   const runEvents = await eventRepository.getRunEvents(
     getTaskEventStoreTableForRun(run),

@@ -7,7 +7,7 @@ import {
 } from "@trigger.dev/database";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   parseRunListInputOptions,
   type RunListInputFilters,
@@ -38,8 +38,9 @@ export class BulkActionService extends BaseService {
     const filters = await getFilters(payload, request);
 
     // Count the runs that will be affected by the bulk action
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
     const runsRepository = new RunsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: this._replica as PrismaClient,
     });
     const count = await runsRepository.countRuns({
@@ -147,8 +148,9 @@ export class BulkActionService extends BaseService {
       ...rawParams,
     });
 
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(group.project.organizationId, "standard");
     const runsRepository = new RunsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: this._replica as PrismaClient,
     });
 

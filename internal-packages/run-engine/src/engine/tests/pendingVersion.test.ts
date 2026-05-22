@@ -4,6 +4,7 @@ import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { DequeuedMessage } from "@trigger.dev/core/v3";
+import { PostgresPendingVersionRunIdLookup } from "./postgresPendingVersionLookup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -44,6 +45,7 @@ describe("RunEngine pending version", () => {
         },
         //set this so we have to requeue the runs in two batches
         queueRunsWaitingForWorkerBatchSize: 1,
+        pendingVersionRunIdLookup: new PostgresPendingVersionRunIdLookup(prisma),
         tracer: trace.getTracer("test", "0.0.0"),
       });
 
@@ -191,6 +193,7 @@ describe("RunEngine pending version", () => {
         },
         //set this so we have to requeue the runs in two batches
         queueRunsWaitingForWorkerBatchSize: 1,
+        pendingVersionRunIdLookup: new PostgresPendingVersionRunIdLookup(prisma),
         tracer: trace.getTracer("test", "0.0.0"),
         logLevel: "debug",
       });
@@ -355,6 +358,7 @@ describe("RunEngine pending version", () => {
           },
           baseCostInCents: 0.0001,
         },
+        pendingVersionRunIdLookup: new PostgresPendingVersionRunIdLookup(prisma),
         tracer: trace.getTracer("test", "0.0.0"),
       });
 

@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -43,7 +43,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const [traceId, spanId, , startTime] = parts;
 
-  const presenter = new LogDetailPresenter($replica, logsClickhouseClient);
+  const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "logs");
+  const presenter = new LogDetailPresenter($replica, logsClickhouse);
 
   let result;
   try {

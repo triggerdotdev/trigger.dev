@@ -12,6 +12,18 @@ import {
 import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
 
+/**
+ * Sentinel file-context value the runtime workers set around task execution
+ * (via `TaskExecutor.execute`) so that `task()` calls firing during a run —
+ * e.g. as a side effect of `await import(...)` of a module containing a
+ * task definition — register normally instead of hitting the silent-drop
+ * guard in `registerTaskMetadata`. The catalog uses this exact string to
+ * detect "registered during execution" and emit a one-time warning per
+ * task id. The indexer never sets this context, so its behavior is
+ * unchanged.
+ */
+export const NO_FILE_CONTEXT = "<no-context>";
+
 export class StandardResourceCatalog implements ResourceCatalog {
   private _taskSchemas: Map<string, TaskSchema> = new Map();
   private _taskMetadata: Map<string, TaskMetadata> = new Map();
@@ -25,6 +37,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _queueMetadata: Map<string, QueueManifest> = new Map();
   private _skillMetadata: Map<string, SkillMetadata> = new Map();
   private _skillFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _sentinelContextWarned: Set<string> = new Set();
 
   setCurrentFileContext(filePath: string, entryPoint: string) {
     this._currentFileContext = { filePath, entryPoint };
@@ -75,6 +88,20 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
     if (!task.id) {
       return;
+    }
+
+    // When the current context is the sentinel set by TaskExecutor around a
+    // run, the task() call fired during execution — most commonly via a
+    // dynamic import inside another task's run(). Warn once per task id so
+    // the pattern stays visible.
+    if (
+      this._currentFileContext.filePath === NO_FILE_CONTEXT &&
+      !this._sentinelContextWarned.has(task.id)
+    ) {
+      this._sentinelContextWarned.add(task.id);
+      console.warn(
+        `[trigger.dev] task "${task.id}" was registered via dynamic import during another task's run(); move to a static import if you notice any issues.`
+      );
     }
 
     this._taskFileMetadata.set(task.id, {
