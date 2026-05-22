@@ -125,7 +125,7 @@ export class PendingVersionSystem {
     });
 
     for (const run of pendingRuns) {
-      await this.$.prisma.$transaction(async (tx) => {
+      const promoted = await this.$.prisma.$transaction(async (tx) => {
         // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
         // worker already promoted this run between our findMany and the
         // update, count is 0 and we skip the enqueue.
@@ -135,7 +135,7 @@ export class PendingVersionSystem {
         });
 
         if (updateResult.count === 0) {
-          return;
+          return false;
         }
 
         const updatedRun = await tx.taskRun.findFirstOrThrow({ where: { id: run.id } });
@@ -150,7 +150,11 @@ export class PendingVersionSystem {
           // if it sits queued waiting on a concurrency slot.
           includeTtl: true,
         });
+
+        return true;
       });
+
+      if (!promoted) continue;
 
       this.$.eventBus.emit("runStatusChanged", {
         time: new Date(),
