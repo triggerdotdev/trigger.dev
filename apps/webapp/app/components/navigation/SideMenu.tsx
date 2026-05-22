@@ -19,7 +19,6 @@ import {
   PlusIcon,
   PuzzlePieceIcon,
   ServerStackIcon,
-  TableCellsIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
@@ -41,6 +40,7 @@ import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
+import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
@@ -567,7 +567,7 @@ export function SideMenu({
                 />
                 <SideMenuItem
                   name="Query"
-                  icon={TableCellsIcon}
+                  icon={CodeSquareIcon}
                   activeIconColor="text-query"
                   inactiveIconColor="text-text-dimmed"
                   to={queryPath(organization, project, environment)}
