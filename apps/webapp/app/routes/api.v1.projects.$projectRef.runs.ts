@@ -7,7 +7,6 @@ import {
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { callRunListWithBufferMerge } from "~/v3/mollifier/listingMerge.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -40,35 +39,6 @@ export const loader = createLoaderPATApiRoute(
       return json({ error: "Project not found" }, { status: 404 });
     }
 
-    // For PAT-scoped lookups the environment isn't supplied by auth;
-    // it's resolved from `filter[env]`. The presenter already does this
-    // lookup internally and errors if no env can be resolved. We mirror
-    // that resolution here so the mollifier-buffer merge has the env
-    // context it needs (envId + slug for synthesised list items).
-    const envFilter = searchParams["filter[env]"];
-    let envForMerge:
-      | { id: string; organizationId: string; slug: string }
-      | undefined;
-    if (envFilter && envFilter.length > 0) {
-      const env = await $replica.runtimeEnvironment.findFirst({
-        where: { projectId: project.id, slug: { in: envFilter } },
-        select: { id: true, organizationId: true, slug: true },
-      });
-      if (env) envForMerge = env;
-    }
-
-    if (envForMerge) {
-      const result = await callRunListWithBufferMerge({
-        project,
-        searchParams,
-        apiVersion,
-        environment: envForMerge,
-      });
-      return json(result);
-    }
-
-    // No env resolvable — let the presenter throw its existing
-    // ServiceValidationError, preserving the legacy behaviour.
     const presenter = new ApiRunListPresenter();
     const result = await presenter.call(project, searchParams, apiVersion);
 

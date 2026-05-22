@@ -1,11 +1,12 @@
 import { json } from "@remix-run/server-runtime";
-import { ApiRunListSearchParams } from "~/presenters/v3/ApiRunListPresenter.server";
-import { logger } from "~/services/logger.server";
+import {
+  ApiRunListPresenter,
+  ApiRunListSearchParams,
+} from "~/presenters/v3/ApiRunListPresenter.server";
 import {
   anyResource,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
-import { callRunListWithBufferMerge } from "~/v3/mollifier/listingMerge.server";
 
 export const loader = createLoaderApiRoute(
   {
@@ -36,12 +37,13 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
   async ({ searchParams, authentication, apiVersion }) => {
-    const result = await callRunListWithBufferMerge({
-      project: authentication.environment.project,
+    const presenter = new ApiRunListPresenter();
+    const result = await presenter.call(
+      authentication.environment.project,
       searchParams,
       apiVersion,
-      environment: authentication.environment,
-    });
+      authentication.environment
+    );
 
     return json(result);
   }

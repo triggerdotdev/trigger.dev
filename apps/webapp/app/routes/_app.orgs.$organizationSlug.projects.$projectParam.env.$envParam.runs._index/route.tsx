@@ -45,10 +45,6 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import {
-  dashboardListCursor,
-  mergeBufferedIntoDashboardList,
-} from "~/v3/mollifier/dashboardListingMerge.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import {
   setRootOnlyFilterPreference,
@@ -93,43 +89,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = await getRunFiltersFromRequest(request);
 
-  // Buffered-run pagination uses a compound cursor that wraps the PG
-  // presenter's own cursor. Decode here so the inner PG cursor is
-  // forwarded to the presenter; the merge helper reconstructs the
-  // outgoing cursor based on what fits on this page.
-  const decodedCursor = dashboardListCursor.decode(filters.cursor);
-  const pgCursor = decodedCursor ? decodedCursor.inner : filters.cursor;
-  const dashboardPageSize = 25;
-
   const presenter = new NextRunListPresenter($replica, clickhouseClient);
-  const baseList = presenter.call(project.organizationId, environment.id, {
+  const list = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
     ...filters,
-    cursor: pgCursor,
   });
-
-  // Prepend mollifier-buffered runs so customers see freshly-triggered
-  // runs while the gate is diverting traffic. The merge happens inside
-  // the deferred promise so the page still streams.
-  const list = baseList.then((result) =>
-    mergeBufferedIntoDashboardList({
-      baseList: result,
-      envId: environment.id,
-      pageSize: dashboardPageSize,
-      cursor: filters.cursor,
-      filters: {
-        tasks: filters.tasks,
-        statuses: filters.statuses,
-        tags: filters.tags,
-        period: filters.period,
-        from: filters.from,
-        to: filters.to,
-        isTest: filters.isTest,
-        runId: filters.runId,
-      },
-    })
-  );
 
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,
   // the toggle's URL value can be a temporary auto-flip (or a user override scoped to
