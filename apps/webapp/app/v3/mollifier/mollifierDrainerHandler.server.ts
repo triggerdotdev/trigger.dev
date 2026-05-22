@@ -86,7 +86,77 @@ export function createDrainerHandler(deps: {
         span.setAttribute("mollifier.run_friendly_id", input.runId);
         span.setAttribute("taskRunId", input.runId);
 
-        await deps.engine.trigger(input.payload as any, deps.prisma);
+        try {
+          await deps.engine.trigger(input.payload as any, deps.prisma);
+        } catch (err) {
+          // The retryable-PG class re-throws so the drainer's outer
+          // worker loop can `buffer.requeue` (handled in
+          // `MollifierDrainer.drainOne`). For non-retryable failures we
+          // write a terminal SYSTEM_FAILURE row to PG via the engine's
+          // existing `createFailedTaskRun` (used by batch-trigger for
+          // the same purpose) so the customer sees the run in their
+          // dashboard / SDK instead of silently losing it when the
+          // buffer entry TTLs out. If THAT insert also fails (PG truly
+          // unreachable), rethrow so the drainer's outer catch falls
+          // through to its existing `buffer.fail` terminal-marker path.
+          if (isRetryablePgError(err)) {
+            throw err;
+          }
+          const reason = err instanceof Error ? err.message : String(err);
+          span.setAttribute("mollifier.terminal_failure_reason", reason);
+          const snapshot = input.payload as Record<string, unknown>;
+          const env = snapshot.environment as
+            | {
+                id: string;
+                type: any;
+                project: { id: string };
+                organization: { id: string };
+              }
+            | undefined;
+          if (!env) {
+            // Snapshot too malformed to even construct a TaskRun row.
+            // Drainer's outer catch will buffer.fail this entry.
+            throw err;
+          }
+          try {
+            await deps.engine.createFailedTaskRun({
+              friendlyId: input.runId,
+              environment: env,
+              taskIdentifier: String(snapshot.taskIdentifier ?? ""),
+              payload: typeof snapshot.payload === "string" ? snapshot.payload : undefined,
+              payloadType:
+                typeof snapshot.payloadType === "string" ? snapshot.payloadType : undefined,
+              error: {
+                type: "STRING_ERROR",
+                raw: `Mollifier drainer terminal failure: ${reason}`,
+              },
+              parentTaskRunId:
+                typeof snapshot.parentTaskRunId === "string"
+                  ? snapshot.parentTaskRunId
+                  : undefined,
+              rootTaskRunId:
+                typeof snapshot.rootTaskRunId === "string"
+                  ? snapshot.rootTaskRunId
+                  : undefined,
+              depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
+              resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
+              traceId: typeof snapshot.traceId === "string" ? snapshot.traceId : undefined,
+              spanId: typeof snapshot.spanId === "string" ? snapshot.spanId : undefined,
+              taskEventStore:
+                typeof snapshot.taskEventStore === "string"
+                  ? snapshot.taskEventStore
+                  : undefined,
+              queue: typeof snapshot.queue === "string" ? snapshot.queue : undefined,
+              lockedQueueId:
+                typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
+            });
+          } catch (writeErr) {
+            // Class A — PG itself is failing. Rethrow the original
+            // error so the drainer falls back to buffer.fail. Include
+            // the write error in the log line at the drainer layer.
+            throw err;
+          }
+        }
       });
     });
   };

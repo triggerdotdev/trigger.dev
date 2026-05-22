@@ -90,12 +90,14 @@ describe("createDrainerHandler", () => {
     expect(observedTraceId).toBe(snapshotTraceId);
   });
 
-  it("propagates engine.trigger errors so MollifierDrainer can classify them", async () => {
+  it("rethrows retryable PG errors so MollifierDrainer requeues the entry", async () => {
+    const err = new Error("Can't reach database server");
     const trigger = vi.fn(async () => {
-      throw new Error("boom");
+      throw err;
     });
+    const createFailedTaskRun = vi.fn();
     const handler = createDrainerHandler({
-      engine: { trigger } as any,
+      engine: { trigger, createFailedTaskRun } as any,
       prisma: {} as any,
     });
 
@@ -108,6 +110,97 @@ describe("createDrainerHandler", () => {
         attempts: 0,
         createdAt: new Date(),
       } as any),
-    ).rejects.toThrow("boom");
+    ).rejects.toThrow("Can't reach database server");
+    // Retryable: we do NOT write a SYSTEM_FAILURE row, the entry should
+    // be requeued for another shot.
+    expect(createFailedTaskRun).not.toHaveBeenCalled();
+  });
+
+  const envFixture = {
+    id: "env_a",
+    type: "DEVELOPMENT",
+    project: { id: "proj_1" },
+    organization: { id: "org_1" },
+  };
+
+  it("writes a SYSTEM_FAILURE PG row when engine.trigger fails non-retryably", async () => {
+    const trigger = vi.fn(async () => {
+      throw new Error("validation failed: payload too large");
+    });
+    const createFailedTaskRun = vi.fn(async () => ({
+      id: "internal",
+      friendlyId: "run_x",
+    }));
+    const handler = createDrainerHandler({
+      engine: { trigger, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: "run_x",
+        envId: "env_a",
+        orgId: "org_1",
+        payload: { taskIdentifier: "t", environment: envFixture },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any),
+    ).resolves.toBeUndefined();
+
+    expect(trigger).toHaveBeenCalledOnce();
+    expect(createFailedTaskRun).toHaveBeenCalledOnce();
+    const arg = createFailedTaskRun.mock.calls[0][0] as { error: { raw: string } };
+    expect(arg.error.raw).toContain("validation failed");
+  });
+
+  it("rethrows the original error when createFailedTaskRun also fails (PG genuinely unreachable)", async () => {
+    const triggerErr = new Error("engine rejected the snapshot");
+    const trigger = vi.fn(async () => {
+      throw triggerErr;
+    });
+    const createFailedTaskRun = vi.fn(async () => {
+      throw new Error("connection refused");
+    });
+    const handler = createDrainerHandler({
+      engine: { trigger, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: "run_x",
+        envId: "env_a",
+        orgId: "org_1",
+        payload: { taskIdentifier: "t", environment: envFixture },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any),
+    ).rejects.toThrow("engine rejected the snapshot");
+    // Drainer's outer drainOne loop now decides retry vs buffer.fail.
+    expect(createFailedTaskRun).toHaveBeenCalledOnce();
+  });
+
+  it("rethrows the original error when the snapshot lacks an environment block", async () => {
+    const triggerErr = new Error("engine rejected the snapshot");
+    const trigger = vi.fn(async () => {
+      throw triggerErr;
+    });
+    const createFailedTaskRun = vi.fn();
+    const handler = createDrainerHandler({
+      engine: { trigger, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: "run_x",
+        envId: "env_a",
+        orgId: "org_1",
+        payload: { taskIdentifier: "t" /* no environment */ },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any),
+    ).rejects.toThrow("engine rejected the snapshot");
+    expect(createFailedTaskRun).not.toHaveBeenCalled();
   });
 });
