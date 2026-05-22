@@ -33,6 +33,23 @@ export function recordRealtimeBufferedSubscription(envId: string): void {
   realtimeBufferedSubscriptionsCounter.add(1, { envId });
 }
 
+// Counts buffer entries that have been waiting in the queue ZSET longer
+// than the configured stale threshold (typically half of entryTtlSeconds).
+// Climbing in lockstep with the queue depth means the drainer is offline
+// or falling behind — alerting hooks into this counter give ops a paging
+// signal before TTL-induced silent loss kicks in.
+export const staleEntriesCounter = meter.createCounter(
+  "mollifier.stale_entries",
+  {
+    description:
+      "Mollifier buffer entries whose dwell exceeds the stale threshold (per sweep pass)",
+  },
+);
+
+export function recordStaleEntry(envId: string): void {
+  staleEntriesCounter.add(1, { envId });
+}
+
 // Electric SQL's shape-stream protocol adds a `handle=` query param on
 // every reconnect after the initial GET. Gating the realtime-buffered
 // log/counter on its absence keeps the signal at one tick per

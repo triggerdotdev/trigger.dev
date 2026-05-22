@@ -1098,6 +1098,25 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
 
+    // Periodic sweep that scans buffer queue ZSETs for entries whose
+    // dwell exceeds the stale threshold. Independent of the drainer —
+    // its job is exactly to make a stuck/offline drainer visible to
+    // ops. Defaults: enabled when the mollifier is enabled, run every
+    // 5 minutes, flag entries with dwell > half of entryTtlSeconds.
+    TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED: z
+      .string()
+      .default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
+    TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5 * 60_000),
+    TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional(),
+
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()
       .int()
