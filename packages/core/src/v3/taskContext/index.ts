@@ -1,6 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
 import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { sdkScope } from "../sdkScope/index.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { TaskContext } from "./types.js";
 
@@ -22,6 +23,7 @@ export class TaskContextAPI {
   }
 
   get isInsideTask(): boolean {
+    if (this.#isolatedFromContext()) return false;
     return this.#getTaskContext() !== undefined;
   }
 
@@ -30,15 +32,23 @@ export class TaskContextAPI {
   }
 
   get ctx(): TaskRunContext | undefined {
+    if (this.#isolatedFromContext()) return undefined;
     return this.#getTaskContext()?.ctx;
   }
 
   get worker(): ServerBackgroundWorker | undefined {
+    if (this.#isolatedFromContext()) return undefined;
     return this.#getTaskContext()?.worker;
   }
 
   get isWarmStart(): boolean | undefined {
+    if (this.#isolatedFromContext()) return undefined;
     return this.#getTaskContext()?.isWarmStart;
+  }
+
+  #isolatedFromContext(): boolean {
+    const scope = sdkScope.getStore();
+    return !!scope && !scope.inheritContext;
   }
 
   get attributes(): Attributes {
