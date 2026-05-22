@@ -677,7 +677,7 @@ export class RunsReplicationService {
         combinedTaskRunInserts.push(...group.taskRunInserts);
         combinedPayloadInserts.push(...group.payloadInserts);
 
-        const [trErr] = await this.#insertWithRetry(
+        const [trErr, trOutcome] = await this.#insertWithRetry(
           (attempt) => this.#insertTaskRunInserts(clickhouse, group.taskRunInserts, attempt),
           "task run inserts",
           flushId
@@ -686,7 +686,7 @@ export class RunsReplicationService {
           taskRunError = trErr;
         }
 
-        const [plErr] = await this.#insertWithRetry(
+        const [plErr, plOutcome] = await this.#insertWithRetry(
           (attempt) => this.#insertPayloadInserts(clickhouse, group.payloadInserts, attempt),
           "payload inserts",
           flushId
@@ -695,10 +695,14 @@ export class RunsReplicationService {
           payloadError = plErr;
         }
 
-        if (!trErr) {
+        // Only count rows that actually landed in ClickHouse. `kind: "dropped"`
+        // means the recovery wrapper bailed (sanitizer no-op or sanitize-retry
+        // still failed) — those rows never made it, so they must not show up
+        // as successful inserts in the per-batch counter.
+        if (!trErr && trOutcome?.kind !== "dropped") {
           this._taskRunsInsertedCounter.add(group.taskRunInserts.length);
         }
-        if (!plErr) {
+        if (!plErr && plOutcome?.kind !== "dropped") {
           this._payloadsInsertedCounter.add(group.payloadInserts.length);
         }
       }
@@ -872,13 +876,12 @@ export class RunsReplicationService {
         return insertResult;
       };
 
-      const outcome = await this.#insertWithJsonParseRecovery(
+      return await this.#insertWithJsonParseRecovery(
         taskRunInserts,
         doInsert,
         "task_runs_v2",
         attempt
       );
-      return outcome.kind === "dropped" ? undefined : outcome.insertResult;
     });
   }
 
@@ -907,13 +910,12 @@ export class RunsReplicationService {
         return insertResult;
       };
 
-      const outcome = await this.#insertWithJsonParseRecovery(
+      return await this.#insertWithJsonParseRecovery(
         payloadInserts,
         doInsert,
         "raw_task_runs_payload_v1",
         attempt
       );
-      return outcome.kind === "dropped" ? undefined : outcome.insertResult;
     });
   }
 
