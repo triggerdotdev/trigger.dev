@@ -76,20 +76,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
         return json(result);
       },
-      // Buffered snapshot has been patched. Synthesise a minimal
-      // retrieve-shape response — the run hasn't materialised yet, so
-      // the presenter's full pass would synthesise mostly defaults
-      // anyway. Returning the friendlyId + the new delay is sufficient
-      // for SDK confirmation; subsequent retrieve calls go through the
-      // existing presenter with read-fallback (Phase A).
-      synthesisedResponse: () =>
-        json(
-          {
-            id: parsed.data.runParam,
-            delayUntil: delayUntil.toISOString(),
-          },
-          { status: 200 }
-        ),
+      // Buffered snapshot has been patched. Run it through the same
+      // ApiRetrieveRunPresenter the PG branch uses (it falls back to
+      // the buffer for the SyntheticRun lookup) so the response shape
+      // matches `RetrieveRunResponse` — that's what the SDK's
+      // `rescheduleRun` zod-validates against. Returning a stripped
+      // `{ id, delayUntil }` object fails the SDK schema on every
+      // existing SDK version.
+      synthesisedResponse: async () => {
+        const run = await ApiRetrieveRunPresenter.findRun(parsed.data.runParam, env);
+        if (!run) {
+          return json({ error: "Run not found" }, { status: 404 });
+        }
+        const apiVersion = getApiVersion(request);
+        const presenter = new ApiRetrieveRunPresenter(apiVersion);
+        const result = await presenter.call(run, env);
+        if (!result) {
+          return json({ error: "Run not found" }, { status: 404 });
+        }
+        return json(result);
+      },
       abortSignal: getRequestAbortSignal(),
     });
 

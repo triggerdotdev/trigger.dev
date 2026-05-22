@@ -25,6 +25,10 @@ export type SyntheticRun = {
   // the drainer materialises it.
   cancelledAt: Date | undefined;
   cancelReason: string | undefined;
+  // Reschedule patch (`set_delay`) writes `delayUntil` into the snapshot.
+  // Surfacing it on SyntheticRun lets the retrieve-run shape reflect the
+  // pending delay before the drainer materialises the PG row.
+  delayUntil: Date | undefined;
   taskIdentifier: string | undefined;
   createdAt: Date;
 
@@ -133,11 +137,14 @@ export async function findRunByIdWithMollifierFallback(
     const cancelledAtRaw = asString(snapshot.cancelledAt);
     const cancelledAt = cancelledAtRaw ? new Date(cancelledAtRaw) : undefined;
     const cancelReason = asString(snapshot.cancelReason);
-    const status: SyntheticRun["status"] = cancelledAt
-      ? "CANCELED"
-      : entry.status === "FAILED"
-      ? "FAILED"
-      : "QUEUED";
+    let status: SyntheticRun["status"] = "QUEUED";
+    if (cancelledAt) {
+      status = "CANCELED";
+    } else if (entry.status === "FAILED") {
+      status = "FAILED";
+    }
+    const delayUntilRaw = asString(snapshot.delayUntil);
+    const delayUntil = delayUntilRaw ? new Date(delayUntilRaw) : undefined;
 
     return {
       id: RunId.fromFriendlyId(entry.runId),
@@ -145,6 +152,7 @@ export async function findRunByIdWithMollifierFallback(
       status,
       cancelledAt,
       cancelReason,
+      delayUntil,
       taskIdentifier: asString(snapshot.taskIdentifier),
       createdAt: entry.createdAt,
 

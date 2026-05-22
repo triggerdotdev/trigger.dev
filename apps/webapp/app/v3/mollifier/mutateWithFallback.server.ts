@@ -23,7 +23,7 @@ export type MutateWithFallbackInput<TResponse> = {
   pgMutation: (pgRow: TaskRun) => Promise<TResponse>;
   // Called when the patch landed cleanly on the buffer snapshot. The
   // drainer will see the patched payload on its next pop.
-  synthesisedResponse: () => TResponse;
+  synthesisedResponse: () => TResponse | Promise<TResponse>;
   abortSignal?: AbortSignal;
   // Override defaults for tests.
   safetyNetMs?: number;
@@ -77,7 +77,7 @@ export async function mutateWithFallback<TResponse>(
   );
 
   if (result === "applied_to_snapshot") {
-    return { kind: "snapshot", response: input.synthesisedResponse() };
+    return { kind: "snapshot", response: await input.synthesisedResponse() };
   }
 
   if (result === "not_found") {

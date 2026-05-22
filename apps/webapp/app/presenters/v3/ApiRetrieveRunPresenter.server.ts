@@ -523,9 +523,19 @@ function resolveTriggerFunction(run: CommonRelatedRun): TriggerFunction {
 // yet, so every field that comes from execution state (output, attempts,
 // completedAt, cost, relations) takes a default. The presenter's call()
 // handles QUEUED-state runs without surprise.
+function bufferedStatusToTaskRunStatus(status: SyntheticRun["status"]): TaskRunStatus {
+  switch (status) {
+    case "FAILED":
+      return "SYSTEM_FAILURE";
+    case "CANCELED":
+      return "CANCELED";
+    default:
+      return "PENDING";
+  }
+}
+
 function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
-  const status: TaskRunStatus =
-    buffered.status === "FAILED" ? "SYSTEM_FAILURE" : "PENDING";
+  const status: TaskRunStatus = bufferedStatusToTaskRunStatus(buffered.status);
 
   const errorJson: Prisma.JsonValue = buffered.error
     ? {
@@ -544,10 +554,10 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     taskIdentifier: buffered.taskIdentifier ?? "",
     createdAt: buffered.createdAt,
     startedAt: null,
-    updatedAt: buffered.createdAt,
-    completedAt: null,
+    updatedAt: buffered.cancelledAt ?? buffered.createdAt,
+    completedAt: buffered.cancelledAt ?? null,
     expiredAt: null,
-    delayUntil: null,
+    delayUntil: buffered.delayUntil ?? null,
     metadata,
     metadataType: buffered.metadataType ?? "application/json",
     ttl: buffered.ttl ?? null,

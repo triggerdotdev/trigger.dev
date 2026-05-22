@@ -62,7 +62,7 @@ export async function buildSyntheticSpanRun(args: {
     startedAt: null,
     executedAt: null,
     updatedAt: run.cancelledAt ?? run.createdAt,
-    delayUntil: null,
+    delayUntil: run.delayUntil ?? null,
     expiredAt: null,
     completedAt: run.cancelledAt ?? null,
     logsDeletedAt: null,

@@ -89,20 +89,15 @@ export const loader = createLoaderApiRoute(
       return json(
         {
           spanId: resolved.run.spanId,
-          parentId: resolved.run.parentSpanId,
+          parentId: resolved.run.parentSpanId ?? null,
           runId: resolved.run.friendlyId,
           message: resolved.run.taskIdentifier ?? "",
           isError: false,
-          isPartial: true,
-          isCancelled: false,
+          isPartial: resolved.run.status !== "CANCELED",
+          isCancelled: resolved.run.status === "CANCELED",
           level: "TRACE",
           startTime: resolved.run.createdAt,
           durationMs: 0,
-          properties: undefined,
-          events: undefined,
-          entityType: undefined,
-          ai: undefined,
-          triggeredRuns: undefined,
         },
         { status: 200 }
       );
