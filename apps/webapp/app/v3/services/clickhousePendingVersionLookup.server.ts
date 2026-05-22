@@ -47,7 +47,12 @@ export class ClickhousePendingVersionLookup implements PendingVersionRunIdLookup
         "engine"
       );
     } catch (error) {
-      this.opts.logger.warn("ClickhousePendingVersionLookup factory resolution failed", {
+      // Factory resolution failures usually mean a real configuration
+      // problem (registry misload, missing data store, ClientType mismatch).
+      // These are not transient — log at error so ops sees them in dashboards
+      // and incident hooks. Query-level errors below stay at warn because
+      // those are expected to be transient.
+      this.opts.logger.error("ClickhousePendingVersionLookup factory resolution failed", {
         error,
         organizationId: options.organizationId,
       });
