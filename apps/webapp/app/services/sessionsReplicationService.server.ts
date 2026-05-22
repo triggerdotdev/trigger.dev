@@ -22,6 +22,7 @@ import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { type Session } from "@trigger.dev/database";
 import EventEmitter from "node:events";
+import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { ConcurrentFlushScheduler } from "./runsReplicationService.server";
 
 interface TransactionEvent<T = any> {
@@ -40,7 +41,7 @@ interface Transaction<T = any> {
 }
 
 export type SessionsReplicationServiceOptions = {
-  clickhouse: ClickHouse;
+  clickhouseFactory: ClickhouseFactory;
   pgConnectionUrl: string;
   serviceName: string;
   slotName: string;
@@ -537,11 +538,38 @@ export class SessionsReplicationService {
     const flushStartTime = performance.now();
 
     await startSpan(this._tracer, "flushBatch", async (span) => {
-      const sessionInserts = batch
-        .map((item) => toSessionInsertArray(item.session, item._version, item.event === "delete"))
-        // batch inserts in clickhouse are more performant if the items
-        // are pre-sorted by the primary key
-        .sort((a, b) => {
+      const routeCache = new Map<string, ClickHouse>();
+      const groups = new Map<ClickHouse, { sessionInserts: SessionInsertArray[] }>();
+
+      for (const item of batch) {
+        if (!item.session.organizationId) {
+          continue;
+        }
+
+        let client = routeCache.get(item.session.organizationId);
+        if (!client) {
+          client = this.options.clickhouseFactory.getClickhouseForOrganizationSync(
+            item.session.organizationId,
+            "sessions_replication"
+          );
+          routeCache.set(item.session.organizationId, client);
+        }
+
+        let group = groups.get(client);
+        if (!group) {
+          group = { sessionInserts: [] };
+          groups.set(client, group);
+        }
+
+        group.sessionInserts.push(
+          toSessionInsertArray(item.session, item._version, item.event === "delete")
+        );
+      }
+
+      // batch inserts in clickhouse are more performant if the items
+      // are pre-sorted by the primary key
+      const sortSessionInserts = (rows: SessionInsertArray[]) =>
+        rows.sort((a, b) => {
           const aOrgId = getSessionField(a, "organization_id");
           const bOrgId = getSessionField(b, "organization_id");
           if (aOrgId !== bOrgId) {
@@ -568,18 +596,36 @@ export class SessionsReplicationService {
           return aSessionId < bSessionId ? -1 : 1;
         });
 
-      span.setAttribute("session_inserts", sessionInserts.length);
+      const combinedSessionInserts: SessionInsertArray[] = [];
+      let sessionError: Error | null = null;
+
+      // Sequential per-group flush — matches runsReplicationService for the same reason
+      // (parallel writes have hit Linux net.ipv4.tcp_wmem buffer pressure at high throughput).
+      for (const [clickhouse, group] of groups) {
+        sortSessionInserts(group.sessionInserts);
+        combinedSessionInserts.push(...group.sessionInserts);
+
+        const [insErr] = await this.#insertWithRetry(
+          (attempt) => this.#insertSessionInserts(clickhouse, group.sessionInserts, attempt),
+          "session inserts",
+          flushId
+        );
+        if (insErr && !sessionError) {
+          sessionError = insErr;
+        }
+
+        if (!insErr) {
+          this._sessionsInsertedCounter.add(group.sessionInserts.length);
+        }
+      }
+
+      span.setAttribute("session_inserts", combinedSessionInserts.length);
 
       this.logger.debug("Flushing inserts", {
         flushId,
-        sessionInserts: sessionInserts.length,
+        sessionInserts: combinedSessionInserts.length,
+        clickhouseGroups: groups.size,
       });
-
-      const [sessionError, sessionResult] = await this.#insertWithRetry(
-        (attempt) => this.#insertSessionInserts(sessionInserts, attempt),
-        "session inserts",
-        flushId
-      );
 
       if (sessionError) {
         this.logger.error("Error inserting session inserts", {
@@ -591,22 +637,17 @@ export class SessionsReplicationService {
 
       this.logger.debug("Flushed inserts", {
         flushId,
-        sessionInserts: sessionInserts.length,
+        sessionInserts: combinedSessionInserts.length,
       });
 
-      this.events.emit("batchFlushed", { flushId, sessionInserts });
+      this.events.emit("batchFlushed", { flushId, sessionInserts: combinedSessionInserts });
 
-      // Record metrics
       const flushDurationMs = performance.now() - flushStartTime;
       const hasErrors = sessionError !== null;
 
       this._batchSizeHistogram.record(batch.length);
       this._flushDurationHistogram.record(flushDurationMs);
       this._batchesFlushedCounter.add(1, { success: !hasErrors });
-
-      if (!sessionError) {
-        this._sessionsInsertedCounter.add(sessionInserts.length);
-      }
     });
   }
 
@@ -706,14 +747,23 @@ export class SessionsReplicationService {
     };
   }
 
-  async #insertSessionInserts(sessionInserts: SessionInsertArray[], attempt: number) {
+  async #insertSessionInserts(
+    clickhouse: ClickHouse,
+    sessionInserts: SessionInsertArray[],
+    attempt: number
+  ) {
+    if (sessionInserts.length === 0) {
+      return;
+    }
     return await startSpan(this._tracer, "insertSessionInserts", async (span) => {
-      const [insertError, insertResult] =
-        await this.options.clickhouse.sessions.insertCompactArrays(sessionInserts, {
+      const [insertError, insertResult] = await clickhouse.sessions.insertCompactArrays(
+        sessionInserts,
+        {
           params: {
             clickhouse_settings: this.#getClickhouseInsertSettings(),
           },
-        });
+        }
+      );
 
       if (insertError) {
         this.logger.error("Error inserting session inserts attempt", {

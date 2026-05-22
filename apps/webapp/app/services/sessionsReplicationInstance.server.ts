@@ -1,9 +1,10 @@
-import { ClickHouse } from "@internal/clickhouse";
 import invariant from "tiny-invariant";
 import { env } from "~/env.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { meter, provider } from "~/v3/tracer.server";
 import { SessionsReplicationService } from "./sessionsReplicationService.server";
+import { signalsEmitter } from "./signals.server";
 
 export const sessionsReplicationInstance = singleton(
   "sessionsReplicationInstance",
@@ -21,22 +22,8 @@ function initializeSessionsReplicationInstance() {
 
   console.log("🗃️  Sessions replication service enabled");
 
-  const clickhouse = new ClickHouse({
-    url: env.SESSION_REPLICATION_CLICKHOUSE_URL,
-    name: "sessions-replication",
-    keepAlive: {
-      enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
-    },
-    logLevel: env.SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL,
-    compression: {
-      request: true,
-    },
-    maxOpenConnections: env.SESSION_REPLICATION_MAX_OPEN_CONNECTIONS,
-  });
-
   const service = new SessionsReplicationService({
-    clickhouse: clickhouse,
+    clickhouseFactory,
     pgConnectionUrl: DATABASE_URL,
     serviceName: "sessions-replication",
     slotName: env.SESSION_REPLICATION_SLOT_NAME,
@@ -67,6 +54,35 @@ function initializeSessionsReplicationInstance() {
     insertMaxDelayMs: env.SESSION_REPLICATION_INSERT_MAX_DELAY_MS,
     insertStrategy: env.SESSION_REPLICATION_INSERT_STRATEGY,
   });
+
+  if (env.SESSION_REPLICATION_ENABLED === "1") {
+    // Gate start() on the org data-stores registry being loaded. Starting earlier would
+    // race the registry load — sync factory lookups would return `null` and route org-scoped
+    // sessions to the default ClickHouse, writing them to the wrong cluster.
+    clickhouseFactory
+      .isReady()
+      .then(() => service.start())
+      .then(() => {
+        console.log("🗃️ Sessions replication service started");
+      })
+      .catch((error) => {
+        console.error("🗃️ Sessions replication service failed to start", {
+          error,
+        });
+      });
+
+    // SIGTERM/SIGINT fire during process teardown; wrap the async shutdown so an
+    // unhandled rejection doesn't bubble past process exit.
+    const shutdownSessionsReplication = () => {
+      service.shutdown().catch((error) => {
+        console.error("🗃️ Sessions replication service shutdown error", {
+          error,
+        });
+      });
+    };
+    signalsEmitter.on("SIGTERM", shutdownSessionsReplication);
+    signalsEmitter.on("SIGINT", shutdownSessionsReplication);
+  }
 
   return service;
 }

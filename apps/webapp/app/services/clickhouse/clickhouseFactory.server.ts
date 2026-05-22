@@ -153,6 +153,63 @@ function initializeRunsReplicationClickhouseClient(): ClickHouse {
   });
 }
 
+/** Session replication to ClickHouse (`SESSION_REPLICATION_CLICKHOUSE_URL`); not exported. */
+const defaultSessionsReplicationClickhouseClient = singleton(
+  "sessionsReplicationClickhouseClient",
+  initializeSessionsReplicationClickhouseClient
+);
+
+function initializeSessionsReplicationClickhouseClient(): ClickHouse {
+  if (!env.SESSION_REPLICATION_CLICKHOUSE_URL) {
+    // Sessions replication worker gates on this URL; factory may still resolve "sessions_replication" for tests.
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.SESSION_REPLICATION_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "sessions-replication",
+    keepAlive: {
+      enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+    compression: { request: true },
+    maxOpenConnections: env.SESSION_REPLICATION_MAX_OPEN_CONNECTIONS,
+  });
+}
+
+/** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
+const defaultEventsClickhouseClient = singleton(
+  "eventsClickhouseClient",
+  initializeEventsClickhouseClient
+);
+
+function initializeEventsClickhouseClient(): ClickHouse {
+  if (!env.EVENTS_CLICKHOUSE_URL) {
+    throw new Error("EVENTS_CLICKHOUSE_URL is not set");
+  }
+
+  const url = new URL(env.EVENTS_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "task-events",
+    keepAlive: {
+      enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.EVENTS_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -162,7 +219,14 @@ function hashHostname(url: string): string {
   return createHash("sha256").update(parsed.hostname).digest("hex");
 }
 
-export type ClientType = "standard" | "events" | "replication" | "logs" | "query" | "admin";
+export type ClientType =
+  | "standard"
+  | "events"
+  | "replication"
+  | "sessions_replication"
+  | "logs"
+  | "query"
+  | "admin";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -195,6 +259,18 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         logLevel: env.RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL,
         compression: { request: true },
         maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
+      });
+    case "sessions_replication":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.SESSION_REPLICATION_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL,
+        compression: { request: true },
+        maxOpenConnections: env.SESSION_REPLICATION_MAX_OPEN_CONNECTIONS,
       });
     case "logs":
       return new ClickHouse({
@@ -266,6 +342,8 @@ export class ClickhouseFactory {
           return defaultClickhouseClient;
         case "replication":
           return defaultRunsReplicationClickhouseClient;
+        case "sessions_replication":
+          return defaultSessionsReplicationClickhouseClient;
         case "logs":
           return defaultLogsClickhouseClient;
         case "query":
@@ -350,26 +428,7 @@ export function getDefaultLogsClickhouseClient(): ClickHouse {
 // ---------------------------------------------------------------------------
 
 function getEventsClickhouseClient(): ClickHouse {
-  if (!env.EVENTS_CLICKHOUSE_URL) {
-    throw new Error("EVENTS_CLICKHOUSE_URL is not set");
-  }
-
-  const url = new URL(env.EVENTS_CLICKHOUSE_URL);
-  url.searchParams.delete("secure");
-
-  return new ClickHouse({
-    url: url.toString(),
-    name: "task-events",
-    keepAlive: {
-      enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
-    },
-    logLevel: env.EVENTS_CLICKHOUSE_LOG_LEVEL,
-    compression: {
-      request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
-    },
-    maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
-  });
+  return defaultEventsClickhouseClient;
 }
 
 function buildEventRepository(store: string, clickhouse: ClickHouse): ClickhouseEventRepository {
@@ -411,6 +470,7 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
         asyncInsertMaxDataSize: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_MAX_DATA_SIZE,
         asyncInsertBusyTimeoutMs: env.EVENTS_CLICKHOUSE_ASYNC_INSERT_BUSY_TIMEOUT_MS,
+        startTimeMaxAgeMs: env.EVENTS_CLICKHOUSE_START_TIME_MAX_AGE_MS,
         llmMetricsBatchSize: env.LLM_METRICS_BATCH_SIZE,
         llmMetricsFlushInterval: env.LLM_METRICS_FLUSH_INTERVAL_MS,
         llmMetricsMaxBatchSize: env.LLM_METRICS_MAX_BATCH_SIZE,

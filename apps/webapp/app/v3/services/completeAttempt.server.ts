@@ -31,7 +31,7 @@ import { CancelAttemptService } from "./cancelAttempt.server";
 import { CreateCheckpointService } from "./createCheckpoint.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { RetryAttemptService } from "./retryAttempt.server";
-import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
+import { getEventRepositoryForStore } from "../eventRepository/index.server";
 
 type FoundAttempt = Awaited<ReturnType<typeof findAttempt>>;
 
@@ -163,7 +163,7 @@ export class CompleteAttemptService extends BaseService {
       env,
     });
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       taskRunAttempt.taskRun.taskEventStore,
       taskRunAttempt.taskRun.organizationId ?? ""
     );
@@ -319,7 +319,7 @@ export class CompleteAttemptService extends BaseService {
       exitRun(taskRunAttempt.taskRunId);
     }
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       taskRunAttempt.taskRun.taskEventStore,
       taskRunAttempt.taskRun.organizationId ?? ""
     );
@@ -544,7 +544,7 @@ export class CompleteAttemptService extends BaseService {
   }) {
     const retryAt = new Date(executionRetry.timestamp);
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       taskRunAttempt.taskRun.taskEventStore,
       taskRunAttempt.taskRun.organizationId ?? ""
     );

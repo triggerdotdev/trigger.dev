@@ -28,7 +28,7 @@ import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { ClickhouseConnectionSchema } from "~/services/clickhouse/clickhouseSecretSchemas.server";
 import { organizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistryInstance.server";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -93,14 +93,20 @@ export async function action({ request }: ActionFunctionArgs) {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const config = ClickhouseConnectionSchema.parse({ url: connectionUrl });
+      const parsedConfig = ClickhouseConnectionSchema.safeParse({ url: connectionUrl });
+      if (!parsedConfig.success) {
+        return typedjson(
+          { error: parsedConfig.error.issues.map((i) => i.message).join(", ") },
+          { status: 400 }
+        );
+      }
 
       const [error, _] = await tryCatch(
         organizationDataStoresRegistry.addDataStore({
           key,
           kind: "CLICKHOUSE",
           organizationIds,
-          config,
+          config: parsedConfig.data,
         })
       );
 
@@ -117,9 +123,17 @@ export async function action({ request }: ActionFunctionArgs) {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const config = connectionUrl
-        ? ClickhouseConnectionSchema.parse({ url: connectionUrl })
-        : undefined;
+      let config: ReturnType<typeof ClickhouseConnectionSchema.parse> | undefined;
+      if (connectionUrl) {
+        const parsedConfig = ClickhouseConnectionSchema.safeParse({ url: connectionUrl });
+        if (!parsedConfig.success) {
+          return typedjson(
+            { error: parsedConfig.error.issues.map((i) => i.message).join(", ") },
+            { status: 400 }
+          );
+        }
+        config = parsedConfig.data;
+      }
 
       const [error, _] = await tryCatch(
         organizationDataStoresRegistry.updateDataStore({

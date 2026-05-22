@@ -17,7 +17,7 @@ import { QueueSizeLimitExceededError } from "~/v3/services/common.server";
 import { TriggerTaskService } from "~/v3/services/triggerTask.server";
 import { tracer } from "~/v3/tracer.server";
 import { createExceptionPropertiesFromError } from "./eventRepository/common.server";
-import { recordRunDebugLog, resolveEventRepositoryForStore } from "./eventRepository/index.server";
+import { getEventRepositoryForStore, recordRunDebugLog } from "./eventRepository/index.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
@@ -57,7 +57,7 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
       taskRun.organizationId ?? organization.id
     );
@@ -127,7 +127,7 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
       taskRun.organizationId ?? organization.id
     );
@@ -191,7 +191,7 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
       taskRun.organizationId
     );
@@ -302,7 +302,7 @@ export function registerRunEngineEventBusHandlers() {
         return;
       }
 
-      const eventRepository = resolveEventRepositoryForStore(
+      const eventRepository = await getEventRepositoryForStore(
         blockedRun.taskEventStore,
         blockedRun.organizationId
       );
@@ -365,7 +365,7 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       taskRun.taskEventStore,
       taskRun.organizationId ?? organization.id
     );
@@ -419,7 +419,7 @@ export function registerRunEngineEventBusHandlers() {
       return;
     }
 
-    const eventRepository = resolveEventRepositoryForStore(
+    const eventRepository = await getEventRepositoryForStore(
       taskRun.taskEventStore,
       taskRun.organizationId ?? organization.id
     );
@@ -458,7 +458,7 @@ export function registerRunEngineEventBusHandlers() {
           retryMessage += ` after OOM`;
         }
 
-        const eventRepository = resolveEventRepositoryForStore(
+        const eventRepository = await getEventRepositoryForStore(
           run.taskEventStore ?? "taskEvent",
           organization.id
         );

@@ -8,7 +8,7 @@ import { Readable } from "stream";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -33,7 +33,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const eventRepository = resolveEventRepositoryForStore(run.taskEventStore, run.organizationId);
+  const eventRepository = await getEventRepositoryForStore(
+    run.taskEventStore,
+    run.organizationId
+  );
 
   const runEvents = await eventRepository.getRunEvents(
     getTaskEventStoreTableForRun(run),
