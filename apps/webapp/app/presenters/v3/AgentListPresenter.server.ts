@@ -3,10 +3,10 @@ import {
   type RuntimeEnvironmentType,
   type TaskTriggerSource,
 } from "@trigger.dev/database";
-import { ClickHouse } from "@internal/clickhouse";
+import { type ClickHouse } from "@internal/clickhouse";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
@@ -24,10 +24,7 @@ export type AgentActiveState = {
 };
 
 export class AgentListPresenter {
-  constructor(
-    private readonly clickhouse: ClickHouse,
-    private readonly _replica: PrismaClientOrTransaction
-  ) {}
+  constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({
     organizationId,
@@ -40,6 +37,11 @@ export class AgentListPresenter {
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
   }) {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
+
     const currentWorker = await findCurrentWorkerFromEnvironment(
       {
         id: environmentId,
@@ -89,20 +91,21 @@ export class AgentListPresenter {
     }
 
     // All queries are deferred for streaming
-    const activeStates = this.#getActiveStates(environmentId, slugs);
-    const conversationSparklines = this.#getConversationSparklines(environmentId, slugs);
-    const costSparklines = this.#getCostSparklines(environmentId, slugs);
-    const tokenSparklines = this.#getTokenSparklines(environmentId, slugs);
+    const activeStates = this.#getActiveStates(clickhouse, environmentId, slugs);
+    const conversationSparklines = this.#getConversationSparklines(clickhouse, environmentId, slugs);
+    const costSparklines = this.#getCostSparklines(clickhouse, environmentId, slugs);
+    const tokenSparklines = this.#getTokenSparklines(clickhouse, environmentId, slugs);
 
     return { agents, activeStates, conversationSparklines, costSparklines, tokenSparklines };
   }
 
   /** Count runs currently executing vs suspended per agent */
   async #getActiveStates(
+    clickhouse: ClickHouse,
     environmentId: string,
     slugs: string[]
   ): Promise<Record<string, AgentActiveState>> {
-    const queryFn = this.clickhouse.reader.query({
+    const queryFn = clickhouse.reader.query({
       name: "agentActiveStates",
       query: `SELECT
           task_identifier,
@@ -140,10 +143,11 @@ export class AgentListPresenter {
 
   /** 24h hourly sparkline of conversation (run) count per agent */
   async #getConversationSparklines(
+    clickhouse: ClickHouse,
     environmentId: string,
     slugs: string[]
   ): Promise<Record<string, number[]>> {
-    const queryFn = this.clickhouse.reader.query({
+    const queryFn = clickhouse.reader.query({
       name: "agentConversationSparklines",
       query: `SELECT
           task_identifier,
@@ -172,10 +176,11 @@ export class AgentListPresenter {
 
   /** 24h hourly sparkline of LLM cost per agent */
   async #getCostSparklines(
+    clickhouse: ClickHouse,
     environmentId: string,
     slugs: string[]
   ): Promise<Record<string, number[]>> {
-    const queryFn = this.clickhouse.reader.query({
+    const queryFn = clickhouse.reader.query({
       name: "agentCostSparklines",
       query: `SELECT
           task_identifier,
@@ -203,10 +208,11 @@ export class AgentListPresenter {
 
   /** 24h hourly sparkline of total tokens per agent */
   async #getTokenSparklines(
+    clickhouse: ClickHouse,
     environmentId: string,
     slugs: string[]
   ): Promise<Record<string, number[]>> {
-    const queryFn = this.clickhouse.reader.query({
+    const queryFn = clickhouse.reader.query({
       name: "agentTokenSparklines",
       query: `SELECT
           task_identifier,
@@ -284,5 +290,5 @@ export class AgentListPresenter {
 export const agentListPresenter = singleton("agentListPresenter", setupAgentListPresenter);
 
 function setupAgentListPresenter() {
-  return new AgentListPresenter(clickhouseClient, $replica);
+  return new AgentListPresenter($replica);
 }

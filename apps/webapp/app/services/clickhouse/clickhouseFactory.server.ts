@@ -338,8 +338,9 @@ export class ClickhouseFactory {
     if (!dataStore) {
       switch (clientType) {
         case "standard":
-        case "events":
           return defaultClickhouseClient;
+        case "events":
+          return defaultEventsClickhouseClient;
         case "replication":
           return defaultRunsReplicationClickhouseClient;
         case "sessions_replication":
