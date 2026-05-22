@@ -585,6 +585,10 @@ The current turn streams through normally, `onBeforeTurnComplete` / `onTurnCompl
 
 Use this when the agent knows its work is done (budget exhausted, goal achieved, one-shot response) rather than relying on the idle timeout. Unlike `chat.requestUpgrade()`, no `upgrade-required` signal is sent to the client, so there's no version-migration semantics.
 
+<Warning>
+  If you persist `lastEventId` to your own storage for cross-page-load resume, **don't clear it on `chat.endRun()`**. The cursor is sessionId-keyed and stays valid across Run boundaries — clearing it forces the next `sendMessages` to subscribe from `seq_num=0`, where it may hit the prior turn's stale `turn-complete` record and close the stream empty before the new Run's chunks arrive.
+</Warning>
+
 ### Runtime configuration
 
 #### chat.setTurnTimeout()
