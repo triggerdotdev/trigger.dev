@@ -62,8 +62,10 @@ export function zodShapeStream<TShapeSchema extends z.ZodTypeAny>(
 
         if (result.success) {
           controller.enqueue(result.data);
-        } else {
-          controller.error(new Error(`Unable to parse shape: ${result.error.message}`));
+        } else if (typeof console !== "undefined") {
+          console.warn(
+            `[zodShapeStream] Skipping unparseable shape chunk: ${result.error.message}`
+          );
         }
       },
     })
