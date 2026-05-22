@@ -83,7 +83,7 @@ export type ListDataItem = {
   id: string;
   status: string;
   taskIdentifier: string;
-  idempotencyKey: string | null;
+  idempotencyKey?: string;
   createdAt: Date;
   updatedAt: Date;
   startedAt?: Date;
@@ -122,7 +122,7 @@ export async function synthesiseBufferedListItem(input: {
   const taskIdentifier =
     typeof snapshot.taskIdentifier === "string" ? snapshot.taskIdentifier : "";
   const idempotencyKey =
-    typeof snapshot.idempotencyKey === "string" ? snapshot.idempotencyKey : null;
+    typeof snapshot.idempotencyKey === "string" ? snapshot.idempotencyKey : undefined;
   const tags =
     Array.isArray(snapshot.tags) && snapshot.tags.every((t) => typeof t === "string")
       ? (snapshot.tags as string[])

@@ -78,15 +78,31 @@ export const loader = createLoaderApiRoute(
     if (resolved.source === "buffer") {
       // Buffered runs have no events ingested yet — the drainer hasn't
       // materialised the PG row and the worker hasn't started executing.
-      // Return an empty trace skeleton so the customer's SDK sees the same
-      // 200 shape it would get from a freshly-triggered PG run that hasn't
-      // had its first span recorded yet.
+      // Synthesise a single partial span that satisfies the SDK's
+      // RetrieveRunTraceResponseBody schema (rootSpan is non-nullable).
+      const buffered = resolved.run;
       return json(
         {
           trace: {
-            traceId: resolved.run.traceId ?? "",
-            rootSpan: null,
-            events: [],
+            traceId: buffered.traceId ?? "",
+            rootSpan: {
+              id: buffered.spanId ?? "",
+              runId: buffered.friendlyId,
+              data: {
+                message: buffered.taskIdentifier ?? "",
+                taskSlug: buffered.taskIdentifier ?? undefined,
+                events: [],
+                startTime: buffered.createdAt,
+                duration: 0,
+                isError: false,
+                isPartial: true,
+                isCancelled: buffered.status === "CANCELED",
+                level: "TRACE",
+                queueName: buffered.queue ?? undefined,
+                machinePreset: buffered.machinePreset ?? undefined,
+              },
+              children: [],
+            },
           },
         },
         { status: 200 }
