@@ -367,136 +367,6 @@ export class RunEngineTriggerTaskService {
         taskKind: taskKind ?? "STANDARD",
       };
 
-      // Short-circuit before the gate when mollifier is globally off (the
-      // default for every deployment that hasn't opted in). Avoids the
-      // GateInputs allocation, the deps spread inside `evaluateGate`, and
-      // the `mollifier.decisions{outcome=pass_through}` OTel increment on
-      // every trigger — `triggerTask` is the highest-throughput code path
-      // in the system. The check goes through a DI'd predicate so unit
-      // tests that inject a custom `evaluateGate` can also override the
-      // gate-on check (the default reads `env.TRIGGER_MOLLIFIER_ENABLED`,
-      // which is "0" in CI where no .env file is present).
-      const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
-        ? await this.evaluateGate({
-            envId: environment.id,
-            orgId: environment.organizationId,
-            taskId,
-            orgFeatureFlags:
-              (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
-            options: {
-              debounce: body.options?.debounce,
-              oneTimeUseToken: options.oneTimeUseToken,
-              parentTaskRunId: body.options?.parentRunId,
-              resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-            },
-          })
-        : null;
-
-      // Phase 2: real divert path. When the gate says mollify, write the
-      // engine.trigger input snapshot into the Redis buffer and return a
-      // synthesised TriggerTaskServiceResult. The customer never waits on
-      // Postgres; the drainer materialises the run later by replaying
-      // engine.trigger against the snapshot. Skip traceRun entirely — the
-      // run span is created by the drainer when it eventually runs.
-      if (mollifierOutcome?.action === "mollify") {
-        const mollifierBuffer = this.getMollifierBuffer();
-        if (mollifierBuffer && !body.options?.debounce) {
-          const synthetic = await startSpan(
-            this.tracer,
-            "mollifier.queued",
-            async (mollifierSpan) => {
-              mollifierSpan.setAttribute("mollifier.reason", mollifierOutcome.decision.reason);
-              mollifierSpan.setAttribute("mollifier.count", mollifierOutcome.decision.count);
-              mollifierSpan.setAttribute(
-                "mollifier.threshold",
-                mollifierOutcome.decision.threshold
-              );
-              mollifierSpan.setAttribute("runId", runFriendlyId);
-              mollifierSpan.setAttribute("taskRunId", runFriendlyId);
-
-              const payloadPacket = await this.payloadProcessor.process(triggerRequest);
-              const taskEventStore = parentRun?.taskEventStore ?? "taskEvent";
-              // Seed the W3C `traceparent` from the queued span so downstream
-              // `recordRunDebugLog` calls (engine QUEUED/EXECUTING/FINISHED,
-              // run:notify, etc.) emit TaskEvent rows that join the run's trace.
-              // Pass-through gets this for free via `traceEventConcern.traceRun`
-              // populating `event.traceContext`; the mollifier path skips that
-              // wrapper so we have to build the same shape ourselves.
-              const traceContext = this.#propagateExternalTraceContext(
-                {
-                  traceparent: serializeTraceparent(
-                    mollifierSpan.spanContext().traceId,
-                    mollifierSpan.spanContext().spanId
-                  ),
-                },
-                parentRun?.traceContext,
-                undefined
-              );
-
-              const engineTriggerInput = this.#buildEngineTriggerInput({
-                runFriendlyId,
-                environment,
-                idempotencyKey,
-                idempotencyKeyExpiresAt,
-                body,
-                options,
-                queueName,
-                lockedQueueId,
-                workerQueue,
-                enableFastPath,
-                lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
-                delayUntil,
-                ttl,
-                metadataPacket,
-                tags,
-                depth,
-                parentRun: parentRun ?? undefined,
-                annotations,
-                planType,
-                taskId,
-                payloadPacket,
-                traceContext,
-                traceId: mollifierSpan.spanContext().traceId,
-                spanId: mollifierSpan.spanContext().spanId,
-                parentSpanId: undefined,
-                taskEventStore,
-              });
-
-              const result = await mollifyTrigger({
-                runFriendlyId,
-                environmentId: environment.id,
-                organizationId: environment.organizationId,
-                engineTriggerInput,
-                decision: mollifierOutcome.decision,
-                buffer: mollifierBuffer,
-                // Idempotency-key triple wires the buffer's SETNX into
-                // the trigger-time dedup symmetric with PG (Q5).
-                idempotencyKey,
-                taskIdentifier: taskId,
-              });
-
-              logger.info("mollifier.buffered", {
-                runId: runFriendlyId,
-                envId: environment.id,
-                orgId: environment.organizationId,
-                taskId,
-                reason: mollifierOutcome.decision.reason,
-              });
-
-              return result;
-            }
-          );
-          // Synthetic result is structurally narrower than the full TaskRun;
-          // the route handler only reads `result.run.friendlyId`.
-          return synthetic as unknown as TriggerTaskServiceResult;
-        }
-        if (!mollifierBuffer) {
-          logger.warn(
-            "mollifier gate said mollify but buffer is null — falling through to pass-through"
-          );
-        }
-      }
-
       try {
         return await this.traceEventConcern.traceRun(
           triggerRequest,
@@ -506,6 +376,126 @@ export class RunEngineTriggerTaskService {
             span.setAttribute("queueName", queueName);
             event.setAttribute("runId", runFriendlyId);
             span.setAttribute("runId", runFriendlyId);
+
+            // Short-circuit when mollifier is globally off (the default
+            // for every deployment that hasn't opted in). Avoids the
+            // GateInputs allocation, the deps spread inside `evaluateGate`,
+            // and the `mollifier.decisions{outcome=pass_through}` OTel
+            // increment on every trigger — `triggerTask` is the
+            // highest-throughput code path in the system. The check goes
+            // through a DI'd predicate so unit tests that inject a custom
+            // `evaluateGate` can also override the gate-on check (the
+            // default reads `env.TRIGGER_MOLLIFIER_ENABLED`, which is "0"
+            // in CI where no .env file is present).
+            const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
+              ? await this.evaluateGate({
+                  envId: environment.id,
+                  orgId: environment.organizationId,
+                  taskId,
+                  orgFeatureFlags:
+                    (environment.organization.featureFlags as Record<string, unknown> | null) ??
+                    null,
+                  options: {
+                    debounce: body.options?.debounce,
+                    oneTimeUseToken: options.oneTimeUseToken,
+                    parentTaskRunId: body.options?.parentRunId,
+                    resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+                  },
+                })
+              : null;
+
+            // When the gate says mollify, write the engine.trigger input
+            // snapshot into the Redis buffer and return a synthesised
+            // TriggerTaskServiceResult. The customer never waits on
+            // Postgres; the drainer materialises the run later by replaying
+            // engine.trigger against the snapshot. The run span has already
+            // been opened by traceRun above (PARTIAL event in ClickHouse),
+            // so its traceId/spanId live in the snapshot and the drainer's
+            // `mollifier.drained` span parents on the same trace — buffered
+            // runs become visible in the dashboard's trace view immediately,
+            // not only after the drainer fires.
+            if (mollifierOutcome?.action === "mollify") {
+              const mollifierBuffer = this.getMollifierBuffer();
+              if (mollifierBuffer && !body.options?.debounce) {
+                event.setAttribute("mollifier.reason", mollifierOutcome.decision.reason);
+                event.setAttribute("mollifier.count", String(mollifierOutcome.decision.count));
+                event.setAttribute(
+                  "mollifier.threshold",
+                  String(mollifierOutcome.decision.threshold)
+                );
+                event.setAttribute("taskRunId", runFriendlyId);
+
+                const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+
+                const engineTriggerInput = this.#buildEngineTriggerInput({
+                  runFriendlyId,
+                  environment,
+                  idempotencyKey,
+                  idempotencyKeyExpiresAt,
+                  body,
+                  options,
+                  queueName,
+                  lockedQueueId,
+                  workerQueue,
+                  enableFastPath,
+                  lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
+                  delayUntil,
+                  ttl,
+                  metadataPacket,
+                  tags,
+                  depth,
+                  parentRun: parentRun ?? undefined,
+                  annotations,
+                  planType,
+                  taskId,
+                  payloadPacket,
+                  traceContext: this.#propagateExternalTraceContext(
+                    event.traceContext,
+                    parentRun?.traceContext,
+                    event.traceparent?.spanId
+                  ),
+                  traceId: event.traceId,
+                  spanId: event.spanId,
+                  parentSpanId:
+                    options.parentAsLinkType === "replay"
+                      ? undefined
+                      : event.traceparent?.spanId,
+                  taskEventStore: store,
+                });
+
+                const result = await mollifyTrigger({
+                  runFriendlyId,
+                  environmentId: environment.id,
+                  organizationId: environment.organizationId,
+                  engineTriggerInput,
+                  decision: mollifierOutcome.decision,
+                  buffer: mollifierBuffer,
+                  // Idempotency-key triple wires the buffer's SETNX into
+                  // the trigger-time dedup symmetric with PG (Q5).
+                  idempotencyKey,
+                  taskIdentifier: taskId,
+                });
+
+                logger.info("mollifier.buffered", {
+                  runId: runFriendlyId,
+                  envId: environment.id,
+                  orgId: environment.organizationId,
+                  taskId,
+                  reason: mollifierOutcome.decision.reason,
+                });
+
+                // Synthetic result is structurally narrower than the full
+                // TaskRun; the route handler only reads
+                // `result.run.friendlyId`. traceRun flushes the PARTIAL
+                // run-span event to ClickHouse on callback return.
+                return result as unknown as TriggerTaskServiceResult;
+              }
+              if (!mollifierBuffer) {
+                logger.warn(
+                  "mollifier gate said mollify but buffer is null — falling through to pass-through"
+                );
+              }
+            }
 
             const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 

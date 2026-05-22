@@ -68,17 +68,31 @@ class MockTriggerTaskValidator implements TriggerTaskValidator {
   }
 }
 
+// Mirror the production ClickhouseEventRepository.traceEvent shape so
+// callers that read `event.traceContext.traceparent` (e.g. the
+// mollifier branch seeding the snapshot) get the same W3C-formatted
+// value they'd get against a real event repository.
+const MOCK_TRACE_ID = "0123456789abcdef0123456789abcdef";
+const MOCK_SPAN_ID = "fedcba9876543210";
+const MOCK_TRACEPARENT = `00-${MOCK_TRACE_ID}-${MOCK_SPAN_ID}-01`;
+
 class MockTraceEventConcern implements TraceEventConcern {
+  // Records the start time of the most recent traceRun callback entry.
+  // Used by ordering assertions that verify traceRun fires before
+  // downstream side effects (e.g. mollifier buffer writes).
+  public traceRunEnteredAt: number | undefined;
+
   async traceRun<T>(
     request: TriggerTaskRequest,
     parentStore: string | undefined,
     callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
+    this.traceRunEnteredAt = Date.now();
     return await callback(
       {
-        traceId: "test",
-        spanId: "test",
-        traceContext: {},
+        traceId: MOCK_TRACE_ID,
+        spanId: MOCK_SPAN_ID,
+        traceContext: { traceparent: MOCK_TRACEPARENT },
         traceparent: undefined,
         setAttribute: () => { },
         failWithError: () => { },
@@ -1297,7 +1311,24 @@ describe("RunEngineTriggerTaskService", () => {
       const taskIdentifier = "test-task";
       await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
-      const buffer = new CapturingMollifierBuffer();
+      // Buffer override records the time of the accept call so we can
+      // assert that traceRun fired strictly before the buffer was
+      // touched. If a future change re-introduces the "skip traceRun on
+      // mollify" shortcut, traceConcern.traceRunEnteredAt stays
+      // undefined and the ordering assertion fails.
+      class TimestampedBuffer extends CapturingMollifierBuffer {
+        public acceptedAt: number | undefined;
+        override async accept(input: {
+          runId: string;
+          envId: string;
+          orgId: string;
+          payload: string;
+        }) {
+          this.acceptedAt = Date.now();
+          return await super.accept(input);
+        }
+      }
+      const buffer = new TimestampedBuffer();
       const trippedDecision = {
         divert: true as const,
         reason: "per_env_rate" as const,
@@ -1306,6 +1337,7 @@ describe("RunEngineTriggerTaskService", () => {
         windowMs: 200,
         holdMs: 500,
       };
+      const traceConcern = new MockTraceEventConcern();
 
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
@@ -1314,7 +1346,7 @@ describe("RunEngineTriggerTaskService", () => {
         queueConcern: new DefaultQueueManager(prisma, engine),
         idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
         validator: new MockTriggerTaskValidator(),
-        traceEventConcern: new MockTraceEventConcern(),
+        traceEventConcern: traceConcern,
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024,
         evaluateGate: async () => ({ action: "mollify", decision: trippedDecision }),
@@ -1327,6 +1359,15 @@ describe("RunEngineTriggerTaskService", () => {
         environment: authenticatedEnvironment,
         body: { payload: { hello: "world" } },
       });
+
+      // Pre-modifier span creation: traceRun must run BEFORE the buffer
+      // is touched. Customer-visible effect — the run span lands in
+      // ClickHouse from the moment the trigger returns, even when the
+      // drainer is offline, so buffered runs are visible in the trace
+      // view immediately rather than only after drain.
+      expect(traceConcern.traceRunEnteredAt).toBeDefined();
+      expect(buffer.acceptedAt).toBeDefined();
+      expect(traceConcern.traceRunEnteredAt!).toBeLessThanOrEqual(buffer.acceptedAt!);
 
       // Synthetic result is returned with the `mollifier.queued` notice
       // (the call-site casts the synthetic shape to `TriggerTaskServiceResult`;
@@ -1362,19 +1403,28 @@ describe("RunEngineTriggerTaskService", () => {
       };
 
       // Regression guard for the dashboard trace-tree bug: the mollifier
-      // snapshot MUST carry a W3C `traceparent` in `traceContext`, seeded
-      // from the queued span. Without it, the drainer replays through
-      // engine.trigger with empty traceContext and every downstream
-      // `recordRunDebugLog` (QUEUED/EXECUTING/FINISHED/run:notify…) gets a
-      // fresh traceId + null parentId — the run-detail page can only show
-      // the root span. Pass-through gets this for free via
-      // `traceEventConcern.traceRun`; the mollifier path doesn't enter
-      // that wrapper so the seeding has to happen at the call site.
+      // snapshot MUST carry a W3C `traceparent` in `traceContext`,
+      // seeded from the same span traceRun opened. Without it, the
+      // drainer replays through engine.trigger with empty traceContext
+      // and every downstream `recordRunDebugLog`
+      // (QUEUED/EXECUTING/FINISHED/run:notify…) gets a fresh traceId +
+      // null parentId — the run-detail page can only show the root
+      // span. Both the mollify and pass-through paths now flow through
+      // `traceEventConcern.traceRun`; this assertion pins the
+      // seeding-from-the-run-span contract.
       expect(snapshot.traceContext?.traceparent).toMatch(
         /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/
       );
       expect(snapshot.traceContext!.traceparent).toContain(snapshot.traceId);
       expect(snapshot.traceContext!.traceparent).toContain(snapshot.spanId);
+      // The snapshot inherits the *run span's* traceId/spanId (from the
+      // event handed in by traceRun), not a separately-generated OTel
+      // span. This is what lets the drainer's `mollifier.drained` span
+      // and downstream engine.trigger materialisation parent on the
+      // same ClickHouse trace the customer sees from the moment trigger
+      // returns.
+      expect(snapshot.traceId).toBe(MOCK_TRACE_ID);
+      expect(snapshot.spanId).toBe(MOCK_SPAN_ID);
 
       // Postgres has NOT been written: engine.trigger was never called on
       // the mollify path. The run materialises only when the drainer
