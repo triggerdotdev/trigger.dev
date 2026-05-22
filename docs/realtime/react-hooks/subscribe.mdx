@@ -21,6 +21,13 @@ Trigger a task and immediately subscribe to its run. Details in the [triggering]
 
 The `useRealtimeRun` hook allows you to subscribe to a run by its ID.
 
+<Note>
+  During sustained traffic bursts the platform may briefly buffer new triggers before
+  materialising them. `useRealtimeRun` keeps the subscription open across this window and
+  begins streaming as soon as the run is materialised — typically sub-second.
+</Note>
+
+
 ```tsx
 "use client"; // This is needed for Next.js App Router or other RSC frameworks
 
