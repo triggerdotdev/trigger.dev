@@ -55,7 +55,6 @@ describe("MollifierBuffer construction", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -71,7 +70,6 @@ describe("MollifierBuffer.accept", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -108,7 +106,6 @@ describe("MollifierBuffer.pop", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -135,7 +132,6 @@ describe("MollifierBuffer.pop", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -154,7 +150,6 @@ describe("MollifierBuffer.pop", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -182,7 +177,6 @@ describe("MollifierBuffer.ack", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -195,8 +189,8 @@ describe("MollifierBuffer.ack", () => {
         expect(after).not.toBeNull();
         expect(after!.materialised).toBe(true);
 
-        // TTL was reset to the grace window — should be at most 30s, well
-        // under the original 600s entryTtlSeconds.
+        // ack grace TTL is the only context where an entry hash gets
+        // an EXPIRE — accept no longer sets one. Should be at most 30s.
         const ttl = await buffer.getEntryTtlSeconds("run_x");
         expect(ttl).toBeGreaterThan(0);
         expect(ttl).toBeLessThanOrEqual(30);
@@ -213,7 +207,6 @@ describe("MollifierBuffer.ack", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -241,7 +234,6 @@ describe("MollifierBuffer.pop orphan handling", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -275,7 +267,6 @@ describe("MollifierBuffer.pop orphan handling", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -320,7 +311,6 @@ describe("MollifierBuffer.requeue", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -342,30 +332,43 @@ describe("MollifierBuffer.requeue", () => {
 });
 
 describe("MollifierBuffer.fail", () => {
-  redisTest("fail transitions to FAILED and stores lastError", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      entryTtlSeconds: 600,
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "fail returns true and tears the entry down (drainer-terminal cleanup)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // Post-TTL-drop design: the drainer's createFailedTaskRun has
+      // already written a SYSTEM_FAILURE PG row by the time we call
+      // fail(), so the entry hash is no longer load-bearing. fail
+      // returns true and removes the entry; without this teardown
+      // failed entries would accrete forever now that there's no
+      // accept-time TTL. The Lua also DELs the idempotency lookup so
+      // future retries with the same key go through to PG instead of
+      // hitting an orphan dedup record.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "run_f", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.pop("env_a");
-      const failed = await buffer.fail("run_f", { code: "VALIDATION", message: "boom" });
-      expect(failed).toBe(true);
+      try {
+        await buffer.accept({ runId: "run_f", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        const failed = await buffer.fail("run_f", { code: "VALIDATION", message: "boom" });
+        expect(failed).toBe(true);
 
-      const entry = await buffer.getEntry("run_f");
-      expect(entry!.status).toBe("FAILED");
-      expect(entry!.lastError).toEqual({ code: "VALIDATION", message: "boom" });
-    } finally {
-      await buffer.close();
-    }
-  });
+        // Entry hash is gone post-fail.
+        const entry = await buffer.getEntry("run_f");
+        expect(entry).toBeNull();
+        const raw = await buffer["redis"].hgetall("mollifier:entries:run_f");
+        expect(Object.keys(raw)).toHaveLength(0);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
 
   redisTest(
     "fail on missing entry is a no-op (returns false; no partial hash created)",
@@ -377,7 +380,6 @@ describe("MollifierBuffer.fail", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -398,27 +400,35 @@ describe("MollifierBuffer.fail", () => {
 });
 
 describe("MollifierBuffer TTL", () => {
-  redisTest("entry has TTL applied on accept", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      entryTtlSeconds: 600,
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "entry has NO TTL applied on accept — drainer is the only cleanup path",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // Regression guard for the design change: buffer entries must
+      // persist until the drainer ACKs or FAILs them. An accept-time
+      // EXPIRE would re-introduce the silent-loss-when-drainer-offline
+      // failure mode that the stale-entry alerting pipeline depends on
+      // *not* happening.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "run_t", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "run_t", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      const ttl = await buffer.getEntryTtlSeconds("run_t");
-      expect(ttl).toBeGreaterThan(0);
-      expect(ttl).toBeLessThanOrEqual(600);
-    } finally {
-      await buffer.close();
-    }
-  });
+        // Redis returns -1 when the key exists but has no TTL set.
+        const ttl = await buffer.getEntryTtlSeconds("run_t");
+        expect(ttl).toBe(-1);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
 });
 
 describe("MollifierBuffer payload encoding", () => {
@@ -432,7 +442,6 @@ describe("MollifierBuffer payload encoding", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -474,7 +483,6 @@ describe("MollifierBuffer.requeue on missing entry", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -508,7 +516,6 @@ describe("MollifierBuffer.requeue ordering", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -552,7 +559,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -574,7 +580,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -601,7 +606,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -629,7 +633,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -654,7 +657,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -682,7 +684,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -715,7 +716,6 @@ describe("MollifierBuffer.evaluateTrip", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -751,22 +751,21 @@ describe("MollifierBuffer entry lifecycle invariants", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
       try {
         await buffer.accept({ runId: "run_ttl", envId: "env_a", orgId: "org_1", payload: "{}" });
         const beforeTtl = await buffer.getEntryTtlSeconds("run_ttl");
-        expect(beforeTtl).toBeGreaterThan(0);
+        expect(beforeTtl).toBe(-1);
 
         await buffer.pop("env_a");
         const afterTtl = await buffer.getEntryTtlSeconds("run_ttl");
 
-        // TTL must still be present (>0). Redis returns -1 if the key has no
-        // TTL — that's the leak shape we're guarding against.
-        expect(afterTtl).toBeGreaterThan(0);
-        expect(afterTtl).toBeLessThanOrEqual(beforeTtl);
+        // No TTL applied at any point during accept/pop — the entry
+        // persists until the drainer ACKs or FAILs. Returning -1 from
+        // Redis here is the expected steady state, not a leak.
+        expect(afterTtl).toBe(-1);
       } finally {
         await buffer.close();
       }
@@ -783,7 +782,6 @@ describe("MollifierBuffer entry lifecycle invariants", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -839,7 +837,6 @@ describe("MollifierBuffer.accept idempotency", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -888,7 +885,6 @@ describe("MollifierBuffer.accept idempotency", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -910,16 +906,21 @@ describe("MollifierBuffer.accept idempotency", () => {
   );
 
   redisTest(
-    "accept refused while existing entry is FAILED",
+    "runId slot is reclaimable after fail tears the entry down",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
+      // Post-TTL-drop design: fail() deletes the entry hash because
+      // the SYSTEM_FAILURE PG row is the canonical record of the
+      // failure. The runId slot is therefore free for a fresh accept
+      // afterwards — runIds are server-generated CUIDs and don't
+      // collide in practice, but the contract pinning here documents
+      // that a re-acceptance does NOT see a phantom "FAILED" entry.
       const buffer = new MollifierBuffer({
         redisOptions: {
           host: redisContainer.getHost(),
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -927,15 +928,20 @@ describe("MollifierBuffer.accept idempotency", () => {
         await buffer.accept({ runId: "run_fl", envId: "env_a", orgId: "org_1", payload: "{}" });
         await buffer.pop("env_a");
         await buffer.fail("run_fl", { code: "VALIDATION", message: "boom" });
-        const stored = await buffer.getEntry("run_fl");
-        expect(stored!.status).toBe("FAILED");
 
-        const dup = await buffer.accept({ runId: "run_fl", envId: "env_a", orgId: "org_1", payload: "{}" });
-        expect(dup).toEqual({ kind: "duplicate_run_id" });
+        // Entry hash gone after fail (see "fail returns true and tears
+        // the entry down" — this test pins the accept-side effect).
+        expect(await buffer.getEntry("run_fl")).toBeNull();
 
-        const afterDup = await buffer.getEntry("run_fl");
-        expect(afterDup!.status).toBe("FAILED"); // unchanged
-        expect(afterDup!.lastError).toEqual({ code: "VALIDATION", message: "boom" });
+        const fresh = await buffer.accept({
+          runId: "run_fl",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: '{"fresh":true}',
+        });
+        expect(fresh).toEqual({ kind: "accepted" });
+        const after = await buffer.getEntry("run_fl");
+        expect(after?.status).toBe("QUEUED");
       } finally {
         await buffer.close();
       }
@@ -958,7 +964,6 @@ describe("MollifierBuffer.accept idempotency", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1002,7 +1007,6 @@ describe("MollifierBuffer envs set lifecycle", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1028,7 +1032,6 @@ describe("MollifierBuffer envs set lifecycle", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1058,7 +1061,6 @@ describe("MollifierBuffer envs set lifecycle", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1080,16 +1082,21 @@ describe("MollifierBuffer envs set lifecycle", () => {
 
 describe("MollifierBuffer idempotency lookup", () => {
   redisTest(
-    "accept with idempotencyKey + taskIdentifier writes the lookup with matching TTL",
+    "accept with idempotencyKey + taskIdentifier writes the lookup with no TTL",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
+      // Post-TTL-drop design: the idempotency lookup has no TTL, so it
+      // can never expire ahead of the entry hash (which used to cause
+      // a dedup-drift bug — once the lookup expired but the entry
+      // didn't, a retry with the same key would create a *new*
+      // buffered run for the same key). The drainer's ack and fail
+      // both DEL the lookup as part of teardown.
       const buffer = new MollifierBuffer({
         redisOptions: {
           host: redisContainer.getHost(),
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1106,9 +1113,8 @@ describe("MollifierBuffer idempotency lookup", () => {
         const lookupKey = "mollifier:idempotency:env_i:my-task:ikey-1";
         const stored = await buffer["redis"].get(lookupKey);
         expect(stored).toBe("ri1");
-        const ttl = await buffer["redis"].ttl(lookupKey);
-        expect(ttl).toBeGreaterThan(0);
-        expect(ttl).toBeLessThanOrEqual(600);
+        // -1 = key exists with no TTL set.
+        expect(await buffer["redis"].ttl(lookupKey)).toBe(-1);
 
         const entry = await buffer.getEntry("ri1");
         expect(entry!.idempotencyLookupKey).toBe(lookupKey);
@@ -1128,7 +1134,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1174,7 +1179,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1208,7 +1212,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1234,7 +1237,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1267,7 +1269,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1302,7 +1303,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1357,7 +1357,6 @@ describe("MollifierBuffer idempotency lookup", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1385,7 +1384,6 @@ describe("MollifierBuffer.casSetMetadata", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1423,7 +1421,6 @@ describe("MollifierBuffer.casSetMetadata", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1464,7 +1461,6 @@ describe("MollifierBuffer.casSetMetadata", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1508,7 +1504,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1533,7 +1528,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1578,7 +1572,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1612,7 +1605,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1651,7 +1643,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1685,7 +1676,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1724,7 +1714,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1747,16 +1736,21 @@ describe("MollifierBuffer.mutateSnapshot", () => {
   );
 
   redisTest(
-    "returns busy when entry is FAILED",
+    "returns not_found when entry was FAILED (drainer-terminal teardown)",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
+      // Post-TTL-drop design: fail() DELs the entry hash because the
+      // drainer has already written the canonical SYSTEM_FAILURE PG
+      // row, and without an accept-time TTL we'd otherwise accrete
+      // failed entries in Redis forever. Late mutations against a
+      // failed run therefore see `not_found`, matching the same shape
+      // they'd get for any other already-cleaned-up runId.
       const buffer = new MollifierBuffer({
         redisOptions: {
           host: redisContainer.getHost(),
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1772,7 +1766,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           type: "append_tags",
           tags: ["x"],
         });
-        expect(result).toBe("busy");
+        expect(result).toBe("not_found");
       } finally {
         await buffer.close();
       }
@@ -1789,7 +1783,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1822,7 +1815,6 @@ describe("MollifierBuffer.mutateSnapshot", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
       try {
@@ -1859,7 +1851,6 @@ describe("MollifierBuffer ZSET storage", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1900,7 +1891,6 @@ describe("MollifierBuffer ZSET storage", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1934,7 +1924,6 @@ describe("MollifierBuffer ZSET storage", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -1977,7 +1966,6 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
           port: redisContainer.getPort(),
           password: redisContainer.getPassword(),
         },
-        entryTtlSeconds: 600,
         logger: new Logger("test", "log"),
       });
 
@@ -2012,7 +2000,6 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 
@@ -2030,7 +2017,6 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
         port: redisContainer.getPort(),
         password: redisContainer.getPassword(),
       },
-      entryTtlSeconds: 600,
       logger: new Logger("test", "log"),
     });
 

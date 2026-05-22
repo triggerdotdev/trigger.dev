@@ -98,7 +98,7 @@ Defaults are tuned for production; tune below for incident response.
 | `TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS` | `3` | Retries before terminal failure → `SYSTEM_FAILURE` PG row |
 | `TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED` | inherits | Run the alerting sweep |
 | `TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS` | `300_000` | Sweep cadence |
-| `TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS` | (unset) | Dwell threshold. Defaults to half of `entryTtlSeconds` when unset |
+| `TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS` | `300_000` | Dwell threshold above which an entry is flagged stale (matches the sweep interval — "anything still here when we check") |
 
 ## Failure modes & recovery
 

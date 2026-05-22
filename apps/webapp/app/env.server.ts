@@ -1093,7 +1093,6 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().nonnegative().default(100),
     TRIGGER_MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
     TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
-    TRIGGER_MOLLIFIER_ENTRY_TTL_S: z.coerce.number().int().positive().default(600),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
     TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
@@ -1102,7 +1101,9 @@ const EnvironmentSchema = z
     // dwell exceeds the stale threshold. Independent of the drainer —
     // its job is exactly to make a stuck/offline drainer visible to
     // ops. Defaults: enabled when the mollifier is enabled, run every
-    // 5 minutes, flag entries with dwell > half of entryTtlSeconds.
+    // 5 minutes, alert on anything that's been dwelling for 5+ minutes
+    // (matches the sweep interval — "anything still here when we
+    // check" is the simplest threshold that converges).
     TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED: z
       .string()
       .default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
@@ -1115,7 +1116,7 @@ const EnvironmentSchema = z
       .number()
       .int()
       .positive()
-      .optional(),
+      .default(5 * 60_000),
 
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()

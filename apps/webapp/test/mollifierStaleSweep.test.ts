@@ -69,7 +69,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
   redisTest(
     "flags entries whose dwell exceeds the stale threshold and skips fresh ones",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         // Two stale entries (one in each env) + one fresh entry. Sweep
         // should flag the two stale, leave the fresh one alone, record
@@ -143,7 +143,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
       // stale, alert fired, drainer caught up. The next sweep must
       // report `env_a -> 0` so the gauge drops below the alert
       // threshold instead of staying latched at the last stale value.
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         await buffer.accept({
           runId: "run_just_arrived",
@@ -171,7 +171,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
       // `dwellMs > threshold` to `dwellMs >= threshold` would flag every
       // entry the first time the sweep runs after a perfectly synchronised
       // accept call — the dashboard would page on every burst.
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         await buffer.accept({
           runId: "run_fresh_only",
@@ -200,7 +200,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
       // must walk every org/env, not just the first one it finds. If a
       // future refactor collapsed listOrgs/listEnvsForOrg into a single
       // env-flat list this test catches a regression there.
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         await buffer.accept({
           runId: "run_x",

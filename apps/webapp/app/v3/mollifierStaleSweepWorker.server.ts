@@ -30,21 +30,14 @@ export function initMollifierStaleSweepWorker(): void {
   if (env.TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED !== "1") return;
   if (global.__mollifierStaleSweepRegistered__) return;
 
-  // Default the threshold to half of `entryTtlSeconds`, mirroring the
-  // plan doc's cadence. Operators wanting an earlier or later signal
-  // can set it explicitly.
-  const staleThresholdMs =
-    env.TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS ??
-    Math.floor(env.TRIGGER_MOLLIFIER_ENTRY_TTL_S * 1000 * 0.5);
-
   logger.debug("Initializing mollifier stale-entry sweep", {
     intervalMs: env.TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS,
-    staleThresholdMs,
+    staleThresholdMs: env.TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS,
   });
 
   const handle = startStaleSweepInterval({
     intervalMs: env.TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS,
-    staleThresholdMs,
+    staleThresholdMs: env.TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS,
   });
 
   signalsEmitter.on("SIGTERM", handle.stop);

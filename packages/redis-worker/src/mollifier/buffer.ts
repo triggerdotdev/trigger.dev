@@ -10,7 +10,6 @@ import { BufferEntry, BufferEntrySchema } from "./schemas.js";
 
 export type MollifierBufferOptions = {
   redisOptions: RedisOptions;
-  entryTtlSeconds: number;
   logger?: Logger;
 };
 
@@ -68,11 +67,9 @@ export type IdempotencyClaimResult =
 
 export class MollifierBuffer {
   private readonly redis: Redis;
-  private readonly entryTtlSeconds: number;
   private readonly logger: Logger;
 
   constructor(options: MollifierBufferOptions) {
-    this.entryTtlSeconds = options.entryTtlSeconds;
     this.logger = options.logger ?? new Logger("MollifierBuffer", "debug");
 
     this.redis = createRedisClient(
@@ -144,7 +141,6 @@ export class MollifierBuffer {
       input.payload,
       createdAt,
       String(createdAtMicros),
-      String(this.entryTtlSeconds),
       "mollifier:org-envs:",
       idempotencyLookupKey,
     );
@@ -480,9 +476,15 @@ export class MollifierBuffer {
     return result === 1;
   }
 
+  // Returns Redis-side TTL on the entry hash. Returns -1 for entries
+  // with no TTL — the steady state under the current design, where
+  // entries persist until drainer ack/fail. The ack grace TTL (30s
+  // post-materialise) is the only context where this returns a
+  // positive value; tests around the grace TTL still rely on it.
   async getEntryTtlSeconds(runId: string): Promise<number> {
     return this.redis.ttl(`mollifier:entries:${runId}`);
   }
+
 
   async evaluateTrip(
     envId: string,
@@ -518,9 +520,8 @@ export class MollifierBuffer {
         local payload = ARGV[4]
         local createdAt = ARGV[5]
         local createdAtMicros = ARGV[6]
-        local ttlSeconds = tonumber(ARGV[7])
-        local orgEnvsPrefix = ARGV[8]
-        local idempotencyLookupKey = ARGV[9] or ''
+        local orgEnvsPrefix = ARGV[7]
+        local idempotencyLookupKey = ARGV[8] or ''
 
         -- Idempotent: refuse if an entry for this runId already exists in any
         -- state. Caller-side dedup is also enforced via API idempotency keys,
@@ -532,14 +533,15 @@ export class MollifierBuffer {
         -- Idempotency-key dedup (Q5). If the caller passed a lookup key
         -- and it's already bound to another buffered run, return the
         -- winner's runId so the loser's API response can echo it as a
-        -- cached hit. Otherwise SET the lookup with the same TTL as the
-        -- entry hash; the drainer ack clears it explicitly.
+        -- cached hit. Otherwise SET the lookup (no TTL — lifecycle is
+        -- paired with the entry hash; drainer ack/fail clear it
+        -- explicitly).
         if idempotencyLookupKey ~= '' then
           local existing = redis.call('GET', idempotencyLookupKey)
           if existing then
             return existing
           end
-          redis.call('SET', idempotencyLookupKey, runId, 'EX', ttlSeconds)
+          redis.call('SET', idempotencyLookupKey, runId)
         end
 
         redis.call('HSET', entryKey,
@@ -553,7 +555,12 @@ export class MollifierBuffer {
           'createdAtMicros', createdAtMicros,
           'idempotencyLookupKey', idempotencyLookupKey,
           'metadataVersion', '0')
-        redis.call('EXPIRE', entryKey, ttlSeconds)
+        -- No EXPIRE on the entry hash. Buffer entries persist until the
+        -- drainer ACKs (post-materialise grace) or FAILs them — the
+        -- drainer is the only recovery mechanism, so silent TTL-based
+        -- eviction would lose runs with no customer-visible signal.
+        -- Memory pressure from an offline drainer is the alertable
+        -- failure mode instead; see _ops/mollifier-ops.md.
         -- ZSET keyed by createdAtMicros: ZPOPMIN drains oldest-first
         -- (FIFO); listing pagination uses ZREVRANGEBYSCORE with a
         -- (createdAt, runId) cursor anchor. Score is stable across the
@@ -859,13 +866,27 @@ export class MollifierBuffer {
         local entryKey = KEYS[1]
         local errorPayload = ARGV[1]
 
-        -- Guard: never create a partial entry. If the hash expired between
-        -- pop and fail, the run is gone — nothing to mark FAILED.
+        -- Guard: nothing to mark FAILED if the hash is gone (concurrent
+        -- ack/manual cleanup). Returning 0 lets the caller distinguish
+        -- "marked failed" from "no-op".
         if redis.call('EXISTS', entryKey) == 0 then
           return 0
         end
 
         redis.call('HSET', entryKey, 'status', 'FAILED', 'lastError', errorPayload)
+
+        -- The drainer has already written a SYSTEM_FAILURE PG row for
+        -- terminal failures (see mollifierDrainerHandler.server.ts), so
+        -- the buffer entry is no longer load-bearing. Clear the
+        -- idempotency lookup — PG's unique constraint is the canonical
+        -- dedup mechanism post-materialise — and drop the entry hash so
+        -- failed runs don't accrete forever now that there's no
+        -- accept-time TTL.
+        local lookupKey = redis.call('HGET', entryKey, 'idempotencyLookupKey')
+        if lookupKey and lookupKey ~= '' then
+          redis.call('DEL', lookupKey)
+        end
+        redis.call('DEL', entryKey)
         return 1
       `,
     });
@@ -907,7 +928,6 @@ declare module "@internal/redis" {
       payload: string,
       createdAt: string,
       createdAtMicros: string,
-      ttlSeconds: string,
       orgEnvsPrefix: string,
       idempotencyLookupKey: string,
       callback?: Callback<number | string>,

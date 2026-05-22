@@ -34,7 +34,7 @@ describe("realtime buffered-subscription resource resolution (testcontainers)", 
   redisTest(
     "synthesises a resource whose `id` matches RunId.fromFriendlyId",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         await buffer.accept({
           runId: SNAPSHOT_BASE.friendlyId,
@@ -78,7 +78,7 @@ describe("realtime buffered-subscription resource resolution (testcontainers)", 
   redisTest(
     "returns null when neither PG nor the buffer have the entry",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         const bufferedSynthetic = await findRunByIdWithMollifierFallback(
           {
@@ -109,7 +109,7 @@ describe("realtime buffered-subscription resource resolution (testcontainers)", 
   redisTest(
     "does not fall back to buffer when PG has the row",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         await buffer.accept({
           runId: SNAPSHOT_BASE.friendlyId,

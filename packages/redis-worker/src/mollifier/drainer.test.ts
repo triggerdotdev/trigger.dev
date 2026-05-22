@@ -6,7 +6,6 @@ import { MollifierDrainer } from "./drainer.js";
 import { serialiseSnapshot } from "./schemas.js";
 
 const noopOptions = {
-  entryTtlSeconds: 600,
   logger: new Logger("test", "log"),
 };
 

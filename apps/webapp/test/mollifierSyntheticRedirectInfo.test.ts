@@ -23,7 +23,7 @@ function fakePrisma(member: { id: string } | null) {
 
 describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   redisTest("returns slugs + spanId for a real buffer entry when user is a member", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       await buffer.accept({
         runId: "run_real_1",
@@ -47,7 +47,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   });
 
   redisTest("returns null when no buffer entry exists for the runId", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       const info = await findBufferedRunRedirectInfo(
         { runFriendlyId: "run_missing", userId: "user_1" },
@@ -60,7 +60,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   });
 
   redisTest("returns null when the user is not an org member (default check enforced)", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       await buffer.accept({
         runId: "run_real_2",
@@ -79,7 +79,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   });
 
   redisTest("skips the org-membership check when skipOrgMembershipCheck is set (admin path)", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       await buffer.accept({
         runId: "run_real_3",
@@ -103,7 +103,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   });
 
   redisTest("returns null when snapshot is malformed JSON", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       await buffer.accept({
         runId: "run_real_4",
@@ -122,7 +122,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   });
 
   redisTest("returns null when snapshot lacks org/project slugs", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       await buffer.accept({
         runId: "run_real_5",
@@ -141,7 +141,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
   });
 
   redisTest("returns info with undefined spanId when snapshot has no spanId", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 60 });
+    const buffer = new MollifierBuffer({ redisOptions });
     try {
       await buffer.accept({
         runId: "run_real_6",
