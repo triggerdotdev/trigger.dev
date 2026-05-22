@@ -181,6 +181,36 @@ function initializeSessionsReplicationClickhouseClient(): ClickHouse {
   });
 }
 
+/** Run-engine PendingVersionSystem lookup (`RUN_ENGINE_CLICKHOUSE_URL`);
+ *  falls back to the default client if unset. */
+const defaultRunEngineClickhouseClient = singleton(
+  "runEngineClickhouseClient",
+  initializeRunEngineClickhouseClient
+);
+
+function initializeRunEngineClickhouseClient(): ClickHouse {
+  if (!env.RUN_ENGINE_CLICKHOUSE_URL) {
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.RUN_ENGINE_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "run-engine-clickhouse",
+    keepAlive: {
+      enabled: env.RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.RUN_ENGINE_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.RUN_ENGINE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
 const defaultEventsClickhouseClient = singleton(
   "eventsClickhouseClient",
@@ -226,7 +256,8 @@ export type ClientType =
   | "sessions_replication"
   | "logs"
   | "query"
-  | "admin";
+  | "admin"
+  | "engine";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -284,6 +315,20 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         compression: { request: true },
         maxOpenConnections: env.CLICKHOUSE_MAX_OPEN_CONNECTIONS,
         clickhouseSettings: getLogsListClickhouseSettings(),
+      });
+    case "engine":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.RUN_ENGINE_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.RUN_ENGINE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
     case "standard":
     case "query":
@@ -351,6 +396,8 @@ export class ClickhouseFactory {
           return defaultQueryClickhouseClient;
         case "admin":
           return defaultAdminClickhouseClient;
+        case "engine":
+          return defaultRunEngineClickhouseClient;
       }
     }
 

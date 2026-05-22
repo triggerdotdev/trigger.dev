@@ -379,6 +379,25 @@ export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
   });
 }
 
+/**
+ * Lookup builder for the run-engine `PendingVersionSystem`. Returns just
+ * `run_id` from `task_runs_v2`. No `FINAL` — the run-engine re-validates
+ * each candidate against Postgres by primary key, so a stale
+ * `PENDING_VERSION` row from a not-yet-merged part is harmless and
+ * `FINAL` would be too expensive for this hot path.
+ */
+export function getPendingVersionIdsQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getPendingVersionIds",
+    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2",
+    schema: TaskRunV2QueryResult,
+    settings,
+  });
+}
+
 export function getTaskRunsCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getTaskRunsCount",
