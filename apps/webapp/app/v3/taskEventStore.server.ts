@@ -151,6 +151,7 @@ export class TaskEventStore {
 
   async findTraceEvents(
     table: TaskEventStoreTable,
+    environmentId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
@@ -184,6 +185,7 @@ export class TaskEventStore {
         FROM "TaskEventPartitioned"
         WHERE
           "traceId" = ${traceId}
+          AND "environmentId" = ${environmentId}
           AND "createdAt" >= ${startCreatedAtWithBuffer.toISOString()}::timestamp
           AND "createdAt" < ${endCreatedAtWithBuffer.toISOString()}::timestamp
           ${
@@ -214,6 +216,7 @@ export class TaskEventStore {
           "attemptNumber"
         FROM "TaskEvent"
         WHERE "traceId" = ${traceId}
+          AND "environmentId" = ${environmentId}
           ${
             filterDebug
               ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`

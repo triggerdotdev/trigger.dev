@@ -58,6 +58,7 @@ import type {
   RunPreparedEvent,
   SpanDetail,
   SpanDetailedSummary,
+  SpanOverride,
   SpanSummary,
   TraceAttributes,
   TraceDetailedSummary,
@@ -428,6 +429,7 @@ export class EventRepository implements IEventRepository {
     return await startActiveSpan("getTraceSummary", async (span) => {
       const events = await this.taskEventStore.findTraceEvents(
         storeTable,
+        environmentId,
         traceId,
         startCreatedAt,
         endCreatedAt,
@@ -479,6 +481,7 @@ export class EventRepository implements IEventRepository {
       preparedEvents = Array.from(eventsBySpanId.values());
 
       const spansBySpanId = new Map<string, SpanSummary>();
+      const overridesBySpanId: Record<string, SpanOverride> = {};
 
       const spans = preparedEvents.map((event) => {
         const overrides = getAncestorOverrides({
@@ -498,6 +501,14 @@ export class EventRepository implements IEventRepository {
           : typeof overrides?.isError === "boolean"
           ? overrides.isError
           : event.isError;
+
+        if (overrides) {
+          const spanOverride: SpanOverride = {};
+          if (overrides.isCancelled) spanOverride.isCancelled = true;
+          if (overrides.isError) spanOverride.isError = true;
+          if (overrides.duration !== undefined) spanOverride.duration = overrides.duration;
+          overridesBySpanId[event.spanId] = spanOverride;
+        }
 
         const span = {
           id: event.spanId,
@@ -535,6 +546,7 @@ export class EventRepository implements IEventRepository {
       return {
         rootSpan,
         spans,
+        overridesBySpanId,
       };
     });
   }
@@ -747,6 +759,7 @@ export class EventRepository implements IEventRepository {
       const spanEvent = await this.#getSpanEvent({
         storeTable,
         spanId,
+        traceId,
         environmentId,
         startCreatedAt,
         endCreatedAt,
@@ -972,6 +985,7 @@ export class EventRepository implements IEventRepository {
   async #getSpanEvent({
     storeTable,
     spanId,
+    traceId,
     environmentId,
     startCreatedAt,
     endCreatedAt,
@@ -979,15 +993,21 @@ export class EventRepository implements IEventRepository {
   }: {
     storeTable: TaskEventStoreTable;
     spanId: string;
+    traceId?: string;
     environmentId: string;
     startCreatedAt: Date;
     endCreatedAt?: Date;
     options?: { includeDebugLogs?: boolean };
   }) {
     return await startActiveSpan("getSpanEvent", async (s) => {
+      const where: Prisma.TaskEventWhereInput = { spanId, environmentId };
+      if (traceId) {
+        where.traceId = traceId;
+      }
+
       const events = await this.taskEventStore.findMany(
         storeTable,
-        { spanId, environmentId },
+        where,
         startCreatedAt,
         endCreatedAt,
         undefined,
