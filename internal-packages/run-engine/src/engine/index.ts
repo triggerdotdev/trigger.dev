@@ -1584,7 +1584,7 @@ export class RunEngine {
   }
 
   /**
-  Send a heartbeat to signal the the run is still executing.
+  Send a heartbeat to signal the run is still executing.
   If a heartbeat isn't received, after a while the run is considered "stalled"
   and some logic will be run to try recover it.
   @returns The ExecutionResult, which could be a different snapshot.

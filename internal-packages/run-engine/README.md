@@ -189,7 +189,7 @@ Wait for a future time, then continue. We should add the option to pass an `idem
 
 ```ts
 //Note if the idempotency key is a string, it will get prefixed with the run id.
-//you can explicitly pass in an idempotency key created with the the global scope.
+//you can explicitly pass in an idempotency key created with the global scope.
 await wait.until(new Date("2022-01-01T00:00:00Z"), { idempotencyKey: "first-wait" });
 await wait.until(new Date("2022-01-01T00:00:00Z"), { idempotencyKey: "second-wait" });
 ```

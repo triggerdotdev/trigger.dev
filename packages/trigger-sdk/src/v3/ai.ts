@@ -858,7 +858,7 @@ type ToolSetCompatible<T extends Tool<any, any>> = T & NonNullable<ToolSet[strin
 function assertTaskUsableAsTool(task: AnyTask): void {
   if (("schema" in task && !task.schema) || ("jsonSchema" in task && !task.jsonSchema)) {
     throw new Error(
-      "Cannot convert this task to to a tool because the task has no schema. Make sure to either use schemaTask or a task with an input jsonSchema."
+      "Cannot convert this task to a tool because the task has no schema. Make sure to either use schemaTask or a task with an input jsonSchema."
     );
   }
 }
