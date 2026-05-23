@@ -777,7 +777,11 @@ export function createActionApiRoute<
         const contentLength = request.headers.get("content-length");
 
         if (!contentLength || parseInt(contentLength) > maxContentLength) {
-          return json({ error: "Request body too large" }, { status: 413 });
+          return await wrapResponse(
+            request,
+            json({ error: "Request body too large" }, { status: 413 }),
+            corsStrategy !== "none"
+          );
         }
       }
 

@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
@@ -13,6 +14,7 @@ import {
 } from "~/services/routeBuilders/apiBuilder.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { engine } from "~/v3/runEngine.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -77,13 +79,29 @@ const { action } = createActionApiRoute(
     const recordId = `inp_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const record = JSON.stringify(body.data.data);
 
-    // Append the record to the per-stream S2 stream (auto-creates on first write)
-    await realtimeStream.appendPart(
-      record,
-      recordId,
-      run.friendlyId,
-      `$trigger.input:${params.streamId}`
+    // Append the record to the per-stream S2 stream (auto-creates on
+    // first write). `appendPart` can throw `S2RecordTooLargeError` (a
+    // `ServiceValidationError` with status 413) when the wrapped
+    // record exceeds S2's per-record ceiling — surface that as 413
+    // rather than letting it propagate to the apiBuilder catch-all
+    // as a generic 500.
+    const [appendError] = await tryCatch(
+      realtimeStream.appendPart(
+        record,
+        recordId,
+        run.friendlyId,
+        `$trigger.input:${params.streamId}`
+      )
     );
+    if (appendError) {
+      if (appendError instanceof ServiceValidationError) {
+        return json(
+          { ok: false, error: appendError.message },
+          { status: appendError.status ?? 422 }
+        );
+      }
+      throw appendError;
+    }
 
     // Check Redis cache for a linked .wait() waitpoint (fast, no DB hit if none)
     // Get first, complete, then delete — so the mapping survives if completeWaitpoint throws
