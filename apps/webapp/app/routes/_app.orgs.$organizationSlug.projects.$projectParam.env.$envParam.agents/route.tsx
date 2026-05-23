@@ -144,7 +144,57 @@ export default function AgentsPage() {
                     <TableHeaderCell>Agent ID</TableHeaderCell>
                     <TableHeaderCell>Type</TableHeaderCell>
                     <TableHeaderCell>File</TableHeaderCell>
-                    <TableHeaderCell>Active</TableHeaderCell>
+                    <TableHeaderCell
+                      tooltip={
+                        <div className="flex max-w-[18rem] flex-col gap-3 p-1 pb-2">
+                          <div>
+                            <Header3>Active runs</Header3>
+                            <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                              Live count of in-flight runs for this agent.
+                            </Paragraph>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <div>
+                              <div className="mb-0.5 flex items-center gap-2">
+                                <span className="size-1.5 shrink-0 rounded-full bg-success" />
+                                <Paragraph
+                                  variant="small"
+                                  className="!text-wrap text-text-bright"
+                                >
+                                  Running
+                                </Paragraph>
+                              </div>
+                              <Paragraph
+                                variant="small"
+                                className="!text-wrap pl-3.5 text-text-dimmed"
+                              >
+                                Runs currently executing.
+                              </Paragraph>
+                            </div>
+                            <div>
+                              <div className="mb-0.5 flex items-center gap-2">
+                                <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />
+                                <Paragraph
+                                  variant="small"
+                                  className="!text-wrap text-text-bright"
+                                >
+                                  Suspended
+                                </Paragraph>
+                              </div>
+                              <Paragraph
+                                variant="small"
+                                className="!text-wrap pl-3.5 text-text-dimmed"
+                              >
+                                Runs paused while waiting (e.g. on a tool, user input, or
+                                another task).
+                              </Paragraph>
+                            </div>
+                          </div>
+                        </div>
+                      }
+                    >
+                      Active
+                    </TableHeaderCell>
                     <TableHeaderCell>Conversations (24h)</TableHeaderCell>
                     <TableHeaderCell
                       tooltip={
