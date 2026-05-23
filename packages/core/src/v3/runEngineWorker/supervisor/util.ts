@@ -14,13 +14,13 @@ export function getDefaultWorkerHeaders(
 }
 
 function redactString(value: string, end = 10) {
-  return value.slice(0, end) + "*".repeat(value.length - end);
+  return value.slice(0, end) + "*".repeat(Math.max(0, value.length - end));
 }
 
 function redactNumber(value: number, end = 10) {
   const str = String(value);
   const redacted = redactString(str, end);
-  return Number(redacted);
+  return redacted;
 }
 
 export function redactKeys<T extends Record<string, any>>(obj: T, keys: Array<keyof T>): T {
