@@ -3,7 +3,6 @@ import {
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
   ArrowTopRightOnSquareIcon,
-  BeakerIcon,
   BellAlertIcon,
   ChartBarIcon as ChartBarIconHero,
   ChevronRightIcon,
@@ -18,7 +17,6 @@ import {
   PencilSquareIcon,
   PlusIcon,
   PuzzlePieceIcon,
-  ServerStackIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
@@ -35,6 +33,7 @@ import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
@@ -44,6 +43,7 @@ import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
@@ -447,7 +447,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Deployments"
-                icon={ServerStackIcon}
+                icon={DeploymentsIcon}
                 activeIconColor="text-deployments"
                 inactiveIconColor="text-text-dimmed"
                 to={v3DeploymentsPath(organization, project, environment)}
