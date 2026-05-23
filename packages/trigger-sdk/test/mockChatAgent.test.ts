@@ -179,6 +179,64 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("hydrate path: fresh user message lands in onTurnComplete.newUIMessages", async () => {
+    // The dedup that suppresses HITL-continuation pushes to
+    // `turnNewUIMessages` must compare against the PRE-hydration
+    // accumulator, not the post-hydration chain. A `hydrateMessages`
+    // hook that pushes the incoming user message into its persisted
+    // chain (the canonical pattern documented in
+    // /ai-chat/lifecycle-hooks#hydratemessages and the
+    // `upsertIncomingMessage` helper) would otherwise see the new
+    // user message in the returned `hydrated` array for every fresh
+    // turn, causing the dedup to wrongly fire and drop the user
+    // message from `newUIMessages` / `newMessages`.
+    const stored: any[] = [];
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("hi") }),
+    });
+
+    let capturedNewUIMessages: any[] | undefined;
+    const agent = chat.agent({
+      id: "mockChatAgent.hydrate-newui-fresh-user",
+      hydrateMessages: async ({ trigger, incomingMessages }) => {
+        // Canonical pattern: push the incoming user message into the
+        // persisted chain and return the chain. Mirrors what
+        // `upsertIncomingMessage` does.
+        if (trigger === "submit-message" && incomingMessages.length > 0) {
+          const newMsg = incomingMessages[incomingMessages.length - 1]!;
+          const exists = newMsg.id
+            ? stored.some((m) => m.id === newMsg.id)
+            : false;
+          if (!exists) stored.push(newMsg);
+        }
+        return [...stored];
+      },
+      onTurnComplete: async ({ newUIMessages }) => {
+        capturedNewUIMessages = newUIMessages;
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-hydrate-newui-fresh-user" });
+    try {
+      await harness.sendMessage(userMessage("hello", "u-fresh"));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // `newUIMessages` for a fresh user turn must contain BOTH the
+      // user message and the assistant response. The bug surfaces as
+      // length=1 (assistant only — user dropped by the wrong dedup).
+      expect(capturedNewUIMessages).toBeDefined();
+      const roles = capturedNewUIMessages!.map((m: any) => m.role);
+      expect(roles).toEqual(["user", "assistant"]);
+      expect(capturedNewUIMessages![0]!.id).toBe("u-fresh");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("merges HITL tool answer onto head assistant when AI SDK regenerates the id", async () => {
     // Regression for TRI-9137: customers (Arena AI) report that the AI SDK
     // intermittently mints a fresh id on `addToolOutput` resume, breaking

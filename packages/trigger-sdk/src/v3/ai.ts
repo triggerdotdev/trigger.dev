@@ -6158,6 +6158,20 @@ function chatAgent<
                   }
 
                   if (hydrateMessages) {
+                    // Snapshot the ids the accumulator knew BEFORE this
+                    // turn ran — used below to decide whether an
+                    // incoming wire message is genuinely new or just a
+                    // state advance on an existing entry. We can't use
+                    // the post-`hydrateMessages` array for this because
+                    // the canonical hook pattern pushes the incoming
+                    // user message into the persisted chain and
+                    // returns it.
+                    const previouslyKnownMessageIds = new Set(
+                      accumulatedUIMessages
+                        .map((m) => m.id)
+                        .filter((id): id is string => typeof id === "string")
+                    );
+
                     // Backend hydration: load the full message history from the user's
                     // backend, replacing the built-in accumulator entirely. With slim
                     // wire, `incomingMessages` is consistently 0-or-1-length — what
@@ -6217,10 +6231,17 @@ function chatAgent<
 
                     // Track new messages for onTurnComplete.newUIMessages.
                     // Only push for genuinely new ids — HITL continuations
-                    // whose incoming wire id matches an existing hydrated
-                    // entry are state advances on an old message, not new
-                    // messages. The non-hydrate branch below has the same
-                    // semantic (push only on append, not on merge).
+                    // whose incoming wire id matches an existing entry are
+                    // state advances on an old message, not new messages.
+                    // We compare against `previouslyKnownMessageIds`
+                    // captured BEFORE hydration, not against `hydrated`:
+                    // the canonical hydrate pattern pushes the incoming
+                    // user message into the persisted chain and returns
+                    // it, so the new id IS in `hydrated`, which would
+                    // wrongly drop every fresh user turn from
+                    // `newUIMessages`. The non-hydrate branch below has
+                    // the same "push only on append" semantic via its
+                    // own append-vs-replace path.
                     if (
                       currentWirePayload.trigger === "submit-message" &&
                       cleanedUIMessages.length > 0
@@ -6228,7 +6249,7 @@ function chatAgent<
                       const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
                       const matchedExisting =
                         lastUI.id !== undefined &&
-                        hydrated.some((m) => m.id === lastUI.id);
+                        previouslyKnownMessageIds.has(lastUI.id);
                       if (!matchedExisting) {
                         turnNewUIMessages.push(lastUI);
                         const lastModel = (await toModelMessages([lastUI]))[0];
