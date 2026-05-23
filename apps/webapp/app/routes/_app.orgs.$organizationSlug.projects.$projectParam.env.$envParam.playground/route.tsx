@@ -1,6 +1,6 @@
 import { BookOpenIcon, CpuChipIcon } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
-import { Outlet, useParams, useLoaderData } from "@remix-run/react";
+import { Outlet, useNavigate, useParams, useLoaderData } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -11,6 +11,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Table, TableBody, TableCell, TableRow } from "~/components/primitives/Table";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -21,7 +22,12 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3PlaygroundAgentPath,
+  v3PlaygroundPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];
@@ -73,6 +79,7 @@ export default function PlaygroundPage() {
   const project = useProject();
   const environment = useEnvironment();
   const params = useParams();
+  const navigate = useNavigate();
   const selectedAgent = params.agentParam ?? "";
 
   if (agents.length === 0) {
@@ -136,7 +143,43 @@ export const myAgent = chat.agent({
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Playground" />
+        {selectedAgent ? (
+          <PageTitle
+            backButton={{
+              to: v3PlaygroundPath(organization, project, environment),
+              text: "Playground",
+            }}
+            title={
+              <Select
+                value={selectedAgent}
+                setValue={(slug) => {
+                  if (slug && typeof slug === "string" && slug !== selectedAgent) {
+                    navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
+                  }
+                }}
+                icon={<CubeSparkleIcon className="mr-1 size-4 text-agents" />}
+                text={(val) => val || undefined}
+                variant="minimal/small"
+                items={agents}
+                filter={(item, search) => item.slug.toLowerCase().includes(search.toLowerCase())}
+                className="-ml-2"
+              >
+                {(matches) =>
+                  matches.map((a) => (
+                    <SelectItem key={a.slug} value={a.slug}>
+                      <div className="flex items-center gap-2">
+                        <CubeSparkleIcon className="size-4 text-agents" />
+                        <span>{a.slug}</span>
+                      </div>
+                    </SelectItem>
+                  ))
+                }
+              </Select>
+            }
+          />
+        ) : (
+          <PageTitle title="Playground" />
+        )}
       </NavBar>
       <PageBody scrollable={!selectedAgent}>
         {selectedAgent ? (

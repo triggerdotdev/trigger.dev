@@ -54,7 +54,7 @@ import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server"
 import { requireUserId } from "~/services/session.server";
 import { RunTagInput } from "~/components/runs/v3/RunTagInput";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { env as serverEnv } from "~/env.server";
 import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
@@ -186,7 +186,6 @@ function PlaygroundChat() {
         isDev: boolean;
       }
     | undefined;
-  const agents = parentData?.agents ?? [];
   const versions = parentData?.versions ?? [];
   const regions = parentData?.regions ?? [];
   const isDev = parentData?.isDev ?? false;
@@ -443,32 +442,6 @@ function PlaygroundChat() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-grid-bright px-4 py-2">
             <div className="flex items-center gap-2">
-              <Select
-                value={agent.slug}
-                setValue={(slug) => {
-                  if (slug && typeof slug === "string" && slug !== agent.slug) {
-                    navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
-                  }
-                }}
-                icon={<CpuChipIcon className="size-4 text-indigo-500" />}
-                text={(val) => val || undefined}
-                variant="tertiary/small"
-                items={agents}
-                filter={(item, search) =>
-                  item.slug.toLowerCase().includes(search.toLowerCase())
-                }
-              >
-                {(matches) =>
-                  matches.map((a) => (
-                    <SelectItem key={a.slug} value={a.slug}>
-                      <div className="flex items-center gap-2">
-                        <CpuChipIcon className="size-3.5 text-indigo-500" />
-                        <span>{a.slug}</span>
-                      </div>
-                    </SelectItem>
-                  ))
-                }
-              </Select>
               <Badge variant="extra-small">{formatAgentType(agent.type)}</Badge>
             </div>
             <div className="flex items-center gap-2">
