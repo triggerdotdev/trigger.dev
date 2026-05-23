@@ -49,8 +49,14 @@ import {
   agentListPresenter,
 } from "~/presenters/v3/AgentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3RunsPath, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3RunsPath,
+  v3PlaygroundAgentPath,
+  v3ModelsPath,
+} from "~/utils/pathBuilder";
 import { cn } from "~/utils/cn";
+import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 
@@ -140,7 +146,33 @@ export default function AgentsPage() {
                     <TableHeaderCell>File</TableHeaderCell>
                     <TableHeaderCell>Active</TableHeaderCell>
                     <TableHeaderCell>Conversations (24h)</TableHeaderCell>
-                    <TableHeaderCell>Cost (24h)</TableHeaderCell>
+                    <TableHeaderCell
+                      tooltip={
+                        <div className="flex max-w-[12rem] flex-col gap-3 p-1 pb-2">
+                          <div>
+                            <Header3>LLM spend (last 24h)</Header3>
+                            <Paragraph
+                              variant="small"
+                              className="!text-wrap text-text-dimmed"
+                              spacing
+                            >
+                              The estimated amount you'd pay model providers for tokens used in the
+                              last 24 hours.
+                            </Paragraph>
+                            <LinkButton
+                              to={v3ModelsPath(organization, project, environment)}
+                              variant="secondary/small"
+                              LeadingIcon={Box3DIcon}
+                              leadingIconClassName="-mx-2"
+                            >
+                              View models catalog
+                            </LinkButton>
+                          </div>
+                        </div>
+                      }
+                    >
+                      LLM spend (24h)
+                    </TableHeaderCell>
                     <TableHeaderCell>Tokens (24h)</TableHeaderCell>
                     <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                   </TableRow>
@@ -211,7 +243,9 @@ export default function AgentsPage() {
                                     data={data[agent.slug]}
                                     formatTotal={formatCount}
                                     color="text-blue-400"
-                                    tooltipLabel={(v) => (v === 1 ? "conversation" : "conversations")}
+                                    tooltipLabel={(v) =>
+                                      v === 1 ? "conversation" : "conversations"
+                                    }
                                   />
                                 )}
                               </TypedAwait>
@@ -227,7 +261,7 @@ export default function AgentsPage() {
                                     color="text-amber-400"
                                     barColor="#F59E0B"
                                     formatTooltipValue={formatCost}
-                                    tooltipLabel={() => "cost"}
+                                    tooltipLabel={() => "spend"}
                                   />
                                 )}
                               </TypedAwait>
