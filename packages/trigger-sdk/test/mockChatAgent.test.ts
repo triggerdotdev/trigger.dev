@@ -5,9 +5,10 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { chat } from "../src/v3/ai.js";
 import { locals } from "@trigger.dev/core/v3";
-import { simulateReadableStream, streamText } from "ai";
+import { simulateReadableStream, streamText, tool, validateUIMessages } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { z } from "zod";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -185,8 +186,6 @@ describe("mockChatAgent", () => {
     // an assistant with tool parts lands in the accumulator and uses that
     // map as a fallback in the merge so a fresh-id incoming still attaches
     // to the right head.
-    const { z } = await import("zod");
-    const { tool } = await import("ai");
 
     const askUserTool = tool({
       description: "Ask the user a question.",
@@ -314,8 +313,6 @@ describe("mockChatAgent", () => {
     // the hydrated `input` and overlay only the wire's `state` +
     // `output` — otherwise the next LLM call ships a tool call with no
     // `arguments` and the provider 400s.
-    const { z } = await import("zod");
-    const { tool } = await import("ai");
     const searchTool = tool({
       description: "Search.",
       inputSchema: z.object({ query: z.string() }),
@@ -395,8 +392,6 @@ describe("mockChatAgent", () => {
     // approved }`. Hydrated has the same tool part in
     // `approval-requested`. Merge has to overlay state + approval onto
     // hydrated while keeping `input` intact so the agent can resume.
-    const { z } = await import("zod");
-    const { tool } = await import("ai");
     const deleteTool = tool({
       description: "Delete.",
       inputSchema: z.object({ resource: z.string() }),
@@ -475,8 +470,6 @@ describe("mockChatAgent", () => {
     // prior `approval-responded` (replay, retry, out-of-order arrival)
     // must NOT regress the terminal denial back to a pre-resolution
     // state — the agent would then re-run the tool.
-    const { z } = await import("zod");
-    const { tool } = await import("ai");
     const deleteTool = tool({
       description: "Delete.",
       inputSchema: z.object({ resource: z.string() }),
@@ -565,8 +558,6 @@ describe("mockChatAgent", () => {
     // This test pins both behaviors: (1) the slim assistant does arrive
     // in the validate hook on the HITL turn, (2) a fresh-user-only
     // filter still works (the user message turn is unaffected).
-    const { z } = await import("zod");
-    const { tool, validateUIMessages } = await import("ai");
     const askUser = tool({
       description: "Ask the user.",
       inputSchema: z.object({ q: z.string() }),
@@ -696,8 +687,6 @@ describe("mockChatAgent", () => {
     // The agent's own turn-1 output seeds the accumulator with the
     // full assistant + tool `input`; a slim turn-2 wire copy has to
     // merge onto that without clobbering the snapshot's `input`.
-    const { z } = await import("zod");
-    const { tool } = await import("ai");
     const askUser = tool({
       description: "Ask the user.",
       inputSchema: z.object({ q: z.string() }),
@@ -820,7 +809,6 @@ describe("mockChatAgent", () => {
 
     const onActionSpy = vi.fn();
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions",
       actionSchema: z.object({
@@ -859,7 +847,6 @@ describe("mockChatAgent", () => {
       },
     });
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions.void",
       actionSchema: z.object({ type: z.literal("undo") }),
@@ -927,7 +914,6 @@ describe("mockChatAgent", () => {
       doStream: async () => ({ stream: textStream("normal-response") }),
     });
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions.stream",
       actionSchema: z.object({ type: z.literal("regenerate") }),
@@ -976,7 +962,6 @@ describe("mockChatAgent", () => {
       },
     });
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions.no-handler",
       actionSchema: z.object({ type: z.literal("undo") }),
@@ -1167,8 +1152,6 @@ describe("mockChatAgent", () => {
     }
 
     it("getPendingToolCalls returns input-available parts on the leaf assistant", async () => {
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const askUser = tool({
         description: "Ask the user.",
         inputSchema: z.object({ q: z.string() }),
@@ -1230,8 +1213,6 @@ describe("mockChatAgent", () => {
     });
 
     it("getResolvedToolCalls walks all messages after a HITL answer lands", async () => {
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const askUser = tool({
         description: "Ask the user.",
         inputSchema: z.object({ q: z.string() }),
@@ -1411,8 +1392,6 @@ describe("mockChatAgent", () => {
     it("extractNewToolResults dedups against a real-stream-built chain", async () => {
       // Build the chain through real model streams (no chat.history.set seed)
       // and assert extractNewToolResults compares against the post-merge state.
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const askUser = tool({
         description: "Ask the user.",
         inputSchema: z.object({ q: z.string() }),
@@ -1497,8 +1476,6 @@ describe("mockChatAgent", () => {
       // assistant via the toolCallId map. Here we send an answer in
       // `output-error` state and verify (a) getResolvedToolCalls reports
       // it, and (b) extractNewToolResults emits it with errorText set.
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const search = tool({
         description: "Search.",
         inputSchema: z.object({ q: z.string() }),

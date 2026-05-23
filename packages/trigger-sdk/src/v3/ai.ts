@@ -6216,23 +6216,24 @@ function chatAgent<
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                     // Track new messages for onTurnComplete.newUIMessages.
-                    // Surface the post-merge entry when the wire copy
-                    // matched a hydrated message — the wire copy may have
-                    // been slimmed (HITL tool-output continuation), and
-                    // customers expect `newUIMessages` to carry full
-                    // content (text, reasoning, tool `input`).
+                    // Only push for genuinely new ids — HITL continuations
+                    // whose incoming wire id matches an existing hydrated
+                    // entry are state advances on an old message, not new
+                    // messages. The non-hydrate branch below has the same
+                    // semantic (push only on append, not on merge).
                     if (
                       currentWirePayload.trigger === "submit-message" &&
                       cleanedUIMessages.length > 0
                     ) {
                       const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
-                      const mergedEntry = lastUI.id
-                        ? merged.find((m) => m.id === lastUI.id)
-                        : undefined;
-                      const surfaceUI = (mergedEntry ?? lastUI) as TUIMessage;
-                      turnNewUIMessages.push(surfaceUI);
-                      const lastModel = (await toModelMessages([surfaceUI]))[0];
-                      if (lastModel) turnNewModelMessages.push(lastModel);
+                      const matchedExisting =
+                        lastUI.id !== undefined &&
+                        hydrated.some((m) => m.id === lastUI.id);
+                      if (!matchedExisting) {
+                        turnNewUIMessages.push(lastUI);
+                        const lastModel = (await toModelMessages([lastUI]))[0];
+                        if (lastModel) turnNewModelMessages.push(lastModel);
+                      }
                     }
                   } else {
                     // Default delta-merge accumulation.
