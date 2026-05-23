@@ -49,6 +49,18 @@ export interface StartWebappOptions {
    * plugin instead, for testing the plugin path.
    */
   forceRbacFallback?: boolean;
+
+  /**
+   * When true, spawns the webapp with `REQUIRE_PLUGINS=1` so the plugin
+   * loader throws instead of silently falling back when the plugin
+   * module fails to load. Used by the healthcheck rollback e2e test —
+   * with this set and the plugin not installed, `/healthcheck` should
+   * return 500.
+   *
+   * Implies `forceRbacFallback: false` (you can't observe REQUIRE_PLUGINS
+   * behaviour when the loader is short-circuited).
+   */
+  requirePlugins?: boolean;
 }
 
 export async function startWebapp(
@@ -59,7 +71,10 @@ export async function startWebapp(
   instance: WebappInstance;
   stop: () => Promise<void>;
 }> {
-  const forceRbacFallback = options.forceRbacFallback ?? true;
+  // requirePlugins implies forceRbacFallback=false — you can't observe the
+  // REQUIRE_PLUGINS=1 throw if the loader short-circuits before reaching it.
+  const requirePlugins = options.requirePlugins ?? false;
+  const forceRbacFallback = options.forceRbacFallback ?? !requirePlugins;
   const port = await findFreePort();
 
   // Merge NODE_PATH so transitive pnpm deps (hoisted to .pnpm/node_modules) are resolvable
@@ -107,6 +122,7 @@ export async function startWebapp(
       // plugin is installed in the local node_modules. Set to "0" /
       // undefined to spawn a webapp that loads any installed plugin.
       ...(forceRbacFallback ? { RBAC_FORCE_FALLBACK: "1" } : {}),
+      ...(requirePlugins ? { REQUIRE_PLUGINS: "1" } : {}),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
