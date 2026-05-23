@@ -28,6 +28,7 @@
     "chat-agent",
     "chat-history-read-primitives",
     "chat-session-attributes",
+    "chat-slim-wire-merge",
     "chat-start-session-action-typed-client-data",
     "cli-deploy-skip-rewrite-timestamp",
     "locals-key-dual-package-fix",
@@ -39,6 +40,7 @@
     "resource-catalog-runtime-registration",
     "retry-sigsegv",
     "runs-list-region-filter",
-    "sessions-primitive"
+    "sessions-primitive",
+    "trigger-client"
   ]
 }
