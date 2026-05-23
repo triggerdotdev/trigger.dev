@@ -1,9 +1,7 @@
 import {
-  AdjustmentsHorizontalIcon,
   ArrowPathRoundedSquareIcon,
   ArrowRightOnRectangleIcon,
   ArrowTopRightOnSquareIcon,
-  BellAlertIcon,
   ChartBarIcon as ChartBarIconHero,
   ChevronRightIcon,
   Cog8ToothIcon,
@@ -11,9 +9,6 @@ import {
   ExclamationTriangleIcon,
   FolderIcon,
   FolderOpenIcon,
-  GlobeAmericasIcon,
-  IdentificationIcon,
-  KeyIcon,
   PencilSquareIcon,
   PlusIcon,
   PuzzlePieceIcon,
@@ -34,6 +29,10 @@ import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
+import { KeyValueIcon } from "~/assets/icons/KeyValueIcon";
+import { DialIcon } from "~/assets/icons/DialIcon";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
@@ -44,6 +43,7 @@ import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { BellIcon } from "~/assets/icons/BellIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
@@ -628,7 +628,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Environment variables"
-                icon={IdentificationIcon}
+                icon={KeyValueIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={v3EnvironmentVariablesPath(organization, project, environment)}
@@ -637,7 +637,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Alerts"
-                icon={BellAlertIcon}
+                icon={BellIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={v3ProjectAlertsPath(organization, project, environment)}
@@ -666,7 +666,7 @@ export function SideMenu({
               )}
               <SideMenuItem
                 name="Regions"
-                icon={GlobeAmericasIcon}
+                icon={GlobeLinesIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={regionsPath(organization, project, environment)}
@@ -675,7 +675,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Limits"
-                icon={AdjustmentsHorizontalIcon}
+                icon={DialIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={limitsPath(organization, project, environment)}

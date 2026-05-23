@@ -4,10 +4,10 @@ import {
   CalendarDaysIcon,
   EnvelopeIcon,
   LightBulbIcon,
-  QuestionMarkCircleIcon,
   SignalIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { cn } from "~/utils/cn";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useState } from "react";
@@ -70,7 +70,7 @@ export function HelpAndFeedback({
             )}
           >
             <span className="flex items-center gap-1.5 overflow-hidden">
-              <QuestionMarkCircleIcon className="size-5 min-w-5 shrink-0 text-success" />
+              <QuestionMarkIcon className="size-5 min-w-5 shrink-0 text-success" />
               <span
                 className={cn(
                   "overflow-hidden whitespace-nowrap text-2sm text-text-bright transition-all duration-150",
