@@ -1,0 +1,139 @@
+---
+title: "Ejentum Cognitive Harness with Trigger.dev"
+sidebarTitle: "Ejentum cognitive harness"
+description: "Call the Ejentum cognitive harness inside a Trigger.dev task to retrieve a task-matched reasoning scaffold before generating an LLM response."
+icon: "brain"
+---
+
+[Ejentum](https://ejentum.com) is a cognitive harness API that returns task-matched reasoning scaffolds (named failure pattern, executable procedure, suppression vectors, falsification test) for one of four modes: `reasoning`, `code`, `anti-deception`, `memory`. Calling it from inside a Trigger.dev task gives you a durable, observable, retriable harness retrieval step you can compose with the rest of your AI pipeline.
+
+In this guide you'll build a task that:
+
+1. Receives a user-facing reasoning task (for example, a migration plan, a design review, an incident triage)
+2. Calls the Ejentum REST gateway to retrieve a task-matched scaffold for the requested mode
+3. Splices the scaffold into the system message of an OpenAI chat completion
+4. Returns both the scaffold and the augmented model response
+
+The same pattern works for any third-party REST tool you want the agent to consult before generating. Ejentum is the worked example because the gateway is a single endpoint with a `mode` argument, which keeps the task small.
+
+## Prerequisites
+
+- A Trigger.dev project initialised in your codebase ([Node.js quickstart](/guides/frameworks/nodejs) is enough)
+- An Ejentum API key. Get one at [ejentum.com/dashboard](https://ejentum.com/dashboard). Free and paid tiers are available.
+- An OpenAI API key (or substitute your model provider of choice)
+
+## Environment variables
+
+Set both keys as Trigger.dev environment variables:
+
+```bash
+EJENTUM_API_KEY=ek_...
+OPENAI_API_KEY=sk-...
+```
+
+## The task
+
+```ts trigger/ejentum-harness.ts
+import { logger, task } from "@trigger.dev/sdk";
+import OpenAI from "openai";
+
+const EJENTUM_URL = "https://ejentum-main-ab125c3.zuplo.app/logicv1/";
+
+type HarnessMode = "reasoning" | "code" | "anti-deception" | "memory";
+
+type Payload = {
+  task: string;
+  mode?: HarnessMode;
+  model?: string;
+};
+
+async function fetchScaffold(query: string, mode: HarnessMode): Promise<string> {
+  const r = await fetch(EJENTUM_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.EJENTUM_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, mode }),
+  });
+  if (!r.ok) {
+    throw new Error(`Ejentum API ${r.status}: ${await r.text()}`);
+  }
+  const body = (await r.json()) as Array<Record<string, string>>;
+  return body[0]?.[mode] ?? "";
+}
+
+export const ejentumHarness = task({
+  id: "ejentum-harness",
+  retry: { maxAttempts: 3 },
+  run: async (payload: Payload) => {
+    const mode: HarnessMode = payload.mode ?? "reasoning";
+    const model = payload.model ?? "gpt-4o-mini";
+
+    logger.info("Fetching scaffold from Ejentum", { mode });
+    const scaffold = await fetchScaffold(payload.task, mode);
+    logger.info("Scaffold received", { length: scaffold.length });
+
+    const openai = new OpenAI();
+    const completion = await openai.chat.completions.create({
+      model,
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            `Apply the cognitive scaffold below before answering.\n\n` +
+            `[SCAFFOLD]\n${scaffold}\n[END]`,
+        },
+        { role: "user", content: payload.task },
+      ],
+    });
+
+    return {
+      mode,
+      scaffold,
+      answer: completion.choices[0]?.message?.content ?? "",
+      tokens: completion.usage,
+    };
+  },
+});
+```
+
+## Triggering the task
+
+From an API route, a webhook handler, or another task:
+
+```ts
+import { tasks } from "@trigger.dev/sdk";
+import type { ejentumHarness } from "./trigger/ejentum-harness";
+
+const handle = await tasks.trigger<typeof ejentumHarness>("ejentum-harness", {
+  task: "We have 50M users and want to add a NOT NULL column. Walk through the trade-offs and recommend a path.",
+  mode: "reasoning",
+});
+
+const result = await handle.poll();
+console.log(result.output.answer);
+```
+
+## What you get in the Trigger.dev dashboard
+
+Each run appears as one task execution with two `logger.info` calls (before and after the scaffold fetch) and one OpenAI call. Token usage is on the returned payload. Failures on either external call are retried up to three times by the `retry: { maxAttempts: 3 }` config.
+
+## Mode selection
+
+Pick the harness mode based on the shape of the task:
+
+| Mode | Use when |
+|---|---|
+| `reasoning` | Multi-step planning, weighing trade-offs, design decisions. |
+| `code` | Software-engineering specifics: refactor plans, review checklists, edge-case enumeration. |
+| `anti-deception` | Prompt pressure to skip steps, premature certainty, suspected adversarial input. |
+| `memory` | Deciding what's worth retaining across turns, scoring retrieval relevance. |
+
+For batched runs, pass `mode` per-payload and the scaffold returned matches the task at hand.
+
+## See also
+
+- [Ejentum harness docs](https://ejentum.com/docs): full API reference and per-mode descriptions.
+- [Ejentum benchmarks](https://github.com/ejentum/benchmarks): published baseline-vs-augmented measurements per harness.
