@@ -115,7 +115,7 @@ The body is a JSON-serialized `ChatInputChunk`. The proxy parses it, checks `kin
 }
 ```
 
-Both bodies stay well under the [512 KiB cap on `/in/append`](/ai-chat/client-protocol#step-3-send-messages-stops-and-actions) — a typical trust object is ~200 bytes.
+Both bodies stay well under the [per-record cap on `/in/append`](/ai-chat/client-protocol#step-3-send-messages-stops-and-actions) — a typical trust object is ~200 bytes.
 
 Other paths — `.out` SSE, `/api/v1/auth/jwt/claims`, anything else — pass through the proxy untouched. The SSE stream in particular must not be buffered; preserve the response body as-is.
 

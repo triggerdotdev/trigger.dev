@@ -131,7 +131,7 @@ If `onAction` mutates `chat.history.*` and then the run crashes before the next 
 When the customer registers a [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) hook, the runtime trusts the hook to be the source of truth for history. Snapshot read and replay are **skipped entirely** at boot. The hook fires per turn, returns the canonical chain from the customer's database, and the accumulator is set to whatever the hook returned.
 
 ```ts
-import { chat } from "@trigger.dev/sdk/ai";
+import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai";
 import { db } from "@/lib/db";
 
 export const myChat = chat.agent({
@@ -139,8 +139,9 @@ export const myChat = chat.agent({
   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
     const stored = (await db.chat.findUnique({ where: { id: chatId } }))?.messages ?? [];
 
-    if (trigger === "submit-message" && incomingMessages.length > 0) {
-      stored.push(incomingMessages[0]!);
+    // See lifecycle-hooks for the full upsert pattern + rationale:
+    // /ai-chat/lifecycle-hooks#hydratemessages
+    if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
       await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
     }
 

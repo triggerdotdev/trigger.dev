@@ -4,6 +4,54 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="May 23, 2026" description="4.5.0-rc.2" tags={["SDK", "Webapp", "Bug fix"]}>
+
+## HITL continuations — slim wire by default + field-level merge
+
+`chat.addToolOutput(...)` and `chat.addToolApproveResponse(...)` continuations on reasoning-heavy agent loops used to fail two ways: either the wire body crossed the `/in/append` cap (encrypted reasoning blobs + tool input routinely > 512 KiB), or apps that slimmed the wire as a workaround landed a tool call with no `arguments` on the next LLM step (the per-turn merge replaced the hydrated message wholesale instead of overlaying only the new tool-state advance). Both modes are fixed.
+
+The transport (`TriggerChatTransport.sendMessages`, `AgentChat.sendRaw`) now slims the assistant message itself on `submit-message` turns whose assistant carries resolved or approval-responded tool parts. The wire shape ships as `{ id, role: "assistant", parts: [<resolved tool part only>] }` — `state` plus `output` / `errorText` / `approval`, depending on the new state. Everything else (reasoning blobs, prior text, tool `input`, provider metadata) is reconstructed server-side from `hydrateMessages` or the durable snapshot. Continuation payloads typically drop from 600 KiB – 1 MiB to ~1 KiB.
+
+The per-turn merge now overlays only the tool-part state advances (`output-available` / `output-error` / `approval-responded` / `output-denied`) from the wire copy onto the matching hydrated entry. Hydrated `input`, text, reasoning, and provider metadata stay put. The agent still accepts a fuller `UIMessage` on the wire (the merge only reads the resolved fields), so custom transports that ship more don't break — they just waste bytes.
+
+### `hydrateMessages` upsert-by-id
+
+If your `hydrateMessages` hook persists the incoming message, **upsert by id** — don't unconditionally push. HITL continuations ship the existing assistant's id with a slim payload; a blind `stored.push(newMsg)` duplicates the row in the chain you return, the merge updates the first match, and the slim duplicate hits `toModelMessages` with no `input`.
+
+A new `upsertIncomingMessage` helper is exported from `@trigger.dev/sdk/ai` to handle this for the common case:
+
+```ts
+import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai";
+
+chat.agent({
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const record = await db.chat.findUnique({ where: { id: chatId } });
+    const stored = record?.messages ?? [];
+    if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
+      await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+    }
+    return stored;
+  },
+});
+```
+
+The helper pushes fresh user messages, no-ops on HITL continuations (so the runtime can overlay the new tool-state advance), and skips on non-`submit-message` triggers. Returns `true` if it mutated `stored`. The examples in [lifecycle hooks](/ai-chat/lifecycle-hooks#hydratemessages), [Database persistence](/ai-chat/patterns/database-persistence#alternative-hydratemessages), and [Persistence and replay](/ai-chat/patterns/persistence-and-replay) have all been updated. Custom hydrate logic (branching, rollback, etc.) can still write the upsert by hand — the helper is a convenience for the common shape.
+
+### `onValidateMessages` slim wire caveat
+
+The slim wire is what arrives in `onValidateMessages` on HITL turns. `validateUIMessages` from `ai` rejects the slim shape (the AI SDK schema requires `input` on resolved tool parts), so filter to user messages first (or skip validation entirely on those turns). See the updated example in [lifecycle hooks](/ai-chat/lifecycle-hooks#onvalidatemessages).
+
+### `/in/append` 413 + precise cap
+
+In parallel:
+
+- The 413 response now carries CORS headers, so browser fetches can read the status instead of failing as opaque `TypeError: Failed to fetch`. App-side retry-on-disconnect loops no longer spin forever on a permanently-rejected payload.
+- The per-record cap is now computed precisely against S2's actual ceiling instead of the conservative 512 KiB floor. Legitimate ~600 – 900 KiB tool outputs (search results, file content) now succeed; pathological all-quote content that would double under JSON escape still rejects cleanly with a clear error.
+
+See the updated [413 row in the client protocol](/ai-chat/client-protocol#step-3-send-messages-stops-and-actions).
+
+</Update>
+
 <Update label="May 21, 2026" description="4.5.0-rc.1" tags={["SDK", "Bug fix"]}>
 
 ## v4.5.0-rc.1 — two bug fixes
