@@ -139,9 +139,18 @@ export const myChat = chat.agent({
   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
     const stored = (await db.chat.findUnique({ where: { id: chatId } }))?.messages ?? [];
 
+    // Upsert by id — HITL continuations ship the existing assistant's
+    // id with a slim payload; the runtime overlays the new state.
+    // See lifecycle-hooks for the full pattern + rationale.
     if (trigger === "submit-message" && incomingMessages.length > 0) {
-      stored.push(incomingMessages[0]!);
-      await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+      const newMsg = incomingMessages[0]!;
+      const existingIdx = newMsg.id
+        ? stored.findIndex((m) => m.id === newMsg.id)
+        : -1;
+      if (existingIdx === -1) {
+        stored.push(newMsg);
+        await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+      }
     }
 
     return stored;

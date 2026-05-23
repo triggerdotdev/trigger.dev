@@ -692,7 +692,7 @@ The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk) — a tagged u
 | `401` | Missing or invalid `Authorization` header. |
 | `403` | Token doesn't carry `write:sessions:{externalId}`. |
 | `409` | The session is closed — `{ "ok": false, "error": "Cannot append to a closed session" }`. |
-| `413` | Body exceeds 512 KiB. A normal `kind: "message"` payload is a few KB; if you hit this you're shipping more than one message per record. |
+| `413` | Body exceeds 1 MiB **or** the wrapped record would exceed S2's ~1 MiB per-record metered ceiling. A normal `kind: "message"` payload is a few KB; if you hit this you're shipping more than one message per record or pushing a single tool output that's itself oversized. Carries CORS headers so browser fetches can read the status. |
 | `500` | Transient backend failure on the durable stream. Safe to retry — appends are idempotent on `(externalId, X-Part-Id)` if you set the optional `X-Part-Id` request header (the built-in clients set it from a UUID). |
 
 <Warning>
@@ -851,7 +851,7 @@ The agent trims trailing assistant messages from its accumulator and re-streams 
 
 ### Tool approval responses
 
-When a tool requires approval (`needsApproval: true`), the agent streams the tool call with an `approval-requested` state and completes the turn. After the user approves or denies, send the **updated assistant message** (with `approval-responded` tool parts) back as a `kind: "message"` chunk — singular, not the full chain:
+When a tool requires approval (`needsApproval: true`), the agent streams the tool call with an `approval-requested` state and completes the turn. After the user approves or denies, send the **updated assistant message** back as a `kind: "message"` chunk — singular, not the full chain. The minimum shape the agent reads is just the resolved tool parts:
 
 ```json
 {
@@ -861,12 +861,10 @@ When a tool requires approval (`needsApproval: true`), the agent streams the too
       "id": "asst-msg-1",
       "role": "assistant",
       "parts": [
-        { "type": "text", "text": "I'll send that email for you." },
         {
           "type": "tool-sendEmail",
           "toolCallId": "call-1",
           "state": "approval-responded",
-          "input": { "to": "user@example.com", "subject": "Hello" },
           "approval": { "id": "approval-1", "approved": true }
         }
       ]
@@ -878,7 +876,11 @@ When a tool requires approval (`needsApproval: true`), the agent streams the too
 }
 ```
 
-The agent matches the incoming message by `id` against the rebuilt accumulator. If a match is found, it **replaces** the existing message instead of appending.
+The agent matches the incoming message by `id` against the rebuilt accumulator (or hydrated chain) and **overlays the tool-state advance** onto the matching entry — `state` plus `output` / `errorText` / `approval`, depending on the new state. Hydrated `input`, text, reasoning, and provider metadata stay put. This is what makes the slim shape above sufficient: the agent rebuilds everything else from the snapshot or from your `hydrateMessages` hook.
+
+The same shape applies to HITL `addToolOutput` answers — substitute `state: "output-available"` and `output: <result>` for the approval pair above. Single-tool HITL `addToolOutput` continuation payloads are typically ~1 KiB on the wire.
+
+The built-in transports (`TriggerChatTransport`, `AgentChat`) ship the slim shape by default on `submit-message` continuations. Custom transports can ship a fuller `UIMessage` — the agent still only reads the resolved tool-part fields — but the slim shape is the most efficient and avoids brushing the per-record cap on reasoning-heavy turns.
 
 <Note>
   The message `id` must match the one the agent assigned during streaming. `TriggerChatTransport` keeps IDs in sync automatically. Custom transports should use the `messageId` from the stream's `start` chunk.
@@ -938,7 +940,7 @@ To bridge that gap, the head-start route handler ships **full UIMessage history*
 
 Two reasons this exception is safe:
 
-1. **The route handler runs against the customer's own HTTP endpoint**, not `/realtime/v1/sessions/{id}/in/append`. The 512 KiB body cap on the realtime route doesn't apply.
+1. **The route handler runs against the customer's own HTTP endpoint**, not `/realtime/v1/sessions/{id}/in/append`. The per-record cap on the realtime route doesn't apply.
 2. **`headStartMessages` is only honored on `trigger: "handover-prepare"`**. The runtime ignores the field on every other trigger — the one-message-per-record rule still holds for normal turns.
 
 After turn 1 completes, the snapshot is written and turn 2+ run as a normal single-message-per-record chat.
@@ -1067,7 +1069,7 @@ No. `seq_num` is monotonic across the entire session — turn 1 might emit seq 0
 </Expandable>
 
 <Expandable title="What's the maximum size of a single `.in/append` body?">
-512 KiB. A typical `kind: "message"` is a few KB. If you're brushing the cap you're shipping more than one message per record, which the protocol forbids. The headStart path (`trigger: "handover-prepare"`) sends through the customer's own HTTP route handler, not `.in/append`, so the cap doesn't apply there.
+The HTTP body is capped at 1 MiB as a DoS guard. The actual ceiling is at the storage layer: each `.in/append` becomes a single S2 record, metered as `8 + body_bytes_after_JSON_wrap`, capped at 1 MiB. So the practical limit on the raw HTTP body sits around ~1023 KiB for content with low JSON-escape overhead (ASCII, base64) and ~512 KiB for content that escapes heavily (all quotes / backslashes). A typical `kind: "message"` is a few KiB. If you're brushing the cap you're either shipping a single tool output that's itself oversized — see [Large payloads](/ai-chat/patterns/large-payloads) — or you're shipping more than one message per record, which the protocol forbids. The 413 response carries CORS headers so browser fetches can read the status. The headStart path (`trigger: "handover-prepare"`) sends through the customer's own HTTP route handler, not `.in/append`, so the cap doesn't apply there.
 </Expandable>
 
 ## See also

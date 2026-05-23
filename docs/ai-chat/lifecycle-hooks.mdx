@@ -242,13 +242,21 @@ import { validateUIMessages } from "ai";
 export const myChat = chat.agent({
   id: "my-chat",
   onValidateMessages: async ({ messages }) => {
-    return validateUIMessages({ messages, tools: chatTools });
+    const userMessages = messages.filter((m) => m.role === "user");
+    if (userMessages.length > 0) {
+      await validateUIMessages({ messages: userMessages, tools: chatTools });
+    }
+    return messages;
   },
   run: async ({ messages, signal }) => {
     return streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools: chatTools, abortSignal: signal });
   },
 });
 ```
+
+<Warning>
+  On HITL continuations (`addToolOutput` / `addToolApproveResponse`) the assistant entry in `messages` is **slim** — `state` + `output` / `errorText` / `approval` only, no `input` or other parts. `validateUIMessages` against the AI SDK schema rejects that shape (the schema requires `input` on resolved tool parts), so filter to user messages first (or skip validation entirely on those turns). The example above does the filter.
+</Warning>
 
 <Note>
   `onValidateMessages` fires **before** `onTurnStart` and message accumulation. If you need to validate messages loaded from a database, do the loading in `onChatStart` or `onPreload` and let `onValidateMessages` validate the full incoming set each turn.
@@ -278,14 +286,24 @@ export const myChat = chat.agent({
     const record = await db.chat.findUnique({ where: { id: chatId } });
     const stored = record?.messages ?? [];
 
-    // Append the new user message and persist
+    // Upsert the incoming message by id. On HITL continuations
+    // (`addToolOutput` / `addToolApproveResponse`) the incoming wire
+    // shares the id of an existing assistant in `stored` — `push`ing
+    // unconditionally would duplicate the row. The runtime merges the
+    // resolution onto the existing entry; new ids (typically a fresh
+    // user message) get appended.
     if (trigger === "submit-message" && incomingMessages.length > 0) {
       const newMsg = incomingMessages[incomingMessages.length - 1]!;
-      stored.push(newMsg);
-      await db.chat.update({
-        where: { id: chatId },
-        data: { messages: stored },
-      });
+      const existingIdx = newMsg.id
+        ? stored.findIndex((m) => m.id === newMsg.id)
+        : -1;
+      if (existingIdx === -1) {
+        stored.push(newMsg);
+        await db.chat.update({
+          where: { id: chatId },
+          data: { messages: stored },
+        });
+      }
     }
 
     return stored;
@@ -298,7 +316,7 @@ export const myChat = chat.agent({
 
 **Lifecycle position:** `onValidateMessages` → **`hydrateMessages`** → `onChatStart` (chat's first message only) → `onTurnStart` → `run()`
 
-After the hook returns, any incoming wire message whose ID matches a hydrated message is auto-merged. This makes [tool approvals](/ai-chat/frontend#tool-approvals) work transparently with hydration.
+After the hook returns, the runtime overlays the wire's tool-state advances (`output-available` / `output-error` / `approval-responded` / `output-denied`) onto matching hydrated entries by id. Everything else on the hydrated entry — text, reasoning, tool `input`, providerMetadata — stays put. This makes [tool approvals](/ai-chat/frontend#tool-approvals) and HITL `addToolOutput` continuations work transparently: ship a slim resolution on the wire, the agent merges the new state onto your DB-backed copy.
 
 <Note>
   `hydrateMessages` also fires for [action](/ai-chat/actions) turns (`trigger: "action"`) with empty `incomingMessages`. This lets the action handler work with the latest DB state.
