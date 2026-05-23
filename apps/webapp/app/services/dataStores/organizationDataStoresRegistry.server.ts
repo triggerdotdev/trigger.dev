@@ -7,7 +7,19 @@ import { getSecretStore } from "../secrets/secretStore.server";
 import { ClickhouseConnectionSchema } from "../clickhouse/clickhouseSecretSchemas.server";
 
 export class OrganizationDataStoresRegistry {
-  private _prisma: PrismaClient | PrismaReplicaClient;
+  /**
+   * Writer client — used by every method that mutates state
+   * (`addDataStore` / `updateDataStore` / `deleteDataStore` and their backing
+   * SecretStore writes). Must be the primary connection; replica-targeted
+   * writes are rejected by Postgres with code 25006 (read-only transaction).
+   */
+  private _writer: PrismaClient;
+  /**
+   * Read client used by the polling `loadFromDatabase()` (and its
+   * `SecretStore.getSecret` lookups). Can be a replica — these are
+   * cache-fillers, not on hot user-facing paths.
+   */
+  private _replica: PrismaClient | PrismaReplicaClient;
   /** Keyed by `${organizationId}:${kind}` */
   private _lookup: Map<string, ParsedDataStore> = new Map();
   private _loaded = false;
@@ -21,8 +33,9 @@ export class OrganizationDataStoresRegistry {
    */
   readonly isReady: Promise<void>;
 
-  constructor(prisma: PrismaClient | PrismaReplicaClient) {
-    this._prisma = prisma;
+  constructor(writer: PrismaClient, replica: PrismaClient | PrismaReplicaClient) {
+    this._writer = writer;
+    this._replica = replica;
     this.isReady = new Promise<void>((resolve) => {
       this._readyResolve = resolve;
     });
@@ -37,10 +50,10 @@ export class OrganizationDataStoresRegistry {
     // same `${orgId}:${kind}` appears in multiple rows. The registry must never
     // throw on overlap — failing the load would break every customer, not just the
     // misconfigured orgs — so we keep the first entry and log an error instead.
-    const rows = await this._prisma.organizationDataStore.findMany({
+    const rows = await this._replica.organizationDataStore.findMany({
       orderBy: { key: "asc" },
     });
-    const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+    const secretStore = getSecretStore("DATABASE", { prismaClient: this._replica });
 
     const lookup = new Map<string, ParsedDataStore>();
     /** Tracks which row's `key` already owns each `${orgId}:${kind}` so we can log conflicts. */
@@ -125,10 +138,10 @@ export class OrganizationDataStoresRegistry {
   }) {
     const secretKey = this.#secretKey(key, kind);
 
-    const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+    const secretStore = getSecretStore("DATABASE", { prismaClient: this._writer });
     await secretStore.setSecret(secretKey, config);
 
-    return this._prisma.organizationDataStore.create({
+    return this._writer.organizationDataStore.create({
       data: {
         key,
         organizationIds,
@@ -153,11 +166,11 @@ export class OrganizationDataStoresRegistry {
     const secretKey = this.#secretKey(key, kind);
 
     if (config) {
-      const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+      const secretStore = getSecretStore("DATABASE", { prismaClient: this._writer });
       await secretStore.setSecret(secretKey, config);
     }
 
-    return this._prisma.organizationDataStore.update({
+    return this._writer.organizationDataStore.update({
       where: {
         key,
       },
@@ -170,12 +183,12 @@ export class OrganizationDataStoresRegistry {
 
   async deleteDataStore({ key, kind }: { key: string; kind: DataStoreKind }) {
     const secretKey = this.#secretKey(key, kind);
-    const secretStore = getSecretStore("DATABASE", { prismaClient: this._prisma });
+    const secretStore = getSecretStore("DATABASE", { prismaClient: this._writer });
     await secretStore.deleteSecret(secretKey).catch(() => {
       // Secret may not exist — proceed with deletion
     });
 
-    await this._prisma.organizationDataStore.delete({ where: { key } });
+    await this._writer.organizationDataStore.delete({ where: { key } });
   }
 
   /**

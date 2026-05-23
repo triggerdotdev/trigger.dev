@@ -1,5 +1,5 @@
 import pRetry from "p-retry";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
@@ -7,7 +7,7 @@ import { singleton } from "~/utils/singleton";
 import { OrganizationDataStoresRegistry } from "./organizationDataStoresRegistry.server";
 
 export const organizationDataStoresRegistry = singleton("organizationDataStoresRegistry", () => {
-  const registry = new OrganizationDataStoresRegistry($replica);
+  const registry = new OrganizationDataStoresRegistry(prisma, $replica);
 
   // Runs as soon as this singleton is created (first import of this module). The
   // registry’s `isReady` promise resolves when this eventually succeeds.

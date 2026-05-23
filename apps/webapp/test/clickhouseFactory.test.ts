@@ -16,7 +16,7 @@ describe("ClickHouse Factory", () => {
   postgresTest(
     "returns default client when org has no data store",
     async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma);
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
       await registry.loadFromDatabase();
 
       const factory = new ClickhouseFactory(registry);
@@ -28,7 +28,7 @@ describe("ClickHouse Factory", () => {
   postgresTest(
     "returns org-specific client when a data store is configured",
     async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma);
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
       await registry.addDataStore({
         key: "factory-store",
@@ -52,7 +52,7 @@ describe("ClickHouse Factory", () => {
   postgresTest(
     "two orgs sharing the same data store get the same cached client",
     async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma);
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
       await registry.addDataStore({
         key: "shared-factory-store",
@@ -75,7 +75,7 @@ describe("ClickHouse Factory", () => {
   postgresTest(
     "two data stores with different URLs produce different clients",
     async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma);
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
       await registry.addDataStore({
         key: "store-a",
@@ -104,7 +104,7 @@ describe("ClickHouse Factory", () => {
   postgresTest(
     "after reload with a deleted store, org falls back to default",
     async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma);
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
       await registry.addDataStore({
         key: "removable-store",
