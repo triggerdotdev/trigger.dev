@@ -11,6 +11,7 @@ import "../src/v3/test/index.js";
 import type { UIMessage } from "ai";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { ChatInputChunk, ChatTaskWirePayload } from "../src/v3/ai-shared.js";
+import { slimSubmitMessageForWire } from "../src/v3/ai-shared.js";
 
 describe("ChatTaskWirePayload (slim wire shape)", () => {
   it("encodes and decodes a submit-message payload through JSON", () => {
@@ -154,6 +155,184 @@ describe("ChatTaskWirePayload (slim wire shape)", () => {
 
     const decoded = JSON.parse(JSON.stringify(wire)) as ChatTaskWirePayload;
     expect(decoded.message).toEqual(approvalMsg);
+  });
+});
+
+describe("slimSubmitMessageForWire", () => {
+  it("passes user messages through unchanged", () => {
+    const userMsg: UIMessage = {
+      id: "u-1",
+      role: "user",
+      parts: [{ type: "text", text: "hello" }],
+    };
+    expect(slimSubmitMessageForWire(userMsg)).toBe(userMsg);
+  });
+
+  it("passes assistant messages with no resolved tool parts through unchanged", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "thinking..." },
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "input-available",
+          input: { q: "x" },
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toBe(assistantMsg);
+  });
+
+  it("slims output-available HITL continuation to {type, toolCallId, state, output}", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "let me search" },
+        { type: "reasoning", text: "long reasoning blob..." } as never,
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          input: { q: "very long query".repeat(1000) },
+          output: { hits: 7 },
+        } as never,
+      ],
+    };
+    const slim = slimSubmitMessageForWire(assistantMsg);
+    expect(slim).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          output: { hits: 7 },
+        },
+      ],
+    });
+    // The slim drops `input` (server has it via hydrate/snapshot) — the
+    // wire is much smaller than the original.
+    expect(JSON.stringify(slim).length).toBeLessThan(JSON.stringify(assistantMsg).length / 50);
+  });
+
+  it("slims output-error to {type, toolCallId, state, errorText}", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-error",
+          input: { q: "x" },
+          errorText: "boom",
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-error",
+          errorText: "boom",
+        },
+      ],
+    });
+  });
+
+  it("slims approval-responded to {type, toolCallId, state, approval}", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-delete",
+          toolCallId: "tc-1",
+          state: "approval-responded",
+          input: { path: "/critical" },
+          approval: { id: "appr_1", approved: true, reason: "looks fine" },
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-delete",
+          toolCallId: "tc-1",
+          state: "approval-responded",
+          approval: { id: "appr_1", approved: true, reason: "looks fine" },
+        },
+      ],
+    });
+  });
+
+  it("slims dynamic-tool parts and preserves toolName", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "dyn-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          input: { q: "x" },
+          output: { hits: 1 },
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "dyn-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          output: { hits: 1 },
+        },
+      ],
+    });
+  });
+
+  it("only slims the advanced tool parts when an assistant has mixed states", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "thinking" },
+        {
+          type: "tool-search",
+          toolCallId: "tc-resolved",
+          state: "output-available",
+          input: { q: "x" },
+          output: { hits: 1 },
+        } as never,
+        {
+          type: "tool-askUser",
+          toolCallId: "tc-still-pending",
+          state: "input-available",
+          input: { q: "ok?" },
+        } as never,
+      ],
+    };
+    const slim = slimSubmitMessageForWire(assistantMsg);
+    expect(slim?.parts).toHaveLength(1);
+    expect((slim?.parts?.[0] as any).toolCallId).toBe("tc-resolved");
+  });
+
+  it("handles undefined input", () => {
+    expect(slimSubmitMessageForWire(undefined)).toBeUndefined();
   });
 });
 

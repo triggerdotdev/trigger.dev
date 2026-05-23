@@ -2129,6 +2129,103 @@ function extractNewToolResultsFromHistory(
 }
 
 /**
+ * Per-turn merge of an incoming wire `UIMessage` onto the matching entry
+ * a `hydrateMessages` hook (or the default accumulator) provides. Used
+ * to fold tool-state advances from the client into the agent's
+ * authoritative chain without trusting the wire copy for fields the
+ * LLM consumes.
+ *
+ * `hydrated` is treated as the source of truth for everything outside
+ * tool-state advancement: text, reasoning blobs, provider metadata,
+ * and tool `input` all stay as hydrated had them. We only overlay
+ * tool parts whose incoming state is wire-advanced — `output-available`
+ * / `output-error` (HITL `addToolOutput`) or `approval-responded` /
+ * `output-denied` (approval flow) — and only the corresponding
+ * resolution fields (`output` / `errorText` / `approval`). Hydrated
+ * `input` and everything else stay put.
+ *
+ * Without this, a slim wire copy (which `TriggerChatTransport` /
+ * `AgentChat.sendRaw` ship by default on HITL continuations) would
+ * clobber the hydrated assistant — the next LLM call would receive a
+ * tool call with no `input` and 4xx.
+ *
+ * @internal
+ */
+function mergeIncomingIntoHydrated<TMsg extends UIMessage>(
+  hydrated: TMsg,
+  incoming: UIMessage
+): TMsg {
+  const incomingAdvancedByCallId = new Map<string, any>();
+  for (const part of (incoming.parts ?? []) as any[]) {
+    if (!isToolUIPart(part)) continue;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    if (!isWireAdvanceableToolState(part.state)) continue;
+    incomingAdvancedByCallId.set(toolCallId, part);
+  }
+
+  if (incomingAdvancedByCallId.size === 0) return hydrated;
+
+  let mutated = false;
+  const hydratedParts = (hydrated.parts ?? []) as any[];
+  const mergedParts = hydratedParts.map((part) => {
+    if (!isToolUIPart(part)) return part;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) return part;
+    const incomingPart = incomingAdvancedByCallId.get(toolCallId);
+    if (!incomingPart) return part;
+    // Hydrated already carries a resolved state for this call — treat
+    // it as authoritative and ignore the wire copy. Repeat sends of the
+    // same answer (replay, retry) are no-ops.
+    if (isResolvedToolState(part.state)) return part;
+    mutated = true;
+    if (incomingPart.state === "output-available") {
+      return {
+        ...part,
+        state: incomingPart.state,
+        output: incomingPart.output,
+        ...(incomingPart.approval !== undefined ? { approval: incomingPart.approval } : {}),
+      };
+    }
+    if (incomingPart.state === "output-error") {
+      return {
+        ...part,
+        state: incomingPart.state,
+        errorText: incomingPart.errorText,
+        ...(incomingPart.approval !== undefined ? { approval: incomingPart.approval } : {}),
+      };
+    }
+    // approval-responded / output-denied — overlay state + approval.
+    return {
+      ...part,
+      state: incomingPart.state,
+      ...(incomingPart.approval !== undefined ? { approval: incomingPart.approval } : {}),
+    };
+  });
+
+  if (!mutated) return hydrated;
+  return { ...hydrated, parts: mergedParts };
+}
+
+/**
+ * Mirror of `slimSubmitMessageForWire`'s predicate. Kept here so the
+ * agent runtime doesn't have to import from `ai-shared.ts` for a
+ * one-liner. See that file for the full state-machine docs.
+ *
+ * @internal
+ */
+function isWireAdvanceableToolState(
+  state: unknown
+): state is "output-available" | "output-error" | "approval-responded" | "output-denied" {
+  return (
+    state === "output-available" ||
+    state === "output-error" ||
+    state === "approval-responded" ||
+    state === "output-denied"
+  );
+}
+
+/**
  * Imperative API for reading and modifying the accumulated message history.
  *
  * Mutations use the same deferred override mechanism as `chat.setMessages()`:
@@ -3876,7 +3973,14 @@ export type HydrateMessagesEvent<TClientData = unknown, TUIM extends UIMessage =
  * Event passed to the `onValidateMessages` callback.
  */
 export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
-  /** The incoming UI messages for this turn (after cleanup of aborted tool parts). */
+  /**
+   * The incoming UI messages for this turn (after cleanup of aborted tool parts).
+   *
+   * For HITL continuations the assistant entry is slim — `state` + `output` /
+   * `errorText` / `approval` only, no `input` or other parts. Don't pass the
+   * full `messages` array to `validateUIMessages` from `ai`; filter to user
+   * messages (or your own subset) first.
+   */
   messages: TUIM[];
   /** The unique identifier for the chat session. */
   chatId: string;
@@ -4372,8 +4476,13 @@ export type ChatAgentOptions<
    *
    * Return the validated messages array. Throw to abort the turn with an error.
    *
-   * This is the right place to call the AI SDK's `validateUIMessages` to catch
-   * malformed messages from storage or untrusted input before they reach the model.
+   * This is the right place to call the AI SDK's `validateUIMessages` on fresh
+   * user input. For HITL continuations (`addToolOutput` /
+   * `addToolApproveResponse`), the wire carries a slim assistant message — only
+   * the resolved tool parts, with `state` + `output` / `errorText` / `approval`
+   * and no `input`. `validateUIMessages` against the AI SDK schema rejects
+   * that shape, so filter to user messages (or skip validation entirely) on
+   * those turns.
    *
    * @example
    * ```ts
@@ -4382,7 +4491,11 @@ export type ChatAgentOptions<
    * chat.agent({
    *   id: "my-chat",
    *   onValidateMessages: async ({ messages }) => {
-   *     return validateUIMessages({ messages, tools: chatTools });
+   *     const userMessages = messages.filter((m) => m.role === "user");
+   *     if (userMessages.length > 0) {
+   *       await validateUIMessages({ messages: userMessages, tools: chatTools });
+   *     }
+   *     return messages;
    *   },
    *   run: async ({ messages }) => {
    *     return streamText({ model, messages, tools: chatTools });
@@ -6071,15 +6184,23 @@ function chatAgent<
                       }
                     );
 
-                    // Auto-merge tool approval updates: if any incoming wire message
-                    // has an ID that matches a hydrated message, replace it. This makes
-                    // tool approvals work transparently with backend hydration.
+                    // Per-turn merge of incoming wire messages onto the hydrated
+                    // chain. Hydrated stays authoritative for text, reasoning
+                    // blobs, provider metadata, and tool `input`; we only
+                    // overlay tool-part state/output/errorText for tool calls
+                    // the wire copy has just resolved. Apps that slim the wire
+                    // copy to fit the .in/append cap (or drop fields they
+                    // re-source from their own DB) get the hydrated copy
+                    // through unchanged.
                     const merged = [...hydrated] as TUIMessage[];
                     for (const incoming of cleanedUIMessages) {
                       if (!incoming.id) continue;
                       const idx = merged.findIndex((m) => m.id === incoming.id);
                       if (idx !== -1) {
-                        merged[idx] = incoming as TUIMessage;
+                        merged[idx] = mergeIncomingIntoHydrated(
+                          merged[idx]!,
+                          incoming
+                        ) as TUIMessage;
                       }
                     }
 
@@ -6087,14 +6208,23 @@ function chatAgent<
                     accumulatedMessages = await toModelMessages(merged);
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
-                    // Track new messages for onTurnComplete.newUIMessages
+                    // Track new messages for onTurnComplete.newUIMessages.
+                    // Surface the post-merge entry when the wire copy
+                    // matched a hydrated message — the wire copy may have
+                    // been slimmed (HITL tool-output continuation), and
+                    // customers expect `newUIMessages` to carry full
+                    // content (text, reasoning, tool `input`).
                     if (
                       currentWirePayload.trigger === "submit-message" &&
                       cleanedUIMessages.length > 0
                     ) {
                       const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
-                      turnNewUIMessages.push(lastUI);
-                      const lastModel = (await toModelMessages([lastUI]))[0];
+                      const mergedEntry = lastUI.id
+                        ? merged.find((m) => m.id === lastUI.id)
+                        : undefined;
+                      const surfaceUI = (mergedEntry ?? lastUI) as TUIMessage;
+                      turnNewUIMessages.push(surfaceUI);
+                      const lastModel = (await toModelMessages([surfaceUI]))[0];
                       if (lastModel) turnNewModelMessages.push(lastModel);
                     }
                   } else {
@@ -6121,15 +6251,17 @@ function chatAgent<
                     } else if (cleanedUIMessages.length > 0) {
                       // Submit-message (and the special-cased
                       // handover-prepare → submit-message rewrite earlier in
-                      // this scope): append-or-replace-by-id for the single
-                      // delta message.
+                      // this scope): merge-or-append for the single delta
+                      // message.
                       //
                       // Tool approval responses arrive as a single assistant
                       // message whose id collides with the existing assistant
-                      // in the accumulator — we replace by id. The fallback
-                      // for HITL `addToolOutput` continuations where AI SDK
-                      // regenerates the id (TRI-9137) still applies via
-                      // `rewriteIncomingIdViaToolCallMap`.
+                      // in the accumulator — we merge the resolved tool-part
+                      // resolutions onto the existing entry, keeping text,
+                      // reasoning, and tool `input` from the prior snapshot.
+                      // The fallback for HITL `addToolOutput` continuations
+                      // where AI SDK regenerates the id (TRI-9137) still
+                      // applies via `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
@@ -6146,7 +6278,10 @@ function chatAgent<
                           }
                         }
                         if (idx !== -1) {
-                          accumulatedUIMessages[idx] = incoming as TUIMessage;
+                          accumulatedUIMessages[idx] = mergeIncomingIntoHydrated(
+                            accumulatedUIMessages[idx]!,
+                            incoming
+                          ) as TUIMessage;
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);

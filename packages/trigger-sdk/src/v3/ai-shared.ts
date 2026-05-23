@@ -198,3 +198,94 @@ export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
 >
   ? TUIM
   : UIMessage;
+
+/**
+ * Tool-part states that the client advances and ships back over the wire.
+ * Covers HITL `addToolOutput` (output-available / output-error) and the
+ * approval flow (approval-responded / output-denied). `input-streaming` /
+ * `input-available` / `approval-requested` are server-emitted only — if
+ * we see them on the wire we treat them as no-ops and skip the slim/merge.
+ */
+function isWireAdvanceableToolState(
+  state: unknown
+): state is "output-available" | "output-error" | "approval-responded" | "output-denied" {
+  return (
+    state === "output-available" ||
+    state === "output-error" ||
+    state === "approval-responded" ||
+    state === "output-denied"
+  );
+}
+
+/** Whether a tool-UI part is a static (`tool-${name}`) or dynamic tool. */
+function isToolPartType(type: unknown): boolean {
+  return typeof type === "string" && (type.startsWith("tool-") || type === "dynamic-tool");
+}
+
+/**
+ * Slim an outgoing assistant message before it ships on `submit-message`.
+ *
+ * When the client calls `addToolOutput(...)` to resolve a HITL tool (or
+ * `addToolApproveResponse(...)` to approve/deny one), the AI SDK turns
+ * it into a `submit-message` whose `messages.at(-1)` is the existing
+ * assistant message with the new state stitched onto a single tool
+ * part. On a reasoning-heavy multi-step turn, that full assistant
+ * message can be 600 KB – 1 MB (encrypted reasoning blobs, reasoning
+ * text, full tool `input` JSON, prior tool outputs) — well over the
+ * `.in/append` cap.
+ *
+ * The agent runtime only consumes the wire-advanced fields of those
+ * tool parts (state + output / errorText / approval). Everything else
+ * (text, reasoning, tool `input`) is rebuilt server-side from the
+ * durable snapshot or `hydrateMessages`. So we drop everything but
+ * the advanced tool parts here, and reduce those to just the fields
+ * the server overlays.
+ *
+ * The slim only fires when the assistant message carries at least one
+ * wire-advanceable tool part. Plain assistant resends (no resolved /
+ * approval-responded tool) and non-assistant messages pass through
+ * untouched.
+ *
+ * Pairs with the per-turn merge on the agent side
+ * (`mergeIncomingIntoHydrated` in `ai.ts`).
+ */
+export function slimSubmitMessageForWire<TMsg extends UIMessage | undefined>(
+  message: TMsg
+): TMsg {
+  if (!message) return message;
+  if (message.role !== "assistant") return message;
+  const parts = (message.parts ?? []) as any[];
+  const advancedToolParts = parts.filter(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      isToolPartType(p.type) &&
+      isWireAdvanceableToolState(p.state)
+  );
+  if (advancedToolParts.length === 0) return message;
+  const slimParts = advancedToolParts.map((p: any) => {
+    const base: Record<string, unknown> = {
+      type: p.type,
+      toolCallId: p.toolCallId,
+      state: p.state,
+    };
+    if (p.type === "dynamic-tool" && typeof p.toolName === "string") {
+      base.toolName = p.toolName;
+    }
+    if (p.state === "output-available") {
+      base.output = p.output;
+      if (p.approval !== undefined) base.approval = p.approval;
+    } else if (p.state === "output-error") {
+      if (p.errorText !== undefined) base.errorText = p.errorText;
+      if (p.approval !== undefined) base.approval = p.approval;
+    } else if (p.state === "approval-responded" || p.state === "output-denied") {
+      if (p.approval !== undefined) base.approval = p.approval;
+    }
+    return base;
+  });
+  return {
+    id: message.id,
+    role: message.role,
+    parts: slimParts,
+  } as unknown as TMsg;
+}
