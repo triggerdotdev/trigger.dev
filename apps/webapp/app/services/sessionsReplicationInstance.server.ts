@@ -3,6 +3,7 @@ import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { meter, provider } from "~/v3/tracer.server";
+import { strategyFromEnv } from "./replicationErrorRecovery.server";
 import { SessionsReplicationService } from "./sessionsReplicationService.server";
 import { signalsEmitter } from "./signals.server";
 
@@ -53,6 +54,14 @@ function initializeSessionsReplicationInstance() {
     insertBaseDelayMs: env.SESSION_REPLICATION_INSERT_BASE_DELAY_MS,
     insertMaxDelayMs: env.SESSION_REPLICATION_INSERT_MAX_DELAY_MS,
     insertStrategy: env.SESSION_REPLICATION_INSERT_STRATEGY,
+    errorRecovery: strategyFromEnv({
+      strategy: env.SESSION_REPLICATION_ERROR_STRATEGY,
+      reconnectInitialDelayMs: env.REPLICATION_RECONNECT_INITIAL_DELAY_MS,
+      reconnectMaxDelayMs: env.REPLICATION_RECONNECT_MAX_DELAY_MS,
+      reconnectMaxAttempts: env.REPLICATION_RECONNECT_MAX_ATTEMPTS,
+      exitDelayMs: env.SESSION_REPLICATION_EXIT_DELAY_MS,
+      exitCode: env.SESSION_REPLICATION_EXIT_CODE,
+    }),
   });
 
   if (env.SESSION_REPLICATION_ENABLED === "1") {

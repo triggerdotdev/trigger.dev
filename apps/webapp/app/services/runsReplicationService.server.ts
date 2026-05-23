@@ -38,6 +38,11 @@ import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
+import {
+  createReplicationErrorRecovery,
+  type ReplicationErrorRecovery,
+  type ReplicationErrorRecoveryStrategy,
+} from "./replicationErrorRecovery.server";
 
 interface TransactionEvent<T = any> {
   tag: "insert" | "update" | "delete";
@@ -82,6 +87,9 @@ export type RunsReplicationServiceOptions = {
   insertMaxDelayMs?: number;
   disablePayloadInsert?: boolean;
   disableErrorFingerprinting?: boolean;
+  // What to do when the replication client errors (e.g. after a Postgres
+  // failover). Defaults to in-process reconnect with exponential backoff.
+  errorRecovery?: ReplicationErrorRecoveryStrategy;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -128,6 +136,7 @@ export class RunsReplicationService {
   private _insertStrategy: "insert" | "insert_async";
   private _disablePayloadInsert: boolean;
   private _disableErrorFingerprinting: boolean;
+  private _errorRecovery: ReplicationErrorRecovery;
 
   // Metrics
   private _replicationLagHistogram: Histogram;
@@ -259,14 +268,25 @@ export class RunsReplicationService {
       }
     });
 
+    this._errorRecovery = createReplicationErrorRecovery({
+      strategy: options.errorRecovery ?? { type: "reconnect" },
+      logger: this.logger,
+      reconnect: async () => {
+        await this._replicationClient.subscribe(this._latestCommitEndLsn ?? undefined);
+      },
+      isShuttingDown: () => this._isShuttingDown || this._isShutDownComplete,
+    });
+
     this._replicationClient.events.on("error", (error) => {
       this.logger.error("Replication client error", {
         error,
       });
+      this._errorRecovery.handle(error);
     });
 
     this._replicationClient.events.on("start", () => {
       this.logger.info("Replication client started");
+      this._errorRecovery.notifyStreamStarted();
     });
 
     this._replicationClient.events.on("acknowledge", ({ lsn }) => {
@@ -275,6 +295,16 @@ export class RunsReplicationService {
 
     this._replicationClient.events.on("leaderElection", (isLeader) => {
       this.logger.info("Leader election", { isLeader });
+      if (!isLeader) {
+        // Failed leader election doesn't throw or emit an "error" event —
+        // subscribe() just emits leaderElection(false), calls stop(), and
+        // returns. Route through a dedicated handler so only the reconnect
+        // strategy acts; the exit strategy must not restart-loop when
+        // another instance holds the lock.
+        this._errorRecovery.notifyLeaderElectionLost(
+          new Error("Failed to acquire replication leader lock")
+        );
+      }
     });
 
     // Initialize retry configuration
@@ -287,6 +317,7 @@ export class RunsReplicationService {
     if (this._isShuttingDown) return;
 
     this._isShuttingDown = true;
+    this._errorRecovery.dispose();
 
     this.logger.info("Initiating shutdown of runs replication service");
 
