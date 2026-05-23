@@ -280,30 +280,19 @@ Use this when the backend should be the source of truth for message history: abu
 | `previousRunId`    | `string \| undefined`                                 | The previous run ID (if continuation)                     |
 
 ```ts
+import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai";
+
 export const myChat = chat.agent({
   id: "my-chat",
   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
     const record = await db.chat.findUnique({ where: { id: chatId } });
     const stored = record?.messages ?? [];
 
-    // Upsert the incoming message by id. On HITL continuations
-    // (`addToolOutput` / `addToolApproveResponse`) the incoming wire
-    // shares the id of an existing assistant in `stored` — `push`ing
-    // unconditionally would duplicate the row. The runtime merges the
-    // resolution onto the existing entry; new ids (typically a fresh
-    // user message) get appended.
-    if (trigger === "submit-message" && incomingMessages.length > 0) {
-      const newMsg = incomingMessages[incomingMessages.length - 1]!;
-      const existingIdx = newMsg.id
-        ? stored.findIndex((m) => m.id === newMsg.id)
-        : -1;
-      if (existingIdx === -1) {
-        stored.push(newMsg);
-        await db.chat.update({
-          where: { id: chatId },
-          data: { messages: stored },
-        });
-      }
+    if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
+      await db.chat.update({
+        where: { id: chatId },
+        data: { messages: stored },
+      });
     }
 
     return stored;
@@ -313,6 +302,10 @@ export const myChat = chat.agent({
   },
 });
 ```
+
+`upsertIncomingMessage` (exported from `@trigger.dev/sdk/ai`) handles the three cases that matter — fresh user messages get pushed, HITL continuations (`addToolOutput` / `addToolApproveResponse`) no-op because the incoming wire shares the existing assistant's id and the runtime overlays the new tool-state advance onto that entry, and non-`submit-message` triggers (`regenerate-message` / `action`) skip persistence. It returns `true` when it mutated `stored`, so the caller knows whether to persist.
+
+If you need branching, rollback, or other custom hydrate logic, you can still write the upsert by hand — `upsertIncomingMessage` is a convenience for the common case, not the only supported shape.
 
 **Lifecycle position:** `onValidateMessages` → **`hydrateMessages`** → `onChatStart` (chat's first message only) → `onTurnStart` → `run()`
 

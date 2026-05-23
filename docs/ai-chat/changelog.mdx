@@ -16,7 +16,26 @@ The per-turn merge now overlays only the tool-part state advances (`output-avail
 
 ### `hydrateMessages` upsert-by-id
 
-If your `hydrateMessages` hook persists the incoming message, **upsert by id** — don't unconditionally push. HITL continuations ship the existing assistant's id with a slim payload; a blind `stored.push(newMsg)` duplicates the row in the chain you return, the merge updates the first match, and the slim duplicate hits `toModelMessages` with no `input`. The examples in [lifecycle hooks](/ai-chat/lifecycle-hooks#hydratemessages), [Database persistence](/ai-chat/patterns/database-persistence#alternative-hydratemessages), and [Persistence and replay](/ai-chat/patterns/persistence-and-replay) have all been updated.
+If your `hydrateMessages` hook persists the incoming message, **upsert by id** — don't unconditionally push. HITL continuations ship the existing assistant's id with a slim payload; a blind `stored.push(newMsg)` duplicates the row in the chain you return, the merge updates the first match, and the slim duplicate hits `toModelMessages` with no `input`.
+
+A new `upsertIncomingMessage` helper is exported from `@trigger.dev/sdk/ai` to handle this for the common case:
+
+```ts
+import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai";
+
+chat.agent({
+  hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+    const record = await db.chat.findUnique({ where: { id: chatId } });
+    const stored = record?.messages ?? [];
+    if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
+      await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+    }
+    return stored;
+  },
+});
+```
+
+The helper pushes fresh user messages, no-ops on HITL continuations (so the runtime can overlay the new tool-state advance), and skips on non-`submit-message` triggers. Returns `true` if it mutated `stored`. The examples in [lifecycle hooks](/ai-chat/lifecycle-hooks#hydratemessages), [Database persistence](/ai-chat/patterns/database-persistence#alternative-hydratemessages), and [Persistence and replay](/ai-chat/patterns/persistence-and-replay) have all been updated. Custom hydrate logic (branching, rollback, etc.) can still write the upsert by hand — the helper is a convenience for the common shape.
 
 ### `onValidateMessages` slim wire caveat
 
