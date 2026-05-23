@@ -1,6 +1,6 @@
 # Contributing to Trigger.dev
 
-Thank you for taking the time to contribute to Trigger.dev. Your involvement is not just welcomed, but we encourage it! 🚀
+Thank you for taking the time to contribute to Trigger.dev. Your involvement is not only welcomed, but highly encouraged! 🚀
 
 Please take some time to read this guide to understand contributing best practices for Trigger.dev. Note that we use [vouch](https://github.com/mitchellh/vouch) to manage contributor trust, so you'll need to be vouched before opening a PR.
 
