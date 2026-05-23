@@ -483,6 +483,7 @@
               },
               "guides/ai-agents/claude-code-trigger",
               "guides/frameworks/drizzle",
+              "guides/frameworks/ejentum-cognitive-harness",
               "guides/frameworks/prisma",
               "guides/frameworks/nango",
               "guides/frameworks/sequin",
