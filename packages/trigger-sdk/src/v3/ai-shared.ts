@@ -200,6 +200,63 @@ export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
   : UIMessage;
 
 /**
+ * Upsert an incoming wire message into the customer's DB-backed chain
+ * inside a `hydrateMessages` hook. Returns `true` iff the chain was
+ * mutated (the caller should persist).
+ *
+ * Handles the three cases that matter:
+ *
+ *  - **Non-submit-message trigger** (`regenerate-message` / `action`,
+ *    or `submit-message` with no incoming): no-op. Returns `false`.
+ *  - **Incoming id already in `stored`** (HITL `addToolOutput` /
+ *    `addToolApproveResponse` continuation — the wire carries the
+ *    existing assistant's id with a slim resolution payload): no-op.
+ *    The runtime's per-turn merge overlays the new tool-state advance
+ *    onto the existing entry; pushing again would duplicate the row
+ *    in the chain you return, and the duplicate slim copy would hit
+ *    `toModelMessages` with no `input`. Returns `false`.
+ *  - **Incoming id not in `stored`** (typically a fresh user message
+ *    on a new turn): push. Returns `true`.
+ *
+ * Mutates `stored` in place. The caller persists `stored`, not the
+ * return value.
+ *
+ * @example
+ * ```ts
+ * import { chat, upsertIncomingMessage } from "@trigger.dev/sdk/ai";
+ *
+ * chat.agent({
+ *   hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
+ *     const record = await db.chat.findUnique({ where: { id: chatId } });
+ *     const stored = record?.messages ?? [];
+ *     if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
+ *       await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+ *     }
+ *     return stored;
+ *   },
+ * });
+ * ```
+ */
+export function upsertIncomingMessage<TMsg extends UIMessage = UIMessage>(
+  stored: TMsg[],
+  event: {
+    trigger: "submit-message" | "regenerate-message" | "action";
+    incomingMessages: TMsg[];
+  }
+): boolean {
+  if (event.trigger !== "submit-message") return false;
+  if (event.incomingMessages.length === 0) return false;
+  const newMsg = event.incomingMessages[event.incomingMessages.length - 1];
+  if (!newMsg) return false;
+  if (newMsg.id) {
+    const existingIdx = stored.findIndex((m) => m.id === newMsg.id);
+    if (existingIdx !== -1) return false;
+  }
+  stored.push(newMsg);
+  return true;
+}
+
+/**
  * Tool-part states that the client advances and ships back over the wire.
  * Covers HITL `addToolOutput` (output-available / output-error) and the
  * approval flow (approval-responded / output-denied). `input-streaming` /

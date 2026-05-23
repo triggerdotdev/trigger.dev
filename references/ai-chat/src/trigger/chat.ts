@@ -1,4 +1,4 @@
-import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { chat, upsertIncomingMessage, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { logger, prompts, skills } from "@trigger.dev/sdk";
 
 import {
@@ -887,30 +887,19 @@ export const aiChatHydrated = chat
 
     // Load message history from the database on every turn.
     // The frontend's accumulated messages are ignored — the DB is the
-    // single source of truth. New user messages arrive in `incomingMessages`
-    // and are upserted by id + persisted before returning.
-    //
-    // HITL continuations (tool-output answers from `addToolOutput`) arrive
-    // as a slim assistant message whose id matches the existing assistant
-    // already in the chain — those land via the SDK's per-turn merge, so
-    // they're skipped here. Only brand-new ids (typically the user's next
-    // message) get appended.
+    // single source of truth. `upsertIncomingMessage` handles HITL
+    // continuations (slim wire sharing an id with the existing
+    // assistant — no-op so the runtime overlays the new state) and
+    // fresh user messages (push + persist).
     hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
       const record = await prisma.chat.findUnique({ where: { id: chatId } });
       const stored = (record?.messages as unknown as UIMessage[]) ?? [];
 
-      if (trigger === "submit-message" && incomingMessages.length > 0) {
-        const newMsg = incomingMessages[incomingMessages.length - 1]!;
-        const existingIdx = newMsg.id
-          ? stored.findIndex((m) => m.id === newMsg.id)
-          : -1;
-        if (existingIdx === -1) {
-          stored.push(newMsg);
-          await prisma.chat.update({
-            where: { id: chatId },
-            data: { messages: stored as unknown as ChatMessagesForWrite },
-          });
-        }
+      if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
+        await prisma.chat.update({
+          where: { id: chatId },
+          data: { messages: stored as unknown as ChatMessagesForWrite },
+        });
       }
 
       return stored;

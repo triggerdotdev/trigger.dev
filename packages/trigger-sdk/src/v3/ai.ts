@@ -2571,7 +2571,7 @@ export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
 // React hooks (`@trigger.dev/sdk/chat/react`) can import it without
 // dragging `ai.ts` into the browser graph. Re-exported here so
 // `@trigger.dev/sdk/ai` consumers still see it.
-export { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage } from "./ai-shared.js";
 import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
 
 /** @internal */
