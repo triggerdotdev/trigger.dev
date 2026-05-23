@@ -83,4 +83,18 @@ describe("TaskContextAPI conversation id", () => {
 
     expect(api.attributes[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID]).toBeUndefined();
   });
+
+  it("re-enables run attribution after disable()", () => {
+    const api = TaskContextAPI.getInstance();
+    api.setGlobalTaskContext({ ctx: FAKE_CTX, worker: FAKE_WORKER });
+
+    api.disable();
+
+    expect(api.isRunDisabled).toBe(true);
+
+    api.enable();
+
+    expect(api.isRunDisabled).toBe(false);
+    expect(api.attributes[SemanticInternalAttributes.RUN_ID]).toBe(FAKE_CTX.run.id);
+  });
 });

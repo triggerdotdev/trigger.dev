@@ -132,8 +132,12 @@ export class TaskContextAPI {
     this._runDisabled = true;
   }
 
-  public setGlobalTaskContext(taskContext: TaskContext): boolean {
+  public enable() {
     this._runDisabled = false;
+  }
+
+  public setGlobalTaskContext(taskContext: TaskContext): boolean {
+    this.enable();
     // Each run boot re-registers the global; clear any conversation id
     // left over from a previous run on this warm-restarted process so
     // attributes don't bleed across runs that don't call
