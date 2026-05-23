@@ -53,6 +53,13 @@ class LazyController implements RoleBaseAccessController {
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._init = this.load(prisma, options);
+    // load() runs eagerly but the result is awaited lazily on first method
+    // call. If load() rejects (e.g. REQUIRE_PLUGINS=1 + plugin missing) and
+    // nothing awaits _init before Node ticks past, the rejection surfaces
+    // as unhandledRejection and kills the process. Attach a no-op .catch
+    // so Node sees the rejection as handled; the error is re-thrown when
+    // any consumer awaits this._init via c().
+    this._init.catch(() => {});
   }
 
   private async load(
