@@ -4,14 +4,12 @@ import {
   ArrowTopRightOnSquareIcon,
   ChartBarIcon as ChartBarIconHero,
   ChevronRightIcon,
-  Cog8ToothIcon,
   CogIcon,
   ExclamationTriangleIcon,
   FolderIcon,
   FolderOpenIcon,
   PencilSquareIcon,
   PlusIcon,
-  PuzzlePieceIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
@@ -32,6 +30,7 @@ import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
 import { KeyValueIcon } from "~/assets/icons/KeyValueIcon";
 import { DialIcon } from "~/assets/icons/DialIcon";
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
 import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
@@ -40,6 +39,7 @@ import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
+import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -696,7 +696,7 @@ export function SideMenu({
             >
               <SideMenuItem
                 name="General"
-                icon={Cog8ToothIcon}
+                icon={SlidersIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={v3ProjectSettingsGeneralPath(organization, project, environment)}
@@ -705,7 +705,7 @@ export function SideMenu({
               />
               <SideMenuItem
                 name="Integrations"
-                icon={PuzzlePieceIcon}
+                icon={IntegrationsIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
