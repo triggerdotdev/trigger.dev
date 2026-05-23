@@ -16,6 +16,7 @@ import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyabl
 import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { cn } from "~/utils/cn";
 import {
@@ -107,7 +108,39 @@ export default function PromptsPage() {
               <TableHeaderCell>Slug</TableHeaderCell>
               <TableHeaderCell>Description</TableHeaderCell>
               <TableHeaderCell>Model</TableHeaderCell>
-              <TableHeaderCell>Version</TableHeaderCell>
+              <TableHeaderCell
+                tooltip={
+                  <div className="flex max-w-[16rem] flex-col gap-3 p-1 pb-2">
+                    <div className="flex flex-col gap-2">
+                      <div>
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <span className="size-1.5 shrink-0 rounded-full bg-success" />
+                          <Paragraph variant="small" className="!text-wrap text-text-bright">
+                            Latest version
+                          </Paragraph>
+                        </div>
+                        <Paragraph variant="small" className="!text-wrap pl-3.5 text-text-dimmed">
+                          Running the most recently published version.
+                        </Paragraph>
+                      </div>
+                      <div>
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <span className="size-1.5 shrink-0 rounded-full bg-warning" />
+                          <Paragraph variant="small" className="!text-wrap text-text-bright">
+                            Version overridden
+                          </Paragraph>
+                        </div>
+                        <Paragraph variant="small" className="!text-wrap pl-3.5 text-text-dimmed">
+                          Pinned to an older version instead of the latest.
+                        </Paragraph>
+                      </div>
+                    </div>
+                  </div>
+                }
+                disableTooltipHoverableContent
+              >
+                Version
+              </TableHeaderCell>
               <TableHeaderCell>Usage (24h)</TableHeaderCell>
               <TableHeaderCell alignment="right">Last updated</TableHeaderCell>
             </TableRow>
