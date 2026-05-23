@@ -469,6 +469,92 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("does not downgrade a hydrated `output-denied` when a stale `approval-responded` arrives", async () => {
+    // Terminal hydrated states (`output-available` / `output-error` /
+    // `output-denied`) are authoritative. A wire copy that re-ships a
+    // prior `approval-responded` (replay, retry, out-of-order arrival)
+    // must NOT regress the terminal denial back to a pre-resolution
+    // state — the agent would then re-run the tool.
+    const { z } = await import("zod");
+    const { tool } = await import("ai");
+    const deleteTool = tool({
+      description: "Delete.",
+      inputSchema: z.object({ resource: z.string() }),
+    });
+
+    const TC = "tc_denied_no_regress";
+    const HEAD_ID = "a-head-denied";
+
+    const dbAssistant = {
+      id: HEAD_ID,
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "tool-delete" as const,
+          toolCallId: TC,
+          state: "output-denied" as const,
+          input: { resource: "/critical/data" },
+          approval: { id: "appr_1", approved: false, reason: "no" },
+        },
+      ],
+    };
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let mergedToolPart: any;
+    const agent = chat.agent({
+      id: "mockChatAgent.denied-no-regress",
+      hydrateMessages: async () => [dbAssistant as any],
+      onTurnComplete: async ({ uiMessages }) => {
+        const head = uiMessages.find((m: any) => m.id === HEAD_ID);
+        mergedToolPart = (head?.parts ?? []).find(
+          (p: any) => p?.toolCallId === TC
+        );
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model,
+          messages,
+          tools: { delete: deleteTool },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-denied-no-regress" });
+    try {
+      // Stale wire arrival — `approval-responded` for a tool that
+      // hydrated already shows as `output-denied`.
+      const stale = {
+        id: HEAD_ID,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-delete" as const,
+            toolCallId: TC,
+            state: "approval-responded" as const,
+            approval: { id: "appr_1", approved: true },
+          },
+        ],
+      };
+      await harness.sendMessage(stale as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      // The hydrated terminal state survives the merge.
+      expect(mergedToolPart?.state).toBe("output-denied");
+      expect(mergedToolPart?.approval).toEqual({
+        id: "appr_1",
+        approved: false,
+        reason: "no",
+      });
+      expect(mergedToolPart?.input).toEqual({ resource: "/critical/data" });
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("onValidateMessages sees the slim wire on HITL continuations — fresh-user filter still works", async () => {
     // Slim wire is the wire shape on HITL `addToolOutput` continuations.
     // Existing customers calling `validateUIMessages` from `ai` on the
@@ -546,7 +632,10 @@ describe("mockChatAgent", () => {
         if (userMessages.length > 0) {
           await validateUIMessages({
             messages: userMessages,
-            tools: { askUser },
+            // `validateUIMessages` is stricter than `streamText` about
+            // tool input/output variance — cast to satisfy the wider
+            // `Tool<unknown, unknown>` it expects.
+            tools: { askUser } as any,
           });
         }
         return messages;

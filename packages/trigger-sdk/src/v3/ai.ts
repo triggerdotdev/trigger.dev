@@ -2174,10 +2174,17 @@ function mergeIncomingIntoHydrated<TMsg extends UIMessage>(
     if (typeof toolCallId !== "string" || toolCallId.length === 0) return part;
     const incomingPart = incomingAdvancedByCallId.get(toolCallId);
     if (!incomingPart) return part;
-    // Hydrated already carries a resolved state for this call — treat
-    // it as authoritative and ignore the wire copy. Repeat sends of the
-    // same answer (replay, retry) are no-ops.
-    if (isResolvedToolState(part.state)) return part;
+    // Terminal hydrated states (`output-available`, `output-error`,
+    // `output-denied`) are authoritative — never regressed by a stale
+    // wire arrival (replay, retry, out-of-order). `output-denied`
+    // matters here because the wire's `approval-responded` could
+    // otherwise overwrite a hydrated denial back to a non-terminal
+    // state.
+    if (isResolvedToolState(part.state) || part.state === "output-denied") {
+      return part;
+    }
+    // Same state on both sides — no progression to apply.
+    if (part.state === incomingPart.state) return part;
     mutated = true;
     if (incomingPart.state === "output-available") {
       return {
