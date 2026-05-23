@@ -1,4 +1,4 @@
-import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
+import { chat, upsertIncomingMessage, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
 import { logger, prompts, skills } from "@trigger.dev/sdk";
 
 import {
@@ -232,15 +232,26 @@ export const aiChat = chat
         turn,
         count: messages.length,
       });
-      // Cast: `chatTools` has executes (output types are real), but
-      // `ChatUiMessage` is derived from the schema-only set in
-      // `chat-tools-schemas.ts` so its tools have `output: never`.
-      // `validateUIMessages` only reads `inputSchema` at runtime, so
-      // the type narrowing is safely sidestepped.
-      return validateUIMessages({
-        messages,
-        tools: chatTools as unknown as Parameters<typeof validateUIMessages>[0]["tools"],
-      });
+      // HITL continuations (`addToolOutput` / `addToolApproveResponse`)
+      // ship a slim assistant on the wire — `state` + `output` /
+      // `errorText` / `approval` only, no `input` or other parts.
+      // `validateUIMessages` rejects that shape (the AI SDK schema
+      // requires `input` on resolved tool parts), so filter to user
+      // messages first. The agent's per-turn merge restores the
+      // hydrated entry's `input` before `toModelMessages`.
+      const userMessages = messages.filter((m) => m.role === "user");
+      if (userMessages.length > 0) {
+        await validateUIMessages({
+          messages: userMessages,
+          // Cast: `chatTools` has executes (output types are real), but
+          // `ChatUiMessage` is derived from the schema-only set in
+          // `chat-tools-schemas.ts` so its tools have `output: never`.
+          // `validateUIMessages` only reads `inputSchema` at runtime, so
+          // the type narrowing is safely sidestepped.
+          tools: chatTools as unknown as Parameters<typeof validateUIMessages>[0]["tools"],
+        });
+      }
+      return messages;
     },
     // #endregion
 
@@ -887,15 +898,15 @@ export const aiChatHydrated = chat
 
     // Load message history from the database on every turn.
     // The frontend's accumulated messages are ignored — the DB is the
-    // single source of truth. New user messages arrive in `incomingMessages`
-    // and are appended + persisted before returning.
+    // single source of truth. `upsertIncomingMessage` handles HITL
+    // continuations (slim wire sharing an id with the existing
+    // assistant — no-op so the runtime overlays the new state) and
+    // fresh user messages (push + persist).
     hydrateMessages: async ({ chatId, trigger, incomingMessages }) => {
       const record = await prisma.chat.findUnique({ where: { id: chatId } });
       const stored = (record?.messages as unknown as UIMessage[]) ?? [];
 
-      if (trigger === "submit-message" && incomingMessages.length > 0) {
-        const newMsg = incomingMessages[incomingMessages.length - 1]!;
-        stored.push(newMsg);
+      if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
         await prisma.chat.update({
           where: { id: chatId },
           data: { messages: stored as unknown as ChatMessagesForWrite },

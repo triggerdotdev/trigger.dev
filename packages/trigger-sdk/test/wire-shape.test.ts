@@ -11,6 +11,7 @@ import "../src/v3/test/index.js";
 import type { UIMessage } from "ai";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { ChatInputChunk, ChatTaskWirePayload } from "../src/v3/ai-shared.js";
+import { slimSubmitMessageForWire, upsertIncomingMessage } from "../src/v3/ai-shared.js";
 
 describe("ChatTaskWirePayload (slim wire shape)", () => {
   it("encodes and decodes a submit-message payload through JSON", () => {
@@ -154,6 +155,297 @@ describe("ChatTaskWirePayload (slim wire shape)", () => {
 
     const decoded = JSON.parse(JSON.stringify(wire)) as ChatTaskWirePayload;
     expect(decoded.message).toEqual(approvalMsg);
+  });
+});
+
+describe("upsertIncomingMessage", () => {
+  const userMsg = (id: string, text: string): UIMessage => ({
+    id,
+    role: "user",
+    parts: [{ type: "text", text }],
+  });
+
+  it("pushes a fresh user message and returns true", () => {
+    const stored: UIMessage[] = [userMsg("u-1", "first")];
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "submit-message",
+      incomingMessages: [userMsg("u-2", "second")],
+    });
+    expect(mutated).toBe(true);
+    expect(stored).toHaveLength(2);
+    expect(stored[1]!.id).toBe("u-2");
+  });
+
+  it("no-ops when incoming id is already in stored (HITL continuation)", () => {
+    const head = {
+      id: "asst-1",
+      role: "assistant" as const,
+      parts: [{ type: "tool-search", toolCallId: "tc-1", state: "input-available", input: {} } as never],
+    };
+    const stored: UIMessage[] = [userMsg("u-1", "hi"), head];
+    const slim = {
+      id: "asst-1",
+      role: "assistant" as const,
+      parts: [{ type: "tool-search", toolCallId: "tc-1", state: "output-available", output: {} } as never],
+    };
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "submit-message",
+      incomingMessages: [slim],
+    });
+    expect(mutated).toBe(false);
+    expect(stored).toHaveLength(2);
+    // The original head is untouched — the runtime's per-turn merge
+    // overlays the resolution; the customer's stored array is just
+    // the pre-merge snapshot.
+    expect(stored[1]).toBe(head);
+  });
+
+  it("no-ops on regenerate-message trigger", () => {
+    const stored: UIMessage[] = [userMsg("u-1", "hi")];
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "regenerate-message",
+      incomingMessages: [userMsg("u-2", "ignored")],
+    });
+    expect(mutated).toBe(false);
+    expect(stored).toHaveLength(1);
+  });
+
+  it("no-ops on action trigger", () => {
+    const stored: UIMessage[] = [userMsg("u-1", "hi")];
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "action",
+      incomingMessages: [],
+    });
+    expect(mutated).toBe(false);
+    expect(stored).toHaveLength(1);
+  });
+
+  it("no-ops on empty incomingMessages", () => {
+    const stored: UIMessage[] = [userMsg("u-1", "hi")];
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "submit-message",
+      incomingMessages: [],
+    });
+    expect(mutated).toBe(false);
+    expect(stored).toHaveLength(1);
+  });
+
+  it("only inspects the last incoming message (slim wire ships at most one)", () => {
+    const stored: UIMessage[] = [userMsg("u-1", "hi")];
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "submit-message",
+      incomingMessages: [userMsg("ignored", "ignored"), userMsg("u-3", "new")],
+    });
+    expect(mutated).toBe(true);
+    expect(stored).toHaveLength(2);
+    expect(stored[1]!.id).toBe("u-3");
+  });
+
+  it("pushes when newMsg has no id (no dedup possible)", () => {
+    const stored: UIMessage[] = [userMsg("u-1", "hi")];
+    const incoming = { role: "user", parts: [{ type: "text", text: "no id" }] } as unknown as UIMessage;
+    const mutated = upsertIncomingMessage(stored, {
+      trigger: "submit-message",
+      incomingMessages: [incoming],
+    });
+    expect(mutated).toBe(true);
+    expect(stored).toHaveLength(2);
+  });
+
+  it("accepts the full hydrateMessages event without re-packaging", () => {
+    // Customers can pass the destructured event directly — the helper
+    // only reads `trigger` + `incomingMessages` but ignores any other
+    // fields the event happens to carry.
+    const stored: UIMessage[] = [];
+    const event = {
+      chatId: "chat-1",
+      turn: 0,
+      trigger: "submit-message" as const,
+      incomingMessages: [userMsg("u-1", "hi")],
+      previousMessages: [],
+      continuation: false,
+    };
+    const mutated = upsertIncomingMessage(stored, event);
+    expect(mutated).toBe(true);
+    expect(stored).toHaveLength(1);
+  });
+});
+
+describe("slimSubmitMessageForWire", () => {
+  it("passes user messages through unchanged", () => {
+    const userMsg: UIMessage = {
+      id: "u-1",
+      role: "user",
+      parts: [{ type: "text", text: "hello" }],
+    };
+    expect(slimSubmitMessageForWire(userMsg)).toBe(userMsg);
+  });
+
+  it("passes assistant messages with no resolved tool parts through unchanged", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "thinking..." },
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "input-available",
+          input: { q: "x" },
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toBe(assistantMsg);
+  });
+
+  it("slims output-available HITL continuation to {type, toolCallId, state, output}", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "let me search" },
+        { type: "reasoning", text: "long reasoning blob..." } as never,
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          input: { q: "very long query".repeat(1000) },
+          output: { hits: 7 },
+        } as never,
+      ],
+    };
+    const slim = slimSubmitMessageForWire(assistantMsg);
+    expect(slim).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          output: { hits: 7 },
+        },
+      ],
+    });
+    // The slim drops `input` (server has it via hydrate/snapshot) — the
+    // wire is much smaller than the original.
+    expect(JSON.stringify(slim).length).toBeLessThan(JSON.stringify(assistantMsg).length / 50);
+  });
+
+  it("slims output-error to {type, toolCallId, state, errorText}", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-error",
+          input: { q: "x" },
+          errorText: "boom",
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-search",
+          toolCallId: "tc-1",
+          state: "output-error",
+          errorText: "boom",
+        },
+      ],
+    });
+  });
+
+  it("slims approval-responded to {type, toolCallId, state, approval}", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-delete",
+          toolCallId: "tc-1",
+          state: "approval-responded",
+          input: { path: "/critical" },
+          approval: { id: "appr_1", approved: true, reason: "looks fine" },
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-delete",
+          toolCallId: "tc-1",
+          state: "approval-responded",
+          approval: { id: "appr_1", approved: true, reason: "looks fine" },
+        },
+      ],
+    });
+  });
+
+  it("slims dynamic-tool parts and preserves toolName", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "dyn-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          input: { q: "x" },
+          output: { hits: 1 },
+        } as never,
+      ],
+    };
+    expect(slimSubmitMessageForWire(assistantMsg)).toEqual({
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "dyn-search",
+          toolCallId: "tc-1",
+          state: "output-available",
+          output: { hits: 1 },
+        },
+      ],
+    });
+  });
+
+  it("only slims the advanced tool parts when an assistant has mixed states", () => {
+    const assistantMsg: UIMessage = {
+      id: "a-1",
+      role: "assistant",
+      parts: [
+        { type: "text", text: "thinking" },
+        {
+          type: "tool-search",
+          toolCallId: "tc-resolved",
+          state: "output-available",
+          input: { q: "x" },
+          output: { hits: 1 },
+        } as never,
+        {
+          type: "tool-askUser",
+          toolCallId: "tc-still-pending",
+          state: "input-available",
+          input: { q: "ok?" },
+        } as never,
+      ],
+    };
+    const slim = slimSubmitMessageForWire(assistantMsg);
+    expect(slim?.parts).toHaveLength(1);
+    expect((slim?.parts?.[0] as any).toolCallId).toBe("tc-resolved");
+  });
+
+  it("handles undefined input", () => {
+    expect(slimSubmitMessageForWire(undefined)).toBeUndefined();
   });
 });
 
