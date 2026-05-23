@@ -1,5 +1,7 @@
 # internal-platform
 
+## 4.5.0-rc.2
+
 ## 4.5.0-rc.1
 
 ### Patch Changes
