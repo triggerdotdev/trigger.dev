@@ -378,7 +378,7 @@ export function SideMenu({
                           </TooltipTrigger>
                           <TooltipContent side="right" className={"text-xs"}>
                             {isConnected === undefined
-                              ? "Checking connection..."
+                              ? "Checking connection…"
                               : isConnected
                               ? "Your dev server is connected"
                               : "Your dev server is not connected"}
