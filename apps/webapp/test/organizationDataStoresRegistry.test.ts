@@ -13,19 +13,19 @@ const TEST_URL_2 = "https://default:password@clickhouse2.example.com:8443";
 
 describe("OrganizationDataStoresRegistry", () => {
   postgresTest("isLoaded is false before loadFromDatabase", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
     expect(registry.isLoaded).toBe(false);
     expect(registry.get("any-org", "CLICKHOUSE")).toBeNull();
   });
 
   postgresTest("isLoaded is true after loadFromDatabase", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
     await registry.loadFromDatabase();
     expect(registry.isLoaded).toBe(true);
   });
 
   postgresTest("isReady resolves after loadFromDatabase", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
     let resolved = false;
     registry.isReady.then(() => {
       resolved = true;
@@ -36,13 +36,13 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("get returns null when no data stores exist", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
     await registry.loadFromDatabase();
     expect(registry.get("org-1", "CLICKHOUSE")).toBeNull();
   });
 
   postgresTest("addDataStore creates a row and stores the secret", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "test-store",
@@ -63,7 +63,7 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("loadFromDatabase resolves secrets and makes orgs available via get", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "hipaa-store",
@@ -81,7 +81,7 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("get returns null for orgs not in any data store", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "partial-store",
@@ -97,7 +97,7 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("multiple orgs can share the same data store", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "shared-store",
@@ -120,7 +120,7 @@ describe("OrganizationDataStoresRegistry", () => {
   postgresTest(
     "when an org appears in multiple data stores, first row by id asc wins",
     async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma);
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
       const sharedOrg = "org-dup-overlap";
 
       await registry.addDataStore({
@@ -151,7 +151,7 @@ describe("OrganizationDataStoresRegistry", () => {
   );
 
   postgresTest("updateDataStore updates organizationIds and rotates the secret", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "update-store",
@@ -176,7 +176,7 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("reload picks up changes made after initial load", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
     await registry.loadFromDatabase();
     expect(registry.get("org-reload", "CLICKHOUSE")).toBeNull();
 
@@ -194,7 +194,7 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("deleteDataStore removes the row and its secret", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "delete-store",
@@ -210,7 +210,7 @@ describe("OrganizationDataStoresRegistry", () => {
   });
 
   postgresTest("after delete and reload, org no longer has a data store", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma);
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
     await registry.addDataStore({
       key: "ephemeral-store",
