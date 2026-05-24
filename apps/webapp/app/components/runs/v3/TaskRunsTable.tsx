@@ -433,28 +433,37 @@ export function TaskRunsTable({
                   <MachineLabelCombo preset={run.machinePreset} />
                 </TableCell>
                 <TableCell to={path}>
-                  <span className="flex items-center gap-1">
-                    {run.queue.type === "task" ? (
-                      <SimpleTooltip
-                        button={<TaskIconSmall className="size-[1.125rem] text-blue-500" />}
-                        content={`This queue was automatically created from your "${run.queue.name}" task`}
-                      />
-                    ) : (
-                      <SimpleTooltip
-                        button={<RectangleStackIcon className="size-[1.125rem] text-purple-500" />}
-                        content={`This is a custom queue you added in your code.`}
-                      />
-                    )}
-                    <span>{run.queue.name}</span>
-                  </span>
+                  {run.queue.type === "task" ? (
+                    <SimpleTooltip
+                      buttonClassName="w-fit"
+                      button={
+                        <span className="flex items-center gap-1">
+                          <TaskIconSmall className="size-[1.125rem] text-blue-500" />
+                          <span>{run.queue.name}</span>
+                        </span>
+                      }
+                      content={`This queue was automatically created from your "${run.queue.name}" task`}
+                      disableHoverableContent
+                    />
+                  ) : (
+                    <SimpleTooltip
+                      buttonClassName="w-fit"
+                      button={
+                        <span className="flex items-center gap-1">
+                          <RectangleStackIcon className="size-[1.125rem] text-purple-500" />
+                          <span>{run.queue.name}</span>
+                        </span>
+                      }
+                      content={`This is a custom queue you added in your code.`}
+                      disableHoverableContent
+                    />
+                  )}
                 </TableCell>
                 {showRegion && (
                   <TableCell to={path}>
                     {run.region ? (
                       <RegionLabel
-                        region={
-                          regionByMasterQueue.get(run.region) ?? { name: run.region }
-                        }
+                        region={regionByMasterQueue.get(run.region) ?? { name: run.region }}
                         iconClassName="size-4"
                       />
                     ) : (
