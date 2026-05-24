@@ -1,5 +1,5 @@
-import { ClockIcon } from "@heroicons/react/20/solid";
 import type { TaskTriggerSource } from "@trigger.dev/database";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
