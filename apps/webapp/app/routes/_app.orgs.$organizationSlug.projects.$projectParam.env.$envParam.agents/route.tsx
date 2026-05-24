@@ -157,10 +157,7 @@ export default function AgentsPage() {
                             <div>
                               <div className="mb-0.5 flex items-center gap-2">
                                 <span className="size-1.5 shrink-0 rounded-full bg-success" />
-                                <Paragraph
-                                  variant="small"
-                                  className="!text-wrap text-text-bright"
-                                >
+                                <Paragraph variant="small" className="!text-wrap text-text-bright">
                                   Running
                                 </Paragraph>
                               </div>
@@ -174,10 +171,7 @@ export default function AgentsPage() {
                             <div>
                               <div className="mb-0.5 flex items-center gap-2">
                                 <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />
-                                <Paragraph
-                                  variant="small"
-                                  className="!text-wrap text-text-bright"
-                                >
+                                <Paragraph variant="small" className="!text-wrap text-text-bright">
                                   Suspended
                                 </Paragraph>
                               </div>
@@ -185,13 +179,14 @@ export default function AgentsPage() {
                                 variant="small"
                                 className="!text-wrap pl-3.5 text-text-dimmed"
                               >
-                                Runs paused while waiting (e.g. on a tool, user input, or
-                                another task).
+                                Runs paused while waiting (e.g. on a tool, user input, or another
+                                task).
                               </Paragraph>
                             </div>
                           </div>
                         </div>
                       }
+                      disableTooltipHoverableContent
                     >
                       Active
                     </TableHeaderCell>
