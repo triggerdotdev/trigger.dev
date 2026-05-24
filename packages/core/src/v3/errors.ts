@@ -320,7 +320,7 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
     case "CUSTOM_ERROR": {
       // CUSTOM_ERROR.raw holds JSON.stringify(error) which is later parsed by
       // JSON.parse in createErrorTaskError. Naive truncation would cut mid-token
-      // and produce invalid JSON â€” wrap the preview in a valid JSON envelope.
+      // and produce invalid JSON — wrap the preview in a valid JSON envelope.
       const clean = error.raw.replace(/\0/g, "");
       const safeRaw =
         clean.length > MAX_MESSAGE_LENGTH
@@ -332,7 +332,7 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
       };
     }
     case "INTERNAL_ERROR": {
-      // message and stackTrace are optional for INTERNAL_ERROR â€” preserve
+      // message and stackTrace are optional for INTERNAL_ERROR — preserve
       // `undefined` so the `error.message ?? "Internal error (CODE)"` fallback
       // in createErrorTaskError still kicks in (empty string is not nullish).
       return {
@@ -427,6 +427,9 @@ export function shouldLookupRetrySettings(error: TaskRunError): boolean {
         case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_SIGSEGV":
         case "TASK_RUN_UNCAUGHT_EXCEPTION":
+          return true;
+
+        case "TASK_MIDDLEWARE_ERROR":
           return true;
 
         default:
@@ -641,7 +644,7 @@ export class ChatChunkTooLargeError extends Error {
       `chat.agent chunk${chunkType ? ` of type "${chunkType}"` : ""} is ${chunkSize} bytes, ` +
         `over the realtime stream's per-record cap of ${maxSize} bytes. ` +
         `For oversized payloads (e.g. large tool outputs), write the value to your own store and ` +
-        `emit only an id/url through the chat stream â€” see https://trigger.dev/docs/ai-chat/patterns/large-payloads.`
+        `emit only an id/url through the chat stream — see https://trigger.dev/docs/ai-chat/patterns/large-payloads.`
     );
     this.name = "ChatChunkTooLargeError";
   }
@@ -744,7 +747,7 @@ const prettyInternalErrors: Partial<
       href: links.docs.troubleshooting.stalledExecution,
     },
   },
-  // Link only â€” we deliberately do NOT set `message`, so the original
+  // Link only — we deliberately do NOT set `message`, so the original
   // error message (e.g. "read ECONNRESET") is preserved in the dashboard.
   // Common cause: an EventEmitter (node-redis, pg, etc.) emitted "error"
   // with no listener attached, which Node escalates to uncaughtException.
@@ -1152,7 +1155,7 @@ export function createTaskMetadataFailedErrorStack(
     }
 
     stack.push("\n");
-    stack.push(`  â¯ ${taskWithIssues.exportName} in ${taskWithIssues.filePath}`);
+    stack.push(`  ? ${taskWithIssues.exportName} in ${taskWithIssues.filePath}`);
 
     for (const issue of taskWithIssues.issues) {
       if (issue.path) {
