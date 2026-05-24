@@ -90,13 +90,8 @@ export function SessionStatusCombo({
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
-      <SessionStatusIcon
-        status={status}
-        className={cn("h-4 w-4", iconClassName)}
-        pulse={pulse}
-      />
+      <SessionStatusIcon status={status} className={cn("size-4", iconClassName)} pulse={pulse} />
       <SessionStatusLabel status={status} />
     </span>
   );
 }
-

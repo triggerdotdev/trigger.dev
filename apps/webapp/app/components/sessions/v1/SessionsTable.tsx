@@ -57,7 +57,7 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
                 {allSessionStatuses.map((status) => (
                   <div
                     key={status}
-                    className="grid grid-cols-[6rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                    className="grid grid-cols-[4rem_1fr] gap-x-3 py-2 first:pt-1 last:pb-1"
                   >
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                       <SessionStatusCombo status={status} />
