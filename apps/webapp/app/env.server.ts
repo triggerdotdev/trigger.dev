@@ -1016,6 +1016,7 @@ const EnvironmentSchema = z
 
     LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
     LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
+    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_DISABLED: z.string().default("0"),
 
     COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
