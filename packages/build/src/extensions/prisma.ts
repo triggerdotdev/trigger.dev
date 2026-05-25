@@ -3,7 +3,7 @@ import { binaryForRuntime, BuildContext, BuildExtension } from "@trigger.dev/cor
 import assert from "node:assert";
 import { existsSync, statSync } from "node:fs";
 import { cp, readdir, readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { resolvePathSync as esmResolveSync } from "../imports/mlly.js";
 import { resolvePackageJSON } from "pkg-types";
 import { LoadConfigFromFileError } from "@prisma/config";
@@ -543,8 +543,12 @@ export class PrismaLegacyModeExtension implements BuildExtension {
 
     // Detect if this is a multi-file schema (directory) or single file schema
     const isMultiFileSchema = statSync(this._resolvedSchemaPath).isDirectory();
+    const schemaDir = dirname(this._resolvedSchemaPath);
     const usingSchemaFolder =
-      !isMultiFileSchema && dirname(this._resolvedSchemaPath).endsWith("schema");
+      !isMultiFileSchema &&
+      (await readdir(schemaDir)).some(
+        (file) => file.endsWith(".prisma") && file !== basename(this._resolvedSchemaPath)
+      );
 
     context.logger.debug(`Schema detection`, {
       isMultiFileSchema,
@@ -633,8 +637,6 @@ export class PrismaLegacyModeExtension implements BuildExtension {
         )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag when using directory
       );
     } else if (usingSchemaFolder) {
-      const schemaDir = dirname(this._resolvedSchemaPath);
-
       prismaDir = dirname(schemaDir);
 
       context.logger.debug(`Using the schema folder: ${schemaDir}`);
@@ -664,7 +666,9 @@ export class PrismaLegacyModeExtension implements BuildExtension {
       commands.push(
         `${binaryForRuntime(
           manifest.runtime
-        )} node_modules/prisma/build/index.js generate ${generatorFlags.join(" ")}` // Don't add the --schema flag or this will fail
+        )} node_modules/prisma/build/index.js generate --schema=./prisma/schema ${generatorFlags.join(
+          " "
+        )}`
       );
     } else {
       prismaDir = dirname(this._resolvedSchemaPath);
