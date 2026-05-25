@@ -1089,7 +1089,6 @@ model TaskRun {
   @@index([runtimeEnvironmentId, batchId])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
   @@index([createdAt], type: Brin)
-  @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
 }
 
 model TaskRunTemplate {
