@@ -31,8 +31,17 @@ import {
 // on webapp startup. The singleton's initializer wires start (gated on
 // `clickhouseFactory.isReady()`) and SIGTERM/SIGINT shutdown — mirrors
 // runsReplicationInstance.
+//
+// IMPORTANT: do NOT replace this with `void sessionsReplicationInstance;`.
+// `apps/webapp/package.json` declares `"sideEffects": false`, so esbuild
+// treats `void <identifier>;` as a pure expression statement and tree-shakes
+// the entire import — the singleton's initializer never fires and the
+// sessions→ClickHouse logical replication slot stops being consumed. Assigning
+// to globalThis is an unambiguous side effect the bundler must preserve. See
+// TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
-void sessionsReplicationInstance;
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
+  sessionsReplicationInstance;
 
 const ABORT_DELAY = 30000;
 

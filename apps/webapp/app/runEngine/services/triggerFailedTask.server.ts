@@ -6,6 +6,7 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
+import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
 
@@ -176,6 +177,14 @@ export class TriggerFailedTaskService {
           event.setAttribute("runId", failedRunFriendlyId);
           event.failWithError(taskRunError);
 
+          // `emitRunFailedEvent: false` because this call site owns the
+          // trace-event lifecycle via the outer `traceEvent({
+          // incomplete: false, isError: true })`. Letting the engine
+          // emit `runFailed` here would race the
+          // `completeFailedRunEvent` listener against the outer trace
+          // event's own completion write for the same (traceId, spanId).
+          // We re-trigger the alerts side directly after the trace
+          // event closes, below.
           return await this.engine.createFailedTaskRun({
             friendlyId: failedRunFriendlyId,
             environment: {
@@ -200,11 +209,29 @@ export class TriggerFailedTaskService {
             spanId: event.spanId,
             traceContext: traceContext as Record<string, unknown>,
             taskEventStore: store,
+            emitRunFailedEvent: false,
             ...(queueName !== undefined && { queue: queueName }),
             ...(lockedQueueId !== undefined && { lockedQueueId }),
           });
         }
       );
+
+      // Alerts side of `runFailed` — the engine emit was suppressed
+      // above so the trace-event completion isn't double-written; we
+      // still need the alert pipeline to fire so customers' ERROR
+      // channels see the failure. Best-effort: a failed enqueue logs
+      // but doesn't block returning the friendlyId, mirroring the
+      // engine handler's behaviour at runEngineHandlers.server.ts:81.
+      try {
+        await PerformTaskRunAlertsService.enqueue(failedRun.id);
+      } catch (alertsError) {
+        logger.warn("TriggerFailedTaskService: alert enqueue failed", {
+          taskId: request.taskId,
+          friendlyId: failedRun.friendlyId,
+          error:
+            alertsError instanceof Error ? alertsError.message : String(alertsError),
+        });
+      }
 
       return failedRun.friendlyId;
     } catch (createError) {

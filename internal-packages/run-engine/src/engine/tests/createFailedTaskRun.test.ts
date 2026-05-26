@@ -108,4 +108,69 @@ describe("RunEngine.createFailedTaskRun", () => {
       await engine.quit();
     }
   });
+
+  // The TriggerFailedTaskService.call() path wraps createFailedTaskRun
+  // inside `repository.traceEvent({ incomplete: false, isError: true })`
+  // which already writes the completion row for the (traceId, spanId).
+  // Emitting `runFailed` from here would cause the
+  // `completeFailedRunEvent` handler to race a second write against
+  // the same span — the `emitRunFailedEvent: false` opt-out is what
+  // suppresses the emit. The PG row + alert side stay correct because
+  // the caller enqueues `PerformTaskRunAlertsService.enqueue(run.id)`
+  // directly after the trace event closes.
+  containerTest(
+    "emitRunFailedEvent: false suppresses the bus emit but still creates the PG row",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions, masterQueueConsumersDisabled: true, processWorkerQueueDebounceMs: 50 },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const failedEvents: EventBusEventArgs<"runFailed">[0][] = [];
+        engine.eventBus.on("runFailed", (event) => {
+          failedEvents.push(event);
+        });
+
+        const friendlyId = generateFriendlyId("run");
+        const failed = await engine.createFailedTaskRun({
+          friendlyId,
+          environment: {
+            id: authenticatedEnvironment.id,
+            type: authenticatedEnvironment.type,
+            project: { id: authenticatedEnvironment.project.id },
+            organization: { id: authenticatedEnvironment.organization.id },
+          },
+          taskIdentifier: "outer-trace-event-test",
+          payload: "{}",
+          payloadType: "application/json",
+          error: { type: "STRING_ERROR", raw: "outer trace event manages span" },
+          traceId: "0123456789abcdef0123456789abcdef",
+          spanId: "fedcba9876543210",
+          emitRunFailedEvent: false,
+        });
+
+        // PG row landed (caller still gets a usable TaskRun).
+        expect(failed.status).toBe("SYSTEM_FAILURE");
+        expect(failed.friendlyId).toBe(friendlyId);
+
+        // Bus emit was suppressed.
+        expect(failedEvents).toHaveLength(0);
+      } finally {
+        await engine.quit();
+      }
+    },
+  );
 });

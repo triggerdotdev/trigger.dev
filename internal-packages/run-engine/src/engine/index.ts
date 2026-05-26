@@ -1051,6 +1051,7 @@ export class RunEngine {
     taskEventStore,
     queue: queueOverride,
     lockedQueueId: lockedQueueIdOverride,
+    emitRunFailedEvent = true,
   }: {
     friendlyId: string;
     environment: {
@@ -1078,6 +1079,19 @@ export class RunEngine {
     queue?: string;
     /** Resolved TaskQueue.id when the task is locked to a specific queue. */
     lockedQueueId?: string;
+    /**
+     * Whether to emit the `runFailed` engine-bus event. Defaults to true.
+     *
+     * Set to `false` when the caller is ALREADY managing the trace-event
+     * lifecycle for this run via `repository.traceEvent({ incomplete: false,
+     * isError: true, ... })`. In that path the outer trace event handles
+     * span completion itself; emitting `runFailed` from here causes the
+     * `runFailed` → `completeFailedRunEvent` handler to write a second
+     * completion row for the same (traceId, spanId), racing with the
+     * outer trace event's own write. The alert side of `runFailed` is
+     * preserved by emitting from the caller after `traceEvent` returns.
+     */
+    emitRunFailedEvent?: boolean;
   }): Promise<TaskRun> {
     return startSpan(
       this.tracer,
@@ -1160,6 +1174,19 @@ export class RunEngine {
         // exceed-limit failures) land in PG silently — visible in the
         // dashboard list but never reaching customers' configured
         // ERROR alert channels.
+        //
+        // Gated by `emitRunFailedEvent` so call sites that already wrap
+        // this inside `repository.traceEvent({ incomplete: false,
+        // isError: true })` can opt out — the outer trace event writes
+        // the completion row itself, and a second write via
+        // `completeFailedRunEvent` would race against it. Callers that
+        // disable the emit are responsible for triggering the alerts
+        // side themselves (e.g. by calling
+        // `PerformTaskRunAlertsService.enqueue` directly after the
+        // trace event closes).
+        if (!emitRunFailedEvent) {
+          return taskRun;
+        }
         this.eventBus.emit("runFailed", {
           time: taskRun.completedAt ?? new Date(),
           run: {
