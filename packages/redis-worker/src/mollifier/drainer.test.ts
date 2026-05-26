@@ -6,7 +6,6 @@ import { MollifierDrainer } from "./drainer.js";
 import { serialiseSnapshot } from "./schemas.js";
 
 const noopOptions = {
-  entryTtlSeconds: 600,
   logger: new Logger("test", "log"),
 };
 
@@ -87,8 +86,11 @@ describe("MollifierDrainer.runOnce", () => {
         payload: { foo: 1 },
       });
 
+      // After ack the entry persists as a read-fallback safety net with
+      // materialised=true and a fresh grace TTL (Q1 D2 / Phase B2).
       const entry = await buffer.getEntry("run_1");
-      expect(entry).toBeNull();
+      expect(entry).not.toBeNull();
+      expect(entry!.materialised).toBe(true);
     } finally {
       await buffer.close();
     }
@@ -167,9 +169,14 @@ describe("MollifierDrainer error handling", () => {
       expect(after2!.status).toBe("QUEUED");
       expect(after2!.attempts).toBe(2);
 
-      await drainer.runOnce();
+      const result3 = await drainer.runOnce();
+      // On attempt 3 the drainer hits maxAttempts and calls fail(),
+      // which deletes the entry — once the drainer-handler has written
+      // the SYSTEM_FAILURE PG row the buffer entry is no longer
+      // load-bearing. The runOnce result is the surviving signal.
       const after3 = await buffer.getEntry("run_r");
-      expect(after3!.status).toBe("FAILED");
+      expect(after3).toBeNull();
+      expect(result3.failed).toBe(1);
       expect(calls).toBe(3);
     } finally {
       await buffer.close();
@@ -202,11 +209,13 @@ describe("MollifierDrainer error handling", () => {
     try {
       await buffer.accept({ runId: "run_nr", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      await drainer.runOnce();
+      const result = await drainer.runOnce();
 
+      // fail() deletes the entry once the drainer-handler has written
+      // the canonical SYSTEM_FAILURE PG row.
       const entry = await buffer.getEntry("run_nr");
-      expect(entry!.status).toBe("FAILED");
-      expect(entry!.lastError).toEqual({ code: "Error", message: "validation failure" });
+      expect(entry).toBeNull();
+      expect(result.failed).toBe(1);
     } finally {
       await buffer.close();
     }
