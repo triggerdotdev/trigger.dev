@@ -39,11 +39,7 @@ import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Button } from "../../primitives/Buttons";
-import {
-  appliedSummary,
-  FilterMenuProvider,
-  TimeFilter,
-} from "../../runs/v3/SharedFilters";
+import { appliedSummary, FilterMenuProvider, TimeFilter } from "../../runs/v3/SharedFilters";
 import {
   allSessionStatuses,
   descriptionForSessionStatus,
@@ -815,7 +811,7 @@ function TagsDropdown({
             </Paragraph>
           </div>
           <div className="flex justify-between gap-1 border-t border-grid-dimmed pt-3">
-            <Button variant="tertiary/small" onClick={() => setOpen(false)}>
+            <Button variant="secondary/small" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button
@@ -863,4 +859,3 @@ function AppliedTagsFilter() {
     </FilterMenuProvider>
   );
 }
-

@@ -198,6 +198,14 @@ export function v3EnvironmentPath(
   )}/env/${environmentParam(environment)}`;
 }
 
+export function v3TasksDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/dashboard`;
+}
+
 export function v3TasksStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -190,7 +190,7 @@ export default function AgentsPage() {
                     >
                       Active
                     </TableHeaderCell>
-                    <TableHeaderCell>Conversations (24h)</TableHeaderCell>
+                    <TableHeaderCell>Sessions (24h)</TableHeaderCell>
                     <TableHeaderCell
                       tooltip={
                         <div className="flex max-w-[12rem] flex-col gap-3 p-1 pb-2">

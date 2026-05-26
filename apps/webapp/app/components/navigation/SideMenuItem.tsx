@@ -54,7 +54,7 @@ export function SideMenuItem({
           isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed",
           !isActive &&
             !disableIconHover &&
-            "group-hover/menulink:text-text-bright group-hover/menuitem:text-text-bright",
+            "group-hover/menuitem:text-text-bright group-hover/menulink:text-text-bright",
           iconClassName
         )}
       />
@@ -67,7 +67,9 @@ export function SideMenuItem({
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <span className="select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">{name}</span>
+        <span className="select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
+          {name}
+        </span>
         {badge && !isCollapsed && (
           <motion.div
             className="ml-1 flex shrink-0 items-center gap-1"
