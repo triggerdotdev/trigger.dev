@@ -4,8 +4,19 @@ import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
+import { MachinePresetName } from "@trigger.dev/core/v3/schemas";
 import type { SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import type { SyntheticRun } from "./readFallback.server";
+
+// `SyntheticRun.machinePreset` is sourced from the snapshot payload as
+// a plain string, but `SpanRun.machinePreset` is the narrowed enum.
+// Validate against the canonical enum so an unknown / stale preset
+// string collapses to undefined rather than fighting the type checker.
+function narrowMachinePreset(value: string | undefined): SpanRun["machinePreset"] {
+  if (value === undefined) return undefined;
+  const parsed = MachinePresetName.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
 
 // Synthesise a SpanRun-shaped object from a buffered run so the run-detail
 // page's right-side details panel renders identically to a PG-resident
@@ -147,7 +158,7 @@ export async function buildSyntheticSpanRun(args: {
     traceId: run.traceId ?? "",
     spanId: run.spanId ?? "",
     isCached: false,
-    machinePreset: run.machinePreset,
+    machinePreset: narrowMachinePreset(run.machinePreset),
     taskEventStore: "taskEvent",
     externalTraceId: undefined,
   };
