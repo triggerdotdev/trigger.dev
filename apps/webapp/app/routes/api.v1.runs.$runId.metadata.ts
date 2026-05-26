@@ -159,11 +159,19 @@ const { action } = createActionApiRoute(
     if (bufferedEntry) {
       await Promise.all([
         routeOperationsToRun(bufferedEntry.parentTaskRunId, body.parentOperations, env),
-        // The snapshot doesn't carry rootTaskRunId; fall back to parent
-        // as a rough proxy (matches the existing service's nil-coalesce
-        // behaviour where rootTaskRun defaults to the parent). Phase D
-        // / future work could thread rootTaskRunId through the snapshot.
-        routeOperationsToRun(bufferedEntry.parentTaskRunId, body.rootOperations, env),
+        // The PG service routes rootOperations to
+        // `taskRun.rootTaskRun?.id ?? taskRun.id` — the actual root, not
+        // the parent. The snapshot carries the root's *friendlyId*
+        // (parentTaskRunId is an internal id; root is friendlyId because
+        // it's what the engine passes through). Use it; if absent,
+        // route to the run itself (matches PG's self-fallback) rather
+        // than misrouting to the parent for grandchild → child → root
+        // hierarchies.
+        routeOperationsToRun(
+          bufferedEntry.rootTaskRunFriendlyId ?? runId,
+          body.rootOperations,
+          env,
+        ),
       ]);
     }
 

@@ -10,6 +10,7 @@ import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { RescheduleTaskRunService } from "~/v3/services/rescheduleTaskRun.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { parseDelay } from "~/utils/delays";
 
 const ParamsSchema = z.object({
@@ -49,6 +50,29 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
+    // PG-side `RescheduleTaskRunService.call` enforces
+    // `taskRun.status !== "DELAYED"` and 422s otherwise — without an
+    // equivalent guard the buffer path would happily inject a
+    // `delayUntil` into the snapshot of a non-delayed buffered run, and
+    // the drainer would materialise it with an unintended delay. The
+    // SyntheticRun type doesn't carry a "DELAYED" enum value because
+    // it's not a terminal status the trace API needs to express; the
+    // buffered analogue is `delayUntil` set in the snapshot. Gate on
+    // that. Race window between read and write is bounded: if the
+    // drainer materialises mid-call, mutateWithFallback falls through
+    // to the PG mutation which has its own DELAYED check.
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: parsed.data.runParam,
+      environmentId: env.id,
+      organizationId: env.organizationId,
+    });
+    if (buffered && !buffered.delayUntil) {
+      return json(
+        { error: "Cannot reschedule a run that is not delayed" },
+        { status: 422 },
+      );
+    }
+
     const outcome = await mutateWithFallback<Response>({
       runId: parsed.data.runParam,
       environmentId: env.id,
