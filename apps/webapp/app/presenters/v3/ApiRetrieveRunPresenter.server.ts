@@ -534,6 +534,32 @@ function bufferedStatusToTaskRunStatus(status: SyntheticRun["status"]): TaskRunS
   }
 }
 
+// The PG path stores `TaskRun.payload` as `String?`, so in production
+// the buffered snapshot's `payload` is always a string. We defensively
+// coerce other types instead of silently dropping them: an object gets
+// JSON-stringified (matches how the trigger path would serialise it),
+// anything truly unrenderable falls back to an empty string. The log
+// line surfaces format drift to ops without crashing the read path.
+function synthesisePayload(buffered: SyntheticRun): string {
+  const payload = buffered.payload;
+  if (typeof payload === "string") return payload;
+  if (payload === undefined || payload === null) return "";
+  try {
+    const serialised = JSON.stringify(payload);
+    logger.warn("ApiRetrieveRunPresenter: buffered snapshot.payload non-string coerced", {
+      runFriendlyId: buffered.friendlyId,
+      payloadType: typeof payload,
+    });
+    return typeof serialised === "string" ? serialised : "";
+  } catch {
+    logger.error("ApiRetrieveRunPresenter: buffered snapshot.payload unserialisable", {
+      runFriendlyId: buffered.friendlyId,
+      payloadType: typeof payload,
+    });
+    return "";
+  }
+}
+
 function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
   const status: TaskRunStatus = bufferedStatusToTaskRunStatus(buffered.status);
 
@@ -548,7 +574,13 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     typeof buffered.metadata === "string" ? buffered.metadata : null;
 
   return {
-    id: buffered.friendlyId,
+    // `id` is the internal cuid (Prisma TaskRun.id column), `friendlyId`
+    // is the user-facing `run_xxx` token. Downstream logging keyed off
+    // `taskRun.id` correlates with other systems via the cuid — using
+    // the friendlyId here breaks log correlation. `SyntheticRun` carries
+    // the cuid alongside the friendlyId for exactly this reason
+    // (RunId.fromFriendlyId in readFallback.server.ts).
+    id: buffered.id,
     friendlyId: buffered.friendlyId,
     status,
     taskIdentifier: buffered.taskIdentifier ?? "",
@@ -574,7 +606,7 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     batch: null,
     runTags: buffered.tags,
     traceId: buffered.traceId ?? "",
-    payload: typeof buffered.payload === "string" ? buffered.payload : "",
+    payload: synthesisePayload(buffered),
     payloadType: buffered.payloadType ?? "application/json",
     output: null,
     outputType: "application/json",

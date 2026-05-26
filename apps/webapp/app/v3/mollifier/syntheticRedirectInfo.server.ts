@@ -1,9 +1,16 @@
-import { deserialiseSnapshot, type MollifierBuffer } from "@trigger.dev/redis-worker";
+import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
+// Use the webapp-side wrapper (not `deserialiseSnapshot` from
+// @trigger.dev/redis-worker directly) so this file shares a single
+// deserialisation path with readFallback.server.ts. The two are
+// behaviourally identical today (both wrap `JSON.parse`), but pinning
+// the shared helper keeps the two read-side modules from drifting if
+// snapshot encoding ever changes.
+import { deserialiseMollifierSnapshot } from "./mollifierSnapshot.server";
 
 // Validated subset of a mollifier snapshot — just the fields needed to
 // rebuild a canonical run-detail URL for a buffered run. Anything else
@@ -78,7 +85,7 @@ export async function findBufferedRunRedirectInfo(
 
   let raw: unknown;
   try {
-    raw = deserialiseSnapshot(entry.payload);
+    raw = deserialiseMollifierSnapshot(entry.payload);
   } catch (err) {
     logger.warn("buffered redirect: snapshot deserialise failed", {
       runFriendlyId: args.runFriendlyId,

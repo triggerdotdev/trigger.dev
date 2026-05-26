@@ -95,7 +95,11 @@ export const loader = createLoaderApiRoute(
                 startTime: buffered.createdAt,
                 duration: 0,
                 isError: false,
-                isPartial: true,
+                // Cancelled is a terminal state — the span shouldn't
+                // signal "still in progress" once it's been cancelled.
+                // Mirrors the sibling api.v1.runs.$runId.spans.$spanId.ts
+                // and syntheticTrace.server.ts logic.
+                isPartial: buffered.status !== "CANCELED",
                 isCancelled: buffered.status === "CANCELED",
                 level: "TRACE",
                 queueName: buffered.queue ?? undefined,

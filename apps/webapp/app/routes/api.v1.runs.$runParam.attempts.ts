@@ -1,8 +1,10 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { $replica } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CreateTaskRunAttemptService } from "~/v3/services/createTaskRunAttempt.server";
 
@@ -30,6 +32,31 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const parsed = ParamsSchema.safeParse(params);
   if (!parsed.success) {
     return json({ error: "Invalid or missing run ID" }, { status: 400 });
+  }
+
+  const { runParam } = parsed.data;
+  const env = authenticationResult.environment;
+
+  // Verify the run belongs to the authenticated environment before
+  // returning the parity-empty list. The response body is empty either
+  // way, but other run-scoped endpoints (spans, trace, retrieve) all
+  // 404 on cross-env access; matching that here means a third party
+  // can't distinguish "run exists" from "doesn't exist" via this
+  // endpoint either. PG-first then buffer fallback, consistent with
+  // the other read paths.
+  const pgRun = await $replica.taskRun.findFirst({
+    where: { friendlyId: runParam, runtimeEnvironmentId: env.id },
+    select: { id: true },
+  });
+  if (!pgRun) {
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: runParam,
+      environmentId: env.id,
+      organizationId: env.organizationId,
+    });
+    if (!buffered) {
+      return json({ error: "Run not found" }, { status: 404 });
+    }
   }
 
   return json({ attempts: [] }, { status: 200 });
