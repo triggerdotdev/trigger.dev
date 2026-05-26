@@ -6,7 +6,7 @@ export {
   type CasSetMetadataResult,
   type IdempotencyClaimResult,
   type IdempotencyLookupInput,
-  IDEMPOTENCY_CLAIM_PENDING,
+  idempotencyLookupKeyFor,
 } from "./buffer.js";
 export {
   MollifierDrainer,

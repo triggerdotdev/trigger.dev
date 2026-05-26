@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BufferEntrySchema, serialiseSnapshot, deserialiseSnapshot } from "./schemas.js";
 import { redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
-import { MollifierBuffer } from "./buffer.js";
+import { MollifierBuffer, idempotencyLookupKeyFor } from "./buffer.js";
 
 describe("schemas", () => {
   it("serialiseSnapshot then deserialiseSnapshot is identity for plain objects", () => {
@@ -1110,7 +1110,11 @@ describe("MollifierBuffer idempotency lookup", () => {
         });
         expect(result).toEqual({ kind: "accepted" });
 
-        const lookupKey = "mollifier:idempotency:env_i:my-task:ikey-1";
+        const lookupKey = idempotencyLookupKeyFor({
+          envId: "env_i",
+          taskIdentifier: "my-task",
+          idempotencyKey: "ikey-1",
+        });
         const stored = await buffer["redis"].get(lookupKey);
         expect(stored).toBe("ri1");
         // -1 = key exists with no TTL set.
@@ -1241,7 +1245,11 @@ describe("MollifierBuffer idempotency lookup", () => {
       });
       try {
         // Plant a stale lookup pointing at a non-existent entry.
-        const lookupKey = "mollifier:idempotency:env_i:t:stale";
+        const lookupKey = idempotencyLookupKeyFor({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "stale",
+        });
         await buffer["redis"].set(lookupKey, "rl-stale", "EX", 600);
         expect(await buffer["redis"].get(lookupKey)).toBe("rl-stale");
 
@@ -1283,7 +1291,11 @@ describe("MollifierBuffer idempotency lookup", () => {
         await buffer.pop("env_i");
         await buffer.ack("ra1");
 
-        const lookupKey = "mollifier:idempotency:env_i:t:ka";
+        const lookupKey = idempotencyLookupKeyFor({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "ka",
+        });
         expect(await buffer["redis"].get(lookupKey)).toBeNull();
         const entry = await buffer.getEntry("ra1");
         expect(entry!.materialised).toBe(true);
@@ -1327,7 +1339,11 @@ describe("MollifierBuffer idempotency lookup", () => {
         expect(result.clearedRunId).toBe("rr1");
 
         // Lookup is gone.
-        const lookupKey = "mollifier:idempotency:env_i:t:kr";
+        const lookupKey = idempotencyLookupKeyFor({
+          envId: "env_i",
+          taskIdentifier: "t",
+          idempotencyKey: "kr",
+        });
         expect(await buffer["redis"].get(lookupKey)).toBeNull();
 
         // Snapshot's idempotency fields are nulled, other fields kept.
@@ -2027,4 +2043,279 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
       await buffer.close();
     }
   });
+});
+
+// Composite-key safety. The Redis-key builders concatenate
+// `(envId, taskIdentifier, idempotencyKey)` with `:` separators; without
+// per-segment encoding, `taskIdentifier="a:b"` and `idempotencyKey="x"`
+// would map to the same key as `taskIdentifier="a"` and
+// `idempotencyKey="b:x"`. base64url encoding has no `:` in its alphabet,
+// so the encoded keys are unique per tuple.
+describe("MollifierBuffer composite-key encoding (collision resistance)", () => {
+  redisTest(
+    "two accepts whose unencoded keys would alias don't collide on the idempotency lookup",
+    { timeout: 30_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        // Aliased tuples under raw `:` concatenation:
+        //   env_x : "a:b" : "x"   →   "mollifier:idempotency:env_x:a:b:x"
+        //   env_x : "a"   : "b:x" →   "mollifier:idempotency:env_x:a:b:x"
+        const r1 = await buffer.accept({
+          runId: "ck_run_1",
+          envId: "env_x",
+          orgId: "org_1",
+          payload: "{}",
+          taskIdentifier: "a:b",
+          idempotencyKey: "x",
+        });
+        const r2 = await buffer.accept({
+          runId: "ck_run_2",
+          envId: "env_x",
+          orgId: "org_1",
+          payload: "{}",
+          taskIdentifier: "a",
+          idempotencyKey: "b:x",
+        });
+        // Both accepted — no false-positive collision.
+        expect(r1).toEqual({ kind: "accepted" });
+        expect(r2).toEqual({ kind: "accepted" });
+
+        // Each tuple resolves to its own runId.
+        const hit1 = await buffer.lookupIdempotency({
+          envId: "env_x",
+          taskIdentifier: "a:b",
+          idempotencyKey: "x",
+        });
+        const hit2 = await buffer.lookupIdempotency({
+          envId: "env_x",
+          taskIdentifier: "a",
+          idempotencyKey: "b:x",
+        });
+        expect(hit1).toBe("ck_run_1");
+        expect(hit2).toBe("ck_run_2");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "encoded lookup key contains no ':' separator beyond the namespace",
+    { timeout: 20_000 },
+    async () => {
+      // Pure-function test — verifies the encoding bijection without
+      // needing a live buffer. Re-uses the redisTest fixture for
+      // parallelism with other describe blocks but doesn't touch redis.
+      const key = idempotencyLookupKeyFor({
+        envId: "env_x",
+        taskIdentifier: "a:b",
+        idempotencyKey: "x:y:z",
+      });
+      // namespace prefix is exactly `mollifier:idempotency:` (two `:`),
+      // then three base64url segments separated by two more `:` —
+      // never the customer-supplied colons.
+      const colonCount = key.split(":").length - 1;
+      expect(colonCount).toBe(4);
+      // base64url alphabet has no `:`, `+`, `/`, or `=`.
+      const afterNamespace = key.slice("mollifier:idempotency:".length);
+      expect(afterNamespace).toMatch(/^[A-Za-z0-9_\-]+:[A-Za-z0-9_\-]+:[A-Za-z0-9_\-]+$/);
+    },
+  );
+});
+
+// Pre-gate claim ownership protection. The claim slot stores
+// `"pending:<token>"` so publish and release compare-and-act on the
+// caller's token — a late release from a previous claimant whose TTL
+// expired cannot erase a new owner's claim.
+describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
+  const claimInput = {
+    envId: "env_c",
+    taskIdentifier: "task_c",
+    idempotencyKey: "key_c",
+  };
+
+  redisTest(
+    "claimIdempotency: first caller gets 'claimed', second concurrent caller gets 'pending'",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        const first = await buffer.claimIdempotency({
+          ...claimInput,
+          token: "token-A",
+          ttlSeconds: 30,
+        });
+        expect(first.kind).toBe("claimed");
+
+        // Second concurrent caller with a different token sees pending.
+        const second = await buffer.claimIdempotency({
+          ...claimInput,
+          token: "token-B",
+          ttlSeconds: 30,
+        });
+        expect(second.kind).toBe("pending");
+
+        // readClaim distinguishes pending from resolved without leaking
+        // the token to the loser.
+        const read = await buffer.readClaim(claimInput);
+        expect(read?.kind).toBe("pending");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "releaseClaim with the wrong token is a no-op (compare-and-delete)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.claimIdempotency({ ...claimInput, token: "owner", ttlSeconds: 30 });
+
+        // Pretend a stale claimant fires a release with their old token.
+        await buffer.releaseClaim({ ...claimInput, token: "stale-impostor" });
+
+        // The owner's claim survives.
+        const stillThere = await buffer.readClaim(claimInput);
+        expect(stillThere?.kind).toBe("pending");
+
+        // The owner can still release.
+        await buffer.releaseClaim({ ...claimInput, token: "owner" });
+        expect(await buffer.readClaim(claimInput)).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "publishClaim with the wrong token is a no-op and returns false",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.claimIdempotency({ ...claimInput, token: "owner", ttlSeconds: 30 });
+
+        const wrongTokenPublish = await buffer.publishClaim({
+          ...claimInput,
+          token: "stale-impostor",
+          runId: "imposter-run",
+          ttlSeconds: 60,
+        });
+        expect(wrongTokenPublish).toBe(false);
+
+        // Claim slot unchanged.
+        const stillPending = await buffer.readClaim(claimInput);
+        expect(stillPending?.kind).toBe("pending");
+
+        const goodPublish = await buffer.publishClaim({
+          ...claimInput,
+          token: "owner",
+          runId: "real-run",
+          ttlSeconds: 60,
+        });
+        expect(goodPublish).toBe(true);
+
+        const resolved = await buffer.readClaim(claimInput);
+        expect(resolved).toEqual({ kind: "resolved", runId: "real-run" });
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "regression: stale release after TTL expiry does NOT erase a fresh claim",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // Hazard from CodeRabbit r3290070707:
+      //   1. Claimant A SETNXs the slot with their token, then stalls.
+      //   2. TTL expires, slot vanishes.
+      //   3. Claimant B SETNXs the slot with a DIFFERENT token.
+      //   4. Claimant A finally finishes (or errors) and calls
+      //      releaseClaim with their original token.
+      // Without compare-and-delete, A's release would wipe B's slot and
+      // any concurrent customer of B's idempotency key would see "no
+      // claim" and re-issue, breaking same-key dedup.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        // Step 1: A claims with token "A".
+        const a = await buffer.claimIdempotency({
+          ...claimInput,
+          token: "A",
+          ttlSeconds: 1, // short TTL to simulate expiry quickly
+        });
+        expect(a.kind).toBe("claimed");
+
+        // Step 2: simulate TTL expiry — DEL the slot directly so the
+        // test doesn't rely on wall-clock sleeping.
+        await buffer["redis"].del(`mollifier:claim:${[claimInput.envId, claimInput.taskIdentifier, claimInput.idempotencyKey]
+          .map((s) => Buffer.from(s, "utf8").toString("base64url"))
+          .join(":")}`);
+
+        // Step 3: B claims with token "B".
+        const b = await buffer.claimIdempotency({
+          ...claimInput,
+          token: "B",
+          ttlSeconds: 30,
+        });
+        expect(b.kind).toBe("claimed");
+
+        // Step 4: A's late release. MUST be a no-op.
+        await buffer.releaseClaim({ ...claimInput, token: "A" });
+
+        // B's claim survives intact.
+        const after = await buffer.readClaim(claimInput);
+        expect(after?.kind).toBe("pending");
+
+        // B can still publish.
+        const published = await buffer.publishClaim({
+          ...claimInput,
+          token: "B",
+          runId: "B-run",
+          ttlSeconds: 60,
+        });
+        expect(published).toBe(true);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
 });
