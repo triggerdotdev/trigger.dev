@@ -1,3 +1,4 @@
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { serialiseMollifierSnapshot, type MollifierSnapshot } from "./mollifierSnapshot.server";
 import type { TripDecision } from "./mollifierGate.server";
@@ -9,12 +10,20 @@ export type MollifyNotice = {
 };
 
 export type MollifySyntheticResult = {
-  // `spanId` is the root-span id allocated at gate-accept time and stored
-  // in the snapshot. Callers like the dashboard's Test action use it to
-  // build a `v3RunSpanPath` URL that auto-opens the right details panel
-  // — without it, the buffered run lands on the run-detail page with no
-  // span selected (parity gap with PG-resident runs).
-  run: { friendlyId: string; spanId: string };
+  // `id` is the canonical TaskRun primary key derived from `friendlyId`
+  // via `RunId.fromFriendlyId`. Downstream consumers in the trigger
+  // route — notably `saveRequestIdempotency` (Q3) — index the request-
+  // idempotency cache by this id; without it the cache stores
+  // `undefined` and Prisma's `findFirst({ where: { id: undefined } })`
+  // on retry strips the predicate and returns an arbitrary TaskRun
+  // (potential cross-tenant leak). Always populated.
+  //
+  // `spanId` is the root-span id allocated at gate-accept time and
+  // stored in the snapshot. Callers like the dashboard's Test action
+  // use it to build a `v3RunSpanPath` URL that auto-opens the right
+  // details panel — without it, the buffered run lands on the
+  // run-detail page with no span selected (parity gap with PG runs).
+  run: { id: string; friendlyId: string; spanId: string };
   error: undefined;
   // The race-loser path (Q5): if accept's SETNX hit an existing
   // buffered run with the same (env, task, idempotencyKey), the
@@ -60,7 +69,11 @@ export async function mollifyTrigger(args: {
     // causes `v3RunSpanPath` to omit the `?span=` param, which matches
     // current behaviour for cached PG responses.
     return {
-      run: { friendlyId: result.existingRunId, spanId: "" },
+      run: {
+        id: RunId.fromFriendlyId(result.existingRunId),
+        friendlyId: result.existingRunId,
+        spanId: "",
+      },
       error: undefined,
       isCached: true,
     };
@@ -73,7 +86,11 @@ export async function mollifyTrigger(args: {
   const rawSpanId = args.engineTriggerInput.spanId;
   const spanId = typeof rawSpanId === "string" ? rawSpanId : "";
   return {
-    run: { friendlyId: args.runFriendlyId, spanId },
+    run: {
+      id: RunId.fromFriendlyId(args.runFriendlyId),
+      friendlyId: args.runFriendlyId,
+      spanId,
+    },
     error: undefined,
     isCached: false,
     notice: NOTICE,
