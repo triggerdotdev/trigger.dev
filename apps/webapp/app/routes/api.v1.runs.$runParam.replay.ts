@@ -14,6 +14,32 @@ const ParamsSchema = z.object({
   runParam: z.string(),
 });
 
+// Subset of TaskRun fields that ReplayTaskRunService.call actually
+// reads from `existingTaskRun`. Validate the buffered fallback against
+// this before casting to TaskRun so a buffer-format drift surfaces as a
+// 404/422 here rather than as a silent NaN/undefined deep inside
+// replay. The full TaskRun type has many more fields the service never
+// touches; we only assert the ones it reads.
+const BufferedReplayInputSchema = z.object({
+  id: z.string(),
+  friendlyId: z.string(),
+  runtimeEnvironmentId: z.string(),
+  taskIdentifier: z.string(),
+  payload: z.string(),
+  payloadType: z.string(),
+  queue: z.string(),
+  isTest: z.boolean(),
+  traceId: z.string(),
+  spanId: z.string(),
+  engine: z.string(),
+  runTags: z.array(z.string()),
+  // Nullable / optional fields the service tolerates via `??` fallbacks.
+  concurrencyKey: z.string().nullable().optional(),
+  workerQueue: z.string().nullable().optional(),
+  machinePreset: z.string().nullable().optional(),
+  realtimeStreamsVersion: z.string().nullable().optional(),
+});
+
 export async function action({ request, params }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
@@ -49,16 +75,28 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (!taskRun) {
       // Buffered fallback (Q2). The SyntheticRun shape was extended in
       // Phase B4 to carry every field ReplayTaskRunService reads from a
-      // TaskRun. Cast through unknown — the synthesised object has the
-      // same field surface as a real PG row from the service's
-      // perspective.
+      // TaskRun. Validate the subset of fields the service consumes
+      // (BufferedReplayInputSchema above) before casting; a schema
+      // mismatch surfaces as a 404 here rather than as a silent
+      // undefined deep inside the service.
       const buffered = await findRunByIdWithMollifierFallback({
         runId: runParam,
         environmentId: env.id,
         organizationId: env.organizationId,
       });
       if (buffered) {
-        taskRun = buffered as unknown as TaskRun;
+        const parsed = BufferedReplayInputSchema.safeParse(buffered);
+        if (parsed.success) {
+          taskRun = parsed.data as unknown as TaskRun;
+        } else {
+          logger.warn("replay: buffered fallback failed schema validation", {
+            runParam,
+            issues: parsed.error.issues.map((issue) => ({
+              path: issue.path.join("."),
+              code: issue.code,
+            })),
+          });
+        }
       }
     }
 

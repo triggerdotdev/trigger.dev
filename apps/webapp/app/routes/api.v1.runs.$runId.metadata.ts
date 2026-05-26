@@ -5,6 +5,7 @@ import type { RunMetadataChangeOperation } from "@trigger.dev/core/v3/schemas";
 import { UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -69,20 +70,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 async function routeOperationsToRun(
   targetRunId: string | undefined,
   operations: RunMetadataChangeOperation[] | undefined,
-  env: { id: string; organizationId: string }
+  env: AuthenticatedEnvironment
 ): Promise<void> {
   if (!targetRunId || !operations || operations.length === 0) return;
 
   // Try PG first via the existing service (this is how parent/root
-  // operations have always landed; preserve that).
+  // operations have always landed; preserve that). Accepts the full
+  // AuthenticatedEnvironment so we don't have to recover the unsafe
+  // `as unknown` cast that the previous narrowed `{ id, organizationId }`
+  // signature forced on us.
   const [error] = await tryCatch(
-    updateMetadataService.call(
-      targetRunId,
-      { operations },
-      { id: env.id, organizationId: env.organizationId } as unknown as Parameters<
-        typeof updateMetadataService.call
-      >[2]
-    )
+    updateMetadataService.call(targetRunId, { operations }, env)
   );
   if (!error) return;
 
