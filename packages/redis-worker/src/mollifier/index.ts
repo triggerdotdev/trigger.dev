@@ -1,4 +1,13 @@
-export { MollifierBuffer, type MollifierBufferOptions } from "./buffer.js";
+export {
+  MollifierBuffer,
+  type MollifierBufferOptions,
+  type SnapshotPatch,
+  type MutateSnapshotResult,
+  type CasSetMetadataResult,
+  type IdempotencyClaimResult,
+  type IdempotencyLookupInput,
+  IDEMPOTENCY_CLAIM_PENDING,
+} from "./buffer.js";
 export {
   MollifierDrainer,
   type MollifierDrainerOptions,

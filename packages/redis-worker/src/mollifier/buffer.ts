@@ -10,17 +10,66 @@ import { BufferEntry, BufferEntrySchema } from "./schemas.js";
 
 export type MollifierBufferOptions = {
   redisOptions: RedisOptions;
-  entryTtlSeconds: number;
   logger?: Logger;
 };
 
+// Grace TTL applied to the entry hash on drainer ack. The entry survives
+// this long after materialisation so direct reads (retrieve, trace, etc.)
+// have a safety net while PG replica lag settles. Q1 D2.
+const ACK_GRACE_TTL_SECONDS = 30;
+
+export type SnapshotPatch =
+  | { type: "append_tags"; tags: string[] }
+  | { type: "set_metadata"; metadata: string; metadataType: string }
+  | { type: "set_delay"; delayUntil: string }
+  | { type: "mark_cancelled"; cancelledAt: string; cancelReason?: string };
+
+export type MutateSnapshotResult = "applied_to_snapshot" | "not_found" | "busy";
+
+export type CasSetMetadataResult =
+  | { kind: "applied"; newVersion: number }
+  | { kind: "version_conflict"; currentVersion: number }
+  | { kind: "not_found" }
+  | { kind: "busy" };
+
+export type AcceptResult =
+  | { kind: "accepted" }
+  | { kind: "duplicate_run_id" }
+  | { kind: "duplicate_idempotency"; existingRunId: string };
+
+export type IdempotencyLookupInput = {
+  envId: string;
+  taskIdentifier: string;
+  idempotencyKey: string;
+};
+
+function makeIdempotencyLookupKey(input: IdempotencyLookupInput): string {
+  return `mollifier:idempotency:${input.envId}:${input.taskIdentifier}:${input.idempotencyKey}`;
+}
+
+// Pre-gate claim key namespace, distinct from `mollifier:idempotency` so the
+// existing B6a buffer-side dedup stays isolated. The claim is the
+// authoritative cross-store "this idempotency key is in flight or
+// resolved" pointer used by the trigger hot path
+// (`_plans/2026-05-21-mollifier-idempotency-claim.md`). Values:
+//   "pending"   → a trigger pipeline owns the key and hasn't published yet
+//   <runId>     → the winning trigger's runId (resolved)
+export const IDEMPOTENCY_CLAIM_PENDING = "pending";
+
+function makeIdempotencyClaimKey(input: IdempotencyLookupInput): string {
+  return `mollifier:claim:${input.envId}:${input.taskIdentifier}:${input.idempotencyKey}`;
+}
+
+export type IdempotencyClaimResult =
+  | { kind: "claimed" }
+  | { kind: "pending" }
+  | { kind: "resolved"; runId: string };
+
 export class MollifierBuffer {
   private readonly redis: Redis;
-  private readonly entryTtlSeconds: number;
   private readonly logger: Logger;
 
   constructor(options: MollifierBufferOptions) {
-    this.entryTtlSeconds = options.entryTtlSeconds;
     this.logger = options.logger ?? new Logger("MollifierBuffer", "debug");
 
     this.redis = createRedisClient(
@@ -41,19 +90,47 @@ export class MollifierBuffer {
     this.#registerCommands();
   }
 
-  // Returns true if the entry was newly written; false if a duplicate runId
-  // was already buffered (idempotent no-op). Callers can use the boolean to
-  // record a duplicate-accept metric without affecting buffer state.
+  // Three outcomes:
+  //   - { kind: "accepted" } — entry was newly written.
+  //   - { kind: "duplicate_run_id" } — runId was already buffered (idempotent
+  //     no-op, same semantic as the previous boolean-false return).
+  //   - { kind: "duplicate_idempotency", existingRunId } — the (env, task,
+  //     idempotencyKey) tuple was already bound to another buffered run.
+  //     The Lua's atomic SETNX is the race-winner; the second caller gets
+  //     the winner's runId so it can return that as the trigger response.
   async accept(input: {
     runId: string;
     envId: string;
     orgId: string;
     payload: string;
-  }): Promise<boolean> {
+    // Optional idempotency-key triple. When all three are present we
+    // SETNX a Redis lookup at `mollifier:idempotency:{env}:{task}:{key}`
+    // pointing at the runId so trigger-time dedup during the buffered
+    // window resolves the same way PG's unique constraint resolves it
+    // post-materialisation (Q5).
+    idempotencyKey?: string;
+    taskIdentifier?: string;
+  }): Promise<AcceptResult> {
     const entryKey = `mollifier:entries:${input.runId}`;
     const queueKey = `mollifier:queue:${input.envId}`;
     const orgsKey = "mollifier:orgs";
-    const createdAt = new Date().toISOString();
+    const nowMs = Date.now();
+    const createdAt = new Date(nowMs).toISOString();
+    // Microsecond epoch. JS only has millisecond precision, so multiple
+    // accepts in the same ms share a score; ZSET ties resolve by member
+    // (runId) lex order, which is deterministic and acceptable for FIFO
+    // pop. The hash carries the same value as `createdAtMicros` so the
+    // listing helper (Phase E) can read a stable per-run timestamp
+    // without re-fetching the score.
+    const createdAtMicros = nowMs * 1000;
+    const idempotencyLookupKey =
+      input.idempotencyKey && input.taskIdentifier
+        ? makeIdempotencyLookupKey({
+            envId: input.envId,
+            taskIdentifier: input.taskIdentifier,
+            idempotencyKey: input.idempotencyKey,
+          })
+        : "";
     const result = await this.redis.acceptMollifierEntry(
       entryKey,
       queueKey,
@@ -63,10 +140,17 @@ export class MollifierBuffer {
       input.orgId,
       input.payload,
       createdAt,
-      String(this.entryTtlSeconds),
+      String(createdAtMicros),
       "mollifier:org-envs:",
+      idempotencyLookupKey,
     );
-    return result === 1;
+    // Lua returns 1 (accepted), 0 (duplicate runId), or a string runId
+    // (duplicate idempotency — value is the existing winner's runId).
+    if (typeof result === "string" && result.length > 0) {
+      return { kind: "duplicate_idempotency", existingRunId: result };
+    }
+    if (result === 1) return { kind: "accepted" };
+    return { kind: "duplicate_run_id" };
   }
 
   async pop(envId: string): Promise<BufferEntry | null> {
@@ -128,8 +212,247 @@ export class MollifierBuffer {
     return this.redis.smembers(`mollifier:org-envs:${orgId}`);
   }
 
+  // Paginated read of currently-queued entries newest-first, bounded by
+  // an optional `(createdAtMicros, runId)` watermark. Q1 listing design.
+  // Returns hydrated `BufferEntry` rows up to `pageSize`. Skips orphans
+  // (queue ref without an entry hash) silently. Non-destructive — the
+  // drainer keeps popping these entries in createdAt order regardless.
+  async listForEnvWithWatermark(input: {
+    envId: string;
+    watermark?: { createdAtMicros: number; runId: string };
+    pageSize: number;
+  }): Promise<BufferEntry[]> {
+    if (input.pageSize <= 0) return [];
+    const queueKey = `mollifier:queue:${input.envId}`;
+
+    let runIds: string[];
+    if (!input.watermark) {
+      // Page 1 — newest first.
+      runIds = await this.redis.zrevrangebyscore(
+        queueKey,
+        "+inf",
+        "-inf",
+        "LIMIT",
+        0,
+        input.pageSize,
+      );
+    } else {
+      // Page N — strictly below the watermark score.
+      const belowScore = await this.redis.zrevrangebyscore(
+        queueKey,
+        `(${input.watermark.createdAtMicros}`,
+        "-inf",
+        "LIMIT",
+        0,
+        input.pageSize,
+      );
+      runIds = belowScore;
+      // Tied-score scan: ZSET ties broken by member-DESC, so entries
+      // sharing the watermark score with a lex-smaller runId still
+      // need to surface. Cheap second range over the tied band.
+      if (belowScore.length < input.pageSize) {
+        const remaining = input.pageSize - belowScore.length;
+        const tied = await this.redis.zrangebyscore(
+          queueKey,
+          input.watermark.createdAtMicros,
+          input.watermark.createdAtMicros,
+        );
+        // Filter to runIds lex-less than the watermark anchor, sort
+        // member-DESC, take `remaining`.
+        const tiedFiltered = tied
+          .filter((r) => r < input.watermark!.runId)
+          .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+          .slice(0, remaining);
+        runIds = [...belowScore, ...tiedFiltered];
+      }
+    }
+
+    if (runIds.length === 0) return [];
+
+    // Parallel HGETALL — one round-trip per entry, all in flight.
+    const fetched = await Promise.all(
+      runIds.map((runId) => this.redis.hgetall(`mollifier:entries:${runId}`)),
+    );
+    const entries: BufferEntry[] = [];
+    for (const value of fetched) {
+      if (!value || Object.keys(value).length === 0) continue;
+      const parsed = BufferEntrySchema.safeParse(value);
+      if (parsed.success) entries.push(parsed.data);
+    }
+    return entries;
+  }
+
+  // Read-only listing of currently-queued entries for a single env. Used by
+  // the dashboard's "Recently queued" surface — non-destructive, so the
+  // drainer still pops these entries in order. Returns up to `maxCount`
+  // entries newest-first (highest score, which is `createdAtMicros`).
+  // Each entry hash is fetched separately; a `null` from getEntry (TTL
+  // expired between ZREVRANGE and HGETALL) is skipped.
+  async listEntriesForEnv(envId: string, maxCount: number): Promise<BufferEntry[]> {
+    if (maxCount <= 0) return [];
+    const runIds = await this.redis.zrevrange(
+      `mollifier:queue:${envId}`,
+      0,
+      maxCount - 1,
+    );
+    const entries: BufferEntry[] = [];
+    for (const runId of runIds) {
+      const entry = await this.getEntry(runId);
+      if (entry) entries.push(entry);
+    }
+    return entries;
+  }
+
+  // Atomic snapshot mutation. Used by customer-mutation API endpoints
+  // (tags, metadata-put, reschedule, cancel) when the run is still in
+  // the buffer. Three outcomes:
+  //   - "applied_to_snapshot": entry was QUEUED + not materialised; the
+  //     drainer will read the patched payload on its next pop.
+  //   - "not_found": no entry hash exists for this runId.
+  //   - "busy": entry is DRAINING / FAILED / materialised. The API
+  //     wait-and-bounces through PG (Q3 design).
+  async mutateSnapshot(runId: string, patch: SnapshotPatch): Promise<MutateSnapshotResult> {
+    const result = (await this.redis.mutateMollifierSnapshot(
+      `mollifier:entries:${runId}`,
+      JSON.stringify(patch),
+    )) as string;
+    if (
+      result === "applied_to_snapshot" ||
+      result === "not_found" ||
+      result === "busy"
+    ) {
+      return result;
+    }
+    throw new Error(`MollifierBuffer.mutateSnapshot: unexpected Lua return value: ${result}`);
+  }
+
+  // Optimistic compare-and-swap on the snapshot's metadata. Caller reads
+  // the current metadataVersion via getEntry, applies operations in JS via
+  // `applyMetadataOperations`, then calls this with the new metadata + the
+  // expected version. Lua refuses if the version has moved (caller retries
+  // up to N times). Mirrors the PG-side `UpdateMetadataService` retry
+  // loop so concurrent increment/append operations don't lose deltas.
+  async casSetMetadata(input: {
+    runId: string;
+    expectedVersion: number;
+    newMetadata: string;
+    newMetadataType: string;
+  }): Promise<CasSetMetadataResult> {
+    const entryKey = `mollifier:entries:${input.runId}`;
+    const raw = (await this.redis.casSetMollifierMetadata(
+      entryKey,
+      String(input.expectedVersion),
+      input.newMetadata,
+      input.newMetadataType,
+    )) as string;
+    if (raw === "not_found") return { kind: "not_found" };
+    if (raw === "busy") return { kind: "busy" };
+    if (raw.startsWith("conflict:")) {
+      return { kind: "version_conflict", currentVersion: Number(raw.slice("conflict:".length)) };
+    }
+    if (raw.startsWith("applied:")) {
+      return { kind: "applied", newVersion: Number(raw.slice("applied:".length)) };
+    }
+    throw new Error(`MollifierBuffer.casSetMetadata: unexpected Lua return: ${raw}`);
+  }
+
+  // Atomic pre-gate claim on a (env, task, idempotencyKey) tuple. One
+  // call across both PG and buffer paths serialises through this claim;
+  // closes the race the buffer-side B6a SETNX leaves open during the
+  // gate-transition burst window (see
+  // `_plans/2026-05-21-mollifier-idempotency-claim.md`).
+  //
+  // - "claimed": we now own the claim, the caller proceeds with the
+  //   trigger pipeline and must `publishClaim` on success or
+  //   `releaseClaim` on failure.
+  // - "pending": another trigger owns the claim and hasn't published
+  //   yet; the caller should poll.
+  // - "resolved": the claim already holds a runId; the caller can
+  //   return that runId as a cached hit.
+  async claimIdempotency(
+    input: IdempotencyLookupInput & { ttlSeconds: number },
+  ): Promise<IdempotencyClaimResult> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    const raw = (await this.redis.claimMollifierIdempotency(
+      claimKey,
+      IDEMPOTENCY_CLAIM_PENDING,
+      String(input.ttlSeconds),
+    )) as string;
+    if (raw === "claimed") return { kind: "claimed" };
+    if (raw === "pending") return { kind: "pending" };
+    if (raw.startsWith("resolved:")) {
+      return { kind: "resolved", runId: raw.slice("resolved:".length) };
+    }
+    throw new Error(`MollifierBuffer.claimIdempotency: unexpected return: ${raw}`);
+  }
+
+  // Publish the winning runId to the claim so subsequent claimants /
+  // waiters see "resolved". TTL bounded by the customer's
+  // `idempotencyKeyExpiresAt` minus now; caller computes.
+  async publishClaim(
+    input: IdempotencyLookupInput & { runId: string; ttlSeconds: number },
+  ): Promise<void> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    await this.redis.set(claimKey, input.runId, "EX", input.ttlSeconds);
+  }
+
+  // Release the claim on pipeline error so waiters can re-claim and
+  // retry. Idempotent.
+  async releaseClaim(input: IdempotencyLookupInput): Promise<void> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    await this.redis.del(claimKey);
+  }
+
+  // Read the current claim value, used by the wait/poll loop on losers
+  // to detect "pending" → "resolved" transitions and timeouts.
+  async readClaim(input: IdempotencyLookupInput): Promise<IdempotencyClaimResult | null> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    const value = await this.redis.get(claimKey);
+    if (value === null) return null;
+    if (value === IDEMPOTENCY_CLAIM_PENDING) return { kind: "pending" };
+    return { kind: "resolved", runId: value };
+  }
+
+  // Resolve a buffered run by (env, task, idempotencyKey) tuple. Used by
+  // `IdempotencyKeyConcern.handleTriggerRequest` after the PG check
+  // misses — same key may belong to a buffered run waiting to drain. The
+  // lookup self-heals: if the lookup points at an entry hash that's
+  // expired, we DEL the lookup and report a miss.
+  async lookupIdempotency(input: IdempotencyLookupInput): Promise<string | null> {
+    const lookupKey = makeIdempotencyLookupKey(input);
+    const runId = await this.redis.get(lookupKey);
+    if (!runId) return null;
+    const entry = await this.getEntry(runId);
+    if (!entry) {
+      await this.redis.del(lookupKey);
+      return null;
+    }
+    return runId;
+  }
+
+  // Clear the idempotency binding from a buffered run. Used by
+  // `ResetIdempotencyKeyService` alongside the existing PG-side
+  // `updateMany`. Returns the runId that was cleared, or null if no
+  // buffered run held this key.
+  async resetIdempotency(input: IdempotencyLookupInput): Promise<{ clearedRunId: string | null }> {
+    const lookupKey = makeIdempotencyLookupKey(input);
+    const clearedRunId = (await this.redis.resetMollifierIdempotency(
+      lookupKey,
+      "mollifier:entries:",
+    )) as string;
+    return { clearedRunId: clearedRunId.length > 0 ? clearedRunId : null };
+  }
+
+  // Marks the entry as materialised (PG row written) and resets its TTL to
+  // the grace window. Entry hash persists past ack as a read-fallback
+  // safety net for the brief PG replica-lag window between drainer-side
+  // write and reader-side visibility (Q1 D2). Also clears the associated
+  // idempotency lookup if one was set on accept (Q5).
   async ack(runId: string): Promise<void> {
-    await this.redis.del(`mollifier:entries:${runId}`);
+    await this.redis.ackMollifierEntry(
+      `mollifier:entries:${runId}`,
+      String(ACK_GRACE_TTL_SECONDS),
+    );
   }
 
   async requeue(runId: string): Promise<void> {
@@ -153,9 +476,15 @@ export class MollifierBuffer {
     return result === 1;
   }
 
+  // Returns Redis-side TTL on the entry hash. Returns -1 for entries
+  // with no TTL — the steady state under the current design, where
+  // entries persist until drainer ack/fail. The ack grace TTL (30s
+  // post-materialise) is the only context where this returns a
+  // positive value; tests around the grace TTL still rely on it.
   async getEntryTtlSeconds(runId: string): Promise<number> {
     return this.redis.ttl(`mollifier:entries:${runId}`);
   }
+
 
   async evaluateTrip(
     envId: string,
@@ -190,14 +519,29 @@ export class MollifierBuffer {
         local orgId = ARGV[3]
         local payload = ARGV[4]
         local createdAt = ARGV[5]
-        local ttlSeconds = tonumber(ARGV[6])
+        local createdAtMicros = ARGV[6]
         local orgEnvsPrefix = ARGV[7]
+        local idempotencyLookupKey = ARGV[8] or ''
 
         -- Idempotent: refuse if an entry for this runId already exists in any
         -- state. Caller-side dedup is also enforced via API idempotency keys,
         -- but the buffer must not double-enqueue if a caller retries.
         if redis.call('EXISTS', entryKey) == 1 then
           return 0
+        end
+
+        -- Idempotency-key dedup (Q5). If the caller passed a lookup key
+        -- and it's already bound to another buffered run, return the
+        -- winner's runId so the loser's API response can echo it as a
+        -- cached hit. Otherwise SET the lookup (no TTL — lifecycle is
+        -- paired with the entry hash; drainer ack/fail clear it
+        -- explicitly).
+        if idempotencyLookupKey ~= '' then
+          local existing = redis.call('GET', idempotencyLookupKey)
+          if existing then
+            return existing
+          end
+          redis.call('SET', idempotencyLookupKey, runId)
         end
 
         redis.call('HSET', entryKey,
@@ -207,9 +551,22 @@ export class MollifierBuffer {
           'payload', payload,
           'status', 'QUEUED',
           'attempts', '0',
-          'createdAt', createdAt)
-        redis.call('EXPIRE', entryKey, ttlSeconds)
-        redis.call('LPUSH', queueKey, runId)
+          'createdAt', createdAt,
+          'createdAtMicros', createdAtMicros,
+          'idempotencyLookupKey', idempotencyLookupKey,
+          'metadataVersion', '0')
+        -- No EXPIRE on the entry hash. Buffer entries persist until the
+        -- drainer ACKs (post-materialise grace) or FAILs them — the
+        -- drainer is the only recovery mechanism, so silent TTL-based
+        -- eviction would lose runs with no customer-visible signal.
+        -- Memory pressure from an offline drainer is the alertable
+        -- failure mode instead; see _ops/mollifier-ops.md.
+        -- ZSET keyed by createdAtMicros: ZPOPMIN drains oldest-first
+        -- (FIFO); listing pagination uses ZREVRANGEBYSCORE with a
+        -- (createdAt, runId) cursor anchor. Score is stable across the
+        -- entry's lifecycle — requeue does not bump it (see Phase 3b /
+        -- Q1 design).
+        redis.call('ZADD', queueKey, createdAtMicros, runId)
         -- Org-level membership: maintained atomically with the per-env
         -- queue so the drainer can walk orgs → envs-for-org and
         -- schedule one env per org per tick. SADDs are idempotent if the
@@ -231,7 +588,8 @@ export class MollifierBuffer {
 
         local envId = redis.call('HGET', entryKey, 'envId')
         local orgId = redis.call('HGET', entryKey, 'orgId')
-        if not envId then
+        local createdAtMicros = redis.call('HGET', entryKey, 'createdAtMicros')
+        if not envId or not createdAtMicros then
           return 0
         end
 
@@ -239,7 +597,11 @@ export class MollifierBuffer {
         local nextAttempts = tonumber(currentAttempts or '0') + 1
 
         redis.call('HSET', entryKey, 'status', 'QUEUED', 'attempts', tostring(nextAttempts))
-        redis.call('LPUSH', queuePrefix .. envId, runId)
+        -- Requeue re-adds with the ORIGINAL createdAtMicros score.
+        -- createdAt is immutable across retries (Phase 3b decision).
+        -- The drainer's maxAttempts caps the retry loop so a poisoned
+        -- entry doesn't head-of-line forever.
+        redis.call('ZADD', queuePrefix .. envId, tonumber(createdAtMicros), runId)
         -- Re-track the org/env: pop may have SREM'd them when the queue
         -- last emptied. SADDs are idempotent if the values are still
         -- present.
@@ -279,7 +641,9 @@ export class MollifierBuffer {
         -- hash without a TTL, leaking memory. The loop is bounded by queue
         -- length; entire Lua script remains atomic.
         while true do
-          local runId = redis.call('RPOP', queueKey)
+          -- ZPOPMIN returns {member, score} as a flat array, or {} when empty.
+          local popped = redis.call('ZPOPMIN', queueKey)
+          local runId = popped[1]
           if not runId then
             -- Queue is empty AND we have no entry to read orgId from, so
             -- skip org-level cleanup. Stale org-envs entries are bounded
@@ -296,9 +660,9 @@ export class MollifierBuffer {
               result[raw[i]] = raw[i + 1]
             end
             -- Prune org-level membership if this pop drained the queue.
-            -- Atomic with the RPOP above — a concurrent accept AFTER this
-            -- script will SADD both back along with its LPUSH.
-            if redis.call('LLEN', queueKey) == 0 then
+            -- Atomic with the ZPOPMIN above — a concurrent accept AFTER
+            -- this script will SADD both back along with its ZADD.
+            if redis.call('ZCARD', queueKey) == 0 then
               pruneOrgMembership(result['orgId'])
             end
             return cjson.encode(result)
@@ -309,19 +673,220 @@ export class MollifierBuffer {
       `,
     });
 
+    this.redis.defineCommand("casSetMollifierMetadata", {
+      numberOfKeys: 1,
+      lua: `
+        local entryKey = KEYS[1]
+        local expectedVersion = tonumber(ARGV[1])
+        local newMetadata = ARGV[2]
+        local newMetadataType = ARGV[3]
+
+        if redis.call('EXISTS', entryKey) == 0 then
+          return 'not_found'
+        end
+
+        local status = redis.call('HGET', entryKey, 'status')
+        local materialised = redis.call('HGET', entryKey, 'materialised')
+        if status ~= 'QUEUED' or materialised == 'true' then
+          return 'busy'
+        end
+
+        local currentVersionStr = redis.call('HGET', entryKey, 'metadataVersion') or '0'
+        local currentVersion = tonumber(currentVersionStr) or 0
+        if currentVersion ~= expectedVersion then
+          return 'conflict:' .. tostring(currentVersion)
+        end
+
+        -- Write the new metadata onto the snapshot's payload JSON. We
+        -- keep the rest of the payload intact — only metadata/metadataType
+        -- change. metadataVersion is denormalised on the hash for cheap
+        -- CAS reads; it's intentionally NOT stored inside the payload
+        -- itself (PG-side metadataVersion is a column, not a JSON field).
+        local payloadJson = redis.call('HGET', entryKey, 'payload')
+        local ok, payload = pcall(cjson.decode, payloadJson)
+        if not ok then return 'busy' end
+        payload.metadata = newMetadata
+        payload.metadataType = newMetadataType
+
+        local newVersion = currentVersion + 1
+        redis.call('HSET', entryKey,
+          'payload', cjson.encode(payload),
+          'metadataVersion', tostring(newVersion))
+        return 'applied:' .. tostring(newVersion)
+      `,
+    });
+
+    this.redis.defineCommand("claimMollifierIdempotency", {
+      numberOfKeys: 1,
+      lua: `
+        local claimKey = KEYS[1]
+        local pending = ARGV[1]
+        local ttl = tonumber(ARGV[2])
+
+        -- SETNX-with-TTL: atomic; only one caller can win.
+        local won = redis.call('SET', claimKey, pending, 'NX', 'EX', ttl)
+        if won then
+          return 'claimed'
+        end
+
+        local existing = redis.call('GET', claimKey)
+        if existing == pending then
+          return 'pending'
+        end
+        return 'resolved:' .. existing
+      `,
+    });
+
+    this.redis.defineCommand("resetMollifierIdempotency", {
+      numberOfKeys: 1,
+      lua: `
+        local lookupKey = KEYS[1]
+        local entryPrefix = ARGV[1]
+
+        local runId = redis.call('GET', lookupKey)
+        if not runId then
+          return ''
+        end
+
+        local entryKey = entryPrefix .. runId
+        if redis.call('EXISTS', entryKey) == 0 then
+          -- Stale lookup. Lazy cleanup.
+          redis.call('DEL', lookupKey)
+          return ''
+        end
+
+        -- Clear the idempotency fields on the snapshot payload so the
+        -- drainer's eventual engine.trigger call inserts a PG row
+        -- without the key set.
+        local payloadJson = redis.call('HGET', entryKey, 'payload')
+        if payloadJson then
+          local ok, payload = pcall(cjson.decode, payloadJson)
+          if ok then
+            payload.idempotencyKey = cjson.null
+            payload.idempotencyKeyExpiresAt = cjson.null
+            redis.call('HSET', entryKey, 'payload', cjson.encode(payload))
+          end
+        end
+        -- Clear the denormalised lookup pointer on the hash so a later
+        -- ack doesn't try to DEL a key that's already gone.
+        redis.call('HSET', entryKey, 'idempotencyLookupKey', '')
+        redis.call('DEL', lookupKey)
+        return runId
+      `,
+    });
+
+    this.redis.defineCommand("mutateMollifierSnapshot", {
+      numberOfKeys: 1,
+      lua: `
+        local entryKey = KEYS[1]
+        local patchJson = ARGV[1]
+
+        if redis.call('EXISTS', entryKey) == 0 then
+          return 'not_found'
+        end
+
+        local status = redis.call('HGET', entryKey, 'status')
+        local materialised = redis.call('HGET', entryKey, 'materialised')
+        if status ~= 'QUEUED' or materialised == 'true' then
+          return 'busy'
+        end
+
+        local payloadJson = redis.call('HGET', entryKey, 'payload')
+        local ok, payload = pcall(cjson.decode, payloadJson)
+        if not ok then return 'busy' end
+
+        local patch = cjson.decode(patchJson)
+
+        if patch.type == 'append_tags' then
+          -- cjson decode of an absent or empty-array field gives nil or
+          -- an empty table; we rebuild as a dense array. Existing tags
+          -- are preserved; new tags are appended only if not present.
+          local existing = payload.tags or {}
+          local seen = {}
+          local merged = {}
+          for _, t in ipairs(existing) do
+            if not seen[t] then
+              seen[t] = true
+              table.insert(merged, t)
+            end
+          end
+          for _, t in ipairs(patch.tags or {}) do
+            if not seen[t] then
+              seen[t] = true
+              table.insert(merged, t)
+            end
+          end
+          payload.tags = merged
+        elseif patch.type == 'set_metadata' then
+          payload.metadata = patch.metadata
+          payload.metadataType = patch.metadataType
+        elseif patch.type == 'set_delay' then
+          payload.delayUntil = patch.delayUntil
+        elseif patch.type == 'mark_cancelled' then
+          payload.cancelledAt = patch.cancelledAt
+          payload.cancelReason = patch.cancelReason
+        else
+          return 'busy'
+        end
+
+        redis.call('HSET', entryKey, 'payload', cjson.encode(payload))
+        return 'applied_to_snapshot'
+      `,
+    });
+
+    this.redis.defineCommand("ackMollifierEntry", {
+      numberOfKeys: 1,
+      lua: `
+        local entryKey = KEYS[1]
+        local graceTtlSeconds = tonumber(ARGV[1])
+
+        -- Guard: never create a partial entry. If the hash expired between
+        -- pop and ack, the run is gone — nothing to mark materialised.
+        if redis.call('EXISTS', entryKey) == 0 then
+          return 0
+        end
+
+        -- If the entry was accepted with an idempotency key, the lookup
+        -- string was stored on the hash at accept time. Clear it now —
+        -- PG becomes canonical for the key post-materialisation (Q5).
+        local lookupKey = redis.call('HGET', entryKey, 'idempotencyLookupKey')
+        if lookupKey and lookupKey ~= '' then
+          redis.call('DEL', lookupKey)
+        end
+
+        redis.call('HSET', entryKey, 'materialised', 'true')
+        redis.call('EXPIRE', entryKey, graceTtlSeconds)
+        return 1
+      `,
+    });
+
     this.redis.defineCommand("failMollifierEntry", {
       numberOfKeys: 1,
       lua: `
         local entryKey = KEYS[1]
         local errorPayload = ARGV[1]
 
-        -- Guard: never create a partial entry. If the hash expired between
-        -- pop and fail, the run is gone — nothing to mark FAILED.
+        -- Guard: nothing to mark FAILED if the hash is gone (concurrent
+        -- ack/manual cleanup). Returning 0 lets the caller distinguish
+        -- "marked failed" from "no-op".
         if redis.call('EXISTS', entryKey) == 0 then
           return 0
         end
 
         redis.call('HSET', entryKey, 'status', 'FAILED', 'lastError', errorPayload)
+
+        -- The drainer has already written a SYSTEM_FAILURE PG row for
+        -- terminal failures (see mollifierDrainerHandler.server.ts), so
+        -- the buffer entry is no longer load-bearing. Clear the
+        -- idempotency lookup — PG's unique constraint is the canonical
+        -- dedup mechanism post-materialise — and drop the entry hash so
+        -- failed runs don't accrete forever now that there's no
+        -- accept-time TTL.
+        local lookupKey = redis.call('HGET', entryKey, 'idempotencyLookupKey')
+        if lookupKey and lookupKey ~= '' then
+          redis.call('DEL', lookupKey)
+        end
+        redis.call('DEL', entryKey)
         return 1
       `,
     });
@@ -362,10 +927,11 @@ declare module "@internal/redis" {
       orgId: string,
       payload: string,
       createdAt: string,
-      ttlSeconds: string,
+      createdAtMicros: string,
       orgEnvsPrefix: string,
-      callback?: Callback<number>,
-    ): Result<number, Context>;
+      idempotencyLookupKey: string,
+      callback?: Callback<number | string>,
+    ): Result<number | string, Context>;
     popAndMarkDraining(
       queueKey: string,
       orgsKey: string,
@@ -380,6 +946,34 @@ declare module "@internal/redis" {
       queuePrefix: string,
       runId: string,
       orgEnvsPrefix: string,
+      callback?: Callback<number>,
+    ): Result<number, Context>;
+    mutateMollifierSnapshot(
+      entryKey: string,
+      patchJson: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    casSetMollifierMetadata(
+      entryKey: string,
+      expectedVersion: string,
+      newMetadata: string,
+      newMetadataType: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    resetMollifierIdempotency(
+      lookupKey: string,
+      entryPrefix: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    claimMollifierIdempotency(
+      claimKey: string,
+      pendingMarker: string,
+      ttlSeconds: string,
+      callback?: Callback<string>,
+    ): Result<string, Context>;
+    ackMollifierEntry(
+      entryKey: string,
+      graceTtlSeconds: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     failMollifierEntry(
