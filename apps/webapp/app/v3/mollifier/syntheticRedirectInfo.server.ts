@@ -1,8 +1,24 @@
 import { deserialiseSnapshot, type MollifierBuffer } from "@trigger.dev/redis-worker";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
+
+// Validated subset of a mollifier snapshot — just the fields needed to
+// rebuild a canonical run-detail URL for a buffered run. Anything else
+// in the payload is ignored. `safeParse` against this schema replaces
+// the ad-hoc `as Record<string, unknown>` + `typeof === "string"` checks
+// that the redirect path used to do by hand; missing or wrong-typed
+// fields collapse into a single `parsed.success === false` branch.
+const BufferedSnapshotSchema = z.object({
+  spanId: z.string().optional(),
+  environment: z.object({
+    slug: z.string(),
+    project: z.object({ slug: z.string() }),
+    organization: z.object({ slug: z.string() }),
+  }),
+});
 
 export type BufferedRunRedirectInfo = {
   organizationSlug: string;
@@ -60,9 +76,9 @@ export async function findBufferedRunRedirectInfo(
     if (!member) return null;
   }
 
-  let snapshot: Record<string, unknown>;
+  let raw: unknown;
   try {
-    snapshot = deserialiseSnapshot(entry.payload) as Record<string, unknown>;
+    raw = deserialiseSnapshot(entry.payload);
   } catch (err) {
     logger.warn("buffered redirect: snapshot deserialise failed", {
       runFriendlyId: args.runFriendlyId,
@@ -71,22 +87,26 @@ export async function findBufferedRunRedirectInfo(
     return null;
   }
 
-  const environment = snapshot.environment as Record<string, unknown> | undefined;
-  if (!environment || typeof environment !== "object") return null;
-  const project = environment.project as Record<string, unknown> | undefined;
-  const organization = environment.organization as Record<string, unknown> | undefined;
-
-  const envSlug = environment.slug;
-  const projectSlug = project?.slug;
-  const orgSlug = organization?.slug;
-  if (typeof envSlug !== "string" || typeof projectSlug !== "string" || typeof orgSlug !== "string") {
+  const parsed = BufferedSnapshotSchema.safeParse(raw);
+  if (!parsed.success) {
+    // Either the snapshot is from a different writer that doesn't carry
+    // environment slugs (in which case we genuinely can't build a URL)
+    // or a buffer-format drift snuck through. Log at debug; the caller
+    // 404s and the user sees the standard not-found page, not a 500.
+    logger.debug("buffered redirect: snapshot shape mismatch", {
+      runFriendlyId: args.runFriendlyId,
+      issues: parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        code: issue.code,
+      })),
+    });
     return null;
   }
 
   return {
-    organizationSlug: orgSlug,
-    projectSlug,
-    environmentSlug: envSlug,
-    spanId: typeof snapshot.spanId === "string" ? snapshot.spanId : undefined,
+    organizationSlug: parsed.data.environment.organization.slug,
+    projectSlug: parsed.data.environment.project.slug,
+    environmentSlug: parsed.data.environment.slug,
+    spanId: parsed.data.spanId,
   };
 }

@@ -159,4 +159,39 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
       await buffer.close();
     }
   });
+
+  redisTest(
+    "rejects snapshots where a slug is the wrong type (Zod guard, not just typeof)",
+    async ({ redisOptions }) => {
+      // Regression for the pre-Zod implementation: the slug check was
+      // `typeof slug !== "string"` so any string passed, including ones
+      // that should've been rejected on shape grounds. The Zod schema
+      // gives us full structural validation — a `slug: 42` (number)
+      // collapses into the parse-fail branch like any other shape
+      // mismatch and we return null instead of leaking a half-built
+      // redirect URL.
+      const buffer = new MollifierBuffer({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_real_7",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: JSON.stringify({
+            environment: {
+              slug: 42,
+              project: { slug: "p" },
+              organization: { slug: "o" },
+            },
+          }),
+        });
+        const info = await findBufferedRunRedirectInfo(
+          { runFriendlyId: "run_real_7", userId: "user_1" },
+          { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
+        );
+        expect(info).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
 });
