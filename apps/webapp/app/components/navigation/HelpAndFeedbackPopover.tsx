@@ -1,9 +1,6 @@
-import {
-  ArrowUpRightIcon,
-  BookOpenIcon,
-  CalendarDaysIcon,
-  LightBulbIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowUpRightIcon, CalendarDaysIcon } from "@heroicons/react/20/solid";
+import { BookIcon } from "~/assets/icons/BookIcon";
+import { BulbIcon } from "~/assets/icons/BulbIcon";
 import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
@@ -113,7 +110,7 @@ export function HelpAndFeedback({
           <div className="flex flex-col gap-1 p-1">
             <SideMenuItem
               name="Documentation"
-              icon={BookOpenIcon}
+              icon={BookIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
               to="https://trigger.dev/docs"
@@ -133,7 +130,7 @@ export function HelpAndFeedback({
             />
             <SideMenuItem
               name="Suggest a feature"
-              icon={LightBulbIcon}
+              icon={BulbIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
               to="https://feedback.trigger.dev/"
