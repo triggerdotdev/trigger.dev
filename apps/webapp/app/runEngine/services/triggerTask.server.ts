@@ -627,6 +627,7 @@ export class RunEngineTriggerTaskService {
           envId: idempotencyClaim.envId,
           taskIdentifier: idempotencyClaim.taskIdentifier,
           idempotencyKey: idempotencyClaim.idempotencyKey,
+          token: idempotencyClaim.token,
           runId: result.run.friendlyId,
         });
       }

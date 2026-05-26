@@ -18,6 +18,10 @@ export type ClaimedIdempotency = {
   envId: string;
   taskIdentifier: string;
   idempotencyKey: string;
+  // Ownership token from `claimOrAwait`. The caller's trigger pipeline
+  // MUST thread this into publishClaim/releaseClaim so the buffer's
+  // compare-and-act protects the slot against a stale predecessor.
+  token: string;
 };
 
 export type IdempotencyKeyConcernResult =
@@ -279,7 +283,8 @@ export class IdempotencyKeyConcern {
       }
       if (outcome.kind === "claimed") {
         // Caller MUST publish/release. Signalled via the result's
-        // `claim` field.
+        // `claim` field, including the ownership token so the buffer
+        // can compare-and-act on the slot we now own.
         return {
           isCached: false,
           idempotencyKey,
@@ -288,6 +293,7 @@ export class IdempotencyKeyConcern {
             envId: request.environment.id,
             taskIdentifier: request.taskId,
             idempotencyKey,
+            token: outcome.token,
           },
         };
       }

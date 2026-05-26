@@ -60,8 +60,12 @@ const baseInput = {
 describe("claimOrAwait", () => {
   it("returns 'claimed' for the first caller — empty key wins SETNX", async () => {
     const { buffer } = makeBuffer({ value: null });
-    const outcome = await claimOrAwait({ ...baseInput, buffer });
-    expect(outcome).toEqual({ kind: "claimed" });
+    const outcome = await claimOrAwait({
+      ...baseInput,
+      buffer,
+      generateToken: () => "token-1",
+    });
+    expect(outcome).toEqual({ kind: "claimed", token: "token-1" });
   });
 
   it("returns 'resolved' immediately when the key already holds a runId", async () => {
@@ -117,6 +121,7 @@ describe("claimOrAwait", () => {
     const outcome = await claimOrAwait({
       ...baseInput,
       buffer,
+      generateToken: () => "token-retry",
       now: () => nowValue,
       sleep: async (ms) => {
         nowValue += ms;
@@ -127,12 +132,16 @@ describe("claimOrAwait", () => {
       safetyNetMs: 1000,
       pollStepMs: 25,
     });
-    expect(outcome).toEqual({ kind: "claimed" });
+    expect(outcome).toEqual({ kind: "claimed", token: "token-retry" });
   });
 
   it("fails open with 'claimed' when buffer is null (mollifier disabled)", async () => {
-    const outcome = await claimOrAwait({ ...baseInput, buffer: null });
-    expect(outcome).toEqual({ kind: "claimed" });
+    const outcome = await claimOrAwait({
+      ...baseInput,
+      buffer: null,
+      generateToken: () => "token-fallopen-null",
+    });
+    expect(outcome).toEqual({ kind: "claimed", token: "token-fallopen-null" });
   });
 
   it("fails open with 'claimed' if buffer.claimIdempotency throws (Redis down)", async () => {
@@ -141,8 +150,12 @@ describe("claimOrAwait", () => {
         throw new Error("ECONNREFUSED");
       }),
     } as unknown as MollifierBuffer;
-    const outcome = await claimOrAwait({ ...baseInput, buffer });
-    expect(outcome).toEqual({ kind: "claimed" });
+    const outcome = await claimOrAwait({
+      ...baseInput,
+      buffer,
+      generateToken: () => "token-fallopen-throw",
+    });
+    expect(outcome).toEqual({ kind: "claimed", token: "token-fallopen-throw" });
   });
 
   it("respects an aborted signal during the wait loop", async () => {
@@ -170,14 +183,14 @@ describe("claimOrAwait", () => {
 describe("publishClaim", () => {
   it("writes the runId to the claim key", async () => {
     const { buffer, state } = makeBuffer({ value: "pending" });
-    await publishClaim({ ...baseInput, runId: "run_X", buffer });
+    await publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer });
     expect(state.value).toBe("run_X");
     expect(buffer.publishClaim).toHaveBeenCalledOnce();
   });
 
   it("no-op when buffer is null", async () => {
     await expect(
-      publishClaim({ ...baseInput, runId: "run_X", buffer: null }),
+      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer: null }),
     ).resolves.toBeUndefined();
   });
 
@@ -188,7 +201,7 @@ describe("publishClaim", () => {
       }),
     } as unknown as MollifierBuffer;
     await expect(
-      publishClaim({ ...baseInput, runId: "run_X", buffer }),
+      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer }),
     ).resolves.toBeUndefined();
   });
 });
@@ -196,11 +209,60 @@ describe("publishClaim", () => {
 describe("releaseClaim", () => {
   it("DELs the claim so waiters can re-acquire", async () => {
     const { buffer, state } = makeBuffer({ value: "pending" });
-    await releaseClaim({ ...baseInput, buffer });
+    await releaseClaim({ ...baseInput, token: "owner-token", buffer });
     expect(state.value).toBeNull();
   });
 
   it("no-op when buffer is null", async () => {
-    await expect(releaseClaim({ ...baseInput, buffer: null })).resolves.toBeUndefined();
+    await expect(releaseClaim({ ...baseInput, token: "owner-token", buffer: null })).resolves.toBeUndefined();
+  });
+});
+
+// End-to-end: the token from `claimOrAwait`'s `claimed` outcome must
+// reach `buffer.claimIdempotency` and round-trip through publishClaim /
+// releaseClaim. Without this the compare-and-act ownership protection
+// in the buffer is bypassed and the stale-claimant hazard returns.
+describe("claim ownership token wiring", () => {
+  it("threads the token from claimOrAwait into buffer.claimIdempotency", async () => {
+    const { buffer } = makeBuffer({ value: null });
+    const outcome = await claimOrAwait({
+      ...baseInput,
+      buffer,
+      generateToken: () => "owner-token-xyz",
+    });
+    expect(outcome).toEqual({ kind: "claimed", token: "owner-token-xyz" });
+    expect(buffer.claimIdempotency).toHaveBeenCalledWith({
+      ...baseInput,
+      token: "owner-token-xyz",
+      ttlSeconds: 30,
+    });
+  });
+
+  it("threads the token from publishClaim into buffer.publishClaim", async () => {
+    const { buffer } = makeBuffer({ value: "pending" });
+    await publishClaim({
+      ...baseInput,
+      token: "owner-token-xyz",
+      runId: "run_X",
+      buffer,
+    });
+    expect(buffer.publishClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token: "owner-token-xyz",
+        runId: "run_X",
+      }),
+    );
+  });
+
+  it("threads the token from releaseClaim into buffer.releaseClaim", async () => {
+    const { buffer } = makeBuffer({ value: "pending" });
+    await releaseClaim({
+      ...baseInput,
+      token: "owner-token-xyz",
+      buffer,
+    });
+    expect(buffer.releaseClaim).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "owner-token-xyz" }),
+    );
   });
 });

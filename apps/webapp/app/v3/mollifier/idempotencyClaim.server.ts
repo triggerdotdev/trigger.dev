@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   IdempotencyClaimResult,
   IdempotencyLookupInput,
@@ -17,7 +18,11 @@ export const DEFAULT_CLAIM_WAIT_MS = 5_000;
 export const DEFAULT_CLAIM_POLL_MS = 25;
 
 export type ClaimOrAwaitOutcome =
-  | { kind: "claimed" } // we own the claim; caller proceeds with the trigger pipeline
+  // We own the claim. `token` MUST be passed to publishClaim/releaseClaim
+  // so the buffer can compare-and-act against our ownership marker — a
+  // late release from a previous claimant whose TTL expired cannot
+  // erase our slot.
+  | { kind: "claimed"; token: string }
   | { kind: "resolved"; runId: string } // someone else's runId; caller returns isCached:true
   | { kind: "timed_out" };
 
@@ -30,6 +35,10 @@ export type ClaimOrAwaitInput = IdempotencyLookupInput & {
   buffer?: MollifierBuffer | null;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  // Test override for the ownership-token generator. Defaults to
+  // `crypto.randomUUID()`. Tests pass a deterministic value so they
+  // can assert publish/release pass-through.
+  generateToken?: () => string;
 };
 
 // Pre-gate Redis claim. All same-key triggers serialise through here
@@ -50,12 +59,19 @@ export type ClaimOrAwaitInput = IdempotencyLookupInput & {
 //   IdempotencyKeyConcern PG-first lookup.
 export async function claimOrAwait(input: ClaimOrAwaitInput): Promise<ClaimOrAwaitOutcome> {
   const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
+  const generateToken = input.generateToken ?? randomUUID;
+  // Generate the ownership token up front so the retry loop reuses it
+  // — we're the same logical claimant across attempts; only the slot
+  // owner changes between releases.
+  const token = generateToken();
   if (!buffer) {
     // Mollifier disabled / buffer construction failed. Fall open —
     // caller proceeds with the trigger pipeline (PG unique constraint
     // backstop). Without the claim machinery the race-window scenarios
-    // from the plan doc revert to today's behaviour.
-    return { kind: "claimed" };
+    // from the plan doc revert to today's behaviour. Token is still
+    // generated so callers don't have to branch on the "no buffer" case
+    // — publish/release become buffer-null no-ops downstream.
+    return { kind: "claimed", token };
   }
   const ttlSeconds = input.ttlSeconds ?? DEFAULT_CLAIM_TTL_SECONDS;
   const safetyNetMs = input.safetyNetMs ?? DEFAULT_CLAIM_WAIT_MS;
@@ -74,17 +90,17 @@ export async function claimOrAwait(input: ClaimOrAwaitInput): Promise<ClaimOrAwa
   // a prior burst).
   let result: IdempotencyClaimResult;
   try {
-    result = await buffer.claimIdempotency({ ...lookupInput, ttlSeconds });
+    result = await buffer.claimIdempotency({ ...lookupInput, token, ttlSeconds });
   } catch (err) {
     logger.warn("idempotency claim failed (fail-open)", {
       envId: input.envId,
       taskIdentifier: input.taskIdentifier,
       err: err instanceof Error ? err.message : String(err),
     });
-    return { kind: "claimed" };
+    return { kind: "claimed", token };
   }
 
-  if (result.kind === "claimed") return { kind: "claimed" };
+  if (result.kind === "claimed") return { kind: "claimed", token };
   if (result.kind === "resolved") return result;
 
   // result.kind === "pending" — wait/poll loop. May see the value flip
@@ -108,17 +124,19 @@ export async function claimOrAwait(input: ClaimOrAwaitInput): Promise<ClaimOrAwa
 
     if (current === null) {
       // Claimant released on error. Re-attempt the claim — one of the
-      // waiters will win, the rest see "pending" again.
+      // waiters will win, the rest see "pending" again. Reuse our token:
+      // we're still the same logical claimant, just contending for a
+      // freshly empty slot.
       try {
-        const retry = await buffer.claimIdempotency({ ...lookupInput, ttlSeconds });
-        if (retry.kind === "claimed") return { kind: "claimed" };
+        const retry = await buffer.claimIdempotency({ ...lookupInput, token, ttlSeconds });
+        if (retry.kind === "claimed") return { kind: "claimed", token };
         if (retry.kind === "resolved") return retry;
         // "pending" again → keep polling.
       } catch (err) {
         logger.warn("idempotency claim retry failed", {
           err: err instanceof Error ? err.message : String(err),
         });
-        return { kind: "claimed" };
+        return { kind: "claimed", token };
       }
       continue;
     }
@@ -136,6 +154,10 @@ export async function publishClaim(input: {
   envId: string;
   taskIdentifier: string;
   idempotencyKey: string;
+  // Ownership token from the `claimed` outcome. Buffer compare-and-sets
+  // on this so a publish from a stale claimant (TTL expired, another
+  // claimant moved in) is a no-op rather than overwriting their claim.
+  token: string;
   runId: string;
   ttlSeconds?: number;
   buffer?: MollifierBuffer | null;
@@ -148,6 +170,7 @@ export async function publishClaim(input: {
       envId: input.envId,
       taskIdentifier: input.taskIdentifier,
       idempotencyKey: input.idempotencyKey,
+      token: input.token,
       runId: input.runId,
       ttlSeconds,
     });
@@ -166,6 +189,10 @@ export async function releaseClaim(input: {
   envId: string;
   taskIdentifier: string;
   idempotencyKey: string;
+  // Ownership token from the `claimed` outcome. Buffer compare-and-
+  // deletes on this so a release from a stale claimant whose TTL
+  // expired can't wipe a new owner's claim.
+  token: string;
   buffer?: MollifierBuffer | null;
 }): Promise<void> {
   const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
@@ -175,6 +202,7 @@ export async function releaseClaim(input: {
       envId: input.envId,
       taskIdentifier: input.taskIdentifier,
       idempotencyKey: input.idempotencyKey,
+      token: input.token,
     });
   } catch (err) {
     logger.warn("idempotency claim release failed", {
