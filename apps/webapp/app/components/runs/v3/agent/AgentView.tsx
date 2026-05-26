@@ -554,6 +554,15 @@ function useAgentSessionMessages({
     };
   }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug, snapshotPresignedUrl]);
 
+  // Reset refs when session changes to prevent stale data from bleeding
+  // across sessions (e.g. navigating between runs with different agent sessions)
+  useEffect(() => {
+    pendingRef.current = new Map(seedMessages.map((m) => [m.id, m]));
+    timestampsRef.current = new Map(seedMessages.map((m) => [m.id, INITIAL_PAYLOAD_TIMESTAMP]));
+    orchestrationRef.current = new Map();
+    setMessagesById(new Map(pendingRef.current));
+  }, [sessionId, seedMessages]);
+
   return useMemo(() => {
     const timestamps = timestampsRef.current;
     const arr = Array.from(messagesById.values());

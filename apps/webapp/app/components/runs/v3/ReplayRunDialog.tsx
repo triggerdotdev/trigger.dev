@@ -93,7 +93,7 @@ function ReplayContent({ runFriendlyId, failedRedirect }: ReplayRunDialogProps) 
         }/env/${envSlug}/queues?${searchParams.toString()}`
       );
     }
-  }, [params.organizationSlug, params.projectParam, params.envParam, environmentIdOverride]);
+  }, [params.organizationSlug, params.projectParam, params.envParam, environmentIdOverride, replayDataFetcher.data]);
 
   const customQueues = useMemo(() => {
     return queueFetcher.data?.queues ?? [];

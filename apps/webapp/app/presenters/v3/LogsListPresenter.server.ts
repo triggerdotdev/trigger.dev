@@ -215,12 +215,6 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    if (store === EVENT_STORE_TYPES.CLICKHOUSE) {
-      throw new ServiceValidationError(
-        "Logs are not available for ClickHouse event store. Please contact support."
-      );
-    }
-
     const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
     // This should be removed once we clear the old inserts, 30 DAYS, the materialized view excludes events without trace_id)

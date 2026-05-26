@@ -38,7 +38,7 @@ export function AIFilterInput() {
   const fetcher = useFetcher<AIFilterResult>();
 
   useEffect(() => {
-    if (fetcher.data?.success && fetcher.state === "loading") {
+    if (fetcher.data?.success && fetcher.state === "idle") {
       setText("");
       setIsFocused(false);
 
