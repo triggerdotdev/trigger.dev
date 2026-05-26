@@ -351,6 +351,15 @@ export function v3AgentsPath(
   return `${v3EnvironmentPath(organization, project, environment)}/agents`;
 }
 
+export function v3AgentTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  agentSlug: string
+) {
+  return `${v3AgentsPath(organization, project, environment)}/${encodeURIComponent(agentSlug)}`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -51,6 +51,7 @@ import {
 import { requireUserId } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
+  v3AgentTaskPath,
   v3RunsPath,
   v3PlaygroundAgentPath,
   v3ModelsPath,
@@ -225,7 +226,13 @@ export default function AgentsPage() {
                 <TableBody>
                   {filteredItems.length > 0 ? (
                     filteredItems.map((agent) => {
-                      const path = v3RunsPath(organization, project, environment, {
+                      const path = v3AgentTaskPath(
+                        organization,
+                        project,
+                        environment,
+                        agent.slug
+                      );
+                      const runsPath = v3RunsPath(organization, project, environment, {
                         tasks: [agent.slug],
                       });
                       const agentType =
@@ -334,7 +341,7 @@ export default function AgentsPage() {
                               <>
                                 <PopoverMenuItem
                                   icon={RunsIcon}
-                                  to={path}
+                                  to={runsPath}
                                   title="View runs"
                                   leadingIconClassName="text-runs"
                                 />
