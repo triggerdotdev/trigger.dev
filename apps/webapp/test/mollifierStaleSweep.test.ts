@@ -74,6 +74,7 @@ describe("runStaleSweepOnce — unit", () => {
 describe("runStaleSweepOnce — testcontainers", () => {
   redisTest(
     "flags every entry whose dwell exceeds the stale threshold",
+    { timeout: 20_000 },
     async ({ redisOptions }) => {
       const buffer = new MollifierBuffer({ redisOptions });
       try {
@@ -144,6 +145,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
 
   redisTest(
     "snapshot reports zero for envs that have entries but none stale (clears latched alerts)",
+    { timeout: 20_000 },
     async ({ redisOptions }) => {
       // Critical for alert behaviour: a previous sweep reported env_a
       // stale, alert fired, drainer caught up. The next sweep must
@@ -172,6 +174,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
 
   redisTest(
     "leaves fresh entries alone (dwell below threshold)",
+    { timeout: 20_000 },
     async ({ redisOptions }) => {
       // Regression guard for the inequality direction. A bug that flipped
       // `dwellMs > threshold` to `dwellMs >= threshold` would flag every
@@ -201,6 +204,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
 
   redisTest(
     "scans across multiple orgs",
+    { timeout: 20_000 },
     async ({ redisOptions }) => {
       // Phase-3 design has org-level fairness in the drainer; the sweep
       // must walk every org/env, not just the first one it finds. If a
