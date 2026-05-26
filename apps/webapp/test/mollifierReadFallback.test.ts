@@ -257,6 +257,58 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.runTags).toEqual(["t1", "t2"]);
   });
 
+  it("treats invalid date strings as undefined and does not mis-classify status as CANCELED", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        cancelledAt: "not-a-date",
+        cancelReason: "user requested",
+        delayUntil: "also-not-a-date",
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("QUEUED");
+    expect(result!.cancelledAt).toBeUndefined();
+    expect(result!.delayUntil).toBeUndefined();
+  });
+
+  it("parses valid ISO date strings on cancelledAt and delayUntil", async () => {
+    const cancelledAtIso = "2026-05-11T13:00:00.000Z";
+    const delayUntilIso = "2026-05-11T14:00:00.000Z";
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        cancelledAt: cancelledAtIso,
+        cancelReason: "user requested",
+        delayUntil: delayUntilIso,
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.status).toBe("CANCELED");
+    expect(result!.cancelledAt).toEqual(new Date(cancelledAtIso));
+    expect(result!.cancelReason).toBe("user requested");
+    expect(result!.delayUntil).toEqual(new Date(delayUntilIso));
+  });
+
   it("falls back to entry.envId for runtimeEnvironmentId when snapshot lacks environment.id", async () => {
     const entry: BufferEntry = {
       runId: "run_1",

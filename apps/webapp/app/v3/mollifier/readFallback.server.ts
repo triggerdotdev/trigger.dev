@@ -102,6 +102,13 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string") ? (value as string[]) : [];
 }
 
+function asDate(value: unknown): Date | undefined {
+  const raw = asString(value);
+  if (!raw) return undefined;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export async function findRunByIdWithMollifierFallback(
   input: ReadFallbackInput,
   deps: ReadFallbackDeps = {},
@@ -134,8 +141,7 @@ export async function findRunByIdWithMollifierFallback(
         ? (snapshot.environment as Record<string, unknown>)
         : undefined;
 
-    const cancelledAtRaw = asString(snapshot.cancelledAt);
-    const cancelledAt = cancelledAtRaw ? new Date(cancelledAtRaw) : undefined;
+    const cancelledAt = asDate(snapshot.cancelledAt);
     const cancelReason = asString(snapshot.cancelReason);
     let status: SyntheticRun["status"] = "QUEUED";
     if (cancelledAt) {
@@ -143,8 +149,7 @@ export async function findRunByIdWithMollifierFallback(
     } else if (entry.status === "FAILED") {
       status = "FAILED";
     }
-    const delayUntilRaw = asString(snapshot.delayUntil);
-    const delayUntil = delayUntilRaw ? new Date(delayUntilRaw) : undefined;
+    const delayUntil = asDate(snapshot.delayUntil);
 
     return {
       id: RunId.fromFriendlyId(entry.runId),
