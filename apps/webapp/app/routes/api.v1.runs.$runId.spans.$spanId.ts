@@ -9,42 +9,101 @@ import {
 } from "~/services/routeBuilders/apiBuilder.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
   spanId: z.string(),
 });
 
+// Phase A2 — discriminated union for PG vs buffered runs. Buffered runs
+// only have one valid spanId (the queued span recorded at gate time and
+// reused as the run's root spanId when the drainer materialises). Any
+// other spanId returns a deterministic 404; the queued span returns a
+// minimal synthesised shape so the customer's SDK sees the same 200
+// contract they'd get for a freshly-triggered run.
+type ResolvedRun =
+  | { source: "pg"; run: Awaited<ReturnType<typeof findPgRun>> & {} }
+  | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
+
+async function findPgRun(runId: string, environmentId: string) {
+  return $replica.taskRun.findFirst({
+    where: { friendlyId: runId, runtimeEnvironmentId: environmentId },
+  });
+}
+
 export const loader = createLoaderApiRoute(
   {
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
-    findResource: (params, auth) => {
-      return $replica.taskRun.findFirst({
-        where: {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: auth.environment.id,
-        },
+    findResource: async (params, auth): Promise<ResolvedRun | null> => {
+      const pgRun = await findPgRun(params.runId, auth.environment.id);
+      if (pgRun) return { source: "pg", run: pgRun };
+
+      const buffered = await findRunByIdWithMollifierFallback({
+        runId: params.runId,
+        environmentId: auth.environment.id,
+        organizationId: auth.environment.organizationId,
       });
+      if (buffered) return { source: "buffer", run: buffered };
+
+      return null;
     },
     shouldRetryNotFound: true,
     authorization: {
       action: "read",
-      resource: (run) => {
+      resource: (resolved) => {
+        if (resolved.source === "pg") {
+          const run = resolved.run;
+          const resources = [
+            { type: "runs", id: run.friendlyId },
+            { type: "tasks", id: run.taskIdentifier },
+            ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+          ];
+          if (run.batchId) {
+            resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
+          }
+          return anyResource(resources);
+        }
+        const run = resolved.run;
         const resources = [
           { type: "runs", id: run.friendlyId },
-          { type: "tasks", id: run.taskIdentifier },
-          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+          ...(run.taskIdentifier ? [{ type: "tasks", id: run.taskIdentifier }] : []),
+          ...run.tags.map((tag) => ({ type: "tags", id: tag })),
         ];
-        if (run.batchId) {
-          resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
-        }
         return anyResource(resources);
       },
     },
   },
-  async ({ params, resource: run, authentication }) => {
+  async ({ params, resource: resolved, authentication }) => {
+    if (resolved.source === "buffer") {
+      // Buffered runs have exactly one valid spanId — the queued span the
+      // mollifier gate recorded at trigger time, which becomes the run's
+      // root spanId once the drainer materialises. Any other spanId is a
+      // deterministic 404. The matching spanId returns a minimal shape
+      // representing "span exists, no execution data yet."
+      if (resolved.run.spanId !== params.spanId) {
+        return json({ error: "Span not found" }, { status: 404 });
+      }
+      return json(
+        {
+          spanId: resolved.run.spanId,
+          parentId: resolved.run.parentSpanId ?? null,
+          runId: resolved.run.friendlyId,
+          message: resolved.run.taskIdentifier ?? "",
+          isError: false,
+          isPartial: resolved.run.status !== "CANCELED",
+          isCancelled: resolved.run.status === "CANCELED",
+          level: "TRACE",
+          startTime: resolved.run.createdAt,
+          durationMs: 0,
+        },
+        { status: 200 }
+      );
+    }
+
+    const run = resolved.run;
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
       authentication.environment.organization.id

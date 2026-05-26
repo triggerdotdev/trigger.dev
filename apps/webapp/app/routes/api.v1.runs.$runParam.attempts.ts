@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -10,6 +10,30 @@ const ParamsSchema = z.object({
   /* This is the run friendly ID */
   runParam: z.string(),
 });
+
+// Phase A5 — fixes the pre-existing route bug where GET on this URL
+// returned a Remix "no loader" 400 with an internal error message. The
+// route only exposed `action` (POST creates a new attempt); GET had no
+// handler, so any well-intentioned SDK probe hit the framework error
+// instead of a proper API response.
+//
+// Returns `{ attempts: [] }` for both PG and buffered runs. The detailed
+// attempt list belongs on the v3 retrieve endpoint, not here — this is
+// the dual of the POST that creates attempts, and the empty-list shape
+// gives the parity script a stable contract to assert against.
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const authenticationResult = await authenticateApiRequest(request);
+  if (!authenticationResult) {
+    return json({ error: "Invalid or Missing API Key" }, { status: 401 });
+  }
+
+  const parsed = ParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    return json({ error: "Invalid or missing run ID" }, { status: 400 });
+  }
+
+  return json({ attempts: [] }, { status: 200 });
+}
 
 export async function action({ request, params }: ActionFunctionArgs) {
   // Authenticate the request
