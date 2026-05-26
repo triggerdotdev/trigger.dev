@@ -162,7 +162,7 @@ const queues = colors.purple[500];
 const query = colors.blue[500];
 const metrics = colors.green[500];
 const customDashboards = charcoal[400];
-const deployments = colors.green[500];
+const deployments = colors.blue[500];
 const concurrency = colors.amber[500];
 const limits = colors.purple[500];
 const regions = colors.green[500];
@@ -182,6 +182,7 @@ const agents = colors.purple[500];
 const sessions = colors.yellow[500];
 const playgrounds = colors.fuchsia[500];
 const models = colors.violet[500];
+const previewBranches = colors.yellow[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -272,6 +273,7 @@ module.exports = {
         sessions,
         playgrounds,
         models,
+        previewBranches,
         // shadcn/ui color tokens used by streamdown's internal components
         // (link safety modal, code block actions, etc.)
         // Values are defined via CSS variables in .streamdown-container

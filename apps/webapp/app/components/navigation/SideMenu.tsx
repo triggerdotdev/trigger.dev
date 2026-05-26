@@ -27,7 +27,7 @@ import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
-import { KeyValueIcon } from "~/assets/icons/KeyValueIcon";
+import { IDIcon } from "~/assets/icons/IDIcon";
 import { DialIcon } from "~/assets/icons/DialIcon";
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
