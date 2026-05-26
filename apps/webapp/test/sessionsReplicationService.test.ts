@@ -3,6 +3,7 @@ import { containerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { SessionsReplicationService } from "~/services/sessionsReplicationService.server";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -21,7 +22,7 @@ describe("SessionsReplicationService", () => {
       });
 
       const service = new SessionsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "sessions-replication",
         slotName: "sessions_to_clickhouse_v1",
@@ -128,7 +129,7 @@ describe("SessionsReplicationService", () => {
       });
 
       const service = new SessionsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "sessions-replication",
         slotName: "sessions_to_clickhouse_v1",

@@ -12,6 +12,7 @@ import { z } from "zod";
 import { RunsBackfillerService } from "~/services/runsBackfiller.server";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryTracing } from "./utils/tracing";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -30,7 +31,7 @@ describe("RunsBackfillerService", () => {
       const { tracer, exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication",
         slotName: "task_runs_to_clickhouse_v1",

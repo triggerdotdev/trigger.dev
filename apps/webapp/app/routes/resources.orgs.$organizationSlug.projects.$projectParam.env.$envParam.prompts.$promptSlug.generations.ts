@@ -6,7 +6,7 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { parsePeriodToMs } from "~/utils/periods";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   PromptPresenter,
   type GenerationRow,
@@ -59,7 +59,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const operations = url.searchParams.getAll("operations").filter(Boolean);
   const providers = url.searchParams.getAll("providers").filter(Boolean);
 
-  const presenter = new PromptPresenter(clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const presenter = new PromptPresenter(clickhouse);
   const result = await presenter.listGenerations({
     environmentId: environment.id,
     promptSlug,

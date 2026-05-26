@@ -6,6 +6,12 @@ export {
 } from "./engine/errors.js";
 export type { EventBusEventArgs, EventBusEvents } from "./engine/eventBus.js";
 export type { AuthenticatedEnvironment } from "./shared/index.js";
+export type {
+  PendingVersionRunIdLookup,
+  PendingVersionRunIdLookupOptions,
+  PendingVersionRunIdLookupResult,
+} from "./engine/services/pendingVersionLookup.js";
+export { NoopPendingVersionRunIdLookup } from "./engine/services/pendingVersionLookup.js";
 
 // Batch Queue exports
 export { BatchQueue, BatchCompletionTracker } from "./batch-queue/index.js";

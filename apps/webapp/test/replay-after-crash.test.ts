@@ -33,6 +33,7 @@ import {
 import type { UIMessageChunk } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
 import { env } from "~/env.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -55,8 +56,11 @@ function textTurn(id: string, text: string): UIMessageChunk[] {
  *     via the webapp's real `generatePresignedUrl` (so snapshot reads
  *     hit a real S3-compatible backend).
  *   - `readSessionStreamRecords` returns the canonical
- *     `{ records: [{ data, id, seqNum }] }` shape — `data` is the
- *     JSON-encoded chunk body, mirroring the webapp's S2 record shape.
+ *     `{ records: [{ data, id, seqNum }] }` shape. `data` is the parsed
+ *     chunk OBJECT — the SDK writer puts the chunk object directly into
+ *     the record envelope and the webapp route forwards it as-is, so
+ *     the schema now declares `data: z.unknown()` and consumers use it
+ *     without an extra `JSON.parse` step.
  */
 function stubApiClient(opts: {
   projectRef: string;
@@ -64,7 +68,7 @@ function stubApiClient(opts: {
   sessionOutChunks: unknown[];
 }) {
   const records = opts.sessionOutChunks.map((chunk, i) => ({
-    data: typeof chunk === "string" ? chunk : JSON.stringify(chunk),
+    data: chunk,
     id: `evt-${i + 1}`,
     seqNum: i + 1,
   }));
@@ -74,13 +78,15 @@ function stubApiClient(opts: {
     })
   );
   vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
-    async getPayloadUrl(filename: string) {
-      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, filename, "GET");
+    async getChatSnapshotUrl(sessionId: string) {
+      const key = chatSnapshotStoragePathForSession(sessionId);
+      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, key, "GET");
       if (!result.success) throw new Error(result.error);
       return { presignedUrl: result.url };
     },
-    async createUploadPayloadUrl(filename: string) {
-      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, filename, "PUT");
+    async createChatSnapshotUploadUrl(sessionId: string) {
+      const key = chatSnapshotStoragePathForSession(sessionId);
+      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, key, "PUT");
       if (!result.success) throw new Error(result.error);
       return { presignedUrl: result.url };
     },

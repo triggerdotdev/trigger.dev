@@ -34,28 +34,27 @@ function buildSnapshot(count = 1): ChatSnapshotV1 {
 
 /**
  * Stub `apiClientManager.clientOrThrow()` so the helpers see a fake API
- * client whose `getPayloadUrl` / `createUploadPayloadUrl` resolve with the
- * presigned URLs the test wants. Returns spies for assertion.
+ * client whose `getChatSnapshotUrl` / `createChatSnapshotUploadUrl` resolve
+ * with the presigned URLs the test wants. Returns spies for assertion.
  */
 function stubApiClient(opts: {
-  getPayloadUrl?: (filename: string) => Promise<{ presignedUrl: string }>;
-  createUploadPayloadUrl?: (filename: string) => Promise<{ presignedUrl: string }>;
+  getChatSnapshotUrl?: (sessionId: string) => Promise<{ presignedUrl: string }>;
+  createChatSnapshotUploadUrl?: (sessionId: string) => Promise<{ presignedUrl: string }>;
 }) {
-  const getPayloadUrl = vi.fn(
-    opts.getPayloadUrl ?? (async (_filename: string) => ({ presignedUrl: "https://example.invalid/get" }))
+  const getChatSnapshotUrl = vi.fn(
+    opts.getChatSnapshotUrl ??
+      (async (_sessionId: string) => ({ presignedUrl: "https://example.invalid/get" }))
   );
-  const createUploadPayloadUrl = vi.fn(
-    opts.createUploadPayloadUrl ??
-      (async (_filename: string) => ({ presignedUrl: "https://example.invalid/put" }))
+  const createChatSnapshotUploadUrl = vi.fn(
+    opts.createChatSnapshotUploadUrl ??
+      (async (_sessionId: string) => ({ presignedUrl: "https://example.invalid/put" }))
   );
   const fakeClient = {
-    getPayloadUrl,
-    createUploadPayloadUrl,
+    getChatSnapshotUrl,
+    createChatSnapshotUploadUrl,
   };
-  vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue(
-    fakeClient as never
-  );
-  return { getPayloadUrl, createUploadPayloadUrl };
+  vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue(fakeClient as never);
+  return { getChatSnapshotUrl, createChatSnapshotUploadUrl };
 }
 
 /**
@@ -87,7 +86,7 @@ describe("chat snapshot helpers", () => {
 
   describe("readChatSnapshot", () => {
     it("returns the snapshot on a successful GET", async () => {
-      const { getPayloadUrl } = stubApiClient({});
+      const { getChatSnapshotUrl } = stubApiClient({});
       const snapshot = buildSnapshot(2);
       stubFetch(async () =>
         new Response(JSON.stringify(snapshot), {
@@ -97,7 +96,7 @@ describe("chat snapshot helpers", () => {
       );
 
       const result = await readChatSnapshot("session-1");
-      expect(getPayloadUrl).toHaveBeenCalledWith("sessions/session-1/snapshot.json");
+      expect(getChatSnapshotUrl).toHaveBeenCalledWith("session-1");
       expect(result).toMatchObject({
         version: 1,
         messages: snapshot.messages,
@@ -177,7 +176,7 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when presign call fails", async () => {
       stubApiClient({
-        getPayloadUrl: async () => {
+        getChatSnapshotUrl: async () => {
           throw new Error("presign denied");
         },
       });
@@ -202,13 +201,13 @@ describe("chat snapshot helpers", () => {
 
   describe("writeChatSnapshot", () => {
     it("PUTs the snapshot JSON to the presigned URL", async () => {
-      const { createUploadPayloadUrl } = stubApiClient({});
+      const { createChatSnapshotUploadUrl } = stubApiClient({});
       const fetchSpy = stubFetch(async () => new Response(null, { status: 200 }));
 
       const snapshot = buildSnapshot(3);
       await writeChatSnapshot("session-2", snapshot);
 
-      expect(createUploadPayloadUrl).toHaveBeenCalledWith("sessions/session-2/snapshot.json");
+      expect(createChatSnapshotUploadUrl).toHaveBeenCalledWith("session-2");
       expect(fetchSpy).toHaveBeenCalledOnce();
       const [url, init] = fetchSpy.mock.calls[0]!;
       expect(url).toBe("https://example.invalid/put");
@@ -239,7 +238,7 @@ describe("chat snapshot helpers", () => {
 
     it("returns without throwing when presign fails (warns)", async () => {
       stubApiClient({
-        createUploadPayloadUrl: async () => {
+        createChatSnapshotUploadUrl: async () => {
           throw new Error("presign denied");
         },
       });
@@ -250,29 +249,28 @@ describe("chat snapshot helpers", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
-    it("uses the same `snapshotFilename(sessionId)` convention as the read path", async () => {
-      // Round-trip check: read and write target the same key for a given
-      // sessionId. The runtime relies on this to make read-after-write
-      // coherent on subsequent boots.
-      const { getPayloadUrl } = stubApiClient({
-        getPayloadUrl: async () => ({ presignedUrl: "https://example.invalid/get" }),
+    it("addresses reads and writes by the same sessionId", async () => {
+      // Round-trip check: both presign methods receive the same sessionId.
+      // The canonical key (`sessions/{id}/snapshot.json`) lives server-side
+      // now, so the SDK has no key string to compare — sessionId equality
+      // is the SDK-visible invariant.
+      const { getChatSnapshotUrl } = stubApiClient({
+        getChatSnapshotUrl: async () => ({ presignedUrl: "https://example.invalid/get" }),
       });
       stubFetch(async () => new Response(null, { status: 404 }));
 
-      // Trigger a read.
       await readChatSnapshot("round-trip-session");
-      const [readKey] = getPayloadUrl.mock.calls[0]!;
+      const [readArg] = getChatSnapshotUrl.mock.calls[0]!;
 
-      // Trigger a write to the same session.
-      const { createUploadPayloadUrl } = stubApiClient({
-        createUploadPayloadUrl: async () => ({ presignedUrl: "https://example.invalid/put" }),
+      const { createChatSnapshotUploadUrl } = stubApiClient({
+        createChatSnapshotUploadUrl: async () => ({ presignedUrl: "https://example.invalid/put" }),
       });
       stubFetch(async () => new Response(null, { status: 200 }));
       await writeChatSnapshot("round-trip-session", buildSnapshot());
-      const [writeKey] = createUploadPayloadUrl.mock.calls[0]!;
+      const [writeArg] = createChatSnapshotUploadUrl.mock.calls[0]!;
 
-      expect(readKey).toBe(writeKey);
-      expect(readKey).toBe("sessions/round-trip-session/snapshot.json");
+      expect(readArg).toBe(writeArg);
+      expect(readArg).toBe("round-trip-session");
     });
   });
 });

@@ -1,0 +1,263 @@
+---
+title: "Sessions"
+sidebarTitle: "Sessions"
+description: "The durable, task-bound, bi-directional I/O primitive that backs chat.agent — sessions.list / open / start / close plus the SessionHandle (in/out) API."
+---
+
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
+A **Session** is a durable, task-bound, bi-directional I/O channel pair. It outlives any single run: a Session row is keyed on a stable `externalId` (e.g. `chatId`), holds the conversation's identity across run boundaries, and exposes two realtime streams — `.in` (clients → task) and `.out` (task → clients).
+
+`chat.agent` is built on Sessions. You can also use them directly for any pattern that needs durable bi-directional streaming across runs: long-lived agent inboxes, multi-step approval flows, server-to-server pipelines that survive worker restarts.
+
+## When to reach for Sessions directly
+
+`chat.agent` handles 90% of chat-shaped workloads — message accumulation, the turn loop, stop signals, lifecycle hooks. Use the raw `sessions` API when you need any of:
+
+- **Non-chat conversational state**: an agent inbox where each "turn" is a webhook event rather than a UI message.
+- **Server-to-server bi-directional streaming** where an external service produces records the task consumes (and vice-versa) over the same durable channel.
+- **A custom turn loop** where the agent abstraction doesn't fit but you still want session-survival across runs.
+
+For chat use cases, prefer [`chat.agent`](/ai-chat/backend#chat-agent) or [`chat.createSession`](/ai-chat/backend#chat-createsession).
+
+## `sessions` namespace
+
+```ts
+import { sessions } from "@trigger.dev/sdk";
+```
+
+### `sessions.start(body, requestOptions?)`
+
+Atomically create a Session row and trigger its first run. Idempotent on `(env, externalId)` — two concurrent calls with the same `externalId` converge to one session.
+
+```ts
+const { id, runId, publicAccessToken, isCached } = await sessions.start({
+  type: "chat.agent",
+  externalId: chatId,
+  taskIdentifier: "my-chat",
+  triggerConfig: {
+    tags: [`chat:${chatId}`],
+    basePayload: { /* whatever your task's payload shape is */ },
+  },
+});
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `type` | `string` | Free-form discriminator. `chat.agent` uses `"chat.agent"`. |
+| `externalId` | `string?` | Your stable identity. Cannot start with `session_` (reserved). |
+| `taskIdentifier` | `string` | Task this session triggers runs against. |
+| `triggerConfig` | `SessionTriggerConfig` | Trigger options applied to every run: `tags`, `queue`, `machine`, `maxAttempts`, `idleTimeoutInSeconds`, `basePayload`. |
+| `tags` | `string[]?` | Up to 10 tags on the Session row (separate from `triggerConfig.tags`). |
+| `metadata` | `Record<string, unknown>?` | Arbitrary JSON. |
+| `expiresAt` | `Date?` | Hard retention deadline. |
+
+Returns `CreatedSessionResponseBody`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `string` | Server-assigned `session_*` friendlyId. |
+| `runId` | `string` | The first run created alongside the session. |
+| `publicAccessToken` | `string` | Session-scoped PAT (`read:sessions:{id} + write:sessions:{id}`). |
+| `isCached` | `boolean` | `true` if the session already existed (idempotent upsert). |
+
+### `sessions.retrieve(idOrExternalId, requestOptions?)`
+
+Retrieve a Session by either its server-assigned `session_*` id or your user-supplied `externalId`. The server disambiguates via the `session_` prefix.
+
+```ts
+const session = await sessions.retrieve(chatId);
+console.log(session.currentRunId, session.tags, session.closedAt);
+```
+
+### `sessions.update(idOrExternalId, body, requestOptions?)`
+
+Mutate `tags`, `metadata`, or `externalId` on an existing Session. Pass `externalId: null` to explicitly clear it.
+
+### `sessions.close(idOrExternalId, body?, requestOptions?)`
+
+Mark a Session as closed. Terminal and idempotent. The optional `reason` is stored on the row.
+
+```ts
+await sessions.close(chatId, { reason: "user signed out" });
+```
+
+### `sessions.list(options?, requestOptions?)`
+
+Cursor-paginated list of Sessions in the current environment. Returns a `CursorPagePromise` you can iterate with `for await`.
+
+```ts
+for await (const s of sessions.list({
+  type: "chat.agent",
+  tag: `user:${userId}`,
+  status: "ACTIVE",
+  limit: 50,
+})) {
+  console.log(s.id, s.externalId, s.createdAt);
+}
+```
+
+| Filter | Type | Notes |
+|---|---|---|
+| `type` | `string \| string[]` | e.g. `"chat.agent"` |
+| `tag` | `string \| string[]` | Matches `triggerConfig.tags` |
+| `taskIdentifier` | `string \| string[]` | Filter by task |
+| `externalId` | `string` | Exact match |
+| `status` | `"ACTIVE" \| "CLOSED" \| "EXPIRED"` | Lifecycle state |
+| `period` / `from` / `to` | window | Time-range filter |
+| `limit` / `after` / `before` | cursor | Pagination (1–100 per page; default 20) |
+
+### `sessions.open(idOrExternalId)`
+
+Open a lightweight `SessionHandle` to the realtime channels. Does **not** hit the network — each handle method calls the corresponding endpoint lazily.
+
+```ts
+const session = sessions.open(chatId);
+await session.out.append({ kind: "message", text: "hello" });
+const next = await session.in.once<MyEvent>({ timeoutMs: 30_000 });
+```
+
+## `SessionHandle`
+
+```ts
+class SessionHandle {
+  readonly id: string;
+  readonly in: SessionInputChannel;
+  readonly out: SessionOutputChannel;
+}
+```
+
+The two channels mirror the producer/consumer pair in `streams.define` (out) and `streams.input` (in), but are **session-scoped** rather than run-scoped — they survive across run boundaries.
+
+## `session.out` — task → clients
+
+The output channel. The task writes; external clients (browser, server action, another task) read via SSE.
+
+### `out.append(value, options?)`
+
+Append a single record. Routes through `writer` internally so SSE consumers see the same parsed-object shape on every event.
+
+### `out.pipe(stream, options?)`
+
+Pipe an `AsyncIterable` or `ReadableStream` directly to S2 (the durable backing store). Returns `{ stream, waitUntilComplete }`.
+
+### `out.writer({ execute, ... })`
+
+Imperative writer. `execute({ write, merge })` runs against an in-memory queue whose records are piped to S2.
+
+```ts
+session.out.writer<MyChunk>({
+  execute: ({ write }) => {
+    write({ type: "text", text: "hi" });
+    write({ type: "text", text: " there" });
+  },
+});
+```
+
+### `out.read(options?)`
+
+Subscribe to SSE records on `.out`. Returns an async-iterable stream with auto-retry and `Last-Event-ID` resume.
+
+```ts
+const stream = await session.out.read<MyChunk>({
+  signal: AbortSignal.timeout(30_000),
+  lastEventId: lastSeenSeqNum,
+});
+for await (const chunk of stream) {
+  // ...
+}
+```
+
+### `out.writeControl(subtype, extraHeaders?)`
+
+Write a Trigger control record. Carries a `trigger-control` header valued with `subtype` (e.g. `turn-complete`, `upgrade-required`); the body is empty. The SDK transport filters control records out of the consumer-facing chunk stream — readers route them via `onControl` instead.
+
+Returns `{ lastEventId }` — useful for trim chains.
+
+### `out.trimTo(earliestSeqNum)`
+
+Append an S2 `trim` command. Records with `seq_num < earliestSeqNum` are eventually deleted. Idempotent and monotonic. `chat.agent` uses this to keep `session.out` bounded to roughly one turn at steady state.
+
+## `session.in` — clients → task
+
+The input channel. External clients call `send`; the task consumes via `on` / `once` / `peek` / `wait` / `waitWithIdleTimeout`.
+
+### `in.send(value, requestOptions?)`
+
+Append a single record. Called from outside the task (browser, server action, another task).
+
+```ts
+const session = sessions.open(chatId);
+await session.in.send({ kind: "user-event", payload: { ... } });
+```
+
+### `in.on(handler)`
+
+Register a handler that fires for every record landing on `.in`. Buffered records flush on attach. Returns `{ off }`.
+
+### `in.once(options?)`
+
+Wait for the next record without suspending the run. `{ ok: true, output }` or `{ ok: false, error }` on timeout. Chain `.unwrap()` to get the data directly.
+
+```ts
+const result = await session.in.once<MyEvent>({ timeoutMs: 5_000 });
+if (result.ok) handle(result.output);
+```
+
+### `in.peek()`
+
+Non-blocking peek at the head of the `.in` buffer.
+
+### `in.wait(options?)`
+
+Suspend the current run until the next record arrives — frees compute while blocked. Only callable from inside `task.run()`.
+
+```ts
+const next = await session.in.wait<MyEvent>({ timeout: "1h" });
+```
+
+### `in.waitWithIdleTimeout({ idleTimeoutInSeconds, timeout, ... })`
+
+Hybrid: stay warm for `idleTimeoutInSeconds`, then suspend via `wait` if nothing arrives. `chat.agent`'s turn loop uses this to balance responsiveness and cost.
+
+```ts
+const next = await session.in.waitWithIdleTimeout<MyEvent>({
+  idleTimeoutInSeconds: 30,
+  timeout: "1h",
+  onSuspend: () => { /* persist before suspending */ },
+  onResume: () => { /* re-hydrate after resume */ },
+});
+```
+
+### `in.lastDispatchedSeqNum()`
+
+The highest S2 `seq_num` this channel has delivered to a consumer. Used by `chat.agent` to persist a resume cursor on each `turn-complete` so the next worker boot subscribes past already-processed records.
+
+## Authorization
+
+Browser and server-side clients use a session-scoped Public Access Token:
+
+```ts
+import { auth } from "@trigger.dev/sdk";
+
+const pat = await auth.createPublicToken({
+  scopes: {
+    read: { sessions: chatId },
+    write: { sessions: chatId },
+  },
+  expirationTime: "1h",
+});
+```
+
+Tokens authorize **both** URL forms: `/sessions/{externalId}/...` and `/sessions/session_*/...`.
+
+For the `chat.agent` transport, `auth.createPublicToken` is wrapped by `accessToken` in `useTriggerChatTransport`; for direct session access from your server, mint a token per request just like any other realtime resource.
+
+## See also
+
+- [How it works](/ai-chat/how-it-works) — How `chat.agent` builds on Sessions.
+- [Backend](/ai-chat/backend) — `chat.agent` / `chat.createSession` / raw `task()` with chat primitives.
+- [Client Protocol](/ai-chat/client-protocol) — The wire-level view of `.in/append` and `.out` SSE.
+- [Persistence and replay](/ai-chat/patterns/persistence-and-replay) — How tails are read at boot.

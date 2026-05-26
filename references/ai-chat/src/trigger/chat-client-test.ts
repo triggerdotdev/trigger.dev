@@ -272,7 +272,7 @@ export const orchestratorAgent = chat
         stop.reset();
 
         const messages = await conversation.addIncoming(
-          currentPayload.messages,
+          currentPayload.message ? [currentPayload.message] : [],
           currentPayload.trigger,
           turn
         );

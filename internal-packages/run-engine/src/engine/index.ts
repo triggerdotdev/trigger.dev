@@ -65,6 +65,7 @@ import {
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
+import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
@@ -244,7 +245,8 @@ export class RunEngine {
         },
         queueRunsPendingVersion: async ({ payload }) => {
           await this.pendingVersionSystem.enqueueRunsForBackgroundWorker(
-            payload.backgroundWorkerId
+            payload.backgroundWorkerId,
+            payload.attempt
           );
         },
         tryCompleteBatch: async ({ payload }) => {
@@ -295,6 +297,8 @@ export class RunEngine {
       runLock: this.runLock,
       runQueue: this.runQueue,
       raceSimulationSystem: this.raceSimulationSystem,
+      pendingVersionRunIdLookup:
+        options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
     };
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
@@ -332,6 +336,9 @@ export class RunEngine {
     this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
+      queueRunsPendingVersionBatchSize: options.queueRunsWaitingForWorkerBatchSize,
+      lagRetryDelayMs: options.pendingVersionLagRetryDelayMs,
+      lagMaxRetries: options.pendingVersionLagMaxRetries,
     });
 
     this.waitpointSystem = new WaitpointSystem({

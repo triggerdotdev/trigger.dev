@@ -1,0 +1,83 @@
+name: Dependabot Critical Alerts
+
+on:
+  schedule:
+    - cron: "0 8 * * *"  # Daily 08:00 UTC
+  workflow_dispatch:
+    inputs:
+      severity:
+        description: "Severity to alert on"
+        type: choice
+        options:
+          - critical
+          - high
+          - medium
+          - low
+        default: critical
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  alert:
+    name: Post critical alerts
+    runs-on: ubuntu-latest
+    environment: dependabot-summary
+    env:
+      SEVERITY: ${{ inputs.severity || 'critical' }}
+    steps:
+      - name: Fetch alerts
+        id: alerts
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDABOT_ALERTS_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api -X GET "/repos/$REPO/dependabot/alerts" \
+            -F state=open -F severity="$SEVERITY" --paginate > pages.json
+          jq -s 'add' pages.json > alerts.json
+          TOTAL=$(jq 'length' alerts.json)
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          if [ "$TOTAL" = "0" ]; then
+            exit 0
+          fi
+          LIST=$(jq -r '
+            map("• <\(.html_url)|#\(.number)> *\(.dependency.package.name)* - \(.security_advisory.summary)")
+            | join("\n")
+          ' alerts.json)
+          {
+            echo "list<<EOF"
+            echo "$LIST"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Slack payload
+        if: steps.alerts.outputs.total != '0'
+        env:
+          REPO: ${{ github.repository }}
+          CHANNEL: ${{ vars.SLACK_CHANNEL_ID }}
+          TOTAL: ${{ steps.alerts.outputs.total }}
+          LIST: ${{ steps.alerts.outputs.list }}
+        run: |
+          jq -n \
+            --arg channel "$CHANNEL" \
+            --arg repo "$REPO" \
+            --arg total "$TOTAL" \
+            --arg list "$LIST" \
+            --arg severity "$SEVERITY" \
+            '{
+              channel: $channel,
+              text: ":bufo-alarma: `\($repo)` - *\($total) open \($severity) alert(s)*\n\($list)\n\n<https://github.com/\($repo)/security/dependabot?q=is%3Aopen+severity%3A\($severity)|View \($severity) alerts>"
+            }' > payload.json
+
+      - name: Post Slack alert
+        if: steps.alerts.outputs.total != '0'
+        uses: slackapi/slack-github-action@45a88b9581bfab2566dc881e2cd66d334e621e2c # v3.0.3
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload-file-path: payload.json

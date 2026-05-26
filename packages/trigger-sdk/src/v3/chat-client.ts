@@ -26,6 +26,7 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+import { slimSubmitMessageForWire } from "./ai-shared.js";
 import { sessions } from "./sessions.js";
 
 // ─── Type inference ────────────────────────────────────────────────
@@ -406,8 +407,12 @@ export class AgentChat<TAgent = unknown> {
 
     // Slim wire — at most ONE message per record. The agent rebuilds prior
     // history from its durable S3 snapshot + session.out replay at run
-    // boot. `regenerate-message` omits `message` (the agent slices its own
-    // history). See plan vivid-humming-bonbon.
+    // boot (or `hydrateMessages` if registered).
+    //
+    // For `submit-message`, assistant messages carrying resolved tool parts
+    // (HITL `addToolOutput` answers) are slimmed to just the resolution
+    // payload — reasoning blobs, text, and tool `input` come from the
+    // agent's authoritative chain. `regenerate-message` omits `message`.
     if (triggerType === "submit-message" && messages.length === 0) {
       throw new Error(
         "AgentChat.sendRaw: 'submit-message' trigger requires at least one message"
@@ -415,7 +420,7 @@ export class AgentChat<TAgent = unknown> {
     }
     const lastIfSubmit =
       triggerType === "submit-message"
-        ? (messages.at(-1) as UIMessage | undefined)
+        ? slimSubmitMessageForWire(messages.at(-1) as UIMessage | undefined)
         : undefined;
     const payload: ChatTaskWirePayload = {
       ...(lastIfSubmit ? { message: lastIfSubmit } : {}),

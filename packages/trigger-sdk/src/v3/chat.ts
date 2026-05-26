@@ -33,6 +33,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+import { slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
@@ -572,10 +573,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     // Slim wire — at most ONE message per record. The agent rebuilds prior
     // history from its durable S3 snapshot + session.out replay at run boot
-    // (or `hydrateMessages`, if registered). See plan vivid-humming-bonbon.
+    // (or `hydrateMessages`, if registered).
     //
     //   - "submit-message": ship the latest message (new user message OR a
     //     tool-approval-responded assistant message). Throw if absent.
+    //     Assistant messages with already-resolved tool parts are slimmed
+    //     to just their resolution payload — reasoning blobs, prior text,
+    //     and tool `input` stay on the agent side (rebuilt from snapshot
+    //     or `hydrateMessages`). Keeps continuation payloads under the
+    //     `.in/append` cap on reasoning-heavy turns.
     //   - "regenerate-message": omit `message`; the agent slices its own
     //     history (drops the trailing assistant) and re-runs.
     if (trigger === "submit-message" && messages.length === 0) {
@@ -585,7 +591,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
     const wirePayload: ChatTaskWirePayload = {
       ...((body as Record<string, unknown>) ?? {}),
-      ...(trigger === "submit-message" ? { message: messages.at(-1) } : {}),
+      ...(trigger === "submit-message"
+        ? { message: slimSubmitMessageForWire(messages.at(-1)) }
+        : {}),
       chatId,
       trigger,
       messageId,

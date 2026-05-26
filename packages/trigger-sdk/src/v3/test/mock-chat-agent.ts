@@ -11,6 +11,7 @@ import {
 } from "../sessions.js";
 import {
   __setReadChatSnapshotImplForTests,
+  __setReplaySessionInTailImplForTests,
   __setReplaySessionOutTailImplForTests,
   __setWriteChatSnapshotImplForTests,
   type ChatSnapshotV1,
@@ -239,6 +240,27 @@ export type MockChatAgentHarness = {
   seedSessionOutTail(chunks?: UIMessageChunk[]): void;
 
   /**
+   * Pre-seed a trailing partial assistant message for the next boot's
+   * replay. The runtime's `replaySessionOutTail` returns this as the
+   * `partial` field (alongside whatever `seedSessionOutTail` reduces
+   * to). Use to simulate cancel-mid-stream: an assistant message whose
+   * `finish` chunk never arrived. Pass `undefined` to clear.
+   *
+   * Effective on the next run boot only.
+   */
+  seedSessionOutPartial(partial: UIMessage | undefined): void;
+
+  /**
+   * Pre-seed user messages on the `session.in` tail for the next boot's
+   * replay. Each message is paired with a synthetic seq_num (`i + 1`).
+   * Used to simulate in-flight users the dead predecessor was supposed
+   * to process. Pass `[]` to clear.
+   *
+   * Effective on the next run boot only.
+   */
+  seedSessionInTail(messages: UIMessage[]): void;
+
+  /**
    * The most recently written snapshot, or `undefined` if no snapshot
    * has been written yet. Updated each time `writeChatSnapshot` is
    * invoked from the run loop's snapshot-write site (plan section B.6).
@@ -373,6 +395,8 @@ export function mockChatAgent(
   let seededSnapshot: ChatSnapshotV1 | undefined = options.snapshot;
   let lastWrittenSnapshot: ChatSnapshotV1 | undefined;
   let seededReplayChunks: UIMessageChunk[] = [];
+  let seededReplayPartial: UIMessage | undefined;
+  let seededSessionInMessages: UIMessage[] = [];
 
   __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
     return seededSnapshot as ChatSnapshotV1<T> | undefined;
@@ -382,11 +406,37 @@ export function mockChatAgent(
   });
 
   // Replay override: install a default that returns whatever
-  // `seededReplayChunks` reduces to. Cleared in the same `finally` block
-  // as the other test overrides.
+  // `seededReplayChunks` reduces to. `mockChatAgent` doesn't model the
+  // settled-vs-partial split — seeded chunks always reduce to the
+  // `settled` array with `partial: undefined`. Recovery-specific
+  // tests can install their own override to seed a partial.
+  // Cleared in the same `finally` block as the other test overrides.
   __setReplaySessionOutTailImplForTests(async () => {
-    if (seededReplayChunks.length === 0) return [];
-    return (await reduceChunksToMessages(seededReplayChunks)) as never;
+    const settled =
+      seededReplayChunks.length === 0
+        ? []
+        : ((await reduceChunksToMessages(seededReplayChunks)) as unknown[]);
+    // For the mock harness, `partialRaw` is the same as `partial` — we
+    // don't model cleanupAbortedParts separately. Recovery tests that
+    // need a partialRaw distinct from partial install their own stub.
+    return {
+      settled,
+      partial: seededReplayPartial,
+      partialRaw: seededReplayPartial,
+    } as never;
+  });
+
+  // session.in tail override: each seeded UIMessage becomes a
+  // { message, metadata: undefined, seqNum: i+1 } entry. Mirrors the
+  // seq-num pattern from the out-tail stub so cursor-advance logic is
+  // exercised correctly. `metadata` is `undefined` for seeded users —
+  // the boot path falls back to `payload.metadata` for those.
+  __setReplaySessionInTailImplForTests(async () => {
+    return seededSessionInMessages.map((message, i) => ({
+      message,
+      metadata: undefined,
+      seqNum: i + 1,
+    })) as never;
   });
 
   // Install the session open override so `sessions.open(id)` returns a
@@ -521,6 +571,7 @@ export function mockChatAgent(
       __setReadChatSnapshotImplForTests(undefined);
       __setWriteChatSnapshotImplForTests(undefined);
       __setReplaySessionOutTailImplForTests(undefined);
+      __setReplaySessionInTailImplForTests(undefined);
     });
 
   const sendPayloadAndWait = async (
@@ -614,6 +665,14 @@ export function mockChatAgent(
 
     seedSessionOutTail(chunks) {
       seededReplayChunks = chunks ?? [];
+    },
+
+    seedSessionOutPartial(partial) {
+      seededReplayPartial = partial;
+    },
+
+    seedSessionInTail(messages) {
+      seededSessionInMessages = messages;
     },
 
     getSnapshot() {

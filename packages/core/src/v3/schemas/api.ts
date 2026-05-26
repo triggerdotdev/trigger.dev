@@ -1995,14 +1995,21 @@ export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponse
  * Response body for `GET /realtime/v1/sessions/:id/:io/records`. A non-SSE,
  * `wait=0` drain of a session channel — used at run boot for snapshot
  * replay where the SSE long-poll tax (~1s on empty streams) was the
- * dominant cost. The shape mirrors the webapp's internal `StreamRecord`
- * type (`apps/webapp/app/services/realtime/types.ts`); each record's
- * `data` is a JSON-encoded chunk body that callers parse client-side.
+ * dominant cost.
+ *
+ * `data` is the parsed chunk body (the SDK writer puts the chunk object
+ * directly into the S2 record envelope; the route unwraps the envelope
+ * and forwards the inner object as-is). Callers use it directly — no
+ * additional JSON.parse step. Schema is `z.unknown()` because chunk
+ * shape varies by `chunk.type` (the AI SDK's `UIMessageChunk`
+ * discriminated union plus Trigger control records); consumers
+ * already runtime-check on the discriminator and tolerate malformed
+ * records by skipping them.
  */
 export const ReadSessionStreamRecordsResponseBody = z.object({
   records: z.array(
     z.object({
-      data: z.string(),
+      data: z.unknown(),
       id: z.string(),
       seqNum: z.number(),
     })
