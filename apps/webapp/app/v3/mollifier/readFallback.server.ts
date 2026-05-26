@@ -1,4 +1,8 @@
+import type { MollifierBuffer } from "@trigger.dev/redis-worker";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { logger } from "~/services/logger.server";
+import { deserialiseMollifierSnapshot } from "./mollifierSnapshot.server";
+import { getMollifierBuffer } from "./mollifierBuffer.server";
 
 export type ReadFallbackInput = {
   runId: string;
@@ -6,11 +10,203 @@ export type ReadFallbackInput = {
   organizationId: string;
 };
 
+export type SyntheticRun = {
+  // Snapshot-derived TaskRun primary key. Used by ReplayTaskRunService
+  // for logging and by callers passing this object where a TaskRun is
+  // expected (cast). Derived deterministically from `friendlyId`.
+  id: string;
+  friendlyId: string;
+  status: "QUEUED" | "FAILED" | "CANCELED";
+  // Set when the customer cancelled the run via the dashboard or API
+  // while it was buffered. The drainer's cancel bifurcation reads this
+  // on next pop and writes a CANCELED PG row directly (skipping
+  // materialisation). Reflected back into the UI by the synthesised
+  // SpanRun so the run-detail page shows the cancelled state even before
+  // the drainer materialises it.
+  cancelledAt: Date | undefined;
+  cancelReason: string | undefined;
+  // Reschedule patch (`set_delay`) writes `delayUntil` into the snapshot.
+  // Surfacing it on SyntheticRun lets the retrieve-run shape reflect the
+  // pending delay before the drainer materialises the PG row.
+  delayUntil: Date | undefined;
+  taskIdentifier: string | undefined;
+  createdAt: Date;
+
+  payload: unknown;
+  payloadType: string | undefined;
+  metadata: unknown;
+  metadataType: string | undefined;
+  // Seed-metadata mirrors what `triggerTask.server.ts` writes into the
+  // snapshot: the original metadataPacket data preserved separately from
+  // any later customer mutations. ReplayTaskRunService uses these to
+  // rebuild the replay's metadata.
+  seedMetadata: string | undefined;
+  seedMetadataType: string | undefined;
+
+  idempotencyKey: string | undefined;
+  idempotencyKeyOptions: string[] | undefined;
+  isTest: boolean;
+  depth: number;
+  ttl: string | undefined;
+  tags: string[];
+  // Mirror of `tags` under the PG field name. ReplayTaskRunService reads
+  // `existingTaskRun.runTags`; both names are kept here so a synthetic
+  // run can be passed wherever the PG-shape `runTags` is expected.
+  runTags: string[];
+  lockedToVersion: string | undefined;
+  resumeParentOnCompletion: boolean;
+  parentTaskRunId: string | undefined;
+
+  // Allocated at gate-accept time and embedded in the snapshot so the run's
+  // trace is continuous from QUEUED-in-buffer through executing post-drain.
+  traceId: string | undefined;
+  spanId: string | undefined;
+  parentSpanId: string | undefined;
+
+  // Replay-relevant fields populated from the engine-trigger snapshot.
+  // ReplayTaskRunService reads each of these from the existing TaskRun;
+  // when the original lives in the buffer we synthesise them here.
+  runtimeEnvironmentId: string | undefined;
+  engine: "V2";
+  workerQueue: string | undefined;
+  queue: string | undefined;
+  concurrencyKey: string | undefined;
+  machinePreset: string | undefined;
+  realtimeStreamsVersion: string | undefined;
+
+  // Additional snapshot-sourced fields used when synthesising a SpanRun
+  // for the dashboard's right-side details panel. All optional because
+  // older snapshots may not carry them.
+  maxAttempts: number | undefined;
+  maxDurationInSeconds: number | undefined;
+  replayedFromTaskRunFriendlyId: string | undefined;
+  annotations: unknown;
+  traceContext: unknown;
+  scheduleId: string | undefined;
+  batchId: string | undefined;
+  parentTaskRunFriendlyId: string | undefined;
+  rootTaskRunFriendlyId: string | undefined;
+
+  error?: { code: string; message: string };
+};
+
+export type ReadFallbackDeps = {
+  getBuffer?: () => MollifierBuffer | null;
+};
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "string") ? (value as string[]) : [];
+}
+
 export async function findRunByIdWithMollifierFallback(
   input: ReadFallbackInput,
-): Promise<null> {
-  logger.debug("mollifier read-fallback called (phase 1 stub)", {
-    runId: input.runId,
-  });
-  return null;
+  deps: ReadFallbackDeps = {},
+): Promise<SyntheticRun | null> {
+  const buffer = (deps.getBuffer ?? getMollifierBuffer)();
+  if (!buffer) return null;
+
+  try {
+    const entry = await buffer.getEntry(input.runId);
+    if (!entry) return null;
+
+    if (entry.envId !== input.environmentId || entry.orgId !== input.organizationId) {
+      logger.warn("mollifier read-fallback auth mismatch", {
+        runId: input.runId,
+        callerEnvId: input.environmentId,
+        callerOrgId: input.organizationId,
+      });
+      return null;
+    }
+
+    const snapshot = deserialiseMollifierSnapshot(entry.payload);
+    const idempotencyKeyOptionsRaw = snapshot.idempotencyKeyOptions;
+    const idempotencyKeyOptions = Array.isArray(idempotencyKeyOptionsRaw)
+      ? asStringArray(idempotencyKeyOptionsRaw)
+      : undefined;
+
+    const tags = asStringArray(snapshot.tags);
+    const environment =
+      snapshot.environment && typeof snapshot.environment === "object"
+        ? (snapshot.environment as Record<string, unknown>)
+        : undefined;
+
+    const cancelledAtRaw = asString(snapshot.cancelledAt);
+    const cancelledAt = cancelledAtRaw ? new Date(cancelledAtRaw) : undefined;
+    const cancelReason = asString(snapshot.cancelReason);
+    let status: SyntheticRun["status"] = "QUEUED";
+    if (cancelledAt) {
+      status = "CANCELED";
+    } else if (entry.status === "FAILED") {
+      status = "FAILED";
+    }
+    const delayUntilRaw = asString(snapshot.delayUntil);
+    const delayUntil = delayUntilRaw ? new Date(delayUntilRaw) : undefined;
+
+    return {
+      id: RunId.fromFriendlyId(entry.runId),
+      friendlyId: entry.runId,
+      status,
+      cancelledAt,
+      cancelReason,
+      delayUntil,
+      taskIdentifier: asString(snapshot.taskIdentifier),
+      createdAt: entry.createdAt,
+
+      payload: snapshot.payload,
+      payloadType: asString(snapshot.payloadType),
+      metadata: snapshot.metadata,
+      metadataType: asString(snapshot.metadataType),
+      seedMetadata: asString(snapshot.seedMetadata),
+      seedMetadataType: asString(snapshot.seedMetadataType),
+
+      idempotencyKey: asString(snapshot.idempotencyKey),
+      idempotencyKeyOptions,
+      isTest: snapshot.isTest === true,
+      depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
+      ttl: asString(snapshot.ttl),
+      tags,
+      runTags: tags,
+      lockedToVersion: asString(snapshot.lockToVersion),
+      resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
+      parentTaskRunId: asString(snapshot.parentTaskRunId),
+
+      traceId: asString(snapshot.traceId),
+      spanId: asString(snapshot.spanId),
+      parentSpanId: asString(snapshot.parentSpanId),
+
+      runtimeEnvironmentId:
+        asString(environment?.id) ?? entry.envId,
+      engine: "V2",
+      workerQueue: asString(snapshot.workerQueue),
+      queue: asString(snapshot.queue),
+      concurrencyKey: asString(snapshot.concurrencyKey),
+      machinePreset: asString(snapshot.machine),
+      realtimeStreamsVersion: asString(snapshot.realtimeStreamsVersion),
+
+      maxAttempts: typeof snapshot.maxAttempts === "number" ? snapshot.maxAttempts : undefined,
+      maxDurationInSeconds:
+        typeof snapshot.maxDurationInSeconds === "number"
+          ? snapshot.maxDurationInSeconds
+          : undefined,
+      replayedFromTaskRunFriendlyId: asString(snapshot.replayedFromTaskRunFriendlyId),
+      annotations: snapshot.annotations,
+      traceContext: snapshot.traceContext,
+      scheduleId: asString(snapshot.scheduleId),
+      batchId: asString(snapshot.batchId),
+      parentTaskRunFriendlyId: asString(snapshot.parentTaskRunFriendlyId),
+      rootTaskRunFriendlyId: asString(snapshot.rootTaskRunFriendlyId),
+
+      error: entry.lastError,
+    };
+  } catch (err) {
+    logger.error("mollifier read-fallback errored — fail-open to null", {
+      runId: input.runId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

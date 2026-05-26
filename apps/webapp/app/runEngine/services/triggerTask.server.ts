@@ -30,7 +30,14 @@ import type {
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
-import { IdempotencyKeyConcern } from "../concerns/idempotencyKeys.server";
+import {
+  IdempotencyKeyConcern,
+  type ClaimedIdempotency,
+} from "../concerns/idempotencyKeys.server";
+import {
+  publishClaim as publishMollifierClaim,
+  releaseClaim as releaseMollifierClaim,
+} from "~/v3/mollifier/idempotencyClaim.server";
 import type {
   PayloadProcessor,
   QueueManager,
@@ -50,8 +57,8 @@ import {
   getMollifierBuffer as defaultGetMollifierBuffer,
   type MollifierGetBuffer,
 } from "~/v3/mollifier/mollifierBuffer.server";
-import { buildBufferedTriggerPayload } from "~/v3/mollifier/bufferedTriggerPayload.server";
-import { serialiseSnapshot } from "@trigger.dev/redis-worker";
+import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
+import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
@@ -124,7 +131,15 @@ export class RunEngineTriggerTaskService {
     options?: TriggerTaskServiceOptions;
     attempt?: number;
   }): Promise<TriggerTaskServiceResult | undefined> {
-    return await startSpan(this.tracer, "RunEngineTriggerTaskService.call()", async (span) => {
+    // Pre-gate idempotency-claim ownership. Set inside the span when
+    // `IdempotencyKeyConcern.handleTriggerRequest` returns `claim:
+    // {...}`. The try/catch below resolves it once the span finishes.
+    let idempotencyClaim: ClaimedIdempotency | undefined;
+    try {
+      const result = await startSpan(
+        this.tracer,
+        "RunEngineTriggerTaskService.call()",
+        async (span) => {
       span.setAttribute("taskId", taskId);
       span.setAttribute("attempt", attempt);
 
@@ -247,7 +262,16 @@ export class RunEngineTriggerTaskService {
         return idempotencyKeyConcernResult;
       }
 
-      const { idempotencyKey, idempotencyKeyExpiresAt } = idempotencyKeyConcernResult;
+      const { idempotencyKey, idempotencyKeyExpiresAt, claim: claimResult } =
+        idempotencyKeyConcernResult;
+
+      // If we own an idempotency claim, the trigger pipeline below MUST
+      // resolve it — publish on success so waiters see our runId,
+      // release on error so the next claimant can retry. Stored in an
+      // outer scope so the try/catch at the bottom of `callV2` can act
+      // on whichever return path or throw the pipeline takes. Plan doc:
+      // _plans/2026-05-21-mollifier-idempotency-claim.md
+      idempotencyClaim = claimResult;
 
       if (idempotencyKey) {
         await this.triggerRacepointSystem.waitForRacepoint({
@@ -343,25 +367,6 @@ export class RunEngineTriggerTaskService {
         taskKind: taskKind ?? "STANDARD",
       };
 
-      // Short-circuit before the gate when mollifier is globally off (the
-      // default for every deployment that hasn't opted in). Avoids the
-      // GateInputs allocation, the deps spread inside `evaluateGate`, and
-      // the `mollifier.decisions{outcome=pass_through}` OTel increment on
-      // every trigger — `triggerTask` is the highest-throughput code path
-      // in the system. The check goes through a DI'd predicate so unit
-      // tests that inject a custom `evaluateGate` can also override the
-      // gate-on check (the default reads `env.TRIGGER_MOLLIFIER_ENABLED`,
-      // which is "0" in CI where no .env file is present).
-      const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
-        ? await this.evaluateGate({
-            envId: environment.id,
-            orgId: environment.organizationId,
-            taskId,
-            orgFeatureFlags:
-              (environment.organization.featureFlags as Record<string, unknown> | null) ?? null,
-          })
-        : null;
-
       try {
         return await this.traceEventConcern.traceRun(
           triggerRequest,
@@ -372,148 +377,170 @@ export class RunEngineTriggerTaskService {
             event.setAttribute("runId", runFriendlyId);
             span.setAttribute("runId", runFriendlyId);
 
-            const payloadPacket = await this.payloadProcessor.process(triggerRequest);
-
-            // Dual-write: if the org has the mollifier feature flag
-            // enabled and the per-env trip evaluator says divert, write the
-            // canonical replay payload to the buffer AND continue through
-            // engine.trigger as normal. The buffer entry is an audit/preview
-            // copy; the drainer's no-op handler consumes it to prove the
-            // dequeue mechanism works. A later change replaces engine.trigger
-            // (below) with a synthesised 200 response and relies on the
-            // drainer to perform the Postgres write via replay.
-            if (mollifierOutcome?.action === "mollify") {
-              const buffer = this.getMollifierBuffer();
-              if (buffer) {
-                const canonicalPayload = buildBufferedTriggerPayload({
-                  runFriendlyId,
-                  taskId,
+            // Short-circuit when mollifier is globally off (the default
+            // for every deployment that hasn't opted in). Avoids the
+            // GateInputs allocation, the deps spread inside `evaluateGate`,
+            // and the `mollifier.decisions{outcome=pass_through}` OTel
+            // increment on every trigger — `triggerTask` is the
+            // highest-throughput code path in the system. The check goes
+            // through a DI'd predicate so unit tests that inject a custom
+            // `evaluateGate` can also override the gate-on check (the
+            // default reads `env.TRIGGER_MOLLIFIER_ENABLED`, which is "0"
+            // in CI where no .env file is present).
+            const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
+              ? await this.evaluateGate({
                   envId: environment.id,
-                  envType: environment.type,
-                  envSlug: environment.slug,
                   orgId: environment.organizationId,
-                  orgSlug: environment.organization.slug,
-                  projectId: environment.projectId,
-                  projectRef: environment.project.externalRef,
+                  taskId,
+                  orgFeatureFlags:
+                    (environment.organization.featureFlags as Record<string, unknown> | null) ??
+                    null,
+                  options: {
+                    debounce: body.options?.debounce,
+                    oneTimeUseToken: options.oneTimeUseToken,
+                    parentTaskRunId: body.options?.parentRunId,
+                    resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+                  },
+                })
+              : null;
+
+            // When the gate says mollify, write the engine.trigger input
+            // snapshot into the Redis buffer and return a synthesised
+            // TriggerTaskServiceResult. The customer never waits on
+            // Postgres; the drainer materialises the run later by replaying
+            // engine.trigger against the snapshot. The run span has already
+            // been opened by traceRun above (PARTIAL event in ClickHouse),
+            // so its traceId/spanId live in the snapshot and the drainer's
+            // `mollifier.drained` span parents on the same trace — buffered
+            // runs become visible in the dashboard's trace view immediately,
+            // not only after the drainer fires.
+            if (mollifierOutcome?.action === "mollify") {
+              const mollifierBuffer = this.getMollifierBuffer();
+              if (mollifierBuffer && !body.options?.debounce) {
+                event.setAttribute("mollifier.reason", mollifierOutcome.decision.reason);
+                event.setAttribute("mollifier.count", String(mollifierOutcome.decision.count));
+                event.setAttribute(
+                  "mollifier.threshold",
+                  String(mollifierOutcome.decision.threshold)
+                );
+                event.setAttribute("taskRunId", runFriendlyId);
+
+                const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+
+                const engineTriggerInput = this.#buildEngineTriggerInput({
+                  runFriendlyId,
+                  environment,
+                  idempotencyKey,
+                  idempotencyKeyExpiresAt,
                   body,
-                  idempotencyKey: idempotencyKey ?? null,
-                  idempotencyKeyExpiresAt: idempotencyKey
-                    ? idempotencyKeyExpiresAt ?? null
-                    : null,
+                  options,
+                  queueName,
+                  lockedQueueId,
+                  workerQueue,
+                  enableFastPath,
+                  lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
+                  delayUntil,
+                  ttl,
+                  metadataPacket,
                   tags,
-                  parentRunFriendlyId: parentRun?.friendlyId ?? null,
-                  traceContext: event.traceContext,
-                  triggerSource,
-                  triggerAction,
-                  serviceOptions: options,
-                  createdAt: new Date(),
+                  depth,
+                  parentRun: parentRun ?? undefined,
+                  annotations,
+                  planType,
+                  taskId,
+                  payloadPacket,
+                  traceContext: this.#propagateExternalTraceContext(
+                    event.traceContext,
+                    parentRun?.traceContext,
+                    event.traceparent?.spanId
+                  ),
+                  traceId: event.traceId,
+                  spanId: event.spanId,
+                  parentSpanId:
+                    options.parentAsLinkType === "replay"
+                      ? undefined
+                      : event.traceparent?.spanId,
+                  taskEventStore: store,
                 });
 
-                try {
-                  const serialisedPayload = serialiseSnapshot(canonicalPayload);
-                  await buffer.accept({
-                    runId: runFriendlyId,
-                    envId: environment.id,
-                    orgId: environment.organizationId,
-                    payload: serialisedPayload,
-                  });
-                  // Light log on the hot path — keep this synchronous work
-                  // O(1) per trigger. The drainer computes the payload hash
-                  // off-path; operators correlate `mollifier.buffered` →
-                  // `mollifier.drained` by runId.
-                  logger.debug("mollifier.buffered", {
-                    runId: runFriendlyId,
-                    envId: environment.id,
-                    orgId: environment.organizationId,
-                    taskId,
-                    payloadBytes: serialisedPayload.length,
-                  });
-                } catch (err) {
-                  // Fail-open: buffer write must never block the customer's
-                  // trigger. engine.trigger below is still the primary write
-                  // path here — the customer still gets a valid run.
-                  logger.error("mollifier.buffer_accept_failed", {
-                    runId: runFriendlyId,
-                    envId: environment.id,
-                    taskId,
-                    err: err instanceof Error ? err.message : String(err),
-                  });
-                }
+                const result = await mollifyTrigger({
+                  runFriendlyId,
+                  environmentId: environment.id,
+                  organizationId: environment.organizationId,
+                  engineTriggerInput,
+                  decision: mollifierOutcome.decision,
+                  buffer: mollifierBuffer,
+                  // Idempotency-key triple wires the buffer's SETNX into
+                  // the trigger-time dedup symmetric with PG (Q5).
+                  idempotencyKey,
+                  taskIdentifier: taskId,
+                });
+
+                logger.info("mollifier.buffered", {
+                  runId: runFriendlyId,
+                  envId: environment.id,
+                  orgId: environment.organizationId,
+                  taskId,
+                  reason: mollifierOutcome.decision.reason,
+                });
+
+                // Synthetic result is structurally narrower than the full
+                // TaskRun; the route handler only reads
+                // `result.run.friendlyId`. traceRun flushes the PARTIAL
+                // run-span event to ClickHouse on callback return.
+                return result as unknown as TriggerTaskServiceResult;
+              }
+              if (!mollifierBuffer) {
+                logger.warn(
+                  "mollifier gate said mollify but buffer is null — falling through to pass-through"
+                );
               }
             }
 
+            const payloadPacket = await this.payloadProcessor.process(triggerRequest);
+
+            const baseEngineInput = this.#buildEngineTriggerInput({
+              runFriendlyId,
+              environment,
+              idempotencyKey,
+              idempotencyKeyExpiresAt,
+              body,
+              options,
+              queueName,
+              lockedQueueId,
+              workerQueue,
+              enableFastPath,
+              lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
+              delayUntil,
+              ttl,
+              metadataPacket,
+              tags,
+              depth,
+              parentRun: parentRun ?? undefined,
+              annotations,
+              planType,
+              taskId,
+              payloadPacket,
+              traceContext: this.#propagateExternalTraceContext(
+                event.traceContext,
+                parentRun?.traceContext,
+                event.traceparent?.spanId
+              ),
+              traceId: event.traceId,
+              spanId: event.spanId,
+              parentSpanId:
+                options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
+              taskEventStore: store,
+            });
+
             const taskRun = await this.engine.trigger(
               {
-                friendlyId: runFriendlyId,
-                environment: environment,
-                idempotencyKey,
-                idempotencyKeyExpiresAt: idempotencyKey ? idempotencyKeyExpiresAt : undefined,
-                idempotencyKeyOptions: body.options?.idempotencyKeyOptions,
-                taskIdentifier: taskId,
-                payload: payloadPacket.data ?? "",
-                payloadType: payloadPacket.dataType,
-                context: body.context,
-                traceContext: this.#propagateExternalTraceContext(
-                  event.traceContext,
-                  parentRun?.traceContext,
-                  event.traceparent?.spanId
-                ),
-                traceId: event.traceId,
-                spanId: event.spanId,
-                parentSpanId:
-                  options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
-                replayedFromTaskRunFriendlyId: options.replayedFromTaskRunFriendlyId,
-                lockedToVersionId: lockedToBackgroundWorker?.id,
-                taskVersion: lockedToBackgroundWorker?.version,
-                sdkVersion: lockedToBackgroundWorker?.sdkVersion,
-                cliVersion: lockedToBackgroundWorker?.cliVersion,
-                concurrencyKey: body.options?.concurrencyKey,
-                queue: queueName,
-                lockedQueueId,
-                workerQueue,
-                enableFastPath,
-                isTest: body.options?.test ?? false,
-                delayUntil,
-                queuedAt: delayUntil ? undefined : new Date(),
-                maxAttempts: body.options?.maxAttempts,
-                taskEventStore: store,
-                ttl,
-                tags,
-                oneTimeUseToken: options.oneTimeUseToken,
-                parentTaskRunId: parentRun?.id,
-                rootTaskRunId: parentRun?.rootTaskRunId ?? parentRun?.id,
-                batch: options?.batchId
-                  ? {
-                    id: options.batchId,
-                    index: options.batchIndex ?? 0,
-                  }
-                  : undefined,
-                resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-                depth,
-                metadata: metadataPacket?.data,
-                metadataType: metadataPacket?.dataType,
-                seedMetadata: metadataPacket?.data,
-                seedMetadataType: metadataPacket?.dataType,
-                maxDurationInSeconds: body.options?.maxDuration
-                  ? clampMaxDuration(body.options.maxDuration)
-                  : undefined,
-                machine: body.options?.machine,
-                priorityMs: body.options?.priority ? body.options.priority * 1_000 : undefined,
-                queueTimestamp:
-                  options.queueTimestamp ??
-                  (parentRun && body.options?.resumeParentOnCompletion
-                    ? parentRun.queueTimestamp ?? undefined
-                    : undefined),
-                scheduleId: options.scheduleId,
-                scheduleInstanceId: options.scheduleInstanceId,
-                createdAt: options.overrideCreatedAt,
-                bulkActionId: body.options?.bulkActionId,
-                planType,
-                realtimeStreamsVersion: options.realtimeStreamsVersion,
-                streamBasinName: environment.organization.streamBasinName,
-                debounce: body.options?.debounce,
-                annotations,
-                // When debouncing with triggerAndWait, create a span for the debounced trigger
+                ...baseEngineInput,
+                // onDebounced is a closure over webapp state (triggerRequest +
+                // traceEventConcern) and can't be serialised into the mollifier
+                // snapshot. The pass-through path attaches it here; the drainer
+                // path replays without it. C1/F4 gate bypasses ensure debounce
+                // and triggerAndWait never reach the mollify branch.
                 onDebounced:
                   body.options?.debounce && body.options?.resumeParentOnCompletion
                     ? async ({ existingRun, waitpoint, debounceKey }) => {
@@ -591,7 +618,130 @@ export class RunEngineTriggerTaskService {
 
         throw error;
       }
-    });
+        },
+      );
+      // Pipeline returned successfully — publish the claim if we held
+      // one. Waiters polling for our key resolve to this runId.
+      if (idempotencyClaim && result?.run?.friendlyId) {
+        await publishMollifierClaim({
+          envId: idempotencyClaim.envId,
+          taskIdentifier: idempotencyClaim.taskIdentifier,
+          idempotencyKey: idempotencyClaim.idempotencyKey,
+          runId: result.run.friendlyId,
+        });
+      }
+      return result;
+    } catch (err) {
+      // Pipeline threw — release the claim so the next claimant can
+      // retry. Re-throw so the caller sees the original error.
+      if (idempotencyClaim) {
+        await releaseMollifierClaim(idempotencyClaim);
+      }
+      throw err;
+    }
+  }
+
+  // Build the engine.trigger() input object from the values gathered during
+  // this.call(). Extracted so the mollify path (Phase 2) can construct the
+  // same input shape without re-entering the trace-run span. The pass-through
+  // path spreads this result and attaches `onDebounced` inline; the mollify
+  // path serialises it into the buffer for drainer replay.
+  #buildEngineTriggerInput(args: {
+    runFriendlyId: string;
+    environment: AuthenticatedEnvironment;
+    idempotencyKey?: string;
+    idempotencyKeyExpiresAt?: Date;
+    body: TriggerTaskRequest["body"];
+    options: TriggerTaskServiceOptions;
+    queueName: string;
+    lockedQueueId?: string;
+    workerQueue?: string;
+    enableFastPath: boolean;
+    lockedToBackgroundWorker?: { id: string; version: string; sdkVersion: string; cliVersion: string };
+    delayUntil?: Date;
+    ttl?: string;
+    metadataPacket?: { data?: string; dataType: string };
+    tags: string[];
+    depth: number;
+    parentRun?: { id: string; rootTaskRunId?: string | null; queueTimestamp?: Date | null; taskEventStore?: string };
+    annotations: {
+      triggerSource: string;
+      triggerAction: string;
+      rootTriggerSource: string;
+      rootScheduleId?: string | undefined;
+    };
+    planType?: string;
+    taskId: string;
+    payloadPacket: { data?: string; dataType: string };
+    traceContext: TriggerTraceContext;
+    traceId: string;
+    spanId: string;
+    parentSpanId: string | undefined;
+    taskEventStore: string;
+  }) {
+    return {
+      friendlyId: args.runFriendlyId,
+      environment: args.environment,
+      idempotencyKey: args.idempotencyKey,
+      idempotencyKeyExpiresAt: args.idempotencyKey ? args.idempotencyKeyExpiresAt : undefined,
+      idempotencyKeyOptions: args.body.options?.idempotencyKeyOptions,
+      taskIdentifier: args.taskId,
+      payload: args.payloadPacket.data ?? "",
+      payloadType: args.payloadPacket.dataType,
+      context: args.body.context,
+      traceContext: args.traceContext,
+      traceId: args.traceId,
+      spanId: args.spanId,
+      parentSpanId: args.parentSpanId,
+      replayedFromTaskRunFriendlyId: args.options.replayedFromTaskRunFriendlyId,
+      lockedToVersionId: args.lockedToBackgroundWorker?.id,
+      taskVersion: args.lockedToBackgroundWorker?.version,
+      sdkVersion: args.lockedToBackgroundWorker?.sdkVersion,
+      cliVersion: args.lockedToBackgroundWorker?.cliVersion,
+      concurrencyKey: args.body.options?.concurrencyKey,
+      queue: args.queueName,
+      lockedQueueId: args.lockedQueueId,
+      workerQueue: args.workerQueue,
+      enableFastPath: args.enableFastPath,
+      isTest: args.body.options?.test ?? false,
+      delayUntil: args.delayUntil,
+      queuedAt: args.delayUntil ? undefined : new Date(),
+      maxAttempts: args.body.options?.maxAttempts,
+      taskEventStore: args.taskEventStore,
+      ttl: args.ttl,
+      tags: args.tags,
+      oneTimeUseToken: args.options.oneTimeUseToken,
+      parentTaskRunId: args.parentRun?.id,
+      rootTaskRunId: args.parentRun?.rootTaskRunId ?? args.parentRun?.id,
+      batch: args.options?.batchId
+        ? { id: args.options.batchId, index: args.options.batchIndex ?? 0 }
+        : undefined,
+      resumeParentOnCompletion: args.body.options?.resumeParentOnCompletion,
+      depth: args.depth,
+      metadata: args.metadataPacket?.data,
+      metadataType: args.metadataPacket?.dataType,
+      seedMetadata: args.metadataPacket?.data,
+      seedMetadataType: args.metadataPacket?.dataType,
+      maxDurationInSeconds: args.body.options?.maxDuration
+        ? clampMaxDuration(args.body.options.maxDuration)
+        : undefined,
+      machine: args.body.options?.machine,
+      priorityMs: args.body.options?.priority ? args.body.options.priority * 1_000 : undefined,
+      queueTimestamp:
+        args.options.queueTimestamp ??
+        (args.parentRun && args.body.options?.resumeParentOnCompletion
+          ? args.parentRun.queueTimestamp ?? undefined
+          : undefined),
+      scheduleId: args.options.scheduleId,
+      scheduleInstanceId: args.options.scheduleInstanceId,
+      createdAt: args.options.overrideCreatedAt,
+      bulkActionId: args.body.options?.bulkActionId,
+      planType: args.planType,
+      realtimeStreamsVersion: args.options.realtimeStreamsVersion,
+      streamBasinName: args.environment.organization.streamBasinName,
+      debounce: args.body.options?.debounce,
+      annotations: args.annotations,
+    };
   }
 
   #propagateExternalTraceContext(
