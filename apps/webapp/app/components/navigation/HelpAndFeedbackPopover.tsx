@@ -2,11 +2,11 @@ import {
   ArrowUpRightIcon,
   BookOpenIcon,
   CalendarDaysIcon,
-  EnvelopeIcon,
   LightBulbIcon,
-  SignalIcon,
-  StarIcon,
 } from "@heroicons/react/20/solid";
+import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
+import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
+import { StarIcon } from "~/assets/icons/StarIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { cn } from "~/utils/cn";
 import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
@@ -116,8 +116,6 @@ export function HelpAndFeedback({
               icon={BookOpenIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
-              inactiveIconColor="text-green-500"
-              activeIconColor="text-green-500"
               to="https://trigger.dev/docs"
               data-action="documentation"
               target="_blank"
@@ -126,11 +124,9 @@ export function HelpAndFeedback({
           <div className="flex flex-col gap-1 p-1">
             <SideMenuItem
               name="Status"
-              icon={SignalIcon}
+              icon={RadarPulseIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
-              inactiveIconColor="text-green-500"
-              activeIconColor="text-green-500"
               to="https://status.trigger.dev/"
               data-action="status"
               target="_blank"
@@ -140,8 +136,6 @@ export function HelpAndFeedback({
               icon={LightBulbIcon}
               trailingIcon={ArrowUpRightIcon}
               trailingIconClassName="text-text-dimmed"
-              inactiveIconColor="text-sun-500"
-              activeIconColor="text-sun-500"
               to="https://feedback.trigger.dev/"
               data-action="suggest-a-feature"
               target="_blank"
@@ -153,7 +147,7 @@ export function HelpAndFeedback({
                   variant="small-menu-item"
                   className="pl-2"
                   LeadingIcon={EnvelopeIcon}
-                  leadingIconClassName="text-blue-500 pr-1"
+                  leadingIconClassName="pr-1 text-text-dimmed group-hover/button:text-text-bright"
                   data-action="contact-us"
                   fullWidth
                   textAlignLeft

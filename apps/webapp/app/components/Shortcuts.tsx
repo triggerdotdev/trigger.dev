@@ -1,4 +1,4 @@
-import { Keyboard } from "lucide-react";
+import { KeyboardIcon } from "~/assets/icons/KeyboardIcon";
 import { useState } from "react";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Button } from "./primitives/Buttons";
@@ -19,8 +19,8 @@ export function Shortcuts() {
       <SheetTrigger asChild>
         <Button
           variant="small-menu-item"
-          LeadingIcon={Keyboard}
-          leadingIconClassName="text-blue-500"
+          LeadingIcon={KeyboardIcon}
+          leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
           data-action="shortcuts"
           fullWidth
           textAlignLeft
@@ -59,7 +59,7 @@ function ShortcutContent() {
       <SheetHeader>
         <SheetTitle>
           <div className="flex items-center gap-x-2">
-            <Keyboard className="size-5 text-indigo-500" />
+            <KeyboardIcon className="size-5 text-text-bright" />
             <span className="font-sans text-base font-medium text-text-bright">
               Keyboard shortcuts
             </span>
