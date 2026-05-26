@@ -599,7 +599,21 @@ export class RunEngine {
             { friendlyId: snapshot.friendlyId },
           );
           const existing = await prisma.taskRun.findFirst({ where: { id } });
-          if (existing) return existing;
+          if (existing) {
+            // Only treat the conflict as idempotent when the existing
+            // row is ALREADY canceled. If a non-canceled row landed
+            // first (e.g. the drainer's normal `engine.trigger` replay
+            // path raced ahead of the cancel) we surface a conflict
+            // rather than silently reporting "cancelled" — the run is
+            // genuinely live and the caller must decide between
+            // engine.cancelRun() and skipping.
+            if (existing.status === "CANCELED") {
+              return existing;
+            }
+            throw new Error(
+              `createCancelledRun conflict: existing run ${snapshot.friendlyId} has status ${existing.status}`,
+            );
+          }
         }
         throw err;
       }

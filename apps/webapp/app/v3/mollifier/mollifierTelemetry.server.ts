@@ -29,16 +29,21 @@ export const realtimeBufferedSubscriptionsCounter = meter.createCounter(
   },
 );
 
-export function recordRealtimeBufferedSubscription(envId: string): void {
-  realtimeBufferedSubscriptionsCounter.add(1, { envId });
+// No `envId` attribute — `envId` is a banned high-cardinality metric
+// label per the repo's OTel rules. The structured warn log emitted
+// alongside the counter tick (in `mollifierStaleSweep.server.ts`)
+// carries the envId / orgId / runId for forensic drill-down; the
+// metric stays an aggregate.
+export function recordRealtimeBufferedSubscription(): void {
+  realtimeBufferedSubscriptionsCounter.add(1);
 }
 
 // Counts buffer entries that have been waiting in the queue ZSET longer
-// than the configured stale threshold (typically half of entryTtlSeconds).
-// Useful for historical "stale events over time" views, but not directly
-// alertable on its own — a single stuck entry observed by N sweep ticks
-// adds N to the counter, so `rate()` over an alerting window reflects
-// (entries × ticks), not "entries that are stale right now".
+// than the configured stale threshold. Useful for historical "stale
+// events over time" views, but not directly alertable on its own — a
+// single stuck entry observed by N sweep ticks adds N to the counter,
+// so `rate()` over an alerting window reflects (entries × ticks), not
+// "entries that are stale right now".
 export const staleEntriesCounter = meter.createCounter(
   "mollifier.stale_entries",
   {
@@ -47,16 +52,16 @@ export const staleEntriesCounter = meter.createCounter(
   },
 );
 
-export function recordStaleEntry(envId: string): void {
-  staleEntriesCounter.add(1, { envId });
+// No `envId` attribute — see comment above.
+export function recordStaleEntry(): void {
+  staleEntriesCounter.add(1);
 }
 
-// Alertable signal: the count of stale entries observed by the latest
-// sweep, per env. The sweep snapshots the full per-env picture on each
-// pass (including zeros for envs that no longer have any stale entries)
-// so an env that was paging can clear when the drainer catches up
-// instead of staying latched. Recommended alert:
-//   mollifier_stale_entries_current{envId=...} > 0 for 5m
+// Alertable signal: the total count of stale entries observed by the
+// latest sweep. The sweep snapshots the full picture on each pass so
+// the gauge drops back to 0 when the drainer catches up instead of
+// staying latched. Recommended alert:
+//   mollifier_stale_entries_current > 0 for 5m
 export const staleEntriesGauge = meter.createObservableGauge(
   "mollifier.stale_entries.current",
   {
@@ -65,23 +70,22 @@ export const staleEntriesGauge = meter.createObservableGauge(
   },
 );
 
-const latestStaleSnapshot = new Map<string, number>();
+let latestStaleTotal = 0;
 
 export function reportStaleEntrySnapshot(snapshot: Map<string, number>): void {
-  // Replace, don't merge — envs absent from the new snapshot have either
-  // drained or no longer exist; leaving their last value cached would
-  // keep alerts latched forever.
-  latestStaleSnapshot.clear();
-  for (const [envId, count] of snapshot) {
-    latestStaleSnapshot.set(envId, count);
+  // Sum across envs. Per-env breakdown is intentionally NOT emitted as
+  // a metric label (high-cardinality); the structured warn log lines
+  // from the sweep carry per-env detail for ops to drill down.
+  let total = 0;
+  for (const count of snapshot.values()) {
+    total += count;
   }
+  latestStaleTotal = total;
 }
 
 meter.addBatchObservableCallback(
   (result) => {
-    for (const [envId, count] of latestStaleSnapshot) {
-      result.observe(staleEntriesGauge, count, { envId });
-    }
+    result.observe(staleEntriesGauge, latestStaleTotal);
   },
   [staleEntriesGauge],
 );

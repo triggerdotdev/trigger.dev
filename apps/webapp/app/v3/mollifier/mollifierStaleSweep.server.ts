@@ -22,7 +22,10 @@ export type StaleSweepConfig = {
 
 export type StaleSweepDeps = {
   getBuffer?: () => MollifierBuffer | null;
-  recordStaleEntry?: (envId: string) => void;
+  // No `envId` arg — `envId` is a high-cardinality metric attribute and
+  // is intentionally not emitted as a metric label. The structured warn
+  // log below carries envId for forensic drill-down.
+  recordStaleEntry?: () => void;
   reportStaleEntrySnapshot?: (snapshot: Map<string, number>) => void;
   logger?: { warn: (message: string, fields: Record<string, unknown>) => void };
   now?: () => number;
@@ -82,7 +85,7 @@ export async function runStaleSweepOnce(
         entriesScanned += 1;
         const dwellMs = now - entry.createdAt.getTime();
         if (dwellMs > config.staleThresholdMs) {
-          recordStale(envId);
+          recordStale();
           log.warn("mollifier.stale_entry", {
             runId: entry.runId,
             envId,

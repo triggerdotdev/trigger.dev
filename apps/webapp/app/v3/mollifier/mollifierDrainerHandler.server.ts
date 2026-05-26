@@ -10,8 +10,15 @@ const tracer = trace.getTracer("mollifier-drainer");
 export function isRetryablePgError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message ?? "";
+  // Prisma surfaces P1001 ("Can't reach database server") via two
+  // different error classes — `PrismaClientKnownRequestError` exposes
+  // it as `err.code`, `PrismaClientInitializationError` exposes it as
+  // `err.errorCode`. Check both so reconnection-time errors retry
+  // regardless of which class fires.
   const code = (err as { code?: string }).code;
+  const errorCode = (err as { errorCode?: string }).errorCode;
   if (code === "P2024") return true;
+  if (code === "P1001" || errorCode === "P1001") return true;
   if (msg.includes("Can't reach database server")) return true;
   if (msg.includes("Connection lost")) return true;
   if (msg.includes("ECONNRESET")) return true;

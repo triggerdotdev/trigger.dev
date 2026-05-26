@@ -230,4 +230,65 @@ describe("RunEngine.createCancelledRun", () => {
       }
     },
   );
+
+  // Regression: the P2002-on-id idempotency path used to return ANY
+  // existing row, which would silently report success even if a live
+  // (non-CANCELED) row landed first. The guard now requires the
+  // existing row's status to be CANCELED; anything else surfaces a
+  // conflict so the caller can route to engine.cancelRun() or skip.
+  containerTest(
+    "P2002 conflict with non-CANCELED existing row throws (does not silently succeed)",
+    async ({ prisma, redisOptions }) => {
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = new RunEngine({ prisma, ...baseEngineOptions(redisOptions) });
+      try {
+        const friendlyId = freshRunId();
+        const id = RunId.fromFriendlyId(friendlyId);
+
+        // Plant a live (non-CANCELED) row with the same id so the
+        // cancelled-run INSERT hits P2002 and the guard finds a row
+        // that ISN'T CANCELED.
+        await prisma.taskRun.create({
+          data: {
+            id,
+            friendlyId,
+            taskIdentifier: "test-task",
+            payload: "{}",
+            payloadType: "application/json",
+            status: "PENDING",
+            runtimeEnvironmentId: env.id,
+            projectId: env.project.id,
+            organizationId: env.organizationId,
+            queue: "task/test-task",
+            traceId: "0000000000000000aaaa000000000000",
+            spanId: "bbbb000000000000",
+            engine: "V2",
+          },
+        });
+
+        await expect(
+          engine.createCancelledRun({
+            snapshot: {
+              friendlyId,
+              environment: env,
+              taskIdentifier: "test-task",
+              payload: "{}",
+              payloadType: "application/json",
+              context: {},
+              traceContext: {},
+              traceId: "0000000000000000aaaa000000000000",
+              spanId: "bbbb000000000000",
+              queue: "task/test-task",
+              isTest: false,
+              tags: [],
+            },
+            cancelledAt: new Date(),
+            cancelReason: "Should not silently overwrite a live row",
+          }),
+        ).rejects.toThrow(/createCancelledRun conflict.*PENDING/);
+      } finally {
+        await engine.quit();
+      }
+    },
+  );
 });
