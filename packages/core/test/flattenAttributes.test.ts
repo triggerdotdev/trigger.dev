@@ -667,4 +667,54 @@ describe("unflattenAttributes", () => {
     }
     expect(current).toBeUndefined();
   });
+
+  // Defends against external OTLP producers that emit both a leaf value and a
+  // nested path through the same prefix in one attribute map (e.g. AI SDK
+  // telemetry on certain models). The flattener can't produce these, but the
+  // unflattener used to crash with TypeError when it tried to descend into a
+  // primitive sibling.
+  it("does not throw when a scalar precedes a deeper path at the same prefix", () => {
+    expect(() =>
+      unflattenAttributes({ "a.b": "scalar", "a.b.c": "value" })
+    ).not.toThrow();
+    expect(unflattenAttributes({ "a.b": "scalar", "a.b.c": "value" })).toEqual({
+      a: { b: { c: "value" } },
+    });
+  });
+
+  it("does not throw when a deeper path precedes a scalar at the same prefix", () => {
+    expect(() =>
+      unflattenAttributes({ "a.b.c": "value", "a.b": "scalar" })
+    ).not.toThrow();
+    expect(unflattenAttributes({ "a.b.c": "value", "a.b": "scalar" })).toEqual({
+      a: { b: "scalar" },
+    });
+  });
+
+  it("treats an intermediate null sentinel as overwritable when a deeper path follows", () => {
+    expect(() =>
+      unflattenAttributes({ "a.b": "$@null((", "a.b.c": "value" })
+    ).not.toThrow();
+    expect(unflattenAttributes({ "a.b": "$@null((", "a.b.c": "value" })).toEqual({
+      a: { b: { c: "value" } },
+    });
+  });
+
+  it("does not throw when a scalar prefix conflicts with a numeric-index path", () => {
+    expect(() =>
+      unflattenAttributes({ "a.b": "scalar", "a.b.[0]": "indexed" })
+    ).not.toThrow();
+    expect(unflattenAttributes({ "a.b": "scalar", "a.b.[0]": "indexed" })).toEqual({
+      a: { b: ["indexed"] },
+    });
+  });
+
+  it("converts an existing object slot to an array when a numeric-index path follows", () => {
+    expect(() =>
+      unflattenAttributes({ "a.b.c": "value", "a.b.[0]": "indexed" })
+    ).not.toThrow();
+    expect(unflattenAttributes({ "a.b.c": "value", "a.b.[0]": "indexed" })).toEqual({
+      a: { b: ["indexed"] },
+    });
+  });
 });
