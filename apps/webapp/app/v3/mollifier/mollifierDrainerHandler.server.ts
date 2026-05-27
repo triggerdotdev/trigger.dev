@@ -53,7 +53,7 @@ export function createDrainerHandler(deps: {
           })
         : context.active();
 
-    // Cancel-wins-over-trigger (Q4 bifurcation). If a cancel API call
+    // Cancel-wins-over-trigger. If a cancel API call
     // landed on this entry while it was QUEUED, the snapshot carries
     // `cancelledAt` + `cancelReason`. Skip the normal materialise path
     // and write a CANCELED PG row directly. The existing runCancelled

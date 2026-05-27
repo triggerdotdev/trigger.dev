@@ -44,7 +44,7 @@ function baseEngineOptions(redisOptions: Parameters<typeof RunEngine>[0]["queue"
   };
 }
 
-// Phase C1 / Q4 design — engine.createCancelledRun writes a CANCELED
+// engine.createCancelledRun writes a CANCELED
 // TaskRun row directly from a buffer snapshot. Verifies the bypass-
 // queue / bypass-waitpoint / emit-runCancelled contract.
 describe("RunEngine.createCancelledRun", () => {

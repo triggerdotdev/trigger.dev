@@ -182,7 +182,7 @@ describe("createDrainerHandler", () => {
   });
 
   it("honours the cancel when a buffered cancel races a materialised non-CANCELED row", async () => {
-    // Cancel-wins-over-trigger (Q4 bifurcation). If the normal trigger
+    // Cancel-wins-over-trigger. If the normal trigger
     // replay path materialised a live PENDING row before the cancel
     // bifurcation drained, engine.createCancelledRun throws a conflict —
     // its documented contract is that "the caller must decide between
