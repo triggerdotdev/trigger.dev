@@ -11,7 +11,6 @@ import { BugIcon } from "~/assets/icons/BugIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
-import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
@@ -75,7 +74,6 @@ import {
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
-  v3BuiltInDashboardPath,
   v3DashboardsLandingPath,
   v3BulkActionsPath,
   v3DeploymentsPath,
@@ -569,25 +567,6 @@ export function SideMenu({
                       isCollapsed={isCollapsed}
                     />
                   }
-                />
-                <SideMenuItem
-                  name="Runs"
-                  icon={RunsIcon}
-                  activeIconColor="text-runs"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
-                  data-action="dashboard-runs"
-                  isCollapsed={isCollapsed}
-                />
-                <SideMenuItem
-                  name="Agents"
-                  icon={AIMetricsIcon}
-                  trailingIconClassName="size-5"
-                  activeIconColor="text-aiMetrics"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
-                  data-action="dashboard-agents"
-                  isCollapsed={isCollapsed}
                 />
                 <DashboardList
                   organization={organization}
