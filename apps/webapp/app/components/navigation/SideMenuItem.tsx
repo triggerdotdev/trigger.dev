@@ -20,6 +20,7 @@ export function SideMenuItem({
   isCollapsed = false,
   action,
   disableIconHover = false,
+  indented = false,
 }: {
   icon?: RenderIcon;
   activeIconColor?: string;
@@ -34,6 +35,13 @@ export function SideMenuItem({
   isCollapsed?: boolean;
   action?: ReactNode;
   disableIconHover?: boolean;
+  /**
+   * Visually indented variant — same item, just pushed further from
+   * the left edge so it reads as a child of the row above. Used for
+   * grouped sub-items like the Tasks > (Agents / Standard / Scheduled)
+   * cluster. The indent is only applied when the side menu is expanded.
+   */
+  indented?: boolean;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
@@ -44,6 +52,7 @@ export function SideMenuItem({
       target={target}
       className={cn(
         "group/menulink flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright",
+        indented && !isCollapsed && "pl-6",
         isActive ? "bg-tertiary text-text-bright" : "text-text-dimmed"
       )}
     >

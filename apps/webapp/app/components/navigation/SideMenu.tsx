@@ -411,6 +411,7 @@ export function SideMenu({
                 disableIconHover
                 to={v3AgentsPath(organization, project, environment)}
                 isCollapsed={isCollapsed}
+                indented
               />
               <SideMenuItem
                 name="Standard"
@@ -421,6 +422,7 @@ export function SideMenu({
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks-standard"
                 isCollapsed={isCollapsed}
+                indented
               />
               <SideMenuItem
                 name="Scheduled"
@@ -431,6 +433,7 @@ export function SideMenu({
                 to={v3SchedulesPath(organization, project, environment)}
                 data-action="schedules"
                 isCollapsed={isCollapsed}
+                indented
               />
               <SideMenuItem
                 name="Runs"
