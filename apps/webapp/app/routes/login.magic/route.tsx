@@ -30,6 +30,7 @@ import {
   MagicLinkRateLimitError,
   checkMagicLinkIpRateLimit,
 } from "~/services/magicLinkRateLimiter.server";
+import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
@@ -130,55 +131,59 @@ export async function action({ request }: ActionFunctionArgs) {
 
   switch (data.action) {
     case "send": {
-      if (!env.LOGIN_RATE_LIMITS_ENABLED) {
-        return authenticator.authenticate("email-link", request, {
-          successRedirect: "/login/magic",
-          failureRedirect: "/login/magic",
-        });
-      }
-
       const { email } = data;
-      const xff = request.headers.get("x-forwarded-for");
-      const clientIp = extractClientIp(xff);
 
-      const [error] = await tryCatch(
-        Promise.all([
-          clientIp ? checkMagicLinkIpRateLimit(clientIp) : Promise.resolve(),
-          checkMagicLinkEmailRateLimit(email),
-          checkMagicLinkEmailDailyRateLimit(email),
-        ])
-      );
+      if (env.LOGIN_RATE_LIMITS_ENABLED) {
+        const xff = request.headers.get("x-forwarded-for");
+        const clientIp = extractClientIp(xff);
 
-      if (error) {
-        if (error instanceof MagicLinkRateLimitError) {
-          logger.warn("Login magic link rate limit exceeded", {
-            clientIp,
-            email,
-            error,
+        const [error] = await tryCatch(
+          Promise.all([
+            clientIp ? checkMagicLinkIpRateLimit(clientIp) : Promise.resolve(),
+            checkMagicLinkEmailRateLimit(email),
+            checkMagicLinkEmailDailyRateLimit(email),
+          ])
+        );
+
+        if (error) {
+          if (error instanceof MagicLinkRateLimitError) {
+            logger.warn("Login magic link rate limit exceeded", {
+              clientIp,
+              email,
+              error,
+            });
+          } else {
+            logger.error("Failed sending login magic link", {
+              clientIp,
+              email,
+              error,
+            });
+          }
+
+          const errorMessage =
+            error instanceof MagicLinkRateLimitError
+              ? "Too many magic link requests. Please try again shortly."
+              : "Failed sending magic link. Please try again shortly.";
+
+          const session = await getUserSession(request);
+          session.set("auth:error", {
+            message: errorMessage,
           });
-        } else {
-          logger.error("Failed sending login magic link", {
-            clientIp,
-            email,
-            error,
+
+          return redirect("/login/magic", {
+            headers: {
+              "Set-Cookie": await commitSession(session),
+            },
           });
         }
+      }
 
-        const errorMessage =
-          error instanceof MagicLinkRateLimitError
-            ? "Too many magic link requests. Please try again shortly."
-            : "Failed sending magic link. Please try again shortly.";
-
-        const session = await getUserSession(request);
-        session.set("auth:error", {
-          message: errorMessage,
-        });
-
-        return redirect("/login/magic", {
-          headers: {
-            "Set-Cookie": await commitSession(session),
-          },
-        });
+      // SSO auto-discovery AFTER rate limiting: this is a DB lookup on
+      // attacker-controlled input, and the redirect-vs-send response is
+      // a domain-enumeration oracle — both need the limiter in front.
+      const ssoRedirect = await ssoRedirectForEmail(email, "domain_policy");
+      if (ssoRedirect) {
+        return redirect(ssoRedirect);
       }
 
       return authenticator.authenticate("email-link", request, {

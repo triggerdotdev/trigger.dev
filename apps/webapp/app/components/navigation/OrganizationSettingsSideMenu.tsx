@@ -3,6 +3,7 @@ import {
   ChartBarIcon,
   Cog8ToothIcon,
   CreditCardIcon,
+  LinkIcon,
   LockClosedIcon,
   ShieldCheckIcon,
   UserGroupIcon,
@@ -18,6 +19,7 @@ import {
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
+  organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
   rootPath,
@@ -48,10 +50,12 @@ export function OrganizationSettingsSideMenu({
   organization,
   buildInfo,
   isUsingPlugin,
+  isSsoUsingPlugin,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
+  isSsoUsingPlugin: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -117,7 +121,7 @@ export function OrganizationSettingsSideMenu({
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"
-              icon={LockClosedIcon}
+              icon={LinkIcon}
               activeIconColor="text-purple-500"
               inactiveIconColor="text-purple-500"
               to={v3PrivateConnectionsPath(organization)}
@@ -140,6 +144,21 @@ export function OrganizationSettingsSideMenu({
               inactiveIconColor="text-sky-500"
               to={organizationRolesPath(organization)}
               data-action="roles"
+            />
+          )}
+          {isManagedCloud && isSsoUsingPlugin && (
+            <SideMenuItem
+              name="SSO"
+              icon={LockClosedIcon}
+              activeIconColor="text-indigo-400"
+              inactiveIconColor="text-indigo-400"
+              to={organizationSsoPath(organization)}
+              data-action="sso"
+              badge={
+                currentPlan?.v3Subscription?.plan?.code === "enterprise" ? undefined : (
+                  <Badge variant="extra-small">Enterprise</Badge>
+                )
+              }
             />
           )}
           <SideMenuItem

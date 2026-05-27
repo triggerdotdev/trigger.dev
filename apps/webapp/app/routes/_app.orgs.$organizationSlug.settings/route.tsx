@@ -9,8 +9,13 @@ import {
 } from "~/components/navigation/OrganizationSettingsSideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const [isUsingPlugin, isSsoUsingPlugin] = await Promise.all([
+    rbac.isUsingPlugin(),
+    ssoController.isUsingPlugin(),
+  ]);
   return typedjson({
     buildInfo: {
       appVersion: process.env.BUILD_APP_VERSION,
@@ -19,12 +24,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       gitRefName: process.env.BUILD_GIT_REF_NAME,
       buildTimestampSeconds: process.env.BUILD_TIMESTAMP_SECONDS,
     } satisfies BuildInfo,
-    isUsingPlugin: await rbac.isUsingPlugin(),
+    isUsingPlugin,
+    isSsoUsingPlugin,
   });
 };
 
 export default function Page() {
-  const { buildInfo, isUsingPlugin } = useTypedLoaderData<typeof loader>();
+  const { buildInfo, isUsingPlugin, isSsoUsingPlugin } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
 
   return (
@@ -34,6 +40,7 @@ export default function Page() {
           organization={organization}
           buildInfo={buildInfo}
           isUsingPlugin={isUsingPlugin}
+          isSsoUsingPlugin={isSsoUsingPlugin}
         />
         <MainBody>
           <Outlet />

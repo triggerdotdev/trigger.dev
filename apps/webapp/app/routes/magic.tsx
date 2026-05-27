@@ -8,6 +8,8 @@ import { getRedirectTo } from "~/services/redirectTo.server";
 import { commitSession, getSession } from "~/services/sessionStorage.server";
 import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
+import { ssoRedirectFromAuthError } from "~/services/ssoAutoDiscovery.server";
+import type { AuthUser } from "~/services/authUser";
 import { sanitizeRedirectPath } from "~/utils";
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -16,9 +18,20 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const sanitized = sanitizeRedirectPath(await getRedirectTo(request));
   const redirectTo = sanitized === "/" ? undefined : sanitized;
 
-  const auth = await authenticator.authenticate("email-link", request, {
-    failureRedirect: "/login/magic", // If auth fails, the failureRedirect will be thrown as a Response
-  });
+  // The magic-link verify callback runs the SSO gate before any account
+  // write, so an SSO-enforced domain throws out here. remix-auth's own
+  // redirects are thrown Responses — pass those through.
+  let auth: AuthUser;
+  try {
+    auth = await authenticator.authenticate("email-link", request);
+  } catch (thrown) {
+    if (thrown instanceof Response) throw thrown;
+    const ssoRedirect = ssoRedirectFromAuthError(thrown);
+    if (ssoRedirect) {
+      return redirect(ssoRedirect);
+    }
+    return redirect("/login/magic");
+  }
 
   // manually get the session
   const session = await getSession(request.headers.get("cookie"));
