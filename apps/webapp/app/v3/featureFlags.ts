@@ -8,6 +8,7 @@ export const FEATURE_FLAG = {
   hasAiAccess: "hasAiAccess",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
+  hasSso: "hasSso",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
   realtimeBackend: "realtimeBackend",
@@ -25,6 +26,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
+  [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
   // Which backend serves the realtime run feed. Controllable

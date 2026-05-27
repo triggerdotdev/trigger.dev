@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { probeSsoSession } from "~/utils/ssoSessionGuard";
 
 type EventSourceOptions = {
   init?: EventSourceInit;
@@ -28,13 +29,21 @@ export function useEventSource(
 
     const eventSource = new EventSource(url, init);
     eventSource.addEventListener(event ?? "message", handler);
+    eventSource.addEventListener("error", errorHandler);
 
     function handler(event: MessageEvent) {
       setData(event.data || "UNKNOWN_EVENT_DATA");
     }
 
+    // EventSource can't surface response headers, so on a stream error probe
+    // an authenticated endpoint; a revoked session redirects via the guard.
+    function errorHandler() {
+      probeSsoSession();
+    }
+
     return () => {
       eventSource.removeEventListener(event ?? "message", handler);
+      eventSource.removeEventListener("error", errorHandler);
       eventSource.close();
     };
   }, [url, event, init, disabled]);
