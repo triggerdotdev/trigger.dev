@@ -48,9 +48,12 @@ export const BufferEntrySchema = z.object({
   status: BufferEntryStatus,
   attempts: stringToInt,
   createdAt: stringToDate,
-  // Microsecond epoch matching the ZSET queue score. Stable across
-  // requeues — the score never moves once set at accept time.
-  createdAtMicros: stringToInt,
+  // Microsecond epoch of accept time, kept as a hash field for dwell
+  // metrics. Not a queue sort key (the queue is a FIFO LIST). Defaulted
+  // so an entry written by an accept Lua predating this field — or one
+  // surviving across the deploy that introduced it — still parses instead
+  // of being silently dropped on pop.
+  createdAtMicros: stringToInt.default("0"),
   // Drainer-ack flag: `true` once the drainer has materialised this run
   // into PG. The hash persists for a short grace TTL after ack so direct
   // reads (retrieve, trace, etc.) still resolve while PG replica lag

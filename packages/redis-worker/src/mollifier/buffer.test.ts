@@ -30,6 +30,24 @@ describe("schemas", () => {
     expect(parsed.createdAtMicros).toBe(1747044000000000);
   });
 
+  it("BufferEntrySchema defaults createdAtMicros for entries written before the field existed", () => {
+    // Backward compat: an entry written by an accept Lua predating
+    // createdAtMicros (only the original 7 fields) must still parse on
+    // pop rather than being silently dropped.
+    const raw = {
+      runId: "run_old",
+      envId: "env_1",
+      orgId: "org_1",
+      payload: serialiseSnapshot({}),
+      status: "QUEUED",
+      attempts: "0",
+      createdAt: "2026-05-11T10:00:00.000Z",
+      // no createdAtMicros
+    };
+    const parsed = BufferEntrySchema.parse(raw);
+    expect(parsed.createdAtMicros).toBe(0);
+  });
+
   it("BufferEntrySchema parses a FAILED entry with lastError", () => {
     const raw = {
       runId: "run_abc",
@@ -560,13 +578,15 @@ describe("MollifierBuffer.requeue on missing entry", () => {
 
 describe("MollifierBuffer.requeue ordering", () => {
   redisTest(
-    "requeued entry pops next (RPUSH to the RPOP/tail end), preserving FIFO",
+    "requeued entry gets retry priority (RPUSH to the RPOP/tail end), popping ahead of newer items",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
-      // LIST FIFO: accept LPUSHes at the head, pop RPOPs from the tail, so
-      // the first-accepted entry pops first. requeue RPUSHes back to the
-      // tail, so a transiently failed entry pops next rather than going to
-      // the back. `maxAttempts` in the drainer bounds the retry loop for a
+      // LIST: accept LPUSHes at the head, pop RPOPs from the tail, so the
+      // first-accepted entry pops first. requeue RPUSHes back to the tail,
+      // giving a transiently failed entry *retry priority* — it pops next,
+      // ahead of newer queued items, rather than going to the back. (This
+      // is deliberately not FIFO relative to the rest of the queue.)
+      // `maxAttempts` in the drainer bounds the retry loop for a
       // persistently failing entry (after which it goes to `fail`, not requeue).
       const buffer = new MollifierBuffer({
         redisOptions: {
@@ -1481,6 +1501,78 @@ describe("MollifierBuffer idempotency lookup", () => {
         // Both the lookup and the claim are gone.
         expect(await buffer.lookupIdempotency(tuple)).toBeNull();
         expect(await buffer.readClaim(tuple)).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "accept self-heals a stale lookup: a new run rebinds when the bound entry was evicted",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // If an entry hash is evicted (maxmemory) but its idempotency lookup
+      // survives, a fresh accept with the same key must NOT return the dead
+      // runId (which would block the key forever) — it should rebind to the
+      // new run and accept it.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      const idem = { idempotencyKey: "kheal", taskIdentifier: "t" };
+      try {
+        await buffer.accept({ runId: "heal_old", envId: "env_h", orgId: "org_1", payload: "{}", ...idem });
+        // Simulate eviction of the entry hash while the lookup survives.
+        await buffer["redis"].del("mollifier:entries:heal_old");
+        const lookupKey = idempotencyLookupKeyFor({ envId: "env_h", ...idem });
+        expect(await buffer["redis"].get(lookupKey)).toBe("heal_old");
+
+        // A fresh accept with the same key rebinds rather than deduping
+        // onto the dead run.
+        const result = await buffer.accept({
+          runId: "heal_new",
+          envId: "env_h",
+          orgId: "org_1",
+          payload: "{}",
+          ...idem,
+        });
+        expect(result).toEqual({ kind: "accepted" });
+        expect(await buffer["redis"].get(lookupKey)).toBe("heal_new");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "accept still dedups when the bound entry is live",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // The self-heal must not weaken normal dedup: a live bound entry
+      // still wins, and the loser gets its runId back.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      const idem = { idempotencyKey: "klive", taskIdentifier: "t" };
+      try {
+        await buffer.accept({ runId: "live_win", envId: "env_h", orgId: "org_1", payload: "{}", ...idem });
+        const result = await buffer.accept({
+          runId: "live_lose",
+          envId: "env_h",
+          orgId: "org_1",
+          payload: "{}",
+          ...idem,
+        });
+        expect(result).toEqual({ kind: "duplicate_idempotency", existingRunId: "live_win" });
       } finally {
         await buffer.close();
       }

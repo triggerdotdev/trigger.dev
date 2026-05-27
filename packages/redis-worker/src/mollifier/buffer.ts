@@ -160,6 +160,7 @@ export class MollifierBuffer {
       String(createdAtMicros),
       "mollifier:org-envs:",
       idempotencyLookupKey,
+      "mollifier:entries:",
     );
     // Lua returns 1 (accepted), 0 (duplicate runId), or a string runId
     // (duplicate idempotency — value is the existing winner's runId).
@@ -391,15 +392,17 @@ export class MollifierBuffer {
   // Resolve a buffered run by (env, task, idempotencyKey) tuple. Used by
   // `IdempotencyKeyConcern.handleTriggerRequest` after the PG check
   // misses — same key may belong to a buffered run waiting to drain. The
-  // lookup self-heals: if the lookup points at an entry hash that's
-  // expired, we DEL the lookup and report a miss.
+  // lookup self-heals: if the lookup points at an entry hash that's gone,
+  // we clear the lookup and report a miss. The clear is a compare-and-
+  // delete (only if the key still holds the stale runId we observed) so a
+  // fresh accept that rebinds the key between our GET and DEL isn't wiped.
   async lookupIdempotency(input: IdempotencyLookupInput): Promise<string | null> {
     const lookupKey = idempotencyLookupKeyFor(input);
     const runId = await this.redis.get(lookupKey);
     if (!runId) return null;
     const entry = await this.getEntry(runId);
     if (!entry) {
-      await this.redis.del(lookupKey);
+      await this.redis.delMollifierKeyIfEquals(lookupKey, runId);
       return null;
     }
     return runId;
@@ -502,6 +505,7 @@ export class MollifierBuffer {
         local createdAtMicros = ARGV[6]
         local orgEnvsPrefix = ARGV[7]
         local idempotencyLookupKey = ARGV[8] or ''
+        local entryPrefix = ARGV[9]
 
         -- Idempotent: refuse if an entry for this runId already exists in any
         -- state. Caller-side dedup is also enforced via API idempotency keys,
@@ -519,7 +523,14 @@ export class MollifierBuffer {
         if idempotencyLookupKey ~= '' then
           local existing = redis.call('GET', idempotencyLookupKey)
           if existing then
-            return existing
+            -- Self-heal: only honour the binding if its entry hash still
+            -- exists. If the entry was evicted (maxmemory) but the lookup
+            -- survived, the binding is stale — fall through and rebind to
+            -- this run rather than returning a dead runId that would block
+            -- the key indefinitely. Mirrors lookupIdempotency's self-heal.
+            if redis.call('EXISTS', entryPrefix .. existing) == 1 then
+              return existing
+            end
           end
           redis.call('SET', idempotencyLookupKey, runId)
         end
@@ -935,6 +946,20 @@ export class MollifierBuffer {
       `,
     });
 
+    // Compare-and-delete: DEL the key only if it still holds the expected
+    // value. Used by lookupIdempotency's stale-lookup self-heal so a
+    // concurrent accept that rebinds the key between the reader's GET and
+    // this DEL isn't clobbered.
+    this.redis.defineCommand("delMollifierKeyIfEquals", {
+      numberOfKeys: 1,
+      lua: `
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+          return redis.call('DEL', KEYS[1])
+        end
+        return 0
+      `,
+    });
+
     this.redis.defineCommand("mollifierEvaluateTrip", {
       numberOfKeys: 2,
       lua: `
@@ -974,6 +999,7 @@ declare module "@internal/redis" {
       createdAtMicros: string,
       orgEnvsPrefix: string,
       idempotencyLookupKey: string,
+      entryPrefix: string,
       callback?: Callback<number | string>,
     ): Result<number | string, Context>;
     popAndMarkDraining(
@@ -1037,6 +1063,11 @@ declare module "@internal/redis" {
     failMollifierEntry(
       entryKey: string,
       errorPayload: string,
+      callback?: Callback<number>,
+    ): Result<number, Context>;
+    delMollifierKeyIfEquals(
+      key: string,
+      expected: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     mollifierEvaluateTrip(
