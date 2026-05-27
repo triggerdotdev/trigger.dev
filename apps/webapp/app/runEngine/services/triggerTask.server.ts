@@ -475,7 +475,7 @@ export class RunEngineTriggerTaskService {
                   taskIdentifier: taskId,
                 });
 
-                logger.info("mollifier.buffered", {
+                logger.debug("mollifier.buffered", {
                   runId: runFriendlyId,
                   envId: environment.id,
                   orgId: environment.organizationId,

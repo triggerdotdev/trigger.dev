@@ -59,20 +59,22 @@ export type ClaimOrAwaitInput = IdempotencyLookupInput & {
 //   IdempotencyKeyConcern PG-first lookup.
 export async function claimOrAwait(input: ClaimOrAwaitInput): Promise<ClaimOrAwaitOutcome> {
   const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
+  if (!buffer) {
+    // Mollifier disabled / buffer construction failed. Fall open —
+    // caller proceeds with the trigger pipeline (PG unique constraint
+    // backstop). The token is never read in this case (publish/release
+    // are buffer-null no-ops downstream), so we skip the default
+    // `randomUUID()` to keep the mollifier-OFF hot path allocation-free
+    // for idempotency-keyed triggers — `triggerTask` is the
+    // highest-throughput code path in the system. A test-injected
+    // generator is still honoured for deterministic assertions.
+    return { kind: "claimed", token: input.generateToken ? input.generateToken() : "" };
+  }
   const generateToken = input.generateToken ?? randomUUID;
   // Generate the ownership token up front so the retry loop reuses it
   // — we're the same logical claimant across attempts; only the slot
   // owner changes between releases.
   const token = generateToken();
-  if (!buffer) {
-    // Mollifier disabled / buffer construction failed. Fall open —
-    // caller proceeds with the trigger pipeline (PG unique constraint
-    // backstop). Without the claim machinery the race-window scenarios
-    // from the plan doc revert to today's behaviour. Token is still
-    // generated so callers don't have to branch on the "no buffer" case
-    // — publish/release become buffer-null no-ops downstream.
-    return { kind: "claimed", token };
-  }
   const ttlSeconds = input.ttlSeconds ?? DEFAULT_CLAIM_TTL_SECONDS;
   const safetyNetMs = input.safetyNetMs ?? DEFAULT_CLAIM_WAIT_MS;
   const pollStepMs = input.pollStepMs ?? DEFAULT_CLAIM_POLL_MS;
