@@ -2,7 +2,52 @@ import { describe, expect, it } from "vitest";
 import { BufferEntrySchema, serialiseSnapshot, deserialiseSnapshot } from "./schemas.js";
 import { redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
-import { MollifierBuffer, idempotencyLookupKeyFor, makeIdempotencyClaimKey } from "./buffer.js";
+import {
+  MollifierBuffer,
+  idempotencyLookupKeyFor,
+  makeIdempotencyClaimKey,
+  mollifierReconnectDelayMs,
+} from "./buffer.js";
+
+describe("mollifierReconnectDelayMs", () => {
+  it("grows linearly with the attempt count and caps the base at 1s", () => {
+    // random=()=>1 yields the top of the equal-jitter band (== base).
+    const top = (times: number) => mollifierReconnectDelayMs(times, () => 1);
+    expect(top(1)).toBe(50);
+    expect(top(4)).toBe(200);
+    expect(top(20)).toBe(1000);
+    // Past the cap the base stays at 1000.
+    expect(top(100)).toBe(1000);
+  });
+
+  it("applies equal jitter: result is uniform in [base/2, base]", () => {
+    // base for times=10 is 500, so the band is [250, 500].
+    expect(mollifierReconnectDelayMs(10, () => 0)).toBe(250); // floor of band
+    expect(mollifierReconnectDelayMs(10, () => 0.999999)).toBe(500); // top of band
+    const mid = mollifierReconnectDelayMs(10, () => 0.5);
+    expect(mid).toBeGreaterThanOrEqual(250);
+    expect(mid).toBeLessThanOrEqual(500);
+  });
+
+  it("never exceeds the original fixed-schedule envelope (strictly an improvement)", () => {
+    for (const times of [1, 2, 5, 10, 20, 50]) {
+      const cap = Math.min(times * 50, 1000);
+      for (const r of [0, 0.25, 0.5, 0.75, 0.999999]) {
+        const delay = mollifierReconnectDelayMs(times, () => r);
+        expect(delay).toBeLessThanOrEqual(cap);
+        expect(delay).toBeGreaterThanOrEqual(Math.floor(cap / 2));
+      }
+    }
+  });
+
+  it("decorrelates concurrent reconnects (distinct values across random draws)", () => {
+    const draws = [0.05, 0.3, 0.55, 0.8, 0.95].map((r) =>
+      mollifierReconnectDelayMs(20, () => r),
+    );
+    // Lockstep would collapse to a single value; jitter spreads them.
+    expect(new Set(draws).size).toBeGreaterThan(1);
+  });
+});
 
 describe("schemas", () => {
   it("serialiseSnapshot then deserialiseSnapshot is identity for plain objects", () => {

@@ -18,6 +18,24 @@ export type MollifierBufferOptions = {
 // have a safety net while PG replica lag settles. Q1 D2.
 const ACK_GRACE_TTL_SECONDS = 30;
 
+// ioredis reconnect backoff for the mollifier buffer client. The base
+// grows linearly with the attempt count and is capped at 1s (the same
+// envelope as the previous fixed `Math.min(times * 50, 1000)` schedule).
+// We then apply equal jitter — a uniform pick in `[base/2, base]` — so a
+// fleet of webapp instances reconnecting after the same Redis blip don't
+// retry in lockstep and stampede Redis on recovery (thundering herd).
+// Because the jittered value never exceeds the original cap, this is never
+// slower than before — just decorrelated. Mirrors the jittered-backoff
+// approach the mutate-fallback wait loop adopted for the same reason.
+export function mollifierReconnectDelayMs(
+  times: number,
+  random: () => number = Math.random,
+): number {
+  const base = Math.min(times * 50, 1000);
+  const half = Math.floor(base / 2);
+  return half + Math.round(random() * (base - half));
+}
+
 export type SnapshotPatch =
   | { type: "append_tags"; tags: string[] }
   | { type: "set_metadata"; metadata: string; metadataType: string }
@@ -95,8 +113,7 @@ export class MollifierBuffer {
       {
         ...options.redisOptions,
         retryStrategy(times) {
-          const delay = Math.min(times * 50, 1000);
-          return delay;
+          return mollifierReconnectDelayMs(times);
         },
         maxRetriesPerRequest: 20,
       },
