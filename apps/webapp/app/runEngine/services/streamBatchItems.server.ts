@@ -4,11 +4,44 @@ import {
 } from "@trigger.dev/core/v3";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import type { BatchItem, RunEngine } from "@internal/run-engine";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
+
+/**
+ * Phase 2 retry idempotency check (TRI-9944).
+ *
+ * Returns true when the batch is in a state that means the Phase 2 stream's
+ * job has already been done by an earlier (or concurrent) request — every
+ * item is enqueued, runs have been or are being created, and at least one
+ * TaskRun record exists for the customer to monitor. A retry should return
+ * sealed:true in these states so the SDK stops retrying.
+ *
+ *  - PROCESSING / sealed=true + PENDING: original sealed; runs are executing
+ *    (PENDING after callback "all runs created") or about to.
+ *  - COMPLETED: every run reached a terminal state (tryCompleteBatch).
+ *  - PARTIAL_FAILED: at least one TaskRun record exists; per-run failures
+ *    are visible at the run level.
+ *
+ * ABORTED is intentionally excluded — it means ZERO TaskRun records were
+ * created (every per-item attempt failed AND the pre-failed-TaskRun fallback
+ * also failed). The customer has nothing to monitor at the run level, so
+ * the trigger call must throw to give their retry/error handling a chance.
+ */
+export function isIdempotentRetrySuccess(
+  status: BatchTaskRunStatus | null | undefined,
+  sealed: boolean | null | undefined
+): boolean {
+  return (
+    status === "PROCESSING" ||
+    status === "COMPLETED" ||
+    status === "PARTIAL_FAILED" ||
+    (sealed === true && status === "PENDING")
+  );
+}
 
 export type StreamBatchItemsServiceOptions = {
   maxItemBytes: number;
@@ -100,26 +133,7 @@ export class StreamBatchItemsService extends WithRunEngine {
           throw new ServiceValidationError(`Batch ${batchFriendlyId} not found`);
         }
 
-        // Phase 2 retry idempotency (TRI-9944): a successful original request
-        // sealed the batch (sealed=true, status=PROCESSING) and the V2 batch
-        // completion callback can then independently update status to:
-        //   - PENDING (all runs created — sealed stays true)
-        //   - PARTIAL_FAILED (some run creations failed — sealed stays true/false)
-        //   - COMPLETED (set by tryCompleteBatch after every run reaches a final
-        //     state — sealed is NOT set by this path)
-        // For all of these the Phase 2 stream did its job, so a retry should
-        // return sealed:true and the SDK stops retrying.
-        //
-        // ABORTED is explicitly excluded — it means every run-creation attempt
-        // failed and the batch is terminally broken; surface that as an error
-        // rather than masking it as success.
-        const isIdempotentRetrySuccess =
-          batch.status === "PROCESSING" ||
-          batch.status === "COMPLETED" ||
-          batch.status === "PARTIAL_FAILED" ||
-          (batch.sealed && batch.status === "PENDING");
-
-        if (isIdempotentRetrySuccess) {
+        if (isIdempotentRetrySuccess(batch.status, batch.sealed)) {
           logger.info("Batch already sealed/completed - treating Phase 2 retry as success", {
             batchId: batchFriendlyId,
             batchSealed: batch.sealed,
@@ -137,6 +151,8 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         if (batch.status !== "PENDING") {
           // ABORTED or any other unexpected non-PENDING state — surface as an error.
+          // For ABORTED specifically, throwing is required so the customer's
+          // batchTrigger() retries (a new batch) can recreate the runs.
           throw new ServiceValidationError(
             `Batch ${batchFriendlyId} is not in PENDING status (current: ${batch.status})`
           );
@@ -253,18 +269,14 @@ export class StreamBatchItemsService extends WithRunEngine {
             select: { sealed: true, status: true },
           });
 
-          if (
-            currentBatch?.sealed ||
-            currentBatch?.status === "COMPLETED" ||
-            currentBatch?.status === "PARTIAL_FAILED"
-          ) {
+          if (isIdempotentRetrySuccess(currentBatch?.status, currentBatch?.sealed)) {
             logger.info("Batch already sealed before count check (fast completion)", {
               batchId: batchFriendlyId,
               itemsAccepted,
               itemsDeduplicated,
               enqueuedCount,
               expectedCount: batch.runCount,
-              batchStatus: currentBatch.status,
+              batchStatus: currentBatch?.status,
             });
 
             return {
@@ -274,6 +286,15 @@ export class StreamBatchItemsService extends WithRunEngine {
               sealed: true,
               runCount: batch.runCount,
             };
+          }
+
+          if (currentBatch?.status === "ABORTED") {
+            // Zero TaskRuns exist — the count-mismatch sealed:false semantics
+            // ("retry with missing items") would mislead the SDK. Throw so the
+            // customer's batchTrigger() retry creates a fresh batch.
+            throw new ServiceValidationError(
+              `Batch ${batchFriendlyId} is not in PENDING status (current: ABORTED)`
+            );
           }
 
           logger.warn("Batch item count mismatch", {
@@ -337,18 +358,14 @@ export class StreamBatchItemsService extends WithRunEngine {
             },
           });
 
-          if (
-            (currentBatch?.sealed && currentBatch.status === "PROCESSING") ||
-            currentBatch?.status === "COMPLETED" ||
-            currentBatch?.status === "PARTIAL_FAILED"
-          ) {
+          if (isIdempotentRetrySuccess(currentBatch?.status, currentBatch?.sealed)) {
             logger.info("Batch already sealed/completed by concurrent path", {
               batchId: batchFriendlyId,
               itemsAccepted,
               itemsDeduplicated,
               envId: environment.id,
-              batchStatus: currentBatch.status,
-              batchSealed: currentBatch.sealed,
+              batchStatus: currentBatch?.status,
+              batchSealed: currentBatch?.sealed,
             });
 
             span.setAttribute("itemsAccepted", itemsAccepted);

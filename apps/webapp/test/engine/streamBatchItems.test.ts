@@ -1083,6 +1083,245 @@ describe("StreamBatchItemsService", () => {
       await engine.quit();
     }
   );
+
+  containerTest(
+    "should return sealed=true when seal-failed race produces sealed=true + PENDING (post-callback all-created)",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+          disabled: true,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const batch = await createBatch(prisma, authenticatedEnvironment.id, {
+        runCount: 2,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: authenticatedEnvironment.id,
+        environmentType: authenticatedEnvironment.type,
+        organizationId: authenticatedEnvironment.organizationId,
+        projectId: authenticatedEnvironment.projectId,
+        runCount: 2,
+        processingConcurrency: 10,
+      });
+
+      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 0, {
+        task: "test-task",
+        payload: JSON.stringify({ data: "item1" }),
+        payloadType: "application/json",
+      });
+      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 1, {
+        task: "test-task",
+        payload: JSON.stringify({ data: "item2" }),
+        payloadType: "application/json",
+      });
+
+      // Simulate the race where a concurrent path seals the batch (sealed=true,
+      // PROCESSING), then the V2 batchCompletionCallback fires with all runs
+      // created successfully and resets status to PENDING (sealed stays true).
+      // Our seal updateMany then fails the conditional (sealed=false no longer
+      // matches), and the re-query sees sealed=true + PENDING — a perfectly
+      // valid post-callback state that the SDK retry should treat as success.
+      const racingPrisma = {
+        ...prisma,
+        batchTaskRun: {
+          ...prisma.batchTaskRun,
+          findFirst: prisma.batchTaskRun.findFirst.bind(prisma.batchTaskRun),
+          updateMany: async () => {
+            await prisma.batchTaskRun.update({
+              where: { id: batch.id },
+              data: {
+                sealed: true,
+                sealedAt: new Date(),
+                // Intentionally leave status as PENDING — that's exactly what
+                // the V2 batchCompletionCallback does after all runs are
+                // created (status PROCESSING → PENDING).
+              },
+            });
+            return { count: 0 };
+          },
+          findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
+        },
+      } as unknown as PrismaClient;
+
+      const service = new StreamBatchItemsService({
+        prisma: racingPrisma,
+        engine,
+      });
+
+      const result = await service.call(
+        authenticatedEnvironment,
+        batch.friendlyId,
+        itemsToAsyncIterable([]),
+        {
+          maxItemBytes: 1024 * 1024,
+        }
+      );
+
+      expect(result.sealed).toBe(true);
+      expect(result.id).toBe(batch.friendlyId);
+
+      const updatedBatch = await prisma.batchTaskRun.findUnique({
+        where: { id: batch.id },
+      });
+
+      expect(updatedBatch?.sealed).toBe(true);
+      expect(updatedBatch?.status).toBe("PENDING");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "should throw when count-mismatch race produces sealed=true + ABORTED (no TaskRuns created)",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+          disabled: true,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const batch = await createBatch(prisma, authenticatedEnvironment.id, {
+        runCount: 3,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: authenticatedEnvironment.id,
+        environmentType: authenticatedEnvironment.type,
+        organizationId: authenticatedEnvironment.organizationId,
+        projectId: authenticatedEnvironment.projectId,
+        runCount: 3,
+        processingConcurrency: 10,
+      });
+
+      // Only enqueue 2 items so the post-loop count check trips into the
+      // mismatch handler. The race we're simulating: between our pre-loop
+      // findFirst and the count-mismatch re-query, a concurrent path sealed
+      // the batch, runs were attempted, every run-creation failed AND the
+      // pre-failed-TaskRun fallback also failed → callback sets ABORTED.
+      // The customer has zero TaskRun records to monitor, so the retry must
+      // throw rather than silently succeed.
+      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 0, {
+        task: "test-task",
+        payload: JSON.stringify({ data: "item1" }),
+        payloadType: "application/json",
+      });
+      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 1, {
+        task: "test-task",
+        payload: JSON.stringify({ data: "item2" }),
+        payloadType: "application/json",
+      });
+
+      // Override findFirst to flip the batch to sealed=true + ABORTED on the
+      // re-query that happens INSIDE the count-mismatch branch. The first
+      // findFirst (pre-loop) must still see PENDING + sealed=false so we
+      // pass through and reach the count-mismatch branch.
+      let findFirstCallCount = 0;
+      const racingPrisma = {
+        ...prisma,
+        batchTaskRun: {
+          ...prisma.batchTaskRun,
+          findFirst: async (args: Parameters<typeof prisma.batchTaskRun.findFirst>[0]) => {
+            findFirstCallCount++;
+            if (findFirstCallCount >= 2) {
+              await prisma.batchTaskRun.update({
+                where: { id: batch.id },
+                data: {
+                  sealed: true,
+                  sealedAt: new Date(),
+                  status: "ABORTED",
+                  completedAt: new Date(),
+                },
+              });
+            }
+            return prisma.batchTaskRun.findFirst.call(prisma.batchTaskRun, args);
+          },
+          updateMany: prisma.batchTaskRun.updateMany.bind(prisma.batchTaskRun),
+          findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
+        },
+      } as unknown as PrismaClient;
+
+      const service = new StreamBatchItemsService({
+        prisma: racingPrisma,
+        engine,
+      });
+
+      await expect(
+        service.call(authenticatedEnvironment, batch.friendlyId, itemsToAsyncIterable([]), {
+          maxItemBytes: 1024 * 1024,
+        })
+      ).rejects.toThrow(ServiceValidationError);
+
+      await engine.quit();
+    }
+  );
 });
 
 describe("createNdjsonParserStream", () => {
