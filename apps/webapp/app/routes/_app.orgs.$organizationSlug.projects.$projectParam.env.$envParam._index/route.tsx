@@ -92,7 +92,10 @@ import {
   docsPath,
   EnvironmentParamSchema,
   inviteTeamMemberPath,
+  v3AgentTaskPath,
   v3RunsPath,
+  v3ScheduledTaskPath,
+  v3StandardTaskPath,
   v3TasksStreamingPath,
   v3TestPath,
   v3TestTaskPath,
@@ -270,9 +273,15 @@ export default function Page() {
                       <TableBody>
                         {filteredItems.length > 0 ? (
                           filteredItems.map((task) => {
-                            const path = v3RunsPath(organization, project, environment, {
+                            const runsPath = v3RunsPath(organization, project, environment, {
                               tasks: [task.slug],
                             });
+                            const path =
+                              task.triggerSource === "AGENT"
+                                ? v3AgentTaskPath(organization, project, environment, task.slug)
+                                : task.triggerSource === "SCHEDULED"
+                                ? v3ScheduledTaskPath(organization, project, environment, task.slug)
+                                : v3StandardTaskPath(organization, project, environment, task.slug);
 
                             const testPath = v3TestTaskPath(organization, project, environment, {
                               taskIdentifier: task.slug,
@@ -373,7 +382,7 @@ export default function Page() {
                                     <>
                                       <PopoverMenuItem
                                         icon={RunsIcon}
-                                        to={path}
+                                        to={runsPath}
                                         title="View runs"
                                         leadingIconClassName="text-runs"
                                       />

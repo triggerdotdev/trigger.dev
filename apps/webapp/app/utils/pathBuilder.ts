@@ -360,6 +360,28 @@ export function v3AgentTaskPath(
   return `${v3AgentsPath(organization, project, environment)}/${encodeURIComponent(agentSlug)}`;
 }
 
+export function v3StandardTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  taskSlug: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/standard/${encodeURIComponent(
+    taskSlug
+  )}`;
+}
+
+export function v3ScheduledTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  taskSlug: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/scheduled/${encodeURIComponent(
+    taskSlug
+  )}`;
+}
+
 export function v3RunsPath(
   organization: OrgForPath,
   project: ProjectForPath,
