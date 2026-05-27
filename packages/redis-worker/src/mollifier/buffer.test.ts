@@ -238,8 +238,8 @@ describe("MollifierBuffer.pop orphan handling", () => {
       });
 
       try {
-        // Simulate a TTL-expired orphan: queue ref exists, entry hash does not.
-        await buffer["redis"].zadd("mollifier:queue:env_a", 1, "run_orphan");
+        // Simulate an evicted orphan: queue ref exists, entry hash does not.
+        await buffer["redis"].rpush("mollifier:queue:env_a", "run_orphan");
 
         const popped = await buffer.pop("env_a");
         expect(popped).toBeNull();
@@ -249,7 +249,7 @@ describe("MollifierBuffer.pop orphan handling", () => {
         expect(Object.keys(raw)).toHaveLength(0);
 
         // Queue is drained — the loop pops orphans until empty.
-        const qLen = await buffer["redis"].zcard("mollifier:queue:env_a");
+        const qLen = await buffer["redis"].llen("mollifier:queue:env_a");
         expect(qLen).toBe(0);
       } finally {
         await buffer.close();
@@ -271,12 +271,13 @@ describe("MollifierBuffer.pop orphan handling", () => {
       });
 
       try {
-        // Layout by score (lowest-first, since ZPOPMIN takes the min):
-        // orphan_a (score 1) → valid (score = its createdAtMicros, large) → orphan_b (score 1e18).
-        // First pop skips orphan_a, returns valid; orphan_b remains.
-        await buffer["redis"].zadd("mollifier:queue:env_a", 1, "orphan_a");
+        // Build the queue so RPOP (tail-first) yields: orphan_a, valid,
+        // orphan_b. accept LPUSHes "valid"; RPUSH puts orphan_a at the
+        // tail (popped first), LPUSH puts orphan_b at the head (popped
+        // last). First pop skips orphan_a, returns valid; orphan_b remains.
         await buffer.accept({ runId: "valid", envId: "env_a", orgId: "org_1", payload: "{}" });
-        await buffer["redis"].zadd("mollifier:queue:env_a", 1e18, "orphan_b");
+        await buffer["redis"].rpush("mollifier:queue:env_a", "orphan_a");
+        await buffer["redis"].lpush("mollifier:queue:env_a", "orphan_b");
 
         const popped = await buffer.pop("env_a");
         expect(popped).not.toBeNull();
@@ -284,7 +285,7 @@ describe("MollifierBuffer.pop orphan handling", () => {
         expect(popped!.status).toBe("DRAINING");
 
         // The trailing orphan_b is still in the queue (single pop call).
-        const remaining = await buffer["redis"].zcard("mollifier:queue:env_a");
+        const remaining = await buffer["redis"].llen("mollifier:queue:env_a");
         expect(remaining).toBe(1);
 
         // A second pop drains the trailing orphan_b. The queue is now
@@ -559,13 +560,14 @@ describe("MollifierBuffer.requeue on missing entry", () => {
 
 describe("MollifierBuffer.requeue ordering", () => {
   redisTest(
-    "requeued entry retains its original createdAt and pops next (oldest-first by createdAt)",
+    "requeued entry pops next (RPUSH to the RPOP/tail end), preserving FIFO",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
-      // Score == createdAtMicros; requeue does not bump the score. The
-      // oldest entry continues to pop first across retries. `maxAttempts`
-      // in the drainer bounds the retry loop for a persistently failing
-      // entry (after which it goes to the `fail` path, not requeue).
+      // LIST FIFO: accept LPUSHes at the head, pop RPOPs from the tail, so
+      // the first-accepted entry pops first. requeue RPUSHes back to the
+      // tail, so a transiently failed entry pops next rather than going to
+      // the back. `maxAttempts` in the drainer bounds the retry loop for a
+      // persistently failing entry (after which it goes to `fail`, not requeue).
       const buffer = new MollifierBuffer({
         redisOptions: {
           host: redisContainer.getHost(),
@@ -577,9 +579,7 @@ describe("MollifierBuffer.requeue ordering", () => {
 
       try {
         await buffer.accept({ runId: "a", envId: "env_a", orgId: "org_1", payload: "{}" });
-        await new Promise((r) => setTimeout(r, 2));
         await buffer.accept({ runId: "b", envId: "env_a", orgId: "org_1", payload: "{}" });
-        await new Promise((r) => setTimeout(r, 2));
         await buffer.accept({ runId: "c", envId: "env_a", orgId: "org_1", payload: "{}" });
 
         const first = await buffer.pop("env_a");
@@ -587,7 +587,7 @@ describe("MollifierBuffer.requeue ordering", () => {
 
         await buffer.requeue("a");
 
-        // a still has the smallest createdAtMicros → pops next.
+        // a was RPUSHed back to the tail → pops next, ahead of b and c.
         const next = await buffer.pop("env_a");
         expect(next!.runId).toBe("a");
         const after = await buffer.pop("env_a");
@@ -2045,9 +2045,9 @@ describe("MollifierBuffer.mutateSnapshot", () => {
   );
 });
 
-describe("MollifierBuffer ZSET storage", () => {
+describe("MollifierBuffer LIST storage", () => {
   redisTest(
-    "queue key is a ZSET scored by entry's createdAtMicros",
+    "queue key is a LIST; createdAtMicros is a hash field, not a sort key",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
       const buffer = new MollifierBuffer({
@@ -2062,24 +2062,21 @@ describe("MollifierBuffer ZSET storage", () => {
       try {
         await buffer.accept({ runId: "z1", envId: "env_z", orgId: "org_1", payload: "{}" });
 
-        // ZSET-only commands must succeed against the queue key.
-        const card = await buffer["redis"].zcard("mollifier:queue:env_z");
-        expect(card).toBe(1);
+        // LIST-only commands must succeed against the queue key.
+        const len = await buffer["redis"].llen("mollifier:queue:env_z");
+        expect(len).toBe(1);
+        const members = await buffer["redis"].lrange("mollifier:queue:env_z", 0, -1);
+        expect(members).toEqual(["z1"]);
 
-        const score = await buffer["redis"].zscore("mollifier:queue:env_z", "z1");
-        expect(score).not.toBeNull();
-        const scoreNum = Number(score);
-        expect(Number.isFinite(scoreNum)).toBe(true);
+        // The queue holds no score — it's not a ZSET.
+        await expect(buffer["redis"].zscore("mollifier:queue:env_z", "z1")).rejects.toThrow();
 
-        // Score matches the entry hash's createdAtMicros field.
-        const micros = await buffer["redis"].hget("mollifier:entries:z1", "createdAtMicros");
-        expect(micros).not.toBeNull();
-        expect(Number(micros)).toBe(scoreNum);
-
-        // Score is plausibly recent (within last minute as microseconds).
+        // createdAtMicros lives on the entry hash (for dwell metrics) and
+        // is plausibly recent (within the last minute, as microseconds).
+        const micros = Number(await buffer["redis"].hget("mollifier:entries:z1", "createdAtMicros"));
         const nowMicros = Date.now() * 1000;
-        expect(scoreNum).toBeGreaterThan(nowMicros - 60_000_000);
-        expect(scoreNum).toBeLessThanOrEqual(nowMicros + 1_000_000);
+        expect(micros).toBeGreaterThan(nowMicros - 60_000_000);
+        expect(micros).toBeLessThanOrEqual(nowMicros + 1_000_000);
       } finally {
         await buffer.close();
       }
@@ -2087,7 +2084,7 @@ describe("MollifierBuffer ZSET storage", () => {
   );
 
   redisTest(
-    "pop returns entries in ascending createdAtMicros order (FIFO by time, not by member)",
+    "pop returns entries in FIFO insertion order (independent of member lex order)",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
       const buffer = new MollifierBuffer({
@@ -2100,11 +2097,10 @@ describe("MollifierBuffer ZSET storage", () => {
       });
 
       try {
-        // Insert runIds in reverse-lex order to prove ordering is by score, not member.
+        // Accept in reverse-lex order to prove ordering is by insertion
+        // (LPUSH head / RPOP tail), not by member value.
         await buffer.accept({ runId: "zzz", envId: "env_o", orgId: "org_1", payload: "{}" });
-        await new Promise((r) => setTimeout(r, 5));
         await buffer.accept({ runId: "mmm", envId: "env_o", orgId: "org_1", payload: "{}" });
-        await new Promise((r) => setTimeout(r, 5));
         await buffer.accept({ runId: "aaa", envId: "env_o", orgId: "org_1", payload: "{}" });
 
         const first = await buffer.pop("env_o");
@@ -2120,7 +2116,7 @@ describe("MollifierBuffer ZSET storage", () => {
   );
 
   redisTest(
-    "requeue keeps original score; createdAt is immutable across retries",
+    "requeue re-enqueues to the LIST; createdAt is immutable across retries",
     { timeout: 20_000 },
     async ({ redisContainer }) => {
       const buffer = new MollifierBuffer({
@@ -2134,24 +2130,17 @@ describe("MollifierBuffer ZSET storage", () => {
 
       try {
         await buffer.accept({ runId: "rq", envId: "env_rq", orgId: "org_1", payload: "{}" });
-        const originalScore = Number(
-          await buffer["redis"].zscore("mollifier:queue:env_rq", "rq"),
-        );
-        const originalMicros = Number(
-          await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros"),
-        );
+        const originalMicros = await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros");
 
         await buffer.pop("env_rq");
-        await new Promise((r) => setTimeout(r, 5));
+        // Queue is empty after the pop.
+        expect(await buffer["redis"].llen("mollifier:queue:env_rq")).toBe(0);
+
         await buffer.requeue("rq");
 
-        const newScore = Number(
-          await buffer["redis"].zscore("mollifier:queue:env_rq", "rq"),
-        );
-        const newMicros = Number(
-          await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros"),
-        );
-        expect(newScore).toBe(originalScore);
+        // Back on the LIST, and createdAtMicros is unchanged.
+        expect(await buffer["redis"].lrange("mollifier:queue:env_rq", 0, -1)).toEqual(["rq"]);
+        const newMicros = await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros");
         expect(newMicros).toBe(originalMicros);
       } finally {
         await buffer.close();
@@ -2228,181 +2217,6 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
     try {
       expect(await buffer.listEntriesForEnv("env_a", 0)).toEqual([]);
       expect(await buffer.listEntriesForEnv("env_a", -5)).toEqual([]);
-    } finally {
-      await buffer.close();
-    }
-  });
-});
-
-describe("MollifierBuffer.listForEnvWithWatermark", () => {
-  // Seed a QUEUED entry, then pin its ZSET score and hash `createdAtMicros`
-  // to a deterministic value so ordering and the watermark cursor don't
-  // depend on wall-clock timing (Date.now() ties within a millisecond).
-  async function seed(buffer: MollifierBuffer, envId: string, runId: string, micros: number) {
-    await buffer.accept({ runId, envId, orgId: "org_1", payload: "{}" });
-    await buffer["redis"].zadd(`mollifier:queue:${envId}`, String(micros), runId);
-    await buffer["redis"].hset(`mollifier:entries:${runId}`, "createdAtMicros", String(micros));
-  }
-
-  redisTest("pageSize <= 0 returns empty without hitting redis", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
-    try {
-      expect(await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 0 })).toEqual([]);
-      expect(await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: -3 })).toEqual([]);
-    } finally {
-      await buffer.close();
-    }
-  });
-
-  redisTest(
-    "page 1 returns newest-first up to pageSize without consuming entries",
-    { timeout: 20_000 },
-    async ({ redisContainer }) => {
-      const buffer = new MollifierBuffer({
-        redisOptions: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        },
-        logger: new Logger("test", "log"),
-      });
-      try {
-        await seed(buffer, "env_w", "wa", 1000);
-        await seed(buffer, "env_w", "wb", 2000);
-        await seed(buffer, "env_w", "wc", 3000);
-
-        const page = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 2 });
-        // Newest-first by createdAtMicros.
-        expect(page.map((e) => e.runId)).toEqual(["wc", "wb"]);
-
-        // Non-destructive: drainer still pops oldest-first.
-        const popped: string[] = [];
-        for (let i = 0; i < 3; i++) {
-          const e = await buffer.pop("env_w");
-          if (e) popped.push(e.runId);
-        }
-        expect(popped).toEqual(["wa", "wb", "wc"]);
-      } finally {
-        await buffer.close();
-      }
-    },
-  );
-
-  redisTest(
-    "page N continues strictly below the watermark score",
-    { timeout: 20_000 },
-    async ({ redisContainer }) => {
-      const buffer = new MollifierBuffer({
-        redisOptions: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        },
-        logger: new Logger("test", "log"),
-      });
-      try {
-        await seed(buffer, "env_w", "wa", 1000);
-        await seed(buffer, "env_w", "wb", 2000);
-        await seed(buffer, "env_w", "wc", 3000);
-
-        const page1 = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 2 });
-        expect(page1.map((e) => e.runId)).toEqual(["wc", "wb"]);
-
-        const last = page1[page1.length - 1]!;
-        const page2 = await buffer.listForEnvWithWatermark({
-          envId: "env_w",
-          pageSize: 2,
-          watermark: { createdAtMicros: last.createdAtMicros, runId: last.runId },
-        });
-        // Only the entry strictly below score 2000 remains; no overlap.
-        expect(page2.map((e) => e.runId)).toEqual(["wa"]);
-      } finally {
-        await buffer.close();
-      }
-    },
-  );
-
-  redisTest(
-    "tied-score watermark surfaces lex-smaller members on the next page without dupes",
-    { timeout: 20_000 },
-    async ({ redisContainer }) => {
-      const buffer = new MollifierBuffer({
-        redisOptions: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        },
-        logger: new Logger("test", "log"),
-      });
-      try {
-        // Three entries share one score; ZSET breaks the tie by member,
-        // and zrevrangebyscore returns them member-DESC: tc, tb, ta.
-        await seed(buffer, "env_w", "ta", 2000);
-        await seed(buffer, "env_w", "tb", 2000);
-        await seed(buffer, "env_w", "tc", 2000);
-
-        const page1 = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 2 });
-        expect(page1.map((e) => e.runId)).toEqual(["tc", "tb"]);
-
-        const last = page1[page1.length - 1]!;
-        const page2 = await buffer.listForEnvWithWatermark({
-          envId: "env_w",
-          pageSize: 2,
-          watermark: { createdAtMicros: last.createdAtMicros, runId: last.runId },
-        });
-        // Same score, lex-smaller than the "tb" anchor — and not "tb"
-        // itself (no duplicate across the page boundary).
-        expect(page2.map((e) => e.runId)).toEqual(["ta"]);
-      } finally {
-        await buffer.close();
-      }
-    },
-  );
-
-  redisTest(
-    "skips orphan queue references (entry hash gone) during listing",
-    { timeout: 20_000 },
-    async ({ redisContainer }) => {
-      const buffer = new MollifierBuffer({
-        redisOptions: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        },
-        logger: new Logger("test", "log"),
-      });
-      try {
-        await seed(buffer, "env_w", "live", 1000);
-        await seed(buffer, "env_w", "orphan", 2000);
-        // Drop the orphan's hash but leave its queue ref behind.
-        await buffer["redis"].del("mollifier:entries:orphan");
-
-        const page = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 10 });
-        expect(page.map((e) => e.runId)).toEqual(["live"]);
-      } finally {
-        await buffer.close();
-      }
-    },
-  );
-
-  redisTest("returns empty for an env with no queued entries", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
-    try {
-      expect(await buffer.listForEnvWithWatermark({ envId: "env_empty_w", pageSize: 10 })).toEqual([]);
     } finally {
       await buffer.close();
     }

@@ -135,12 +135,10 @@ export class MollifierBuffer {
     const orgsKey = "mollifier:orgs";
     const nowMs = Date.now();
     const createdAt = new Date(nowMs).toISOString();
-    // Microsecond epoch. JS only has millisecond precision, so multiple
-    // accepts in the same ms share a score; ZSET ties resolve by member
-    // (runId) lex order, which is deterministic and acceptable for FIFO
-    // pop. The hash carries the same value as `createdAtMicros` so the
-    // listing helper (Phase E) can read a stable per-run timestamp
-    // without re-fetching the score.
+    // Microsecond epoch, stored as a hash field for dwell-time metrics
+    // (stale sweep, drainer dwell span). FIFO ordering comes from the
+    // LIST itself (LPUSH head / RPOP tail), not from this value — it is
+    // no longer a queue sort key.
     const createdAtMicros = nowMs * 1000;
     const idempotencyLookupKey =
       input.idempotencyKey && input.taskIdentifier
@@ -231,86 +229,16 @@ export class MollifierBuffer {
     return this.redis.smembers(`mollifier:org-envs:${orgId}`);
   }
 
-  // Paginated read of currently-queued entries newest-first, bounded by
-  // an optional `(createdAtMicros, runId)` watermark. Q1 listing design.
-  // Returns hydrated `BufferEntry` rows up to `pageSize`. Skips orphans
-  // (queue ref without an entry hash) silently. Non-destructive — the
-  // drainer keeps popping these entries in createdAt order regardless.
-  async listForEnvWithWatermark(input: {
-    envId: string;
-    watermark?: { createdAtMicros: number; runId: string };
-    pageSize: number;
-  }): Promise<BufferEntry[]> {
-    if (input.pageSize <= 0) return [];
-    const queueKey = `mollifier:queue:${input.envId}`;
-
-    let runIds: string[];
-    if (!input.watermark) {
-      // Page 1 — newest first.
-      runIds = await this.redis.zrevrangebyscore(
-        queueKey,
-        "+inf",
-        "-inf",
-        "LIMIT",
-        0,
-        input.pageSize,
-      );
-    } else {
-      // Page N — strictly below the watermark score.
-      const belowScore = await this.redis.zrevrangebyscore(
-        queueKey,
-        `(${input.watermark.createdAtMicros}`,
-        "-inf",
-        "LIMIT",
-        0,
-        input.pageSize,
-      );
-      runIds = belowScore;
-      // Tied-score scan: ZSET ties broken by member-DESC, so entries
-      // sharing the watermark score with a lex-smaller runId still
-      // need to surface. Cheap second range over the tied band.
-      if (belowScore.length < input.pageSize) {
-        const remaining = input.pageSize - belowScore.length;
-        const tied = await this.redis.zrangebyscore(
-          queueKey,
-          input.watermark.createdAtMicros,
-          input.watermark.createdAtMicros,
-        );
-        // Filter to runIds lex-less than the watermark anchor, sort
-        // member-DESC, take `remaining`.
-        const tiedFiltered = tied
-          .filter((r) => r < input.watermark!.runId)
-          .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
-          .slice(0, remaining);
-        runIds = [...belowScore, ...tiedFiltered];
-      }
-    }
-
-    if (runIds.length === 0) return [];
-
-    // Parallel HGETALL — one round-trip per entry, all in flight.
-    const fetched = await Promise.all(
-      runIds.map((runId) => this.redis.hgetall(`mollifier:entries:${runId}`)),
-    );
-    const entries: BufferEntry[] = [];
-    for (const value of fetched) {
-      if (!value || Object.keys(value).length === 0) continue;
-      const parsed = BufferEntrySchema.safeParse(value);
-      if (parsed.success) entries.push(parsed.data);
-    }
-    return entries;
-  }
-
-  // Read-only listing of currently-queued entries for a single env. Used by
-  // the dashboard's "Recently queued" surface — non-destructive, so the
-  // drainer still pops these entries in order. Returns up to `maxCount`
-  // entries newest-first (highest score, which is `createdAtMicros`).
-  // Each entry hash is fetched separately; a `null` from getEntry (entry
-  // torn down by a concurrent drainer ack/fail between ZREVRANGE and
-  // HGETALL) is skipped.
+  // Read-only enumeration of currently-queued entries for a single env.
+  // Used by the stale-sweep to compute per-entry dwell time, so order is
+  // immaterial — LRANGE returns them newest-first (LPUSH head) but the
+  // caller scans the whole window. Non-destructive: the drainer still
+  // RPOPs these entries in FIFO order. Each entry hash is fetched
+  // separately; a `null` from getEntry (entry torn down by a concurrent
+  // drainer ack/fail between LRANGE and HGETALL) is skipped.
   async listEntriesForEnv(envId: string, maxCount: number): Promise<BufferEntry[]> {
     if (maxCount <= 0) return [];
-    const runIds = await this.redis.zrevrange(
+    const runIds = await this.redis.lrange(
       `mollifier:queue:${envId}`,
       0,
       maxCount - 1,
@@ -613,12 +541,11 @@ export class MollifierBuffer {
         -- eviction would lose runs with no customer-visible signal.
         -- Memory pressure from an offline drainer is the alertable
         -- failure mode instead; see _ops/mollifier-ops.md.
-        -- ZSET keyed by createdAtMicros: ZPOPMIN drains oldest-first
-        -- (FIFO); listing pagination uses ZREVRANGEBYSCORE with a
-        -- (createdAt, runId) cursor anchor. Score is stable across the
-        -- entry's lifecycle — requeue does not bump it (see Phase 3b /
-        -- Q1 design).
-        redis.call('ZADD', queueKey, createdAtMicros, runId)
+        -- LIST queue: LPUSH at the head, drainer RPOPs from the tail, so
+        -- insertion order == drain order (FIFO). createdAtMicros is kept
+        -- as a hash field for dwell metrics only — it is no longer a sort
+        -- key now that the buffer has no list/pagination surface.
+        redis.call('LPUSH', queueKey, runId)
         -- Org-level membership: maintained atomically with the per-env
         -- queue so the drainer can walk orgs → envs-for-org and
         -- schedule one env per org per tick. SADDs are idempotent if the
@@ -640,8 +567,7 @@ export class MollifierBuffer {
 
         local envId = redis.call('HGET', entryKey, 'envId')
         local orgId = redis.call('HGET', entryKey, 'orgId')
-        local createdAtMicros = redis.call('HGET', entryKey, 'createdAtMicros')
-        if not envId or not createdAtMicros then
+        if not envId then
           return 0
         end
 
@@ -649,11 +575,12 @@ export class MollifierBuffer {
         local nextAttempts = tonumber(currentAttempts or '0') + 1
 
         redis.call('HSET', entryKey, 'status', 'QUEUED', 'attempts', tostring(nextAttempts))
-        -- Requeue re-adds with the ORIGINAL createdAtMicros score.
-        -- createdAt is immutable across retries (Phase 3b decision).
-        -- The drainer's maxAttempts caps the retry loop so a poisoned
-        -- entry doesn't head-of-line forever.
-        redis.call('ZADD', queuePrefix .. envId, tonumber(createdAtMicros), runId)
+        -- Requeue RPUSHes to the tail (the RPOP end) so a transiently
+        -- failed entry pops next rather than going to the back of the
+        -- line behind a fresh backlog. createdAt is immutable across
+        -- retries (Phase 3b decision); the drainer's maxAttempts caps the
+        -- retry loop so a poisoned entry doesn't head-of-line forever.
+        redis.call('RPUSH', queuePrefix .. envId, runId)
         -- Re-track the org/env: pop may have SREM'd them when the queue
         -- last emptied. SADDs are idempotent if the values are still
         -- present.
@@ -694,9 +621,8 @@ export class MollifierBuffer {
         -- partial hash without a TTL, leaking memory. The loop is bounded
         -- by queue length; entire Lua script remains atomic.
         while true do
-          -- ZPOPMIN returns {member, score} as a flat array, or {} when empty.
-          local popped = redis.call('ZPOPMIN', queueKey)
-          local runId = popped[1]
+          -- RPOP returns the tail member (oldest, FIFO), or false when empty.
+          local runId = redis.call('RPOP', queueKey)
           if not runId then
             -- Queue is empty AND we have no entry to read orgId from, so
             -- skip org-level cleanup. Stale org-envs entries are bounded
@@ -713,9 +639,9 @@ export class MollifierBuffer {
               result[raw[i]] = raw[i + 1]
             end
             -- Prune org-level membership if this pop drained the queue.
-            -- Atomic with the ZPOPMIN above — a concurrent accept AFTER
-            -- this script will SADD both back along with its ZADD.
-            if redis.call('ZCARD', queueKey) == 0 then
+            -- Atomic with the RPOP above — a concurrent accept AFTER
+            -- this script will SADD both back along with its LPUSH.
+            if redis.call('LLEN', queueKey) == 0 then
               pruneOrgMembership(result['orgId'])
             end
             return cjson.encode(result)
