@@ -402,20 +402,20 @@ export function SideMenu({
                   show the regular icon; when expanded show the tree connector
                   so the hierarchy reads visually. */}
               <SideMenuItem
-                name="Agent tasks"
-                icon={isCollapsed ? CubeSparkleIcon : TreeConnectorBranch}
-                activeIconColor={isCollapsed ? "text-agents" : undefined}
-                inactiveIconColor={isCollapsed ? "text-agents" : "text-charcoal-700"}
+                name="Agents"
+                icon={CubeSparkleIcon}
+                activeIconColor="text-agents"
+                inactiveIconColor="text-text-dimmed"
                 disableIconHover
                 to={v3AgentsPath(organization, project, environment)}
                 isCollapsed={isCollapsed}
                 indented
               />
               <SideMenuItem
-                name="Standard tasks"
-                icon={isCollapsed ? TaskIcon : TreeConnectorBranch}
-                activeIconColor={isCollapsed ? "text-tasks" : undefined}
-                inactiveIconColor={isCollapsed ? "text-tasks" : "text-charcoal-700"}
+                name="Standard"
+                icon={TaskIcon}
+                activeIconColor="text-tasks"
+                inactiveIconColor="text-text-dimmed"
                 disableIconHover
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks-standard"
@@ -423,10 +423,10 @@ export function SideMenu({
                 indented
               />
               <SideMenuItem
-                name="Scheduled tasks"
-                icon={isCollapsed ? ClockIcon : TreeConnectorEnd}
-                activeIconColor={isCollapsed ? "text-schedules" : undefined}
-                inactiveIconColor={isCollapsed ? "text-schedules" : "text-charcoal-700"}
+                name="Scheduled"
+                icon={ClockIcon}
+                activeIconColor="text-schedules"
+                inactiveIconColor="text-text-dimmed"
                 disableIconHover
                 to={v3SchedulesPath(organization, project, environment)}
                 data-action="schedules"

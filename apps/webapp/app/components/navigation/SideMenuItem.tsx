@@ -46,13 +46,15 @@ export function SideMenuItem({
   const pathName = usePathName();
   const isActive = pathName === to;
 
-  const link = (
+  const isIndented = indented && !isCollapsed;
+
+  const linkElement = (
     <Link
       to={to}
       target={target}
       className={cn(
-        "group/menulink flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright",
-        indented && !isCollapsed && "pl-6",
+        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright",
+        isIndented ? "min-w-0 flex-1" : "w-full",
         isActive ? "bg-tertiary text-text-bright" : "text-text-dimmed"
       )}
     >
@@ -96,6 +98,15 @@ export function SideMenuItem({
         )}
       </motion.div>
     </Link>
+  );
+
+  const link = isIndented ? (
+    <div className="flex w-full">
+      <div aria-hidden className="w-3 shrink-0" />
+      {linkElement}
+    </div>
+  ) : (
+    linkElement
   );
 
   if (action) {
