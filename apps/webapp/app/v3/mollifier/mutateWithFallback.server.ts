@@ -10,8 +10,12 @@ import { getMollifierBuffer } from "./mollifierBuffer.server";
 
 // Wait/retry knobs per Q3 design. Exported for tests.
 export const DEFAULT_SAFETY_NET_MS = 2_000;
+// Initial gap between buffer polls; grows by BACKOFF_FACTOR up to
+// DEFAULT_MAX_POLL_STEP_MS so a slow drain doesn't poll at a tight fixed
+// cadence for the whole safety-net budget.
 export const DEFAULT_POLL_STEP_MS = 20;
-export const DEFAULT_PG_TIMEOUT_MS = 50;
+export const DEFAULT_MAX_POLL_STEP_MS = 250;
+const BACKOFF_FACTOR = 1.7;
 
 export type MutateWithFallbackInput<TResponse> = {
   runId: string;
@@ -28,13 +32,16 @@ export type MutateWithFallbackInput<TResponse> = {
   // Override defaults for tests.
   safetyNetMs?: number;
   pollStepMs?: number;
-  pgTimeoutMs?: number;
+  maxPollStepMs?: number;
   // Test injection.
   getBuffer?: () => MollifierBuffer | null;
   prismaWriter?: TaskRunReader;
   prismaReplica?: TaskRunReader;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  // Jitter source; defaults to Math.random. Inject `() => 0` for
+  // deterministic poll timing in tests.
+  random?: () => number;
 };
 
 export type MutateWithFallbackOutcome<TResponse> =
@@ -92,32 +99,49 @@ export async function mutateWithFallback<TResponse>(
     return { kind: "not_found" };
   }
 
-  // result === "busy" — entry is DRAINING / FAILED / materialised. Wait
-  // for the drainer to terminate the entry into PG (success or
-  // SYSTEM_FAILURE) and route through pgMutation.
+  // result === "busy" — the entry is mid-handoff (DRAINING) or already
+  // materialised. We do NOT poll the primary for the row to appear: that
+  // piles read load onto the writer at exactly the moment mollifier exists
+  // to shed it. Instead we watch the buffer entry itself (cheap Redis
+  // reads). The drainer writes the PG row BEFORE it acks (sets
+  // `materialised`) or fails (deletes the entry), so the entry's own state
+  // is an authoritative, already-in-Redis signal for "is the row in PG
+  // yet?". Only once it resolves do we touch the primary — exactly once,
+  // for the real mutation.
   const safetyNetMs = input.safetyNetMs ?? DEFAULT_SAFETY_NET_MS;
-  const pollStepMs = input.pollStepMs ?? DEFAULT_POLL_STEP_MS;
-  const pgTimeoutMs = input.pgTimeoutMs ?? DEFAULT_PG_TIMEOUT_MS;
+  const maxPollStepMs = input.maxPollStepMs ?? DEFAULT_MAX_POLL_STEP_MS;
+  const random = input.random ?? Math.random;
   const deadline = now() + safetyNetMs;
+  let step = input.pollStepMs ?? DEFAULT_POLL_STEP_MS;
 
   while (now() < deadline) {
     if (input.abortSignal?.aborted) {
       return { kind: "timed_out" };
     }
 
-    const row = await findRunInPgWithTimeout(
-      writer,
-      input.runId,
-      input.environmentId,
-      pgTimeoutMs,
-    );
-    if (row) {
-      const response = await input.pgMutation(row);
-      return { kind: "pg", response };
+    const entry = await buffer.getEntry(input.runId);
+    // Resolved when the entry is gone (`fail` deleted it after writing a
+    // terminal SYSTEM_FAILURE row) or materialised (`ack` after a
+    // successful trigger / cancel write). In both cases the PG row is now
+    // committed on the primary, so read it once and route through the
+    // canonical PG mutation path.
+    if (entry === null || entry.materialised === true) {
+      const row = await findRunInPg(writer, input.runId, input.environmentId);
+      if (row) {
+        const response = await input.pgMutation(row);
+        return { kind: "pg", response };
+      }
+      // Entry gone with no PG row: the drainer's terminal write itself
+      // failed (PG unreachable). Nothing to mutate.
+      return { kind: "not_found" };
     }
-
+    // Still QUEUED (requeued after a retryable drain error) or DRAINING —
+    // the run hasn't reached PG. Back off with jitter so concurrent
+    // waiters on the same draining run don't requery in lockstep.
     if (now() >= deadline) break;
-    await sleep(pollStepMs);
+    const jittered = step + Math.floor(random() * step);
+    await sleep(jittered);
+    step = Math.min(Math.ceil(step * BACKOFF_FACTOR), maxPollStepMs);
   }
 
   logger.warn("mollifier mutate-with-fallback: drainer resolution timed out", {
@@ -146,32 +170,6 @@ async function findRunInPg(
   return client.taskRun.findFirst({
     where: { friendlyId, runtimeEnvironmentId: environmentId },
   });
-}
-
-async function findRunInPgWithTimeout(
-  client: TaskRunReader,
-  friendlyId: string,
-  environmentId: string,
-  timeoutMs: number,
-): Promise<TaskRun | null> {
-  // One slow PG query shouldn't burn the whole safety-net budget.
-  // Promise.race against a timer; on timeout we treat the poll as a miss
-  // and the outer loop tries again on the next tick.
-  const timeoutToken = Symbol("pg-timeout");
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<typeof timeoutToken>((resolve) => {
-    timeoutHandle = setTimeout(() => resolve(timeoutToken), timeoutMs);
-  });
-  try {
-    const winner = await Promise.race([
-      findRunInPg(client, friendlyId, environmentId),
-      timeoutPromise,
-    ]);
-    if (winner === timeoutToken) return null;
-    return winner;
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
 }
 
 function defaultSleep(ms: number): Promise<void> {

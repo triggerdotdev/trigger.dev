@@ -6,7 +6,11 @@ vi.mock("~/db.server", () => ({
 }));
 
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
-import type { MollifierBuffer, MutateSnapshotResult } from "@trigger.dev/redis-worker";
+import type {
+  BufferEntry,
+  MollifierBuffer,
+  MutateSnapshotResult,
+} from "@trigger.dev/redis-worker";
 import type { TaskRun } from "@trigger.dev/database";
 
 type FindFirst = ReturnType<typeof vi.fn>;
@@ -22,8 +26,29 @@ function fakePrisma(rows: Array<TaskRun | null>): PrismaStub {
 function bufferReturning(result: MutateSnapshotResult): MollifierBuffer {
   return {
     mutateSnapshot: vi.fn(async () => result),
+    getEntry: vi.fn(async () => null),
   } as unknown as MollifierBuffer;
 }
+
+// Buffer whose mutateSnapshot returns "busy" and whose getEntry walks a
+// scripted sequence of entry states (the drainer's progress). The last
+// element repeats once the sequence is exhausted.
+function bufferBusy(entries: Array<BufferEntry | null>): MollifierBuffer {
+  const getEntry = vi.fn();
+  for (const e of entries) getEntry.mockResolvedValueOnce(e);
+  getEntry.mockResolvedValue(entries.length ? entries[entries.length - 1] : null);
+  return {
+    mutateSnapshot: vi.fn(async () => "busy" as const),
+    getEntry,
+  } as unknown as MollifierBuffer;
+}
+
+const entryDraining = (): BufferEntry =>
+  ({ status: "DRAINING", materialised: false }) as unknown as BufferEntry;
+const entryQueued = (): BufferEntry =>
+  ({ status: "QUEUED", materialised: false }) as unknown as BufferEntry;
+const entryMaterialised = (): BufferEntry =>
+  ({ status: "DRAINING", materialised: true }) as unknown as BufferEntry;
 
 const fakeRun = (overrides: Partial<TaskRun> = {}): TaskRun =>
   ({
@@ -101,11 +126,12 @@ describe("mutateWithFallback", () => {
     expect(pgMutation).toHaveBeenCalledWith(row);
   });
 
-  it("replica miss + buffer busy + writer resolves mid-wait → pgMutation", async () => {
+  it("busy → watches buffer through DRAINING, materialises, hits primary exactly once", async () => {
     const row = fakeRun();
     const pgMutation = vi.fn(async () => "pg-after-wait");
-    // Replica misses; writer misses twice, then hits.
-    const writer = fakePrisma([null, null, row]);
+    // Writer is read ONCE, only after the buffer reports materialised.
+    const writer = fakePrisma([row]);
+    const buffer = bufferBusy([entryDraining(), entryDraining(), entryMaterialised()]);
     let nowValue = 0;
     const result = await mutateWithFallback({
       ...baseInput,
@@ -113,43 +139,125 @@ describe("mutateWithFallback", () => {
       synthesisedResponse: () => "snap",
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
-      getBuffer: () => bufferReturning("busy"),
-      sleep: async () => {
-        nowValue += 20;
+      getBuffer: () => buffer,
+      sleep: async (ms) => {
+        nowValue += ms;
       },
       now: () => nowValue,
       safetyNetMs: 2000,
       pollStepMs: 20,
-      pgTimeoutMs: 50,
+      random: () => 0,
     });
     expect(result).toEqual({ kind: "pg", response: "pg-after-wait" });
     expect(pgMutation).toHaveBeenCalledWith(row);
-    // Writer should have been polled 3 times before the hit.
-    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(3);
+    // Detection happened against Redis (3 polls), the primary exactly once.
+    expect(buffer.getEntry).toHaveBeenCalledTimes(3);
+    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
   });
 
-  it("replica miss + buffer busy + drainer never resolves → timed_out", async () => {
+  it("busy → entry deleted by terminal fail, writer finds SYSTEM_FAILURE row → pgMutation", async () => {
+    const row = fakeRun();
+    const pgMutation = vi.fn(async () => "pg-failed-row");
+    const writer = fakePrisma([row]);
+    const buffer = bufferBusy([entryDraining(), null]);
+    let nowValue = 0;
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation,
+      synthesisedResponse: () => "snap",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => buffer,
+      sleep: async (ms) => {
+        nowValue += ms;
+      },
+      now: () => nowValue,
+      safetyNetMs: 2000,
+      pollStepMs: 20,
+      random: () => 0,
+    });
+    expect(result).toEqual({ kind: "pg", response: "pg-failed-row" });
+    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("busy → entry deleted but no PG row (terminal write failed) → not_found", async () => {
+    const buffer = bufferBusy([null]);
+    const writer = fakePrisma([null]);
     let nowValue = 0;
     const result = await mutateWithFallback({
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([null, null, null, null, null]) as unknown as typeof import("~/db.server").prisma,
-      getBuffer: () => bufferReturning("busy"),
-      sleep: async () => {
-        nowValue += 20;
+      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => buffer,
+      sleep: async (ms) => {
+        nowValue += ms;
       },
       now: () => nowValue,
-      safetyNetMs: 60,
+      safetyNetMs: 2000,
       pollStepMs: 20,
-      pgTimeoutMs: 5,
+      random: () => 0,
+    });
+    expect(result).toEqual({ kind: "not_found" });
+    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("busy → requeued (back to QUEUED) then materialises; doesn't resolve early", async () => {
+    const row = fakeRun();
+    const pgMutation = vi.fn(async () => "pg-after-requeue");
+    const writer = fakePrisma([row]);
+    // QUEUED (requeued after a retryable drain error) must NOT be treated
+    // as "done" — the run hasn't reached PG. Only the later materialise does.
+    const buffer = bufferBusy([entryQueued(), entryDraining(), entryMaterialised()]);
+    let nowValue = 0;
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation,
+      synthesisedResponse: () => "snap",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => buffer,
+      sleep: async (ms) => {
+        nowValue += ms;
+      },
+      now: () => nowValue,
+      safetyNetMs: 2000,
+      pollStepMs: 20,
+      random: () => 0,
+    });
+    expect(result).toEqual({ kind: "pg", response: "pg-after-requeue" });
+    expect(buffer.getEntry).toHaveBeenCalledTimes(3);
+    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("busy → drainer never resolves (stays DRAINING) → timed_out, primary never touched", async () => {
+    const writer = fakePrisma([]);
+    const buffer = bufferBusy([entryDraining()]);
+    let nowValue = 0;
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation: async () => "pg",
+      synthesisedResponse: () => "snap",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => buffer,
+      sleep: async (ms) => {
+        nowValue += ms;
+      },
+      now: () => nowValue,
+      safetyNetMs: 100,
+      pollStepMs: 20,
+      random: () => 0,
     });
     expect(result).toEqual({ kind: "timed_out" });
+    // The whole point: while the run is still draining we never read the primary.
+    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(0);
   });
 
   it("abort signal during wait → timed_out without further polls", async () => {
-    const writer = fakePrisma([null, null, null]);
+    const writer = fakePrisma([]);
+    const buffer = bufferBusy([entryDraining(), entryDraining()]);
     const controller = new AbortController();
     let nowValue = 0;
     const result = await mutateWithFallback({
@@ -158,20 +266,21 @@ describe("mutateWithFallback", () => {
       synthesisedResponse: () => "snap",
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
-      getBuffer: () => bufferReturning("busy"),
-      sleep: async () => {
-        nowValue += 20;
+      getBuffer: () => buffer,
+      sleep: async (ms) => {
+        nowValue += ms;
         controller.abort();
       },
       now: () => nowValue,
       safetyNetMs: 2000,
       pollStepMs: 20,
-      pgTimeoutMs: 5,
+      random: () => 0,
       abortSignal: controller.signal,
     });
     expect(result).toEqual({ kind: "timed_out" });
-    // One poll happened before the sleep+abort.
-    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
+    // One buffer poll happened before the sleep+abort; primary untouched.
+    expect(buffer.getEntry).toHaveBeenCalledTimes(1);
+    expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(0);
   });
 
   it("buffer is null (mollifier disabled) → not_found after replica miss", async () => {
