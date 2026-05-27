@@ -1,6 +1,7 @@
 import { context, trace, TraceFlags } from "@opentelemetry/api";
 import type { RunEngine } from "@internal/run-engine";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { MollifierDrainerHandler } from "@trigger.dev/redis-worker";
 import { startSpan } from "~/v3/tracing.server";
 import type { MollifierSnapshot } from "./mollifierSnapshot.server";
@@ -72,14 +73,41 @@ export function createDrainerHandler(deps: {
           span.setAttribute("mollifier.run_friendly_id", input.runId);
           span.setAttribute("mollifier.cancel_bifurcation", true);
           span.setAttribute("taskRunId", input.runId);
-          await deps.engine.createCancelledRun(
-            {
-              snapshot: input.payload as any,
-              cancelledAt: new Date(cancelledAtStr),
-              cancelReason,
-            },
-            deps.prisma,
-          );
+          try {
+            await deps.engine.createCancelledRun(
+              {
+                snapshot: input.payload as any,
+                cancelledAt: new Date(cancelledAtStr),
+                cancelReason,
+              },
+              deps.prisma,
+            );
+          } catch (err) {
+            // createCancelledRun throws a conflict when the normal trigger
+            // replay path won the race and already materialised a live
+            // (non-CANCELED) row for this friendlyId. Its contract leaves
+            // the resolution to us: honour the cancel by actually
+            // cancelling the now-live run. Letting the conflict propagate
+            // would instead reach the drainer's terminal-failure path
+            // (isRetryablePgError() is false for it), buffer.fail() the
+            // entry, and silently lose the cancellation while the run
+            // keeps executing.
+            const isConflict =
+              err instanceof Error && err.message.startsWith("createCancelledRun conflict");
+            if (!isConflict) {
+              throw err;
+            }
+            span.setAttribute("mollifier.cancel_conflict", true);
+            const friendlyId =
+              typeof input.payload.friendlyId === "string"
+                ? input.payload.friendlyId
+                : input.runId;
+            await deps.engine.cancelRun({
+              runId: RunId.fromFriendlyId(friendlyId),
+              completedAt: new Date(cancelledAtStr),
+              reason: cancelReason,
+            });
+          }
         });
       });
       return;
@@ -158,9 +186,23 @@ export function createDrainerHandler(deps: {
                 typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
             });
           } catch (writeErr) {
-            // Class A — PG itself is failing. Rethrow the original
-            // error so the drainer falls back to buffer.fail. Include
-            // the write error in the log line at the drainer layer.
+            // The terminal SYSTEM_FAILURE write itself failed. If it
+            // failed because PG is transiently unreachable, rethrow the
+            // *write* error so the drainer requeues — buffer.fail()ing on
+            // the original non-retryable error would lose the run with no
+            // PG row ever landing. Once PG recovers the requeued entry
+            // writes its failure row and the customer sees it.
+            if (isRetryablePgError(writeErr)) {
+              span.setAttribute("mollifier.terminal_write_retryable", true);
+              throw writeErr;
+            }
+            // PG reachable but the write was rejected for another reason
+            // (genuinely bad snapshot). Rethrow the original trigger error
+            // so the drainer falls back to buffer.fail.
+            span.setAttribute(
+              "mollifier.terminal_write_error",
+              writeErr instanceof Error ? writeErr.message : String(writeErr)
+            );
             throw err;
           }
         }

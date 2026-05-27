@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { trace } from "@opentelemetry/api";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 
 vi.mock("~/db.server", () => ({
   prisma: {},
@@ -178,6 +179,81 @@ describe("createDrainerHandler", () => {
     ).rejects.toThrow("engine rejected the snapshot");
     // Drainer's outer drainOne loop now decides retry vs buffer.fail.
     expect(createFailedTaskRun).toHaveBeenCalledOnce();
+  });
+
+  it("honours the cancel when a buffered cancel races a materialised non-CANCELED row", async () => {
+    // Cancel-wins-over-trigger (Q4 bifurcation). If the normal trigger
+    // replay path materialised a live PENDING row before the cancel
+    // bifurcation drained, engine.createCancelledRun throws a conflict —
+    // its documented contract is that "the caller must decide between
+    // engine.cancelRun() and skipping". The drainer handler must honour
+    // the cancel intent by actually cancelling the now-live run; otherwise
+    // the conflict propagates, isRetryablePgError() returns false, and the
+    // drainer buffer.fail()s the entry — silently losing the cancellation
+    // while the run keeps executing.
+    const friendlyId = RunId.generate().friendlyId;
+    const createCancelledRun = vi.fn(async () => {
+      throw new Error(
+        `createCancelledRun conflict: existing run ${friendlyId} has status PENDING`
+      );
+    });
+    const cancelRun = vi.fn(async () => ({ alreadyFinished: false }));
+    const handler = createDrainerHandler({
+      engine: { createCancelledRun, cancelRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: friendlyId,
+        envId: "env_a",
+        orgId: "org_1",
+        payload: {
+          friendlyId,
+          taskIdentifier: "t",
+          environment: envFixture,
+          cancelledAt: new Date().toISOString(),
+          cancelReason: "Canceled by user",
+        },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any)
+    ).resolves.toBeUndefined();
+
+    // The live run is actually cancelled, by its internal id.
+    expect(cancelRun).toHaveBeenCalledOnce();
+    expect(cancelRun.mock.calls[0][0].runId).toBe(RunId.fromFriendlyId(friendlyId));
+  });
+
+  it("requeues on a transient PG outage during the SYSTEM_FAILURE fallback write", async () => {
+    // engine.trigger failed non-retryably, so we try to write a terminal
+    // SYSTEM_FAILURE row. If THAT write fails because PG is transiently
+    // unreachable, rethrowing the *original* non-retryable error makes the
+    // drainer buffer.fail() the entry — losing the run with no PG row ever
+    // landing. Rethrow the retryable write error instead so the drainer
+    // requeues; once PG recovers the failure row lands and the customer
+    // sees it.
+    const trigger = vi.fn(async () => {
+      throw new Error("validation failed: payload too large");
+    });
+    const createFailedTaskRun = vi.fn(async () => {
+      throw new Error("Can't reach database server");
+    });
+    const handler = createDrainerHandler({
+      engine: { trigger, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: "run_x",
+        envId: "env_a",
+        orgId: "org_1",
+        payload: { taskIdentifier: "t", environment: envFixture },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any)
+    ).rejects.toThrow("Can't reach database server");
   });
 
   it("rethrows the original error when the snapshot lacks an environment block", async () => {
