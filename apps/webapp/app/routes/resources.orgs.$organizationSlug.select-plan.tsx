@@ -1100,7 +1100,7 @@ function LogRetention({ limits }: { limits: Limits }) {
 function SupportLevel({ limits }: { limits: Limits }) {
   return (
     <FeatureItem checked>
-      {limits.support === "community" ? "Community support" : "Dedicated Slack support"}
+      {limits.support === "community" ? "Community support" : "Priority support"}
     </FeatureItem>
   );
 }

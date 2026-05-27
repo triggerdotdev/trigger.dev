@@ -873,3 +873,12 @@ Prior to SDK 4.1.0, streams used the older metadata-based API. If you're on an e
 
 - Input streams require SDK **4.4.2 or later** and the default streams (v2) infrastructure. Ensure you're on a recent SDK and not using the legacy metadata.stream() API.
 - If `.on()` or `.once()` throw, follow the error message to enable v2 streams (they are default in 4.1.0+).
+
+### "Stream is being deleted" during long waits
+
+If a stream is created but stays empty for ~1 hour (for example, during a long `wait.forToken()` or `wait.for()`), the streams backend may garbage-collect it. When the run resumes and tries to use the stream, you'll see `S2Error: Stream is being deleted` and the task retries from the beginning.
+
+Two ways to avoid this:
+
+- Close the stream before the wait and open a new one when the run resumes.
+- Write a heartbeat record to the stream every 20–30 minutes during the wait so it's never empty long enough to be deleted.
