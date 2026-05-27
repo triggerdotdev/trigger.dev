@@ -73,7 +73,9 @@ export function idempotencyLookupKeyFor(input: IdempotencyLookupInput): string {
 //   <runId>            → the winning trigger's resolved runId.
 const PENDING_PREFIX = "pending:";
 
-function makeIdempotencyClaimKey(input: IdempotencyLookupInput): string {
+// Exported (like `idempotencyLookupKeyFor`) so tests can target the same
+// claim key the buffer writes without hard-coding the encoding.
+export function makeIdempotencyClaimKey(input: IdempotencyLookupInput): string {
   return `mollifier:claim:${encodeKeyPart(input.envId)}:${encodeKeyPart(input.taskIdentifier)}:${encodeKeyPart(input.idempotencyKey)}`;
 }
 
@@ -303,8 +305,9 @@ export class MollifierBuffer {
   // the dashboard's "Recently queued" surface — non-destructive, so the
   // drainer still pops these entries in order. Returns up to `maxCount`
   // entries newest-first (highest score, which is `createdAtMicros`).
-  // Each entry hash is fetched separately; a `null` from getEntry (TTL
-  // expired between ZREVRANGE and HGETALL) is skipped.
+  // Each entry hash is fetched separately; a `null` from getEntry (entry
+  // torn down by a concurrent drainer ack/fail between ZREVRANGE and
+  // HGETALL) is skipped.
   async listEntriesForEnv(envId: string, maxCount: number): Promise<BufferEntry[]> {
     if (maxCount <= 0) return [];
     const runIds = await this.redis.zrevrange(
@@ -325,8 +328,9 @@ export class MollifierBuffer {
   // the buffer. Three outcomes:
   //   - "applied_to_snapshot": entry was QUEUED + not materialised; the
   //     drainer will read the patched payload on its next pop.
-  //   - "not_found": no entry hash exists for this runId.
-  //   - "busy": entry is DRAINING / FAILED / materialised. The API
+  //   - "not_found": no entry hash exists for this runId — including a
+  //     FAILED entry, whose hash the drainer-terminal `fail` path DELs.
+  //   - "busy": entry is DRAINING or materialised. The API
   //     wait-and-bounces through PG (Q3 design).
   async mutateSnapshot(runId: string, patch: SnapshotPatch): Promise<MutateSnapshotResult> {
     const result = (await this.redis.mutateMollifierSnapshot(
@@ -479,9 +483,11 @@ export class MollifierBuffer {
   // buffered run held this key.
   async resetIdempotency(input: IdempotencyLookupInput): Promise<{ clearedRunId: string | null }> {
     const lookupKey = idempotencyLookupKeyFor(input);
+    const claimKey = makeIdempotencyClaimKey(input);
     const clearedRunId = (await this.redis.resetMollifierIdempotency(
       lookupKey,
       "mollifier:entries:",
+      claimKey,
     )) as string;
     return { clearedRunId: clearedRunId.length > 0 ? clearedRunId : null };
   }
@@ -508,9 +514,12 @@ export class MollifierBuffer {
     );
   }
 
-  // Returns true if the entry transitioned to FAILED; false if the entry no
-  // longer exists (TTL expired between pop and fail). Caller can use the
-  // boolean to skip downstream FAILED handling for ghost entries.
+  // Returns true if a live entry was torn down; false if the entry no
+  // longer existed (a concurrent ack or manual cleanup removed it between
+  // pop and fail — there is no accept-time TTL). Note FAILED is not an
+  // observable state: the Lua marks the hash FAILED then DELs it in the
+  // same atomic script, so a subsequent getEntry returns null. Caller can
+  // use the boolean to skip downstream FAILED handling for ghost entries.
   async fail(runId: string, error: { code: string; message: string }): Promise<boolean> {
     const result = await this.redis.failMollifierEntry(
       `mollifier:entries:${runId}`,
@@ -679,10 +688,11 @@ export class MollifierBuffer {
           end
         end
 
-        -- Loop to skip orphan queue references — runIds whose entry hash has
-        -- expired (TTL hit). HSET on a missing key would CREATE a partial
-        -- hash without a TTL, leaking memory. The loop is bounded by queue
-        -- length; entire Lua script remains atomic.
+        -- Loop to skip orphan queue references — runIds whose entry hash is
+        -- gone (e.g. Redis maxmemory eviction, since QUEUED entries carry
+        -- no TTL of their own). HSET on a missing key would CREATE a
+        -- partial hash without a TTL, leaking memory. The loop is bounded
+        -- by queue length; entire Lua script remains atomic.
         while true do
           -- ZPOPMIN returns {member, score} as a flat array, or {} when empty.
           local popped = redis.call('ZPOPMIN', queueKey)
@@ -710,8 +720,8 @@ export class MollifierBuffer {
             end
             return cjson.encode(result)
           end
-          -- Orphan queue reference: entry TTL expired while runId was queued.
-          -- Discard the reference and loop to the next.
+          -- Orphan queue reference: entry hash gone (evicted) while runId
+          -- was queued. Discard the reference and loop to the next.
         end
       `,
     });
@@ -774,6 +784,13 @@ export class MollifierBuffer {
         end
 
         local existing = redis.call('GET', claimKey)
+        if not existing then
+          -- The slot expired in the race window between the SET NX
+          -- failing and this GET. It's free now — claim it so we don't
+          -- string.sub a nil and error out.
+          redis.call('SET', claimKey, pendingMarker, 'EX', ttl)
+          return 'claimed'
+        end
         -- Any "pending:*" value is a live claim — the caller-supplied
         -- token differentiates ownership but is opaque to losers.
         if string.sub(existing, 1, string.len(pendingPrefix)) == pendingPrefix then
@@ -827,6 +844,15 @@ export class MollifierBuffer {
       lua: `
         local lookupKey = KEYS[1]
         local entryPrefix = ARGV[1]
+        local claimKey = ARGV[2]
+
+        -- Reset reopens the key across BOTH the buffer lookup and the
+        -- cross-store pre-gate claim pointer. Without clearing the claim,
+        -- a resolved/pending claim would keep deduping new triggers for
+        -- the rest of its TTL even though the binding was reset. DEL is
+        -- unconditional — the claim is gone regardless of whether a
+        -- buffered run currently holds the lookup.
+        redis.call('DEL', claimKey)
 
         local runId = redis.call('GET', lookupKey)
         if not runId then
@@ -905,6 +931,12 @@ export class MollifierBuffer {
         elseif patch.type == 'set_metadata' then
           payload.metadata = patch.metadata
           payload.metadataType = patch.metadataType
+          -- Bump the denormalised metadataVersion so an in-flight
+          -- casSetMetadata (optimistic CAS keyed on this counter) sees
+          -- the concurrent write as a version conflict and retries,
+          -- instead of clobbering it under a now-stale expectedVersion.
+          local currentVersion = tonumber(redis.call('HGET', entryKey, 'metadataVersion') or '0') or 0
+          redis.call('HSET', entryKey, 'metadataVersion', tostring(currentVersion + 1))
         elseif patch.type == 'set_delay' then
           payload.delayUntil = patch.delayUntil
         elseif patch.type == 'mark_cancelled' then
@@ -925,8 +957,9 @@ export class MollifierBuffer {
         local entryKey = KEYS[1]
         local graceTtlSeconds = tonumber(ARGV[1])
 
-        -- Guard: never create a partial entry. If the hash expired between
-        -- pop and ack, the run is gone — nothing to mark materialised.
+        -- Guard: never create a partial entry. If the hash is gone between
+        -- pop and ack (concurrent fail or eviction — QUEUED entries carry
+        -- no TTL), the run is gone, nothing to mark materialised.
         if redis.call('EXISTS', entryKey) == 0 then
           return 0
         end
@@ -1048,6 +1081,7 @@ declare module "@internal/redis" {
     resetMollifierIdempotency(
       lookupKey: string,
       entryPrefix: string,
+      claimKey: string,
       callback?: Callback<string>,
     ): Result<string, Context>;
     claimMollifierIdempotency(

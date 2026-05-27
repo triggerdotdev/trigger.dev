@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BufferEntrySchema, serialiseSnapshot, deserialiseSnapshot } from "./schemas.js";
 import { redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
-import { MollifierBuffer, idempotencyLookupKeyFor } from "./buffer.js";
+import { MollifierBuffer, idempotencyLookupKeyFor, makeIdempotencyClaimKey } from "./buffer.js";
 
 describe("schemas", () => {
   it("serialiseSnapshot then deserialiseSnapshot is identity for plain objects", () => {
@@ -392,6 +392,62 @@ describe("MollifierBuffer.fail", () => {
         expect(stored).toBeNull();
         const raw = await buffer["redis"].hgetall("mollifier:entries:run_ghost");
         expect(Object.keys(raw)).toHaveLength(0);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "fail DELs the idempotency lookup so a same-key retry goes through to PG",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // Symmetric with the ack path: the failMollifierEntry Lua reads the
+      // idempotencyLookupKey off the hash and DELs it. Without this, a
+      // post-fail retry with the same idempotency key would hit the
+      // orphaned dedup record and resolve to a run that no longer exists.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({
+          runId: "run_fk",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "kf",
+          taskIdentifier: "t",
+        });
+        const lookupKey = idempotencyLookupKeyFor({
+          envId: "env_a",
+          taskIdentifier: "t",
+          idempotencyKey: "kf",
+        });
+        // Lookup exists before fail.
+        expect(await buffer["redis"].get(lookupKey)).toBe("run_fk");
+
+        await buffer.pop("env_a");
+        const failed = await buffer.fail("run_fk", { code: "VALIDATION", message: "boom" });
+        expect(failed).toBe(true);
+
+        // Lookup is cleared, so the slot is reclaimable: a fresh accept
+        // with the same tuple succeeds rather than deduping.
+        expect(await buffer["redis"].get(lookupKey)).toBeNull();
+        const reaccept = await buffer.accept({
+          runId: "run_fk2",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          idempotencyKey: "kf",
+          taskIdentifier: "t",
+        });
+        expect(reaccept).toEqual({ kind: "accepted" });
       } finally {
         await buffer.close();
       }
@@ -1387,6 +1443,49 @@ describe("MollifierBuffer idempotency lookup", () => {
       }
     },
   );
+
+  redisTest(
+    "resetIdempotency also clears the pre-gate claim slot",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // The lookup and the cross-store claim are two pointers for the same
+      // key. Reset must reopen both — otherwise a resolved/pending claim
+      // keeps deduping new triggers for the rest of its TTL even though
+      // the binding was reset.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      const tuple = { envId: "env_rc", taskIdentifier: "t", idempotencyKey: "krc" };
+      try {
+        // A resolved claim is in place...
+        await buffer.claimIdempotency({ ...tuple, token: "owner", ttlSeconds: 600 });
+        await buffer.publishClaim({ ...tuple, token: "owner", runId: "rc1", ttlSeconds: 600 });
+        expect(await buffer.readClaim(tuple)).toEqual({ kind: "resolved", runId: "rc1" });
+        // ...alongside a buffered run holding the lookup.
+        await buffer.accept({
+          runId: "rc1",
+          envId: "env_rc",
+          orgId: "org_1",
+          payload: serialiseSnapshot({}),
+          idempotencyKey: "krc",
+          taskIdentifier: "t",
+        });
+
+        await buffer.resetIdempotency(tuple);
+
+        // Both the lookup and the claim are gone.
+        expect(await buffer.lookupIdempotency(tuple)).toBeNull();
+        expect(await buffer.readClaim(tuple)).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
 });
 
 describe("MollifierBuffer.casSetMetadata", () => {
@@ -1502,6 +1601,96 @@ describe("MollifierBuffer.casSetMetadata", () => {
           newMetadataType: "application/json",
         });
         expect(busy).toEqual({ kind: "busy" });
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "returns busy on a materialised entry (post-ack grace window)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // The guard rejects `materialised == 'true'` as well as non-QUEUED
+      // status. After ack the entry lingers QUEUED-but-materialised for
+      // the grace TTL; a CAS in that window must not mutate it.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "cas_mat",
+          envId: "env_c",
+          orgId: "org_1",
+          payload: serialiseSnapshot({}),
+        });
+        await buffer.pop("env_c");
+        await buffer.ack("cas_mat");
+
+        const result = await buffer.casSetMetadata({
+          runId: "cas_mat",
+          expectedVersion: 0,
+          newMetadata: "{}",
+          newMetadataType: "application/json",
+        });
+        expect(result).toEqual({ kind: "busy" });
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "a mutateSnapshot set_metadata bumps metadataVersion so an in-flight CAS conflicts",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // CAS isolation: a reader fetches version N, then a concurrent
+      // mutateSnapshot(set_metadata) overwrites the metadata. The reader's
+      // CAS at expectedVersion=N must NOT silently win — both paths write
+      // payload.metadata, so set_metadata bumps the same counter the CAS
+      // is gated on.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "cas_int",
+          envId: "env_c",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ metadata: '{"v":0}', metadataType: "application/json" }),
+        });
+        // Reader observes version 0.
+        const before = await buffer.getEntry("cas_int");
+        expect(before!.metadataVersion).toBe(0);
+
+        // Concurrent snapshot mutation writes metadata + bumps version.
+        const mutated = await buffer.mutateSnapshot("cas_int", {
+          type: "set_metadata",
+          metadata: '{"v":1}',
+          metadataType: "application/json",
+        });
+        expect(mutated).toBe("applied_to_snapshot");
+        const mid = await buffer.getEntry("cas_int");
+        expect(mid!.metadataVersion).toBe(1);
+
+        // The reader's stale CAS conflicts instead of clobbering.
+        const result = await buffer.casSetMetadata({
+          runId: "cas_int",
+          expectedVersion: 0,
+          newMetadata: '{"v":2}',
+          newMetadataType: "application/json",
+        });
+        expect(result).toEqual({ kind: "version_conflict", currentVersion: 1 });
       } finally {
         await buffer.close();
       }
@@ -2045,6 +2234,181 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
   });
 });
 
+describe("MollifierBuffer.listForEnvWithWatermark", () => {
+  // Seed a QUEUED entry, then pin its ZSET score and hash `createdAtMicros`
+  // to a deterministic value so ordering and the watermark cursor don't
+  // depend on wall-clock timing (Date.now() ties within a millisecond).
+  async function seed(buffer: MollifierBuffer, envId: string, runId: string, micros: number) {
+    await buffer.accept({ runId, envId, orgId: "org_1", payload: "{}" });
+    await buffer["redis"].zadd(`mollifier:queue:${envId}`, String(micros), runId);
+    await buffer["redis"].hset(`mollifier:entries:${runId}`, "createdAtMicros", String(micros));
+  }
+
+  redisTest("pageSize <= 0 returns empty without hitting redis", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const buffer = new MollifierBuffer({
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      logger: new Logger("test", "log"),
+    });
+    try {
+      expect(await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 0 })).toEqual([]);
+      expect(await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: -3 })).toEqual([]);
+    } finally {
+      await buffer.close();
+    }
+  });
+
+  redisTest(
+    "page 1 returns newest-first up to pageSize without consuming entries",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await seed(buffer, "env_w", "wa", 1000);
+        await seed(buffer, "env_w", "wb", 2000);
+        await seed(buffer, "env_w", "wc", 3000);
+
+        const page = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 2 });
+        // Newest-first by createdAtMicros.
+        expect(page.map((e) => e.runId)).toEqual(["wc", "wb"]);
+
+        // Non-destructive: drainer still pops oldest-first.
+        const popped: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          const e = await buffer.pop("env_w");
+          if (e) popped.push(e.runId);
+        }
+        expect(popped).toEqual(["wa", "wb", "wc"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "page N continues strictly below the watermark score",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await seed(buffer, "env_w", "wa", 1000);
+        await seed(buffer, "env_w", "wb", 2000);
+        await seed(buffer, "env_w", "wc", 3000);
+
+        const page1 = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 2 });
+        expect(page1.map((e) => e.runId)).toEqual(["wc", "wb"]);
+
+        const last = page1[page1.length - 1]!;
+        const page2 = await buffer.listForEnvWithWatermark({
+          envId: "env_w",
+          pageSize: 2,
+          watermark: { createdAtMicros: last.createdAtMicros, runId: last.runId },
+        });
+        // Only the entry strictly below score 2000 remains; no overlap.
+        expect(page2.map((e) => e.runId)).toEqual(["wa"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "tied-score watermark surfaces lex-smaller members on the next page without dupes",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        // Three entries share one score; ZSET breaks the tie by member,
+        // and zrevrangebyscore returns them member-DESC: tc, tb, ta.
+        await seed(buffer, "env_w", "ta", 2000);
+        await seed(buffer, "env_w", "tb", 2000);
+        await seed(buffer, "env_w", "tc", 2000);
+
+        const page1 = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 2 });
+        expect(page1.map((e) => e.runId)).toEqual(["tc", "tb"]);
+
+        const last = page1[page1.length - 1]!;
+        const page2 = await buffer.listForEnvWithWatermark({
+          envId: "env_w",
+          pageSize: 2,
+          watermark: { createdAtMicros: last.createdAtMicros, runId: last.runId },
+        });
+        // Same score, lex-smaller than the "tb" anchor — and not "tb"
+        // itself (no duplicate across the page boundary).
+        expect(page2.map((e) => e.runId)).toEqual(["ta"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "skips orphan queue references (entry hash gone) during listing",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await seed(buffer, "env_w", "live", 1000);
+        await seed(buffer, "env_w", "orphan", 2000);
+        // Drop the orphan's hash but leave its queue ref behind.
+        await buffer["redis"].del("mollifier:entries:orphan");
+
+        const page = await buffer.listForEnvWithWatermark({ envId: "env_w", pageSize: 10 });
+        expect(page.map((e) => e.runId)).toEqual(["live"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest("returns empty for an env with no queued entries", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const buffer = new MollifierBuffer({
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      logger: new Logger("test", "log"),
+    });
+    try {
+      expect(await buffer.listForEnvWithWatermark({ envId: "env_empty_w", pageSize: 10 })).toEqual([]);
+    } finally {
+      await buffer.close();
+    }
+  });
+});
+
 // Composite-key safety. The Redis-key builders concatenate
 // `(envId, taskIdentifier, idempotencyKey)` with `:` separators; without
 // per-segment encoding, `taskIdentifier="a:b"` and `idempotencyKey="x"`
@@ -2285,10 +2649,10 @@ describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
         expect(a.kind).toBe("claimed");
 
         // Step 2: simulate TTL expiry — DEL the slot directly so the
-        // test doesn't rely on wall-clock sleeping.
-        await buffer["redis"].del(`mollifier:claim:${[claimInput.envId, claimInput.taskIdentifier, claimInput.idempotencyKey]
-          .map((s) => Buffer.from(s, "utf8").toString("base64url"))
-          .join(":")}`);
+        // test doesn't rely on wall-clock sleeping. Targets the same key
+        // the buffer writes via the exported builder, so a key-format
+        // change can't silently make this DEL miss.
+        await buffer["redis"].del(makeIdempotencyClaimKey(claimInput));
 
         // Step 3: B claims with token "B".
         const b = await buffer.claimIdempotency({

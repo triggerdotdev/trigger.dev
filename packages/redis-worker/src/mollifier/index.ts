@@ -2,11 +2,13 @@ export {
   MollifierBuffer,
   type MollifierBufferOptions,
   type SnapshotPatch,
+  type AcceptResult,
   type MutateSnapshotResult,
   type CasSetMetadataResult,
   type IdempotencyClaimResult,
   type IdempotencyLookupInput,
   idempotencyLookupKeyFor,
+  makeIdempotencyClaimKey,
 } from "./buffer.js";
 export {
   MollifierDrainer,
