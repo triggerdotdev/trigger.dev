@@ -87,7 +87,7 @@ describe("MollifierDrainer.runOnce", () => {
       });
 
       // After ack the entry persists as a read-fallback safety net with
-      // materialised=true and a fresh grace TTL (Q1 D2 / Phase B2).
+      // materialised=true and a fresh grace TTL.
       const entry = await buffer.getEntry("run_1");
       expect(entry).not.toBeNull();
       expect(entry!.materialised).toBe(true);
@@ -981,7 +981,7 @@ describe("MollifierDrainer additional coverage", () => {
     // ack() lives inside the same try as the handler call, so if the
     // handler succeeds but ack throws (e.g. transient Redis blip), the
     // entry is routed through the retry/terminal path even though the
-    // handler-side work completed. Phase 2's engine-replay handler will
+    // handler-side work completed. A later engine-replay handler will
     // need idempotency to absorb the re-execution this implies on retry,
     // OR ack should be lifted out of the try block.
     let handlerCalls = 0;

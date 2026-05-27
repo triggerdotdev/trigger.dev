@@ -1074,7 +1074,7 @@ describe("MollifierBuffer.accept idempotency", () => {
     { timeout: 20_000 },
     async ({ redisContainer }) => {
       // After ack, the entry hash persists for the grace window as a
-      // read-fallback safety net (Q1 D2). RunIds are server-generated and
+      // read-fallback safety net. RunIds are server-generated and
       // never collide in practice, but defense-in-depth: accept refuses
       // while *any* entry exists for the runId, including materialised
       // ones. The entry hash's TTL is now ~30s instead of the original

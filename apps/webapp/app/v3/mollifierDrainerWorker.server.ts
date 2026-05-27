@@ -97,8 +97,8 @@ export function initMollifierDrainerWorker(
     // Deterministic misconfig (shutdown-timeout vs GRACEFUL_SHUTDOWN_TIMEOUT,
     // missing buffer client) is a deploy-time mistake the operator must
     // see immediately — rethrow so the process crashes, health checks
-    // fail, and the orchestrator rolls the deploy back. Phase 1 is
-    // monitoring-only and the silent-fallback was tempting, but Phase 2/3
+    // fail, and the orchestrator rolls the deploy back. The drainer is currently
+    // monitoring-only and the silent-fallback was tempting, but later phases
     // make the drainer the source of truth for diverted triggers, where a
     // silently-disabled drainer means data loss. Better to fail loud now
     // than retrofit later.

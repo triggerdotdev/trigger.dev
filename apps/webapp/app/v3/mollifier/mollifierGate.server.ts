@@ -73,7 +73,7 @@ export type GateDependencies = {
 };
 
 // `options` is a thunk so env reads happen per-evaluation, not at module load.
-// Don't "simplify" to a plain object — Phase 2 dynamic config relies on the
+// Don't "simplify" to a plain object — dynamic config relies on the
 // gate observing whichever env values are live at trigger time.
 const defaultEvaluator = createRealTripEvaluator({
   getBuffer: () => getMollifierBuffer(),

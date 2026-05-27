@@ -15,7 +15,7 @@ export type MollifierBufferOptions = {
 
 // Grace TTL applied to the entry hash on drainer ack. The entry survives
 // this long after materialisation so direct reads (retrieve, trace, etc.)
-// have a safety net while PG replica lag settles. Q1 D2.
+// have a safety net while PG replica lag settles.
 const ACK_GRACE_TTL_SECONDS = 30;
 
 // ioredis reconnect backoff for the mollifier buffer client. The base
@@ -80,7 +80,7 @@ export function idempotencyLookupKeyFor(input: IdempotencyLookupInput): string {
 }
 
 // Pre-gate claim key namespace, distinct from `mollifier:idempotency` so the
-// existing B6a buffer-side dedup stays isolated. The claim is the
+// existing buffer-side dedup stays isolated. The claim is the
 // authoritative cross-store "this idempotency key is in flight or
 // resolved" pointer used by the trigger hot path. Values:
 //   "pending:<token>"  → claimed by a trigger pipeline; `<token>` is the
@@ -143,7 +143,7 @@ export class MollifierBuffer {
     // SETNX a Redis lookup at `mollifier:idempotency:{env}:{task}:{key}`
     // pointing at the runId so trigger-time dedup during the buffered
     // window resolves the same way PG's unique constraint resolves it
-    // post-materialisation (Q5).
+    // post-materialisation.
     idempotencyKey?: string;
     taskIdentifier?: string;
   }): Promise<AcceptResult> {
@@ -277,7 +277,7 @@ export class MollifierBuffer {
   //   - "not_found": no entry hash exists for this runId — including a
   //     FAILED entry, whose hash the drainer-terminal `fail` path DELs.
   //   - "busy": entry is DRAINING or materialised. The API
-  //     wait-and-bounces through PG (Q3 design).
+  //     wait-and-bounces through PG.
   async mutateSnapshot(runId: string, patch: SnapshotPatch): Promise<MutateSnapshotResult> {
     const result = (await this.redis.mutateMollifierSnapshot(
       `mollifier:entries:${runId}`,
@@ -325,7 +325,7 @@ export class MollifierBuffer {
 
   // Atomic pre-gate claim on a (env, task, idempotencyKey) tuple. One
   // call across both PG and buffer paths serialises through this claim;
-  // closes the race the buffer-side B6a SETNX leaves open during the
+  // closes the race the buffer-side SETNX leaves open during the
   // gate-transition burst window.
   //
   // The caller supplies an opaque `token` (UUID) on claim. The same token
@@ -443,8 +443,8 @@ export class MollifierBuffer {
   // Marks the entry as materialised (PG row written) and resets its TTL to
   // the grace window. Entry hash persists past ack as a read-fallback
   // safety net for the brief PG replica-lag window between drainer-side
-  // write and reader-side visibility (Q1 D2). Also clears the associated
-  // idempotency lookup if one was set on accept (Q5).
+  // write and reader-side visibility. Also clears the associated
+  // idempotency lookup if one was set on accept.
   async ack(runId: string): Promise<void> {
     await this.redis.ackMollifierEntry(
       `mollifier:entries:${runId}`,
@@ -531,7 +531,7 @@ export class MollifierBuffer {
           return 0
         end
 
-        -- Idempotency-key dedup (Q5). If the caller passed a lookup key
+        -- Idempotency-key dedup. If the caller passed a lookup key
         -- and it's already bound to another buffered run, return the
         -- winner's runId so the loser's API response can echo it as a
         -- cached hit. Otherwise SET the lookup (no TTL — lifecycle is
@@ -606,7 +606,7 @@ export class MollifierBuffer {
         -- Requeue RPUSHes to the tail (the RPOP end) so a transiently
         -- failed entry pops next rather than going to the back of the
         -- line behind a fresh backlog. createdAt is immutable across
-        -- retries (Phase 3b decision); the drainer's maxAttempts caps the
+        -- retries; the drainer's maxAttempts caps the
         -- retry loop so a poisoned entry doesn't head-of-line forever.
         redis.call('RPUSH', queuePrefix .. envId, runId)
         -- Re-track the org/env: pop may have SREM'd them when the queue
@@ -920,7 +920,7 @@ export class MollifierBuffer {
 
         -- If the entry was accepted with an idempotency key, the lookup
         -- string was stored on the hash at accept time. Clear it now —
-        -- PG becomes canonical for the key post-materialisation (Q5).
+        -- PG becomes canonical for the key post-materialisation.
         local lookupKey = redis.call('HGET', entryKey, 'idempotencyLookupKey')
         if lookupKey and lookupKey ~= '' then
           redis.call('DEL', lookupKey)

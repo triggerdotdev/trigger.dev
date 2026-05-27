@@ -68,11 +68,11 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
   });
 
-  // Phase 1 handler: no-op ack. The trigger has ALREADY been written to
-  // Postgres via engine.trigger (dual-write at the call site). Popping +
-  // acking here proves the dequeue mechanism works end-to-end without
-  // duplicating the work. Phase 2 will replace this with an engine.trigger
-  // replay that performs the actual Postgres write.
+  // No-op ack handler: the trigger has ALREADY been written to Postgres
+  // via engine.trigger (dual-write at the call site). Popping + acking
+  // here proves the dequeue mechanism works end-to-end without duplicating
+  // the work. A later change replaces this with an engine.trigger replay
+  // that performs the actual Postgres write.
   const drainer = new MollifierDrainer<BufferedTriggerPayload>({
     buffer,
     handler: async (input) => {

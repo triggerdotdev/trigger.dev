@@ -1404,7 +1404,7 @@ describe("RunEngineTriggerTaskService", () => {
       // SCENARIO: dual-write where buffer.accept succeeds but engine.trigger
       // throws. The throw propagates to the caller (correct: customer sees
       // the same 4xx as today), and the buffer entry remains as an "orphan"
-      // — Phase 1's no-op drainer will pop+ack it on its next poll, so the
+      // — the no-op drainer will pop+ack it on its next poll, so the
       // orphan is bounded (~drainer pollIntervalMs) but observable in the
       // audit trail (mollifier.buffered with no matching TaskRun).
       //
@@ -1416,11 +1416,11 @@ describe("RunEngineTriggerTaskService", () => {
       //   - RunOneTimeUseTokenError (Prisma P2002 on oneTimeUseToken).
       //   - Transient Prisma errors (FK constraint, connection drop, etc.).
       //
-      // Why we don't "fix" this race in Phase 1:
+      // Why we don't "fix" this race now:
       //   The customer correctly gets the error. State eventually converges
       //   (drainer pops the orphan). The audit-trail explicitly surfaces
       //   "buffered without TaskRun" entries to operators. A real fix is
-      //   Phase 2's responsibility once the buffer becomes the primary write
+      //   a later change's responsibility once the buffer becomes the primary write
       //   — at that point we add the mollifier-specific idempotency index.
       //
       // This test pins the current ordering: buffer.accept fires synchronously
@@ -1491,7 +1491,7 @@ describe("RunEngineTriggerTaskService", () => {
 
       // The buffer write happened BEFORE engine.trigger threw. The orphan
       // remains; the audit-trail will surface it (mollifier.buffered with
-      // no matching TaskRun row). Phase 1's no-op drainer cleans it up.
+      // no matching TaskRun row). The no-op drainer cleans it up.
       expect(buffer.accepted).toHaveLength(1);
       const orphanPayload = JSON.parse(buffer.accepted[0]!.payload);
       expect(orphanPayload.taskId).toBe(taskIdentifier);
@@ -1617,7 +1617,7 @@ describe("RunEngineTriggerTaskService", () => {
       // service correctly returns the existing run id to the customer, but
       // the buffer is left with an orphan entry for the new friendlyId.
       //
-      // Why this is acceptable in Phase 1:
+      // Why this is acceptable now:
       //   - Customer-facing behaviour is unchanged from today: they receive
       //     the existing run id, same as the non-mollified path.
       //   - The orphan is bounded — the drainer's no-op-ack handler pops
@@ -1625,14 +1625,14 @@ describe("RunEngineTriggerTaskService", () => {
       //   - The audit-trail surfaces it: a `mollifier.buffered` log line
       //     with `runId` that has no matching TaskRun in Postgres.
       //
-      // Why Phase 2 cares:
+      // Why a later change cares:
       //   - When the buffer becomes the primary write path, debounce can
       //     no longer be allowed to run AFTER buffer.accept. The drainer's
       //     engine.trigger replay would observe "existing" and skip the
       //     persist — the customer's synthesised 200 (with the new
       //     friendlyId) would never get a TaskRun, and the audit-trail
       //     divergence becomes a real data-loss bug.
-      //   - Phase 2 must lift `handleDebounce` into the call site BEFORE
+      //   - A later change must lift `handleDebounce` into the call site BEFORE
       //     buffer.accept:
       //       1. handleDebounce → if existing, return existing run; do NOT
       //          touch the buffer.

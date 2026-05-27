@@ -62,7 +62,7 @@ export const BufferEntrySchema = z.object({
   // Denormalised pointer to the Redis idempotency lookup key (set when
   // the run was accepted with an idempotency key, empty otherwise). The
   // ack Lua reads this to DEL the lookup atomically with marking the
-  // entry materialised (Q5).
+  // entry materialised.
   idempotencyLookupKey: z.string().optional().default(""),
   // Optimistic-lock counter for the snapshot's `metadata` field.
   // Incremented atomically by the CAS metadata Lua. Matches the
