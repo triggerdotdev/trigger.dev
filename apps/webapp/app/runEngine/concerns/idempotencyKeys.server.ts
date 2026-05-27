@@ -266,9 +266,27 @@ export class IdempotencyKeyConcern {
         if (buffered) {
           return { isCached: true, run: buffered };
         }
-        // Claim resolved to a runId nothing can find — likely the
-        // claimant errored after publish, or the row TTL'd out. Log
-        // and fall through to a fresh trigger.
+        // Claim resolved to a runId nothing can find — the run was
+        // genuinely lost (claimant errored after publish, drain failed,
+        // or both the PG row and buffer entry TTL'd out). This is
+        // terminal, not transient: `lookupIdempotency` self-heals a
+        // dangling pointer, and `ack` keeps the entry hash as a
+        // read-fallback past the PG write, so re-polling cannot conjure
+        // a run that is gone. Falling through to a fresh trigger is the
+        // correct recovery.
+        //
+        // Why falling through claimless is safe (no duplicate runs):
+        // concurrent triggers that also fall through here converge on a
+        // single run via the same dedup backstops the claim layer relies
+        // on — the PG unique constraint on the idempotency key
+        // (RunDuplicateIdempotencyKeyError → retry resolves to the
+        // winner) for the pass-through path, and `accept`'s idempotency
+        // SETNX (`duplicate_idempotency`) for the mollify path. Once the
+        // first fall-through commits a run, later callers find it via the
+        // writer-PG / buffer lookups above despite the stale `resolved:`
+        // slot, which the slot's TTL clears within ~30s. The residual
+        // cost is a few redundant (deduped) trigger attempts in that
+        // window, not duplicate runs.
         logger.warn("idempotency claim resolved but runId not findable", {
           envId: request.environment.id,
           taskIdentifier: request.taskId,

@@ -175,7 +175,7 @@ export async function findRunByIdWithMollifierFallback(
       ttl: asString(snapshot.ttl),
       tags,
       runTags: tags,
-      lockedToVersion: asString(snapshot.lockToVersion),
+      lockedToVersion: asString(snapshot.taskVersion),
       resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
       parentTaskRunId: asString(snapshot.parentTaskRunId),
 

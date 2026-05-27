@@ -141,7 +141,9 @@ describe("findRunByIdWithMollifierFallback", () => {
         depth: 2,
         ttl: "1h",
         tags: ["tag-a", "tag-b"],
-        lockToVersion: "20260511.1",
+        // The engine.trigger snapshot stores the locked version string under
+        // `taskVersion` (see triggerTask.server.ts#buildEngineTriggerInput).
+        taskVersion: "20260511.1",
         resumeParentOnCompletion: false,
         parentTaskRunId: "run_parent",
       }),
