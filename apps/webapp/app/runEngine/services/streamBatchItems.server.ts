@@ -100,13 +100,29 @@ export class StreamBatchItemsService extends WithRunEngine {
           throw new ServiceValidationError(`Batch ${batchFriendlyId} not found`);
         }
 
-        if (batch.sealed) {
-          throw new ServiceValidationError(
-            `Batch ${batchFriendlyId} is already sealed and cannot accept more items`
-          );
+        // Phase 2 retry idempotency (TRI-9944): if the batch is already sealed
+        // or has moved past PENDING into PROCESSING/COMPLETED, this is a retry
+        // of a request whose response was lost — the original successful request
+        // already enqueued every item and sealed the batch. Returning sealed:true
+        // makes the SDK stop retrying instead of throwing a customer-visible 422.
+        if (batch.sealed || batch.status === "PROCESSING" || batch.status === "COMPLETED") {
+          logger.info("Batch already sealed/completed - treating Phase 2 retry as success", {
+            batchId: batchFriendlyId,
+            batchSealed: batch.sealed,
+            batchStatus: batch.status,
+          });
+
+          return {
+            id: batchFriendlyId,
+            itemsAccepted: 0,
+            itemsDeduplicated: 0,
+            sealed: true,
+            runCount: batch.runCount,
+          };
         }
 
         if (batch.status !== "PENDING") {
+          // ABORTED or any other unexpected non-PENDING state — surface as an error.
           throw new ServiceValidationError(
             `Batch ${batchFriendlyId} is not in PENDING status (current: ${batch.status})`
           );

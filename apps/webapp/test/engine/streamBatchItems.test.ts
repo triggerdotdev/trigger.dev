@@ -174,7 +174,7 @@ describe("StreamBatchItemsService", () => {
   );
 
   containerTest(
-    "should handle race condition when batch already sealed by another request",
+    "should return sealed=true when batch is already sealed and PROCESSING (Phase 2 retry idempotency)",
     async ({ prisma, redisOptions }) => {
       const engine = new RunEngine({
         prisma,
@@ -211,35 +211,12 @@ describe("StreamBatchItemsService", () => {
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      // Create a batch that is already sealed and PROCESSING (simulating another request won the race)
+      // Simulate the SDK retrying Phase 2 after the original request succeeded:
+      // the original request already sealed the batch and moved it to PROCESSING.
       const batch = await createBatch(prisma, authenticatedEnvironment.id, {
         runCount: 2,
         status: "PROCESSING",
         sealed: true,
-      });
-
-      // Initialize the batch in Redis with full count
-      await engine.initializeBatch({
-        batchId: batch.id,
-        friendlyId: batch.friendlyId,
-        environmentId: authenticatedEnvironment.id,
-        environmentType: authenticatedEnvironment.type,
-        organizationId: authenticatedEnvironment.organizationId,
-        projectId: authenticatedEnvironment.projectId,
-        runCount: 2,
-        processingConcurrency: 10,
-      });
-
-      // Enqueue items directly
-      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 0, {
-        task: "test-task",
-        payload: JSON.stringify({ data: "item1" }),
-        payloadType: "application/json",
-      });
-      await engine.enqueueBatchItem(batch.id, authenticatedEnvironment.id, 1, {
-        task: "test-task",
-        payload: JSON.stringify({ data: "item2" }),
-        payloadType: "application/json",
       });
 
       const service = new StreamBatchItemsService({
@@ -247,7 +224,147 @@ describe("StreamBatchItemsService", () => {
         engine,
       });
 
-      // This should fail because the batch is already sealed
+      const result = await service.call(
+        authenticatedEnvironment,
+        batch.friendlyId,
+        itemsToAsyncIterable([]),
+        {
+          maxItemBytes: 1024 * 1024,
+        }
+      );
+
+      // The retry should be treated as success — the original request already
+      // enqueued every item, so the SDK should stop retrying.
+      expect(result.sealed).toBe(true);
+      expect(result.id).toBe(batch.friendlyId);
+      expect(result.itemsAccepted).toBe(0);
+      expect(result.itemsDeduplicated).toBe(0);
+      expect(result.runCount).toBe(2);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "should return sealed=true when batch is COMPLETED before Phase 2 retry arrives (TRI-9944)",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+          disabled: true,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      // The customer-reported scenario: single-item batch where the original
+      // Phase 2 request succeeded server-side, the run executed fast, the batch
+      // flipped to COMPLETED, then the lost-response SDK retry hits us.
+      // Note: tryCompleteBatch sets status=COMPLETED but does NOT set sealed=true.
+      const batch = await createBatch(prisma, authenticatedEnvironment.id, {
+        runCount: 1,
+        status: "COMPLETED",
+        sealed: false,
+      });
+
+      const service = new StreamBatchItemsService({
+        prisma,
+        engine,
+      });
+
+      const result = await service.call(
+        authenticatedEnvironment,
+        batch.friendlyId,
+        itemsToAsyncIterable([]),
+        {
+          maxItemBytes: 1024 * 1024,
+        }
+      );
+
+      expect(result.sealed).toBe(true);
+      expect(result.id).toBe(batch.friendlyId);
+      expect(result.itemsAccepted).toBe(0);
+      expect(result.itemsDeduplicated).toBe(0);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "should throw when batch is in ABORTED status",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+          disabled: true,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        batchQueue: {
+          redis: redisOptions,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const batch = await createBatch(prisma, authenticatedEnvironment.id, {
+        runCount: 2,
+        status: "ABORTED",
+        sealed: false,
+      });
+
+      const service = new StreamBatchItemsService({
+        prisma,
+        engine,
+      });
+
       await expect(
         service.call(authenticatedEnvironment, batch.friendlyId, itemsToAsyncIterable([]), {
           maxItemBytes: 1024 * 1024,
