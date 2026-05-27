@@ -105,6 +105,104 @@ describe("sanitizeUnknownInPlace", () => {
     expect(sanitizeUnknownInPlace(null)).toEqual({ value: null, fixed: 0 });
     expect(sanitizeUnknownInPlace(undefined)).toEqual({ value: undefined, fixed: 0 });
   });
+
+  // ─── Out-of-range integers (TRI-9755) ──────────────────────────────────────
+  // ClickHouse's JSON(max_dynamic_paths) column rejects bare integer tokens
+  // outside [Int64.MIN, UInt64.MAX]. Such Numbers serialise as bare integer
+  // form via JSON.stringify (no exponent, since |value| < 1e21) so they reach
+  // ClickHouse as unquoted oversized ints. Sanitizer replaces them with the
+  // string form, which ClickHouse's dynamic JSON column accepts as a String
+  // subtype on that path.
+
+  it("replaces an integer-valued Number above UInt64.MAX with its string form", () => {
+    // 117039831458782870000 is the actual prod value (Google Plus ID after
+    // upstream JS-Number precision loss from 117039831458782873093).
+    const result = sanitizeUnknownInPlace(117039831458782870000);
+    expect(result.value).toBe("117039831458782870000");
+    expect(result.fixed).toBe(1);
+  });
+
+  it("catches the float64 boundary at exactly 2**64 (UInt64.MAX + 1)", () => {
+    // float64 cannot represent UInt64.MAX (2^64 - 1) exactly — the literal
+    // 18446744073709551615 in JS source rounds to 2^64. JSON.stringify
+    // emits this Number as "18446744073709552000", which exceeds UInt64.MAX
+    // and trips ClickHouse. Regression for the BigInt-based comparison;
+    // a naïve `value > 18446744073709551615` would let this pass.
+    const result = sanitizeUnknownInPlace(2 ** 64);
+    expect(result.value).toBe("18446744073709552000");
+    expect(result.fixed).toBe(1);
+  });
+
+  it("replaces an integer-valued Number below Int64.MIN with its string form", () => {
+    // -9223372036854775809 is the first failing negative; in float64 it
+    // rounds to the same representation as Int64.MIN (-9223372036854775808),
+    // but for completeness we check a clearly-out-of-range negative.
+    const result = sanitizeUnknownInPlace(-1e20);
+    expect(result.value).toBe("-100000000000000000000");
+    expect(result.fixed).toBe(1);
+  });
+
+  it("leaves safe integers and boundary values untouched", () => {
+    // 42 — safe integer
+    expect(sanitizeUnknownInPlace(42)).toEqual({ value: 42, fixed: 0 });
+    // Number.MAX_SAFE_INTEGER (2^53 - 1) — JSON.stringify still emits as integer
+    expect(sanitizeUnknownInPlace(Number.MAX_SAFE_INTEGER)).toEqual({
+      value: Number.MAX_SAFE_INTEGER,
+      fixed: 0,
+    });
+    // 2^63 (Int64.MAX + 1) — still fits in UInt64, CH accepts it
+    expect(sanitizeUnknownInPlace(2 ** 63)).toEqual({ value: 2 ** 63, fixed: 0 });
+  });
+
+  it("leaves non-integer numbers untouched (floats, NaN, Infinity)", () => {
+    // Numbers with a fractional part — emitted with `.` in JSON
+    expect(sanitizeUnknownInPlace(3.14)).toEqual({ value: 3.14, fixed: 0 });
+    // Very large float-form (>= 1e21) — JSON.stringify uses exponent form,
+    // CH parses as Float64 successfully
+    expect(sanitizeUnknownInPlace(1e25)).toEqual({ value: 1e25, fixed: 0 });
+    // NaN / Infinity — JSON.stringify emits `null`, so harmless on the wire
+    expect(sanitizeUnknownInPlace(Number.NaN)).toEqual({ value: Number.NaN, fixed: 0 });
+    expect(sanitizeUnknownInPlace(Number.POSITIVE_INFINITY)).toEqual({
+      value: Number.POSITIVE_INFINITY,
+      fixed: 0,
+    });
+  });
+
+  it("finds an oversized integer nested deep inside the actual scan-social-profiles shape", () => {
+    const row = {
+      output: {
+        data: {
+          profiles: [
+            { module: "linktree", query: "x@example.com" },
+            {
+              module: "poshmark",
+              spec_format: [
+                {
+                  platform_variables: [
+                    {
+                      key: "gp_id",
+                      proper_key: "Gp Id",
+                      // The actual prod value — bare JSON integer > UInt64.MAX
+                      value: 117039831458782870000,
+                      type: "int",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const result = sanitizeUnknownInPlace(row);
+    expect(result.fixed).toBe(1);
+    expect(
+      (row.output.data.profiles[1].spec_format![0].platform_variables[0] as any).value
+    ).toBe("117039831458782870000");
+    // Untouched neighbours
+    expect(row.output.data.profiles[0].module).toBe("linktree");
+    expect(row.output.data.profiles[1].spec_format![0].platform_variables[0].type).toBe("int");
+  });
 });
 
 describe("sanitizeRows", () => {
@@ -157,5 +255,37 @@ describe("sanitizeRows", () => {
     const result = sanitizeRows(rows);
     expect(result.rowsTouched).toBe(1);
     expect(result.fieldsSanitized).toBe(2);
+  });
+
+  it("counts surrogate fixes and out-of-range integer fixes together (TRI-9755)", () => {
+    const rows = [
+      {
+        id: "r0",
+        attributes: {
+          surrogate: `bad ${HIGH_SURROGATE}`,
+          bigint: 117039831458782870000,
+          clean: "fine",
+          safe: 42,
+        },
+      },
+      {
+        id: "r1",
+        attributes: {
+          bigint: -1e20,
+          clean: "still fine",
+        },
+      },
+      {
+        id: "r2",
+        attributes: { clean: "no fixes needed" },
+      },
+    ];
+    const result = sanitizeRows(rows);
+    expect(result.rowsTouched).toBe(2);
+    expect(result.fieldsSanitized).toBe(3);
+    expect(rows[0].attributes.surrogate).toBe(INVALID_UTF16_SENTINEL);
+    expect(rows[0].attributes.bigint).toBe("117039831458782870000");
+    expect(rows[0].attributes.safe).toBe(42);
+    expect(rows[1].attributes.bigint).toBe("-100000000000000000000");
   });
 });

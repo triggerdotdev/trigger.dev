@@ -7,6 +7,48 @@ import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
  */
 export const INVALID_UTF16_SENTINEL = "[invalid-utf16]";
 
+/**
+ * ClickHouse's `JSON(max_dynamic_paths)` column fits each bare-integer
+ * JSON token into Int64 (signed) or UInt64 (unsigned). Bare integers
+ * outside `[-2^63, 2^64 - 1]` are rejected with `INCORRECT_DATA` (no
+ * silent fallback to Float64). `JSON.stringify` emits any integer-valued
+ * Number with `|value| < 1e21` as a bare integer (no exponent), so any
+ * JS Number above ~9.2e18 that *happens* to be integer-valued lands on
+ * the wire as a token CH cannot accept.
+ *
+ * The fix: replace such Numbers with their string form. CH's dynamic
+ * JSON column accepts a `String` subtype on the same path, so the row
+ * inserts cleanly on retry. The numeric value was already
+ * precision-lossy upstream (JS Number can't represent integers above
+ * 2^53 faithfully), so type-flipping to string is information-preserving
+ * relative to what arrived.
+ *
+ * Float-valued numbers (including very large ones like `1e25`) serialise
+ * with an exponent and are accepted by CH at any magnitude, so they're
+ * left alone.
+ */
+const UINT64_MAX = 18446744073709551615n;
+const INT64_MIN = -9223372036854775808n;
+
+function isUnsafeJsonInteger(value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  if (!Number.isInteger(value)) return false;
+  // JSON.stringify emits integer-valued Numbers as bare integer tokens
+  // (no exponent) only while `|value| < 1e21`; at or above that
+  // threshold `Number.prototype.toString` switches to exponential form,
+  // which CH accepts as Float64 at any magnitude. So the dangerous band
+  // is strictly between the Int64/UInt64 boundary and 1e21.
+  if (Math.abs(value) >= 1e21) return false;
+  // Compare via BigInt for exactness. The Number literal 18446744073709551615
+  // is rounded to 2**64 in float64 (the float spacing near 2^64 is 2048), so a
+  // direct `value > 18446744073709551615` would miss a Number whose float64
+  // value is exactly 2**64 — `JSON.stringify` of that emits
+  // "18446744073709552000", which exceeds UInt64.MAX and ClickHouse rejects.
+  // `BigInt(value)` is safe here because we already gated on Number.isInteger.
+  const asBigInt = BigInt(value);
+  return asBigInt > UINT64_MAX || asBigInt < INT64_MIN;
+}
+
 export type SanitizeResult = {
   /** How many rows had at least one string field replaced. */
   rowsTouched: number;
@@ -60,6 +102,10 @@ export function sanitizeUnknownInPlace(value: unknown): { value: unknown; fixed:
       return { value: INVALID_UTF16_SENTINEL, fixed: 1 };
     }
     return { value, fixed: 0 };
+  }
+
+  if (typeof value === "number" && isUnsafeJsonInteger(value)) {
+    return { value: String(value), fixed: 1 };
   }
 
   if (Array.isArray(value)) {
