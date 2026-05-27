@@ -61,7 +61,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   try {
     const env = authenticationResult.environment;
-    // PG-first. Replay works on any status per audit (Q2 design) — no
+    // PG-first. Replay works on any status per audit — no
     // filter beyond friendlyId is the existing semantic; findFirst with
     // env scoping tightens it minimally without changing behaviour for
     // a correctly-authed caller.
@@ -73,7 +73,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (!taskRun) {
-      // Buffered fallback (Q2). The SyntheticRun shape was extended in
+      // Buffered fallback. The SyntheticRun shape was extended in
       // Phase B4 to carry every field ReplayTaskRunService reads from a
       // TaskRun. Validate the subset of fields the service consumes
       // (BufferedReplayInputSchema above) before casting; a schema

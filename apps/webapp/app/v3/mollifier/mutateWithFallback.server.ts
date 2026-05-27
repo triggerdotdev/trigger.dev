@@ -8,7 +8,7 @@ import { prisma, $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 
-// Wait/retry knobs per Q3 design. Exported for tests.
+// Wait/retry knobs. Exported for tests.
 export const DEFAULT_SAFETY_NET_MS = 2_000;
 // Initial gap between buffer polls; grows by BACKOFF_FACTOR up to
 // DEFAULT_MAX_POLL_STEP_MS so a slow drain doesn't poll at a tight fixed
@@ -50,8 +50,7 @@ export type MutateWithFallbackOutcome<TResponse> =
   | { kind: "not_found" }
   | { kind: "timed_out" };
 
-// PG-first → buffer mutateSnapshot → wait-and-bounce. Implements the Q3
-// design (`_plans/2026-05-19-mollifier-mutation-race-design.md`). The
+// PG-first → buffer mutateSnapshot → wait-and-bounce. The
 // caller decides how to translate the outcome into an HTTP response —
 // this helper never throws Response objects so it remains route-agnostic
 // and unit-testable in isolation.
