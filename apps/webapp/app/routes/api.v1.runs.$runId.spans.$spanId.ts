@@ -72,6 +72,9 @@ export const loader = createLoaderApiRoute(
           ...(run.taskIdentifier ? [{ type: "tasks", id: run.taskIdentifier }] : []),
           ...run.tags.map((tag) => ({ type: "tags", id: tag })),
         ];
+        if (run.batchId) {
+          resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
+        }
         return anyResource(resources);
       },
     },

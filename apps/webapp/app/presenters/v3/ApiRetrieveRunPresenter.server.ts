@@ -9,6 +9,7 @@ import {
   logger,
 } from "@trigger.dev/core/v3";
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
+import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
 import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
@@ -560,6 +561,32 @@ function synthesisePayload(buffered: SyntheticRun): string {
   }
 }
 
+// Mirror synthesisePayload for metadata. The PG path stores
+// `TaskRun.metadata` as `String?`, and the snapshot writes it from
+// `metadataPacket.data` (also a string), so in production it is always a
+// string or absent. We coerce defensively — an object gets JSON-stringified
+// (matching how the trigger path serialises it) rather than silently
+// dropped to null, and the log line surfaces format drift to ops.
+function synthesiseMetadata(buffered: SyntheticRun): string | null {
+  const metadata = buffered.metadata;
+  if (typeof metadata === "string") return metadata;
+  if (metadata === undefined || metadata === null) return null;
+  try {
+    const serialised = JSON.stringify(metadata);
+    logger.warn("ApiRetrieveRunPresenter: buffered snapshot.metadata non-string coerced", {
+      runFriendlyId: buffered.friendlyId,
+      metadataType: typeof metadata,
+    });
+    return typeof serialised === "string" ? serialised : null;
+  } catch {
+    logger.error("ApiRetrieveRunPresenter: buffered snapshot.metadata unserialisable", {
+      runFriendlyId: buffered.friendlyId,
+      metadataType: typeof metadata,
+    });
+    return null;
+  }
+}
+
 function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
   const status: TaskRunStatus = bufferedStatusToTaskRunStatus(buffered.status);
 
@@ -570,8 +597,7 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
       }
     : null;
 
-  const metadata: Prisma.JsonValue =
-    typeof buffered.metadata === "string" ? buffered.metadata : null;
+  const metadata: string | null = synthesiseMetadata(buffered);
 
   return {
     // `id` is the internal cuid (Prisma TaskRun.id column), `friendlyId`
@@ -603,7 +629,13 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     scheduleId: null,
     lockedToVersion: buffered.lockedToVersion ? { version: buffered.lockedToVersion } : null,
     resumeParentOnCompletion: buffered.resumeParentOnCompletion,
-    batch: null,
+    // Reconstruct the batch from the snapshot's internal id so a buffered
+    // run reports the same `batchId` / triggerFunction as it will once
+    // materialised, and so batch-scoped JWTs authorise against it (the
+    // route authorization callbacks read `run.batch?.friendlyId`).
+    batch: buffered.batchId
+      ? { id: buffered.batchId, friendlyId: BatchId.toFriendlyId(buffered.batchId) }
+      : null,
     runTags: buffered.tags,
     traceId: buffered.traceId ?? "",
     payload: synthesisePayload(buffered),

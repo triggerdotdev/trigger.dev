@@ -260,6 +260,45 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.runTags).toEqual(["t1", "t2"]);
   });
 
+  it("extracts batchId from the snapshot's nested batch object (engine.trigger shape)", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        // The engine.trigger input nests the batch as `{ id, index }`,
+        // where `id` is the batch's internal cuid (not a flat `batchId`).
+        batch: { id: "batch_internal_cuid", index: 3 },
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.batchId).toBe("batch_internal_cuid");
+  });
+
+  it("leaves batchId undefined when the snapshot has no batch (non-batched run)", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({ taskIdentifier: "t" }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.batchId).toBeUndefined();
+  });
+
   it("treats invalid date strings as undefined and does not mis-classify status as CANCELED", async () => {
     const entry: BufferEntry = {
       runId: "run_1",
