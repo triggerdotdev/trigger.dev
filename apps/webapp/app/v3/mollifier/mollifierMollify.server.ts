@@ -12,7 +12,7 @@ export type MollifyNotice = {
 export type MollifySyntheticResult = {
   // `id` is the canonical TaskRun primary key derived from `friendlyId`
   // via `RunId.fromFriendlyId`. Downstream consumers in the trigger
-  // route — notably `saveRequestIdempotency` (Q3) — index the request-
+  // route — notably `saveRequestIdempotency` — index the request-
   // idempotency cache by this id; without it the cache stores
   // `undefined` and Prisma's `findFirst({ where: { id: undefined } })`
   // on retry strips the predicate and returns an arbitrary TaskRun
@@ -25,7 +25,7 @@ export type MollifySyntheticResult = {
   // run-detail page with no span selected (parity gap with PG runs).
   run: { id: string; friendlyId: string; spanId: string };
   error: undefined;
-  // The race-loser path (Q5): if accept's SETNX hit an existing
+  // The race-loser path: if accept's SETNX hit an existing
   // buffered run with the same (env, task, idempotencyKey), the
   // response echoes the winner's runId with isCached=true. The
   // mollifier-queued notice is only attached for the happy accept.
@@ -49,7 +49,7 @@ export async function mollifyTrigger(args: {
   buffer: MollifierBuffer;
   // Optional idempotency context. When both are passed, accept SETNXes
   // the lookup so the buffered window participates in trigger-time
-  // dedup symmetrically with PG (Q5).
+  // dedup symmetrically with PG.
   idempotencyKey?: string;
   taskIdentifier?: string;
 }): Promise<MollifySyntheticResult> {

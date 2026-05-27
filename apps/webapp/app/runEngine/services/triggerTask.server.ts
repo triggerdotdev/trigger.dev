@@ -269,8 +269,7 @@ export class RunEngineTriggerTaskService {
       // resolve it — publish on success so waiters see our runId,
       // release on error so the next claimant can retry. Stored in an
       // outer scope so the try/catch at the bottom of `callV2` can act
-      // on whichever return path or throw the pipeline takes. Plan doc:
-      // _plans/2026-05-21-mollifier-idempotency-claim.md
+      // on whichever return path or throw the pipeline takes.
       idempotencyClaim = claimResult;
 
       if (idempotencyKey) {
@@ -471,7 +470,7 @@ export class RunEngineTriggerTaskService {
                   decision: mollifierOutcome.decision,
                   buffer: mollifierBuffer,
                   // Idempotency-key triple wires the buffer's SETNX into
-                  // the trigger-time dedup symmetric with PG (Q5).
+                  // the trigger-time dedup symmetric with PG.
                   idempotencyKey,
                   taskIdentifier: taskId,
                 });
@@ -539,8 +538,8 @@ export class RunEngineTriggerTaskService {
                 // onDebounced is a closure over webapp state (triggerRequest +
                 // traceEventConcern) and can't be serialised into the mollifier
                 // snapshot. The pass-through path attaches it here; the drainer
-                // path replays without it. C1/F4 gate bypasses ensure debounce
-                // and triggerAndWait never reach the mollify branch.
+                // path replays without it. The debounce and triggerAndWait gate
+                // bypasses ensure neither reaches the mollify branch.
                 onDebounced:
                   body.options?.debounce && body.options?.resumeParentOnCompletion
                     ? async ({ existingRun, waitpoint, debounceKey }) => {
@@ -643,7 +642,7 @@ export class RunEngineTriggerTaskService {
   }
 
   // Build the engine.trigger() input object from the values gathered during
-  // this.call(). Extracted so the mollify path (Phase 2) can construct the
+  // this.call(). Extracted so the mollify path can construct the
   // same input shape without re-entering the trace-run span. The pass-through
   // path spreads this result and attaches `onDebounced` inline; the mollify
   // path serialises it into the buffer for drainer replay.

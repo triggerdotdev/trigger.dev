@@ -1285,7 +1285,7 @@ describe("RunEngineTriggerTaskService", () => {
   containerTest(
     "mollifier · mollify action writes to buffer and returns synthetic result (no Postgres row)",
     async ({ prisma, redisOptions }) => {
-      // Phase 3 semantics: when the gate decides mollify, the call site
+      // When the gate decides mollify, the call site
       // invokes `mollifyTrigger` which writes the engine.trigger snapshot
       // to the buffer and returns a synthesised `MollifySyntheticResult`
       // (run.friendlyId + notice + isCached:false). `engine.trigger` is

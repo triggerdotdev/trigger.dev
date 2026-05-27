@@ -46,7 +46,7 @@ export class IdempotencyKeyConcern {
     private readonly traceEventConcern: TraceEventConcern
   ) {}
 
-  // Q5 buffer-side dedup. Resolves an idempotency key against the
+  // Buffer-side idempotency dedup. Resolves an idempotency key against the
   // mollifier buffer when PG missed. Returns a SyntheticRun cast to
   // TaskRun so the route handler (which only reads run.id / run.friendlyId)
   // can echo the buffered run's friendlyId as a cached hit. Returns null
@@ -114,7 +114,7 @@ export class IdempotencyKeyConcern {
         })
       : undefined;
 
-    // Buffer fallback per Q5 mollifier-idempotency design. PG missed —
+    // Buffer fallback per the mollifier-idempotency design. PG missed —
     // the same key may belong to a buffered run that hasn't materialised
     // yet. Skipped when `resumeParentOnCompletion` is set: blocking a
     // parent on a buffered child via waitpoint requires a PG row that
@@ -222,9 +222,8 @@ export class IdempotencyKeyConcern {
       return { isCached: true, run: existingRun };
     }
 
-    // Pre-gate claim — closes the PG+buffer race during gate transition
-    // (see _plans/2026-05-21-mollifier-idempotency-claim.md). All
-    // same-key triggers serialise here before evaluateGate decides
+    // Pre-gate claim — closes the PG+buffer race during gate transition.
+    // All same-key triggers serialise here before evaluateGate decides
     // PG-pass-through vs mollify. Skipped for triggerAndWait
     // (resumeParentOnCompletion) — that path bypasses the gate via F4
     // and its existing PG-side dedup is sufficient.
