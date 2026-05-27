@@ -5,6 +5,7 @@ import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
 import { getImpersonationId } from "./impersonation.server";
 import { logger } from "./logger.server";
+import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
 /**
  * Logs the user out when their session has lived past `User.nextSessionEnd`.
@@ -82,6 +83,11 @@ export async function getUserId(request: Request): Promise<string | undefined> {
   // for this path happens in `getUser`, where we already pay for the User
   // row fetch. `requireUserId` callers stay cookie-only.
   const authUser = await authenticator.isAuthenticated(request);
+  // SSO session re-validation runs here so it covers both navigation
+  // (getUser) and API fetches (requireUserId). It's single-flight and
+  // throttled, so most requests do nothing; only SSO-marked sessions
+  // touch Redis. Throws redirect("/logout") if the IdP says invalid.
+  await revalidateSsoSession(request, authUser);
   return authUser?.userId;
 }
 
