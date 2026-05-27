@@ -1938,6 +1938,61 @@ describe("MollifierBuffer.mutateSnapshot", () => {
   );
 
   redisTest(
+    "append_tags rejects with limit_exceeded when maxTags would be exceeded, writing nothing",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+      try {
+        await buffer.accept({
+          runId: "r_cap",
+          envId: "env_m",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ tags: ["a", "b"] }),
+        });
+
+        // 2 existing + 2 new = 4 deduped > cap of 3 → rejected, nothing written.
+        const rejected = await buffer.mutateSnapshot("r_cap", {
+          type: "append_tags",
+          tags: ["c", "d"],
+          maxTags: 3,
+        });
+        expect(rejected).toBe("limit_exceeded");
+        const afterReject = await buffer.getEntry("r_cap");
+        const rejPayload = JSON.parse(afterReject!.payload) as { tags: string[] };
+        expect(rejPayload.tags).toEqual(["a", "b"]);
+
+        // Dedup keeps the count under the cap → applied.
+        const applied = await buffer.mutateSnapshot("r_cap", {
+          type: "append_tags",
+          tags: ["a", "c"],
+          maxTags: 3,
+        });
+        expect(applied).toBe("applied_to_snapshot");
+        const afterApply = await buffer.getEntry("r_cap");
+        const appPayload = JSON.parse(afterApply!.payload) as { tags: string[] };
+        expect(appPayload.tags).toEqual(["a", "b", "c"]);
+
+        // Landing exactly on the cap is allowed.
+        const exact = await buffer.mutateSnapshot("r_cap", {
+          type: "append_tags",
+          tags: ["a", "b", "c"],
+          maxTags: 3,
+        });
+        expect(exact).toBe("applied_to_snapshot");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
     "set_metadata replaces metadata + metadataType (last-write-wins)",
     { timeout: 20_000 },
     async ({ redisContainer }) => {

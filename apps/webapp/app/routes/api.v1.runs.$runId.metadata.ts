@@ -7,6 +7,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -84,10 +85,17 @@ async function routeOperationsToRun(
   );
   if (!error) return;
 
-  // PG service threw — could be "Cannot update metadata for a completed
-  // run" or similar. If the target is buffered, route operations to its
-  // snapshot too. Best-effort; do not surface this failure to the
-  // caller — the parent/root ops are auxiliary.
+  // PG service threw — commonly "Cannot update metadata for a completed
+  // run", but it could also be a transient PG failure. The parent/root
+  // ops are auxiliary, so we stay best-effort and don't surface this to
+  // the caller — but we must not swallow the failure silently, otherwise
+  // a genuine PG outage on these ops is invisible. Warn, then try the
+  // buffer in case the target is itself buffered.
+  logger.warn("metadata route: parent/root PG op failed, falling back to buffer", {
+    targetRunId,
+    error: error instanceof Error ? error.message : String(error),
+  });
+
   await applyMetadataMutationToBufferedRun({
     runId: targetRunId,
     body: { operations },

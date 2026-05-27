@@ -37,12 +37,21 @@ export function mollifierReconnectDelayMs(
 }
 
 export type SnapshotPatch =
-  | { type: "append_tags"; tags: string[] }
+  // `maxTags`, when set, caps the deduped tag count atomically inside the
+  // Lua: if appending would push the snapshot over the limit the patch is
+  // rejected ("limit_exceeded") and nothing is written, mirroring the
+  // PG-path MAX_TAGS_PER_RUN check so a buffered run can't accumulate more
+  // tags than the trigger validator would have allowed at creation.
+  | { type: "append_tags"; tags: string[]; maxTags?: number }
   | { type: "set_metadata"; metadata: string; metadataType: string }
   | { type: "set_delay"; delayUntil: string }
   | { type: "mark_cancelled"; cancelledAt: string; cancelReason?: string };
 
-export type MutateSnapshotResult = "applied_to_snapshot" | "not_found" | "busy";
+export type MutateSnapshotResult =
+  | "applied_to_snapshot"
+  | "not_found"
+  | "busy"
+  | "limit_exceeded";
 
 export type CasSetMetadataResult =
   | { kind: "applied"; newVersion: number }
@@ -311,6 +320,8 @@ export class MollifierBuffer {
   //     FAILED entry, whose hash the drainer-terminal `fail` path DELs.
   //   - "busy": entry is DRAINING or materialised. The API
   //     wait-and-bounces through PG.
+  //   - "limit_exceeded": an `append_tags` patch carrying `maxTags` would
+  //     push the deduped tag count over the cap; nothing is written.
   async mutateSnapshot(runId: string, patch: SnapshotPatch): Promise<MutateSnapshotResult> {
     const result = (await this.redis.mutateMollifierSnapshot(
       `mollifier:entries:${runId}`,
@@ -319,7 +330,8 @@ export class MollifierBuffer {
     if (
       result === "applied_to_snapshot" ||
       result === "not_found" ||
-      result === "busy"
+      result === "busy" ||
+      result === "limit_exceeded"
     ) {
       return result;
     }
@@ -913,6 +925,12 @@ export class MollifierBuffer {
               seen[t] = true
               table.insert(merged, t)
             end
+          end
+          -- Cap the deduped count when the caller supplies a limit, so a
+          -- buffered run can't exceed MAX_TAGS_PER_RUN via the tags API.
+          -- Reject the whole patch (write nothing) rather than truncating.
+          if patch.maxTags ~= nil and #merged > patch.maxTags then
+            return 'limit_exceeded'
           end
           payload.tags = merged
         elseif patch.type == 'set_metadata' then

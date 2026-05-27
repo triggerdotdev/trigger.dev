@@ -283,6 +283,36 @@ describe("mutateWithFallback", () => {
     expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(0);
   });
 
+  it("replica miss + buffer limit_exceeded → rejected via rejectedResponse builder", async () => {
+    const pgMutation = vi.fn(async () => "pg");
+    const synthesisedResponse = vi.fn(() => "snap");
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation,
+      synthesisedResponse,
+      rejectedResponse: () => "too-many-tags",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => bufferReturning("limit_exceeded"),
+    });
+    expect(result).toEqual({ kind: "rejected", response: "too-many-tags" });
+    expect(pgMutation).not.toHaveBeenCalled();
+    expect(synthesisedResponse).not.toHaveBeenCalled();
+  });
+
+  it("buffer limit_exceeded without a rejectedResponse builder → throws (programmer error)", async () => {
+    await expect(
+      mutateWithFallback({
+        ...baseInput,
+        pgMutation: async () => "pg",
+        synthesisedResponse: () => "snap",
+        prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+        prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+        getBuffer: () => bufferReturning("limit_exceeded"),
+      })
+    ).rejects.toThrow(/limit_exceeded/);
+  });
+
   it("buffer is null (mollifier disabled) → not_found after replica miss", async () => {
     const result = await mutateWithFallback({
       ...baseInput,

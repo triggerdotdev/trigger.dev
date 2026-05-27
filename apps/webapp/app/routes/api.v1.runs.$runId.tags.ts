@@ -44,11 +44,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     const env = authenticationResult.environment;
-    const outcome = await mutateWithFallback({
+    const outcome = await mutateWithFallback<Response>({
       runId: parsedParams.data.runId,
       environmentId: env.id,
       organizationId: env.organizationId,
-      bufferPatch: { type: "append_tags", tags: nonEmptyTags },
+      bufferPatch: { type: "append_tags", tags: nonEmptyTags, maxTags: MAX_TAGS_PER_RUN },
       pgMutation: async (taskRun) => {
         const existing = taskRun.runTags ?? [];
         const newTags = nonEmptyTags.filter((t) => !existing.includes(t));
@@ -76,13 +76,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
       },
       // Buffer-applied patch path. The mutateSnapshot Lua deduplicates
-      // against existing snapshot tags atomically. MAX_TAGS_PER_RUN
-      // enforcement is skipped on the buffered side — the drainer's
-      // engine.trigger writes the PG row without enforcement either,
-      // matching today's pre-buffer trigger semantics. A future
-      // refinement could push the limit check into the Lua.
+      // against existing snapshot tags atomically and enforces
+      // MAX_TAGS_PER_RUN via the `maxTags` we pass in `bufferPatch` —
+      // matching the PG-path cap above so a buffered run can't exceed the
+      // limit the trigger validator applies at creation.
       synthesisedResponse: () =>
         json({ message: `Successfully set ${nonEmptyTags.length} new tags.` }, { status: 200 }),
+      // Buffer rejected the append because it would exceed the cap. We
+      // don't know the exact deduped overflow count here (the Lua does),
+      // so report the limit rather than a precise "trying to set N".
+      rejectedResponse: () =>
+        json(
+          { error: `Runs can only have ${MAX_TAGS_PER_RUN} tags.` },
+          { status: 422 }
+        ),
       abortSignal: getRequestAbortSignal(),
     });
 

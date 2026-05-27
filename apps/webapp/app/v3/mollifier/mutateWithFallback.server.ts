@@ -28,6 +28,11 @@ export type MutateWithFallbackInput<TResponse> = {
   // Called when the patch landed cleanly on the buffer snapshot. The
   // drainer will see the patched payload on its next pop.
   synthesisedResponse: () => TResponse | Promise<TResponse>;
+  // Called when the buffer rejected the patch as invalid (e.g. an
+  // `append_tags` patch carrying `maxTags` would exceed the cap). Required
+  // only by callers that send a rejectable patch; the helper throws if the
+  // buffer reports a rejection and no builder was supplied.
+  rejectedResponse?: () => TResponse | Promise<TResponse>;
   abortSignal?: AbortSignal;
   // Override defaults for tests.
   safetyNetMs?: number;
@@ -47,6 +52,7 @@ export type MutateWithFallbackInput<TResponse> = {
 export type MutateWithFallbackOutcome<TResponse> =
   | { kind: "pg"; response: TResponse }
   | { kind: "snapshot"; response: TResponse }
+  | { kind: "rejected"; response: TResponse }
   | { kind: "not_found" }
   | { kind: "timed_out" };
 
@@ -84,6 +90,18 @@ export async function mutateWithFallback<TResponse>(
 
   if (result === "applied_to_snapshot") {
     return { kind: "snapshot", response: await input.synthesisedResponse() };
+  }
+
+  if (result === "limit_exceeded") {
+    // The buffer refused the patch (e.g. tag cap). Nothing was written.
+    // Surface the caller's rejection body; a missing builder means the
+    // caller sent a rejectable patch without handling the rejection.
+    if (!input.rejectedResponse) {
+      throw new Error(
+        "mutateWithFallback: buffer returned 'limit_exceeded' but no rejectedResponse was provided",
+      );
+    }
+    return { kind: "rejected", response: await input.rejectedResponse() };
   }
 
   if (result === "not_found") {
