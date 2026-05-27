@@ -129,7 +129,7 @@ describe("buildSyntheticSpanRun", () => {
     expect(noKey.idempotencyKeyStatus).toBeUndefined();
   });
 
-  it("fills relationship metadata from parent/root snapshot fields when present", async () => {
+  it("omits relationships even when parent/root friendlyIds are present, since the snapshot lacks their spanId/taskIdentifier", async () => {
     const synth = await buildSyntheticSpanRun({
       run: makeSyntheticRun({
         parentTaskRunFriendlyId: "run_parent",
@@ -137,9 +137,8 @@ describe("buildSyntheticSpanRun", () => {
       }),
       environment: ENV,
     });
-    expect(synth.relationships.parent?.friendlyId).toBe("run_parent");
-    expect(synth.relationships.root?.friendlyId).toBe("run_root");
-    expect(synth.relationships.root?.isParent).toBe(false);
+    expect(synth.relationships.parent).toBeUndefined();
+    expect(synth.relationships.root).toBeUndefined();
   });
 
   it("returns no relationship objects when the snapshot has no parent/root", async () => {
@@ -149,6 +148,40 @@ describe("buildSyntheticSpanRun", () => {
     });
     expect(synth.relationships.parent).toBeUndefined();
     expect(synth.relationships.root).toBeUndefined();
+  });
+
+  it("reflects a buffered CANCELED run as a finished, cancelled terminal state", async () => {
+    const synth = await buildSyntheticSpanRun({
+      run: makeSyntheticRun({
+        status: "CANCELED",
+        cancelledAt: NOW,
+        cancelReason: "cancelled by user",
+      }),
+      environment: ENV,
+    });
+    expect(synth.status).toBe("CANCELED");
+    expect(synth.statusReason).toBe("cancelled by user");
+    expect(synth.isFinished).toBe(true);
+    expect(synth.isError).toBe(false);
+    expect(synth.completedAt).toEqual(NOW);
+  });
+
+  it("reflects a buffered FAILED run as a finished, errored SYSTEM_FAILURE", async () => {
+    const synth = await buildSyntheticSpanRun({
+      run: makeSyntheticRun({
+        status: "FAILED",
+        error: { code: "GATE_REJECTED", message: "buffer rejected the run" },
+      }),
+      environment: ENV,
+    });
+    expect(synth.status).toBe("SYSTEM_FAILURE");
+    expect(synth.isFinished).toBe(true);
+    expect(synth.isError).toBe(true);
+    expect(synth.statusReason).toBe("buffer rejected the run");
+    expect(synth.error).toEqual({
+      type: "STRING_ERROR",
+      raw: "GATE_REJECTED: buffer rejected the run",
+    });
   });
 
   it("flags the synthetic run as 'not cached' since cache lookup did not match it", async () => {

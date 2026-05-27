@@ -13,6 +13,7 @@ import type { SyntheticRun } from "./readFallback.server";
 export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
   const spanId = run.spanId ?? "";
   const isCancelled = run.status === "CANCELED";
+  const isFailed = run.status === "FAILED";
   const span: SpanSummary = {
     id: spanId,
     parentId: run.parentSpanId,
@@ -23,8 +24,11 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
       events: [],
       startTime: run.createdAt,
       duration: 0,
-      isError: false,
-      isPartial: !isCancelled,
+      isError: isFailed,
+      // CANCELED and FAILED are terminal; only a still-queued buffered run
+      // is partial. A partial failed span would otherwise render as
+      // "executing" forever in the timeline.
+      isPartial: !isCancelled && !isFailed,
       isCancelled,
       isDebug: false,
       level: "TRACE",
@@ -54,7 +58,13 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     : [];
 
   return {
-    rootSpanStatus: (isCancelled ? "completed" : "executing") as "executing" | "completed" | "failed",
+    // Matches RunPresenter's derivation: failed root span -> "failed",
+    // otherwise a terminal (non-partial) span -> "completed", else
+    // "executing". CANCELED is terminal-but-not-error, so "completed".
+    rootSpanStatus: (isFailed ? "failed" : isCancelled ? "completed" : "executing") as
+      | "executing"
+      | "completed"
+      | "failed",
     events,
     duration: totalDuration,
     rootStartedAt: tree?.data.startTime,
