@@ -353,7 +353,7 @@ export default function AgentsPage() {
                                     environment,
                                     agent.slug
                                   )}
-                                  title="Playground"
+                                  title="Test"
                                   leadingIconClassName="text-playgrounds"
                                 />
                               </>
@@ -370,7 +370,7 @@ export default function AgentsPage() {
                                   agent.slug
                                 )}
                               >
-                                Playground
+                                Test
                               </LinkButton>
                             }
                           />

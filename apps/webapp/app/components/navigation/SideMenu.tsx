@@ -35,14 +35,12 @@ import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
-import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
-import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
@@ -75,7 +73,6 @@ import {
   regionsPath,
   v3AgentsPath,
   v3ApiKeysPath,
-  v3PlaygroundPath,
   v3BatchesPath,
   v3BillingPath,
   v3BuiltInDashboardPath,
@@ -96,7 +93,6 @@ import {
   v3SchedulesPath,
   v3SessionsPath,
   v3TasksDashboardPath,
-  v3TestPath,
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
@@ -469,15 +465,6 @@ export function SideMenu({
                 to={v3WaitpointTokensPath(organization, project, environment)}
                 isCollapsed={isCollapsed}
               />
-              <SideMenuItem
-                name="Test"
-                icon={BeakerIcon}
-                activeIconColor="text-tests"
-                inactiveIconColor="text-text-dimmed"
-                to={v3TestPath(organization, project, environment)}
-                data-action="test"
-                isCollapsed={isCollapsed}
-              />
             </div>
 
             {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
@@ -488,14 +475,6 @@ export function SideMenu({
                 initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
                 onCollapseToggle={handleSectionToggle("ai")}
               >
-                <SideMenuItem
-                  name="Playground"
-                  icon={PlaygroundIcon}
-                  activeIconColor="text-playgrounds"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3PlaygroundPath(organization, project, environment)}
-                  isCollapsed={isCollapsed}
-                />
                 <SideMenuItem
                   name="Prompts"
                   icon={AIPenIcon}

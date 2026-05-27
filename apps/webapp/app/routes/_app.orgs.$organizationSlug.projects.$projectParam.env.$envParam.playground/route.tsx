@@ -86,7 +86,7 @@ export default function PlaygroundPage() {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title="Playground" />
+          <PageTitle title="Test" />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-2xl">
@@ -106,7 +106,7 @@ export default function PlaygroundPage() {
               }
             >
               <Paragraph spacing variant="small">
-                The Playground lets you test your AI agents with an interactive chat interface,
+                Test lets you exercise your AI agents with an interactive chat interface,
                 realtime streaming, and conversation history.
               </Paragraph>
               <Paragraph spacing variant="small">
@@ -147,7 +147,7 @@ export const myAgent = chat.agent({
           <PageTitle
             backButton={{
               to: v3PlaygroundPath(organization, project, environment),
-              text: "Playground",
+              text: "Test",
             }}
             title={
               <Select
@@ -178,7 +178,7 @@ export const myAgent = chat.agent({
             }
           />
         ) : (
-          <PageTitle title="Playground" />
+          <PageTitle title="Test" />
         )}
       </NavBar>
       <PageBody scrollable={!selectedAgent}>
