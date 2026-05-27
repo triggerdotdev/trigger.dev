@@ -100,12 +100,26 @@ export class StreamBatchItemsService extends WithRunEngine {
           throw new ServiceValidationError(`Batch ${batchFriendlyId} not found`);
         }
 
-        // Phase 2 retry idempotency (TRI-9944): if the batch is already sealed
-        // or has moved past PENDING into PROCESSING/COMPLETED, this is a retry
-        // of a request whose response was lost — the original successful request
-        // already enqueued every item and sealed the batch. Returning sealed:true
-        // makes the SDK stop retrying instead of throwing a customer-visible 422.
-        if (batch.sealed || batch.status === "PROCESSING" || batch.status === "COMPLETED") {
+        // Phase 2 retry idempotency (TRI-9944): a successful original request
+        // sealed the batch (sealed=true, status=PROCESSING) and the V2 batch
+        // completion callback can then independently update status to:
+        //   - PENDING (all runs created — sealed stays true)
+        //   - PARTIAL_FAILED (some run creations failed — sealed stays true/false)
+        //   - COMPLETED (set by tryCompleteBatch after every run reaches a final
+        //     state — sealed is NOT set by this path)
+        // For all of these the Phase 2 stream did its job, so a retry should
+        // return sealed:true and the SDK stops retrying.
+        //
+        // ABORTED is explicitly excluded — it means every run-creation attempt
+        // failed and the batch is terminally broken; surface that as an error
+        // rather than masking it as success.
+        const isIdempotentRetrySuccess =
+          batch.status === "PROCESSING" ||
+          batch.status === "COMPLETED" ||
+          batch.status === "PARTIAL_FAILED" ||
+          (batch.sealed && batch.status === "PENDING");
+
+        if (isIdempotentRetrySuccess) {
           logger.info("Batch already sealed/completed - treating Phase 2 retry as success", {
             batchId: batchFriendlyId,
             batchSealed: batch.sealed,
@@ -239,7 +253,11 @@ export class StreamBatchItemsService extends WithRunEngine {
             select: { sealed: true, status: true },
           });
 
-          if (currentBatch?.sealed || currentBatch?.status === "COMPLETED") {
+          if (
+            currentBatch?.sealed ||
+            currentBatch?.status === "COMPLETED" ||
+            currentBatch?.status === "PARTIAL_FAILED"
+          ) {
             logger.info("Batch already sealed before count check (fast completion)", {
               batchId: batchFriendlyId,
               itemsAccepted,
@@ -321,7 +339,8 @@ export class StreamBatchItemsService extends WithRunEngine {
 
           if (
             (currentBatch?.sealed && currentBatch.status === "PROCESSING") ||
-            currentBatch?.status === "COMPLETED"
+            currentBatch?.status === "COMPLETED" ||
+            currentBatch?.status === "PARTIAL_FAILED"
           ) {
             logger.info("Batch already sealed/completed by concurrent path", {
               batchId: batchFriendlyId,
