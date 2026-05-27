@@ -406,7 +406,6 @@ export function SideMenu({
                 icon={CubeSparkleIcon}
                 activeIconColor="text-agents"
                 inactiveIconColor="text-text-dimmed"
-                disableIconHover
                 to={v3AgentsPath(organization, project, environment)}
                 isCollapsed={isCollapsed}
                 indented
@@ -416,7 +415,6 @@ export function SideMenu({
                 icon={TaskIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
-                disableIconHover
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks-standard"
                 isCollapsed={isCollapsed}
@@ -427,7 +425,6 @@ export function SideMenu({
                 icon={ClockIcon}
                 activeIconColor="text-schedules"
                 inactiveIconColor="text-text-dimmed"
-                disableIconHover
                 to={v3SchedulesPath(organization, project, environment)}
                 data-action="schedules"
                 isCollapsed={isCollapsed}

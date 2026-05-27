@@ -218,7 +218,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Tasks" />
+        <PageTitle title="Standard tasks" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>

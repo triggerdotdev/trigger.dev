@@ -8,7 +8,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
-import { Header3 } from "~/components/primitives/Headers";
+import { Header1, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -111,12 +111,14 @@ export default function TasksDashboardPage() {
         <PageTitle title="Tasks" />
       </NavBar>
       <PageBody scrollable={true}>
-        <div className="grid gap-3 p-3 lg:grid-cols-3">
-          <Suspense fallback={<PanelSkeleton title="Agents" />}>
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-6">
+          <Header1 className="text-text-bright">Tasks overview</Header1>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Suspense fallback={<PanelSkeleton title="Agent tasks" />}>
             <TypedAwait resolve={series}>
               {(s) => (
                 <TaskTypePanel
-                  title="Agents"
+                  title="Agent tasks"
                   count={counts.agents}
                   description="AI agents are tasks that can call LLMs, use tools, and run multi-step conversations. Use them to power chat experiences, intelligent automations, or autonomous workflows."
                   example="A support agent that drafts replies using your docs as context."
@@ -172,6 +174,7 @@ export default function TasksDashboardPage() {
               )}
             </TypedAwait>
           </Suspense>
+          </div>
         </div>
       </PageBody>
     </PageContainer>
@@ -237,32 +240,30 @@ function TaskTypePanel(props: TaskTypePanelProps) {
       <Card.Header>
         <span className="truncate">{title}</span>
         <Card.Accessory>
-          <span className="whitespace-nowrap text-2xl font-medium tabular-nums leading-none text-text-bright [container-type:inline-size]">
+          <span className="shrink-0 whitespace-nowrap text-base font-medium tabular-nums leading-none text-text-bright">
             {count.toLocaleString()}
           </span>
         </Card.Accessory>
       </Card.Header>
       <Card.Content className="flex flex-col gap-3">
+        <div className="h-40">
+          <Chart.Root
+            config={chartConfig}
+            data={data}
+            dataKey="day"
+            labelFormatter={(value) => formatDay(value as string)}
+            fillContainer
+          >
+            <Chart.Bar
+              tooltipLabelFormatter={(label) => formatDay(label)}
+              xAxisProps={{ tickFormatter: (value) => formatDay(value) }}
+            />
+          </Chart.Root>
+        </div>
         {hasData ? (
           <>
-            <div className="h-40">
-              <Chart.Root
-                config={chartConfig}
-                data={data}
-                dataKey="day"
-                labelFormatter={(value) => formatDay(value as string)}
-              >
-                <Chart.Bar
-                  tooltipLabelFormatter={(label) => formatDay(label)}
-                  xAxisProps={{ tickFormatter: (value) => formatDay(value) }}
-                />
-              </Chart.Root>
-            </div>
             <Paragraph variant="small" className="px-2 text-text-dimmed">
               {description}
-            </Paragraph>
-            <Paragraph variant="extra-small" className="px-2 text-text-dimmed">
-              Example: {example}
             </Paragraph>
             <div className="flex flex-wrap items-center gap-2 px-2 pb-2 pt-1">
               <LinkButton to={listingPath} variant="secondary/small">
@@ -274,7 +275,7 @@ function TaskTypePanel(props: TaskTypePanelProps) {
             </div>
           </>
         ) : (
-          <EmptyPanel
+          <EmptyContent
             title={emptyTitle}
             description={emptyDescription}
             example={example}
@@ -289,7 +290,7 @@ function TaskTypePanel(props: TaskTypePanelProps) {
   );
 }
 
-function EmptyPanel({
+function EmptyContent({
   title,
   description,
   example,
@@ -315,15 +316,12 @@ function EmptyPanel({
   };
 
   return (
-    <div className="flex h-full min-h-[18rem] flex-col gap-3 px-3 pb-3 pt-1">
-      <Header3 className="text-text-bright">{title}</Header3>
-      <Paragraph variant="small" className="text-text-dimmed">
+    <>
+      <Header3 className="px-2 text-text-bright">{title}</Header3>
+      <Paragraph variant="small" className="px-2 text-text-dimmed">
         {description}
       </Paragraph>
-      <Paragraph variant="extra-small" className="text-text-dimmed">
-        Example: {example}
-      </Paragraph>
-      <div className="mt-auto flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 px-2 pb-2 pt-1">
         <LinkButton to={listingPath} variant="primary/small">
           {cta}
         </LinkButton>
@@ -338,6 +336,6 @@ function EmptyPanel({
           Read docs
         </LinkButton>
       </div>
-    </div>
+    </>
   );
 }

@@ -14,6 +14,7 @@ import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/chart
 import { useChartContext } from "./ChartContext";
 import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
+import { useYAxisWidth } from "./useYAxisWidth";
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
@@ -72,6 +73,7 @@ export function ChartBarRenderer({
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const enableZoom = zoom !== null;
+  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisPropsProp?.tickFormatter);
 
   const handleBarClick = useCallback(
     (barData: any, e: React.MouseEvent) => {
@@ -146,6 +148,7 @@ export function ChartBarRenderer({
         axisLine={false}
         tickLine={false}
         tickMargin={8}
+        width={computedYAxisWidth}
         tick={{
           fill: "#878C99",
           fontSize: 11,
