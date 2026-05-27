@@ -98,7 +98,6 @@ export class ExponentialBackoff {
     return this.#clone(undefined, { maxRetries });
   }
 
-  // TODO: With .execute(), should this also include the time it takes to execute the callback?
   maxElapsed(maxElapsed?: number) {
     return this.#clone(undefined, { maxElapsed });
   }
@@ -339,6 +338,14 @@ export class ExponentialBackoff {
       } finally {
         elapsedMs += Date.now() - start;
         clearTimeout(attemptTimeout);
+      }
+
+      if (elapsedMs / 1000 > this.#maxElapsed) {
+        return {
+          success: false,
+          cause: "Timeout",
+          error: finalError,
+        };
       }
     }
 
