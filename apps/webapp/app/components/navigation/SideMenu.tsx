@@ -76,6 +76,7 @@ import {
   v3BatchesPath,
   v3BillingPath,
   v3BuiltInDashboardPath,
+  v3DashboardsLandingPath,
   v3BulkActionsPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
@@ -496,16 +497,6 @@ export function SideMenu({
                     isCollapsed={isCollapsed}
                   />
                 )}
-                <SideMenuItem
-                  name="AI metrics"
-                  icon={AIMetricsIcon}
-                  trailingIconClassName="size-5"
-                  activeIconColor="text-aiMetrics"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
-                  data-action="ai-metrics"
-                  isCollapsed={isCollapsed}
-                />
               </SideMenuSection>
             )}
 
@@ -564,8 +555,8 @@ export function SideMenu({
                   icon={ChartBarIcon}
                   activeIconColor="text-metrics"
                   inactiveIconColor="text-text-dimmed"
-                  to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
-                  data-action="metrics-overview"
+                  to={v3DashboardsLandingPath(organization, project, environment)}
+                  data-action="dashboards-landing"
                   isCollapsed={isCollapsed}
                   action={
                     <CreateDashboardButton
@@ -575,6 +566,25 @@ export function SideMenu({
                       isCollapsed={isCollapsed}
                     />
                   }
+                />
+                <SideMenuItem
+                  name="Runs"
+                  icon={RunsIcon}
+                  activeIconColor="text-runs"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3BuiltInDashboardPath(organization, project, environment, "overview")}
+                  data-action="dashboard-runs"
+                  isCollapsed={isCollapsed}
+                />
+                <SideMenuItem
+                  name="Agents"
+                  icon={AIMetricsIcon}
+                  trailingIconClassName="size-5"
+                  activeIconColor="text-aiMetrics"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3BuiltInDashboardPath(organization, project, environment, "llm")}
+                  data-action="dashboard-agents"
+                  isCollapsed={isCollapsed}
                 />
                 <DashboardList
                   organization={organization}

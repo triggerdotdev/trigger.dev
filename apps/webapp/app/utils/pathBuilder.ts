@@ -315,6 +315,14 @@ export function v3BuiltInDashboardPath(
   return `${v3EnvironmentPath(organization, project, environment)}/dashboards/${key}`;
 }
 
+export function v3DashboardsLandingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/dashboards`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
