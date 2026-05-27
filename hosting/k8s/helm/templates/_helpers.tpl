@@ -400,6 +400,19 @@ ClickHouse hostname
 
 {{/*
 ClickHouse URL for application (with secure parameter)
+
+Note on the external+existingSecret branch: the password is expanded via
+Kubernetes' `$(VAR)` syntax, not shell `${VAR}`. Kubelet substitutes
+`$(CLICKHOUSE_PASSWORD)` at container-creation time from the
+CLICKHOUSE_PASSWORD env var declared just before CLICKHOUSE_URL in
+webapp.yaml. Shell-style `${...}` does not work here because
+`docker/scripts/entrypoint.sh` assigns CLICKHOUSE_URL to GOOSE_DBSTRING
+with a single-pass expansion (`export GOOSE_DBSTRING="$CLICKHOUSE_URL"`),
+so any inner `${...}` reaches goose verbatim and fails URL parsing.
+
+CLICKHOUSE_PASSWORD must contain only URL-userinfo-safe characters — the
+value is substituted verbatim, so `@ : / ? # [ ] %` break the URL. Use a
+hex-encoded password or percent-encode before storing in the Secret.
 */}}
 {{- define "trigger-v4.clickhouse.url" -}}
 {{- if .Values.clickhouse.deploy -}}
@@ -410,7 +423,7 @@ ClickHouse URL for application (with secure parameter)
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.external.secure -}}
 {{- if .Values.clickhouse.external.existingSecret -}}
-{{ $protocol }}://{{ .Values.clickhouse.external.username }}:${CLICKHOUSE_PASSWORD}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
+{{ $protocol }}://{{ .Values.clickhouse.external.username }}:$(CLICKHOUSE_PASSWORD)@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
 {{- else -}}
 {{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
 {{- end -}}
@@ -419,6 +432,9 @@ ClickHouse URL for application (with secure parameter)
 
 {{/*
 ClickHouse URL for replication (without secure parameter)
+
+See the note on clickhouse.url above — same `$(VAR)` vs `${VAR}` rationale
+applies to the replication URL.
 */}}
 {{- define "trigger-v4.clickhouse.replication.url" -}}
 {{- if .Values.clickhouse.deploy -}}
@@ -427,7 +443,7 @@ ClickHouse URL for replication (without secure parameter)
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- if .Values.clickhouse.external.existingSecret -}}
-{{ $protocol }}://{{ .Values.clickhouse.external.username }}:${CLICKHOUSE_PASSWORD}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
+{{ $protocol }}://{{ .Values.clickhouse.external.username }}:$(CLICKHOUSE_PASSWORD)@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- else -}}
 {{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- end -}}
@@ -521,13 +537,34 @@ http://{{ include "trigger-v4.fullname" . }}-supervisor:{{ .Values.supervisor.se
 {{- end }}
 
 {{/*
-Create the name of the supervisor service account to use
+Create the name of the supervisor service account to use.
+When create is false, name must be set explicitly - falling back to the namespace's
+default ServiceAccount would silently grant it the RoleBinding's permissions.
 */}}
 {{- define "trigger-v4.supervisorServiceAccountName" -}}
 {{- if .Values.supervisor.serviceAccount.create }}
 {{- default (printf "%s-supervisor" (include "trigger-v4.fullname" .)) .Values.supervisor.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.supervisor.serviceAccount.name }}
+{{- if not .Values.supervisor.serviceAccount.name }}
+{{- fail "supervisor.serviceAccount.name must be set when supervisor.serviceAccount.create is false" }}
+{{- end }}
+{{- .Values.supervisor.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create the name of the webapp service account to use.
+When create is false, name must be set explicitly - falling back to the namespace's
+default ServiceAccount would silently grant it the token-syncer RoleBinding's permissions.
+*/}}
+{{- define "trigger-v4.webappServiceAccountName" -}}
+{{- if .Values.webapp.serviceAccount.create }}
+{{- default (printf "%s-webapp" (include "trigger-v4.fullname" .)) .Values.webapp.serviceAccount.name }}
+{{- else }}
+{{- if not .Values.webapp.serviceAccount.name }}
+{{- fail "webapp.serviceAccount.name must be set when webapp.serviceAccount.create is false" }}
+{{- end }}
+{{- .Values.webapp.serviceAccount.name }}
 {{- end }}
 {{- end }}
 

@@ -204,7 +204,12 @@ export default function Page() {
                         return (
                           <TableRow key={region.id}>
                             <TableCell isTabbableCell>
-                              <CopyableText value={region.name} />
+                              <span className="flex items-center gap-2">
+                                <CopyableText value={region.name} />
+                                {region.workloadType === "MICROVM" && (
+                                  <Badge variant="small">MicroVM</Badge>
+                                )}
+                              </span>
                             </TableCell>
                             <TableCell>
                               {region.cloudProvider ? (

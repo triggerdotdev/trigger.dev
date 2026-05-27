@@ -1,7 +1,6 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { useState } from "react";
 import { z } from "zod";
 import { FeatureFlagsDialog } from "~/components/admin/FeatureFlagsDialog";
@@ -20,7 +19,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { adminGetOrganizations } from "~/models/admin.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { createSearchParams } from "~/utils/searchParams";
 
 export const SearchParams = z.object({
@@ -30,20 +29,18 @@ export const SearchParams = z.object({
 
 export type SearchParams = z.infer<typeof SearchParams>;
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
-  }
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ user, request }) => {
+    const searchParams = createSearchParams(request.url, SearchParams);
+    if (!searchParams.success) {
+      throw new Error(searchParams.error);
+    }
+    const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
 
-  const searchParams = createSearchParams(request.url, SearchParams);
-  if (!searchParams.success) {
-    throw new Error(searchParams.error);
+    return typedjson(result);
   }
-  const result = await adminGetOrganizations(user.id, searchParams.params.getAll());
-
-  return typedjson(result);
-};
+);
 
 export default function AdminDashboardRoute() {
   const { organizations, filters, page, pageCount } = useTypedLoaderData<typeof loader>();
@@ -85,15 +82,14 @@ export default function AdminDashboardRoute() {
               <TableHeaderCell>Slug</TableHeaderCell>
               <TableHeaderCell>Members</TableHeaderCell>
               <TableHeaderCell>id</TableHeaderCell>
-              <TableHeaderCell>v2?</TableHeaderCell>
-              <TableHeaderCell>v3?</TableHeaderCell>
               <TableHeaderCell>Deleted?</TableHeaderCell>
+              <TableHeaderCell>Back office</TableHeaderCell>
               <TableHeaderCell>Actions</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
             {organizations.length === 0 ? (
-              <TableBlankRow colSpan={9}>
+              <TableBlankRow colSpan={7}>
                 <Paragraph>No orgs found for search</Paragraph>
               </TableBlankRow>
             ) : (
@@ -120,9 +116,15 @@ export default function AdminDashboardRoute() {
                     <TableCell>
                       <CopyableText value={org.id} />
                     </TableCell>
-                    <TableCell>{org.v2Enabled ? "✅" : ""}</TableCell>
-                    <TableCell>{org.v3Enabled ? "✅" : ""}</TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
+                    <TableCell>
+                      <LinkButton
+                        to={`/admin/back-office/orgs/${org.id}`}
+                        variant="tertiary/small"
+                      >
+                        Open
+                      </LinkButton>
+                    </TableCell>
                     <TableCell isSticky={true}>
                       <div className="flex items-center gap-2">
                         <Button

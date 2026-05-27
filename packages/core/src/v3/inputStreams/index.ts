@@ -51,6 +51,18 @@ export class InputStreamsAPI implements InputStreamManager {
     return this.#getManager().lastSeqNum(streamId);
   }
 
+  public setLastSeqNum(streamId: string, seqNum: number): void {
+    this.#getManager().setLastSeqNum(streamId, seqNum);
+  }
+
+  public shiftBuffer(streamId: string): boolean {
+    return this.#getManager().shiftBuffer(streamId);
+  }
+
+  public disconnectStream(streamId: string): void {
+    this.#getManager().disconnectStream(streamId);
+  }
+
   public clearHandlers(): void {
     this.#getManager().clearHandlers();
   }

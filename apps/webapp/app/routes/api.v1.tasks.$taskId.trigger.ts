@@ -28,7 +28,10 @@ const ParamsSchema = z.object({
 });
 
 export const HeadersSchema = z.object({
-  "idempotency-key": z.string().nullish(),
+  "idempotency-key": z
+    .string()
+    .max(2048, "idempotency-key must be 2048 characters or less")
+    .nullish(),
   "idempotency-key-ttl": z.string().nullish(),
   "trigger-version": z.string().nullish(),
   "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
@@ -51,8 +54,7 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "trigger",
-      resource: (params) => ({ tasks: params.taskId }),
-      superScopes: ["write:tasks", "admin"],
+      resource: (params) => ({ type: "tasks", id: params.taskId }),
     },
     corsStrategy: "all",
   },
@@ -153,10 +155,9 @@ const { action, loader } = createActionApiRoute(
         return json({ error: error.message }, { status: error.status ?? 422 });
       } else if (error instanceof OutOfEntitlementError) {
         return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
       }
 
+      logger.error("Trigger task failed", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }

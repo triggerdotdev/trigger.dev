@@ -531,6 +531,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     const triggerFailedTaskService = new TriggerFailedTaskService({
       prisma: this._prisma,
       engine: this._engine,
+      replicaPrisma: this._replica,
     });
 
     for (const item of itemsToProcess) {

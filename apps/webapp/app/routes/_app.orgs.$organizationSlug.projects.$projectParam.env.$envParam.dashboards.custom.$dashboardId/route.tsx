@@ -35,7 +35,7 @@ import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { useToast } from "~/components/primitives/Toast";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useDashboardEditor } from "~/hooks/useDashboardEditor";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -44,7 +44,7 @@ import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { requireUser, requireUserId } from "~/services/session.server";
@@ -93,7 +93,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     queryPresenter.call({
       organizationId: project.organizationId,
     }),
-    getAllTaskIdentifiers($replica, environment.id),
+    getTaskIdentifiers(environment.id),
   ]);
 
   // Admins and impersonating users can use EXPLAIN
@@ -109,9 +109,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     queryHistory: history,
     isAdmin,
     maxRows: env.QUERY_CLICKHOUSE_MAX_RETURNED_ROWS,
-    possibleTasks: possibleTasks
-      .map((task) => ({ slug: task.slug, triggerSource: task.triggerSource }))
-      .sort((a, b) => a.slug.localeCompare(b.slug)),
+    possibleTasks,
     widgetCount,
   });
 };
@@ -207,19 +205,22 @@ export default function Page() {
 
   const toast = useToast();
 
-  const handleSyncError = useCallback((error: Error, action: string) => {
-    const actionMessages: Record<string, string> = {
-      add: "Failed to add widget",
-      update: "Failed to update widget",
-      delete: "Failed to delete widget",
-      duplicate: "Failed to duplicate widget",
-      layout: "Failed to save layout",
-    };
+  const handleSyncError = useCallback(
+    (error: Error, action: string) => {
+      const actionMessages: Record<string, string> = {
+        add: "Failed to add widget",
+        update: "Failed to update widget",
+        delete: "Failed to delete widget",
+        duplicate: "Failed to duplicate widget",
+        layout: "Failed to save layout",
+      };
 
-    const message = actionMessages[action] || "Failed to save changes";
+      const message = actionMessages[action] || "Failed to save changes";
 
-    toast.error(`${message}. Your changes may not be saved.`, { title: "Sync Error" });
-  }, [toast]);
+      toast.error(`${message}. Your changes may not be saved.`, { title: "Sync Error" });
+    },
+    [toast]
+  );
 
   // Add title dialog state
   const [showAddTitleDialog, setShowAddTitleDialog] = useState(false);
@@ -351,88 +352,99 @@ export default function Page() {
       })()
     : null;
 
+  const dashboardMenu = (
+    <Popover>
+      <PopoverVerticalEllipseTrigger variant="secondary" />
+      <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
+        <div className="flex flex-col gap-1">
+          <RenameDashboardDialog title={title} />
+          <DeleteDashboardDialog title={title} />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+
+  const filterAccessories = (
+    <div className="flex items-center gap-x-1.5">
+      {widgetIsAtLimit ? (
+        <>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="primary/small" LeadingIcon={PlusIcon} shortcut={{ key: "c" }}>
+                Add chart
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>You've exceeded your widget limit</DialogHeader>
+              <DialogDescription>
+                You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this dashboard.
+              </DialogDescription>
+              <DialogFooter>
+                {widgetCanUpgrade ? (
+                  <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                    Upgrade
+                  </LinkButton>
+                ) : (
+                  <Feedback
+                    button={<Button variant="primary/small">Request more</Button>}
+                    defaultValue="help"
+                  />
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button
+            variant="secondary/small"
+            LeadingIcon={Type}
+            className="pl-1.5"
+            iconSpacing="gap-x-1"
+            tooltip="Add section title"
+            shortcut={{ key: "h" }}
+            onClick={() => {
+              setNewTitleValue("");
+              setShowAddTitleDialog(true);
+            }}
+          >
+            Add title
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button
+            variant="primary/small"
+            LeadingIcon={IconChartHistogram}
+            className="pl-1.5"
+            iconSpacing="gap-x-1.5"
+            shortcut={{ key: "c" }}
+            onClick={actions.openAddEditor}
+          >
+            Add chart
+          </Button>
+          <Button
+            variant="secondary/small"
+            LeadingIcon={Type}
+            className="pl-1.5"
+            iconSpacing="gap-x-1"
+            tooltip="Add section title"
+            shortcut={{ key: "h" }}
+            onClick={() => {
+              setNewTitleValue("");
+              setShowAddTitleDialog(true);
+            }}
+          >
+            Add title
+          </Button>
+        </>
+      )}
+      {dashboardMenu}
+    </div>
+  );
+
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title={title} />
-        <PageAccessories>
-          {totalWidgetCount > 0 &&
-            (widgetIsAtLimit ? (
-              <>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="primary/small" LeadingIcon={PlusIcon}>
-                      Add chart
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>You've exceeded your widget limit</DialogHeader>
-                    <DialogDescription>
-                      You've used {widgetLimits.used}/{widgetLimits.limit} widgets on this
-                      dashboard.
-                    </DialogDescription>
-                    <DialogFooter>
-                      {widgetCanUpgrade ? (
-                        <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                          Upgrade
-                        </LinkButton>
-                      ) : (
-                        <Feedback
-                          button={<Button variant="primary/small">Request more</Button>}
-                          defaultValue="help"
-                        />
-                      )}
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-                <Button
-                  variant="secondary/small"
-                  LeadingIcon={Type}
-                  className="pl-1.5"
-                  iconSpacing="gap-x-1"
-                  onClick={() => {
-                    setNewTitleValue("");
-                    setShowAddTitleDialog(true);
-                  }}
-                >
-                  Add title
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="primary/small"
-                  LeadingIcon={IconChartHistogram}
-                  className="pl-1.5"
-                  iconSpacing="gap-x-1.5"
-                  onClick={actions.openAddEditor}
-                >
-                  Add chart
-                </Button>
-                <Button
-                  variant="secondary/small"
-                  LeadingIcon={Type}
-                  className="pl-1.5"
-                  iconSpacing="gap-x-1"
-                  onClick={() => {
-                    setNewTitleValue("");
-                    setShowAddTitleDialog(true);
-                  }}
-                >
-                  Add title
-                </Button>
-              </>
-            ))}
-          <Popover>
-            <PopoverVerticalEllipseTrigger variant="secondary" />
-            <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
-              <div className="flex flex-col gap-1">
-                <RenameDashboardDialog title={title} />
-                <DeleteDashboardDialog title={title} />
-              </div>
-            </PopoverContent>
-          </Popover>
-        </PageAccessories>
+        <PageAccessories>{totalWidgetCount === 0 && dashboardMenu}</PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <div className="flex h-full flex-col">
@@ -473,6 +485,7 @@ export default function Page() {
                 onRenameWidget={actions.renameWidget}
                 onDeleteWidget={actions.deleteWidget}
                 onDuplicateWidget={actions.duplicateWidget}
+                filterAccessories={filterAccessories}
               />
             )}
           </div>

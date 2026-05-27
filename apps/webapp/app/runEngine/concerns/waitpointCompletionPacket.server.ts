@@ -2,6 +2,7 @@ import { type IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { env } from "~/env.server";
 import { uploadPacketToObjectStore } from "~/v3/objectStore.server";
+import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 function packetExtensionForDataType(dataType: string): string {
@@ -53,6 +54,11 @@ export async function processWaitpointCompletionPacket(
   );
 
   if (uploadError) {
+    logger.error("Failed to upload large waitpoint to object store", {
+      error: uploadError,
+      filename,
+      environmentId: environment.id,
+    });
     throw new ServiceValidationError("Failed to upload large waitpoint to object store", 500);
   }
 

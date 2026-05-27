@@ -92,7 +92,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -115,7 +115,7 @@ import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectP
 
 const resizableSettings = {
   parent: {
-    autosaveId: "panel-run-parent-v2",
+    autosaveId: "panel-run-parent-v3",
     handleId: "parent-handle",
     main: {
       id: "run",
@@ -124,7 +124,7 @@ const resizableSettings = {
     inspector: {
       id: "inspector",
       default: "500px" as const,
-      min: "50px" as const,
+      min: "250px" as const,
     },
   },
   tree: {
@@ -182,7 +182,8 @@ async function getRunsListFromTableState({
       return null;
     }
 
-    const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+    const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,

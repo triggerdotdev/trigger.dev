@@ -19,6 +19,7 @@ import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
+import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -129,6 +130,42 @@ export type RunEngineOptions = {
     redis?: RedisOptions;
     /** Maximum duration in milliseconds that a run can be debounced. Default: 1 hour */
     maxDebounceDurationMs?: number;
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`.
+     * Quantization collapses many concurrent triggers on the same hot debounce key
+     * into the same target time, so that the unlocked fast-path skip becomes
+     * effective and the redlock on `handleDebounce` is not contended.
+     *
+     * A run might fire up to `quantizeNewDelayUntilMs` earlier than the strict
+     * `now + delay` spec.
+     *
+     * Set to 0 to disable quantization.
+     *
+     * Default: 1000 (1s).
+     */
+    quantizeNewDelayUntilMs?: number;
+    /**
+     * Whether to read the existing run's `delayUntil` outside of the redlock and
+     * short-circuit when the new (quantized) `delayUntil` is not later than the
+     * current one. Trailing-mode triggers carrying `updateData` always bypass
+     * this fast path and take the lock so payload/metadata/tag updates still
+     * land on the run.
+     *
+     * Default: true.
+     */
+    fastPathSkipEnabled?: boolean;
+    /**
+     * Whether to route the unlocked fast-path reads (probe + full-run fetch)
+     * through `readOnlyPrisma` (e.g. an Aurora reader) instead of the writer.
+     * Safe because debounce is best-effort: a stale `delayUntil` falls
+     * through to the locked path (the locked path re-checks under the lock),
+     * and a stale `status` at worst returns the existing run, which is the
+     * same outcome the caller would see if their trigger had landed a few
+     * hundred ms earlier.
+     *
+     * Default: false.
+     */
+    useReplicaForFastPathRead?: boolean;
   };
   /** If not set then checkpoints won't ever be used */
   retryWarmStartThresholdMs?: number;
@@ -142,9 +179,34 @@ export type RunEngineOptions = {
     factor?: number;
   };
   queueRunsWaitingForWorkerBatchSize?: number;
+  /**
+   * Lookup used by {@link PendingVersionSystem} to discover candidate
+   * `PENDING_VERSION` run ids without scanning the Postgres status index.
+   * Defaults to a noop lookup that returns an empty result, which causes
+   * the pending-version resolver to short-circuit. Production callers
+   * should inject a ClickHouse-backed implementation.
+   */
+  pendingVersionRunIdLookup?: PendingVersionRunIdLookup;
+  /**
+   * When the pending-version lookup returns zero candidates, schedule
+   * one more attempt after this delay to cover ClickHouse replication
+   * lag. Defaults to 5_000ms.
+   */
+  pendingVersionLagRetryDelayMs?: number;
+  /**
+   * Maximum number of lag-aware retries. Each call beyond the first
+   * counts against this cap. Defaults to 1 — so a deploy will fire at
+   * most two queries spaced by `pendingVersionLagRetryDelayMs`. Set to 0
+   * to disable lag-aware retries entirely.
+   */
+  pendingVersionLagMaxRetries?: number;
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;
+  /** When true, `getSnapshotsSince` reads through the read-only replica client instead
+   *  of the primary. Defaults to false. Callers passing an explicit `tx` always use
+   *  that client regardless of this flag. */
+  readReplicaSnapshotsSinceEnabled?: boolean;
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
@@ -219,6 +281,7 @@ export type TriggerParams = {
   bulkActionId?: string;
   planType?: string;
   realtimeStreamsVersion?: string;
+  streamBasinName?: string | null;
   debounce?: {
     key: string;
     delay: string;

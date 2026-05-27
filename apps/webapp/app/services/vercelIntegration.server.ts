@@ -409,7 +409,7 @@ export class VercelIntegrationService {
         key: "TRIGGER_SECRET_KEY",
         value: stagingEnv.apiKey,
         customEnvironmentId: newCustomEnvironmentId,
-        type: "encrypted",
+        type: "sensitive",
       });
 
       if (upsertResult.isErr()) {
@@ -712,6 +712,102 @@ export class VercelIntegrationService {
       vercelProjectId,
       version: currentDeployment.version,
     });
+  }
+
+  /**
+   * Returns true when TRIGGER_VERSION is no longer pinned on Vercel production after the call
+   * (either we cleared it or it wasn't set to begin with). Returns false when we failed to
+   * verify or perform the delete — callers should surface that to the user so they can clear
+   * it manually.
+   */
+  async clearTriggerVersionFromVercelProduction(projectId: string): Promise<boolean> {
+    const orgIntegration =
+      await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
+    if (!orgIntegration) {
+      return false;
+    }
+
+    const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+    if (clientResult.isErr()) {
+      logger.error("Failed to get Vercel client for TRIGGER_VERSION clear", {
+        projectId,
+        error: clientResult.error.message,
+      });
+      return false;
+    }
+    const client = clientResult.value;
+    const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
+
+    const projectIntegration = await this.#prismaClient.organizationProjectIntegration.findFirst({
+      where: {
+        projectId,
+        organizationIntegrationId: orgIntegration.id,
+        deletedAt: null,
+      },
+      select: {
+        externalEntityId: true,
+      },
+    });
+
+    if (!projectIntegration) {
+      return false;
+    }
+
+    const vercelProjectId = projectIntegration.externalEntityId;
+
+    const envVarsResult = await VercelIntegrationRepository.getVercelEnvironmentVariables(
+      client,
+      vercelProjectId,
+      teamId
+    );
+
+    if (envVarsResult.isErr()) {
+      logger.warn("Failed to fetch Vercel env vars for TRIGGER_VERSION clear", {
+        projectId,
+        vercelProjectId,
+        error: envVarsResult.error.message,
+      });
+      return false;
+    }
+
+    const existingTriggerVersion = envVarsResult.value.find(
+      (env) => env.key === "TRIGGER_VERSION" && env.target.includes("production")
+    );
+
+    if (!existingTriggerVersion) {
+      logger.info("TRIGGER_VERSION not present on Vercel production — nothing to clear", {
+        projectId,
+        vercelProjectId,
+      });
+      return true;
+    }
+
+    const removeResult = await ResultAsync.fromPromise(
+      client.projects.batchRemoveProjectEnv({
+        idOrName: vercelProjectId,
+        ...(teamId && { teamId }),
+        requestBody: { ids: [existingTriggerVersion.id] },
+      }),
+      (error) => error
+    );
+
+    if (removeResult.isErr()) {
+      logger.error("Failed to clear TRIGGER_VERSION from Vercel production", {
+        projectId,
+        vercelProjectId,
+        error:
+          removeResult.error instanceof Error
+            ? removeResult.error.message
+            : String(removeResult.error),
+      });
+      return false;
+    }
+
+    logger.info("Cleared TRIGGER_VERSION from Vercel production", {
+      projectId,
+      vercelProjectId,
+    });
+    return true;
   }
 
   async disconnectVercelProject(projectId: string): Promise<boolean> {

@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { $transaction, prisma } from "~/db.server";
+import { $replica, $transaction, prisma, type PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
@@ -46,7 +47,10 @@ function parseSecretKey(key: string) {
 const SecretValue = z.object({ secret: z.string() });
 
 export class EnvironmentVariablesRepository implements Repository {
-  constructor(private prismaClient: PrismaClient = prisma) {}
+  constructor(
+    private prismaClient: PrismaClient = prisma,
+    private replicaClient: PrismaReplicaClient = $replica
+  ) {}
 
   async create(projectId: string, options: CreateEnvironmentVariables): Promise<CreateResult> {
     const project = await this.prismaClient.project.findFirst({
@@ -581,7 +585,7 @@ export class EnvironmentVariablesRepository implements Repository {
     const variables = await this.getEnvironment(projectId, environmentId, parentEnvironmentId);
 
     // Get the keys of all secret variables
-    const secretValues = await this.prismaClient.environmentVariableValue.findMany({
+    const secretValues = await this.replicaClient.environmentVariableValue.findMany({
       where: {
         environmentId: parentEnvironmentId
           ? { in: [environmentId, parentEnvironmentId] }
@@ -876,8 +880,21 @@ export const RuntimeEnvironmentForEnvRepoPayload = {
   },
 } as const;
 
-export type RuntimeEnvironmentForEnvRepo = Prisma.RuntimeEnvironmentGetPayload<
-  typeof RuntimeEnvironmentForEnvRepoPayload
+// Derived from the slim AuthenticatedEnvironment so a full AE satisfies
+// this type — the legacy Prisma payload had `builtInEnvironmentVariableOverrides`
+// as Prisma's JsonValue, which is a subtype of `unknown` in the slim
+// shape, causing assignability errors in the JWT/queue paths that pass
+// AE values straight through. Using Pick<AE, ...> aligns them.
+export type RuntimeEnvironmentForEnvRepo = Pick<
+  AuthenticatedEnvironment,
+  | "id"
+  | "slug"
+  | "type"
+  | "projectId"
+  | "apiKey"
+  | "organizationId"
+  | "branchName"
+  | "builtInEnvironmentVariableOverrides"
 >;
 
 export const environmentVariablesRepository = new EnvironmentVariablesRepository();
@@ -1333,10 +1350,13 @@ function resolveBuiltInEnvironmentVariableOverrides(
   if (
     !Array.isArray(overrides) &&
     typeof overrides === "object" &&
-    key in overrides &&
-    typeof overrides[key] === "string"
+    overrides !== null &&
+    key in overrides
   ) {
-    return overrides[key];
+    const value = (overrides as Record<string, unknown>)[key];
+    if (typeof value === "string") {
+      return value;
+    }
   }
 
   return defaultValue;

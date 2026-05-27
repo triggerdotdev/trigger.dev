@@ -4,10 +4,13 @@ This file provides guidance to Claude Code when working with this repository. Su
 
 ## Build and Development Commands
 
-This is a pnpm 10.23.0 monorepo using Turborepo. Run commands from root with `pnpm run`.
+This is a pnpm 10.33.2 monorepo using Turborepo. Run commands from root with `pnpm run`.
+
+**Adding dependencies:** Edit `package.json` directly instead of using `pnpm add`, then run `pnpm i` from the repo root. See `.claude/rules/package-installation.md` for the full process.
 
 ```bash
-pnpm run docker              # Start Docker services (PostgreSQL, Redis, Electric)
+pnpm run docker              # Core dev services (Postgres, Redis, Electric, MinIO, ClickHouse, s2-lite)
+# pnpm run docker:full       # Same + observability stack (Prometheus, Grafana, OTEL) and chaos tooling
 pnpm run db:migrate           # Run database migrations
 pnpm run db:seed              # Seed the database (required for reference projects)
 
@@ -66,6 +69,17 @@ containerTest("should use both", async ({ prisma, redisOptions }) => {
 });
 ```
 
+## Code Style
+
+### Imports
+
+**Prefer static imports over dynamic imports.** Only use dynamic `import()` when:
+- Circular dependencies cannot be resolved otherwise
+- Code splitting is genuinely needed for performance
+- The module must be loaded conditionally at runtime
+
+Dynamic imports add unnecessary overhead in hot paths and make code harder to analyze. If you find yourself using `await import()`, ask if a regular `import` statement would work instead.
+
 ## Changesets and Server Changes
 
 When modifying any public package (`packages/*` or `integrations/*`), add a changeset:
@@ -92,7 +106,7 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 
 ### Apps
 
-- **apps/webapp**: Remix 2.1.0 app - main API, dashboard, orchestration. Uses Express server.
+- **apps/webapp**: Remix 2.17.4 app - main API, dashboard, orchestration. Uses Express server.
 - **apps/supervisor**: Manages task execution containers (Docker/Kubernetes).
 
 ### Public Packages

@@ -1,5 +1,6 @@
 import type {
   TemplateCreateRequest,
+  TemplateCreateResponse,
   InstanceCreateRequest,
   InstanceCreateResponse,
   InstanceSnapshotRequest,
@@ -106,8 +107,10 @@ class TemplatesNamespace {
   async create(
     req: TemplateCreateRequest,
     options?: RequestOptions
-  ): Promise<void> {
-    await this.http.post("/api/templates", req, options);
+  ): Promise<TemplateCreateResponse | undefined> {
+    // Background mode returns 202 with no body; sync/callback mode returns
+    // the full result. Caller decides whether to inspect.
+    return this.http.post<TemplateCreateResponse>("/api/templates", req, options);
   }
 }
 

@@ -54,6 +54,18 @@ model User {
   /// Hash of the last used code to prevent replay attacks
   mfaLastUsedCode      String?
 
+  /// Maximum session lifetime in seconds for this user. Default = 1 year (Gregorian).
+  /// May be further restricted by Organization.maxSessionDuration on any of the user's orgs.
+  sessionDuration Int @default(31556952)
+
+  /// Absolute timestamp at which the user's current session must end. Written
+  /// at login (and any time the effective duration is recomputed) and shortened
+  /// when an admin lowers an org cap. Read on requireUser / getUser; null is
+  /// treated as "no enforced deadline" (legacy sessions from before this
+  /// shipped). Read-on-demand has zero per-request DB cost — the value
+  /// piggybacks on the User fetch that requireUser already does.
+  nextSessionEnd DateTime?
+
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
@@ -218,7 +230,12 @@ model Organization {
 
   featureFlags Json?
 
-  maximumProjectCount Int @default(10)
+  maximumProjectCount Int @default(25)
+
+  /// Maximum session lifetime in seconds for members of this organization.
+  /// When set, caps each member's User.sessionDuration. The most restrictive cap across
+  /// all of a user's orgs (excluding nulls) wins.
+  maxSessionDuration Int?
 
   projects                 Project[]
   members                  OrgMember[]
@@ -234,6 +251,13 @@ model Organization {
 
   platformNotifications PlatformNotification[]
   errorGroupStates      ErrorGroupState[]
+
+  /// S2 basin that holds this org's realtime streams. Null until the
+  /// per-org basin has been provisioned (OSS / s2-lite installs leave
+  /// it null forever; reads fall back to the global basin env var).
+  /// Set once at provisioning time; retention is reconfigured in-place
+  /// when the org's plan changes.
+  streamBasinName String?
 }
 
 model OrgMember {
@@ -265,6 +289,16 @@ model OrgMemberInvite {
   email String
   role  OrgMemberRole @default(MEMBER)
 
+  /// Optional RBAC role to assign on invite acceptance. When set, the
+  /// accept-invite flow calls the loaded RBAC plugin's setUserRole with
+  /// this id after creating the OrgMember. Null = legacy behaviour, the
+  /// runtime fallback derives the role from `role` above.
+  ///
+  /// Plain text (not an FK) — the RBAC plugin's RbacRole table lives on
+  /// a separate schema (Drizzle, not Prisma) so we can't model the FK
+  /// here. Validation happens at write time (action) and read time
+  /// (acceptInvite).
+  rbacRoleId String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
@@ -352,14 +386,31 @@ model RuntimeEnvironment {
   waitpointTags        WaitpointTag[]
   BulkActionGroup      BulkActionGroup[]
   customerQueries      CustomerQuery[]
-  prompts              Prompt[]
+  prompts                  Prompt[]
+  playgroundConversations  PlaygroundConversation[]
   errorGroupStates     ErrorGroupState[]
+  taskIdentifiers      TaskIdentifier[]
+  revokedApiKeys       RevokedApiKey[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])
   @@index([projectId])
   @@index([organizationId])
+}
+
+/// Records of previously-valid API keys that are still accepted for authentication
+/// during a grace window after rotation. Extend or end the grace period by updating `expiresAt`.
+model RevokedApiKey {
+  id                   String             @id @default(cuid())
+  apiKey               String
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+  expiresAt            DateTime
+  createdAt            DateTime           @default(now())
+
+  @@index([apiKey])
+  @@index([runtimeEnvironmentId])
 }
 
 enum RuntimeEnvironmentType {
@@ -420,6 +471,7 @@ model Project {
   connectedGithubRepository      ConnectedGithubRepository?
   organizationProjectIntegration OrganizationProjectIntegration[]
   customerQueries                CustomerQuery[]
+  playgroundConversations        PlaygroundConversation[]
 
   buildSettings         Json?
   onboardingData        Json?
@@ -429,6 +481,7 @@ model Project {
   prompts               Prompt[]
   platformNotifications PlatformNotification[]
   errorGroupStates      ErrorGroupState[]
+  taskIdentifiers       TaskIdentifier[]
 }
 
 enum ProjectVersion {
@@ -516,6 +569,8 @@ model BackgroundWorker {
   workerGroupId String?
 
   supportsLazyAttempts Boolean @default(false)
+
+  taskIdentifiers TaskIdentifier[]
 
   @@unique([projectId, runtimeEnvironmentId, version])
   @@index([runtimeEnvironmentId])
@@ -653,17 +708,162 @@ model BackgroundWorkerTask {
 
   triggerSource TaskTriggerSource @default(STANDARD)
 
+  /// Extra task configuration JSON. Shape depends on triggerSource.
+  /// AGENT: { type: "ai-sdk-chat" }
+  config Json?
+
   payloadSchema Json?
 
   @@unique([workerId, slug])
   // Quick lookup of task identifiers
   @@index([projectId, slug])
   @@index([runtimeEnvironmentId, projectId])
+  @@index([runtimeEnvironmentId, slug, triggerSource])
 }
 
 enum TaskTriggerSource {
   STANDARD
   SCHEDULED
+  AGENT
+}
+
+model PlaygroundConversation {
+  id String @id @default(cuid())
+
+  /// The chat session ID used by the transport
+  chatId String
+
+  /// User-editable conversation title (auto-generated from first message)
+  title String @default("New conversation")
+
+  /// Which agent this conversation is with
+  agentSlug String
+
+  /// The current active run backing this conversation (null if no run yet)
+  runId String?
+  run   TaskRun? @relation(fields: [runId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  /// The client data JSON used for this conversation
+  clientData Json?
+
+  /// Accumulated UIMessages from completed turns (for resume without stream replay)
+  messages Json?
+
+  /// Last SSE event ID — resume from this position to avoid replaying old turns
+  lastEventId String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  /// The user who started this conversation
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([chatId, runtimeEnvironmentId])
+  @@index([runtimeEnvironmentId, agentSlug, updatedAt(sort: Desc)])
+  @@index([userId, runtimeEnvironmentId])
+}
+
+/// Durable, typed, bidirectional I/O primitive. Owns two S2 streams (.out / .in).
+/// The row is essentially static — no status, no counters, no pointers. No
+/// foreign keys: project/runtimeEnvironment/organization ids are plain
+/// scalar columns (matches TaskRun pattern). List-style queries are served
+/// from ClickHouse, not Postgres, so only point-lookup indexes live here.
+model Session {
+  id         String  @id @default(cuid())
+  friendlyId String  @unique
+  /// User-supplied identifier scoped to the environment. Used for
+  /// idempotent upsert and for resolving sessions via the public API.
+  externalId String?
+
+  /// Plain string — intentionally not an enum.
+  type String
+
+  /// Denormalized scoping columns — no FK relations.
+  projectId            String
+  runtimeEnvironmentId String
+  environmentType      RuntimeEnvironmentType
+  organizationId       String
+
+  /// Task this session triggers runs against. Required — Sessions are
+  /// task-bound: creating a session also triggers its first run, and
+  /// every subsequent re-trigger uses this same identifier.
+  taskIdentifier String
+
+  /// Trigger config used for every run this session schedules. Shape
+  /// (validated at the route layer, opaque to the DB):
+  ///   { basePayload: object, machine?: string, queue?: string,
+  ///     tags?: string[], maxAttempts?: number,
+  ///     idleTimeoutInSeconds?: number }
+  /// `basePayload` carries the customer's client-data; runtime fields
+  /// (chatId, messages, trigger) are merged at trigger time.
+  triggerConfig Json
+
+  tags     String[] @default([])
+  metadata Json?
+
+  /// Live run pointer — non-FK so run deletion never cascades. Can lag
+  /// reality; the `.in/append` handler re-checks the snapshot status
+  /// before reusing it.
+  currentRunId      String?
+  /// Monotonic counter used for optimistic locking on `currentRunId`
+  /// swaps. Bumped atomically alongside any update that changes
+  /// `currentRunId`.
+  currentRunVersion Int     @default(0)
+
+  /// Terminal markers — written once, never flipped back.
+  closedAt     DateTime?
+  closedReason String?
+  expiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// S2 basin where this session's stream pair lives. Stamped at create
+  /// time from `Organization.streamBasinName` so reads can resolve the
+  /// basin without joining org. Null when the org has no per-org basin
+  /// (OSS, or pre-backfill); reads fall back to the global basin.
+  streamBasinName String?
+
+  /// Storage URI (with protocol prefix) for this session's chat.agent
+  /// snapshot blob. Set on first snapshot write. Null = pre-column session,
+  /// fall back to computed default path.
+  chatSnapshotStoragePath String?
+
+  runs SessionRun[]
+
+  /// Idempotency: `(env, externalId)` uniquely identifies a session.
+  /// PostgreSQL treats NULLs as distinct, so `externalId=NULL` rows never collide.
+  @@unique([runtimeEnvironmentId, externalId])
+  @@index([expiresAt])
+  @@index([currentRunId])
+}
+
+/// Historical record of every run a Session has owned. Append-only —
+/// rows are inserted on each `ensureRunForSession` claim, never updated.
+/// Lets us reconstruct the run timeline of a chat for debugging /
+/// dashboard surfaces. The relation cascades on Session delete (tied to
+/// the session lifecycle) but `runId` is a plain string column with no
+/// FK to TaskRun so run pruning is independent.
+model SessionRun {
+  id String @id @default(cuid())
+
+  sessionId   String
+  /// TaskRun.id (no FK — runs may be archived independently of session history)
+  runId       String   @unique
+  /// One of: "initial" | "continuation" | "upgrade" | "manual".
+  /// Plain string for forward-compat with future trigger reasons.
+  reason      String
+  triggeredAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
 }
 
 model TaskRun {
@@ -869,6 +1069,13 @@ model TaskRun {
   realtimeStreamsVersion String   @default("v1")
   /// Store the stream keys that are being used by the run
   realtimeStreams        String[] @default([])
+  /// S2 basin where this run's realtime streams live. Stamped at create
+  /// time from `Organization.streamBasinName` so reads can resolve the
+  /// basin without joining org. Null when the org has no per-org basin
+  /// (OSS, or pre-backfill); reads fall back to the global basin.
+  streamBasinName        String?
+
+  playgroundConversations PlaygroundConversation[]
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
@@ -877,8 +1084,6 @@ model TaskRun {
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
-  // Schedule list page
-  @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
   @@index([runTags(ops: ArrayOps)], type: Gin)
   @@index([runtimeEnvironmentId, batchId])
@@ -1818,6 +2023,7 @@ model EnvironmentVariableValue {
   lastUpdatedBy Json?
 
   @@unique([variableId, environmentId])
+  @@index([environmentId])
 }
 
 model Checkpoint {
@@ -2022,6 +2228,7 @@ model TaskSchedule {
   ///Instances of the schedule that are active
   instances TaskScheduleInstance[]
 
+  /// @deprecated stop writing 2026-04-30; reads moved out of code (UI now derives from cron's previous slot). Drop in follow-up.
   lastRunTriggeredAt DateTime?
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2067,7 +2274,9 @@ model TaskScheduleInstance {
 
   active Boolean @default(true)
 
+  /// @deprecated stop writing 2026-04-30; engine derives from cron + exactScheduleTime. Drop in follow-up.
   lastScheduledTimestamp DateTime?
+  /// @deprecated stop writing 2026-04-30; engine derives from cron + now(). Drop in follow-up.
   nextScheduledTimestamp DateTime?
 
   //you can only have a schedule attached to each environment once
@@ -2918,4 +3127,49 @@ model ErrorGroupState {
 
   @@unique([environmentId, taskIdentifier, errorFingerprint])
   @@index([environmentId, status])
+}
+
+model TaskIdentifier {
+  id String @id @default(cuid())
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  projectId String
+
+  slug String
+
+  currentTriggerSource TaskTriggerSource @default(STANDARD)
+
+  currentWorker   BackgroundWorker? @relation(fields: [currentWorkerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentWorkerId String?
+
+  firstSeenAt          DateTime @default(now())
+  lastSeenAt           DateTime @default(now())
+  isInLatestDeployment Boolean  @default(true)
+
+  @@unique([runtimeEnvironmentId, slug])
+  @@index([runtimeEnvironmentId, isInLatestDeployment])
+}
+
+enum DataStoreKind {
+  CLICKHOUSE
+}
+
+/// Defines org-scoped data store overrides (e.g. dedicated ClickHouse for HIPAA orgs).
+/// Multiple organizations can share a single data store row via organizationIds.
+model OrganizationDataStore {
+  id              String        @id @default(cuid())
+  /// Human-readable unique key (e.g. "hipaa-clickhouse-us-east")
+  key             String        @unique
+  /// Organization IDs that use this data store
+  organizationIds String[]
+  kind            DataStoreKind
+  /// Versioned config JSON. Structure is discriminated by the top-level `version` field.
+  config          Json
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([kind])
 }

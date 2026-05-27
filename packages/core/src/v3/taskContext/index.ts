@@ -1,6 +1,7 @@
 import { Attributes } from "@opentelemetry/api";
 import { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
+import { sdkScope } from "../sdkScope/index.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { TaskContext } from "./types.js";
 
@@ -9,6 +10,7 @@ const API_NAME = "task-context";
 export class TaskContextAPI {
   private static _instance?: TaskContextAPI;
   private _runDisabled = false;
+  private _conversationId?: string;
 
   private constructor() {}
 
@@ -21,6 +23,7 @@ export class TaskContextAPI {
   }
 
   get isInsideTask(): boolean {
+    if (this.#isolatedFromContext()) return false;
     return this.#getTaskContext() !== undefined;
   }
 
@@ -29,15 +32,23 @@ export class TaskContextAPI {
   }
 
   get ctx(): TaskRunContext | undefined {
+    if (this.#isolatedFromContext()) return undefined;
     return this.#getTaskContext()?.ctx;
   }
 
   get worker(): ServerBackgroundWorker | undefined {
+    if (this.#isolatedFromContext()) return undefined;
     return this.#getTaskContext()?.worker;
   }
 
   get isWarmStart(): boolean | undefined {
+    if (this.#isolatedFromContext()) return undefined;
     return this.#getTaskContext()?.isWarmStart;
+  }
+
+  #isolatedFromContext(): boolean {
+    const scope = sdkScope.getStore();
+    return !!scope && !scope.inheritContext;
   }
 
   get attributes(): Attributes {
@@ -45,11 +56,25 @@ export class TaskContextAPI {
       return {
         ...this.contextAttributes,
         ...this.workerAttributes,
+        ...this.conversationAttributes,
         [SemanticInternalAttributes.WARM_START]: !!this.isWarmStart,
       };
     }
 
     return {};
+  }
+
+  get conversationAttributes(): Attributes {
+    if (!this._conversationId) return {};
+    return { [SemanticInternalAttributes.GEN_AI_CONVERSATION_ID]: this._conversationId };
+  }
+
+  get conversationId(): string | undefined {
+    return this._conversationId;
+  }
+
+  public setConversationId(conversationId: string | undefined): void {
+    this._conversationId = conversationId || undefined;
   }
 
   get resourceAttributes(): Attributes {
@@ -94,6 +119,7 @@ export class TaskContextAPI {
         [SemanticInternalAttributes.QUEUE_ID]: this.ctx.queue.id,
         [SemanticInternalAttributes.RUN_ID]: this.ctx.run.id,
         [SemanticInternalAttributes.RUN_IS_TEST]: this.ctx.run.isTest,
+        [SemanticInternalAttributes.RUN_IS_REPLAY]: this.ctx.run.isReplay,
         [SemanticInternalAttributes.BATCH_ID]: this.ctx.batch?.id,
         [SemanticInternalAttributes.IDEMPOTENCY_KEY]: this.ctx.run.idempotencyKey,
       };
@@ -108,6 +134,11 @@ export class TaskContextAPI {
 
   public setGlobalTaskContext(taskContext: TaskContext): boolean {
     this._runDisabled = false;
+    // Each run boot re-registers the global; clear any conversation id
+    // left over from a previous run on this warm-restarted process so
+    // attributes don't bleed across runs that don't call
+    // `setConversationId` themselves.
+    this._conversationId = undefined;
     return registerGlobal(API_NAME, taskContext, true);
   }
 

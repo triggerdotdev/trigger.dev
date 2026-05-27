@@ -98,29 +98,12 @@ describe("ScheduleEngine Integration", () => {
           },
         });
 
-        // Calculate the expected next execution time (next minute boundary)
-        const now = new Date();
-        const expectedExecutionTime = new Date(now);
-        expectedExecutionTime.setMinutes(now.getMinutes() + 1, 0, 0); // Next minute, 0 seconds, 0 milliseconds
-
-        // Calculate the expected upcoming execution times (next 10 minutes after the first execution)
-        const expectedUpcoming = [];
-        for (let i = 1; i <= 10; i++) {
-          const upcoming = new Date(expectedExecutionTime);
-          upcoming.setMinutes(expectedExecutionTime.getMinutes() + i);
-          expectedUpcoming.push(upcoming);
-        }
-
-        // Manually enqueue the first scheduled task to kick off the lifecycle
+        // Manually enqueue the first scheduled task to kick off the lifecycle.
+        // Anchor expectations to the first observed `exactScheduleTime` rather
+        // than a precomputed wall-clock value — registration that happens to
+        // straddle a minute boundary used to flake tests asserting against a
+        // pre-baked "next minute".
         await engine.registerNextTaskScheduleInstance({ instanceId: scheduleInstance.id });
-
-        // Get the actual nextScheduledTimestamp that was calculated by the engine
-        const instanceAfterRegistration = await prisma.taskScheduleInstance.findFirst({
-          where: { id: scheduleInstance.id },
-        });
-        const actualNextExecution = instanceAfterRegistration?.nextScheduledTimestamp;
-        expect(actualNextExecution).toBeDefined();
-        expect(actualNextExecution).toEqual(expectedExecutionTime);
 
         // Wait for the first execution
         console.log("Waiting for first execution...");
@@ -181,6 +164,17 @@ describe("ScheduleEngine Integration", () => {
           }
         }
 
+        // Anchor all expectations to what the engine actually fired with, so
+        // the test stays deterministic regardless of when within a minute it
+        // started.
+        const firstScheduledTime = firstExecution.params.exactScheduleTime;
+        const secondScheduledTime = secondExecution.params.exactScheduleTime;
+        expect(firstScheduledTime).toBeDefined();
+        expect(secondScheduledTime).toBeDefined();
+
+        // Each cron slot for "* * * * *" is exactly 60s apart.
+        expect(secondScheduledTime!.getTime() - firstScheduledTime!.getTime()).toBe(60_000);
+
         // Verify the first execution parameters
         expect(firstExecution.params).toEqual({
           taskIdentifier: "test-task",
@@ -201,66 +195,150 @@ describe("ScheduleEngine Integration", () => {
           payload: {
             scheduleId: "sched_abc123",
             type: "DECLARATIVE",
-            timestamp: actualNextExecution,
-            lastTimestamp: undefined, // First run has no lastTimestamp
+            timestamp: firstScheduledTime,
+            // First-ever fire: no `lastScheduleTime` carried in the worker
+            // payload and `instance.lastScheduledTimestamp` is null on a
+            // fresh instance, so lastTimestamp is undefined. This preserves
+            // the `if (!payload.lastTimestamp)` first-run sentinel customers
+            // rely on.
+            lastTimestamp: undefined,
             externalId: "ext-123",
             timezone: "UTC",
             upcoming: expect.arrayContaining([expect.any(Date)]),
           },
           scheduleInstanceId: scheduleInstance.id,
           scheduleId: taskSchedule.id,
-          exactScheduleTime: actualNextExecution,
+          exactScheduleTime: firstScheduledTime,
         });
 
         // Verify the second execution parameters
-        if (actualNextExecution) {
-          const expectedSecondExecution = new Date(actualNextExecution);
-          expectedSecondExecution.setMinutes(actualNextExecution.getMinutes() + 1);
-
-          expect(secondExecution.params).toEqual({
-            taskIdentifier: "test-task",
-            environment: expect.objectContaining({
-              id: environment.id,
-              type: "PRODUCTION",
-            }),
-            payload: {
-              scheduleId: "sched_abc123",
-              type: "DECLARATIVE",
-              timestamp: expectedSecondExecution,
-              lastTimestamp: actualNextExecution, // Second run should have the first execution time as lastTimestamp
-              externalId: "ext-123",
-              timezone: "UTC",
-              upcoming: expect.arrayContaining([expect.any(Date)]),
-            },
-            scheduleInstanceId: scheduleInstance.id,
-            scheduleId: taskSchedule.id,
-            exactScheduleTime: expectedSecondExecution,
-          });
-        }
-
-        // Verify database updates occurred after both executions
-        const updatedSchedule = await prisma.taskSchedule.findFirst({
-          where: { id: taskSchedule.id },
+        expect(secondExecution.params).toEqual({
+          taskIdentifier: "test-task",
+          environment: expect.objectContaining({
+            id: environment.id,
+            type: "PRODUCTION",
+          }),
+          payload: {
+            scheduleId: "sched_abc123",
+            type: "DECLARATIVE",
+            timestamp: secondScheduledTime,
+            // The previous fire's exactScheduleTime is carried through the
+            // worker payload as `lastScheduleTime` and surfaced here.
+            lastTimestamp: firstScheduledTime,
+            externalId: "ext-123",
+            timezone: "UTC",
+            upcoming: expect.arrayContaining([expect.any(Date)]),
+          },
+          scheduleInstanceId: scheduleInstance.id,
+          scheduleId: taskSchedule.id,
+          exactScheduleTime: secondScheduledTime,
         });
-        expect(updatedSchedule?.lastRunTriggeredAt).toBeTruthy();
-        expect(updatedSchedule?.lastRunTriggeredAt).toBeInstanceOf(Date);
-
-        const finalInstance = await prisma.taskScheduleInstance.findFirst({
-          where: { id: scheduleInstance.id },
-        });
-
-        // After two executions, lastScheduledTimestamp should be the second execution time
-        if (actualNextExecution && secondExecution.params.exactScheduleTime) {
-          const secondExecutionTime = secondExecution.params.exactScheduleTime;
-          expect(finalInstance?.lastScheduledTimestamp).toEqual(secondExecutionTime);
-
-          // The next scheduled timestamp should be 1 minute after the second execution
-          const expectedThirdExecution = new Date(secondExecutionTime);
-          expectedThirdExecution.setMinutes(secondExecutionTime.getMinutes() + 1);
-          expect(finalInstance?.nextScheduledTimestamp).toEqual(expectedThirdExecution);
-        }
       } finally {
         // Clean up: stop the worker
+        await engine.quit();
+      }
+    }
+  );
+
+  // Deploy-moment backward compatibility. At deploy time, in-flight Redis jobs
+  // were enqueued by the old engine — their payload has no `lastScheduleTime`
+  // field — and `instance.lastScheduledTimestamp` is still populated (last
+  // written by the old engine pre-deploy). The new engine must report that DB
+  // value as `payload.lastTimestamp` so customers don't see a transient
+  // `undefined` for the one fire per schedule that drains the legacy queue.
+  containerTest(
+    "should fall back to instance.lastScheduledTimestamp when payload lacks lastScheduleTime",
+    { timeout: 30_000 },
+    async ({ prisma, redisOptions }) => {
+      const triggerCalls: TriggerScheduledTaskParams[] = [];
+      const engine = new ScheduleEngine({
+        prisma,
+        redis: redisOptions,
+        distributionWindow: { seconds: 10 },
+        worker: {
+          concurrency: 1,
+          disabled: true, // Don't actually run the worker — calling triggerScheduledTask directly
+          pollIntervalMs: 1000,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        onTriggerScheduledTask: async (params) => {
+          triggerCalls.push(params);
+          return { success: true };
+        },
+        isDevEnvironmentConnectedHandler: vi.fn().mockResolvedValue(true),
+      });
+
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "Legacy Payload Org", slug: "legacy-payload-org" },
+        });
+
+        const project = await prisma.project.create({
+          data: {
+            name: "Legacy Payload Project",
+            slug: "legacy-payload-project",
+            externalRef: "legacy-payload-ref",
+            organizationId: organization.id,
+          },
+        });
+
+        const environment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "legacy-payload-env",
+            type: "PRODUCTION",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "tr_legacy_1234",
+            pkApiKey: "pk_legacy_1234",
+            shortcode: "legacy-short",
+          },
+        });
+
+        const taskSchedule = await prisma.taskSchedule.create({
+          data: {
+            friendlyId: "sched_legacy_payload",
+            taskIdentifier: "legacy-payload-task",
+            projectId: project.id,
+            deduplicationKey: "legacy-payload-dedup",
+            userProvidedDeduplicationKey: false,
+            generatorExpression: "*/5 * * * *",
+            generatorDescription: "Every 5 minutes",
+            timezone: "UTC",
+            type: "DECLARATIVE",
+            active: true,
+            externalId: "legacy-ext",
+          },
+        });
+
+        // Pre-populate lastScheduledTimestamp on the instance — simulates the
+        // value the old engine wrote to the DB before this PR deployed.
+        const preDeployLastFire = new Date("2026-04-30T10:00:00.000Z");
+        const scheduleInstance = await prisma.taskScheduleInstance.create({
+          data: {
+            taskScheduleId: taskSchedule.id,
+            environmentId: environment.id,
+            projectId: project.id,
+            active: true,
+            lastScheduledTimestamp: preDeployLastFire,
+          },
+        });
+
+        // Call triggerScheduledTask directly without lastScheduleTime,
+        // simulating an in-flight Redis job enqueued by the old engine.
+        const exactScheduleTime = new Date("2026-04-30T10:05:00.000Z");
+        await engine.triggerScheduledTask({
+          instanceId: scheduleInstance.id,
+          finalAttempt: false,
+          exactScheduleTime,
+          // lastScheduleTime intentionally omitted — legacy payload shape
+        });
+
+        expect(triggerCalls.length).toBe(1);
+        expect(triggerCalls[0].payload.timestamp).toEqual(exactScheduleTime);
+        // Falls back to instance.lastScheduledTimestamp from the DB rather
+        // than reporting undefined for this one transitional fire.
+        expect(triggerCalls[0].payload.lastTimestamp).toEqual(preDeployLastFire);
+      } finally {
         await engine.quit();
       }
     }

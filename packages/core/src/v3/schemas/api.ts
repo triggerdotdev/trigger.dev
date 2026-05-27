@@ -197,7 +197,13 @@ export const TriggerTaskRequestBody = z.object({
         .optional(),
       concurrencyKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z
+        .string()
+        // Caps user-supplied keys before they reach the unique idempotency index
+        // on the underlying table — values past this fail at the database layer
+        // rather than returning a clean 400.
+        .max(2048, "idempotencyKey must be 2048 characters or less")
+        .optional(),
       idempotencyKeyTTL: z.string().optional(),
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
@@ -249,7 +255,13 @@ export const BatchTriggerTaskItem = z.object({
     .object({
       concurrencyKey: z.string().optional(),
       delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z
+        .string()
+        // Caps user-supplied keys before they reach the unique idempotency index
+        // on the underlying table — values past this fail at the database layer
+        // rather than returning a clean 400.
+        .max(2048, "idempotencyKey must be 2048 characters or less")
+        .optional(),
       idempotencyKeyTTL: z.string().optional(),
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
@@ -358,7 +370,13 @@ export const CreateBatchRequestBody = z.object({
   /** Whether to resume parent on completion (true for batchTriggerAndWait) */
   resumeParentOnCompletion: z.boolean().optional(),
   /** Idempotency key for the batch */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /** The original user-provided idempotency key and scope */
   idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
 });
@@ -1115,6 +1133,8 @@ const CommonRunFields = {
   baseCostInCents: z.number(),
   durationMs: z.number(),
   metadata: z.record(z.any()).optional(),
+  taskKind: z.string().optional(),
+  region: z.string().optional(),
 };
 
 const RetrieveRunCommandFields = {
@@ -1350,7 +1370,13 @@ export const CreateWaitpointTokenRequestBody = z.object({
    *
    * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
    */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /**
    * When set, this means the passed in idempotency key will expire after this time.
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
@@ -1389,7 +1415,13 @@ export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTok
 export const CreateInputStreamWaitpointRequestBody = z.object({
   streamId: z.string(),
   timeout: z.string().optional(),
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   idempotencyKeyTTL: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   /**
@@ -1409,6 +1441,44 @@ export const CreateInputStreamWaitpointResponseBody = z.object({
 });
 export type CreateInputStreamWaitpointResponseBody = z.infer<
   typeof CreateInputStreamWaitpointResponseBody
+>;
+
+/**
+ * Create a run-scoped waitpoint that completes when the next record lands on
+ * a Session channel (`.in` or `.out`). Mirrors `CreateInputStreamWaitpointRequestBody`
+ * but keyed by `{sessionId, io}` instead of `{runId, streamId}`. The run is
+ * still the thing being suspended — Session only supplies the trigger source.
+ */
+export const CreateSessionStreamWaitpointRequestBody = z.object({
+  /** Session friendlyId (`session_*`) or user-supplied externalId. */
+  session: z.string(),
+  io: z.enum(["out", "in"]),
+  timeout: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
+  idempotencyKeyTTL: z.string().optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(),
+  /**
+   * Last S2 sequence number the client has seen on this session channel.
+   * Used to catch data that arrived before `.wait()` was called.
+   */
+  lastSeqNum: z.number().optional(),
+});
+export type CreateSessionStreamWaitpointRequestBody = z.infer<
+  typeof CreateSessionStreamWaitpointRequestBody
+>;
+
+export const CreateSessionStreamWaitpointResponseBody = z.object({
+  waitpointId: z.string(),
+  isCached: z.boolean(),
+});
+export type CreateSessionStreamWaitpointResponseBody = z.infer<
+  typeof CreateSessionStreamWaitpointResponseBody
 >;
 
 export const waitpointTokenStatuses = ["WAITING", "COMPLETED", "TIMED_OUT"] as const;
@@ -1449,6 +1519,225 @@ export const CompleteWaitpointTokenRequestBody = z.object({
 });
 export type CompleteWaitpointTokenRequestBody = z.infer<typeof CompleteWaitpointTokenRequestBody>;
 
+/**
+ * Trigger config persisted on a Session. Drives every run the session
+ * schedules — `basePayload` is the customer's wire payload (for
+ * chat.agent: `{ chatId, ...clientData }`), runtime fields like
+ * `trigger: "preload" | "trigger"` are merged on top per-call by the
+ * server's trigger machinery.
+ */
+export const SessionTriggerConfig = z.object({
+  basePayload: z.record(z.unknown()),
+  machine: MachinePresetName.optional(),
+  queue: z.string().max(128).optional(),
+  tags: z.array(z.string().max(128)).max(5).optional(),
+  maxAttempts: z.number().int().positive().max(10).optional(),
+  /** Per-run wall-clock cap (seconds). Forwarded to `TaskRunOptions.maxDuration`. */
+  maxDuration: z.number().int().positive().optional(),
+  /** Pin every run to a specific worker version. Forwarded to `TaskRunOptions.lockToVersion`. */
+  lockToVersion: z.string().optional(),
+  /** Region to schedule runs in. Forwarded to `TaskRunOptions.region`. */
+  region: z.string().optional(),
+  /** Convenience field surfaced to chat.agent via the wire payload. */
+  idleTimeoutInSeconds: z.number().int().positive().max(3600).optional(),
+});
+export type SessionTriggerConfig = z.infer<typeof SessionTriggerConfig>;
+
+/**
+ * Request body for `POST /api/v1/sessions`. Creates a Session and
+ * triggers its first run. Sessions are task-bound: `taskIdentifier` and
+ * `triggerConfig` are required, and re-runs scheduled by the server
+ * (after run termination, after `end-and-continue`) reuse the same
+ * config.
+ */
+export const CreateSessionRequestBody = z.object({
+  /** Plain string discriminator — e.g. `"chat.agent"`. Not validated against an enum on the server. */
+  type: z.string().min(1).max(64),
+  /** User-supplied idempotency key. Unique per environment. Empty strings are rejected. */
+  externalId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(256)
+    .refine((v) => !v.startsWith("session_"), {
+      message: "externalId cannot start with 'session_' (reserved prefix for internal friendlyIds)",
+    })
+    .optional(),
+  /** Task this session triggers runs against. Required. */
+  taskIdentifier: z.string().min(1).max(128),
+  /** Trigger config used for every run scheduled by this session. */
+  triggerConfig: SessionTriggerConfig,
+  /** Up to 10 tags for dashboard filtering. */
+  tags: z.array(z.string().max(128)).max(10).optional(),
+  /** Arbitrary JSON metadata. */
+  metadata: z.record(z.unknown()).optional(),
+  /** Absolute expiry timestamp for retention. */
+  expiresAt: z.coerce.date().optional(),
+});
+export type CreateSessionRequestBody = z.infer<typeof CreateSessionRequestBody>;
+
+export const SessionItem = z.object({
+  id: z.string(),
+  externalId: z.string().nullable(),
+  type: z.string(),
+  taskIdentifier: z.string(),
+  /**
+   * Optional on the wire because some surfaces (the list endpoint backed
+   * by ClickHouse, list-page rendering) don't carry triggerConfig.
+   * Always populated on `POST /sessions` and `GET /sessions/:id`.
+   */
+  triggerConfig: SessionTriggerConfig.optional(),
+  /**
+   * Friendly id of the live run for this session, if any. Optional on
+   * the wire — list surfaces may not include it. Routes that emit
+   * `SessionItem` are responsible for resolving the friendly form
+   * from the underlying cuid before returning.
+   */
+  currentRunId: z.string().nullable().optional(),
+  tags: z.array(z.string()),
+  metadata: z.record(z.unknown()).nullable(),
+  closedAt: z.coerce.date().nullable(),
+  closedReason: z.string().nullable(),
+  expiresAt: z.coerce.date().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type SessionItem = z.infer<typeof SessionItem>;
+
+export const CreatedSessionResponseBody = SessionItem.extend({
+  /** Friendly id of the first run triggered alongside session create. */
+  runId: z.string(),
+  /** Session-scoped public access token: `read:sessions:{ext} + write:sessions:{ext}`. */
+  publicAccessToken: z.string(),
+  /** True if the session existed already (idempotent upsert), false if newly created. */
+  isCached: z.boolean(),
+});
+export type CreatedSessionResponseBody = z.infer<typeof CreatedSessionResponseBody>;
+
+export const RetrieveSessionResponseBody = SessionItem;
+export type RetrieveSessionResponseBody = z.infer<typeof RetrieveSessionResponseBody>;
+
+/**
+ * Body for `POST /api/v1/sessions/:session/end-and-continue`. Used by the
+ * running agent to request a clean handoff to a fresh run on the latest
+ * deployed version (typical use case: `chat.requestUpgrade`). The
+ * server triggers a new run, atomically swaps `currentRunId`, and the
+ * caller exits.
+ */
+export const EndAndContinueSessionRequestBody = z.object({
+  /** The friendlyId of the run requesting the handoff. */
+  callingRunId: z.string(),
+  /** Free-form label for the SessionRun audit row. e.g. `"upgrade"`. */
+  reason: z.string().max(64),
+});
+export type EndAndContinueSessionRequestBody = z.infer<typeof EndAndContinueSessionRequestBody>;
+
+export const EndAndContinueSessionResponseBody = z.object({
+  /** friendlyId of the run that has taken over the session. */
+  runId: z.string(),
+  /**
+   * False when the swap was preempted (a different run was already
+   * running by the time we tried to claim). The caller should treat
+   * this as "someone else moved on" — exit cleanly without expecting
+   * to drive the next run.
+   */
+  swapped: z.boolean(),
+});
+export type EndAndContinueSessionResponseBody = z.infer<
+  typeof EndAndContinueSessionResponseBody
+>;
+
+export const UpdateSessionRequestBody = z.object({
+  tags: z.array(z.string().max(128)).max(10).optional(),
+  metadata: z.record(z.unknown()).nullable().optional(),
+  // Null explicitly clears the externalId; non-null values must be non-empty.
+  externalId: z
+    .union([
+      z.literal(null),
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(256)
+        .refine((v) => !v.startsWith("session_"), {
+          message:
+            "externalId cannot start with 'session_' (reserved prefix for internal friendlyIds)",
+        }),
+    ])
+    .optional(),
+});
+export type UpdateSessionRequestBody = z.infer<typeof UpdateSessionRequestBody>;
+
+export const CloseSessionRequestBody = z.object({
+  reason: z.string().max(256).optional(),
+});
+export type CloseSessionRequestBody = z.infer<typeof CloseSessionRequestBody>;
+
+export const SessionStatus = z.enum(["ACTIVE", "CLOSED", "EXPIRED"]);
+export type SessionStatus = z.infer<typeof SessionStatus>;
+
+/**
+ * Server-side validation schema for `GET /api/v1/sessions`. Follows the same
+ * cursor-pagination convention as runs/waitpoints (`page[size]`,
+ * `page[after]`, `page[before]`) and uses the `filter[*]` prefix for
+ * narrowing fields — both produced automatically by `zodfetchCursorPage`
+ * and the matching client-side search-query helper.
+ */
+export const ListSessionsQueryParams = z
+  .object({
+    "page[size]": z.coerce.number().int().min(1).max(100).default(20),
+    "page[after]": z.string().optional(),
+    "page[before]": z.string().optional(),
+    "filter[type]": z.union([z.string(), z.array(z.string())]).optional(),
+    "filter[tags]": z.union([z.string(), z.array(z.string())]).optional(),
+    "filter[taskIdentifier]": z.union([z.string(), z.array(z.string())]).optional(),
+    "filter[externalId]": z.string().optional(),
+    "filter[status]": z.union([SessionStatus, z.array(SessionStatus)]).optional(),
+    "filter[createdAt][period]": z.string().optional(),
+    "filter[createdAt][from]": z.coerce.number().int().optional(),
+    "filter[createdAt][to]": z.coerce.number().int().optional(),
+  })
+  .refine(
+    (value) => !(value["page[after]"] && value["page[before]"]),
+    {
+      message: "Cannot pass both page[after] and page[before] on the same request",
+      path: ["page[before]"],
+    }
+  );
+export type ListSessionsQueryParams = z.infer<typeof ListSessionsQueryParams>;
+
+/**
+ * Client-facing list options — flattened shape that
+ * {@link ApiClient.listSessions} converts into the `filter[*]` / `page[*]`
+ * query string before sending.
+ */
+export const ListSessionsOptions = z.object({
+  limit: z.number().int().min(1).max(100).optional(),
+  after: z.string().optional(),
+  before: z.string().optional(),
+  type: z.union([z.string(), z.array(z.string())]).optional(),
+  tag: z.union([z.string(), z.array(z.string())]).optional(),
+  taskIdentifier: z.union([z.string(), z.array(z.string())]).optional(),
+  externalId: z.string().optional(),
+  status: z.union([SessionStatus, z.array(SessionStatus)]).optional(),
+  period: z.string().optional(),
+  from: z.union([z.number(), z.date()]).optional(),
+  to: z.union([z.number(), z.date()]).optional(),
+});
+export type ListSessionsOptions = z.infer<typeof ListSessionsOptions>;
+
+export const ListedSessionItem = SessionItem;
+export type ListedSessionItem = z.infer<typeof ListedSessionItem>;
+
+export const ListSessionsResponseBody = z.object({
+  data: z.array(ListedSessionItem),
+  pagination: z.object({
+    next: z.string().optional(),
+    previous: z.string().optional(),
+  }),
+});
+export type ListSessionsResponseBody = z.infer<typeof ListSessionsResponseBody>;
+
 export const CompleteWaitpointTokenResponseBody = z.object({
   success: z.literal(true),
 });
@@ -1466,7 +1755,13 @@ export const WaitForDurationRequestBody = z.object({
    *
    * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
    */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /**
    * When set, this means the passed in idempotency key will expire after this time.
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
@@ -1572,6 +1867,9 @@ export const ApiDeploymentListResponseItem = z.object({
 });
 
 export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;
+
+export const RetrieveCurrentDeploymentResponseBody = ApiDeploymentListResponseItem;
+export type RetrieveCurrentDeploymentResponseBody = ApiDeploymentListResponseItem;
 
 export const ApiBranchListResponseBody = z.object({
   branches: z.array(
@@ -1692,6 +1990,34 @@ export const SendInputStreamResponseBody = z.object({
   ok: z.boolean(),
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+
+/**
+ * Response body for `GET /realtime/v1/sessions/:id/:io/records`. A non-SSE,
+ * `wait=0` drain of a session channel — used at run boot for snapshot
+ * replay where the SSE long-poll tax (~1s on empty streams) was the
+ * dominant cost.
+ *
+ * `data` is the parsed chunk body (the SDK writer puts the chunk object
+ * directly into the S2 record envelope; the route unwraps the envelope
+ * and forwards the inner object as-is). Callers use it directly — no
+ * additional JSON.parse step. Schema is `z.unknown()` because chunk
+ * shape varies by `chunk.type` (the AI SDK's `UIMessageChunk`
+ * discriminated union plus Trigger control records); consumers
+ * already runtime-check on the discriminator and tolerate malformed
+ * records by skipping them.
+ */
+export const ReadSessionStreamRecordsResponseBody = z.object({
+  records: z.array(
+    z.object({
+      data: z.unknown(),
+      id: z.string(),
+      seqNum: z.number(),
+    })
+  ),
+});
+export type ReadSessionStreamRecordsResponseBody = z.infer<
+  typeof ReadSessionStreamRecordsResponseBody
+>;
 
 export const ResolvePromptRequestBody = z.object({
   variables: z.record(z.unknown()).default({}),

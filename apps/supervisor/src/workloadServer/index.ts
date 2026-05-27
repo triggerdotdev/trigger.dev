@@ -43,6 +43,18 @@ const WorkloadActionParams = z.object({
   snapshotFriendlyId: z.string(),
 });
 
+// Workloads bundled into customer task images before CLI v4.4.4 use a strict
+// zod enum for checkpoint type that only allows DOCKER and KUBERNETES. The
+// workload never reads this field - it only validates the response shape - so
+// rewriting it to a known value keeps older runners working without affecting
+// the value stored in the database or seen by internal services.
+function legacifyCheckpointType<T extends { checkpoint?: { type: string } | null }>(item: T): T {
+  if (item.checkpoint?.type === "COMPUTE") {
+    return { ...item, checkpoint: { ...item.checkpoint, type: "KUBERNETES" } } as T;
+  }
+  return item;
+}
+
 type WorkloadServerEvents = {
   runConnected: [
     {
@@ -384,7 +396,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            reply.json(sinceSnapshotResponse.data satisfies WorkloadRunSnapshotsSinceResponseBody);
+            reply.json({
+              snapshots: sinceSnapshotResponse.data.snapshots.map(legacifyCheckpointType),
+            } satisfies WorkloadRunSnapshotsSinceResponseBody);
           },
         }
       )
@@ -409,7 +423,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             return;
           }
 
-          reply.json(dequeueResponse.data satisfies WorkloadDequeueFromVersionResponseBody);
+          reply.json(
+            dequeueResponse.data.map(legacifyCheckpointType) satisfies WorkloadDequeueFromVersionResponseBody
+          );
         },
       });
 

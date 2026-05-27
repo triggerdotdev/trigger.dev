@@ -5,10 +5,12 @@ import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { clearRedirectTo, commitSession } from "~/services/redirectTo.server";
 import { requireUser } from "~/services/session.server";
+import { tenantContext } from "~/services/tenantContext.server";
 import { confirmBasicDetailsPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
+  tenantContext.enrich({ userId: user.id });
 
   //you have to confirm basic details before you can do anything
   if (!user.confirmedBasicDetails) {

@@ -29,6 +29,26 @@ function calculateNextStep(schedule: string, timezone: string | null, currentDat
     .toDate();
 }
 
+/**
+ * Cron's previous slot relative to `fromTimestamp`. For a continuously-
+ * running schedule this equals the actual last fire time; for paused or
+ * DST-edge cases it's an approximation. Used only on the recovery path
+ * where the actual last fire isn't recoverable from in-flight worker state.
+ */
+export function previousScheduledTimestamp(
+  cron: string,
+  timezone: string | null,
+  fromTimestamp: Date = new Date()
+) {
+  return parseExpression(cron, {
+    currentDate: fromTimestamp,
+    utc: timezone === null,
+    tz: timezone ?? undefined,
+  })
+    .prev()
+    .toDate();
+}
+
 export function nextScheduledTimestamps(
   cron: string,
   timezone: string | null,

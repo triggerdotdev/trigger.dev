@@ -1,13 +1,21 @@
 import { depot } from "@depot/sdk-node";
 import { type ExternalBuildData } from "@trigger.dev/core/v3";
-import { type Project } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import pRetry from "p-retry";
 import { logger } from "~/services/logger.server";
 
+// Just the project columns this module reads — keeps the signature
+// compatible with both the full Prisma `Project` payload and the slim
+// `AuthenticatedEnvironment["project"]` shape.
+type ProjectForBuilder = {
+  id: string;
+  externalRef: string;
+  builderProjectId: string | null;
+};
+
 export async function createRemoteImageBuild(
-  project: Project
+  project: ProjectForBuilder
 ): Promise<ExternalBuildData | undefined> {
   if (!remoteBuildsEnabled()) {
     return;
@@ -42,7 +50,7 @@ export async function createRemoteImageBuild(
   };
 }
 
-async function createBuilderProjectIfNotExists(project: Project) {
+async function createBuilderProjectIfNotExists(project: ProjectForBuilder) {
   if (project.builderProjectId) {
     return project.builderProjectId;
   }

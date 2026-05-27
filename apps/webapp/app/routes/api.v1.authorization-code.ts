@@ -32,7 +32,7 @@ export async function action({ request }: ActionFunctionArgs) {
         error: error.message,
       });
 
-      return json({ error: error.message }, { status: 400 });
+      return json({ error: "Failed to create authorization code" }, { status: 400 });
     }
 
     return json({ error: "Something went wrong" }, { status: 500 });

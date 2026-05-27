@@ -16,7 +16,7 @@ import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import { AnthropicLogoIcon } from "~/assets/icons/AnthropicLogoIcon";
 
-const shortcut = { key: "l" };
+const shortcut = { key: "m" };
 
 export type ModelOption = {
   model: string;
@@ -38,19 +38,19 @@ function modelIcon(system: string, model: string): ReactNode {
 
   // Special case: Anthropic uses a custom SVG icon
   if (provider === "anthropic") {
-    return <AnthropicLogoIcon className="size-4 shrink-0" />;
+    return <AnthropicLogoIcon className="size-4 shrink-0 text-text-dimmed" />;
   }
 
   const iconName = `tabler-brand-${provider}`;
   if (tablerIcons.has(iconName)) {
     return (
-      <svg className="size-4 shrink-0 stroke-[1.5]">
+      <svg className="size-4 shrink-0 stroke-[1.5] text-text-dimmed">
         <use xlinkHref={`${tablerSpritePath}#${iconName}`} />
       </svg>
     );
   }
 
-  return <CubeIcon className="size-4 shrink-0" />;
+  return <CubeIcon className="size-4 shrink-0 text-text-dimmed" />;
 }
 
 export function ModelsFilter({ possibleModels }: ModelsFilterProps) {
@@ -68,8 +68,9 @@ export function ModelsFilter({ possibleModels }: ModelsFilterProps) {
                 variant="secondary/small"
                 shortcut={shortcut}
                 tooltipTitle="Filter by model"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Models</span>
+                <span className="ml-1">Models</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -147,7 +148,7 @@ function ModelsDropdown({
         <ComboBox placeholder="Filter by model..." value={searchValue} />
         <SelectList>
           {filtered.map((m) => (
-            <SelectItem key={m.model} value={m.model} icon={modelIcon(m.system, m.model)}>
+            <SelectItem key={m.model} value={m.model} className="text-text-bright" icon={modelIcon(m.system, m.model)}>
               {m.model}
             </SelectItem>
           ))}

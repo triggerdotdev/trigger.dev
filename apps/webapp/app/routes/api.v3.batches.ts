@@ -35,12 +35,9 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: 131_072, // 128KB is plenty for the batch metadata
     authorization: {
       action: "batchTrigger",
-      resource: () => ({
-        // No specific tasks to authorize at batch creation time
-        // Tasks are validated when items are streamed
-        tasks: [],
-      }),
-      superScopes: ["write:tasks", "admin"],
+      // No specific tasks to authorize at batch creation time — tasks are
+      // validated when items are streamed. Collection-level check.
+      resource: () => ({ type: "tasks" }),
     },
     corsStrategy: "all",
   },
@@ -172,6 +169,18 @@ const { action, loader } = createActionApiRoute(
         );
       }
 
+      // Customer-facing validation/quota failures (invalid batch shape,
+      // entitlements exhausted). The handler returns 422 with the message;
+      // system handles it gracefully, no alert needed.
+      if (error instanceof ServiceValidationError) {
+        logger.warn("Create batch error", { error: error.message });
+        return json({ error: error.message }, { status: error.status ?? 422 });
+      }
+      if (error instanceof OutOfEntitlementError) {
+        logger.warn("Create batch error", { error: error.message });
+        return json({ error: error.message }, { status: 422 });
+      }
+
       logger.error("Create batch error", {
         error: {
           message: (error as Error).message,
@@ -179,11 +188,7 @@ const { action, loader } = createActionApiRoute(
         },
       });
 
-      if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof OutOfEntitlementError) {
-        return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
+      if (error instanceof Error) {
         return json(
           { error: error.message },
           { status: 500, headers: { "x-should-retry": "false" } }

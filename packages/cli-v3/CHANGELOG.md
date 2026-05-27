@@ -1,5 +1,68 @@
 # trigger.dev
 
+## 4.5.0-rc.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.0-rc.2`
+  - `@trigger.dev/core@4.5.0-rc.2`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.2`
+
+## 4.5.0-rc.1
+
+### Patch Changes
+
+- Fix `chat.agent` skills silently missing in `trigger dev` for projects whose task files read `process.env` at module top level (e.g. a third-party SDK client initialized at import). Skill folders now bundle into `.trigger/skills/` reliably regardless of which env vars are set when the CLI launches. ([#3690](https://github.com/triggerdotdev/trigger.dev/pull/3690))
+- Fix `COULD_NOT_FIND_EXECUTOR` when a task's definition is loaded via `await import(...)` from inside another task's `run()`. The runtime workers now register such tasks with a sentinel file context, and the catalog logs a one-time warning per task id. ([#3688](https://github.com/triggerdotdev/trigger.dev/pull/3688))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.1`
+  - `@trigger.dev/build@4.5.0-rc.1`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.1`
+
+## 4.5.0-rc.0
+
+### Patch Changes
+
+- Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  ```ts
+  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+
+  chat.skills.set([await pdfSkill.local()]);
+  ```
+
+  Built on the [AI SDK cookbook pattern](https://ai-sdk.dev/cookbook/guides/agent-skills) — portable across providers. SDK + CLI only for now; dashboard-editable `SKILL.md` text is on the roadmap.
+
+- Add `TRIGGER_BUILD_SKIP_REWRITE_TIMESTAMP=1` escape hatch for local self-hosted builds whose buildx driver doesn't support `rewrite-timestamp` alongside push (e.g. orbstack's default `docker` driver). ([#3618](https://github.com/triggerdotdev/trigger.dev/pull/3618))
+- The CLI MCP server's agent-chat tools (`start_agent_chat`, `send_agent_message`, `close_agent_chat`) now run on the new Sessions primitive, so AI assistants driving a `chat.agent` get the same idempotent-by-`chatId`, durable-across-runs behavior the browser transport gets. Required PAT scopes go from `write:inputStreams` to `read:sessions` + `write:sessions`. ([#3546](https://github.com/triggerdotdev/trigger.dev/pull/3546))
+- MCP `list_runs` tool: add a `region` filter input and surface each run's executing region in the formatted summary. ([#3612](https://github.com/triggerdotdev/trigger.dev/pull/3612))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.0`
+  - `@trigger.dev/build@4.5.0-rc.0`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.0`
+
+## 4.4.6
+
+### Patch Changes
+
+- Fix dev workers spinning at 100% CPU after the parent CLI disconnects. Orphaned `trigger-dev-run-worker` (and indexer) processes were caught in an `uncaughtException` feedback loop: a periodic IPC send via `process.send` would throw `ERR_IPC_CHANNEL_CLOSED` once the parent closed the channel, which re-entered the same handler that itself called `process.send`, scheduled via `setImmediate` and amplified by source-map-support's `prepareStackTrace`. Fixed by (1) silently dropping packets in `ZodIpcConnection` when the channel is disconnected, (2) adding a `process.on("disconnect", ...)` handler in dev workers so they exit cleanly when the CLI closes the IPC channel, and (3) wrapping all `uncaughtException`-path `process.send` calls in a `safeSend` guard that checks `process.connected` and swallows synchronous throws. ([#3491](https://github.com/triggerdotdev/trigger.dev/pull/3491))
+- Fail attempts on uncaught exceptions instead of hanging to `MAX_DURATION_EXCEEDED`. A Node `EventEmitter` (e.g. `node-redis`) emitting `"error"` with no `.on("error", ...)` listener escalates to `uncaughtException`, which the worker previously reported but did not act on — runs drifted to maxDuration with empty attempts. They now fail fast with the original error and status `FAILED`, and respect the task's normal retry policy. You should still attach `.on("error", ...)` listeners to long-lived clients to handle errors gracefully. ([#3529](https://github.com/triggerdotdev/trigger.dev/pull/3529))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.6`
+  - `@trigger.dev/build@4.4.6`
+  - `@trigger.dev/schema-to-json@4.4.6`
+
+## 4.4.5
+
+### Patch Changes
+
+- Add `--no-browser` flag to `init` and `login` to skip auto-opening the browser during authentication. Also error loudly when `init` is run without `--yes` under non-TTY stdin (previously default-and-exited silently, leaving the project half-initialized). Both commands now show an `Examples` section in `--help`. ([#3483](https://github.com/triggerdotdev/trigger.dev/pull/3483))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.5`
+  - `@trigger.dev/build@4.4.5`
+  - `@trigger.dev/schema-to-json@4.4.5`
+
 ## 4.4.4
 
 ### Patch Changes

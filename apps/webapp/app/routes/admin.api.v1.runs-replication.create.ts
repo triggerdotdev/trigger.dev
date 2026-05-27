@@ -1,9 +1,8 @@
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { z } from "zod";
-import { ClickHouse } from "@internal/clickhouse";
 import { env } from "~/env.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import {
   getRunsReplicationGlobal,
@@ -29,26 +28,7 @@ const CreateRunReplicationServiceParams = z.object({
 type CreateRunReplicationServiceParams = z.infer<typeof CreateRunReplicationServiceParams>;
 
 export async function action({ request }: ActionFunctionArgs) {
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: {
-      id: authenticationResult.userId,
-    },
-  });
-
-  if (!user) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  if (!user.admin) {
-    return json({ error: "You must be an admin to perform this action" }, { status: 403 });
-  }
+  await requireAdminApiRequest(request);
 
   try {
     const globalService = getRunsReplicationGlobal();
@@ -61,6 +41,8 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     const params = CreateRunReplicationServiceParams.parse(await request.json());
+
+    await clickhouseFactory.isReady();
 
     const service = createRunReplicationService(params);
 
@@ -77,24 +59,23 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 function createRunReplicationService(params: CreateRunReplicationServiceParams) {
-  const clickhouse = new ClickHouse({
-    url: env.RUN_REPLICATION_CLICKHOUSE_URL,
-    name: params.name,
-    keepAlive: {
-      enabled: params.keepAliveEnabled,
-      idleSocketTtl: params.keepAliveIdleSocketTtl,
-    },
-    logLevel: "debug",
-    compression: {
-      request: true,
-    },
-    maxOpenConnections: params.maxOpenConnections,
-  });
+  const {
+    name,
+    maxFlushConcurrency,
+    flushIntervalMs,
+    flushBatchSize,
+    leaderLockTimeoutMs,
+    leaderLockExtendIntervalMs,
+    leaderLockAcquireAdditionalTimeMs,
+    leaderLockRetryIntervalMs,
+    ackIntervalSeconds,
+    waitForAsyncInsert,
+  } = params;
 
   const service = new RunsReplicationService({
-    clickhouse: clickhouse,
+    clickhouseFactory,
     pgConnectionUrl: env.DATABASE_URL,
-    serviceName: params.name,
+    serviceName: name,
     slotName: env.RUN_REPLICATION_SLOT_NAME,
     publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
     redisOptions: {
@@ -106,16 +87,16 @@ function createRunReplicationService(params: CreateRunReplicationServiceParams) 
       enableAutoPipelining: true,
       ...(env.RUN_REPLICATION_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
-    maxFlushConcurrency: params.maxFlushConcurrency,
-    flushIntervalMs: params.flushIntervalMs,
-    flushBatchSize: params.flushBatchSize,
-    leaderLockTimeoutMs: params.leaderLockTimeoutMs,
-    leaderLockExtendIntervalMs: params.leaderLockExtendIntervalMs,
-    leaderLockAcquireAdditionalTimeMs: params.leaderLockAcquireAdditionalTimeMs,
-    leaderLockRetryIntervalMs: params.leaderLockRetryIntervalMs,
-    ackIntervalSeconds: params.ackIntervalSeconds,
+    maxFlushConcurrency,
+    flushIntervalMs,
+    flushBatchSize,
+    leaderLockTimeoutMs,
+    leaderLockExtendIntervalMs,
+    leaderLockAcquireAdditionalTimeMs,
+    leaderLockRetryIntervalMs,
+    ackIntervalSeconds,
     logLevel: "debug",
-    waitForAsyncInsert: params.waitForAsyncInsert,
+    waitForAsyncInsert,
   });
 
   return service;

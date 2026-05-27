@@ -1,21 +1,22 @@
-import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import * as Ariakit from "@ariakit/react";
+import { ClockIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { z } from "zod";
-import { Input } from "~/components/primitives/Input";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
-import { useThrottle } from "~/hooks/useThrottle";
-import { Button } from "../../primitives/Buttons";
-import { Paragraph } from "../../primitives/Paragraph";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../primitives/SimpleSelect";
-import { ScheduleTypeCombo } from "./ScheduleType";
+  SelectList,
+  SelectPopover,
+  SelectProvider,
+} from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { Button } from "../../primitives/Buttons";
+import { ScheduleTypeIcon, scheduleTypeName } from "./ScheduleType";
+import { FilterMenuProvider } from "./SharedFilters";
 
 export const ScheduleListFilters = z.object({
   page: z.coerce.number().default(1),
@@ -29,120 +30,232 @@ export const ScheduleListFilters = z.object({
 
 export type ScheduleListFilters = z.infer<typeof ScheduleListFilters>;
 
-const All = "ALL";
-
 type ScheduleFiltersProps = {
   possibleTasks: string[];
 };
 
 export function ScheduleFilters({ possibleTasks }: ScheduleFiltersProps) {
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const hasFilters =
+    searchParams.has("tasks") || searchParams.has("search") || searchParams.has("type");
+
+  return (
+    <div className="flex flex-row flex-wrap items-center gap-1.5">
+      <ScheduleSearchInput />
+      <PermanentTaskFilter possibleTasks={possibleTasks} />
+      <PermanentTypeFilter />
+      {hasFilters && <ClearFiltersButton />}
+    </div>
+  );
+}
+
+function ScheduleSearchInput() {
+  return <SearchInput placeholder="Search schedules…" resetParams={["page"]} />;
+}
+
+const typeShortcut = { key: "y" };
+
+function PermanentTypeFilter() {
   const navigate = useNavigate();
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
-  const { tasks, page, search, type } = ScheduleListFilters.parse(
-    Object.fromEntries(searchParams.entries())
+  const currentType = searchParams.get("type") ?? undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: typeShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
+
+  const handleChange = useCallback(
+    (value: string | string[]) => {
+      const selected = Array.isArray(value) ? value[0] : value;
+      const params = new URLSearchParams(location.search);
+      if (!selected || selected === "ALL") {
+        params.delete("type");
+      } else {
+        params.set("type", selected);
+      }
+      params.delete("page");
+      navigate(`${location.pathname}?${params.toString()}`);
+    },
+    [location, navigate]
   );
 
-  const hasFilters = searchParams.has("tasks") || searchParams.has("search");
-
-  const handleFilterChange = useCallback((filterType: string, value: string | undefined) => {
-    if (value) {
-      searchParams.set(filterType, value);
-    } else {
-      searchParams.delete(filterType);
-    }
-    searchParams.delete("page");
-    navigate(`${location.pathname}?${searchParams.toString()}`);
-  }, []);
-
-  const handleTaskChange = useCallback((value: string | typeof All) => {
-    handleFilterChange("tasks", value === "ALL" ? undefined : value);
-  }, []);
-
-  const handleTypeChange = useCallback((value: string | typeof All) => {
-    handleFilterChange("type", value === "ALL" ? undefined : value);
-  }, []);
-
-  const handleSearchChange = useThrottle((value: string) => {
-    handleFilterChange("search", value.length === 0 ? undefined : value);
-  }, 300);
-
-  const clearFilters = useCallback(() => {
-    searchParams.delete("page");
-    searchParams.delete("enabled");
-    searchParams.delete("tasks");
-    searchParams.delete("search");
-    navigate(`${location.pathname}?${searchParams.toString()}`);
-  }, []);
+  const typeLabel = currentType
+    ? scheduleTypeName(currentType.toUpperCase() as "IMPERATIVE" | "DECLARATIVE")
+    : "All types";
 
   return (
-    <div className="flex w-full">
-      <Input
-        name="search"
-        placeholder="Search schedule id, external id, deduplication id or CRON pattern"
-        icon={MagnifyingGlassIcon}
-        variant="tertiary"
-        className="grow"
-        defaultValue={search}
-        onChange={(e) => handleSearchChange(e.target.value)}
-      />
-      <SelectGroup className="ml-2">
-        <Select name="type" value={type ?? "ALL"} onValueChange={handleTypeChange}>
-          <SelectTrigger size="minimal" width="full">
-            <SelectValue placeholder={"Select type"} className="ml-2 whitespace-nowrap p-0" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={"ALL"}>
-              <Paragraph
-                variant="extra-small"
-                className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
-              >
+    <FilterMenuProvider>
+      {() => (
+        <SelectProvider value={currentType ?? "ALL"} setValue={handleChange} virtualFocus={true}>
+          <Ariakit.TooltipProvider timeout={200}>
+            <Ariakit.TooltipAnchor
+              render={
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                <Ariakit.Select
+                  ref={triggerRef as any}
+                  render={<div className="group cursor-pointer focus-custom" />}
+                />
+              }
+            >
+              <AppliedFilter
+                label="Type"
+                value={typeLabel}
+                removable={!!currentType}
+                onRemove={() => handleChange("ALL")}
+                variant="secondary/small"
+              />
+            </Ariakit.TooltipAnchor>
+            <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span>Filter by type</span>
+                <ShortcutKey className="size-4 flex-none" shortcut={typeShortcut} variant="small" />
+              </div>
+            </Ariakit.Tooltip>
+          </Ariakit.TooltipProvider>
+          <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
+            <SelectList>
+              <SelectItem value="ALL" className="text-text-bright">
                 All types
-              </Paragraph>
-            </SelectItem>
-            <SelectItem value={"declarative"}>
-              <ScheduleTypeCombo type="DECLARATIVE" className="text-xs text-text-dimmed" />
-            </SelectItem>
-            <SelectItem value={"imperative"}>
-              <ScheduleTypeCombo type="IMPERATIVE" className="text-xs text-text-dimmed" />
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </SelectGroup>
+              </SelectItem>
+              <SelectItem value="declarative">
+                <div className="flex items-center gap-1">
+                  <ScheduleTypeIcon type="DECLARATIVE" className="text-text-dimmed" />
+                  <span className="text-text-bright">{scheduleTypeName("DECLARATIVE")}</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="imperative">
+                <div className="flex items-center gap-1">
+                  <ScheduleTypeIcon type="IMPERATIVE" className="text-text-dimmed" />
+                  <span className="text-text-bright">{scheduleTypeName("IMPERATIVE")}</span>
+                </div>
+              </SelectItem>
+            </SelectList>
+          </SelectPopover>
+        </SelectProvider>
+      )}
+    </FilterMenuProvider>
+  );
+}
 
-      <SelectGroup>
-        <Select name="tasks" value={tasks?.at(0) ?? "ALL"} onValueChange={handleTaskChange}>
-          <SelectTrigger size="minimal" width="full">
-            <SelectValue placeholder="Select task" className="ml-2 p-0" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={"ALL"}>
-              <Paragraph
-                variant="extra-small"
-                className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
-              >
+const taskShortcut = { key: "t" };
+
+function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
+  const navigate = useNavigate();
+  const location = useOptimisticLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const currentTask = searchParams.get("tasks") ?? undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useShortcutKeys({
+    shortcut: taskShortcut,
+    action: (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerRef.current?.click();
+    },
+  });
+
+  const handleChange = useCallback(
+    (value: string | string[]) => {
+      const selected = Array.isArray(value) ? value[0] : value;
+      const params = new URLSearchParams(location.search);
+      if (!selected || selected === "ALL") {
+        params.delete("tasks");
+      } else {
+        params.set("tasks", selected);
+      }
+      params.delete("page");
+      navigate(`${location.pathname}?${params.toString()}`);
+    },
+    [location, navigate]
+  );
+
+  const taskLabel = currentTask ?? "All tasks";
+
+  return (
+    <FilterMenuProvider>
+      {() => (
+        <SelectProvider value={currentTask ?? "ALL"} setValue={handleChange} virtualFocus={true}>
+          <Ariakit.TooltipProvider timeout={200}>
+            <Ariakit.TooltipAnchor
+              render={
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                <Ariakit.Select
+                  ref={triggerRef as any}
+                  render={<div className="group cursor-pointer focus-custom" />}
+                />
+              }
+            >
+              <AppliedFilter
+                label="Task"
+                icon={<ClockIcon className="size-4" />}
+                value={taskLabel}
+                removable={!!currentTask}
+                onRemove={() => handleChange("ALL")}
+                variant="secondary/small"
+              />
+            </Ariakit.TooltipAnchor>
+            <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span>Filter by task</span>
+                <ShortcutKey className="size-4 flex-none" shortcut={taskShortcut} variant="small" />
+              </div>
+            </Ariakit.Tooltip>
+          </Ariakit.TooltipProvider>
+          <SelectPopover className="min-w-0 max-w-[min(360px,var(--popover-available-width))]">
+            <SelectList>
+              <SelectItem value="ALL" className="text-text-bright">
                 All tasks
-              </Paragraph>
-            </SelectItem>
-            {possibleTasks.map((task) => (
-              <SelectItem key={task} value={task}>
-                <Paragraph
-                  variant="extra-small"
-                  className="whitespace-nowrap pl-0.5 transition group-hover:text-text-bright"
+              </SelectItem>
+              {possibleTasks.map((task) => (
+                <SelectItem
+                  key={task}
+                  value={task}
+                  icon={<ClockIcon className="size-4 text-schedules" />}
+                  className="text-text-bright"
                 >
                   {task}
-                </Paragraph>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SelectGroup>
-
-      {hasFilters && (
-        <Button variant="minimal/small" onClick={() => clearFilters()} LeadingIcon={XMarkIcon}>
-          Clear all
-        </Button>
+                </SelectItem>
+              ))}
+            </SelectList>
+          </SelectPopover>
+        </SelectProvider>
       )}
+    </FilterMenuProvider>
+  );
+}
+
+function ClearFiltersButton() {
+  const navigate = useNavigate();
+  const location = useOptimisticLocation();
+
+  const clearFilters = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    params.delete("page");
+    params.delete("tasks");
+    params.delete("search");
+    params.delete("type");
+    navigate(`${location.pathname}?${params.toString()}`);
+  }, [location, navigate]);
+
+  return (
+    <div className="-ml-1 h-6">
+      <Button
+        variant="minimal/small"
+        onClick={clearFilters}
+        LeadingIcon={XMarkIcon}
+        tooltip="Clear all filters"
+        className="group-hover/button:bg-transparent"
+        leadingIconClassName="group-hover/button:text-text-bright"
+      />
     </div>
   );
 }

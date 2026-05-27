@@ -27,7 +27,10 @@ export class TimeoutDeploymentService extends BaseService {
     }
 
     if (deployment.status !== fromStatus) {
-      logger.error("Deployment is not in the correct state to be timed out", {
+      // Race: timeout job fired after the deployment moved out of the
+      // expected state (already deployed/failed). System handles it by
+      // returning early — not an error.
+      logger.warn("Deployment is not in the correct state to be timed out", {
         currentStatus: deployment.status,
         fromStatus,
       });

@@ -7,6 +7,7 @@ import {
   authenticateRequest,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -24,25 +25,31 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { projectRef, env } = parsedParams.data;
 
-  const authenticationResult = await authenticateRequest(request);
+  try {
+    const authenticationResult = await authenticateRequest(request);
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
+
+    const environment = await authenticatedEnvironmentForAuthentication(
+      authenticationResult,
+      projectRef,
+      env,
+      branchNameFromRequest(request)
+    );
+
+    const result: GetProjectEnvResponse = {
+      apiKey: environment.apiKey,
+      name: environment.project.name,
+      apiUrl: processEnv.API_ORIGIN ?? processEnv.APP_ORIGIN,
+      projectId: environment.project.id,
+    };
+
+    return json(result);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load project env", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-
-  const environment = await authenticatedEnvironmentForAuthentication(
-    authenticationResult,
-    projectRef,
-    env,
-    branchNameFromRequest(request)
-  );
-
-  const result: GetProjectEnvResponse = {
-    apiKey: environment.apiKey,
-    name: environment.project.name,
-    apiUrl: processEnv.API_ORIGIN ?? processEnv.APP_ORIGIN,
-    projectId: environment.project.id,
-  };
-
-  return json(result);
 }

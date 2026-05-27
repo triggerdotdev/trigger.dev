@@ -23,8 +23,7 @@ const { action, loader } = createActionApiRoute(
     allowJWT: true,
     authorization: {
       action: "write",
-      resource: (params) => ({ waitpoints: params.waitpointFriendlyId }),
-      superScopes: ["write:waitpoints", "admin"],
+      resource: (params) => ({ type: "waitpoints", id: params.waitpointFriendlyId }),
     },
     corsStrategy: "all",
   },
@@ -72,7 +71,16 @@ const { action, loader } = createActionApiRoute(
         { status: 200 }
       );
     } catch (error) {
-      logger.error("Failed to complete waitpoint token", { error });
+      // Re-throw Response objects (intentional HTTP responses like the 404 above) so the
+      // client gets the correct status code instead of a 500, and we don't log them as errors.
+      if (error instanceof Response) throw error;
+
+      logger.error("Failed to complete waitpoint token", {
+        error:
+          error instanceof Error
+            ? { name: error.name, message: error.message, stack: error.stack }
+            : error,
+      });
       throw json({ error: "Failed to complete waitpoint token" }, { status: 500 });
     }
   }

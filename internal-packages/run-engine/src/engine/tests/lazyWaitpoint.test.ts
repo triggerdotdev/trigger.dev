@@ -409,6 +409,7 @@ describe("RunEngine lazy waitpoint creation", () => {
           ttlSystem: {
             pollIntervalMs: 100,
             batchSize: 10,
+            batchMaxWaitMs: 100,
           },
         },
         runLock: {
@@ -433,6 +434,12 @@ describe("RunEngine lazy waitpoint creation", () => {
         const taskIdentifier = "test-task";
 
         await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        // TTL only expires runs still queued waiting on a concurrency slot.
+        await engine.runQueue.updateEnvConcurrencyLimits({
+          ...authenticatedEnvironment,
+          maximumConcurrencyLimit: 0,
+        });
 
         // Trigger a standalone run with TTL (no waitpoint)
         const run = await engine.trigger(
@@ -467,11 +474,15 @@ describe("RunEngine lazy waitpoint creation", () => {
         // Wait for TTL to expire
         await setTimeout(1_500);
 
-        // Verify run expired successfully (no throw)
-        const executionData = await engine.getRunExecutionData({ runId: run.id });
-        assertNonNullable(executionData);
-        expect(executionData.run.status).toBe("EXPIRED");
-        expect(executionData.snapshot.executionStatus).toBe("FINISHED");
+        // Verify run expired successfully (no throw).
+        // The batch TTL path does not create execution snapshots, so check
+        // the status directly from the database rather than via
+        // getRunExecutionData.
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
       } finally {
         await engine.quit();
       }

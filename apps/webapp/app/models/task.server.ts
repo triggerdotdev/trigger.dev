@@ -1,6 +1,9 @@
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { PrismaClientOrTransaction, sqlDatabaseSchema } from "~/db.server";
 
+export { getTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
+export type { TaskIdentifierEntry } from "~/services/taskIdentifierCache.server";
+
 /**
  *
  * @param prisma An efficient query to get all task identifiers for a project.

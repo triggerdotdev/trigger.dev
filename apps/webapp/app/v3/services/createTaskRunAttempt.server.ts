@@ -210,6 +210,7 @@ export class CreateTaskRunAttemptService extends BaseService {
           createdAt: taskRun.createdAt,
           tags: taskRun.runTags ?? [],
           isTest: taskRun.isTest,
+          isReplay: !!taskRun.replayedFromTaskRunFriendlyId,
           idempotencyKey: taskRun.idempotencyKey ?? undefined,
           startedAt: taskRun.startedAt ?? taskRun.createdAt,
           durationMs: taskRun.usageDurationMs,

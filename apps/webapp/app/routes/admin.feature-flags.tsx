@@ -1,14 +1,16 @@
 import { useFetcher } from "@remix-run/react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import stableStringify from "json-stable-stringify";
 import { json } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LockClosedIcon } from "@heroicons/react/20/solid";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import { requireUser } from "~/services/session.server";
+import {
+  dashboardAction,
+  dashboardLoader,
+} from "~/services/routeBuilders/dashboardBuilder";
 import {
   FEATURE_FLAG,
   GLOBAL_LOCKED_FLAGS,
@@ -38,53 +40,48 @@ import {
   type WorkerGroup,
 } from "~/components/admin/FlagControls";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    return redirect("/");
+export const loader = dashboardLoader(
+  { authorization: { requireSuper: true } },
+  async ({ request }) => {
+    const [globalFlags, workerGroups] = await Promise.all([
+      getGlobalFlags(),
+      prisma.workerInstanceGroup.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+    const controlTypes = getAllFlagControlTypes();
+
+    // Resolve env-based defaults for locked flags
+    const resolvedDefaults: Record<string, string> = {
+      [FEATURE_FLAG.taskEventRepository]: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    };
+
+    // Look up worker group name if the flag is set
+    const workerGroupId = (globalFlags as Record<string, unknown>)?.[
+      FEATURE_FLAG.defaultWorkerInstanceGroupId
+    ];
+    const workerGroupName =
+      typeof workerGroupId === "string"
+        ? workerGroups.find((wg) => wg.id === workerGroupId)?.name
+        : undefined;
+
+    const { isManagedCloud } = featuresForRequest(request);
+
+    return typedjson({
+      globalFlags,
+      controlTypes,
+      resolvedDefaults,
+      workerGroupName,
+      workerGroups,
+      isManagedCloud,
+    });
   }
+);
 
-  const [globalFlags, workerGroups] = await Promise.all([
-    getGlobalFlags(),
-    prisma.workerInstanceGroup.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
-  const controlTypes = getAllFlagControlTypes();
-
-  // Resolve env-based defaults for locked flags
-  const resolvedDefaults: Record<string, string> = {
-    [FEATURE_FLAG.taskEventRepository]: env.EVENT_REPOSITORY_DEFAULT_STORE,
-  };
-
-  // Look up worker group name if the flag is set
-  const workerGroupId = (globalFlags as Record<string, unknown>)?.[
-    FEATURE_FLAG.defaultWorkerInstanceGroupId
-  ];
-  const workerGroupName =
-    typeof workerGroupId === "string"
-      ? workerGroups.find((wg) => wg.id === workerGroupId)?.name
-      : undefined;
-
-  const { isManagedCloud } = featuresForRequest(request);
-
-  return typedjson({
-    globalFlags,
-    controlTypes,
-    resolvedDefaults,
-    workerGroupName,
-    workerGroups,
-    isManagedCloud,
-  });
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const user = await requireUser(request);
-  if (!user.admin) {
-    throw new Response("Unauthorized", { status: 403 });
-  }
-
+export const action = dashboardAction(
+  { authorization: { requireSuper: true } },
+  async ({ request }) => {
   let body: unknown;
   try {
     body = await request.json();
@@ -156,7 +153,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   ]);
 
   return json({ success: true });
-};
+  }
+);
 
 export default function AdminFeatureFlagsRoute() {
   const {
@@ -235,10 +233,12 @@ export default function AdminFeatureFlagsRoute() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4 lg:order-last">
       <div className="max-w-2xl space-y-4">
-        <p className="text-sm text-text-dimmed">
-          Global defaults for all organizations. Org-level overrides take precedence. When not set,
+        <Callout variant="warning">
+          These are global feature flags that affect every organization on this instance. Changing
+          values here is a dangerous operation and should rarely be done - prefer org-level
+          overrides where possible. Org-level overrides take precedence; when a flag isn't set,
           each consumer uses its own default.
-        </p>
+        </Callout>
 
         <div className={isManagedCloud ? "cursor-not-allowed" : undefined}>
           <CheckboxWithLabel

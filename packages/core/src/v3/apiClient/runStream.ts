@@ -14,7 +14,7 @@ import {
   IOPacket,
   parsePacket,
 } from "../utils/ioSerialization.js";
-import { ApiError } from "./errors.js";
+import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
 
@@ -176,14 +176,30 @@ export type SSEStreamPart<TChunk = unknown> = {
   id: string;
   chunk: TChunk;
   timestamp: number;
+  /**
+   * S2 record headers, when the underlying transport is the v2 batch shape
+   * (Session streams). Undefined for v1 streams. Empty array when the record
+   * had no headers. Trigger control records carry a `trigger-control` named
+   * header (see `trigger-control` records on `session.out`) and may reach
+   * this struct. S2 command records (trim/fence) are identified by an
+   * empty-name first header and are filtered out before enqueue.
+   */
+  headers?: Array<[string, string]>;
 };
 
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
   private retryCount = 0;
-  private maxRetries = 5;
-  private retryDelayMs = 1000;
+  private maxRetries: number;
+  private retryDelayMs: number;
+  private maxRetryDelayMs: number;
+  private retryJitter: number;
+  private fetchTimeoutMs: number;
+  private stallTimeoutMs: number;
+  private nonRetryableStatuses: ReadonlySet<number>;
+  private retryNowController: AbortController | null = null;
+  private internalAbort: AbortController | null = null;
 
   constructor(
     private url: string,
@@ -194,9 +210,77 @@ export class SSEStreamSubscription implements StreamSubscription {
       onError?: (error: Error) => void;
       timeoutInSeconds?: number;
       lastEventId?: string;
+      // Retry knobs. Defaults: retry forever, 100ms initial backoff,
+      // capped at 5s with 50% jitter. Keeps mobile clients reconnecting
+      // through transient drops without giving up after a fixed window
+      // and prevents thundering-herd when many clients reconnect after
+      // a brief server blip.
+      maxRetries?: number;
+      retryDelayMs?: number;
+      maxRetryDelayMs?: number;
+      retryJitter?: number;
+      // Per-attempt fetch timeout — aborts the connect attempt if
+      // response headers don't arrive in time. Catches stuck TCP
+      // sockets where `fetch()` blocks forever waiting on a dead
+      // server. Cleared once headers arrive; long-lived chunk reads
+      // are governed by `stallTimeoutMs` instead.
+      fetchTimeoutMs?: number;
+      // Stall detector — if no chunks arrive within this window after
+      // the connection is established, force a reconnect. Catches
+      // silent-dead-socket cases (mobile OS killed the TCP socket but
+      // the read just blocks). Disabled (`0`) by default; opt in
+      // explicitly. Servers that emit periodic keepalive comments
+      // reset the timer naturally.
+      stallTimeoutMs?: number;
+      // HTTP statuses that should NOT be retried — fail the stream
+      // permanently. Defaults cover the permanent client-error set:
+      // `400` (bad request), `404` (stream gone), `409` (conflict),
+      // `410` (session closed), `422` (unprocessable). Tune per-caller
+      // for other 4xx.
+      nonRetryableStatuses?: readonly number[];
+      // Optional fetch override. Used by transports that need to route
+      // the SSE connect through a custom path (proxy, custom headers,
+      // tracing). Defaults to global `fetch`.
+      fetchClient?: typeof fetch;
     }
   ) {
     this.lastEventId = options.lastEventId;
+    this.maxRetries = options.maxRetries ?? Infinity;
+    this.retryDelayMs = options.retryDelayMs ?? 100;
+    this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5000;
+    this.retryJitter = options.retryJitter ?? 0.5;
+    this.fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
+    this.stallTimeoutMs = options.stallTimeoutMs ?? 0;
+    this.nonRetryableStatuses = new Set(
+      options.nonRetryableStatuses ?? [400, 404, 409, 410, 422]
+    );
+  }
+
+  /**
+   * Wake an in-flight retry backoff and reconnect immediately.
+   *
+   * No-op if no retry is currently waiting (i.e. we're already
+   * connected and reading). Use this for cheap "hint" wakeups like
+   * the `online` event or a short-hidden visibility return —
+   * `forceReconnect()` is the heavier hammer.
+   */
+  retryNow(): void {
+    this.retryNowController?.abort();
+  }
+
+  /**
+   * Drop the current connection (or wake a pending backoff) and
+   * reconnect.
+   *
+   * Use when the existing TCP socket is suspected dead but the reader
+   * hasn't noticed yet — common after a mobile tab background-kill or
+   * a Safari bfcache restore. Aborts the in-flight fetch / read so
+   * the catch path takes us through `retryConnection` and re-fetches
+   * with `Last-Event-ID`.
+   */
+  forceReconnect(): void {
+    this.internalAbort?.abort();
+    this.retryNowController?.abort();
   }
 
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
@@ -206,7 +290,7 @@ export class SSEStreamSubscription implements StreamSubscription {
       async start(controller) {
         await self.connectStream(controller);
       },
-      cancel(reason) {
+      cancel() {
         self.options.onComplete?.();
       },
     });
@@ -215,25 +299,52 @@ export class SSEStreamSubscription implements StreamSubscription {
   private async connectStream(
     controller: ReadableStreamDefaultController<SSEStreamPart>
   ): Promise<void> {
+    // Two abort sources flow through `internalAbort.signal`:
+    //   - this.options.signal: caller cancel — bypass retry, exit cleanly.
+    //   - this.internalAbort: per-attempt force-reconnect / fetch-timeout
+    //     / stall-timeout — treated as a transient error, retry path runs.
+    // Use `this.options.signal?.aborted` in the catch to distinguish.
+    this.internalAbort = new AbortController();
+    const unlinkUserAbort = linkAbort(this.options.signal, this.internalAbort);
+
+    // Per-attempt fetch timeout. Cleared once response headers arrive;
+    // chunk-read latency is governed by `stallTimeoutMs` instead.
+    const fetchTimer = setTimeout(() => this.internalAbort?.abort(), this.fetchTimeoutMs);
+
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStall = () => {
+      if (this.stallTimeoutMs <= 0) return;
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => this.internalAbort?.abort(), this.stallTimeoutMs);
+    };
+
+    // Idempotent — both the catch (before recursion) and the finally
+    // call this. Without the catch-side call, every retry leaks an
+    // abort listener on `this.options.signal` because the finally
+    // doesn't run until the entire recursion unwinds.
+    const cleanupAttempt = () => {
+      clearTimeout(fetchTimer);
+      clearTimeout(stallTimer);
+      unlinkUserAbort();
+      this.internalAbort = null;
+    };
+
     try {
       const headers: Record<string, string> = {
         Accept: "text/event-stream",
         ...this.options.headers,
       };
-
-      // Include Last-Event-ID header if we're resuming
-      if (this.lastEventId) {
-        headers["Last-Event-ID"] = this.lastEventId;
-      }
-
+      if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
       if (this.options.timeoutInSeconds) {
         headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
       }
 
-      const response = await fetch(this.url, {
+      const fetchClient = this.options.fetchClient ?? fetch;
+      const response = await fetchClient(this.url, {
         headers,
-        signal: this.options.signal,
+        signal: this.internalAbort.signal,
       });
+      clearTimeout(fetchTimer);
 
       if (!response.ok) {
         const error = ApiError.generate(
@@ -242,22 +353,23 @@ export class SSEStreamSubscription implements StreamSubscription {
           "Could not subscribe to stream",
           Object.fromEntries(response.headers)
         );
-
         this.options.onError?.(error);
+        if (this.nonRetryableStatuses.has(response.status)) {
+          controller.error(error);
+          return;
+        }
         throw error;
       }
 
       if (!response.body) {
         const error = new Error("No response body");
-
         this.options.onError?.(error);
         throw error;
       }
 
       const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
-
-      // Reset retry count on successful connection
-      this.retryCount = 0;
+      this.retryCount = 0; // reset on success
+      armStall();
 
       const seenIds = new Set<string>();
 
@@ -268,13 +380,10 @@ export class SSEStreamSubscription implements StreamSubscription {
           new TransformStream<EventSourceMessage, SSEStreamPart>({
             transform: (chunk, chunkController) => {
               if (streamVersion === "v1") {
-                // Track the last event ID for resume support
                 if (chunk.id) {
                   this.lastEventId = chunk.id;
                 }
-
                 const timestamp = parseRedisStreamIdTimestamp(chunk.id);
-
                 chunkController.enqueue({
                   id: chunk.id ?? "unknown",
                   chunk: safeParseJSON(chunk.data),
@@ -283,22 +392,47 @@ export class SSEStreamSubscription implements StreamSubscription {
               } else {
                 if (chunk.event === "batch") {
                   const data = safeParseJSON(chunk.data) as {
-                    records: Array<{ body: string; seq_num: number; timestamp: number }>;
+                    records: Array<{
+                      body: string;
+                      seq_num: number;
+                      timestamp: number;
+                      headers?: Array<[string, string]>;
+                    }>;
                   };
+                  if (!data || !Array.isArray(data.records)) return;
 
                   for (const record of data.records) {
+                    // Always advance the resume cursor — even for records we
+                    // skip — so a future Last-Event-ID reconnect lands past
+                    // them.
                     this.lastEventId = record.seq_num.toString();
 
-                    const parsedBody = safeParseJSON(record.body) as { data: unknown; id: string };
-                    if (seenIds.has(parsedBody.id)) {
+                    // S2 command records (trim, fence) have a single header
+                    // with an empty name. They are S2-interpreted directives
+                    // that consume a seq_num but are not application data.
+                    // Skip enqueue; consumers shouldn't see them.
+                    if (record.headers?.[0]?.[0] === "") {
                       continue;
                     }
-                    seenIds.add(parsedBody.id);
 
+                    // Data record (and Trigger control records — see
+                    // `trigger-control` header in `client-protocol.mdx`).
+                    // Control records have an empty body; data records have a
+                    // JSON envelope. `safeParseJSON("")` returns undefined,
+                    // which is what we want for control records — downstream
+                    // consumers route by `headers` and ignore `chunk`.
+                    const parsedBody = safeParseJSON(record.body) as
+                      | { data: unknown; id: string }
+                      | undefined;
+                    if (parsedBody?.id) {
+                      if (seenIds.has(parsedBody.id)) continue;
+                      seenIds.add(parsedBody.id);
+                    }
                     chunkController.enqueue({
                       id: record.seq_num.toString(),
-                      chunk: parsedBody.data,
+                      chunk: parsedBody?.data,
                       timestamp: record.timestamp,
+                      headers: record.headers ?? [],
                     });
                   }
                 }
@@ -310,7 +444,6 @@ export class SSEStreamSubscription implements StreamSubscription {
       const reader = stream.getReader();
 
       try {
-        let chunkCount = 0;
         while (true) {
           const { done, value } = await reader.read();
 
@@ -329,7 +462,7 @@ export class SSEStreamSubscription implements StreamSubscription {
             return;
           }
 
-          chunkCount++;
+          armStall(); // any chunk (including server keepalives) resets the silence timer
           controller.enqueue(value);
         }
       } catch (error) {
@@ -338,14 +471,24 @@ export class SSEStreamSubscription implements StreamSubscription {
       }
     } catch (error) {
       if (this.options.signal?.aborted) {
-        // Don't retry if aborted
+        // User cancel — exit cleanly, don't retry.
         controller.close();
         this.options.onComplete?.();
         return;
       }
 
-      // Retry on error
+      if (isTriggerRealtimeAuthError(error)) {
+        // `onError` was already invoked in the `!response.ok` branch above
+        // (where the auth ApiError was originally constructed and thrown).
+        // Auth errors are non-retryable: terminate the stream cleanly.
+        controller.error(error as Error);
+        return;
+      }
+
+      cleanupAttempt();
       await this.retryConnection(controller, error as Error);
+    } finally {
+      cleanupAttempt();
     }
   }
 
@@ -367,10 +510,33 @@ export class SSEStreamSubscription implements StreamSubscription {
     }
 
     this.retryCount++;
-    const delay = this.retryDelayMs * Math.pow(2, this.retryCount - 1);
+    const baseDelay = Math.min(
+      this.retryDelayMs * Math.pow(2, this.retryCount - 1),
+      this.maxRetryDelayMs
+    );
+    // Jitter scales the delay into [(1 - retryJitter) * base, base].
+    // E.g. retryJitter=0.5 → final delay is in [50%, 100%] of base.
+    // Spreads simultaneous reconnect attempts so many clients don't
+    // dogpile on the server right after a brief outage.
+    const delay = baseDelay * (1 - this.retryJitter * Math.random());
 
-    // Wait before retrying
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    // Wait before retrying. The wait is wakeable: `retryNow()` aborts
+    // `retryNowController` so the timer resolves immediately and the
+    // next connect attempt starts now (e.g. on tab focus / `online`
+    // event from the browser layer).
+    this.retryNowController = new AbortController();
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        this.retryNowController?.signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, delay);
+      const onAbort = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      this.retryNowController!.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    this.retryNowController = null;
 
     if (this.options.signal?.aborted) {
       controller.close();
@@ -381,6 +547,22 @@ export class SSEStreamSubscription implements StreamSubscription {
     // Reconnect
     await this.connectStream(controller);
   }
+}
+
+/**
+ * One-way abort link: when `parent` aborts, abort `child` too. Returns
+ * a cleanup that removes the listener so `parent` doesn't accumulate
+ * subscriptions across many connect attempts.
+ */
+function linkAbort(parent: AbortSignal | undefined, child: AbortController): () => void {
+  if (!parent) return () => {};
+  if (parent.aborted) {
+    child.abort();
+    return () => {};
+  }
+  const onAbort = () => child.abort();
+  parent.addEventListener("abort", onAbort, { once: true });
+  return () => parent.removeEventListener("abort", onAbort);
 }
 
 export class SSEStreamSubscriptionFactory implements StreamSubscriptionFactory {

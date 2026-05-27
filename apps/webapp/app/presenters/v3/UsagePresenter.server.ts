@@ -4,7 +4,7 @@ import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
 import { BasePresenter } from "./basePresenter.server";
 import { DataPoint, linear } from "regression";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 type Options = {
   organizationId: string;
@@ -124,7 +124,8 @@ async function getTaskUsageByOrganization(
   endOfMonth: Date,
   replica: PrismaClientOrTransaction
 ) {
-  const [queryError, tasks] = await clickhouseClient.taskRuns.getTaskUsageByOrganization({
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+  const [queryError, tasks] = await clickhouse.taskRuns.getTaskUsageByOrganization({
     startTime: startOfMonth.getTime(),
     endTime: endOfMonth.getTime(),
     organizationId,

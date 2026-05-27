@@ -1,9 +1,13 @@
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import {
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+  json,
+} from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
-import { type Project } from "@trigger.dev/database";
+import { type Project, WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 
 const RequestBodySchema = z.object({
@@ -12,34 +16,44 @@ const RequestBodySchema = z.object({
   projectId: z.string().optional(),
   makeDefaultForProject: z.boolean().default(false),
   removeDefaultFromProject: z.boolean().default(false),
+  type: z.nativeEnum(WorkerInstanceGroupType).optional(),
+  hidden: z.boolean().optional(),
+  workloadType: z.nativeEnum(WorkloadType).optional(),
+  cloudProvider: z.string().optional(),
+  location: z.string().optional(),
+  staticIPs: z.string().optional(),
+  enableFastPath: z.boolean().optional(),
 });
 
-export async function action({ request }: ActionFunctionArgs) {
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+export async function loader({ request }: LoaderFunctionArgs) {
+  await requireAdminApiRequest(request);
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      id: authenticationResult.userId,
-    },
+  const workerGroups = await prisma.workerInstanceGroup.findMany({
+    orderBy: { createdAt: "asc" },
   });
 
-  if (!user) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
+  return json({ workerGroups });
+}
 
-  if (!user.admin) {
-    return json({ error: "You must be an admin to perform this action" }, { status: 403 });
-  }
+export async function action({ request }: ActionFunctionArgs) {
+  await requireAdminApiRequest(request);
 
   try {
     const rawBody = await request.json();
-    const { name, description, projectId, makeDefaultForProject, removeDefaultFromProject } =
-      RequestBodySchema.parse(rawBody ?? {});
+    const {
+      name,
+      description,
+      projectId,
+      makeDefaultForProject,
+      removeDefaultFromProject,
+      type,
+      hidden,
+      workloadType,
+      cloudProvider,
+      location,
+      staticIPs,
+      enableFastPath,
+    } = RequestBodySchema.parse(rawBody ?? {});
 
     if (removeDefaultFromProject) {
       if (!projectId) {
@@ -74,7 +88,17 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     if (!existingWorkerGroup) {
-      const { workerGroup, token } = await createWorkerGroup(name, description);
+      const { workerGroup, token } = await createWorkerGroup({
+        name,
+        description,
+        type,
+        hidden,
+        workloadType,
+        cloudProvider,
+        location,
+        staticIPs,
+        enableFastPath,
+      });
 
       if (!makeDefaultForProject) {
         return json({
@@ -150,9 +174,11 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-async function createWorkerGroup(name: string | undefined, description: string | undefined) {
+async function createWorkerGroup(
+  options: Parameters<WorkerGroupService["createWorkerGroup"]>[0]
+) {
   const service = new WorkerGroupService();
-  return await service.createWorkerGroup({ name, description });
+  return await service.createWorkerGroup(options);
 }
 
 async function removeDefaultWorkerGroupFromProject(projectId: string) {

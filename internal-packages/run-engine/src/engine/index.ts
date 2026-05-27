@@ -46,7 +46,7 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
-import { NotImplementedError, RunDuplicateIdempotencyKeyError } from "./errors.js";
+import { NotImplementedError, RunDuplicateIdempotencyKeyError, RunOneTimeUseTokenError } from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
@@ -65,6 +65,7 @@ import {
 import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
+import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import { SystemResources } from "./systems/systems.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
@@ -244,7 +245,8 @@ export class RunEngine {
         },
         queueRunsPendingVersion: async ({ payload }) => {
           await this.pendingVersionSystem.enqueueRunsForBackgroundWorker(
-            payload.backgroundWorkerId
+            payload.backgroundWorkerId,
+            payload.attempt
           );
         },
         tryCompleteBatch: async ({ payload }) => {
@@ -295,6 +297,8 @@ export class RunEngine {
       runLock: this.runLock,
       runQueue: this.runQueue,
       raceSimulationSystem: this.raceSimulationSystem,
+      pendingVersionRunIdLookup:
+        options.pendingVersionRunIdLookup ?? new NoopPendingVersionRunIdLookup(),
     };
 
     this.executionSnapshotSystem = new ExecutionSnapshotSystem({
@@ -324,11 +328,17 @@ export class RunEngine {
       executionSnapshotSystem: this.executionSnapshotSystem,
       delayedRunSystem: this.delayedRunSystem,
       maxDebounceDurationMs: options.debounce?.maxDebounceDurationMs ?? 60 * 60 * 1000, // Default 1 hour
+      quantizeNewDelayUntilMs: options.debounce?.quantizeNewDelayUntilMs ?? 1000,
+      fastPathSkipEnabled: options.debounce?.fastPathSkipEnabled ?? true,
+      useReplicaForFastPathRead: options.debounce?.useReplicaForFastPathRead ?? false,
     });
 
     this.pendingVersionSystem = new PendingVersionSystem({
       resources,
       enqueueSystem: this.enqueueSystem,
+      queueRunsPendingVersionBatchSize: options.queueRunsWaitingForWorkerBatchSize,
+      lagRetryDelayMs: options.pendingVersionLagRetryDelayMs,
+      lagMaxRetries: options.pendingVersionLagMaxRetries,
     });
 
     this.waitpointSystem = new WaitpointSystem({
@@ -495,6 +505,7 @@ export class RunEngine {
       bulkActionId,
       planType,
       realtimeStreamsVersion,
+      streamBasinName,
       debounce,
       annotations,
       onDebounced,
@@ -657,6 +668,7 @@ export class RunEngine {
               bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
               planType,
               realtimeStreamsVersion,
+              streamBasinName,
               debounce: debounce
                 ? {
                   key: debounce.key,
@@ -703,15 +715,25 @@ export class RunEngine {
             });
 
             if (error.code === "P2002") {
-              this.logger.debug("engine.trigger(): throwing RunDuplicateIdempotencyKeyError", {
+              const target = (error.meta as Record<string, unknown>)?.target;
+              const targetFields = Array.isArray(target) ? target : [];
+
+              this.logger.debug("engine.trigger(): P2002 unique constraint violation", {
                 code: error.code,
                 message: error.message,
                 meta: error.meta,
+                target: targetFields,
                 idempotencyKey,
                 environmentId: environment.id,
               });
 
-              //this happens if a unique constraint failed, i.e. duplicate idempotency
+              if (targetFields.includes("oneTimeUseToken")) {
+                throw new RunOneTimeUseTokenError(
+                  `One-time use token has already been used`
+                );
+              }
+
+              // Only idempotency key collisions should be retried
               throw new RunDuplicateIdempotencyKeyError(
                 `Run with idempotency key ${idempotencyKey} already exists`
               );
@@ -782,7 +804,13 @@ export class RunEngine {
           }
         } else {
           try {
-            if (taskRun.ttl) {
+            // The new batch TTL path only expires runs still in the queue
+            // sorted set (waiting on a concurrency slot). For DEV
+            // environments where the dev CLI may not be running, fast-pathed
+            // runs can sit on the worker queue indefinitely and never get
+            // claimed for expiration. Keep the legacy per-run expireRun job
+            // armed for DEV so those runs still expire.
+            if (taskRun.ttl && environment.type === "DEVELOPMENT") {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
 
@@ -797,7 +825,7 @@ export class RunEngine {
               enableFastPath,
             });
           } catch (enqueueError) {
-            this.logger.error("engine.trigger(): failed to schedule TTL or enqueue run", {
+            this.logger.error("engine.trigger(): failed to enqueue run", {
               runId: taskRun.id,
               friendlyId: taskRun.friendlyId,
               taskIdentifier: taskRun.taskIdentifier,
@@ -1623,7 +1651,8 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
-    const prisma = tx ?? this.prisma;
+    const prisma =
+      tx ?? (this.options.readReplicaSnapshotsSinceEnabled ? this.readOnlyPrisma : this.prisma);
 
     try {
       const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);

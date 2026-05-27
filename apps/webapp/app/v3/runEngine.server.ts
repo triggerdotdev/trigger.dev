@@ -6,6 +6,7 @@ import { logger } from "~/services/logger.server";
 import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
+import { runEnginePendingVersionLookup } from "./runEnginePendingVersionLookup.server";
 import { meter, tracer } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
@@ -19,6 +20,8 @@ function createRunEngine() {
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     treatProductionExecutionStallsAsOOM:
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
+    readReplicaSnapshotsSinceEnabled:
+      env.RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED === "1",
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,
@@ -129,6 +132,7 @@ function createRunEngine() {
       factor: env.RUN_ENGINE_SUSPENDED_HEARTBEAT_RETRIES_FACTOR,
     },
     retryWarmStartThresholdMs: env.RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS,
+    pendingVersionRunIdLookup: runEnginePendingVersionLookup,
     billing: {
       getCurrentPlan: async (orgId: string) => {
         const plan = await getCurrentPlan(orgId);
@@ -212,6 +216,9 @@ function createRunEngine() {
     // Debounce configuration
     debounce: {
       maxDebounceDurationMs: env.RUN_ENGINE_MAXIMUM_DEBOUNCE_DURATION_MS,
+      quantizeNewDelayUntilMs: env.RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS,
+      fastPathSkipEnabled: env.RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED === "1",
+      useReplicaForFastPathRead: env.RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ === "1",
     },
   });
 

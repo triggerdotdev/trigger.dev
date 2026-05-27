@@ -11,6 +11,9 @@ myftija
 nicktrn
 samejr
 isshaddad
+# Bots
+devin-ai-integration[bot]
+dependabot[bot]
 # Outside contributors
 gautamsi
 capaj
@@ -18,3 +21,4 @@ chengzp
 bharathkumar39293
 bhekanik
 jrossi
+ThullyoCunha

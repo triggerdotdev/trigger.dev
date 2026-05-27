@@ -1,7 +1,7 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { err, ok, type Result } from "neverthrow";
-import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { logger } from "~/services/logger.server";
+import { authenticateAdminRequest } from "~/services/personalAccessToken.server";
 import {
   createPlatformNotification,
   type CreatePlatformNotificationInput,
@@ -11,24 +11,10 @@ type AdminUser = { id: string; admin: boolean };
 type AuthError = { status: number; message: string };
 
 async function authenticateAdmin(request: Request): Promise<Result<AdminUser, AuthError>> {
-  const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
-  if (!authResult) {
-    return err({ status: 401, message: "Invalid or Missing API key" });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: authResult.userId },
-    select: { id: true, admin: true },
-  });
-
-  if (!user?.admin) {
-    return err({
-      status: user ? 403 : 401,
-      message: user ? "You must be an admin to perform this action" : "Invalid or Missing API key",
-    });
-  }
-
-  return ok(user);
+  const result = await authenticateAdminRequest(request);
+  return result.ok
+    ? ok({ id: result.user.id, admin: result.user.admin })
+    : err({ status: result.status, message: result.message });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -57,7 +43,8 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: "Validation failed", details: error.issues }, { status: 400 });
     }
 
-    return json({ error: error.message }, { status: 500 });
+    logger.error("Failed to create platform notification", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 
   return json(result.value, { status: 201 });

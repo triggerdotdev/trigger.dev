@@ -97,6 +97,7 @@ export const BatchId = new IdUtil("batch");
 export const BulkActionId = new IdUtil("bulk");
 export const AttemptId = new IdUtil("attempt");
 export const ErrorId = new IdUtil("error");
+export const SessionId = new IdUtil("session");
 
 export class IdGenerator {
   private alphabet: string;

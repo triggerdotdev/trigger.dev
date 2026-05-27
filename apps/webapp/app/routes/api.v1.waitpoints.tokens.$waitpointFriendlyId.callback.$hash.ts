@@ -45,6 +45,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             orgMember: true,
             parentEnvironment: {
               select: {
+                id: true,
                 apiKey: true,
               },
             },

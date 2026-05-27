@@ -201,6 +201,11 @@ describe("RunEngine delays", () => {
       },
       queue: {
         redis: redisOptions,
+        ttlSystem: {
+          pollIntervalMs: 100,
+          batchSize: 10,
+          batchMaxWaitMs: 100,
+        },
       },
       runLock: {
         redis: redisOptions,
@@ -230,7 +235,21 @@ describe("RunEngine delays", () => {
         taskIdentifier
       );
 
+      // TTL only expires runs still queued waiting on a concurrency slot.
+      // Once the delay elapses, the run gets enqueued; saturate env concurrency
+      // so it stays queued so the new TTL path can expire it.
+      await engine.runQueue.updateEnvConcurrencyLimits({
+        ...authenticatedEnvironment,
+        maximumConcurrencyLimit: 0,
+      });
+
+      const enqueuedAfterDelayTimes: number[] = [];
+      engine.eventBus.on("runEnqueuedAfterDelay", () => {
+        enqueuedAfterDelayTimes.push(Date.now());
+      });
+
       //trigger the run
+      const triggerTime = Date.now();
       const run = await engine.trigger(
         {
           number: 1,
@@ -247,7 +266,7 @@ describe("RunEngine delays", () => {
           queue: "task/test-task",
           isTest: false,
           tags: [],
-          delayUntil: new Date(Date.now() + 1000),
+          delayUntil: new Date(triggerTime + 1000),
           ttl: "2s",
         },
         prisma
@@ -259,7 +278,7 @@ describe("RunEngine delays", () => {
       expect(executionData.snapshot.executionStatus).toBe("DELAYED");
       expect(run.status).toBe("DELAYED");
 
-      //wait for 1 seconds
+      //wait so the delay elapses and the run is enqueued
       await setTimeout(2_500);
 
       //should now be queued
@@ -273,19 +292,29 @@ describe("RunEngine delays", () => {
 
       expect(run2.status).toBe("PENDING");
 
-      //wait for 3 seconds
+      // TTL is armed at queue-enter time (not from triggerTime). With a 2s TTL
+      // and a 1s delay, the run becomes eligible to expire ~3s after trigger.
+      // Confirm the TTL was not armed against triggerTime (i.e. didn't already
+      // fire while still DELAYED), and that the run only expires after the
+      // queue-enter timestamp + ttl has elapsed.
+      expect(enqueuedAfterDelayTimes.length).toBe(1);
+      const enqueuedAt = enqueuedAfterDelayTimes[0]!;
+      expect(enqueuedAt - triggerTime).toBeGreaterThanOrEqual(1000);
+
+      //wait so the TTL fires (counted from when the run was enqueued)
       await setTimeout(3_000);
 
-      //should now be expired
-      const executionData3 = await engine.getRunExecutionData({ runId: run.id });
-      assertNonNullable(executionData3);
-      expect(executionData3.snapshot.executionStatus).toBe("FINISHED");
-
+      // Status comes from the DB; the batch TTL path does not create
+      // execution snapshots, so getRunExecutionData may still show QUEUED.
       const run3 = await prisma.taskRun.findFirstOrThrow({
         where: { id: run.id },
       });
 
       expect(run3.status).toBe("EXPIRED");
+      assertNonNullable(run3.expiredAt);
+      // The expiry must happen after enqueue + ttl, not after trigger + ttl.
+      // Allow a small tolerance for poll interval + batch wait.
+      expect(run3.expiredAt.getTime()).toBeGreaterThanOrEqual(enqueuedAt + 2_000);
     } finally {
       await engine.quit();
     }

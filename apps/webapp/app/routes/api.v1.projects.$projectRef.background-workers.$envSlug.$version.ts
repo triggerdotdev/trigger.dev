@@ -6,6 +6,7 @@ import {
   authenticatedEnvironmentForAuthentication,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import zlib from "node:zlib";
 
 const ParamsSchema = z.object({
@@ -21,44 +22,45 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateRequest(request);
+  try {
+    const authenticationResult = await authenticateRequest(request);
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
 
-  const environment = await authenticatedEnvironmentForAuthentication(
-    authenticationResult,
-    parsedParams.data.projectRef,
-    parsedParams.data.envSlug,
-    branchNameFromRequest(request)
-  );
+    const environment = await authenticatedEnvironmentForAuthentication(
+      authenticationResult,
+      parsedParams.data.projectRef,
+      parsedParams.data.envSlug,
+      branchNameFromRequest(request)
+    );
 
-  // Find the background worker and tasks and files
-  const backgroundWorker = await prisma.backgroundWorker.findFirst({
-    where: {
-      runtimeEnvironmentId: environment.id,
-      version: parsedParams.data.version,
-    },
-    include: {
-      tasks: true,
-      files: {
-        include: {
-          tasks: {
-            select: {
-              slug: true,
+    // Find the background worker and tasks and files
+    const backgroundWorker = await prisma.backgroundWorker.findFirst({
+      where: {
+        runtimeEnvironmentId: environment.id,
+        version: parsedParams.data.version,
+      },
+      include: {
+        tasks: true,
+        files: {
+          include: {
+            tasks: {
+              select: {
+                slug: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  if (!backgroundWorker) {
-    return json({ error: "Background worker not found" }, { status: 404 });
-  }
+    if (!backgroundWorker) {
+      return json({ error: "Background worker not found" }, { status: 404 });
+    }
 
-  return json({
+    return json({
     id: backgroundWorker.friendlyId,
     version: backgroundWorker.version,
     cliVersion: backgroundWorker.cliVersion,
@@ -74,14 +76,19 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       retryConfig: task.retryConfig,
       queueConfig: task.queueConfig,
     })),
-    files: backgroundWorker.files.map((file) => ({
-      id: file.friendlyId,
-      filePath: file.filePath,
-      contentHash: file.contentHash,
-      contents: decompressContent(file.contents),
-      tasks: Array.from(new Set(file.tasks.map((task) => task.slug))),
-    })),
-  });
+      files: backgroundWorker.files.map((file) => ({
+        id: file.friendlyId,
+        filePath: file.filePath,
+        contentHash: file.contentHash,
+        contents: decompressContent(file.contents),
+        tasks: Array.from(new Set(file.tasks.map((task) => task.slug))),
+      })),
+    });
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to load background worker", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }
 
 function decompressContent(compressedBuffer: Uint8Array): string {

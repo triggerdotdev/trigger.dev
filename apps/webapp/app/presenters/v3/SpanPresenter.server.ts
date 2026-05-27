@@ -1,12 +1,14 @@
 import {
   type MachinePreset,
   prettyPrintPacket,
+  RunAnnotations,
   SemanticInternalAttributes,
   type TaskRunContext,
   TaskRunError,
   TriggerTraceContext,
   type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
+
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
   extractIdempotencyKeyScope,
@@ -21,7 +23,6 @@ import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 import { safeJsonParse } from "~/utils/json";
 import {
@@ -30,6 +31,7 @@ import {
   extractAIToolCallData,
   extractAIEmbedData,
 } from "~/components/runs/v3/ai";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 export type PromptSpanData = {
   slug: string;
@@ -42,9 +44,7 @@ export type PromptSpanData = {
   config?: string;
 };
 
-function extractPromptSpanData(
-  properties: Record<string, unknown>
-): PromptSpanData | undefined {
+function extractPromptSpanData(properties: Record<string, unknown>): PromptSpanData | undefined {
   // Properties come as an unflattened nested object from ClickHouse,
   // e.g. { prompt: { slug: "...", version: 3, ... } }
   const prompt = properties.prompt;
@@ -132,14 +132,17 @@ export class SpanPresenter extends BasePresenter {
 
     const { traceId } = parentRun;
 
-    const eventRepository = resolveEventRepositoryForStore(parentRun.taskEventStore);
+    const repository = await getEventRepositoryForStore(
+      parentRun.taskEventStore,
+      project.organizationId
+    );
 
     const eventStore = getTaskEventStoreTableForRun(parentRun);
 
     const run = await this.getRun({
       eventStore,
       traceId,
-      eventRepository,
+      eventRepository: repository,
       spanId,
       linkedRunId,
       createdAt: parentRun.createdAt,
@@ -161,7 +164,7 @@ export class SpanPresenter extends BasePresenter {
       projectId: parentRun.projectId,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
-      eventRepository,
+      eventRepository: repository,
     });
 
     if (!span) {
@@ -242,6 +245,9 @@ export class SpanPresenter extends BasePresenter {
 
     const externalTraceId = this.#getExternalTraceId(run.traceContext);
 
+    const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
+    const isAgentRun = taskKind === "AGENT";
+
     let region: { name: string; location: string | null } | null = null;
 
     if (run.runtimeEnvironment.type !== "DEVELOPMENT" && run.engine !== "V1") {
@@ -257,6 +263,48 @@ export class SpanPresenter extends BasePresenter {
 
       region = workerGroup ?? null;
     }
+
+    // Only AGENT-tagged runs (chat.agent and friends) can be session-bound,
+    // so skip the SessionRun lookup for the much larger set of standard runs.
+    // Lookup is by the unique `runId` index, but the cheapest query is the
+    // one we don't run.
+    const sessionRun = isAgentRun
+      ? await this._replica.sessionRun.findFirst({
+          where: { runId: run.id },
+          select: {
+            reason: true,
+            triggeredAt: true,
+            session: {
+              select: {
+                friendlyId: true,
+                externalId: true,
+                type: true,
+                taskIdentifier: true,
+                closedAt: true,
+                expiresAt: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    const session = sessionRun
+      ? {
+          friendlyId: sessionRun.session.friendlyId,
+          externalId: sessionRun.session.externalId,
+          type: sessionRun.session.type,
+          taskIdentifier: sessionRun.session.taskIdentifier,
+          status:
+            sessionRun.session.closedAt != null
+              ? ("CLOSED" as const)
+              : sessionRun.session.expiresAt != null &&
+                sessionRun.session.expiresAt.getTime() < Date.now()
+              ? ("EXPIRED" as const)
+              : ("ACTIVE" as const),
+          reason: sessionRun.reason,
+          triggeredAt: sessionRun.triggeredAt,
+        }
+      : undefined;
 
     return {
       id: run.id,
@@ -299,6 +347,7 @@ export class SpanPresenter extends BasePresenter {
       isFinished,
       isRunning: RUNNING_STATUSES.includes(run.status),
       isError: isFailedRunStatus(run.status),
+      isAgentRun,
       payload,
       payloadType: run.payloadType,
       output,
@@ -317,6 +366,7 @@ export class SpanPresenter extends BasePresenter {
       metadata,
       maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),
       batch: run.batch ? { friendlyId: run.batch.friendlyId } : undefined,
+      session,
       engine: run.engine,
       region,
       workerQueue: run.workerQueue,
@@ -457,6 +507,7 @@ export class SpanPresenter extends BasePresenter {
         payloadType: true,
         metadata: true,
         metadataType: true,
+        annotations: true,
         maxAttempts: true,
         project: {
           include: {
@@ -592,10 +643,7 @@ export class SpanPresenter extends BasePresenter {
       triggeredRuns,
       aiData:
         span.properties && typeof span.properties === "object"
-          ? extractAISpanData(
-              span.properties as Record<string, unknown>,
-              span.duration / 1_000_000
-            )
+          ? extractAISpanData(span.properties as Record<string, unknown>, span.duration / 1_000_000)
           : undefined,
     };
 
@@ -739,10 +787,7 @@ export class SpanPresenter extends BasePresenter {
           "ai.streamObject",
         ];
 
-        if (
-          typeof span.message === "string" &&
-          AI_SUMMARY_MESSAGES.includes(span.message)
-        ) {
+        if (typeof span.message === "string" && AI_SUMMARY_MESSAGES.includes(span.message)) {
           const aiSummaryData = extractAISummarySpanData(
             span.properties as Record<string, unknown>,
             span.duration / 1_000_000
@@ -899,6 +944,7 @@ export class SpanPresenter extends BasePresenter {
         createdAt: run.createdAt,
         tags: run.runTags,
         isTest: run.isTest,
+        isReplay: !!run.replayedFromTaskRunFriendlyId,
         idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
         startedAt: run.startedAt ?? run.createdAt,
         durationMs: run.usageDurationMs,

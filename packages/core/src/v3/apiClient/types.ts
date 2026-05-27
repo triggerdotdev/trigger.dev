@@ -58,6 +58,8 @@ export interface ListRunsQueryParams extends CursorPageParams {
   queue?: Array<QueueTypeName> | QueueTypeName;
   /** The machine name, or multiple of them. */
   machine?: Array<MachinePresetName> | MachinePresetName;
+  /** The region master-queue identifier, or multiple of them. */
+  region?: Array<string> | string;
 }
 
 export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQueryParams {

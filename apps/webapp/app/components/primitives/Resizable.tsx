@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
-import { PanelGroup, Panel, PanelResizer } from "react-window-splitter";
+import { PanelGroup, Panel, PanelResizer } from "@window-splitter/react";
 import { cn } from "~/utils/cn";
 
 const ResizablePanelGroup = ({ className, ...props }: React.ComponentProps<typeof PanelGroup>) => (
@@ -69,10 +69,14 @@ const ResizableHandle = ({
   </PanelResizer>
 );
 
-const RESIZABLE_PANEL_ANIMATION = {
-  easing: "ease-in-out" as const,
-  duration: 200,
-};
+// react-window-splitter drives the collapse animation through @react-spring/rafz,
+// which has timing/interaction issues with Firefox that produce visual glitches
+// (alternating frames, panels stuck at min, panelHasSpace invariant violations).
+// Disable the animation on Firefox; it works correctly in Chromium and Safari.
+const RESIZABLE_PANEL_ANIMATION =
+  typeof navigator !== "undefined" && /firefox/i.test(navigator.userAgent)
+    ? undefined
+    : ({ easing: "ease-in-out", duration: 300 } as const);
 
 const COLLAPSIBLE_HANDLE_CLASSNAME = "transition-opacity duration-200";
 

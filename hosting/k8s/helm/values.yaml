@@ -208,6 +208,15 @@ webapp:
   runReplication:
     logLevel: "info" # one of: log, error, warn, info, debug
 
+  # ServiceAccount configuration
+  serviceAccount:
+    create: true
+    # Name of the ServiceAccount to use. Required when create is false - otherwise
+    # the token-syncer RoleBinding would bind to the namespace's "default" SA.
+    name: ""
+    # Annotations to add to the ServiceAccount (e.g. eks.amazonaws.com/role-arn for IRSA)
+    annotations: {}
+
   # Observability configuration (OTel)
   observability:
     tracing:
@@ -533,7 +542,7 @@ clickhouse:
   image:
     # Use bitnami legacy repo
     repository: bitnamilegacy/clickhouse
-    # image: docker.io/bitnamilegacy/clickhouse:25.6.1-debian-12-r0
+    # image: docker.io/bitnamilegacy/clickhouse:25.7.5-debian-12-r0
 
   # TLS/Secure connection configuration
   secure: false # Set to true to use HTTPS and secure connections

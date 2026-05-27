@@ -1,0 +1,18 @@
+{
+  "name": "references-scheduled-tasks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "workspace:*",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@trigger.dev/build": "workspace:*",
+    "trigger.dev": "workspace:*",
+    "typescript": "^5.5.4"
+  }
+}

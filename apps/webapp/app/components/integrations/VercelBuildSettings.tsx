@@ -23,6 +23,14 @@ type BuildSettingsFieldsProps = {
   disabledEnvSlugs?: Partial<Record<EnvSlug, string>>;
   autoPromote?: boolean;
   onAutoPromoteChange?: (value: boolean) => void;
+  /** The currently pinned TRIGGER_VERSION on Vercel production, if any. Shown under the
+   * Atomic deployments toggle so the user knows what version is set on Vercel right now. */
+  currentTriggerVersion?: string | null;
+  /** True when the Vercel lookup for TRIGGER_VERSION failed. We show this so the user knows
+   * the pin status is unknown — distinct from "not set". */
+  currentTriggerVersionFetchFailed?: boolean;
+  /** Hide the section-level master toggles for "Pull env vars" and "Discover new env vars". */
+  hideSectionToggles?: boolean;
 };
 
 export function BuildSettingsFields({
@@ -37,6 +45,9 @@ export function BuildSettingsFields({
   disabledEnvSlugs,
   autoPromote,
   onAutoPromoteChange,
+  currentTriggerVersion,
+  currentTriggerVersionFetchFailed,
+  hideSectionToggles,
 }: BuildSettingsFieldsProps) {
   const isSlugDisabled = (slug: EnvSlug) => !!disabledEnvSlugs?.[slug];
   const enabledSlugs = availableEnvSlugs.filter((s) => !isSlugDisabled(s));
@@ -48,7 +59,7 @@ export function BuildSettingsFields({
         <div className="mb-2">
           <div className="flex items-center justify-between">
             <Label>Pull env vars before build</Label>
-            {availableEnvSlugs.length > 1 && (
+            {!hideSectionToggles && availableEnvSlugs.length > 1 && (
               <Switch
                 variant="small"
                 checked={
@@ -116,7 +127,7 @@ export function BuildSettingsFields({
         <div className="mb-2">
           <div className="flex items-center justify-between">
             <Label>Discover new env vars</Label>
-            {availableEnvSlugs.length > 1 && (
+            {!hideSectionToggles && availableEnvSlugs.length > 1 && (
               <Switch
                 variant="small"
                 checked={
@@ -205,6 +216,20 @@ export function BuildSettingsFields({
           </TextLink>
           .
         </Hint>
+        {currentTriggerVersion && (
+          <Hint className="pr-6">
+            Currently pinned to{" "}
+            <span className="font-mono text-text-bright">{currentTriggerVersion}</span> in Vercel
+            production.
+          </Hint>
+        )}
+        {!currentTriggerVersion && currentTriggerVersionFetchFailed && (
+          <Hint className="pr-6 text-warning">
+            Couldn't read{" "}
+            <span className="font-mono text-text-bright">TRIGGER_VERSION</span> from Vercel —
+            check the Vercel dashboard to confirm the production pin.
+          </Hint>
+        )}
       </div>
 
       {/* Auto promotion — only visible when atomic deployments are on */}

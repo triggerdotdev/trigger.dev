@@ -1,7 +1,50 @@
 import { z } from "zod";
+import { MachinePresetName } from "@trigger.dev/core/v3";
 import { BoolEnv } from "./utils/boolEnv";
 import { isValidDatabaseUrl } from "./utils/db";
 import { isValidRegex } from "./utils/regex";
+import { isValidDuration } from "./services/realtime/duration.server";
+
+// `z.string()` constrained to a `parseDuration`-parseable string (e.g.
+// `7d`, `1h`). Validated at boot so a typo'd duration fails fast.
+function durationString() {
+  return z
+    .string()
+    .refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
+}
+
+// Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
+// non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
+// and its _REQUIRED variant. Adds zod issues for empty input or unknown names.
+const parseMachinePresetCsv = (
+  raw: string,
+  ctx: z.RefinementCtx
+): MachinePresetName[] => {
+  const names = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (names.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "must list at least one machine preset",
+    });
+    return z.NEVER;
+  }
+  const out: MachinePresetName[] = [];
+  for (const name of names) {
+    const parsed = MachinePresetName.safeParse(name);
+    if (!parsed.success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `unknown machine preset: "${name}"`,
+      });
+      return z.NEVER;
+    }
+    out.push(parsed.data);
+  }
+  return out;
+};
 
 const GithubAppEnvSchema = z.preprocess(
   (val) => {
@@ -91,6 +134,7 @@ const EnvironmentSchema = z
     ELECTRIC_ORIGIN_SHARDS: z.string().optional(),
     APP_ENV: z.string().default(process.env.NODE_ENV),
     SERVICE_NAME: z.string().default("trigger.dev webapp"),
+    SENTRY_DSN: z.string().optional(),
     POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
@@ -108,6 +152,9 @@ const EnvironmentSchema = z
     SMTP_PASSWORD: z.string().optional(),
 
     PLAIN_API_KEY: z.string().optional(),
+    PLAIN_CUSTOMER_CARDS_SECRET: z.string().optional(),
+    PLAIN_CUSTOMER_CARDS_KEY: z.string().optional(),
+    PLAIN_CUSTOMER_CARDS_HEADERS: z.string().optional(),
     WORKER_SCHEMA: z.string().default("graphile_worker"),
     WORKER_CONCURRENCY: z.coerce.number().int().default(10),
     WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
@@ -188,6 +235,30 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
     CACHE_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     CACHE_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+    TASK_META_CACHE_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    TASK_META_CACHE_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    TASK_META_CACHE_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    TASK_META_CACHE_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    TASK_META_CACHE_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
+    TASK_META_CACHE_BY_WORKER_TTL_SECONDS: z.coerce.number().default(2592000),
 
     REALTIME_STREAMS_REDIS_HOST: z
       .string()
@@ -300,6 +371,7 @@ const EnvironmentSchema = z
     DEPLOY_REGISTRY_ECR_TAGS: z.string().optional(), // csv, for example: "key1=value1,key2=value2"
     DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN: z.string().optional(),
     DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID: z.string().optional(),
+    DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY: z.string().optional(), // raw IAM policy JSON applied to every repo created by the webapp
 
     // Deployment registry (v4) - falls back to v3 registry if not specified
     V4_DEPLOY_REGISTRY_HOST: z
@@ -332,11 +404,34 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID),
+    V4_DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY),
 
     // Compute gateway (template creation during deploy finalize)
     COMPUTE_GATEWAY_URL: z.string().optional(),
     COMPUTE_GATEWAY_AUTH_TOKEN: z.string().optional(),
     COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT: z.string().optional(),
+    // Comma-separated machine preset names to build boot snapshots for on
+    // deploy (e.g. "small-1x,small-2x,medium-1x"). Default: "small-1x".
+    COMPUTE_TEMPLATE_MACHINE_PRESETS: z
+      .string()
+      .default("small-1x")
+      .transform(parseMachinePresetCsv),
+    // Subset of COMPUTE_TEMPLATE_MACHINE_PRESETS that must succeed for a
+    // required-mode deploy to be considered successful. Failures of presets
+    // outside this list are logged but don't fail the deploy. Defaults to the
+    // full COMPUTE_TEMPLATE_MACHINE_PRESETS list when unset (everything required).
+    COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED: z
+      .string()
+      .optional()
+      .transform((v, ctx) =>
+        parseMachinePresetCsv(
+          v ?? process.env.COMPUTE_TEMPLATE_MACHINE_PRESETS ?? "small-1x",
+          ctx
+        )
+      ),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
     DEPLOY_TIMEOUT_MS: z.coerce
@@ -347,6 +442,12 @@ const EnvironmentSchema = z
       .number()
       .int()
       .default(60 * 1000 * 15), // 15 minutes
+
+    // When enabled, reject deploys made by v3 CLI versions (i.e. payloads that
+    // omit the `type` field). v4 CLI versions always send `type` ("MANAGED" or "V1"),
+    // so they are unaffected. Defaults to off so detection can run in
+    // log-only mode before enforcement.
+    DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_BUCKET: z.string().optional(),
@@ -359,7 +460,10 @@ const EnvironmentSchema = z
     // If specified, you must configure the corresponding provider using OBJECT_STORE_{PROTOCOL}_* env vars.
     // Example: OBJECT_STORE_DEFAULT_PROTOCOL=s3 requires OBJECT_STORE_S3_BASE_URL, OBJECT_STORE_S3_ACCESS_KEY_ID, etc.
     // Enables zero-downtime migration between providers (old data keeps working, new data uses new provider).
-    OBJECT_STORE_DEFAULT_PROTOCOL: z.string().regex(/^[a-z0-9]+$/).optional(),
+    OBJECT_STORE_DEFAULT_PROTOCOL: z
+      .string()
+      .regex(/^[a-z0-9]+$/)
+      .optional(),
 
     ARTIFACTS_OBJECT_STORE_BUCKET: z.string().optional(),
     ARTIFACTS_OBJECT_STORE_BASE_URL: z.string().optional(),
@@ -432,6 +536,7 @@ const EnvironmentSchema = z
     INTERNAL_OTEL_TRACE_SAMPLING_RATE: z.string().default("20"),
     INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED: z.string().default("0"),
     INTERNAL_OTEL_TRACE_DISABLED: z.string().default("0"),
+    DISABLE_HTTP_INSTRUMENTATION: BoolEnv.default(false),
 
     INTERNAL_OTEL_LOG_EXPORTER_URL: z.string().optional(),
     INTERNAL_OTEL_METRIC_EXPORTER_URL: z.string().optional(),
@@ -659,6 +764,21 @@ const EnvironmentSchema = z
       .int()
       .default(60_000 * 60), // 1 hour
 
+    /**
+     * Bucket size in milliseconds used to quantize the newly computed `delayUntil`
+     * in the debounce system. Quantization collapses concurrent triggers on the
+     * same hot debounce key onto the same target time so the unlocked fast-path
+     * skip is effective. Set to 0 to disable. Default: 1000ms (1s).
+     */
+    RUN_ENGINE_DEBOUNCE_QUANTIZE_NEW_DELAY_UNTIL_MS: z.coerce.number().int().min(0).default(1000),
+
+    /**
+     * Whether the unlocked fast-path skip is enabled in the debounce system.
+     * Acts as a kill switch in case the fast-path needs to be disabled in
+     * production without a redeploy. Default: "1" (enabled).
+     */
+    RUN_ENGINE_DEBOUNCE_FAST_PATH_SKIP_ENABLED: z.string().default("1"),
+
     RUN_ENGINE_WORKER_REDIS_HOST: z
       .string()
       .optional()
@@ -829,6 +949,8 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM: z.string().default("0"),
+    RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED: z.string().default("0"),
+    RUN_ENGINE_DEBOUNCE_USE_REPLICA_FOR_FAST_PATH_READ: z.string().default("0"),
 
     /** How long should the presence ttl last */
     DEV_PRESENCE_SSE_TIMEOUT: z.coerce.number().int().default(30_000),
@@ -894,6 +1016,7 @@ const EnvironmentSchema = z
 
     LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
     LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
+    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_DISABLED: z.string().default("0"),
 
     COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -935,6 +1058,47 @@ const EnvironmentSchema = z
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
     COMMON_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     COMMON_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
+
+    TRIGGER_MOLLIFIER_ENABLED: z.string().default("0"),
+    // Separate switch for the drainer (consumer side) so it can be split
+    // off onto a dedicated worker service. Unset → inherits
+    // TRIGGER_MOLLIFIER_ENABLED, so single-container self-hosters don't have to
+    // flip two switches. In multi-replica deployments, set this to "0"
+    // explicitly on every replica except the one dedicated drainer
+    // service — otherwise every replica's polling loop races for the
+    // same buffer entries. `TRIGGER_MOLLIFIER_ENABLED` is still the master kill
+    // switch; setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
+    // no-op because the gate-side singleton refuses to construct a
+    // buffer when the system is off.
+    TRIGGER_MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
+    TRIGGER_MOLLIFIER_SHADOW_MODE: z.string().default("0"),
+    TRIGGER_MOLLIFIER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    TRIGGER_MOLLIFIER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined),
+      ),
+    TRIGGER_MOLLIFIER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    TRIGGER_MOLLIFIER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    TRIGGER_MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
+    TRIGGER_MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
+    TRIGGER_MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
+    TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
+    TRIGGER_MOLLIFIER_ENTRY_TTL_S: z.coerce.number().int().positive().default(600),
+    TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+    TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+    TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
 
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()
@@ -1213,6 +1377,38 @@ const EnvironmentSchema = z
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
     RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
+    // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
+    // with the runs replicator for leader locking but has its own slot and
+    // publication so the two consume independently.
+    SESSION_REPLICATION_CLICKHOUSE_URL: z.string().optional(),
+    SESSION_REPLICATION_ENABLED: z.string().default("0"),
+    SESSION_REPLICATION_SLOT_NAME: z.string().default("sessions_to_clickhouse_v1"),
+    SESSION_REPLICATION_PUBLICATION_NAME: z
+      .string()
+      .default("sessions_to_clickhouse_v1_publication"),
+    SESSION_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
+    SESSION_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
+    SESSION_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
+    SESSION_REPLICATION_LEADER_LOCK_TIMEOUT_MS: z.coerce.number().int().default(30_000),
+    SESSION_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS: z.coerce.number().int().default(10_000),
+    SESSION_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS: z.coerce.number().int().default(10_000),
+    SESSION_REPLICATION_LEADER_LOCK_RETRY_INTERVAL_MS: z.coerce.number().int().default(500),
+    SESSION_REPLICATION_ACK_INTERVAL_SECONDS: z.coerce.number().int().default(10),
+    SESSION_REPLICATION_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    SESSION_REPLICATION_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    SESSION_REPLICATION_WAIT_FOR_ASYNC_INSERT: z.string().default("0"),
+    SESSION_REPLICATION_KEEP_ALIVE_ENABLED: z.string().default("0"),
+    SESSION_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    SESSION_REPLICATION_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    SESSION_REPLICATION_INSERT_STRATEGY: z.enum(["insert", "insert_async"]).default("insert"),
+    SESSION_REPLICATION_INSERT_MAX_RETRIES: z.coerce.number().int().default(3),
+    SESSION_REPLICATION_INSERT_BASE_DELAY_MS: z.coerce.number().int().default(100),
+    SESSION_REPLICATION_INSERT_MAX_DELAY_MS: z.coerce.number().int().default(2000),
+
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
     CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
@@ -1277,6 +1473,21 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
     EVENTS_CLICKHOUSE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     EVENTS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    // ClickHouse client used by @internal/run-engine's PendingVersionSystem.
+    // Kept on its own URL + pool so this low-QPS path can't contend with
+    // the main analytics client (CLICKHOUSE_URL). Falls back to the main
+    // URL when unset so unconfigured environments still work.
+    RUN_ENGINE_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(5),
+    RUN_ENGINE_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    RUN_ENGINE_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
@@ -1298,9 +1509,26 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
 
+    // Organization data stores registry
+    ORGANIZATION_DATA_STORES_RELOAD_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(60 * 1000), // 1 minute
+
     // LLM cost tracking
     LLM_COST_TRACKING_ENABLED: BoolEnv.default(true),
-    LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5 * 60 * 1000), // 5 minutes
+    LLM_PRICING_RELOAD_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .default(5 * 60 * 1000), // 5 minutes
+    LLM_PRICING_RELOAD_CHANNEL: z.string().default("llm-registry:reload"),
+    LLM_PRICING_RELOAD_DEBOUNCE_MS: z.coerce.number().int().default(1000),
+    // Whether to subscribe this process to the LLM_PRICING_RELOAD_CHANNEL.
+    // Default off — only OTel-ingesting services need real-time pricing
+    // freshness; dashboard/worker processes are fine on the existing
+    // 5-minute periodic reload. In multi-service deployments, set this to
+    // true on the span-ingesting services.
+    LLM_PRICING_RELOAD_PUBSUB_ENABLED: BoolEnv.default(false),
     LLM_PRICING_SEED_ON_STARTUP: BoolEnv.default(false),
     LLM_PRICING_READY_TIMEOUT_MS: z.coerce.number().int().default(500),
     LLM_METRICS_BATCH_SIZE: z.coerce.number().int().default(5000),
@@ -1392,15 +1620,40 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    // When "true", provision a dedicated S2 basin per org and stamp
+    // `streamBasinName` on new rows. Off keeps everything on the single
+    // basin defined by `REALTIME_STREAMS_S2_BASIN`.
+    REALTIME_STREAMS_PER_ORG_BASINS_ENABLED: z.enum(["true", "false"]).default("false"),
+    // Per-org basin name = `{prefix}-{env}-org-{orgId}`.
+    REALTIME_STREAMS_BASIN_NAME_PREFIX: z.string().default("triggerdotdev"),
+    REALTIME_STREAMS_BASIN_NAME_ENV: z.string().default("dev"),
+    REALTIME_STREAMS_BASIN_DEFAULT_RETENTION: durationString().default("30d"),
+    REALTIME_STREAMS_BASIN_STORAGE_CLASS: z.enum(["express", "standard"]).default("express"),
+    REALTIME_STREAMS_BASIN_DELETE_ON_EMPTY_MIN_AGE: durationString().default("1h"),
     REALTIME_STREAMS_DEFAULT_VERSION: z.enum(["v1", "v2"]).default("v1"),
     WAIT_UNTIL_TIMEOUT_MS: z.coerce.number().int().default(600_000),
 
     // Private connections
     PRIVATE_CONNECTIONS_ENABLED: z.string().optional(),
     PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS: z.string().optional(),
+
+    // Force RBAC to not use the plugin
+    RBAC_FORCE_FALLBACK: BoolEnv.default(false),
   })
   .and(GithubAppEnvSchema)
-  .and(S2EnvSchema);
+  .and(S2EnvSchema)
+  .superRefine((env, ctx) => {
+    const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
+    for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
+      if (!presets.has(required)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED"],
+          message: `"${required}" is not in COMPUTE_TEMPLATE_MACHINE_PRESETS`,
+        });
+      }
+    }
+  });
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);

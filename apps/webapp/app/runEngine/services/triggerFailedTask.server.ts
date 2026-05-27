@@ -51,10 +51,16 @@ export type TriggerFailedTaskRequest = {
  */
 export class TriggerFailedTaskService {
   private readonly prisma: PrismaClientOrTransaction;
+  private readonly replicaPrisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
 
-  constructor(opts: { prisma: PrismaClientOrTransaction; engine: RunEngine }) {
+  constructor(opts: {
+    prisma: PrismaClientOrTransaction;
+    engine: RunEngine;
+    replicaPrisma?: PrismaClientOrTransaction;
+  }) {
     this.prisma = opts.prisma;
+    this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
   }
 
@@ -68,6 +74,7 @@ export class TriggerFailedTaskService {
 
     try {
       const { repository, store } = await getEventRepository(
+        request.environment.organization.id,
         request.environment.organization.featureFlags as Record<string, unknown>,
         undefined
       );
@@ -75,11 +82,11 @@ export class TriggerFailedTaskService {
       // Resolve parent run for rootTaskRunId and depth (same as triggerTask.server.ts)
       const parentRun = request.parentRunId
         ? await this.prisma.taskRun.findFirst({
-          where: {
-            id: RunId.fromFriendlyId(request.parentRunId),
-            runtimeEnvironmentId: request.environment.id,
-          },
-        })
+            where: {
+              id: RunId.fromFriendlyId(request.parentRunId),
+              runtimeEnvironmentId: request.environment.id,
+            },
+          })
         : undefined;
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
@@ -91,7 +98,7 @@ export class TriggerFailedTaskService {
       let queueName: string | undefined;
       let lockedQueueId: string | undefined;
       try {
-        const queueConcern = new DefaultQueueManager(this.prisma, this.engine);
+        const queueConcern = new DefaultQueueManager(this.prisma, this.engine, this.replicaPrisma);
         const bodyOptions = request.options as TriggerTaskRequest["body"]["options"];
         const triggerRequest: TriggerTaskRequest = {
           taskId: request.taskId,
@@ -110,18 +117,18 @@ export class TriggerFailedTaskService {
         // resolveQueueProperties requires the worker to be passed when lockToVersion is present.
         const lockedToBackgroundWorker = bodyOptions?.lockToVersion
           ? await this.prisma.backgroundWorker.findFirst({
-            where: {
-              projectId: request.environment.projectId,
-              runtimeEnvironmentId: request.environment.id,
-              version: bodyOptions.lockToVersion,
-            },
-            select: {
-              id: true,
-              version: true,
-              sdkVersion: true,
-              cliVersion: true,
-            },
-          })
+              where: {
+                projectId: request.environment.projectId,
+                runtimeEnvironmentId: request.environment.id,
+                version: bodyOptions.lockToVersion,
+              },
+              select: {
+                id: true,
+                version: true,
+                sdkVersion: true,
+                cliVersion: true,
+              },
+            })
           : undefined;
 
         const resolved = await queueConcern.resolveQueueProperties(
@@ -267,9 +274,7 @@ export class TriggerFailedTaskService {
         },
         taskIdentifier: opts.taskId,
         payload:
-          typeof opts.payload === "string"
-            ? opts.payload
-            : JSON.stringify(opts.payload ?? ""),
+          typeof opts.payload === "string" ? opts.payload : JSON.stringify(opts.payload ?? ""),
         payloadType: opts.payloadType ?? "application/json",
         error: {
           type: "INTERNAL_ERROR" as const,

@@ -13,7 +13,7 @@ import { type ErrorGroupStatus, type PrismaClientOrTransaction } from "@trigger.
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
-import { getAllTaskIdentifiers } from "~/models/task.server";
+import { getTaskIdentifiers } from "~/models/task.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
 
@@ -170,7 +170,7 @@ export class ErrorsListPresenter extends BasePresenter {
       (search !== undefined && search !== "") ||
       (statuses !== undefined && statuses.length > 0);
 
-    const possibleTasksAsync = getAllTaskIdentifiers(this.replica, environmentId);
+    const possibleTasksAsync = getTaskIdentifiers(environmentId);
 
     // Pre-filter by status: since status lives in Postgres (ErrorGroupState) and the error
     // list comes from ClickHouse, we resolve inclusion/exclusion sets upfront so that

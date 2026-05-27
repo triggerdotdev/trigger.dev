@@ -132,10 +132,7 @@ const PurchaseSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce
-      .number()
-      .int("Must be a whole number")
-      .min(1, "Amount must be greater than 0"),
+    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
   }),
 ]);
 
@@ -329,23 +326,16 @@ export default function Page() {
             </MainCenteredContainer>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-x-2 p-2">
+              <div className="flex items-center justify-between gap-x-1.5 p-2">
                 <BranchFilters />
-                <div className="flex items-center justify-end gap-x-2">
-                  <PaginationControls
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    showPageNumbers={false}
-                  />
-                </div>
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  showPageNumbers={false}
+                />
               </div>
 
-              <div
-                className={cn(
-                  "grid max-h-full min-h-full overflow-x-auto",
-                  totalPages > 1 ? "grid-rows-[1fr_auto]" : "grid-rows-[1fr]"
-                )}
-              >
+              <div className="grid max-h-full min-h-full grid-rows-[1fr] overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -438,14 +428,6 @@ export default function Page() {
                     )}
                   </TableBody>
                 </Table>
-                <div
-                  className={cn(
-                    "flex min-h-full",
-                    totalPages > 1 && "justify-end border-t border-grid-dimmed px-2 py-3"
-                  )}
-                >
-                  <PaginationControls currentPage={currentPage} totalPages={totalPages} />
-                </div>
               </div>
 
               <div className="flex w-full items-start justify-between">
@@ -545,12 +527,12 @@ export function BranchFilters() {
 
   return (
     <div className="flex w-full items-center justify-between gap-2">
-      <SearchInput placeholder="Search branch name" resetParams={["page"]} />
+      <SearchInput placeholder="Search branch name…" resetParams={["page"]} />
       <Switch
         checked={showArchived ?? false}
         onCheckedChange={handleArchivedChange}
         label="Show archived"
-        variant="small"
+        variant="secondary/small"
       />
     </div>
   );
@@ -673,7 +655,13 @@ function PurchaseBranchesModal({
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const data = fetcher.data;
-    if (fetcher.state === "idle" && data !== null && typeof data === "object" && "ok" in data && data.ok) {
+    if (
+      fetcher.state === "idle" &&
+      data !== null &&
+      typeof data === "object" &&
+      "ok" in data &&
+      data.ok
+    ) {
       setOpen(false);
     }
   }, [fetcher.state, fetcher.data]);

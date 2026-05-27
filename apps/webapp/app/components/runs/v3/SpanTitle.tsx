@@ -55,20 +55,24 @@ function SpanAccessory({
     case "pills": {
       return (
         <span className="flex items-center gap-1">
-          {accessory.items.map((item, index) => (
-            <SpanPill key={index} text={item.text} icon={item.icon} />
-          ))}
+          {accessory.items
+            .filter((item) => typeof item.text === "string")
+            .map((item, index) => (
+              <SpanPill key={index} text={item.text} icon={item.icon} />
+            ))}
         </span>
       );
     }
     default: {
       return (
         <span className={cn("flex gap-1")}>
-          {accessory.items.map((item, index) => (
-            <span key={index} className={cn("inline-flex items-center gap-1")}>
-              {item.text}
-            </span>
-          ))}
+          {accessory.items
+            .filter((item) => typeof item.text === "string")
+            .map((item, index) => (
+              <span key={index} className={cn("inline-flex items-center gap-1")}>
+                {item.text}
+              </span>
+            ))}
         </span>
       );
     }
@@ -104,16 +108,18 @@ export function SpanCodePathAccessory({
         className
       )}
     >
-      {accessory.items.map((item, index) => (
-        <Fragment key={index}>
-          <span className={cn("truncate", "text-text-dimmed")}>{item.text}</span>
-          {index < accessory.items.length - 1 && (
-            <span className="text-text-dimmed">
-              <ChevronRightIcon className="size-4" />
-            </span>
-          )}
-        </Fragment>
-      ))}
+      {accessory.items
+        .filter((item) => typeof item.text === "string")
+        .map((item, index, filtered) => (
+          <Fragment key={index}>
+            <span className={cn("truncate", "text-text-dimmed")}>{item.text}</span>
+            {index < filtered.length - 1 && (
+              <span className="text-text-dimmed">
+                <ChevronRightIcon className="size-4" />
+              </span>
+            )}
+          </Fragment>
+        ))}
     </code>
   );
 }

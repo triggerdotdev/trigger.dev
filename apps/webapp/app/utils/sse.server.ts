@@ -1,5 +1,6 @@
 import { eventStream } from "remix-utils/sse/server";
 import { env } from "~/env.server";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 
 type SseProps = {
@@ -22,6 +23,8 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
     return new Response("SSE disabled", { status: 200 });
   }
 
+  const signal = getRequestAbortSignal();
+
   let pinger: NodeJS.Timeout | undefined = undefined;
   let updater: NodeJS.Timeout | undefined = undefined;
   let timeout: NodeJS.Timeout | undefined = undefined;
@@ -32,7 +35,7 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
     clearTimeout(timeout);
   };
 
-  return eventStream(request.signal, (send, close) => {
+  return eventStream(signal, (send, close) => {
     const safeSend = (args: { event?: string; data: string }) => {
       try {
         send(args);
@@ -60,7 +63,7 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
     };
 
     pinger = setInterval(() => {
-      if (request.signal.aborted) {
+      if (signal.aborted) {
         return abort();
       }
 
@@ -68,7 +71,7 @@ export function sse({ request, pingInterval = 1000, updateInterval = 348, run }:
     }, pingInterval);
 
     updater = setInterval(() => {
-      if (request.signal.aborted) {
+      if (signal.aborted) {
         return abort();
       }
 

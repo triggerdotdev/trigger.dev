@@ -601,6 +601,20 @@ export function VercelOnboardingModal({
   }, [completeOnboardingFetcher.data, completeOnboardingFetcher.state, state]);
 
   useEffect(() => {
+    if (state === "github-connection" && isGitHubConnectedForOnboarding) {
+      trackOnboarding("vercel onboarding github completed");
+      if (fromMarketplaceContext && nextUrl) {
+        const validUrl = safeRedirectUrl(nextUrl);
+        if (validUrl) {
+          window.location.href = validUrl;
+          return;
+        }
+      }
+      setState("completed");
+    }
+  }, [state, isGitHubConnectedForOnboarding, fromMarketplaceContext, nextUrl, trackOnboarding]);
+
+  useEffect(() => {
     if (state === "completed" && !hasTrackedCompletionRef.current) {
       hasTrackedCompletionRef.current = true;
       trackOnboarding("vercel onboarding completed", {
@@ -1114,6 +1128,7 @@ export function VercelOnboardingModal({
                   redirectParams.set("next", nextUrl);
                 }
                 const redirectUrlWithContext = `${baseSettingsPath}?${redirectParams.toString()}`;
+                const nextDirectRedirect = nextUrl ? safeRedirectUrl(nextUrl) : null;
 
                 return gitHubAppInstallations.length === 0 ? (
                   <div className="flex flex-col gap-3">
@@ -1137,7 +1152,10 @@ export function VercelOnboardingModal({
                         organizationSlug={organizationSlug}
                         projectSlug={projectSlug}
                         environmentSlug={environmentSlug}
-                        redirectUrl={redirectUrlWithContext}
+                        redirectUrl={
+                          nextDirectRedirect ??
+                          (fromMarketplaceContext ? redirectUrlWithContext : baseSettingsPath)
+                        }
                         preventDismiss={fromMarketplaceContext}
                       />
                       <span className="flex items-center gap-1 text-xs text-text-dimmed">

@@ -1,20 +1,14 @@
 import { z } from "zod";
-import {
-  ApiAuthenticationResultSuccess,
-  authenticateApiRequestWithFailure,
-} from "../apiAuth.server";
+import { ApiAuthenticationResultSuccess } from "../apiAuth.server";
 import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
-import {
-  AuthorizationAction,
-  AuthorizationResources,
-  checkAuthorization,
-} from "../authorization.server";
 import { logger } from "../logger.server";
+import { rbac } from "../rbac.server";
+import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import {
-  authenticateApiRequestWithPersonalAccessToken,
   PersonalAccessTokenAuthenticationResult,
+  updateLastAccessedAtIfStale,
 } from "../personalAccessToken.server";
 import { safeJsonParse } from "~/utils/json";
 import {
@@ -25,8 +19,154 @@ import { API_VERSIONS, getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
+import {
+  tenantContext,
+  tenantContextFromAuthEnvironment,
+} from "~/services/tenantContext.server";
+
+// Client aborts and service-level validation errors aren't bugs — they're
+// expected at API boundaries. Log them at `warn` so they stay in stdout
+// without flowing to Sentry via Logger.onError.
+function logBoundaryError(
+  message: "Error in loader" | "Error in action",
+  error: unknown,
+  url: string
+) {
+  const formatted =
+    error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : String(error);
+  const isExpected =
+    error instanceof Error &&
+    (error.name === "AbortError" ||
+      error instanceof ServiceValidationError ||
+      error instanceof EngineServiceValidationError);
+  if (isExpected) {
+    logger.warn(message, { error: formatted, url });
+  } else {
+    logger.error(message, { error: formatted, url });
+  }
+}
+
+// Bridges the RBAC plugin (source of truth for auth + abilities) to the legacy
+// ApiAuthenticationResultSuccess shape route handlers still expect. All three
+// apiBuilder call sites funnel through this helper — no handler-level changes
+// needed.
+async function authenticateRequestForApiBuilder(
+  request: Request,
+  { allowJWT }: { allowJWT: boolean }
+): Promise<
+  | { ok: false; status: 401 | 403; error: string }
+  | { ok: true; authentication: ApiAuthenticationResultSuccess; ability: RbacAbility }
+> {
+  const result = await rbac.authenticateBearer(request, { allowJWT });
+  if (!result.ok) {
+    // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
+    // allowed) — e.g. a suspended account or IP block returns 403.
+    // Forwarding the status preserves that semantic for client retry logic.
+    return { ok: false, status: result.status, error: result.error };
+  }
+
+  // Plugins return the full AuthenticatedEnvironment shape directly — no
+  // follow-up DB lookup. The fallback fetches via Prisma, the cloud plugin
+  // via Drizzle; both produce the same slim contract type.
+  const authentication: ApiAuthenticationResultSuccess = {
+    ok: true,
+    apiKey: result.environment.apiKey,
+    type: result.subject.type === "publicJWT" ? "PUBLIC_JWT" : "PRIVATE",
+    environment: result.environment,
+    realtime: result.jwt?.realtime,
+    oneTimeUse: result.jwt?.oneTimeUse,
+  };
+
+  return { ok: true, authentication, ability: result.ability };
+}
 
 type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+
+// A multi-resource auth check has two possible directions, and route authors
+// have to pick one explicitly:
+//
+//  - `anyResource(...)` — succeed if *any* element passes. Used when a single
+//    record carries multiple identifiers (a run is addressable by friendlyId /
+//    batch / tags / task) so a JWT scoped to *any* of them grants access.
+//
+//  - `everyResource(...)` — succeed only if *every* element passes. Used for
+//    batch operations where each element is a *distinct* resource and a JWT
+//    scoped to one element must not authorize the others.
+//
+// Bare `RbacResource[]` is intentionally *not* part of `AuthResource` — the
+// type system forces every multi-resource site to disambiguate. The original
+// pre-RBAC apiBuilder had a separate `superScopes: [...]` whitelist for
+// "broader-than-this-resource" access; post-RBAC that's expressed via the JWT
+// ability's wildcard branches (`*:all` and `admin*` — see
+// `internal-packages/rbac/src/ability.ts`) plus a collection-level shape
+// `{ type: "<subject>" }` (no id) in the `anyResource` array so a
+// `<action>:<subject>` JWT matches it. No code knob needed.
+//
+// Markers are Symbols so they can't collide with arbitrary RbacResource fields.
+const ANY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.anyResource");
+const EVERY_RESOURCE_MARKER = Symbol.for("@trigger.dev/rbac.everyResource");
+
+type AnyResourceAuth = {
+  readonly [ANY_RESOURCE_MARKER]: true;
+  readonly resources: readonly RbacResource[];
+};
+
+type EveryResourceAuth = {
+  readonly [EVERY_RESOURCE_MARKER]: true;
+  readonly resources: readonly RbacResource[];
+};
+
+export function anyResource(resources: RbacResource[]): AnyResourceAuth {
+  return { [ANY_RESOURCE_MARKER]: true, resources };
+}
+
+export function everyResource(resources: RbacResource[]): EveryResourceAuth {
+  return { [EVERY_RESOURCE_MARKER]: true, resources };
+}
+
+function isAnyResource(value: unknown): value is AnyResourceAuth {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[ANY_RESOURCE_MARKER] === true
+  );
+}
+
+function isEveryResource(value: unknown): value is EveryResourceAuth {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[EVERY_RESOURCE_MARKER] === true
+  );
+}
+
+type AuthResource = RbacResource | AnyResourceAuth | EveryResourceAuth;
+
+function checkAuth(
+  ability: RbacAbility,
+  action: string,
+  resource: AuthResource
+): boolean {
+  if (isEveryResource(resource)) {
+    // Empty array via [].every() is vacuously true — would let any token
+    // pass auth. Routes building everyResource() from request bodies
+    // (e.g. batch trigger items) should never produce zero elements
+    // because body validation rejects empty arrays first, but defending
+    // here anyway since the auth layer should never grant on no input.
+    if (resource.resources.length === 0) return false;
+    return resource.resources.every((r) => ability.can(action, r));
+  }
+  if (isAnyResource(resource)) {
+    // Symmetric guard: anyResource([]) is benign for most abilities
+    // (.some() is false on empty), but the permissive ability would
+    // still grant. Treat empty as "no resource declared" → deny.
+    if (resource.resources.length === 0) return false;
+    return ability.can(action, [...resource.resources]);
+  }
+  return ability.can(action, resource);
+}
 
 type ApiKeyRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
@@ -52,7 +192,7 @@ type ApiKeyRouteBuilderOptions<
   ) => Promise<TResource | undefined>;
   shouldRetryNotFound?: boolean;
   authorization?: {
-    action: AuthorizationAction;
+    action: string;
     resource: (
       resource: NonNullable<TResource>,
       params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
@@ -66,8 +206,7 @@ type ApiKeyRouteBuilderOptions<
       headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<THeadersSchema>
         : undefined
-    ) => AuthorizationResources;
-    superScopes?: string[];
+    ) => AuthResource;
   };
 };
 
@@ -120,23 +259,15 @@ export function createLoaderApiRoute<
     }
 
     try {
-      const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
-
-      if (!authenticationResult) {
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
+      if (!authResult.ok) {
         return await wrapResponse(
           request,
-          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          json({ error: authResult.error }, { status: authResult.status }),
           corsStrategy !== "none"
         );
       }
-
-      if (!authenticationResult.ok) {
-        return await wrapResponse(
-          request,
-          json({ error: authenticationResult.error }, { status: 401 }),
-          corsStrategy !== "none"
-        );
-      }
+      const { authentication: authenticationResult, ability } = authResult;
 
       let parsedParams: any = undefined;
       if (paramsSchema) {
@@ -203,7 +334,7 @@ export function createLoaderApiRoute<
       }
 
       if (authorization) {
-        const { action, resource: authResource, superScopes } = authorization;
+        const { action, resource: authResource } = authorization;
         const $authResource = authResource(
           resource,
           parsedParams,
@@ -211,26 +342,12 @@ export function createLoaderApiRoute<
           parsedHeaders
         );
 
-        logger.debug("Checking authorization", {
-          action,
-          resource: $authResource,
-          superScopes,
-          scopes: authenticationResult.scopes,
-        });
-
-        const authorizationResult = checkAuthorization(
-          authenticationResult,
-          action,
-          $authResource,
-          superScopes
-        );
-
-        if (!authorizationResult.authorized) {
+        if (!checkAuth(ability, action, $authResource)) {
           return await wrapResponse(
             request,
             json(
               {
-                error: `Unauthorized: ${authorizationResult.reason}`,
+                error: "Unauthorized",
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -244,15 +361,19 @@ export function createLoaderApiRoute<
 
       const apiVersion = getApiVersion(request);
 
-      const result = await handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        authentication: authenticationResult,
-        request,
-        resource,
-        apiVersion,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            authentication: authenticationResult,
+            request,
+            resource,
+            apiVersion,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {
@@ -260,17 +381,7 @@ export function createLoaderApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in loader", {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in loader", error, request.url);
 
         return await wrapResponse(
           request,
@@ -295,6 +406,37 @@ type PATRouteBuilderOptions<
   searchParams?: TSearchParamsSchema;
   headers?: THeadersSchema;
   corsStrategy?: "all" | "none";
+  // Resolves the target org/project for the request. Fed to
+  // `rbac.authenticatePat` so the plugin can compute the user's role
+  // floor (their authority in that org) for the cap intersection.
+  // When omitted, the PAT runs in identity-only mode — no role floor,
+  // no per-route ability gating beyond what authorization (if any)
+  // declares against a permissive baseline. Routes added before TRI-9087
+  // run in this mode by default.
+  context?: (
+    params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+      ? z.infer<TParamsSchema>
+      : undefined,
+    request: Request
+  ) =>
+    | { organizationId?: string; projectId?: string }
+    | Promise<{ organizationId?: string; projectId?: string }>;
+  authorization?: {
+    action: string;
+    resource: (
+      params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TParamsSchema>
+        : undefined,
+      searchParams: TSearchParamsSchema extends
+        | z.ZodFirstPartySchemaTypes
+        | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<TSearchParamsSchema>
+        : undefined,
+      headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+        ? z.infer<THeadersSchema>
+        : undefined
+    ) => AuthResource;
+  };
 };
 
 type PATHandlerFunction<
@@ -314,6 +456,7 @@ type PATHandlerFunction<
     ? z.infer<THeadersSchema>
     : undefined;
   authentication: PersonalAccessTokenAuthenticationResult;
+  ability: RbacAbility;
   request: Request;
   apiVersion: API_VERSIONS;
 }) => Promise<Response>;
@@ -332,6 +475,8 @@ export function createLoaderPATApiRoute<
       searchParams: searchParamsSchema,
       headers: headersSchema,
       corsStrategy = "none",
+      context: contextFn,
+      authorization,
     } = options;
 
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
@@ -339,16 +484,6 @@ export function createLoaderPATApiRoute<
     }
 
     try {
-      const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-      if (!authenticationResult) {
-        return await wrapResponse(
-          request,
-          json({ error: "Invalid or Missing API key" }, { status: 401 }),
-          corsStrategy !== "none"
-        );
-      }
-
       let parsedParams: any = undefined;
       if (paramsSchema) {
         const parsed = paramsSchema.safeParse(params);
@@ -401,11 +536,75 @@ export function createLoaderPATApiRoute<
 
       const apiVersion = getApiVersion(request);
 
+      // Single PAT auth roundtrip. `rbac.authenticatePat` validates the
+      // token AND computes the cap-and-floor ability in one DB query
+      // (the OSS fallback does the validation only and returns a
+      // permissive ability; the cloud plugin returns the joined
+      // cap/floor result). We previously called
+      // `authenticateApiRequestWithPersonalAccessToken` here first as
+      // belt-and-braces, but that meant two PAT lookups per request
+      // for routes with `context`/`authorization` declared. Routes
+      // without those still get a working `authentication` object —
+      // we pass an empty ctx and the fallback validates fine.
+      //
+      // `lastAccessedAt` is plumbed through the plugin result so the
+      // host can decide whether to fire the update (smart-skip in
+      // `updateLastAccessedAtIfStale` — no DB roundtrip when the
+      // cached timestamp is fresher than the throttle window).
+      const ctx = contextFn ? await contextFn(parsedParams, request) : {};
+      const patAuth = await rbac.authenticatePat(request, ctx);
+      if (!patAuth.ok) {
+        return await wrapResponse(
+          request,
+          json({ error: patAuth.error }, { status: patAuth.status }),
+          corsStrategy !== "none"
+        );
+      }
+
+      const authenticationResult: PersonalAccessTokenAuthenticationResult = {
+        userId: patAuth.userId,
+      };
+      const ability: RbacAbility = patAuth.ability;
+
+      // Fire the `lastAccessedAt` write conditionally. Two-layer throttle:
+      // JS skips the SQL when the value is fresh (most requests); the
+      // SQL `WHERE` clause inside the helper is race-safe for concurrent
+      // auths that both decide to fire. Don't `await` it from the
+      // critical path? — it's a one-row update on a small hot table and
+      // we want to surface failures, so it's awaited (same shape as the
+      // legacy `authenticatePersonalAccessToken`).
+      await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+
+      if (authorization) {
+        const $resource = authorization.resource(parsedParams, parsedSearchParams, parsedHeaders);
+        if (!checkAuth(ability, authorization.action, $resource)) {
+          return await wrapResponse(
+            request,
+            json(
+              {
+                error: "Unauthorized",
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
+      // PAT auth carries `userId` but no environment — enrich the scope
+      // the Express middleware established with the authenticated user so
+      // Sentry events from this handler get user-level attribution.
+      tenantContext.enrich({ userId: authenticationResult.userId });
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
         headers: parsedHeaders,
         authentication: authenticationResult,
+        ability,
         request,
         apiVersion,
       });
@@ -454,7 +653,7 @@ type ApiKeyActionRouteBuilderOptions<
       : undefined
   ) => Promise<TResource | undefined>;
   authorization?: {
-    action: AuthorizationAction;
+    action: string;
     resource: (
       params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TParamsSchema>
@@ -469,9 +668,14 @@ type ApiKeyActionRouteBuilderOptions<
         : undefined,
       body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
         ? z.infer<TBodySchema>
-        : undefined
-    ) => AuthorizationResources;
-    superScopes?: string[];
+        : undefined,
+      // The resolved resource from `findResource`. `undefined` when the route
+      // doesn't declare `findResource`. Routes that need to expand the auth
+      // scope to alternate identifiers of the same row (e.g. friendlyId +
+      // externalId for sessions) read it here so a JWT minted for either form
+      // authorizes both URL forms.
+      resource: TResource | undefined
+    ) => AuthResource;
   };
   maxContentLength?: number;
   body?: TBodySchema;
@@ -559,29 +763,25 @@ export function createActionApiRoute<
     }
 
     try {
-      const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
-
-      if (!authenticationResult) {
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
+      if (!authResult.ok) {
         return await wrapResponse(
           request,
-          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          json({ error: authResult.error }, { status: authResult.status }),
           corsStrategy !== "none"
         );
       }
-
-      if (!authenticationResult.ok) {
-        return await wrapResponse(
-          request,
-          json({ error: authenticationResult.error }, { status: 401 }),
-          corsStrategy !== "none"
-        );
-      }
+      const { authentication: authenticationResult, ability } = authResult;
 
       if (maxContentLength) {
         const contentLength = request.headers.get("content-length");
 
         if (!contentLength || parseInt(contentLength) > maxContentLength) {
-          return json({ error: "Request body too large" }, { status: 413 });
+          return await wrapResponse(
+            request,
+            json({ error: "Request body too large" }, { status: 413 }),
+            corsStrategy !== "none"
+          );
         }
       }
 
@@ -667,30 +867,40 @@ export function createActionApiRoute<
         parsedBody = body.data;
       }
 
+      // Resolve the resource before authorization so the auth scope check
+      // can expand to alternate identifiers of the same row (e.g. a Session
+      // is addressable by both `friendlyId` and `externalId` and a JWT minted
+      // for either form should authorize both URL forms). Mirrors the
+      // ordering in `createLoaderApiRoute`.
+      const resource = options.findResource
+        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
+        : undefined;
+
+      // Run authorization first — but with the resolved resource available
+      // as the 5th arg so the auth scope check can expand to alternate
+      // identifiers of the same row (e.g. a Session is addressable by both
+      // `friendlyId` and `externalId`). Resource-null is checked AFTER auth
+      // so:
+      //   - underscoped JWT + missing resource → 403 (no info leak)
+      //   - underscoped JWT + existing resource → 403 (existing behavior)
+      //   - PRIVATE key + missing resource → auth passes → 404 (correct)
+      //   - PRIVATE key + existing resource → auth passes → handler runs
       if (authorization) {
-        const { action, resource, superScopes } = authorization;
-        const $resource = resource(parsedParams, parsedSearchParams, parsedHeaders, parsedBody);
-
-        logger.debug("Checking authorization", {
-          action,
-          resource: $resource,
-          superScopes,
-          scopes: authenticationResult.scopes,
-        });
-
-        const authorizationResult = checkAuthorization(
-          authenticationResult,
-          action,
-          $resource,
-          superScopes
+        const { action, resource: authResource } = authorization;
+        const $resource = authResource(
+          parsedParams,
+          parsedSearchParams,
+          parsedHeaders,
+          parsedBody,
+          resource
         );
 
-        if (!authorizationResult.authorized) {
+        if (!checkAuth(ability, action, $resource)) {
           return await wrapResponse(
             request,
             json(
               {
-                error: `Unauthorized: ${authorizationResult.reason}`,
+                error: "Unauthorized",
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -702,10 +912,6 @@ export function createActionApiRoute<
         }
       }
 
-      const resource = options.findResource
-        ? await options.findResource(parsedParams, authenticationResult, parsedSearchParams)
-        : undefined;
-
       if (options.findResource && !resource) {
         return await wrapResponse(
           request,
@@ -714,15 +920,19 @@ export function createActionApiRoute<
         );
       }
 
-      const result = await handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        body: parsedBody,
-        authentication: authenticationResult,
-        request,
-        resource,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            body: parsedBody,
+            authentication: authenticationResult,
+            request,
+            resource,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {
@@ -730,17 +940,7 @@ export function createActionApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in action", {
-          error:
-            error instanceof Error
-              ? {
-                  name: error.name,
-                  message: error.message,
-                  stack: error.stack,
-                }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in action", error, request.url);
 
         return await wrapResponse(
           request,
@@ -795,9 +995,8 @@ type MultiMethodApiRouteOptions<
   allowJWT?: boolean;
   corsStrategy?: "all" | "none";
   authorization?: {
-    action: AuthorizationAction;
-    resource: (params: InferZod<TParamsSchema>) => AuthorizationResources;
-    superScopes?: string[];
+    action: string;
+    resource: (params: InferZod<TParamsSchema>) => AuthResource;
   };
   maxContentLength?: number;
   methods: Partial<
@@ -842,33 +1041,22 @@ export function createMultiMethodApiRoute<
     if (!methodConfig) {
       return await wrapResponse(
         request,
-        json(
-          { error: "Method not allowed" },
-          { status: 405, headers: { Allow: allowedMethods } }
-        ),
+        json({ error: "Method not allowed" }, { status: 405, headers: { Allow: allowedMethods } }),
         corsStrategy !== "none"
       );
     }
 
     try {
       // Authenticate
-      const authenticationResult = await authenticateApiRequestWithFailure(request, { allowJWT });
-
-      if (!authenticationResult) {
+      const authResult = await authenticateRequestForApiBuilder(request, { allowJWT });
+      if (!authResult.ok) {
         return await wrapResponse(
           request,
-          json({ error: "Invalid or Missing API key" }, { status: 401 }),
+          json({ error: authResult.error }, { status: authResult.status }),
           corsStrategy !== "none"
         );
       }
-
-      if (!authenticationResult.ok) {
-        return await wrapResponse(
-          request,
-          json({ error: authenticationResult.error }, { status: 401 }),
-          corsStrategy !== "none"
-        );
-      }
+      const { authentication: authenticationResult, ability } = authResult;
 
       if (maxContentLength) {
         const contentLength = request.headers.get("content-length");
@@ -936,29 +1124,15 @@ export function createMultiMethodApiRoute<
 
       // Authorize
       if (authorization) {
-        const { action, resource, superScopes } = authorization;
+        const { action, resource } = authorization;
         const $resource = resource(parsedParams);
 
-        logger.debug("Checking authorization", {
-          action,
-          resource: $resource,
-          superScopes,
-          scopes: authenticationResult.scopes,
-        });
-
-        const authorizationResult = checkAuthorization(
-          authenticationResult,
-          action,
-          $resource,
-          superScopes
-        );
-
-        if (!authorizationResult.authorized) {
+        if (!checkAuth(ability, action, $resource)) {
           return await wrapResponse(
             request,
             json(
               {
-                error: `Unauthorized: ${authorizationResult.reason}`,
+                error: "Unauthorized",
                 code: "unauthorized",
                 param: "access_token",
                 type: "authorization",
@@ -1003,14 +1177,18 @@ export function createMultiMethodApiRoute<
       }
 
       // Dispatch to method handler
-      const result = await methodConfig.handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        body: parsedBody,
-        authentication: authenticationResult,
-        request,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          methodConfig.handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            body: parsedBody,
+            authentication: authenticationResult,
+            request,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {
@@ -1018,13 +1196,7 @@ export function createMultiMethodApiRoute<
           return await wrapResponse(request, error, corsStrategy !== "none");
         }
 
-        logger.error("Error in action", {
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : String(error),
-          url: request.url,
-        });
+        logBoundaryError("Error in action", error, request.url);
 
         return await wrapResponse(
           request,
@@ -1162,17 +1334,7 @@ export function createLoaderWorkerApiRoute<
         return error;
       }
 
-      logger.error("Error in loader", {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-              }
-            : String(error),
-        url: request.url,
-      });
+      logBoundaryError("Error in loader", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -1337,17 +1499,7 @@ export function createActionWorkerApiRoute<
         return json({ error: error.message }, { status: error.status ?? 422 });
       }
 
-      logger.error("Error in action", {
-        error:
-          error instanceof Error
-            ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack,
-              }
-            : String(error),
-        url: request.url,
-      });
+      logBoundaryError("Error in action", error, request.url);
 
       return json({ error: "Internal Server Error" }, { status: 500 });
     }

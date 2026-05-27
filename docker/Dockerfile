@@ -25,7 +25,7 @@ COPY --chown=node:node patches ./patches
 FROM base AS dev-deps
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm with the exact version from packageManager
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 ENV NODE_ENV=development
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --no-frozen-lockfile
 # Generate Prisma client here where all deps are installed
@@ -36,7 +36,7 @@ RUN pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/databa
 FROM base AS production-deps
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm with the exact version from packageManager
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 ENV NODE_ENV=production
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --prod --no-frozen-lockfile
 
@@ -46,7 +46,7 @@ FROM base AS builder
 RUN apt-get update && apt-get install -y openssl dumb-init ca-certificates
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm with the exact version from packageManager
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
 ARG SENTRY_RELEASE
 ARG SENTRY_ORG
@@ -98,19 +98,25 @@ ARG BUILD_APP_VERSION
 ARG BUILD_GIT_SHA
 ARG BUILD_GIT_REF_NAME
 ARG BUILD_TIMESTAMP_SECONDS
+ARG BUILD_TIMESTAMP_RFC3339
 ENV BUILD_APP_VERSION=${BUILD_APP_VERSION} \
     BUILD_GIT_SHA=${BUILD_GIT_SHA} \
     BUILD_GIT_REF_NAME=${BUILD_GIT_REF_NAME} \
     BUILD_TIMESTAMP_SECONDS=${BUILD_TIMESTAMP_SECONDS}
 
+LABEL org.opencontainers.image.source="https://github.com/triggerdotdev/trigger.dev" \
+      org.opencontainers.image.revision="${BUILD_GIT_SHA}" \
+      org.opencontainers.image.version="${BUILD_APP_VERSION}" \
+      org.opencontainers.image.created="${BUILD_TIMESTAMP_RFC3339}"
+
 EXPOSE 3000
 
 # Add global pnpm shims and install pnpm during build (root user)
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
 USER node
 
 # Ensure pnpm is installed during build and not silently downloaded at runtime (node user)
-RUN corepack prepare pnpm@10.23.0 --activate
+RUN corepack prepare pnpm@10.33.2 --activate
 
 CMD ["./scripts/entrypoint.sh"]

@@ -12,23 +12,23 @@ interface MfaToggleProps {
 export function MfaToggle({ isEnabled, onToggle }: MfaToggleProps) {
   return (
     <Form method="post" className="w-full">
-      <InputGroup className="mb-4">
-        <Label>Multi-factor authentication</Label>
-        <Paragraph variant="small">
-          Enable an extra layer of security by requiring a one-time code from your authenticator
-          app (TOTP) each time you log in.
-        </Paragraph>
-      </InputGroup>
-      <div className="flex items-center justify-between">
-        <Switch
-          id="mfa"
-          variant="medium"
-          label={isEnabled ? "Enabled" : "Enable"}
-          labelPosition="right"
-          className="-ml-2 w-fit pr-3"
-          checked={isEnabled}
-          onCheckedChange={onToggle}
-        />
+      <div className="flex w-full items-center justify-between gap-4">
+        <InputGroup className="flex-1">
+          <Label htmlFor="mfa">Multi-factor authentication</Label>
+          <Paragraph variant="small">
+            Require a one-time code from your authenticator app (TOTP).
+          </Paragraph>
+        </InputGroup>
+        <div className="flex flex-none items-center">
+          <Switch
+            id="mfa"
+            variant="medium"
+            labelPosition="right"
+            className="w-fit pr-3"
+            checked={isEnabled}
+            onCheckedChange={onToggle}
+          />
+        </div>
       </div>
     </Form>
   );

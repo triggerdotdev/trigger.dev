@@ -1,0 +1,10 @@
+name = "cf-trust-test-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+TRIGGER_API_UPSTREAM = "https://api.trigger.dev"
+
+[dev]
+port = 8787

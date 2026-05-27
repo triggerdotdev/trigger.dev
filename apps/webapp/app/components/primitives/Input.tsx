@@ -67,6 +67,7 @@ const variants = {
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   variant?: keyof typeof variants;
   icon?: RenderIcon;
+  iconClassName?: string;
   accessory?: React.ReactNode;
   fullWidth?: boolean;
   containerClassName?: string;
@@ -81,6 +82,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       fullWidth = true,
       variant = "medium",
       icon,
+      iconClassName,
       containerClassName,
       ...props
     },
@@ -91,7 +93,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     const variantContainerClassName = variants[variant].container;
     const inputClassName = variants[variant].input;
-    const iconClassName = variants[variant].iconSize;
+    const variantIconClassName = variants[variant].iconSize;
 
     return (
       <div
@@ -106,7 +108,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       >
         {icon && (
           <div className="pointer-events-none flex items-center">
-            <Icon icon={icon} className={cn(iconClassName, "text-text-dimmed")} />
+            <Icon
+              icon={icon}
+              className={cn(variantIconClassName, "text-text-dimmed", iconClassName)}
+            />
           </div>
         )}
         <input

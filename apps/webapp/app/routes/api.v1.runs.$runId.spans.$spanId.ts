@@ -3,8 +3,11 @@ import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { extractAISpanData } from "~/components/runs/v3/ai";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 
 const ParamsSchema = z.object({
@@ -28,17 +31,24 @@ export const loader = createLoaderApiRoute(
     shouldRetryNotFound: true,
     authorization: {
       action: "read",
-      resource: (run) => ({
-        runs: run.friendlyId,
-        tags: run.runTags,
-        batch: run.batchId ? BatchId.toFriendlyId(run.batchId) : undefined,
-        tasks: run.taskIdentifier,
-      }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (run) => {
+        const resources = [
+          { type: "runs", id: run.friendlyId },
+          { type: "tasks", id: run.taskIdentifier },
+          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+        ];
+        if (run.batchId) {
+          resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
+        }
+        return anyResource(resources);
+      },
     },
   },
   async ({ params, resource: run, authentication }) => {
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const eventRepository = await getEventRepositoryForStore(
+      run.taskEventStore,
+      authentication.environment.organization.id
+    );
     const eventStore = getTaskEventStoreTableForRun(run);
 
     const span = await eventRepository.getSpan(

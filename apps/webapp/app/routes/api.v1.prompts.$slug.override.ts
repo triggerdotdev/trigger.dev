@@ -40,8 +40,7 @@ const { action, loader } = createMultiMethodApiRoute({
   corsStrategy: "all",
   authorization: {
     action: "update",
-    resource: (params) => ({ prompts: params.slug }),
-    superScopes: ["admin"],
+    resource: (params) => ({ type: "prompts", id: params.slug }),
   },
   methods: {
     POST: {

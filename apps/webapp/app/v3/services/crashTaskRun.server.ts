@@ -7,7 +7,7 @@ import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { CRASHABLE_ATTEMPT_STATUSES, isCrashableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
-import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
+import { getEventRepositoryForStore } from "../eventRepository/index.server";
 
 export type CrashTaskRunServiceOptions = {
   reason?: string;
@@ -120,7 +120,10 @@ export class CrashTaskRunService extends BaseService {
       },
     });
 
-    const eventRepository = resolveEventRepositoryForStore(crashedTaskRun.taskEventStore);
+    const eventRepository = await getEventRepositoryForStore(
+      crashedTaskRun.taskEventStore,
+      crashedTaskRun.runtimeEnvironment.organizationId
+    );
 
     const [createAttemptFailedEventError] = await tryCatch(
       eventRepository.completeFailedRunEvent({
