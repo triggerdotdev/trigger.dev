@@ -131,7 +131,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Schedules" />
+        <PageTitle title="Scheduled tasks" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>

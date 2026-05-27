@@ -404,7 +404,7 @@ export function SideMenu({
                   show the regular icon; when expanded show the tree connector
                   so the hierarchy reads visually. */}
               <SideMenuItem
-                name="Agents"
+                name="Agent tasks"
                 icon={isCollapsed ? CubeSparkleIcon : TreeConnectorBranch}
                 activeIconColor={isCollapsed ? "text-agents" : undefined}
                 inactiveIconColor={isCollapsed ? "text-agents" : "text-charcoal-700"}
@@ -414,7 +414,7 @@ export function SideMenu({
                 indented
               />
               <SideMenuItem
-                name="Standard"
+                name="Standard tasks"
                 icon={isCollapsed ? TaskIcon : TreeConnectorBranch}
                 activeIconColor={isCollapsed ? "text-tasks" : undefined}
                 inactiveIconColor={isCollapsed ? "text-tasks" : "text-charcoal-700"}
@@ -425,7 +425,7 @@ export function SideMenu({
                 indented
               />
               <SideMenuItem
-                name="Scheduled"
+                name="Scheduled tasks"
                 icon={isCollapsed ? ClockIcon : TreeConnectorEnd}
                 activeIconColor={isCollapsed ? "text-schedules" : undefined}
                 inactiveIconColor={isCollapsed ? "text-schedules" : "text-charcoal-700"}

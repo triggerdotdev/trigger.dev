@@ -109,7 +109,7 @@ export default function AgentsPage() {
     return (
       <>
         <NavBar>
-          <PageTitle title="Agents" />
+          <PageTitle title="Agent tasks" />
         </NavBar>
         <PageBody>
           <MainCenteredContainer>
@@ -130,7 +130,7 @@ export default function AgentsPage() {
   return (
     <>
       <NavBar>
-        <PageTitle title="Agents" />
+        <PageTitle title="Agent tasks" />
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid h-full grid-rows-1">
