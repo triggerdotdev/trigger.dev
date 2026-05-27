@@ -27,6 +27,9 @@ export const INVALID_UTF16_SENTINEL = "[invalid-utf16]";
  * with an exponent and are accepted by CH at any magnitude, so they're
  * left alone.
  */
+const UINT64_MAX = 18446744073709551615n;
+const INT64_MIN = -9223372036854775808n;
+
 function isUnsafeJsonInteger(value: number): boolean {
   if (!Number.isFinite(value)) return false;
   if (!Number.isInteger(value)) return false;
@@ -36,7 +39,14 @@ function isUnsafeJsonInteger(value: number): boolean {
   // which CH accepts as Float64 at any magnitude. So the dangerous band
   // is strictly between the Int64/UInt64 boundary and 1e21.
   if (Math.abs(value) >= 1e21) return false;
-  return value > 18446744073709551615 || value < -9223372036854775808;
+  // Compare via BigInt for exactness. The Number literal 18446744073709551615
+  // is rounded to 2**64 in float64 (the float spacing near 2^64 is 2048), so a
+  // direct `value > 18446744073709551615` would miss a Number whose float64
+  // value is exactly 2**64 — `JSON.stringify` of that emits
+  // "18446744073709552000", which exceeds UInt64.MAX and ClickHouse rejects.
+  // `BigInt(value)` is safe here because we already gated on Number.isInteger.
+  const asBigInt = BigInt(value);
+  return asBigInt > UINT64_MAX || asBigInt < INT64_MIN;
 }
 
 export type SanitizeResult = {

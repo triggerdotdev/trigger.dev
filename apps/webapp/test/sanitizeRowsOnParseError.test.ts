@@ -122,6 +122,17 @@ describe("sanitizeUnknownInPlace", () => {
     expect(result.fixed).toBe(1);
   });
 
+  it("catches the float64 boundary at exactly 2**64 (UInt64.MAX + 1)", () => {
+    // float64 cannot represent UInt64.MAX (2^64 - 1) exactly — the literal
+    // 18446744073709551615 in JS source rounds to 2^64. JSON.stringify
+    // emits this Number as "18446744073709552000", which exceeds UInt64.MAX
+    // and trips ClickHouse. Regression for the BigInt-based comparison;
+    // a naïve `value > 18446744073709551615` would let this pass.
+    const result = sanitizeUnknownInPlace(2 ** 64);
+    expect(result.value).toBe("18446744073709552000");
+    expect(result.fixed).toBe(1);
+  });
+
   it("replaces an integer-valued Number below Int64.MIN with its string form", () => {
     // -9223372036854775809 is the first failing negative; in float64 it
     // rounds to the same representation as Int64.MIN (-9223372036854775808),
