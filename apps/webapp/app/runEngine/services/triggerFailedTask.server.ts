@@ -291,7 +291,7 @@ export class TriggerFailedTaskService {
         }
       }
 
-      await this.engine.createFailedTaskRun({
+      const failedRun = await this.engine.createFailedTaskRun({
         friendlyId: failedRunFriendlyId,
         environment: {
           id: opts.environmentId,
@@ -313,7 +313,31 @@ export class TriggerFailedTaskService {
         depth,
         resumeParentOnCompletion: opts.resumeParentOnCompletion,
         batch: opts.batch,
+        // Suppress the engine's `runFailed` bus emit — the listener
+        // (`runEngineHandlers.server.ts` `runFailed`) calls
+        // `completeFailedRunEvent`, which writes a ClickHouse trace event
+        // row keyed on (traceId, spanId). This caller has no trace
+        // context (the method name is literally `callWithoutTraceEvents`)
+        // so the emit would write a row with empty traceId/spanId —
+        // orphan event in the store. We still want alert coverage,
+        // though, so enqueue directly below.
+        emitRunFailedEvent: false,
       });
+
+      // Alerts side of `runFailed` — the engine emit was suppressed
+      // above so we don't create an orphan trace event; enqueue the
+      // alert directly so customers' ERROR channels still see the
+      // failure. Best-effort, mirroring the `call()` path.
+      try {
+        await PerformTaskRunAlertsService.enqueue(failedRun.id);
+      } catch (alertsError) {
+        logger.warn("TriggerFailedTaskService.callWithoutTraceEvents: alert enqueue failed", {
+          taskId: opts.taskId,
+          friendlyId: failedRun.friendlyId,
+          error:
+            alertsError instanceof Error ? alertsError.message : String(alertsError),
+        });
+      }
 
       return failedRunFriendlyId;
     } catch (createError) {

@@ -53,11 +53,13 @@ export function createDrainerHandler(deps: {
           })
         : context.active();
 
-    // Cancel-wins-over-trigger. If a cancel API call
-    // landed on this entry while it was QUEUED, the snapshot carries
-    // `cancelledAt` + `cancelReason`. Skip the normal materialise path
-    // and write a CANCELED PG row directly. The existing runCancelled
-    // handler writes the TaskEvent.
+    // Cancel-wins-over-trigger. If a cancel API call landed on this
+    // entry while it was QUEUED, the snapshot carries `cancelledAt` +
+    // `cancelReason`. Skip the normal materialise path and write a
+    // CANCELED PG row directly. The `runCancelled` bus emit is
+    // suppressed here because a buffered-only run never had a primary
+    // trace event written for it — the runCancelled handler's
+    // `cancelRunEvent` lookup would fail and log noise per cancel.
     const cancelledAtStr =
       typeof input.payload.cancelledAt === "string" ? input.payload.cancelledAt : undefined;
     if (cancelledAtStr) {
@@ -79,6 +81,7 @@ export function createDrainerHandler(deps: {
                 snapshot: input.payload as any,
                 cancelledAt: new Date(cancelledAtStr),
                 cancelReason,
+                emitRunCancelledEvent: false,
               },
               deps.prisma,
             );

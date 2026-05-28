@@ -145,6 +145,57 @@ describe("RunEngine.createCancelledRun", () => {
   );
 
   containerTest(
+    "emitRunCancelledEvent: false suppresses the bus emit but still writes the CANCELED PG row",
+    async ({ prisma, redisOptions }) => {
+      // The mollifier drainer passes `emitRunCancelledEvent: false` for
+      // buffered-only runs because the runCancelled handler's
+      // `cancelRunEvent` lookup fails for them (no primary trace event
+      // span exists — the mollifier gate never called
+      // `repository.traceEvent` for this run). Without the gate, every
+      // cancelled buffered run produces a `[runCancelled] Failed to
+      // cancel run event` error log. This pins the gate's contract: PG
+      // row still lands, bus emit suppressed.
+      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = new RunEngine({ prisma, ...baseEngineOptions(redisOptions) });
+      const captured: EventBusEventArgs<"runCancelled">[0][] = [];
+      engine.eventBus.on("runCancelled", (event) => {
+        captured.push(event);
+      });
+
+      try {
+        const friendlyId = freshRunId();
+        const result = await engine.createCancelledRun({
+          snapshot: {
+            friendlyId,
+            environment: env,
+            taskIdentifier: "test-task",
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "0000000000000000eeee000000000000",
+            spanId: "ffff000000000000",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          cancelledAt: new Date(),
+          cancelReason: "Test cancel (silent emit)",
+          emitRunCancelledEvent: false,
+        });
+
+        // PG row still lands.
+        expect(result.status).toBe("CANCELED");
+        expect(result.friendlyId).toBe(friendlyId);
+        // Bus emit suppressed.
+        expect(captured).toHaveLength(0);
+      } finally {
+        await engine.quit();
+      }
+    },
+  );
+
+  containerTest(
     "idempotent on double-pop: second call returns existing row without re-emitting",
     async ({ prisma, redisOptions }) => {
       const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

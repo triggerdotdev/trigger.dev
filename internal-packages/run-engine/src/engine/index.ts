@@ -458,25 +458,45 @@ export class RunEngine {
    * Skips: queue insertion (no execution), waitpoint creation (the
    * mollifier gate refuses to buffer triggerAndWait children, so a
    * cancelled buffered run never has a waiting parent to unblock),
-   * concurrency reservation. Emits `runCancelled` so the existing
-   * TaskEvent handler writes the cancellation event row — the only side
-   * effect PG-side cancel has today per audit.
+   * concurrency reservation. Emits `runCancelled` by default — callers
+   * working on buffered-only runs (no primary trace event exists) can
+   * opt out via `emitRunCancelledEvent: false` to avoid the systematic
+   * "Failed to cancel run event" noise the handler would log when its
+   * `cancelRunEvent` call can't find a span.
    *
    * Idempotent: if a row with the same friendlyId already exists (double
    * drainer pop after requeue), Prisma's P2002 unique-constraint violation
    * is caught and the existing row is returned. The duplicate runCancelled
    * emission is skipped — the original drain's emit already wrote the
-   * TaskEvent.
+   * TaskEvent (when applicable).
    */
   async createCancelledRun(
     {
       snapshot,
       cancelledAt,
       cancelReason,
+      emitRunCancelledEvent = true,
     }: {
       snapshot: TriggerParams;
       cancelledAt: Date;
       cancelReason: string;
+      /**
+       * Whether to emit the `runCancelled` engine-bus event. Defaults to
+       * true.
+       *
+       * Set to `false` for buffered-only runs that never had a primary
+       * trace event written (the mollifier gate never called
+       * `repository.traceEvent` for them). The `runCancelled` handler in
+       * `runEngineHandlers.server.ts` calls `cancelRunEvent`, which
+       * looks up the run's primary span in the event store — for
+       * buffered-only runs that span doesn't exist, so the lookup fails,
+       * the handler's `tryCatch` swallows it, and a "[runCancelled]
+       * Failed to cancel run event" error is logged for every cancelled
+       * buffered run. Suppressing the emit avoids that systematic noise.
+       * The CANCELED PG row is still written; only the trace-event
+       * mirror is skipped.
+       */
+      emitRunCancelledEvent?: boolean;
     },
     tx?: PrismaClientOrTransaction,
   ): Promise<TaskRun> {
@@ -567,24 +587,26 @@ export class RunEngine {
           },
         });
 
-        this.eventBus.emit("runCancelled", {
-          time: cancelledAt,
-          run: {
-            id: taskRun.id,
-            status: taskRun.status,
-            friendlyId: taskRun.friendlyId,
-            spanId: taskRun.spanId,
-            taskEventStore: taskRun.taskEventStore,
-            createdAt: taskRun.createdAt,
-            completedAt: taskRun.completedAt,
-            error,
-            updatedAt: taskRun.updatedAt,
-            attemptNumber: taskRun.attemptNumber ?? 0,
-          },
-          organization: { id: snapshot.environment.organization.id },
-          project: { id: snapshot.environment.project.id },
-          environment: { id: snapshot.environment.id },
-        });
+        if (emitRunCancelledEvent) {
+          this.eventBus.emit("runCancelled", {
+            time: cancelledAt,
+            run: {
+              id: taskRun.id,
+              status: taskRun.status,
+              friendlyId: taskRun.friendlyId,
+              spanId: taskRun.spanId,
+              taskEventStore: taskRun.taskEventStore,
+              createdAt: taskRun.createdAt,
+              completedAt: taskRun.completedAt,
+              error,
+              updatedAt: taskRun.updatedAt,
+              attemptNumber: taskRun.attemptNumber ?? 0,
+            },
+            organization: { id: snapshot.environment.organization.id },
+            project: { id: snapshot.environment.project.id },
+            environment: { id: snapshot.environment.id },
+          });
+        }
 
         return taskRun;
       } catch (err) {
@@ -819,7 +841,16 @@ export class RunEngine {
               priorityMs,
               queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
               ttl: resolvedTtl,
-              runTags: tags.length === 0 ? undefined : tags,
+              // Defensive: when the mollifier drainer replays a buffered
+              // snapshot whose payload was rewritten by a buffer-side Lua
+              // mutate (e.g. append_tags clears an empty list), cjson
+              // encodes an empty Lua table as `{}` rather than `[]`. JS
+              // parses that back as an empty object, and `{}.length` is
+              // undefined — the original `tags.length === 0` check would
+              // pass `{}` straight to Prisma's `String[]` column. Mirror
+              // the same Array.isArray guard that `createCancelledRun`
+              // uses for symmetry with the trigger replay path.
+              runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
               oneTimeUseToken,
               parentTaskRunId,
               rootTaskRunId,

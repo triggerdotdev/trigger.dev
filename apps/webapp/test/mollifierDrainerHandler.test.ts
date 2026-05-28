@@ -222,6 +222,45 @@ describe("createDrainerHandler", () => {
     expect(createFailedTaskRun).toHaveBeenCalledOnce();
   });
 
+  it("calls createCancelledRun with emitRunCancelledEvent: false (suppresses orphan trace-event log noise)", async () => {
+    // Buffered-only runs never had a primary trace event written for
+    // them — the mollifier gate skipped `repository.traceEvent` since
+    // the run hadn't materialised in PG yet. The `runCancelled` handler
+    // would log `[runCancelled] Failed to cancel run event` for every
+    // cancelled buffered run if we let the emit fire. Suppress it.
+    const friendlyId = RunId.generate().friendlyId;
+    const createCancelledRun = vi.fn(async () => ({
+      id: "internal",
+      friendlyId,
+      status: "CANCELED",
+    }));
+    const handler = createDrainerHandler({
+      engine: { createCancelledRun } as any,
+      prisma: {} as any,
+    });
+
+    await handler({
+      runId: friendlyId,
+      envId: "env_a",
+      orgId: "org_1",
+      payload: {
+        friendlyId,
+        taskIdentifier: "t",
+        environment: envFixture,
+        cancelledAt: new Date().toISOString(),
+        cancelReason: "Canceled by user",
+      },
+      attempts: 0,
+      createdAt: new Date(),
+    } as any);
+
+    expect(createCancelledRun).toHaveBeenCalledOnce();
+    const arg = createCancelledRun.mock.calls[0][0] as {
+      emitRunCancelledEvent?: boolean;
+    };
+    expect(arg.emitRunCancelledEvent).toBe(false);
+  });
+
   it("honours the cancel when a buffered cancel races a materialised non-CANCELED row", async () => {
     // Cancel-wins-over-trigger. If the normal trigger
     // replay path materialised a live PENDING row before the cancel
