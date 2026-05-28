@@ -386,22 +386,49 @@ export class RunEngineTriggerTaskService {
                 // `evaluateGate` can also override the gate-on check (the
                 // default reads `env.TRIGGER_MOLLIFIER_ENABLED`, which is "0"
                 // in CI where no .env file is present).
-                const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
-                  ? await this.evaluateGate({
-                      envId: environment.id,
-                      orgId: environment.organizationId,
-                      taskId,
-                      orgFeatureFlags:
-                        (environment.organization.featureFlags as Record<string, unknown> | null) ??
-                        null,
-                      options: {
-                        debounce: body.options?.debounce,
-                        oneTimeUseToken: options.oneTimeUseToken,
-                        parentTaskRunId: body.options?.parentRunId,
-                        resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-                      },
-                    })
-                  : null;
+                //
+                // Batch items bypass the mollifier gate entirely.
+                //
+                // The mollify path returns a stripped run-shape `{ id,
+                // friendlyId, spanId }` with no PG row written. Batch
+                // tracking relies on `BatchTaskRunItem`, a join row whose
+                // `taskRunId` column has a NOT NULL FK to `TaskRun.id` —
+                // creating that join at trigger-time (in
+                // `batchTriggerV3.server.ts:871`) fails with FK violation
+                // for any mollified item, and skipping it at trigger-time
+                // would silently drop the batch↔run link forever because
+                // the drainer's materialise path doesn't (yet) create
+                // `BatchTaskRunItem`. Either side alone is wrong:
+                //   - skip at trigger-time only → batch progress
+                //     under-reports forever, `batchTriggerAndWait` parent
+                //     stays parked
+                //   - mollify at trigger-time only → FK violation, 500
+                //
+                // The proper end state is a drainer-side
+                // `BatchTaskRunItem` create-on-materialise (the snapshot
+                // already carries `batch: { id, index }` so the drainer
+                // has the info). That belongs in the drainer / replay PR,
+                // not here. Until that lands, batch triggers pass-through
+                // — they lose the burst-protection benefit, but the path
+                // works end-to-end.
+                const skipMollifierForBatch = !!options.batchId;
+                const mollifierOutcome: GateOutcome | null =
+                  this.isMollifierGloballyEnabled() && !skipMollifierForBatch
+                    ? await this.evaluateGate({
+                        envId: environment.id,
+                        orgId: environment.organizationId,
+                        taskId,
+                        orgFeatureFlags:
+                          (environment.organization.featureFlags as Record<string, unknown> | null) ??
+                          null,
+                        options: {
+                          debounce: body.options?.debounce,
+                          oneTimeUseToken: options.oneTimeUseToken,
+                          parentTaskRunId: body.options?.parentRunId,
+                          resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+                        },
+                      })
+                    : null;
 
                 // When the gate says mollify, write the engine.trigger input
                 // snapshot into the Redis buffer and return a synthesised
