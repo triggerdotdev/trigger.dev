@@ -120,6 +120,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   try {
     const result = await presenter.call({
       projectSlug: projectParam,
+      envSlug: envParam,
       spanId: spanParam,
       runFriendlyId: runParam,
       userId,
