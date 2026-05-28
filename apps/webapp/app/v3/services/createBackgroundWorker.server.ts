@@ -34,7 +34,8 @@ import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
 import { scheduleEngine } from "../scheduleEngine.server";
 
-export { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
+import { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
+export { stripBackgroundWorkerMetadataForStorage };
 
 export class CreateBackgroundWorkerService extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;

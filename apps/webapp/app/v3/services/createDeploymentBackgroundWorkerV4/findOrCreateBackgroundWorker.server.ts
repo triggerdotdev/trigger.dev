@@ -5,7 +5,6 @@ import type {
   PrismaClientOrTransaction,
   WorkerDeployment,
 } from "@trigger.dev/database";
-import { prisma as defaultPrisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "../common.server";
 import { stripBackgroundWorkerMetadataForStorage } from "../stripBackgroundWorkerMetadataForStorage.server";
@@ -17,7 +16,7 @@ export async function findOrCreateBackgroundWorker(
   environment: AuthenticatedEnvironment,
   deployment: WorkerDeployment,
   body: CreateBackgroundWorkerRequestBody,
-  prisma: PrismaClientOrTransaction = defaultPrisma
+  prisma: PrismaClientOrTransaction
 ): Promise<BackgroundWorker> {
   const existing = await prisma.backgroundWorker.findFirst({
     where: {
