@@ -8,7 +8,15 @@ import { shouldIdempotencyKeyBeCleared } from "~/v3/taskStatus";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { claimOrAwait } from "~/v3/mollifier/idempotencyClaim.server";
+import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
+
+// In-memory per-org mollifier-enabled check, shared with `evaluateGate`
+// (same `Organization.featureFlags` JSON, no DB read). Used to gate the
+// pre-gate claim's Redis round-trip so non-mollifier orgs don't pay it
+// during staged rollout — see the comment above the claim block in
+// handleTriggerRequest.
+const resolveOrgMollifierFlag = makeResolveMollifierFlag();
 
 // Claim ownership context returned to the caller when the
 // IdempotencyKeyConcern won a pre-gate claim. Caller MUST publish the
@@ -227,7 +235,32 @@ export class IdempotencyKeyConcern {
     // PG-pass-through vs mollify. Skipped for triggerAndWait
     // (resumeParentOnCompletion) — that path bypasses the gate entirely
     // and its existing PG-side dedup is sufficient.
-    if (!request.body.options?.resumeParentOnCompletion) {
+    //
+    // Also gated on the same per-org mollifier flag the gate uses: when
+    // `TRIGGER_MOLLIFIER_ENABLED=1` globally for staged rollout, the buffer
+    // singleton is constructed and `claimOrAwait` would otherwise issue a
+    // Redis SETNX for EVERY idempotency-keyed trigger — including orgs
+    // that haven't opted in. Those orgs never enter the mollify branch
+    // (the gate always returns pass_through for them), so there's no
+    // buffer activity to serialise against; PG's unique constraint
+    // already deduplicates concurrent same-key races. Resolving the org
+    // flag is a pure in-memory read of `Organization.featureFlags` — no
+    // DB query, same predicate the gate uses — keeping the claim's Redis
+    // RTT off the hot path for non-opted-in orgs during incremental
+    // rollout.
+    const claimEligible =
+      !request.body.options?.resumeParentOnCompletion &&
+      (await resolveOrgMollifierFlag({
+        envId: request.environment.id,
+        orgId: request.environment.organizationId,
+        taskId: request.taskId,
+        orgFeatureFlags:
+          ((request.environment.organization?.featureFlags as
+            | Record<string, unknown>
+            | null
+            | undefined) ?? null),
+      }));
+    if (claimEligible) {
       const ttlSeconds = Math.max(
         1,
         Math.min(
