@@ -109,13 +109,11 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         // immediately instead of waiting 8 minutes for the timeout. Transient
         // races throw a plain `Error` and propagate as 5xx without failing.
         if (findOrCreateError instanceof ServiceValidationError) {
+          // `#failBackgroundWorkerDeployment` already throws its argument; the
+          // outer `throw` covers the non-SVE branch.
           await this.#failBackgroundWorkerDeployment(deployment, findOrCreateError);
         }
         throw findOrCreateError;
-      }
-
-      if (!backgroundWorker) {
-        return;
       }
 
       //upgrade the project to engine "V2" if it's not already
