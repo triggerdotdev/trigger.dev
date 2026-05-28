@@ -4,7 +4,10 @@ import { MollifierBuffer } from "@trigger.dev/redis-worker";
 
 vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 
-import { runStaleSweepOnce } from "~/v3/mollifier/mollifierStaleSweep.server";
+import {
+  runStaleSweepOnce,
+  startStaleSweepInterval,
+} from "~/v3/mollifier/mollifierStaleSweep.server";
 import { MollifierStaleSweepState } from "~/v3/mollifier/mollifierStaleSweepState.server";
 
 const SNAPSHOT = {
@@ -798,4 +801,120 @@ describe("MollifierStaleSweepState — direct unit tests", () => {
       }
     },
   );
+});
+
+describe("startStaleSweepInterval — lifecycle", () => {
+  it("stop() waits for an in-flight tick to finish before closing the state", async () => {
+    // Devin's BUG report on PR #3754: `stop()` previously called
+    // `deps.state.close()` immediately after `clearInterval`, but the
+    // `tick` function only checks `stopped` at entry. A tick that was
+    // already past that check would keep making `state.*` Redis calls
+    // against a now-closed ioredis client, throw, get caught by tick's
+    // own try/catch, and log a `mollifier.stale_sweep.failed` warning
+    // for every graceful shutdown.
+    //
+    // The fix tracks the current tick promise so `stop()` can await it
+    // before closing. This test pins that order by gating one of the
+    // tick's state calls on a Deferred — until we resolve it, the tick
+    // can't progress, and `stop()` must hang in the meantime.
+    let resolveGate: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      resolveGate = r;
+    });
+
+    const callOrder: string[] = [];
+    let closeCalled = false;
+    const state = {
+      readCursor: async () => {
+        callOrder.push("readCursor:start");
+        await gate;
+        callOrder.push("readCursor:end");
+        return 0;
+      },
+      writeCursor: async () => {
+        callOrder.push("writeCursor");
+      },
+      rebuildOrgList: async () => {
+        callOrder.push("rebuildOrgList");
+      },
+      readOrgListSlice: async () => {
+        callOrder.push("readOrgListSlice");
+        // Return zero orgs so the org loop is a no-op — we only care
+        // about ordering of state calls vs close, not the work.
+        return { orgs: [] as string[], total: 0 };
+      },
+      setEnvStaleCount: async () => {
+        callOrder.push("setEnvStaleCount");
+      },
+      readAllEnvStaleCounts: async () => {
+        callOrder.push("readAllEnvStaleCounts");
+        return new Map<string, number>();
+      },
+      markEnvVisited: async () => {
+        callOrder.push("markEnvVisited");
+      },
+      reconcileVisited: async () => {
+        callOrder.push("reconcileVisited");
+      },
+      clearAll: async () => {
+        callOrder.push("clearAll");
+      },
+      close: async () => {
+        callOrder.push("close");
+        closeCalled = true;
+      },
+    };
+
+    const fakeBuffer = {
+      listOrgs: async () => [],
+      listEnvsForOrg: async () => [],
+      listEntriesForEnv: async () => [],
+    } as any;
+
+    const handle = startStaleSweepInterval(
+      {
+        intervalMs: 20,
+        staleThresholdMs: 60_000,
+        maxOrgsPerPass: 10,
+      },
+      {
+        state,
+        getBuffer: () => fakeBuffer,
+        recordStaleEntry: () => {},
+        reportStaleEntrySnapshot: () => {},
+        logger: { warn: () => {} },
+        now: () => Date.now(),
+      },
+    );
+
+    // Wait for the interval to fire one tick. The tick will start, call
+    // readCursor, and then block on `gate`.
+    await new Promise((r) => setTimeout(r, 80));
+    expect(callOrder).toContain("readCursor:start");
+    expect(closeCalled).toBe(false);
+
+    // Call stop() concurrently — its promise MUST NOT resolve while the
+    // tick is still mid-flight.
+    let stopResolved = false;
+    const stopPromise = handle.stop().then(() => {
+      stopResolved = true;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(stopResolved).toBe(false);
+    expect(closeCalled).toBe(false);
+
+    // Release the gate. The tick can now finish, and only then should
+    // stop() resolve and close the state.
+    resolveGate();
+    await stopPromise;
+    expect(stopResolved).toBe(true);
+    expect(closeCalled).toBe(true);
+
+    // The tick's readCursor:end MUST appear before the close — otherwise
+    // we closed the Redis client out from under an in-flight tick.
+    expect(callOrder.indexOf("readCursor:end")).toBeGreaterThan(-1);
+    expect(callOrder.indexOf("close")).toBeGreaterThan(
+      callOrder.indexOf("readCursor:end"),
+    );
+  });
 });

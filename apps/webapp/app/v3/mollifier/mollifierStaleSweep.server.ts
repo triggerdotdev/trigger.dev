@@ -198,20 +198,33 @@ export function startStaleSweepInterval(
 ): StaleSweepIntervalHandle {
   let stopped = false;
   let inFlight = false;
+  // Tracks the current tick so `stop()` can await it before closing the
+  // state's Redis client. Without this, a tick that's already past the
+  // `stopped` guard at entry would continue making `state.*` calls
+  // against an ioredis client that `stop()` has already `quit()`ed,
+  // raising errors that the tick's own try/catch then logs as
+  // `mollifier.stale_sweep.failed` warnings — spurious noise on every
+  // graceful shutdown.
+  let currentTick: Promise<void> | null = null;
 
   const tick = async () => {
     if (stopped || inFlight) return;
     inFlight = true;
-    try {
-      await runStaleSweepOnce(config, deps);
-    } catch (err) {
-      const log = deps.logger ?? defaultLogger;
-      log.warn("mollifier.stale_sweep.failed", {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      inFlight = false;
-    }
+    const run = (async () => {
+      try {
+        await runStaleSweepOnce(config, deps);
+      } catch (err) {
+        const log = deps.logger ?? defaultLogger;
+        log.warn("mollifier.stale_sweep.failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        inFlight = false;
+        currentTick = null;
+      }
+    })();
+    currentTick = run;
+    await run;
   };
 
   const timer = setInterval(() => {
@@ -222,12 +235,22 @@ export function startStaleSweepInterval(
     stop: async () => {
       stopped = true;
       clearInterval(timer);
-      // Close the durable-state Redis client if the deps own a real
-      // `MollifierStaleSweepState`. Tests may inject a fake without a
-      // `close()`; guard accordingly.
-      if (deps.state instanceof MollifierStaleSweepState) {
-        await deps.state.close();
+      // Drain any tick that started before `stopped` flipped. Its
+      // `state.*` calls must land before we close the Redis client.
+      if (currentTick) {
+        try {
+          await currentTick;
+        } catch {
+          // tick has its own catch — this await is just to ensure
+          // ordering, not to surface errors that have already been
+          // logged inside the tick.
+        }
       }
+      // Close the state's underlying resource. The `close()` method is
+      // part of the `StaleSweepStateStore` contract — production's
+      // `MollifierStaleSweepState` shuts down its ioredis client; fake
+      // test states implement a no-op.
+      await deps.state.close();
     },
   };
 }
