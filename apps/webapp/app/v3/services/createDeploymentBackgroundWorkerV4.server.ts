@@ -1,6 +1,9 @@
 import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
-import type { BackgroundWorker, PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import type {
+  BackgroundWorker,
+  PrismaClientOrTransaction,
+  WorkerDeployment,
+} from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
@@ -8,9 +11,9 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import {
   createBackgroundFiles,
   createWorkerResources,
-  stripBackgroundWorkerMetadataForStorage,
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
+import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 
@@ -50,6 +53,11 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       });
 
       if (!deployment) {
+        logger.warn("createDeploymentBackgroundWorker: deployment not found", {
+          deploymentId,
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
         return;
       }
 
@@ -70,25 +78,21 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       }
 
       if (deployment.status !== "BUILDING") {
+        logger.warn("createDeploymentBackgroundWorker: deployment not in BUILDING state", {
+          deploymentId,
+          deploymentStatus: deployment.status,
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
         return;
       }
 
-      const backgroundWorker = await this._prisma.backgroundWorker.create({
-        data: {
-          ...BackgroundWorkerId.generate(),
-          version: deployment.version,
-          runtimeEnvironmentId: environment.id,
-          projectId: environment.projectId,
-          metadata: stripBackgroundWorkerMetadataForStorage(body.metadata),
-          contentHash: body.metadata.contentHash,
-          cliVersion: body.metadata.cliPackageVersion,
-          sdkVersion: body.metadata.packageVersion,
-          supportsLazyAttempts: body.supportsLazyAttempts,
-          engine: body.engine,
-          runtime: body.metadata.runtime,
-          runtimeVersion: body.metadata.runtimeVersion,
-        },
-      });
+      const backgroundWorker = await findOrCreateBackgroundWorker(
+        environment,
+        deployment,
+        body,
+        this._prisma
+      );
 
       //upgrade the project to engine "V2" if it's not already
       if (environment.project.engine === "V1" && body.engine === "V2") {
@@ -188,10 +192,11 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         throw serviceError;
       }
 
-      // Link the deployment with the background worker
-      await this._prisma.workerDeployment.update({
+      // Guarded BUILDING → DEPLOYING transition. `updateMany` for optimistic concurrency control
+      const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
         where: {
           id: deployment.id,
+          status: "BUILDING",
         },
         data: {
           status: "DEPLOYING",
@@ -202,6 +207,18 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           runtimeVersion: body.metadata.runtimeVersion,
         },
       });
+
+      if (updatedCount === 0) {
+        logger.warn(
+          "createDeploymentBackgroundWorker: deployment no longer in BUILDING state, skipping DEPLOYING transition",
+          {
+            deploymentId,
+            environmentId: environment.id,
+            projectId: environment.projectId,
+          }
+        );
+        return backgroundWorker;
+      }
 
       await TimeoutDeploymentService.enqueue(
         deployment.id,

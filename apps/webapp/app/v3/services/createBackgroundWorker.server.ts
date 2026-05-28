@@ -34,31 +34,7 @@ import { tryCatch } from "@trigger.dev/core/v3";
 import { engine } from "../runEngine.server";
 import { scheduleEngine } from "../scheduleEngine.server";
 
-/**
- * Strip BackgroundWorkerMetadata down to the slice that's actually read after
- * storage. Everything else is duplicated to dedicated columns/tables
- * (BackgroundWorker.{contentHash,cliVersion,sdkVersion,runtime,runtimeVersion},
- * BackgroundWorkerTask, BackgroundWorkerFile, TaskQueue, Prompt). Today the
- * only post-write reader is changeCurrentDeployment.server.ts, which feeds
- * tasks[].schedule into syncDeclarativeSchedules. packageVersion, contentHash,
- * and tasks[].filePath are kept solely to satisfy BackgroundWorkerMetadata's
- * required fields when the column is parsed back.
- */
-export function stripBackgroundWorkerMetadataForStorage(
-  metadata: BackgroundWorkerMetadata
-): Prisma.InputJsonValue {
-  return {
-    packageVersion: metadata.packageVersion,
-    contentHash: metadata.contentHash,
-    tasks: metadata.tasks
-      .filter((t) => t.schedule)
-      .map((t) => ({
-        id: t.id,
-        filePath: t.filePath,
-        schedule: t.schedule,
-      })),
-  };
-}
+export { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
 
 export class CreateBackgroundWorkerService extends BaseService {
   private readonly _taskMetaCache: TaskMetadataCache;
@@ -356,8 +332,13 @@ async function createWorkerTask(
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
 ): Promise<TaskMetadataEntry | null> {
+  // Hoisted so the P2002 catch branch can return the same entry shape.
+  let queue: TaskQueue | undefined;
+  let resolvedTriggerSource: "SCHEDULED" | "AGENT" | "STANDARD" | undefined;
+  let resolvedTtl: string | null | undefined;
+
   try {
-    let queue = queues.find((queue) => queue.name === task.queue?.name);
+    queue = queues.find((queue) => queue.name === task.queue?.name);
 
     if (!queue) {
       // Create a TaskQueue
@@ -374,14 +355,14 @@ async function createWorkerTask(
       );
     }
 
-    const resolvedTriggerSource =
+    resolvedTriggerSource =
       task.triggerSource === "schedule"
         ? ("SCHEDULED" as const)
         : task.triggerSource === "agent"
           ? ("AGENT" as const)
           : ("STANDARD" as const);
 
-    const resolvedTtl =
+    resolvedTtl =
       typeof task.ttl === "number" ? stringifyDuration(task.ttl) ?? null : task.ttl ?? null;
 
     await prisma.backgroundWorkerTask.create({
@@ -418,10 +399,26 @@ async function createWorkerTask(
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       // The error code for unique constraint violation in Prisma is P2002
       if (error.code === "P2002") {
-        logger.warn("Task already exists", {
+        // Retry landing after the first attempt's row was already written.
+        const existing = await prisma.backgroundWorkerTask.findFirst({
+          where: { workerId: worker.id, slug: task.id },
+          select: { id: true },
+        });
+
+        logger.warn("Attempted to recreate background worker task", {
           task,
           worker,
         });
+
+        if (existing && queue && resolvedTriggerSource && resolvedTtl !== undefined) {
+          return {
+            slug: task.id,
+            ttl: resolvedTtl,
+            triggerSource: resolvedTriggerSource,
+            queueId: queue.id,
+            queueName: queue.name,
+          };
+        }
       } else {
         logger.error("Prisma Error creating background worker task", {
           error: {
