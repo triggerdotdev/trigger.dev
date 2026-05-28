@@ -210,16 +210,22 @@ const { action } = createActionApiRoute(
       organizationId: env.organizationId,
     });
     if (bufferedEntry) {
+      // Both parent and root use the friendlyIds derived in
+      // `readFallback.server.ts` via `internalRunIdToFriendlyId` from the
+      // internal IDs the engine snapshot carries (`parentTaskRunId` /
+      // `rootTaskRunId`). The PG-side `UpdateMetadataService` would
+      // route to `taskRun.parentTaskRun?.id ?? taskRun.id` and
+      // `taskRun.rootTaskRun?.id ?? taskRun.id` respectively — i.e. fall
+      // back to the run itself when there's no parent / root. Mirror
+      // that self-fallback with `?? runId` so a top-level run's
+      // parent/root ops land on itself (matching PG semantics) instead
+      // of being silently dropped.
       await Promise.all([
-        routeOperationsToRun(bufferedEntry.parentTaskRunId, body.parentOperations, env),
-        // The PG service routes rootOperations to
-        // `taskRun.rootTaskRun?.id ?? taskRun.id` — the actual root, not
-        // the parent. The snapshot carries the root's *friendlyId*
-        // (parentTaskRunId is an internal id; root is friendlyId because
-        // it's what the engine passes through). Use it; if absent,
-        // route to the run itself (matches PG's self-fallback) rather
-        // than misrouting to the parent for grandchild → child → root
-        // hierarchies.
+        routeOperationsToRun(
+          bufferedEntry.parentTaskRunFriendlyId ?? runId,
+          body.parentOperations,
+          env,
+        ),
         routeOperationsToRun(
           bufferedEntry.rootTaskRunFriendlyId ?? runId,
           body.rootOperations,
