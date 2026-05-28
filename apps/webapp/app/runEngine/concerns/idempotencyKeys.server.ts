@@ -92,6 +92,45 @@ export class IdempotencyKeyConcern {
       organizationId,
     });
     if (!synthetic) return null;
+    // PG-resident path enforces idempotency-key expiry below
+    // (`existingRun.idempotencyKeyExpiresAt < new Date()` clears the key
+    // and lets a new run go through). The buffer path needs the same
+    // check — without it a customer who passes `idempotencyKeyTTL: "2s"`
+    // gets the cached buffered runId returned indefinitely, because the
+    // buffer entry persists for its own (hours-long) TTL independent of
+    // the customer's key TTL.
+    //
+    // Returning null isn't enough on its own: the trigger pipeline then
+    // proceeds to `mollifyTrigger`, whose `buffer.accept` Lua dedupes by
+    // `(envId, taskIdentifier, idempotencyKey)` via SETNX on the same
+    // `mollifier:idempotency:*` key and would echo the stale runId as
+    // `duplicate_idempotency`. Clear the buffer-side idempotency
+    // binding (both the lookup and any in-flight claim) so the next
+    // accept goes through as a fresh trigger. Mirrors what
+    // `ResetIdempotencyKeyService` does for the explicit
+    // reset-via-API path.
+    if (
+      synthetic.idempotencyKeyExpiresAt &&
+      synthetic.idempotencyKeyExpiresAt < new Date()
+    ) {
+      const buffer = getMollifierBuffer();
+      if (buffer) {
+        try {
+          await buffer.resetIdempotency({
+            envId: environmentId,
+            taskIdentifier,
+            idempotencyKey,
+          });
+        } catch (err) {
+          logger.warn("IdempotencyKeyConcern: failed to reset expired buffer idempotency", {
+            envId: environmentId,
+            taskIdentifier,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      return null;
+    }
     return synthetic as unknown as TaskRun;
   }
 

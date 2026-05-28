@@ -44,6 +44,12 @@ export type SyntheticRun = {
   seedMetadataType: string | undefined;
 
   idempotencyKey: string | undefined;
+  // Surfaced for the cached-hit expiration check in IdempotencyKeyConcern.
+  // The PG-resident path enforces this (clears key, allows new run when
+  // expired). For buffered runs the snapshot carries the same field — we
+  // expose it here so the cached-hit branch can apply the same check
+  // rather than indefinitely returning the buffered run's id.
+  idempotencyKeyExpiresAt: Date | undefined;
   idempotencyKeyOptions: string[] | undefined;
   isTest: boolean;
   depth: number;
@@ -178,6 +184,7 @@ export async function findRunByIdWithMollifierFallback(
       seedMetadataType: asString(snapshot.seedMetadataType),
 
       idempotencyKey: asString(snapshot.idempotencyKey),
+      idempotencyKeyExpiresAt: asDate(snapshot.idempotencyKeyExpiresAt),
       idempotencyKeyOptions,
       isTest: snapshot.isTest === true,
       depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
