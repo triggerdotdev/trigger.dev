@@ -80,20 +80,28 @@ async function routeOperationsToRun(
   // AuthenticatedEnvironment so we don't have to recover the unsafe
   // `as unknown` cast that the previous narrowed `{ id, organizationId }`
   // signature forced on us.
-  const [error] = await tryCatch(
+  //
+  // Two non-success outcomes from `call`:
+  //   * throws — PG threw (e.g. "Cannot update metadata for a completed
+  //     run", or a transient PG outage).
+  //   * resolves with undefined — PG row didn't exist (the target may be
+  //     buffered, not yet materialised).
+  // Either way we want to try the buffer fallback below; treating the
+  // undefined-return as success would make the fallback unreachable.
+  const [error, result] = await tryCatch(
     updateMetadataService.call(targetRunId, { operations }, env)
   );
-  if (!error) return;
+  if (!error && result !== undefined) return;
 
-  // PG service threw — commonly "Cannot update metadata for a completed
-  // run", but it could also be a transient PG failure. Parent/root ops
-  // are auxiliary (the caller's primary mutation already landed); stay
-  // best-effort and don't surface this to the caller — but warn so a
-  // genuine PG outage on these ops isn't invisible.
-  logger.warn("metadata route: parent/root PG op failed", {
-    targetRunId,
-    error: error instanceof Error ? error.message : String(error),
-  });
+  if (error) {
+    // PG threw — auxiliary op, stay best-effort and don't surface this
+    // to the caller (the caller's primary mutation already landed). But
+    // warn so a genuine PG outage on these ops isn't invisible.
+    logger.warn("metadata route: parent/root PG op failed", {
+      targetRunId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   // Buffer fallback only makes sense for friendlyId-keyed entries. The
   // PG-side parent/root IDs are internal cuids; the buffer keys entries
