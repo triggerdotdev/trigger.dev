@@ -232,9 +232,14 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   }
 
   async #failBackgroundWorkerDeployment(deployment: WorkerDeployment, error: Error) {
-    await this._prisma.workerDeployment.update({
+    // Guarded BUILDING → FAILED transition, symmetric with the BUILDING → DEPLOYING
+    // transition in `call()`. With idempotent retries, two attempts can run side-by-side;
+    // without the predicate, one attempt's failure could downgrade the deployment after
+    // the other already flipped it to DEPLOYING, leaving it stuck in FAILED with a worker.
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: "BUILDING",
       },
       data: {
         status: "FAILED",
@@ -246,7 +251,20 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       },
     });
 
-    await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+    if (updatedCount === 0) {
+      logger.warn(
+        "failBackgroundWorkerDeployment: deployment moved out of BUILDING during call, skipping FAILED transition",
+        {
+          deploymentId: deployment.id,
+          originalError: error.message,
+        }
+      );
+    } else {
+      // Only dequeue the timeout if we actually flipped to FAILED — otherwise a
+      // sibling attempt may have just enqueued it as part of a successful
+      // BUILDING → DEPLOYING transition.
+      await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+    }
 
     throw error;
   }
