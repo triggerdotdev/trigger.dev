@@ -1,4 +1,5 @@
 import type {
+  BufferEntry,
   MollifierBuffer,
   MutateSnapshotResult,
   SnapshotPatch,
@@ -26,13 +27,26 @@ export type MutateWithFallbackInput<TResponse> = {
   // Receives the full TaskRun shape and returns the customer-visible body.
   pgMutation: (pgRow: TaskRun) => Promise<TResponse>;
   // Called when the patch landed cleanly on the buffer snapshot. The
-  // drainer will see the patched payload on its next pop.
-  synthesisedResponse: () => TResponse | Promise<TResponse>;
+  // drainer will see the patched payload on its next pop. Receives the
+  // pre-mutation snapshot entry (the one fetched for the env auth
+  // check above) so the caller can compute response details that
+  // depend on the prior state — e.g. the tags route needs to dedup
+  // against the existing tags to report an accurate `newTags` count
+  // matching the PG path, without an extra Redis round-trip.
+  // `bufferEntry` is `null` in the rare race where the entry didn't
+  // exist at pre-check time but appeared before `mutateSnapshot`.
+  synthesisedResponse: (ctx: {
+    bufferEntry: BufferEntry | null;
+  }) => TResponse | Promise<TResponse>;
   // Called when the buffer rejected the patch as invalid (e.g. an
   // `append_tags` patch carrying `maxTags` would exceed the cap). Required
   // only by callers that send a rejectable patch; the helper throws if the
-  // buffer reports a rejection and no builder was supplied.
-  rejectedResponse?: () => TResponse | Promise<TResponse>;
+  // buffer reports a rejection and no builder was supplied. Receives the
+  // same `bufferEntry` context as `synthesisedResponse` so a rejection
+  // message can reference the prior state if useful.
+  rejectedResponse?: (ctx: {
+    bufferEntry: BufferEntry | null;
+  }) => TResponse | Promise<TResponse>;
   abortSignal?: AbortSignal;
   // Override defaults for tests.
   safetyNetMs?: number;
@@ -110,7 +124,10 @@ export async function mutateWithFallback<TResponse>(
   );
 
   if (result === "applied_to_snapshot") {
-    return { kind: "snapshot", response: await input.synthesisedResponse() };
+    return {
+      kind: "snapshot",
+      response: await input.synthesisedResponse({ bufferEntry: entryForAuth }),
+    };
   }
 
   if (result === "limit_exceeded") {
@@ -122,7 +139,10 @@ export async function mutateWithFallback<TResponse>(
         "mutateWithFallback: buffer returned 'limit_exceeded' but no rejectedResponse was provided",
       );
     }
-    return { kind: "rejected", response: await input.rejectedResponse() };
+    return {
+      kind: "rejected",
+      response: await input.rejectedResponse({ bufferEntry: entryForAuth }),
+    };
   }
 
   if (result === "not_found") {

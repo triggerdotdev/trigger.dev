@@ -133,6 +133,32 @@ describe("mutateWithFallback", () => {
     expect(pgMutation).not.toHaveBeenCalled();
   });
 
+  it("applied_to_snapshot forwards the pre-mutation entry to synthesisedResponse (lets callers dedup)", async () => {
+    // The tags route uses this to compute the same post-dedup count
+    // the PG path reports, without an extra Redis round-trip.
+    const synthesised = vi.fn(({ bufferEntry }: { bufferEntry: BufferEntry | null }) => {
+      // Caller can inspect bufferEntry.payload (or other fields) to
+      // produce a response that depends on the prior snapshot state.
+      return bufferEntry ? "snap-with-entry" : "snap-without-entry";
+    });
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation: async () => "pg",
+      synthesisedResponse: synthesised,
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => bufferReturning("applied_to_snapshot"),
+    });
+    expect(result).toEqual({ kind: "snapshot", response: "snap-with-entry" });
+    expect(synthesised).toHaveBeenCalledTimes(1);
+    const ctx = synthesised.mock.calls[0]?.[0];
+    expect(ctx?.bufferEntry).not.toBeNull();
+    // The pre-check entry has the env-matching shape set up by
+    // bufferReturning() / preCheckEntry().
+    expect(ctx?.bufferEntry?.envId).toBe("env_a");
+    expect(ctx?.bufferEntry?.orgId).toBe("org_1");
+  });
+
   it("replica miss + buffer not_found + writer miss → not_found", async () => {
     const result = await mutateWithFallback({
       ...baseInput,

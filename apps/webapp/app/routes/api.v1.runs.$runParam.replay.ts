@@ -93,6 +93,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (buffered) {
         const parsed = BufferedReplayInputSchema.safeParse(buffered);
         if (parsed.success) {
+          // Manual sync point: `BufferedReplayInputSchema` covers only
+          // the subset of `TaskRun` fields `ReplayTaskRunService.call`
+          // currently reads from `existingTaskRun`. The cast is `as
+          // unknown as TaskRun` because the full `TaskRun` type carries
+          // ~40 fields the service never touches; mirroring all of them
+          // on a synthetic snapshot would be misleading. If a future
+          // change to `ReplayTaskRunService` reads an additional
+          // `existingTaskRun` field, **add it to the schema above** —
+          // otherwise the buffered path will silently feed the service
+          // `undefined` for that field while the PG-source replay
+          // works. The `safeParse` + warn-log + 404 below is the
+          // run-time fail-safe; this comment is the design fail-safe.
           taskRun = parsed.data as unknown as TaskRun;
         } else {
           logger.warn("replay: buffered fallback failed schema validation", {

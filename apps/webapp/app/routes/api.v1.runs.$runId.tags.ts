@@ -1,5 +1,6 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { AddTagsRequestBody } from "@trigger.dev/core/v3";
+import type { BufferEntry } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
@@ -7,6 +8,22 @@ import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
+
+// Pull the existing tags out of a buffer entry's serialised payload so
+// the buffer-path response can dedup against them, matching the
+// PG-path's `newTags.length` count rather than the pre-dedup input
+// count. Returns null on any parse failure / shape mismatch so the
+// caller can fall back gracefully.
+function parseSnapshotTags(entry: BufferEntry | null): string[] | null {
+  if (!entry) return null;
+  try {
+    const snapshot = JSON.parse(entry.payload) as { tags?: unknown };
+    if (!Array.isArray(snapshot.tags)) return null;
+    return snapshot.tags.filter((t): t is string => typeof t === "string");
+  } catch {
+    return null;
+  }
+}
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -80,8 +97,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
       // MAX_TAGS_PER_RUN via the `maxTags` we pass in `bufferPatch` —
       // matching the PG-path cap above so a buffered run can't exceed the
       // limit the trigger validator applies at creation.
-      synthesisedResponse: () =>
-        json({ message: `Successfully set ${nonEmptyTags.length} new tags.` }, { status: 200 }),
+      //
+      // Dedup the success-count off the pre-mutation entry (already
+      // fetched by mutateWithFallback's env-auth pre-check, so no extra
+      // Redis read) so the message reports the same `newTags.length` the
+      // PG path reports — not the pre-dedup request count, which would
+      // give an inconsistent number across the buffered/materialised
+      // boundary for the same input.
+      synthesisedResponse: ({ bufferEntry }) => {
+        const existing = parseSnapshotTags(bufferEntry);
+        const newTagsCount = existing
+          ? nonEmptyTags.filter((t) => !existing.includes(t)).length
+          : nonEmptyTags.length;
+        return json(
+          { message: `Successfully set ${newTagsCount} new tags.` },
+          { status: 200 }
+        );
+      },
       // Buffer rejected the append because it would exceed the cap. We
       // don't know the exact deduped overflow count here (the Lua does),
       // so report the limit rather than a precise "trying to set N".
