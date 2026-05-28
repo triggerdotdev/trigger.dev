@@ -109,6 +109,15 @@ function asDate(value: unknown): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+// Snapshot ids are written by engine.trigger as INTERNAL ids (cuids); the
+// SyntheticRun contract exposes friendlyIds. `RunId.toFriendlyId` is
+// already used for the synthetic run's own id (line 155); reuse it for
+// parent/root so consumers see the same shape as the PG path.
+function internalRunIdToFriendlyId(internalId: string | undefined): string | undefined {
+  if (!internalId) return undefined;
+  return RunId.toFriendlyId(internalId);
+}
+
 export async function findRunByIdWithMollifierFallback(
   input: ReadFallbackInput,
   deps: ReadFallbackDeps = {},
@@ -201,9 +210,23 @@ export async function findRunByIdWithMollifierFallback(
       annotations: snapshot.annotations,
       traceContext: snapshot.traceContext,
       scheduleId: asString(snapshot.scheduleId),
-      batchId: asString(snapshot.batchId),
-      parentTaskRunFriendlyId: asString(snapshot.parentTaskRunFriendlyId),
-      rootTaskRunFriendlyId: asString(snapshot.rootTaskRunFriendlyId),
+      // The engine.trigger input embeds the batch as `{ id, index }` (see
+      // triggerTask.server.ts #buildEngineTriggerInput), not as a flat
+      // `batchId`. The nested `id` is the batch's internal cuid — the same
+      // value PG stores in `TaskRun.batchId` — so callers reconstruct the
+      // friendly id via `BatchId.toFriendlyId` exactly as the PG path does.
+      batchId: asString((snapshot.batch as { id?: unknown } | undefined)?.id),
+      // The snapshot only carries the INTERNAL parent/root ids
+      // (`parentTaskRunId` / `rootTaskRunId` — what engine.trigger consumes),
+      // not the friendlyIds the SyntheticRun contract expects. Convert
+      // internal → friendly here so consumers don't have to special-case
+      // the buffered path.
+      parentTaskRunFriendlyId: internalRunIdToFriendlyId(
+        asString(snapshot.parentTaskRunId)
+      ),
+      rootTaskRunFriendlyId: internalRunIdToFriendlyId(
+        asString(snapshot.rootTaskRunId)
+      ),
 
       error: entry.lastError,
     };

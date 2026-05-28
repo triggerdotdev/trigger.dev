@@ -7,6 +7,7 @@ vi.mock("~/db.server", () => ({
 
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import type { MollifierBuffer, BufferEntry } from "@trigger.dev/redis-worker";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 
 function fakeBuffer(entry: BufferEntry | null): MollifierBuffer {
   return {
@@ -328,5 +329,101 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.runtimeEnvironmentId).toBe("env_a");
     expect(result!.workerQueue).toBeUndefined();
     expect(result!.queue).toBeUndefined();
+  });
+
+  it("extracts batchId from the nested snapshot.batch object (not the flat key)", async () => {
+    // Regression for the field-name mismatch Devin flagged:
+    // #buildEngineTriggerInput writes batch info as
+    // `batch: { id, index }`, never as a flat `batchId`. readFallback
+    // must read the nested key, otherwise SyntheticRun.batchId is always
+    // undefined for buffered runs.
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        batch: { id: "batch_internal_xyz", index: 3 },
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.batchId).toBe("batch_internal_xyz");
+  });
+
+  it("does NOT read a flat `batchId` key — only the nested batch.id", async () => {
+    // Belt-and-braces: a payload with the wrong-shaped flat key should
+    // resolve to undefined, not silently pick up the bogus value.
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        batchId: "should-be-ignored",
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.batchId).toBeUndefined();
+  });
+
+  it("converts internal parent/root IDs in the snapshot to friendlyIds", async () => {
+    // Regression for Devin's structural-unfillable finding: the snapshot
+    // only carries INTERNAL parent/root ids (engine.trigger consumes the
+    // internal shape), while SyntheticRun exposes friendlyIds. Convert
+    // here so consumers don't have to special-case the buffered path.
+    // The conversion is deterministic via RunId.toFriendlyId — we drive
+    // it through `RunId.generate()` to get a matching internal+friendly
+    // pair and assert the round-trip.
+    const parent = RunId.generate();
+    const root = RunId.generate();
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        parentTaskRunId: parent.id,
+        rootTaskRunId: root.id,
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.parentTaskRunFriendlyId).toBe(parent.friendlyId);
+    expect(result!.rootTaskRunFriendlyId).toBe(root.friendlyId);
+  });
+
+  it("leaves parent/root friendlyIds undefined when the snapshot carries no parent context", async () => {
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({ taskIdentifier: "t" }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result!.parentTaskRunFriendlyId).toBeUndefined();
+    expect(result!.rootTaskRunFriendlyId).toBeUndefined();
   });
 });
