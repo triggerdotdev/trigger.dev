@@ -77,6 +77,7 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
     const span = captured[0]![0]!;
     expect(span.parentSpanContext?.spanId).toBe("2222222222222222");
     expect(span.parentSpanContext?.spanId).not.toBe("1111111111111111");
+    expect(span.parentSpanContext?.traceId).toBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
     expect(span.spanContext().traceId).toBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
   });
 });
