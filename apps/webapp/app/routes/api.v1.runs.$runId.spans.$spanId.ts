@@ -89,15 +89,20 @@ export const loader = createLoaderApiRoute(
       if (resolved.run.spanId !== params.spanId) {
         return json({ error: "Span not found" }, { status: 404 });
       }
+      // CANCELED and FAILED are terminal states. A FAILED buffered run is
+      // errored (drainer exhausted retries or gate rejected it) and must
+      // not signal "still in progress" — mirrors syntheticTrace.server.ts.
+      const isCancelled = resolved.run.status === "CANCELED";
+      const isFailed = resolved.run.status === "FAILED";
       return json(
         {
           spanId: resolved.run.spanId,
           parentId: resolved.run.parentSpanId ?? null,
           runId: resolved.run.friendlyId,
           message: resolved.run.taskIdentifier ?? "",
-          isError: false,
-          isPartial: resolved.run.status !== "CANCELED",
-          isCancelled: resolved.run.status === "CANCELED",
+          isError: isFailed,
+          isPartial: !isCancelled && !isFailed,
+          isCancelled,
           level: "TRACE",
           startTime: resolved.run.createdAt,
           durationMs: 0,

@@ -647,7 +647,11 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     attemptNumber: null,
     engine: "V2",
     taskEventStore: "taskEvent",
-    workerQueue: buffered.workerQueue ?? "main",
+    // Empty string when absent (matches syntheticSpanRun.server.ts and lets
+    // `createCommonRunStructure`'s `run.workerQueue || undefined` coerce the
+    // API response's `region` to undefined instead of advertising a
+    // misleading "main" region for a not-yet-assigned buffered run).
+    workerQueue: buffered.workerQueue ?? "",
     parentTaskRun: null,
     rootTaskRun: null,
     childRuns: [],
