@@ -60,25 +60,39 @@ export async function applyMetadataMutationToBufferedRun(input: {
     const currentMetadataType =
       typeof snapshot.metadataType === "string" ? snapshot.metadataType : "application/json";
 
-    // Starting point: either the body's replace metadata, or whatever's
-    // already on the snapshot. PG-side service uses the same precedence
-    // (replace overrides existing, operations apply on top).
-    let metadataObject: Record<string, unknown>;
-    if (input.body.metadata !== undefined) {
-      metadataObject = input.body.metadata as Record<string, unknown>;
-    } else if (typeof snapshot.metadata === "string") {
+    // Match PG semantics: `body.operations` and `body.metadata` are
+    // mutually exclusive on a single request. The PG service
+    // (`UpdateMetadataService.#updateRunMetadata`) branches on
+    // `Array.isArray(body.operations)` — if operations are present it
+    // applies them on top of the EXISTING metadata and ignores
+    // `body.metadata` entirely; otherwise `body.metadata` is the new
+    // full value. Doing both here would make a request like
+    // `{ metadata: {b:2}, operations: [set c=3] }` produce
+    // `{b:2,c:3}` on the buffer vs `{a:1,c:3}` on PG, which silently
+    // changes semantics across the buffered/materialised boundary.
+    const parseSnapshotMetadata = (): Record<string, unknown> => {
+      if (typeof snapshot.metadata !== "string") return {};
       try {
-        metadataObject = JSON.parse(snapshot.metadata) as Record<string, unknown>;
+        return JSON.parse(snapshot.metadata) as Record<string, unknown>;
       } catch {
-        metadataObject = {};
+        return {};
       }
-    } else {
-      metadataObject = {};
-    }
+    };
 
+    let metadataObject: Record<string, unknown>;
     if (input.body.operations?.length) {
-      const result = applyMetadataOperations(metadataObject, input.body.operations);
-      metadataObject = result.newMetadata;
+      // Operations take precedence: apply on top of existing snapshot
+      // metadata; ignore `body.metadata` to match PG behaviour.
+      metadataObject = applyMetadataOperations(
+        parseSnapshotMetadata(),
+        input.body.operations,
+      ).newMetadata;
+    } else if (input.body.metadata !== undefined) {
+      // No operations — full replace.
+      metadataObject = input.body.metadata as Record<string, unknown>;
+    } else {
+      // Neither — write back existing snapshot metadata (no-op shape).
+      metadataObject = parseSnapshotMetadata();
     }
 
     const newMetadataStr = JSON.stringify(metadataObject);

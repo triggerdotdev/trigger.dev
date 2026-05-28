@@ -169,6 +169,33 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     expect(result.kind).toBe("version_exhausted");
   });
 
+  it("matches PG semantics when body has both metadata + operations: ops on top of EXISTING, body.metadata ignored", async () => {
+    // PG service (UpdateMetadataService.#updateRunMetadata) branches on
+    // Array.isArray(body.operations) — when present it applies ops on
+    // top of existing PG metadata and IGNORES body.metadata. The buffer
+    // helper used to merge both (replace then apply), producing different
+    // results across the buffered/materialised boundary. This regression
+    // pins the PG-matching behaviour.
+    const stub = makeBufferStub({ metadata: JSON.stringify({ a: 1 }) });
+    const result = await applyMetadataMutationToBufferedRun({
+      runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
+      body: {
+        // Should be ignored because `operations` is also present.
+        metadata: { b: 2 },
+        operations: [{ type: "set", key: "c", value: 3 }],
+      },
+      buffer: stub.buffer,
+    });
+    expect(result.kind).toBe("applied");
+    if (result.kind === "applied") {
+      // PG would produce {a:1, c:3}; previously the buffer produced {b:2, c:3}.
+      expect(result.newMetadata).toEqual({ a: 1, c: 3 });
+      expect(result.newMetadata).not.toHaveProperty("b");
+    }
+  });
+
   it("returns not_found when the buffered entry belongs to a different env (cross-env auth gate)", async () => {
     // Same shape as a normal apply call, but the caller's environmentId
     // doesn't match the entry's envId. The helper must refuse the
