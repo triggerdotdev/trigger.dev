@@ -21,7 +21,7 @@ export class ResetIdempotencyKeyService extends BaseService {
       },
     });
 
-    // Buffer-side reset (Q5): the key may belong to a buffered run that
+    // Buffer-side reset: the key may belong to a buffered run that
     // hasn't materialised yet. The PG updateMany above can't see it.
     // resetIdempotency clears both the snapshot fields and the Redis
     // lookup atomically. Returns null when nothing was bound there.

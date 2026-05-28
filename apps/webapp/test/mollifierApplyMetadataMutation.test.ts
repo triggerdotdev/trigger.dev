@@ -5,13 +5,12 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 import { applyMetadataMutationToBufferedRun } from "~/v3/mollifier/applyMetadataMutation.server";
 import type { BufferEntry, MollifierBuffer, CasSetMetadataResult } from "@trigger.dev/redis-worker";
 
-// Regression for the CAS retry-exhaustion bug found by Phase F. The
-// default `maxRetries` was 3, matching the PG-side service, but that
-// exhausts fast when N external API writers race the same buffered
-// run's metadata. Bumped to 12 + jittered backoff (commit 4e7d5d8a2).
-// These tests simulate version_conflict races and assert (a) every
-// delta lands and (b) the retry budget is sized for realistic
-// concurrency.
+// Regression for a CAS retry-exhaustion bug: the default `maxRetries`
+// was 3, matching the PG-side service, but that exhausts fast when N
+// external API writers race the same buffered run's metadata. Bumped
+// to 12 + jittered backoff. These tests simulate version_conflict
+// races and assert (a) every delta lands and (b) the retry budget is
+// sized for realistic concurrency.
 
 const NOW = new Date("2026-05-21T10:00:00Z");
 
