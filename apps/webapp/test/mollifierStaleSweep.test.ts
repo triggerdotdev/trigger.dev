@@ -402,4 +402,318 @@ describe("runStaleSweepOnce — testcontainers", () => {
       }
     },
   );
+
+  redisTest(
+    "state survives process restart: a second state instance picks up the cursor and counts",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      // This is the headline reason the sweep state is durable in Redis
+      // instead of process-local — a webapp restart mid-cycle must not
+      // re-emit the gauge as fresh-zero for previously-flagged envs nor
+      // restart the cursor walk from scratch. Simulated here by closing
+      // state1 (its Redis client quits cleanly) and constructing state2
+      // against the same Redis. The cursor + counts that state1 wrote
+      // are visible to state2 on its first tick.
+      const buffer = new MollifierBuffer({ redisOptions });
+      const state1 = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_a",
+          envId: "env_a",
+          orgId: "org_a",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        await buffer.accept({
+          runId: "run_b",
+          envId: "env_b",
+          orgId: "org_b",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const futureNow = Date.now() + 5 * 60 * 1000;
+        const cfg = { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 1 };
+        const spies1 = spyDeps();
+
+        // Tick 1 with state1: visits 1 of 2 orgs.
+        await runStaleSweepOnce(cfg, {
+          ...spies1.deps,
+          getBuffer: () => buffer,
+          state: state1,
+          now: () => futureNow,
+        });
+        expect(spies1.snapshots[0].size).toBe(1);
+      } finally {
+        // Simulate webapp restart: state1's Redis client closes cleanly.
+        await state1.close();
+      }
+
+      // New process boots, constructs a fresh state pointing at the
+      // same Redis. The cycle's frozen org_list, the cursor, and the
+      // counts hash are all preserved — state2 picks up at the second
+      // org of the cycle.
+      const state2 = new MollifierStaleSweepState({ redisOptions });
+      try {
+        const futureNow = Date.now() + 5 * 60 * 1000;
+        const cfg = { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 1 };
+        const spies2 = spyDeps();
+
+        await runStaleSweepOnce(cfg, {
+          ...spies2.deps,
+          getBuffer: () => buffer,
+          state: state2,
+          now: () => futureNow,
+        });
+        // Snapshot now has BOTH envs: the one tick 1 flagged (still in
+        // the counts hash from state1) plus the one tick 2 just flagged.
+        // A non-durable design would show only the second.
+        expect(spies2.snapshots[0].size).toBe(2);
+      } finally {
+        await state2.close();
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "cycle wrap rebuilds the org list, so orgs that joined mid-cycle get visited on the next cycle",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      // The docstring promises "orgs joining mid-cycle wait until the
+      // next cycle to be visited." The mechanism is rebuildOrgList at
+      // cursor=0: a fresh snapshot of buffer.listOrgs() replaces the
+      // previous frozen LIST. Verified here by adding a third org
+      // between cycles and asserting it shows up only in the next
+      // cycle's snapshot.
+      const buffer = new MollifierBuffer({ redisOptions });
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_init_a",
+          envId: "env_init_a",
+          orgId: "org_init_a",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        await buffer.accept({
+          runId: "run_init_b",
+          envId: "env_init_b",
+          orgId: "org_init_b",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const futureNow = Date.now() + 5 * 60 * 1000;
+        const spies = spyDeps();
+        const cfg = { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 10 };
+        const baseDeps = {
+          ...spies.deps,
+          getBuffer: () => buffer,
+          state,
+          now: () => futureNow,
+        };
+
+        // Tick 1: cycle 1. Visits both initial orgs; cursor wraps to 0.
+        await runStaleSweepOnce(cfg, baseDeps);
+        expect(spies.snapshots[0].size).toBe(2);
+
+        // Mid-flight: a third org joins the buffer. It must NOT have
+        // been part of cycle 1's frozen LIST.
+        await buffer.accept({
+          runId: "run_mid",
+          envId: "env_mid",
+          orgId: "org_mid",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+
+        // Tick 2: cycle 2 begins (cursor was 0 after tick 1's wrap).
+        // rebuildOrgList captures all 3 orgs; this tick visits all 3.
+        const r2 = await runStaleSweepOnce(cfg, baseDeps);
+        expect(r2.orgsScanned).toBe(3);
+        expect(spies.snapshots[1].size).toBe(3);
+        expect(spies.snapshots[1].has("env_mid")).toBe(true);
+      } finally {
+        await state.close();
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "empty buffer (no orgs) advances cleanly with zero work and an empty snapshot",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      // `mollifier:orgs` is empty (no entries ever accepted, or every
+      // entry has been drained). The sweep must handle the boundary:
+      // rebuildOrgList with [], readOrgListSlice returns total=0,
+      // the org loop is skipped, and the cursor stays at 0 instead of
+      // tripping the wrap math.
+      const buffer = new MollifierBuffer({ redisOptions });
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        const spies = spyDeps();
+        const result = await runStaleSweepOnce(
+          { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 10 },
+          { ...spies.deps, getBuffer: () => buffer, state },
+        );
+        expect(result).toEqual({
+          orgsScanned: 0,
+          envsScanned: 0,
+          entriesScanned: 0,
+          staleCount: 0,
+        });
+        expect(spies.snapshots).toHaveLength(1);
+        expect(spies.snapshots[0].size).toBe(0);
+        // Cursor stayed at 0 — nothing to advance through.
+        expect(await state.readCursor()).toBe(0);
+      } finally {
+        await state.close();
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "buffer-null branch wipes the durable state so a re-enable starts fresh",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      // The unit test above asserts the snapshot is empty when the
+      // buffer is null, but doesn't verify the durable state was
+      // actually cleared. Without clearAll the next re-enable would
+      // resume on a stale cursor + carry over a stale counts hash.
+      const buffer = new MollifierBuffer({ redisOptions });
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_seed",
+          envId: "env_seed",
+          orgId: "org_seed",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const futureNow = Date.now() + 5 * 60 * 1000;
+        const cfg = { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 10 };
+        const spies = spyDeps();
+
+        // Tick 1: populate state.
+        await runStaleSweepOnce(cfg, {
+          ...spies.deps,
+          getBuffer: () => buffer,
+          state,
+          now: () => futureNow,
+        });
+        expect(spies.snapshots[0].size).toBe(1);
+        expect((await state.readAllEnvStaleCounts()).size).toBe(1);
+
+        // Tick 2: mollifier flips OFF — getBuffer returns null. The
+        // sweep must clear the durable state.
+        await runStaleSweepOnce(cfg, {
+          ...spies.deps,
+          getBuffer: () => null,
+          state,
+        });
+        expect(spies.snapshots[1].size).toBe(0);
+        expect((await state.readAllEnvStaleCounts()).size).toBe(0);
+        expect(await state.readCursor()).toBe(0);
+      } finally {
+        await state.close();
+        await buffer.close();
+      }
+    },
+  );
+});
+
+describe("MollifierStaleSweepState — direct unit tests", () => {
+  redisTest("readCursor returns 0 when the key is absent", { timeout: 20_000 }, async ({ redisOptions }) => {
+    const state = new MollifierStaleSweepState({ redisOptions });
+    try {
+      expect(await state.readCursor()).toBe(0);
+    } finally {
+      await state.close();
+    }
+  });
+
+  redisTest(
+    "writeCursor + readCursor round-trip; readCursor parses a non-numeric value as 0",
+    { timeout: 20_000 },
+    async ({ redisOptions }) => {
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await state.writeCursor(42);
+        expect(await state.readCursor()).toBe(42);
+
+        // Defensive: a corrupted/garbage value must not throw or
+        // propagate NaN into the sweep's cursor arithmetic.
+        await state["redis"].set("mollifier:stale_sweep:cursor", "not-a-number");
+        expect(await state.readCursor()).toBe(0);
+      } finally {
+        await state.close();
+      }
+    },
+  );
+
+  redisTest(
+    "rebuildOrgList replaces the previous list (DEL + RPUSH, in order)",
+    { timeout: 20_000 },
+    async ({ redisOptions }) => {
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await state.rebuildOrgList(["org_a", "org_b", "org_c"]);
+        let slice = await state.readOrgListSlice(0, 10);
+        expect(slice.total).toBe(3);
+        expect(slice.orgs).toEqual(["org_a", "org_b", "org_c"]);
+
+        // Replacement, not append.
+        await state.rebuildOrgList(["org_x"]);
+        slice = await state.readOrgListSlice(0, 10);
+        expect(slice.total).toBe(1);
+        expect(slice.orgs).toEqual(["org_x"]);
+
+        // Empty rebuild leaves the list empty (DEL fires, no RPUSH).
+        await state.rebuildOrgList([]);
+        slice = await state.readOrgListSlice(0, 10);
+        expect(slice.total).toBe(0);
+        expect(slice.orgs).toEqual([]);
+      } finally {
+        await state.close();
+      }
+    },
+  );
+
+  redisTest(
+    "setEnvStaleCount HSETs when count > 0 and HDELs when count === 0",
+    { timeout: 20_000 },
+    async ({ redisOptions }) => {
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await state.setEnvStaleCount("env_a", 3);
+        await state.setEnvStaleCount("env_b", 1);
+        let counts = await state.readAllEnvStaleCounts();
+        expect(Object.fromEntries(counts)).toEqual({ env_a: 3, env_b: 1 });
+
+        // Zero clears the field (HDEL), not stores 0.
+        await state.setEnvStaleCount("env_a", 0);
+        counts = await state.readAllEnvStaleCounts();
+        expect(Object.fromEntries(counts)).toEqual({ env_b: 1 });
+        expect(counts.has("env_a")).toBe(false);
+      } finally {
+        await state.close();
+      }
+    },
+  );
+
+  redisTest(
+    "clearAll DELs cursor, org_list, and counts in one call",
+    { timeout: 20_000 },
+    async ({ redisOptions }) => {
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await state.writeCursor(7);
+        await state.rebuildOrgList(["org_a", "org_b"]);
+        await state.setEnvStaleCount("env_a", 5);
+
+        await state.clearAll();
+
+        expect(await state.readCursor()).toBe(0);
+        expect((await state.readOrgListSlice(0, 10)).total).toBe(0);
+        expect((await state.readAllEnvStaleCounts()).size).toBe(0);
+      } finally {
+        await state.close();
+      }
+    },
+  );
 });
