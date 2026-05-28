@@ -9,6 +9,7 @@ import {
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticTraceBody } from "~/v3/mollifier/syntheticApiResponses.server";
 
 const ParamsSchema = z.object({
   runId: z.string(), // This is the run friendly ID
@@ -81,40 +82,10 @@ export const loader = createLoaderApiRoute(
     if (resolved.source === "buffer") {
       // Buffered runs have no events ingested yet — the drainer hasn't
       // materialised the PG row and the worker hasn't started executing.
-      // Synthesise a single partial span that satisfies the SDK's
-      // RetrieveRunTraceResponseBody schema (rootSpan is non-nullable).
-      const buffered = resolved.run;
-      return json(
-        {
-          trace: {
-            traceId: buffered.traceId ?? "",
-            rootSpan: {
-              id: buffered.spanId ?? "",
-              runId: buffered.friendlyId,
-              data: {
-                message: buffered.taskIdentifier ?? "",
-                taskSlug: buffered.taskIdentifier ?? undefined,
-                events: [],
-                startTime: buffered.createdAt,
-                duration: 0,
-                isError: buffered.status === "FAILED",
-                // CANCELED and FAILED are terminal states — the span
-                // shouldn't signal "still in progress" once the run has
-                // reached either. Mirrors the sibling
-                // api.v1.runs.$runId.spans.$spanId.ts and
-                // syntheticTrace.server.ts logic.
-                isPartial: buffered.status !== "CANCELED" && buffered.status !== "FAILED",
-                isCancelled: buffered.status === "CANCELED",
-                level: "TRACE",
-                queueName: buffered.queue ?? undefined,
-                machinePreset: buffered.machinePreset ?? undefined,
-              },
-              children: [],
-            },
-          },
-        },
-        { status: 200 }
-      );
+      // The helper synthesises a single root span that satisfies the SDK's
+      // RetrieveRunTraceResponseBody schema (rootSpan is non-nullable) and
+      // reflects the buffered terminal state.
+      return json(buildSyntheticTraceBody(resolved.run), { status: 200 });
     }
 
     const run = resolved.run;

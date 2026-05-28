@@ -10,6 +10,7 @@ import {
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticSpanDetailBody } from "~/v3/mollifier/syntheticApiResponses.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -89,26 +90,7 @@ export const loader = createLoaderApiRoute(
       if (resolved.run.spanId !== params.spanId) {
         return json({ error: "Span not found" }, { status: 404 });
       }
-      // CANCELED and FAILED are terminal states. A FAILED buffered run is
-      // errored (drainer exhausted retries or gate rejected it) and must
-      // not signal "still in progress" — mirrors syntheticTrace.server.ts.
-      const isCancelled = resolved.run.status === "CANCELED";
-      const isFailed = resolved.run.status === "FAILED";
-      return json(
-        {
-          spanId: resolved.run.spanId,
-          parentId: resolved.run.parentSpanId ?? null,
-          runId: resolved.run.friendlyId,
-          message: resolved.run.taskIdentifier ?? "",
-          isError: isFailed,
-          isPartial: !isCancelled && !isFailed,
-          isCancelled,
-          level: "TRACE",
-          startTime: resolved.run.createdAt,
-          durationMs: 0,
-        },
-        { status: 200 }
-      );
+      return json(buildSyntheticSpanDetailBody(resolved.run), { status: 200 });
     }
 
     const run = resolved.run;
