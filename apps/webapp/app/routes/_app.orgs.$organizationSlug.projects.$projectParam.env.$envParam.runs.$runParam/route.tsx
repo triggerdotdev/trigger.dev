@@ -701,13 +701,14 @@ function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
         >
           <div className="grid h-full place-items-center">
             {daysSinceCompleted === undefined ? (
-              <InfoPanel
-                variant="info"
-                icon={InformationCircleIcon}
-                title="Waiting to start"
-              >
+              // NoLogsView only renders when the loader returns no trace.
+              // Buffered runs always carry a synthetic trace (see
+              // buildSyntheticTraceForBufferedRun) so they never reach
+              // this branch — the message here is the pre-mollifier
+              // copy for runs with no completedAt and no logs.
+              <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
                 <Paragraph variant="small">
-                  This run is queued. Logs will appear here once it begins executing.
+                  We tidy up older logs to keep things running smoothly.
                 </Paragraph>
               </InfoPanel>
             ) : isWithinLogRetention ? (

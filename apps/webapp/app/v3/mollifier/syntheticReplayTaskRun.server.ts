@@ -28,6 +28,19 @@ export function buildSyntheticReplayTaskRun(args: {
   const { synthetic, envRow } = args;
   if (!synthetic.traceId || !synthetic.spanId) return null;
   return {
+    // The double `as unknown as TaskRun` cast is load-bearing — a direct
+    // `synthetic as TaskRun` won't compile. `SyntheticRun` carries the
+    // subset of fields that `ReplayTaskRunService.call` actually reads
+    // (the contract is enumerated on the SyntheticRun type comment in
+    // readFallback.server.ts), but its shape is not structurally
+    // assignable to the full Prisma `TaskRun` row: optional vs required
+    // fields diverge, several PG columns (number, batchId variants,
+    // status enum widening) are deliberately absent or narrower on the
+    // synthetic. Routing it through `unknown` is the explicit "we know
+    // this is a subset, we've audited which fields are read" signal,
+    // and the traceId/spanId guard above prevents the only field
+    // ReplayTaskRunService consumes that would corrupt downstream
+    // behaviour (the OTel traceparent) when undefined.
     ...(synthetic as unknown as TaskRun),
     project: {
       slug: envRow.project.slug,

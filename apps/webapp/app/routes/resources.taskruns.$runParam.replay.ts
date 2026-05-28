@@ -117,8 +117,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     });
     if (!buffered) throw new Response("Not Found", { status: 404 });
     synthetic = Object.assign(buffered, { __synth: true as const });
+    // Scope the project lookup to the buffer entry's org as well as the
+    // env id. The prior `orgMember.findFirst` above confirms the user
+    // belongs to `entry.orgId`; pinning `organizationId` here means a
+    // malformed entry whose envId resolves to a different org can't leak
+    // that project's data through this loader. Mirrors the PG path's
+    // `project.organization.members.some.userId` scoping (lines 42-95)
+    // — the env filter and select shape are kept identical so the Replay
+    // dialog renders the same dropdown either way.
     const orgProject = await $replica.project.findFirst({
       where: {
+        organizationId: entry.orgId,
         environments: { some: { id: entry.envId } },
       },
       select: {
