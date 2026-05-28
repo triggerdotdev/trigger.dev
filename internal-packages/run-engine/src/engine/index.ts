@@ -453,13 +453,14 @@ export class RunEngine {
   /**
    * Writes a TaskRun row in CANCELED state directly, bypassing the trigger
    * pipeline. Used by the mollifier drainer when a cancel API call lands on
-   * a buffered run before it materialises (Q4 mollifier-cancel design).
+   * a buffered run before it materialises.
    *
-   * Skips: queue insertion (no execution), waitpoint creation (single-
-   * triggerAndWait can't enter the buffer; F4 bypass), concurrency
-   * reservation. Emits `runCancelled` so the existing TaskEvent handler
-   * writes the cancellation event row — the only side effect PG-side cancel
-   * has today per audit.
+   * Skips: queue insertion (no execution), waitpoint creation (the
+   * mollifier gate refuses to buffer triggerAndWait children, so a
+   * cancelled buffered run never has a waiting parent to unblock),
+   * concurrency reservation. Emits `runCancelled` so the existing
+   * TaskEvent handler writes the cancellation event row — the only side
+   * effect PG-side cancel has today per audit.
    *
    * Idempotent: if a row with the same friendlyId already exists (double
    * drainer pop after requeue), Prisma's P2002 unique-constraint violation

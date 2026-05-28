@@ -206,10 +206,11 @@ describe("runStaleSweepOnce — testcontainers", () => {
     "scans across multiple orgs",
     { timeout: 20_000 },
     async ({ redisOptions }) => {
-      // Phase-3 design has org-level fairness in the drainer; the sweep
-      // must walk every org/env, not just the first one it finds. If a
-      // future refactor collapsed listOrgs/listEnvsForOrg into a single
-      // env-flat list this test catches a regression there.
+      // The drainer pops with org-level fairness, so the sweep must
+      // walk every org/env to surface stale entries across all of them
+      // — not just stop at the first env it finds. If a future refactor
+      // collapsed listOrgs/listEnvsForOrg into a single env-flat list,
+      // this test catches a regression there.
       const buffer = new MollifierBuffer({ redisOptions });
       try {
         await buffer.accept({

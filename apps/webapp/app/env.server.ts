@@ -1101,7 +1101,7 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
     TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
-    // Periodic sweep that scans buffer queue ZSETs for entries whose
+    // Periodic sweep that scans buffer queue LISTs for entries whose
     // dwell exceeds the stale threshold. Independent of the drainer —
     // its job is exactly to make a stuck/offline drainer visible to
     // ops. Defaults: enabled when the mollifier is enabled, run every

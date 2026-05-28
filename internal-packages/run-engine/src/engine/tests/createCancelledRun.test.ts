@@ -191,7 +191,7 @@ describe("RunEngine.createCancelledRun", () => {
   // Prisma misread the object as a relation update op and threw
   // `Argument 'set' is missing`. The drainer caught the error and
   // marked the buffer entry FAILED — so the CANCELED PG row never
-  // landed. Found while running the Phase F challenge suite.
+  // landed.
   containerTest(
     "tolerates snapshot.tags being an empty object (cjson edge case)",
     async ({ prisma, redisOptions }) => {

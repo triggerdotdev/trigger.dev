@@ -6,7 +6,7 @@ import {
   reportStaleEntrySnapshot as defaultReportStaleEntrySnapshot,
 } from "./mollifierTelemetry.server";
 
-// One pass of the sweep scans every env's queue ZSET. The per-env page
+// One pass of the sweep scans every env's queue LIST. The per-env page
 // is bounded so a single pathological env can't make the sweep run
 // unboundedly long.
 const DEFAULT_MAX_ENTRIES_PER_ENV = 1000;
