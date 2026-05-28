@@ -5,6 +5,9 @@ import type { RunMetadataChangeOperation } from "@trigger.dev/core/v3/schemas";
 import { UpdateMetadataRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+// Aliased to avoid shadowing the local `env: AuthenticatedEnvironment`
+// parameter the route handler and `routeOperationsToRun` use.
+import { env as appEnv } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -120,6 +123,7 @@ async function routeOperationsToRun(
       runId: targetRunId,
       environmentId: env.id,
       organizationId: env.organizationId,
+      maximumSize: appEnv.TASK_RUN_METADATA_MAXIMUM_SIZE,
       body: { operations },
     })
   );
@@ -164,11 +168,21 @@ const { action } = createActionApiRoute(
       runId,
       environmentId: env.id,
       organizationId: env.organizationId,
+      maximumSize: appEnv.TASK_RUN_METADATA_MAXIMUM_SIZE,
       body: { metadata: body.metadata, operations: body.operations },
     });
 
     if (bufferOutcome.kind === "not_found") {
       return json({ error: "Task Run not found" }, { status: 404 });
+    }
+    if (bufferOutcome.kind === "metadata_too_large") {
+      // Mirror PG's `MetadataTooLargeError` (413).
+      return json(
+        {
+          error: `Metadata exceeds maximum size of ${bufferOutcome.maximumSize} bytes`,
+        },
+        { status: 413 }
+      );
     }
     if (bufferOutcome.kind === "busy") {
       // Entry is materialising. Best path is to retry the PG call —

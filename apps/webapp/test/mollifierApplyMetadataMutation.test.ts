@@ -88,6 +88,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: { metadata: { counter: 1 } },
       buffer,
     });
@@ -103,6 +104,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer,
     });
@@ -130,6 +132,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer: stub.buffer,
     });
@@ -145,6 +148,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer: stub.buffer,
       maxRetries: 12,
@@ -162,6 +166,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer: stub.buffer,
       maxRetries: 3,
@@ -181,6 +186,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: {
         // Should be ignored because `operations` is also present.
         metadata: { b: 2 },
@@ -196,6 +202,32 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     }
   });
 
+  it("returns metadata_too_large when the resulting payload exceeds maximumSize (mirrors PG 413)", async () => {
+    // PG-side `UpdateMetadataService` uses `handleMetadataPacket` to
+    // enforce TASK_RUN_METADATA_MAXIMUM_SIZE (default 256KB), throwing
+    // `MetadataTooLargeError` (413) on overflow. The buffer helper now
+    // matches that cap so a buffered run can't accept a payload PG
+    // would have rejected. Reject must fire BEFORE casSetMetadata.
+    const stub = makeBufferStub();
+    const big = "x".repeat(2048); // 2 KB string value
+    const result = await applyMetadataMutationToBufferedRun({
+      runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
+      maximumSize: 1024, // 1 KB cap — strictly less than the payload
+      body: { metadata: { big } },
+      buffer: stub.buffer,
+    });
+    expect(result.kind).toBe("metadata_too_large");
+    if (result.kind === "metadata_too_large") {
+      expect(result.maximumSize).toBe(1024);
+      expect(result.observedSize).toBeGreaterThan(1024);
+    }
+    // No CAS write should have been attempted.
+    expect(stub.buffer.casSetMetadata).not.toHaveBeenCalled();
+    expect(stub.state.version).toBe(0);
+  });
+
   it("returns not_found when the buffered entry belongs to a different env (cross-env auth gate)", async () => {
     // Same shape as a normal apply call, but the caller's environmentId
     // doesn't match the entry's envId. The helper must refuse the
@@ -206,6 +238,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_OTHER",
       organizationId: "org_1",
+      maximumSize: 1024 * 1024,
       body: { metadata: { counter: 1 } },
       buffer: stub.buffer,
     });
@@ -220,6 +253,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
       runId: "run_1",
       environmentId: "env_a",
       organizationId: "org_OTHER",
+      maximumSize: 1024 * 1024,
       body: { metadata: { counter: 1 } },
       buffer: stub.buffer,
     });
@@ -243,6 +277,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
         runId: "run_1",
         environmentId: "env_a",
         organizationId: "org_1",
+        maximumSize: 1024 * 1024,
         body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
         buffer: sharedStub.buffer,
       }),

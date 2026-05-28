@@ -8,7 +8,10 @@ export type ApplyMetadataMutationOutcome =
   | { kind: "applied"; newMetadata: Record<string, unknown> }
   | { kind: "not_found" }
   | { kind: "busy" }
-  | { kind: "version_exhausted" };
+  | { kind: "version_exhausted" }
+  // Mirrors the PG-side `MetadataTooLargeError` (status 413). Carries
+  // the limit + observed size so the route can produce a useful body.
+  | { kind: "metadata_too_large"; maximumSize: number; observedSize: number };
 
 // Apply a metadata PUT (body.metadata replace AND/OR body.operations
 // deltas) to a buffered run's snapshot. Mirrors the PG-side
@@ -26,6 +29,11 @@ export async function applyMetadataMutationToBufferedRun(input: {
   // belongs to env B.
   environmentId: string;
   organizationId: string;
+  // Byte-size cap on the resulting metadata payload, mirroring the
+  // PG-side `UpdateMetadataService.maximumSize` (sourced from
+  // `env.TASK_RUN_METADATA_MAXIMUM_SIZE`). Required so the buffer path
+  // doesn't silently allow writes the PG path would have rejected.
+  maximumSize: number;
   body: Pick<FlushedRunMetadata, "metadata" | "operations">;
   buffer?: MollifierBuffer | null;
   maxRetries?: number;
@@ -96,6 +104,20 @@ export async function applyMetadataMutationToBufferedRun(input: {
     }
 
     const newMetadataStr = JSON.stringify(metadataObject);
+
+    // Size cap — match PG (`handleMetadataPacket` throws
+    // `MetadataTooLargeError` (413) when the JSON-encoded packet
+    // exceeds the configured cap). Reject in-loop, before CAS, so a
+    // single oversize write doesn't churn the retry budget.
+    const observedSize = Buffer.byteLength(newMetadataStr, "utf8");
+    if (observedSize > input.maximumSize) {
+      return {
+        kind: "metadata_too_large",
+        maximumSize: input.maximumSize,
+        observedSize,
+      };
+    }
+
     const cas = await buffer.casSetMetadata({
       runId: input.runId,
       expectedVersion: entry.metadataVersion,
