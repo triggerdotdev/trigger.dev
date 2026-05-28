@@ -73,7 +73,10 @@ type CommonRelatedRun = Prisma.Result<
 // extras the route handler reads. Declared explicitly (not inferred via
 // ReturnType<typeof findRun>) so findRun can return a synthesised buffered
 // run without the type becoming self-referential.
-type FoundRun = CommonRelatedRun & {
+// Exported so the buffer-synthesis helper below can be unit-tested
+// against a stable shape without re-deriving it (FoundRun's exact field
+// list is what the buffered run must match for `call()` not to surprise).
+export type FoundRun = CommonRelatedRun & {
   traceId: string;
   payload: string;
   payloadType: string;
@@ -587,7 +590,11 @@ function synthesiseMetadata(buffered: SyntheticRun): string | null {
   }
 }
 
-function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
+// Exported for unit testing. Used by `findRun()` above when the
+// Postgres lookup misses and the buffer carries the run — keep the shape
+// in lockstep with `FoundRun`'s field list so `call()` treats a synthesised
+// buffered run identically to a freshly-triggered PG row.
+export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
   const status: TaskRunStatus = bufferedStatusToTaskRunStatus(buffered.status);
 
   const errorJson: Prisma.JsonValue = buffered.error
@@ -626,7 +633,13 @@ function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     idempotencyKeyOptions: buffered.idempotencyKeyOptions ?? null,
     isTest: buffered.isTest,
     depth: buffered.depth,
-    scheduleId: null,
+    // Scheduled triggers go through the same TriggerTaskService path as
+    // API triggers and aren't bypassed by the mollifier gate, so a
+    // scheduled run can land in the buffer with its scheduleId set on the
+    // snapshot. Forward it so resolveSchedule() can hydrate the `schedule`
+    // field in the API response instead of silently dropping it until the
+    // drainer materialises.
+    scheduleId: buffered.scheduleId ?? null,
     lockedToVersion: buffered.lockedToVersion ? { version: buffered.lockedToVersion } : null,
     resumeParentOnCompletion: buffered.resumeParentOnCompletion,
     // Reconstruct the batch from the snapshot's internal id so a buffered
