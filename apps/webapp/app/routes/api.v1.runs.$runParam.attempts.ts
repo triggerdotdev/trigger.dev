@@ -18,11 +18,11 @@ const ParamsSchema = z.object({
   runParam: z.string(),
 });
 
-// Phase A5 — fixes the pre-existing route bug where GET on this URL
-// returned a Remix "no loader" 400 with an internal error message. The
-// route only exposed `action` (POST creates a new attempt); GET had no
-// handler, so any well-intentioned SDK probe hit the framework error
-// instead of a proper API response.
+// GET handler added to fix the pre-existing route bug where this URL
+// returned a Remix "no loader" 400 with an internal error message — only
+// `action` (POST creates a new attempt) was exported, so any
+// well-intentioned SDK probe hit the framework error instead of a proper
+// API response.
 //
 // Returns `{ attempts: [] }` for both PG and buffered runs. The detailed
 // attempt list belongs on the v3 retrieve endpoint, not here — this is

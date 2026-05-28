@@ -16,12 +16,12 @@ const ParamsSchema = z.object({
   spanId: z.string(),
 });
 
-// Phase A2 — discriminated union for PG vs buffered runs. Buffered runs
-// only have one valid spanId (the queued span recorded at gate time and
-// reused as the run's root spanId when the drainer materialises). Any
-// other spanId returns a deterministic 404; the queued span returns a
-// minimal synthesised shape so the customer's SDK sees the same 200
-// contract they'd get for a freshly-triggered run.
+// Resolve the run from either Postgres or the mollifier buffer.
+// Buffered runs only have one valid spanId (the queued span recorded at
+// gate time and reused as the run's root spanId when the drainer
+// materialises). Any other spanId returns a deterministic 404; the queued
+// span returns a minimal synthesised shape so the customer's SDK sees the
+// same 200 contract they'd get for a freshly-triggered run.
 type ResolvedRun =
   | { source: "pg"; run: Awaited<ReturnType<typeof findPgRun>> & {} }
   | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
