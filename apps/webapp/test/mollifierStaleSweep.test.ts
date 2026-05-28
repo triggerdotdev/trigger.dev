@@ -21,6 +21,7 @@ function makeFakeState() {
   let cursor = 0;
   let orgList: string[] = [];
   const counts = new Map<string, number>();
+  let visited = new Set<string>();
   return {
     readCursor: async () => cursor,
     writeCursor: async (v: number) => {
@@ -38,10 +39,20 @@ function makeFakeState() {
       else counts.delete(envId);
     },
     readAllEnvStaleCounts: async () => new Map(counts),
+    markEnvVisited: async (envId: string) => {
+      visited.add(envId);
+    },
+    reconcileVisited: async () => {
+      for (const envId of [...counts.keys()]) {
+        if (!visited.has(envId)) counts.delete(envId);
+      }
+      visited = new Set();
+    },
     clearAll: async () => {
       cursor = 0;
       orgList = [];
       counts.clear();
+      visited = new Set();
     },
     close: async () => {},
   };
@@ -356,6 +367,77 @@ describe("runStaleSweepOnce — testcontainers", () => {
           state,
         });
         expect(spies.snapshots[1].has("env_drain")).toBe(false);
+      } finally {
+        await state.close();
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "evicts fully-drained envs from the counts hash at cycle wrap (no permanent alert)",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      // Devin's BUG report on PR #3754: an env that drains completely
+      // between sweep ticks disappears from `mollifier:org-envs:${orgId}`
+      // entirely, so the inner loop at runStaleSweepOnce never visits it
+      // and `setEnvStaleCount(envId, 0)` (which HDELs the field) is
+      // never called. The counts hash retains the env's last-known
+      // stale count forever, the gauge stays elevated, and the
+      // recommended alert `> 0 for 5m` fires indefinitely.
+      //
+      // Fix: at cycle wrap (cursor returned to 0) HDEL any env in the
+      // counts hash that wasn't visited during the just-completed cycle.
+      // Verified here by:
+      //   1. Flagging env_will_drain stale, confirming it's in the hash
+      //   2. Draining its only entry — now invisible to listEnvsForOrg
+      //   3. Running a sweep tick that triggers cycle wrap
+      //   4. Asserting the env is no longer in the snapshot
+      const buffer = new MollifierBuffer({ redisOptions });
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_will_drain",
+          envId: "env_will_drain",
+          orgId: "org_will_drain",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const futureNow = Date.now() + 5 * 60 * 1000;
+        const cfg = { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 10 };
+        const spies = spyDeps();
+
+        // Tick 1: env_will_drain is flagged stale → enters counts hash.
+        // Cursor wraps to 0 (only 1 org in the list).
+        await runStaleSweepOnce(cfg, {
+          ...spies.deps,
+          getBuffer: () => buffer,
+          state,
+          now: () => futureNow,
+        });
+        expect(spies.snapshots[0].get("env_will_drain")).toBe(1);
+
+        // Drain the only entry. mollifier:queue:env_will_drain is now
+        // empty, and the buffer's atomic Lua removes env_will_drain
+        // from `mollifier:org-envs:org_will_drain` (and removes the org
+        // from `mollifier:orgs` since it has no other envs). The env is
+        // now invisible to listEnvsForOrg.
+        const popped = await buffer.pop("env_will_drain");
+        expect(popped?.runId).toBe("run_will_drain");
+
+        // Tick 2: cursor was 0 after tick 1's wrap, so this rebuilds
+        // the org list (now empty) and immediately wraps again. The
+        // wrap-handler must HDEL env_will_drain from the counts hash
+        // because it wasn't in the visited set for this cycle.
+        await runStaleSweepOnce(cfg, {
+          ...spies.deps,
+          getBuffer: () => buffer,
+          state,
+          now: () => futureNow,
+        });
+        expect(spies.snapshots[1].has("env_will_drain")).toBe(false);
+        // And the durable hash is genuinely empty, not just absent from
+        // this snapshot.
+        expect((await state.readAllEnvStaleCounts()).size).toBe(0);
       } finally {
         await state.close();
         await buffer.close();

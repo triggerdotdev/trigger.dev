@@ -153,6 +153,21 @@ export function createDrainerHandler(deps: {
             // Drainer's outer catch will buffer.fail this entry.
             throw err;
           }
+          // Extract batch association from the snapshot if present.
+          // Without this, a SYSTEM_FAILURE row for a buffered batch
+          // child won't be linked to its batch, and the batch parent's
+          // completion tracking can hang indefinitely waiting on a
+          // child that landed but isn't visible to the batch.
+          const rawBatch = snapshot.batch;
+          const batch =
+            rawBatch &&
+            typeof rawBatch === "object" &&
+            "id" in rawBatch &&
+            typeof (rawBatch as { id: unknown }).id === "string" &&
+            "index" in rawBatch &&
+            typeof (rawBatch as { index: unknown }).index === "number"
+              ? (rawBatch as { id: string; index: number })
+              : undefined;
           try {
             await deps.engine.createFailedTaskRun({
               friendlyId: input.runId,
@@ -175,6 +190,7 @@ export function createDrainerHandler(deps: {
                   : undefined,
               depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
               resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
+              batch,
               traceId: typeof snapshot.traceId === "string" ? snapshot.traceId : undefined,
               spanId: typeof snapshot.spanId === "string" ? snapshot.spanId : undefined,
               taskEventStore:

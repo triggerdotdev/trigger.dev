@@ -154,6 +154,47 @@ describe("createDrainerHandler", () => {
     expect(arg.error.raw).toContain("validation failed");
   });
 
+  it("propagates the batch association into createFailedTaskRun (so batch parents don't hang on missing children)", async () => {
+    // Devin's ANALYSIS report on PR #3754: the terminal-failure path
+    // extracts most snapshot fields (parentTaskRunId, rootTaskRunId,
+    // depth, etc.) but dropped `batch`. If the original trigger was
+    // part of a batch, the SYSTEM_FAILURE row isn't associated with
+    // the batch, so the batch parent's completion-tracking can hang
+    // indefinitely waiting on a child that landed but isn't linked.
+    const trigger = vi.fn(async () => {
+      throw new Error("validation failed: payload too large");
+    });
+    const createFailedTaskRun = vi.fn(async () => ({
+      id: "internal",
+      friendlyId: "run_x",
+    }));
+    const handler = createDrainerHandler({
+      engine: { trigger, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: "run_batched",
+        envId: "env_a",
+        orgId: "org_1",
+        payload: {
+          taskIdentifier: "t",
+          environment: envFixture,
+          batch: { id: "batch_xyz", index: 7 },
+        },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any),
+    ).resolves.toBeUndefined();
+
+    expect(createFailedTaskRun).toHaveBeenCalledOnce();
+    const arg = createFailedTaskRun.mock.calls[0][0] as {
+      batch?: { id: string; index: number };
+    };
+    expect(arg.batch).toEqual({ id: "batch_xyz", index: 7 });
+  });
+
   it("rethrows the original error when createFailedTaskRun also fails (PG genuinely unreachable)", async () => {
     const triggerErr = new Error("engine rejected the snapshot");
     const trigger = vi.fn(async () => {

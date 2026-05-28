@@ -148,6 +148,13 @@ export async function runStaleSweepOnce(
       // > 0, HDEL when it dropped back to zero — the hash is the source
       // of truth for the gauge snapshot below.
       await deps.state.setEnvStaleCount(envId, envStale);
+      // Track that this env was visited during the current cycle. The
+      // reconcile step at cycle wrap uses this to HDEL counts hash
+      // entries for envs that fully drained mid-cycle (they disappear
+      // from listEnvsForOrg, so the inner loop above never reaches them
+      // and never HDELs their hash field — without reconcile the gauge
+      // would stay elevated forever).
+      await deps.state.markEnvVisited(envId);
       staleCount += envStale;
     }
   }
@@ -155,8 +162,18 @@ export async function runStaleSweepOnce(
   // Advance the cursor. If the slice consumed the end of the LIST, wrap
   // to 0 so the next tick rebuilds the org list and starts a new cycle.
   const advanced = cursor + slice.length;
-  const newCursor = advanced >= total ? 0 : advanced;
+  const wrapped = advanced >= total;
+  const newCursor = wrapped ? 0 : advanced;
   await deps.state.writeCursor(newCursor);
+
+  if (wrapped) {
+    // Cycle ended. HDEL any env still in the counts hash that didn't
+    // appear in any tick of the just-completed cycle — these are envs
+    // that fully drained from the buffer mid-cycle and would otherwise
+    // hold their stale gauge value forever. Also DELs the visited set
+    // so the next cycle starts clean.
+    await deps.state.reconcileVisited();
+  }
 
   // Emit the snapshot from the durable hash, which carries values for
   // envs visited in earlier ticks too. This is what makes the gauge

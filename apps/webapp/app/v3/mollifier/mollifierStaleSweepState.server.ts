@@ -1,17 +1,26 @@
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 
-// Durable per-tick state for the sharded stale sweep. Three Redis keys,
+// Durable per-tick state for the sharded stale sweep. Four Redis keys,
 // all in the `mollifier:` namespace alongside the buffer's own state:
 //
 //   mollifier:stale_sweep:cursor    STRING  next position in org_list (0 = fresh cycle)
 //   mollifier:stale_sweep:org_list  LIST    org IDs frozen at the start of the cycle
 //   mollifier:stale_sweep:counts    HASH    envId -> last-known stale count
+//   mollifier:stale_sweep:visited   SET     envIds visited during the current cycle
 //
 // The state survives webapp restarts: a restarted process picks up the
 // cursor where the previous one left off and re-emits the last-known
 // gauge values immediately, rather than blinking to zero until the next
 // cycle visits each env.
+//
+// The `visited` set exists to GC the `counts` hash at cycle wrap: an env
+// that drains completely between sweep ticks disappears from
+// `buffer.listEnvsForOrg`, so the sweep's inner loop never revisits it
+// and never HDELs its counts entry. Without the visited-set GC the
+// counts hash retains the env's last-known stale count forever and the
+// gauge stays permanently elevated. At cursor wrap we diff the hash
+// against the cycle's visited set and HDEL the difference.
 //
 // Storage is owned by this class rather than added to MollifierBuffer
 // because the keys are sweep-internal — the buffer abstracts the
@@ -28,6 +37,14 @@ export interface StaleSweepStateStore {
   /** HSET when count > 0, HDEL when count === 0 (so the snapshot reflects current truth). */
   setEnvStaleCount(envId: string, count: number): Promise<void>;
   readAllEnvStaleCounts(): Promise<Map<string, number>>;
+  /** SADD `envId` to the current cycle's visited set. Called once per env scanned per tick. */
+  markEnvVisited(envId: string): Promise<void>;
+  /**
+   * HDEL every env in the counts hash that is NOT in the visited set, then
+   * DEL the visited set. Called when the cursor wraps (cycle ends) so
+   * envs that fully drained mid-cycle get cleaned out of the gauge.
+   */
+  reconcileVisited(): Promise<void>;
   clearAll(): Promise<void>;
   close(): Promise<void>;
 }
@@ -35,6 +52,7 @@ export interface StaleSweepStateStore {
 const CURSOR_KEY = "mollifier:stale_sweep:cursor";
 const ORG_LIST_KEY = "mollifier:stale_sweep:org_list";
 const COUNTS_KEY = "mollifier:stale_sweep:counts";
+const VISITED_KEY = "mollifier:stale_sweep:visited";
 
 export class MollifierStaleSweepState implements StaleSweepStateStore {
   private readonly redis: Redis;
@@ -114,8 +132,42 @@ export class MollifierStaleSweepState implements StaleSweepStateStore {
     return out;
   }
 
+  async markEnvVisited(envId: string): Promise<void> {
+    await this.redis.sadd(VISITED_KEY, envId);
+  }
+
+  async reconcileVisited(): Promise<void> {
+    // HKEYS + SMEMBERS in a pipeline, then HDEL the difference locally.
+    // For typical fleet sizes (counts and visited both bounded by the
+    // count of buffered envs) this is well within a single RTT plus one
+    // small HDEL.
+    const pipeline = this.redis.pipeline();
+    pipeline.hkeys(COUNTS_KEY);
+    pipeline.smembers(VISITED_KEY);
+    const results = await pipeline.exec();
+    if (!results) return;
+    const [hkeysErr, hkeysRes] = results[0] as [Error | null, string[] | null];
+    const [smembersErr, smembersRes] = results[1] as [Error | null, string[] | null];
+    if (hkeysErr || smembersErr) {
+      this.logger.error("MollifierStaleSweepState.reconcileVisited failed", {
+        hkeysErr: hkeysErr?.message,
+        smembersErr: smembersErr?.message,
+      });
+      return;
+    }
+    const hashEnvs = hkeysRes ?? [];
+    const visited = new Set(smembersRes ?? []);
+    const orphans = hashEnvs.filter((envId) => !visited.has(envId));
+    const cleanup = this.redis.pipeline();
+    if (orphans.length > 0) {
+      cleanup.hdel(COUNTS_KEY, ...orphans);
+    }
+    cleanup.del(VISITED_KEY);
+    await cleanup.exec();
+  }
+
   async clearAll(): Promise<void> {
-    await this.redis.del(CURSOR_KEY, ORG_LIST_KEY, COUNTS_KEY);
+    await this.redis.del(CURSOR_KEY, ORG_LIST_KEY, COUNTS_KEY, VISITED_KEY);
   }
 
   async close(): Promise<void> {
