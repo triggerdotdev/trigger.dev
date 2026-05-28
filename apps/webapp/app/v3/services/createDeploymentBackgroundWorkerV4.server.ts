@@ -77,6 +77,18 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         }
       }
 
+      // Late-retry idempotency: if a worker was registered by a prior fully-
+      // successful attempt and the deployment already moved past BUILDING, return
+      // that worker so the CLI can finalize instead of seeing a 5xx.
+      if (deployment.workerId) {
+        const linkedWorker = await this._prisma.backgroundWorker.findFirst({
+          where: { id: deployment.workerId },
+        });
+        if (linkedWorker) {
+          return linkedWorker;
+        }
+      }
+
       if (deployment.status !== "BUILDING") {
         logger.warn("createDeploymentBackgroundWorker: deployment not in BUILDING state", {
           deploymentId,
@@ -87,12 +99,24 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         return;
       }
 
-      const backgroundWorker = await findOrCreateBackgroundWorker(
-        environment,
-        deployment,
-        body,
-        this._prisma
+      const [findOrCreateError, backgroundWorker] = await tryCatch(
+        findOrCreateBackgroundWorker(environment, deployment, body, this._prisma)
       );
+
+      if (findOrCreateError) {
+        // Definitive failures (e.g. contentHash drift) surface as
+        // `ServiceValidationError` — fail the deployment so the operator sees it
+        // immediately instead of waiting 8 minutes for the timeout. Transient
+        // races throw a plain `Error` and propagate as 5xx without failing.
+        if (findOrCreateError instanceof ServiceValidationError) {
+          await this.#failBackgroundWorkerDeployment(deployment, findOrCreateError);
+        }
+        throw findOrCreateError;
+      }
+
+      if (!backgroundWorker) {
+        return;
+      }
 
       //upgrade the project to engine "V2" if it's not already
       if (environment.project.engine === "V1" && body.engine === "V2") {

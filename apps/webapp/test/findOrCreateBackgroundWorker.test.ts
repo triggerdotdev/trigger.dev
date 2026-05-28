@@ -142,4 +142,42 @@ describe("findOrCreateBackgroundWorker", () => {
     }
   );
 
+  containerTest(
+    "concurrent create race surfaces as plain Error (not ServiceValidationError)",
+    async ({ prisma }) => {
+      // The class distinction matters: the V4 service uses `instanceof ServiceValidationError`
+      // to decide whether to fail-deploy. A transient race must not fail-deploy.
+      const { authEnv, deployment } = await seedDeployment(prisma);
+
+      const [first, second] = await Promise.allSettled([
+        findOrCreateBackgroundWorker(authEnv, deployment, bodyWithHash("h-race"), prisma),
+        findOrCreateBackgroundWorker(authEnv, deployment, bodyWithHash("h-race"), prisma),
+      ]);
+
+      const fulfilled = [first, second].filter((r) => r.status === "fulfilled");
+      const rejected = [first, second].filter(
+        (r): r is PromiseRejectedResult => r.status === "rejected"
+      );
+
+      // Exactly one row in the database regardless of who won.
+      const rowCount = await prisma.backgroundWorker.count({
+        where: { projectId: authEnv.projectId, version: deployment.version },
+      });
+      expect(rowCount).toBe(1);
+
+      // If the schedule produced an actual race (one wins, one loses), the loser
+      // must surface a non-SVE error. If the schedule serialised them by accident,
+      // both fulfilled is also acceptable — this test is about the error *class*,
+      // not the rate of races.
+      if (rejected.length > 0) {
+        expect(fulfilled).toHaveLength(1);
+        for (const r of rejected) {
+          expect(r.reason).not.toBeInstanceOf(ServiceValidationError);
+          expect((r.reason as Error).message).toMatch(/concurrent/i);
+        }
+      } else {
+        expect(fulfilled).toHaveLength(2);
+      }
+    }
+  );
 });
