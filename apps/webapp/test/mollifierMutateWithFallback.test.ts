@@ -23,18 +23,37 @@ function fakePrisma(rows: Array<TaskRun | null>): PrismaStub {
   return { taskRun: { findFirst: fn } };
 }
 
+// Env-matching entry returned by the env-pre-check getEntry call that
+// mutateWithFallback now does before any buffer write (cross-env auth
+// gate). Same envId/orgId as `baseInput` so the check passes and the
+// flow under test proceeds to mutateSnapshot.
+const preCheckEntry = (): BufferEntry =>
+  ({
+    envId: "env_a",
+    orgId: "org_1",
+    status: "QUEUED",
+    materialised: false,
+  }) as unknown as BufferEntry;
+
 function bufferReturning(result: MutateSnapshotResult): MollifierBuffer {
+  const getEntry = vi.fn(async () => preCheckEntry());
   return {
     mutateSnapshot: vi.fn(async () => result),
-    getEntry: vi.fn(async () => null),
+    getEntry,
   } as unknown as MollifierBuffer;
 }
 
 // Buffer whose mutateSnapshot returns "busy" and whose getEntry walks a
-// scripted sequence of entry states (the drainer's progress). The last
-// element repeats once the sequence is exhausted.
+// scripted sequence of entry states. The pre-check getEntry call (one
+// extra read before the busy-wait loop, used for env authorization)
+// consumes the first scripted result, then the busy-wait loop pops the
+// remainder; the last element repeats once the sequence is exhausted.
 function bufferBusy(entries: Array<BufferEntry | null>): MollifierBuffer {
   const getEntry = vi.fn();
+  // Pre-check consumes one entry. Use a QUEUED env-matching entry so
+  // the env-check passes and the flow reaches mutateSnapshot (which
+  // returns "busy") and enters the wait-loop.
+  getEntry.mockResolvedValueOnce(preCheckEntry());
   for (const e of entries) getEntry.mockResolvedValueOnce(e);
   getEntry.mockResolvedValue(entries.length ? entries[entries.length - 1] : null);
   return {
@@ -44,11 +63,26 @@ function bufferBusy(entries: Array<BufferEntry | null>): MollifierBuffer {
 }
 
 const entryDraining = (): BufferEntry =>
-  ({ status: "DRAINING", materialised: false }) as unknown as BufferEntry;
+  ({
+    envId: "env_a",
+    orgId: "org_1",
+    status: "DRAINING",
+    materialised: false,
+  }) as unknown as BufferEntry;
 const entryQueued = (): BufferEntry =>
-  ({ status: "QUEUED", materialised: false }) as unknown as BufferEntry;
+  ({
+    envId: "env_a",
+    orgId: "org_1",
+    status: "QUEUED",
+    materialised: false,
+  }) as unknown as BufferEntry;
 const entryMaterialised = (): BufferEntry =>
-  ({ status: "DRAINING", materialised: true }) as unknown as BufferEntry;
+  ({
+    envId: "env_a",
+    orgId: "org_1",
+    status: "DRAINING",
+    materialised: true,
+  }) as unknown as BufferEntry;
 
 const fakeRun = (overrides: Partial<TaskRun> = {}): TaskRun =>
   ({
@@ -150,8 +184,9 @@ describe("mutateWithFallback", () => {
     });
     expect(result).toEqual({ kind: "pg", response: "pg-after-wait" });
     expect(pgMutation).toHaveBeenCalledWith(row);
-    // Detection happened against Redis (3 polls), the primary exactly once.
-    expect(buffer.getEntry).toHaveBeenCalledTimes(3);
+    // One env-pre-check call + 3 busy-wait polls = 4 getEntry reads;
+    // primary read exactly once.
+    expect(buffer.getEntry).toHaveBeenCalledTimes(4);
     expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
   });
 
@@ -227,7 +262,8 @@ describe("mutateWithFallback", () => {
       random: () => 0,
     });
     expect(result).toEqual({ kind: "pg", response: "pg-after-requeue" });
-    expect(buffer.getEntry).toHaveBeenCalledTimes(3);
+    // One env-pre-check + 3 busy-wait polls.
+    expect(buffer.getEntry).toHaveBeenCalledTimes(4);
     expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(1);
   });
 
@@ -278,8 +314,8 @@ describe("mutateWithFallback", () => {
       abortSignal: controller.signal,
     });
     expect(result).toEqual({ kind: "timed_out" });
-    // One buffer poll happened before the sleep+abort; primary untouched.
-    expect(buffer.getEntry).toHaveBeenCalledTimes(1);
+    // One env-pre-check + one busy-wait poll before sleep+abort; primary untouched.
+    expect(buffer.getEntry).toHaveBeenCalledTimes(2);
     expect(writer.taskRun.findFirst).toHaveBeenCalledTimes(0);
   });
 
@@ -311,6 +347,64 @@ describe("mutateWithFallback", () => {
         getBuffer: () => bufferReturning("limit_exceeded"),
       })
     ).rejects.toThrow(/limit_exceeded/);
+  });
+
+  it("replica miss + buffer entry belongs to a different env → not_found (cross-env auth gate)", async () => {
+    // Same flow as the applied_to_snapshot test, except the entry's
+    // envId doesn't match input.environmentId. mutateWithFallback must
+    // refuse the write and return not_found (without leaking that the
+    // runId exists in another env), and must NOT call mutateSnapshot.
+    const crossEnvEntry: BufferEntry = {
+      envId: "env_OTHER",
+      orgId: "org_1",
+      status: "QUEUED",
+      materialised: false,
+    } as unknown as BufferEntry;
+    const mutateSnapshot = vi.fn(async () => "applied_to_snapshot" as const);
+    const buffer = {
+      mutateSnapshot,
+      getEntry: vi.fn(async () => crossEnvEntry),
+    } as unknown as MollifierBuffer;
+
+    const pgMutation = vi.fn(async () => "pg");
+    const synthesisedResponse = vi.fn(() => "snap");
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation,
+      synthesisedResponse,
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => buffer,
+    });
+    expect(result).toEqual({ kind: "not_found" });
+    expect(mutateSnapshot).not.toHaveBeenCalled();
+    expect(pgMutation).not.toHaveBeenCalled();
+    expect(synthesisedResponse).not.toHaveBeenCalled();
+  });
+
+  it("replica miss + buffer entry belongs to a different org → not_found (cross-org auth gate)", async () => {
+    const crossOrgEntry: BufferEntry = {
+      envId: "env_a",
+      orgId: "org_OTHER",
+      status: "QUEUED",
+      materialised: false,
+    } as unknown as BufferEntry;
+    const mutateSnapshot = vi.fn(async () => "applied_to_snapshot" as const);
+    const buffer = {
+      mutateSnapshot,
+      getEntry: vi.fn(async () => crossOrgEntry),
+    } as unknown as MollifierBuffer;
+
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation: async () => "pg",
+      synthesisedResponse: () => "snap",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => buffer,
+    });
+    expect(result).toEqual({ kind: "not_found" });
+    expect(mutateSnapshot).not.toHaveBeenCalled();
   });
 
   it("buffer is null (mollifier disabled) → not_found after replica miss", async () => {

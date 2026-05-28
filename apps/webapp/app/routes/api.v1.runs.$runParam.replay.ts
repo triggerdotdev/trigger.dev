@@ -38,6 +38,13 @@ const BufferedReplayInputSchema = z.object({
   workerQueue: z.string().nullable().optional(),
   machinePreset: z.string().nullable().optional(),
   realtimeStreamsVersion: z.string().nullable().optional(),
+  // ReplayTaskRunService.getExistingMetadata reads these to preserve
+  // the original run's metadata on replay. Without them in the schema
+  // they'd be stripped by Zod's default key-passthrough behaviour, and
+  // a buffered-source replay would silently lose metadata that a
+  // PG-source replay carries over.
+  seedMetadata: z.string().nullable().optional(),
+  seedMetadataType: z.string().nullable().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {

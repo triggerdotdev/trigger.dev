@@ -86,6 +86,8 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     const { buffer, state } = makeBufferStub();
     const result = await applyMetadataMutationToBufferedRun({
       runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
       body: { metadata: { counter: 1 } },
       buffer,
     });
@@ -99,6 +101,8 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     state.pendingConflictsForNextN = 5;
     const result = await applyMetadataMutationToBufferedRun({
       runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer,
     });
@@ -124,6 +128,8 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     stub.state.pendingConflictsForNextN = 11;
     const result = await applyMetadataMutationToBufferedRun({
       runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer: stub.buffer,
     });
@@ -137,6 +143,8 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     stub.state.pendingConflictsForNextN = 99;
     const result = await applyMetadataMutationToBufferedRun({
       runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer: stub.buffer,
       maxRetries: 12,
@@ -152,11 +160,44 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     stub.state.pendingConflictsForNextN = 8;
     const result = await applyMetadataMutationToBufferedRun({
       runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
       body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
       buffer: stub.buffer,
       maxRetries: 3,
     });
     expect(result.kind).toBe("version_exhausted");
+  });
+
+  it("returns not_found when the buffered entry belongs to a different env (cross-env auth gate)", async () => {
+    // Same shape as a normal apply call, but the caller's environmentId
+    // doesn't match the entry's envId. The helper must refuse the
+    // mutation and return not_found (without leaking existence) and
+    // must NOT call casSetMetadata.
+    const stub = makeBufferStub();
+    const result = await applyMetadataMutationToBufferedRun({
+      runId: "run_1",
+      environmentId: "env_OTHER",
+      organizationId: "org_1",
+      body: { metadata: { counter: 1 } },
+      buffer: stub.buffer,
+    });
+    expect(result.kind).toBe("not_found");
+    expect(stub.buffer.casSetMetadata).not.toHaveBeenCalled();
+    expect(stub.state.version).toBe(0);
+  });
+
+  it("returns not_found when the buffered entry belongs to a different org (cross-org auth gate)", async () => {
+    const stub = makeBufferStub();
+    const result = await applyMetadataMutationToBufferedRun({
+      runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_OTHER",
+      body: { metadata: { counter: 1 } },
+      buffer: stub.buffer,
+    });
+    expect(result.kind).toBe("not_found");
+    expect(stub.buffer.casSetMetadata).not.toHaveBeenCalled();
   });
 
   it("N-way concurrent applies all converge under default budget", async () => {
@@ -173,6 +214,8 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     const calls = Array.from({ length: N }, () =>
       applyMetadataMutationToBufferedRun({
         runId: "run_1",
+        environmentId: "env_a",
+        organizationId: "org_1",
         body: { operations: [{ type: "increment", key: "counter", value: 1 }] },
         buffer: sharedStub.buffer,
       }),

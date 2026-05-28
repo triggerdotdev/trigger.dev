@@ -19,6 +19,13 @@ export type ApplyMetadataMutationOutcome =
 // callers never lose an increment / append / set.
 export async function applyMetadataMutationToBufferedRun(input: {
   runId: string;
+  // Env+org scoping closes a cross-environment write gap on the buffer
+  // path: the route's PG path is already env-scoped via Prisma filters,
+  // and this helper now enforces the same isolation before any buffer
+  // write so a caller authed in env A can't mutate a buffered run that
+  // belongs to env B.
+  environmentId: string;
+  organizationId: string;
   body: Pick<FlushedRunMetadata, "metadata" | "operations">;
   buffer?: MollifierBuffer | null;
   maxRetries?: number;
@@ -37,6 +44,14 @@ export async function applyMetadataMutationToBufferedRun(input: {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const entry = await buffer.getEntry(input.runId);
     if (!entry) return { kind: "not_found" };
+    // Env+org check: an entry from a different env is treated as a
+    // miss (not 403) so existence in other envs doesn't leak.
+    if (
+      entry.envId !== input.environmentId ||
+      entry.orgId !== input.organizationId
+    ) {
+      return { kind: "not_found" };
+    }
     if (entry.status !== "QUEUED" || entry.materialised) {
       return { kind: "busy" };
     }

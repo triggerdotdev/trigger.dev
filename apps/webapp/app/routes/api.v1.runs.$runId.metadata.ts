@@ -86,20 +86,41 @@ async function routeOperationsToRun(
   if (!error) return;
 
   // PG service threw — commonly "Cannot update metadata for a completed
-  // run", but it could also be a transient PG failure. The parent/root
-  // ops are auxiliary, so we stay best-effort and don't surface this to
-  // the caller — but we must not swallow the failure silently, otherwise
-  // a genuine PG outage on these ops is invisible. Warn, then try the
-  // buffer in case the target is itself buffered.
-  logger.warn("metadata route: parent/root PG op failed, falling back to buffer", {
+  // run", but it could also be a transient PG failure. Parent/root ops
+  // are auxiliary (the caller's primary mutation already landed); stay
+  // best-effort and don't surface this to the caller — but warn so a
+  // genuine PG outage on these ops isn't invisible.
+  logger.warn("metadata route: parent/root PG op failed", {
     targetRunId,
     error: error instanceof Error ? error.message : String(error),
   });
 
-  await applyMetadataMutationToBufferedRun({
-    runId: targetRunId,
-    body: { operations },
-  });
+  // Buffer fallback only makes sense for friendlyId-keyed entries. The
+  // PG-side parent/root IDs are internal cuids; the buffer keys entries
+  // by friendlyId, so passing the internal id would silently no-op.
+  // Skip explicitly — a buffered child's parent is always materialised
+  // in PG already (a buffered run hasn't executed, so it can't have
+  // triggered the child), so the buffered-parent branch isn't actually
+  // reachable. Treating the no-op as intentional rather than incidental.
+  if (!targetRunId.startsWith("run_")) return;
+
+  // Best-effort buffer fallback. Wrap so a transient Redis throw on
+  // this auxiliary op can't 500 the request after the primary mutation
+  // already succeeded.
+  const [bufferError] = await tryCatch(
+    applyMetadataMutationToBufferedRun({
+      runId: targetRunId,
+      environmentId: env.id,
+      organizationId: env.organizationId,
+      body: { operations },
+    })
+  );
+  if (bufferError) {
+    logger.warn("metadata route: buffer fallback for parent/root op failed", {
+      targetRunId,
+      error: bufferError instanceof Error ? bufferError.message : String(bufferError),
+    });
+  }
 }
 
 const { action } = createActionApiRoute(
@@ -133,6 +154,8 @@ const { action } = createActionApiRoute(
     // PG miss. Target run is either buffered or genuinely absent.
     const bufferOutcome = await applyMetadataMutationToBufferedRun({
       runId,
+      environmentId: env.id,
+      organizationId: env.organizationId,
       body: { metadata: body.metadata, operations: body.operations },
     });
 

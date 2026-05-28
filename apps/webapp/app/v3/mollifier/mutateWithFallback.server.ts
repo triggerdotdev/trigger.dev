@@ -82,6 +82,27 @@ export async function mutateWithFallback<TResponse>(
     return { kind: "not_found" };
   }
 
+  // Env-scoped authorization for the buffer path. The replica/writer
+  // lookups above are already env-scoped via findRunInPg; this closes
+  // the same gap on the buffer side so a caller authed in env A can't
+  // mutate a buffered run that belongs to env B (or a different org)
+  // by guessing its friendlyId. Non-atomic w.r.t. the mutateSnapshot
+  // call below, but the TOCTOU is benign: runIds are globally unique,
+  // so a cross-env entry can't suddenly appear after a same-env check.
+  // A genuinely-missing entry (entry === null) falls through and is
+  // handled by the existing not_found / writer-recovery path below.
+  const entryForAuth = await buffer.getEntry(input.runId);
+  if (
+    entryForAuth &&
+    (entryForAuth.envId !== input.environmentId ||
+      entryForAuth.orgId !== input.organizationId)
+  ) {
+    // Hide existence on env mismatch: return not_found, same shape as
+    // a true miss, rather than 403 which would leak that the runId
+    // exists in some other env.
+    return { kind: "not_found" };
+  }
+
   // Path 2 — buffer snapshot mutation.
   const result: MutateSnapshotResult = await buffer.mutateSnapshot(
     input.runId,
