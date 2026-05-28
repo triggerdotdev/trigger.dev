@@ -251,9 +251,17 @@ export class MollifierBuffer {
   // Used by the stale-sweep to compute per-entry dwell time, so order is
   // immaterial — LRANGE returns them newest-first (LPUSH head) but the
   // caller scans the whole window. Non-destructive: the drainer still
-  // RPOPs these entries in FIFO order. Each entry hash is fetched
-  // separately; a `null` from getEntry (entry torn down by a concurrent
-  // drainer ack/fail between LRANGE and HGETALL) is skipped.
+  // RPOPs these entries in FIFO order.
+  //
+  // The entry HGETALLs are issued in a single pipelined batch (one
+  // network round-trip instead of N) — at the stale-sweep's default
+  // maxCount=1000 the serial implementation cost ~1000 RTTs per env,
+  // which dominated sweep wall-time at any meaningful backlog.
+  //
+  // A missing entry (empty hash) is skipped: the drainer's RPOP+DEL of
+  // the entry hash can race our LRANGE→HGETALL window, so a runId on
+  // the queue with no backing hash is an expected concurrency outcome,
+  // not an error.
   async listEntriesForEnv(envId: string, maxCount: number): Promise<BufferEntry[]> {
     if (maxCount <= 0) return [];
     const runIds = await this.redis.lrange(
@@ -261,10 +269,35 @@ export class MollifierBuffer {
       0,
       maxCount - 1,
     );
-    const entries: BufferEntry[] = [];
+    if (runIds.length === 0) return [];
+
+    const pipeline = this.redis.pipeline();
     for (const runId of runIds) {
-      const entry = await this.getEntry(runId);
-      if (entry) entries.push(entry);
+      pipeline.hgetall(`mollifier:entries:${runId}`);
+    }
+    const results = await pipeline.exec();
+    if (!results) return [];
+
+    const entries: BufferEntry[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const [err, raw] = results[i] as [Error | null, Record<string, string> | null];
+      if (err) {
+        this.logger.error("MollifierBuffer.listEntriesForEnv: hgetall failed", {
+          runId: runIds[i],
+          err: err.message,
+        });
+        continue;
+      }
+      if (!raw || Object.keys(raw).length === 0) continue;
+      const parsed = BufferEntrySchema.safeParse(raw);
+      if (!parsed.success) {
+        this.logger.error("MollifierBuffer.listEntriesForEnv: invalid entry shape", {
+          runId: runIds[i],
+          errors: parsed.error.flatten(),
+        });
+        continue;
+      }
+      entries.push(parsed.data);
     }
     return entries;
   }

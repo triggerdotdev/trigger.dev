@@ -2341,6 +2341,41 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
     }
   });
 
+  redisTest(
+    "skips entries whose hash was torn down between LRANGE and HGETALL (concurrent drainer ack/fail race)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // The drainer can RPOP + ack/fail an entry between our LRANGE and
+      // the per-runId HGETALL — its DEL of the entry hash races our read.
+      // listEntriesForEnv must tolerate this: skip the runId, return
+      // every other entry. This is exercised here by simulating the race:
+      // LPUSH a runId onto the queue without an accompanying entry hash.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "r_a", envId: "env_race", orgId: "org_1", payload: "{}" });
+        await buffer.accept({ runId: "r_b", envId: "env_race", orgId: "org_1", payload: "{}" });
+
+        // Tear down r_a's hash to simulate the drainer winning the race.
+        // The runId stays on the queue LIST but its entry hash is gone —
+        // listEntriesForEnv must tolerate the missing HGETALL result.
+        await buffer["redis"].del("mollifier:entries:r_a");
+
+        const entries = await buffer.listEntriesForEnv("env_race", 10);
+        expect(entries.map((e) => e.runId).sort()).toEqual(["r_b"]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
   redisTest("maxCount <= 0 returns empty without hitting redis", { timeout: 20_000 }, async ({ redisContainer }) => {
     const buffer = new MollifierBuffer({
       redisOptions: {
