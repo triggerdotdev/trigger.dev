@@ -18,8 +18,8 @@ const ParamsSchema = z.object({
   runId: z.string(),
 });
 
-// Phase A6 — fixes the pre-existing route bug where GET on this URL
-// returned a Remix "no loader" 400. The route only exposed PUT (update);
+// GET handler added to fix the pre-existing route bug where this URL
+// returned a Remix "no loader" 400 — only PUT (update) was exported, so
 // GET had no handler. Returns `{ metadata, metadataType }` from either
 // the Postgres row or the mollifier buffer snapshot.
 export async function loader({ request, params }: LoaderFunctionArgs) {

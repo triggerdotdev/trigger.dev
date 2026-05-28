@@ -73,12 +73,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     if (!taskRun) {
-      // Buffered fallback. The SyntheticRun shape was extended in
-      // Phase B4 to carry every field ReplayTaskRunService reads from a
-      // TaskRun. Validate the subset of fields the service consumes
-      // (BufferedReplayInputSchema above) before casting; a schema
-      // mismatch surfaces as a 404 here rather than as a silent
-      // undefined deep inside the service.
+      // Buffered fallback. SyntheticRun carries every field
+      // ReplayTaskRunService reads from a TaskRun. Validate the subset of
+      // fields the service consumes (BufferedReplayInputSchema above)
+      // before casting; a schema mismatch surfaces as a 404 here rather
+      // than as a silent undefined deep inside the service.
       const buffered = await findRunByIdWithMollifierFallback({
         runId: runParam,
         environmentId: env.id,
