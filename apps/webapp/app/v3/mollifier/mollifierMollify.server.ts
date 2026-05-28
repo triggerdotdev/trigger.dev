@@ -37,7 +37,7 @@ const NOTICE: MollifyNotice = {
   code: "mollifier.queued",
   message:
     "Trigger accepted into burst buffer. Consider batchTrigger for fan-outs of 100+.",
-  docs: "https://trigger.dev/docs/triggering#burst-handling",
+  docs: "https://trigger.dev/docs/management/tasks/batch-trigger",
 };
 
 export async function mollifyTrigger(args: {

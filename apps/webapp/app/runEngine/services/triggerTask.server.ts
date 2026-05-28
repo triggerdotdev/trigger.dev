@@ -140,293 +140,365 @@ export class RunEngineTriggerTaskService {
         this.tracer,
         "RunEngineTriggerTaskService.call()",
         async (span) => {
-      span.setAttribute("taskId", taskId);
-      span.setAttribute("attempt", attempt);
+          span.setAttribute("taskId", taskId);
+          span.setAttribute("attempt", attempt);
 
-      const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
-      const triggerRequest = {
-        taskId,
-        friendlyId: runFriendlyId,
-        environment,
-        body,
-        options,
-      } satisfies TriggerTaskRequest;
-
-      // Validate max attempts
-      const maxAttemptsValidation = this.validator.validateMaxAttempts({
-        taskId,
-        attempt,
-      });
-
-      if (!maxAttemptsValidation.ok) {
-        throw maxAttemptsValidation.error;
-      }
-
-      // Validate tags
-      const tagValidation = this.validator.validateTags({
-        tags: body.options?.tags,
-      });
-
-      if (!tagValidation.ok) {
-        throw tagValidation.error;
-      }
-
-      // Validate entitlement (unless skipChecks is enabled)
-      let planType: string | undefined;
-
-      if (!options.skipChecks) {
-        const entitlementValidation = await this.validator.validateEntitlement({
-          environment,
-        });
-
-        if (!entitlementValidation.ok) {
-          throw entitlementValidation.error;
-        }
-
-        // Extract plan type from entitlement response
-        planType = entitlementValidation.plan?.type;
-      } else {
-        // When skipChecks is enabled, planType should be passed via options
-        planType = options.planType;
-
-        if (!planType) {
-          logger.warn("Plan type not set but skipChecks is enabled", {
+          const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
+          const triggerRequest = {
             taskId,
-            environment: {
-              id: environment.id,
-              type: environment.type,
-              projectId: environment.projectId,
-              organizationId: environment.organizationId,
-            },
+            friendlyId: runFriendlyId,
+            environment,
+            body,
+            options,
+          } satisfies TriggerTaskRequest;
+
+          // Validate max attempts
+          const maxAttemptsValidation = this.validator.validateMaxAttempts({
+            taskId,
+            attempt,
           });
-        }
-      }
 
-      // Parse delay from either explicit delay option or debounce.delay
-      const delaySource = body.options?.delay ?? body.options?.debounce?.delay;
-      const [parseDelayError, delayUntil] = await tryCatch(parseDelay(delaySource));
+          if (!maxAttemptsValidation.ok) {
+            throw maxAttemptsValidation.error;
+          }
 
-      if (parseDelayError) {
-        throw new ServiceValidationError(`Invalid delay ${delaySource}`);
-      }
+          // Validate tags
+          const tagValidation = this.validator.validateTags({
+            tags: body.options?.tags,
+          });
 
-      // Validate debounce options
-      if (body.options?.debounce) {
-        if (!delayUntil) {
-          throw new ServiceValidationError(
-            `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+          if (!tagValidation.ok) {
+            throw tagValidation.error;
+          }
+
+          // Validate entitlement (unless skipChecks is enabled)
+          let planType: string | undefined;
+
+          if (!options.skipChecks) {
+            const entitlementValidation = await this.validator.validateEntitlement({
+              environment,
+            });
+
+            if (!entitlementValidation.ok) {
+              throw entitlementValidation.error;
+            }
+
+            // Extract plan type from entitlement response
+            planType = entitlementValidation.plan?.type;
+          } else {
+            // When skipChecks is enabled, planType should be passed via options
+            planType = options.planType;
+
+            if (!planType) {
+              logger.warn("Plan type not set but skipChecks is enabled", {
+                taskId,
+                environment: {
+                  id: environment.id,
+                  type: environment.type,
+                  projectId: environment.projectId,
+                  organizationId: environment.organizationId,
+                },
+              });
+            }
+          }
+
+          // Parse delay from either explicit delay option or debounce.delay
+          const delaySource = body.options?.delay ?? body.options?.debounce?.delay;
+          const [parseDelayError, delayUntil] = await tryCatch(parseDelay(delaySource));
+
+          if (parseDelayError) {
+            throw new ServiceValidationError(`Invalid delay ${delaySource}`);
+          }
+
+          // Validate debounce options
+          if (body.options?.debounce) {
+            if (!delayUntil) {
+              throw new ServiceValidationError(
+                `Debounce requires a valid delay duration. Provided: ${body.options.debounce.delay}`
+              );
+            }
+
+            // Always validate debounce.delay separately since it's used for rescheduling
+            // This catches the case where options.delay is valid but debounce.delay is invalid
+            const [debounceDelayError, debounceDelayUntil] = await tryCatch(
+              parseDelay(body.options.debounce.delay)
+            );
+
+            if (debounceDelayError || !debounceDelayUntil) {
+              throw new ServiceValidationError(
+                `Invalid debounce delay: ${body.options.debounce.delay}. ` +
+                `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+              );
+            }
+          }
+
+          // Get parent run if specified
+          const parentRun = body.options?.parentRunId
+            ? await this.prisma.taskRun.findFirst({
+              where: {
+                id: RunId.fromFriendlyId(body.options.parentRunId),
+                runtimeEnvironmentId: environment.id,
+              },
+            })
+            : undefined;
+
+          // Validate parent run
+          const parentRunValidation = this.validator.validateParentRun({
+            taskId,
+            parentRun: parentRun ?? undefined,
+            resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+          });
+
+          if (!parentRunValidation.ok) {
+            throw parentRunValidation.error;
+          }
+
+          const idempotencyKeyConcernResult = await this.idempotencyKeyConcern.handleTriggerRequest(
+            triggerRequest,
+            parentRun?.taskEventStore
           );
-        }
 
-        // Always validate debounce.delay separately since it's used for rescheduling
-        // This catches the case where options.delay is valid but debounce.delay is invalid
-        const [debounceDelayError, debounceDelayUntil] = await tryCatch(
-          parseDelay(body.options.debounce.delay)
-        );
+          if (idempotencyKeyConcernResult.isCached) {
+            return idempotencyKeyConcernResult;
+          }
 
-        if (debounceDelayError || !debounceDelayUntil) {
-          throw new ServiceValidationError(
-            `Invalid debounce delay: ${body.options.debounce.delay}. ` +
-            `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+          const { idempotencyKey, idempotencyKeyExpiresAt, claim: claimResult } =
+            idempotencyKeyConcernResult;
+
+          // If we own an idempotency claim, the trigger pipeline below MUST
+          // resolve it — publish on success so waiters see our runId,
+          // release on error so the next claimant can retry. Stored in an
+          // outer scope so the try/catch at the bottom of `callV2` can act
+          // on whichever return path or throw the pipeline takes.
+          idempotencyClaim = claimResult;
+
+          if (idempotencyKey) {
+            await this.triggerRacepointSystem.waitForRacepoint({
+              racepoint: "idempotencyKey",
+              id: idempotencyKey,
+            });
+          }
+
+          const lockedToBackgroundWorker = body.options?.lockToVersion
+            ? await this.prisma.backgroundWorker.findFirst({
+              where: {
+                projectId: environment.projectId,
+                runtimeEnvironmentId: environment.id,
+                version: body.options?.lockToVersion,
+              },
+              select: {
+                id: true,
+                version: true,
+                sdkVersion: true,
+                cliVersion: true,
+              },
+            })
+            : undefined;
+
+          const { queueName, lockedQueueId, taskTtl, taskKind } =
+            await this.queueConcern.resolveQueueProperties(
+              triggerRequest,
+              lockedToBackgroundWorker ?? undefined
+            );
+
+          // Resolve TTL with precedence: per-trigger > task-level > dev default
+          let ttl: string | undefined;
+
+          if (body.options?.ttl !== undefined) {
+            ttl =
+              typeof body.options.ttl === "number"
+                ? stringifyDuration(body.options.ttl)
+                : body.options.ttl;
+          } else {
+            ttl = taskTtl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+          }
+
+          if (!options.skipChecks) {
+            const queueSizeGuard = await this.queueConcern.validateQueueLimits(
+              environment,
+              queueName
+            );
+
+            if (!queueSizeGuard.ok) {
+              throw new QueueSizeLimitExceededError(
+                `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
+                queueSizeGuard.maximumSize ?? 0,
+                undefined,
+                "warn"
+              );
+            }
+          }
+
+          const metadataPacket = body.options?.metadata
+            ? handleMetadataPacket(
+              body.options?.metadata,
+              body.options?.metadataType ?? "application/json",
+              this.metadataMaximumSize
+            )
+            : undefined;
+
+          const tags = (
+            body.options?.tags
+              ? typeof body.options.tags === "string"
+                ? [body.options.tags]
+                : body.options.tags
+              : []
+          ).filter((tag) => tag.trim().length > 0);
+
+          const depth = parentRun ? parentRun.depth + 1 : 0;
+
+          const workerQueueResult = await this.queueConcern.getWorkerQueue(
+            environment,
+            body.options?.region
           );
-        }
-      }
+          const workerQueue = workerQueueResult?.masterQueue;
+          const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
-      // Get parent run if specified
-      const parentRun = body.options?.parentRunId
-        ? await this.prisma.taskRun.findFirst({
-          where: {
-            id: RunId.fromFriendlyId(body.options.parentRunId),
-            runtimeEnvironmentId: environment.id,
-          },
-        })
-        : undefined;
+          // Build annotations for this run
+          const triggerSource = options.triggerSource ?? "api";
+          const triggerAction = options.triggerAction ?? "trigger";
+          const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
+          const annotations = {
+            triggerSource,
+            triggerAction,
+            rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
+            rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
+            taskKind: taskKind ?? "STANDARD",
+          };
 
-      // Validate parent run
-      const parentRunValidation = this.validator.validateParentRun({
-        taskId,
-        parentRun: parentRun ?? undefined,
-        resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-      });
+          try {
+            return await this.traceEventConcern.traceRun(
+              triggerRequest,
+              parentRun?.taskEventStore,
+              async (event, store) => {
+                event.setAttribute("queueName", queueName);
+                span.setAttribute("queueName", queueName);
+                event.setAttribute("runId", runFriendlyId);
+                span.setAttribute("runId", runFriendlyId);
 
-      if (!parentRunValidation.ok) {
-        throw parentRunValidation.error;
-      }
+                // Short-circuit when mollifier is globally off (the default
+                // for every deployment that hasn't opted in). Avoids the
+                // GateInputs allocation, the deps spread inside `evaluateGate`,
+                // and the `mollifier.decisions{outcome=pass_through}` OTel
+                // increment on every trigger — `triggerTask` is the
+                // highest-throughput code path in the system. The check goes
+                // through a DI'd predicate so unit tests that inject a custom
+                // `evaluateGate` can also override the gate-on check (the
+                // default reads `env.TRIGGER_MOLLIFIER_ENABLED`, which is "0"
+                // in CI where no .env file is present).
+                const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
+                  ? await this.evaluateGate({
+                      envId: environment.id,
+                      orgId: environment.organizationId,
+                      taskId,
+                      orgFeatureFlags:
+                        (environment.organization.featureFlags as Record<string, unknown> | null) ??
+                        null,
+                      options: {
+                        debounce: body.options?.debounce,
+                        oneTimeUseToken: options.oneTimeUseToken,
+                        parentTaskRunId: body.options?.parentRunId,
+                        resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
+                      },
+                    })
+                  : null;
 
-      const idempotencyKeyConcernResult = await this.idempotencyKeyConcern.handleTriggerRequest(
-        triggerRequest,
-        parentRun?.taskEventStore
-      );
+                // When the gate says mollify, write the engine.trigger input
+                // snapshot into the Redis buffer and return a synthesised
+                // TriggerTaskServiceResult. The customer never waits on
+                // Postgres; the drainer materialises the run later by replaying
+                // engine.trigger against the snapshot. The run span has already
+                // been opened by traceRun above (PARTIAL event in ClickHouse),
+                // so its traceId/spanId live in the snapshot and the drainer's
+                // `mollifier.drained` span parents on the same trace — buffered
+                // runs become visible in the dashboard's trace view immediately,
+                // not only after the drainer fires.
+                if (mollifierOutcome?.action === "mollify") {
+                  const mollifierBuffer = this.getMollifierBuffer();
+                  if (mollifierBuffer && !body.options?.debounce) {
+                    event.setAttribute("mollifier.reason", mollifierOutcome.decision.reason);
+                    event.setAttribute("mollifier.count", String(mollifierOutcome.decision.count));
+                    event.setAttribute(
+                      "mollifier.threshold",
+                      String(mollifierOutcome.decision.threshold)
+                    );
+                    event.setAttribute("taskRunId", runFriendlyId);
 
-      if (idempotencyKeyConcernResult.isCached) {
-        return idempotencyKeyConcernResult;
-      }
+                    const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 
-      const { idempotencyKey, idempotencyKeyExpiresAt, claim: claimResult } =
-        idempotencyKeyConcernResult;
+                    const engineTriggerInput = this.#buildEngineTriggerInput({
+                      runFriendlyId,
+                      environment,
+                      idempotencyKey,
+                      idempotencyKeyExpiresAt,
+                      body,
+                      options,
+                      queueName,
+                      lockedQueueId,
+                      workerQueue,
+                      enableFastPath,
+                      lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
+                      delayUntil,
+                      ttl,
+                      metadataPacket,
+                      tags,
+                      depth,
+                      parentRun: parentRun ?? undefined,
+                      annotations,
+                      planType,
+                      taskId,
+                      payloadPacket,
+                      traceContext: this.#propagateExternalTraceContext(
+                        event.traceContext,
+                        parentRun?.traceContext,
+                        event.traceparent?.spanId
+                      ),
+                      traceId: event.traceId,
+                      spanId: event.spanId,
+                      parentSpanId:
+                        options.parentAsLinkType === "replay"
+                          ? undefined
+                          : event.traceparent?.spanId,
+                      taskEventStore: store,
+                    });
 
-      // If we own an idempotency claim, the trigger pipeline below MUST
-      // resolve it — publish on success so waiters see our runId,
-      // release on error so the next claimant can retry. Stored in an
-      // outer scope so the try/catch at the bottom of `callV2` can act
-      // on whichever return path or throw the pipeline takes.
-      idempotencyClaim = claimResult;
+                    const result = await mollifyTrigger({
+                      runFriendlyId,
+                      environmentId: environment.id,
+                      organizationId: environment.organizationId,
+                      engineTriggerInput,
+                      decision: mollifierOutcome.decision,
+                      buffer: mollifierBuffer,
+                      // Idempotency-key triple wires the buffer's SETNX into
+                      // the trigger-time dedup symmetric with PG.
+                      idempotencyKey,
+                      taskIdentifier: taskId,
+                    });
 
-      if (idempotencyKey) {
-        await this.triggerRacepointSystem.waitForRacepoint({
-          racepoint: "idempotencyKey",
-          id: idempotencyKey,
-        });
-      }
+                    logger.debug("mollifier.buffered", {
+                      runId: runFriendlyId,
+                      envId: environment.id,
+                      orgId: environment.organizationId,
+                      taskId,
+                      reason: mollifierOutcome.decision.reason,
+                    });
 
-      const lockedToBackgroundWorker = body.options?.lockToVersion
-        ? await this.prisma.backgroundWorker.findFirst({
-          where: {
-            projectId: environment.projectId,
-            runtimeEnvironmentId: environment.id,
-            version: body.options?.lockToVersion,
-          },
-          select: {
-            id: true,
-            version: true,
-            sdkVersion: true,
-            cliVersion: true,
-          },
-        })
-        : undefined;
-
-      const { queueName, lockedQueueId, taskTtl, taskKind } =
-        await this.queueConcern.resolveQueueProperties(
-          triggerRequest,
-          lockedToBackgroundWorker ?? undefined
-        );
-
-      // Resolve TTL with precedence: per-trigger > task-level > dev default
-      let ttl: string | undefined;
-
-      if (body.options?.ttl !== undefined) {
-        ttl =
-          typeof body.options.ttl === "number"
-            ? stringifyDuration(body.options.ttl)
-            : body.options.ttl;
-      } else {
-        ttl = taskTtl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
-      }
-
-      if (!options.skipChecks) {
-        const queueSizeGuard = await this.queueConcern.validateQueueLimits(
-          environment,
-          queueName
-        );
-
-        if (!queueSizeGuard.ok) {
-          throw new QueueSizeLimitExceededError(
-            `Cannot trigger ${taskId} as the queue size limit for this environment has been reached. The maximum size is ${queueSizeGuard.maximumSize}`,
-            queueSizeGuard.maximumSize ?? 0,
-            undefined,
-            "warn"
-          );
-        }
-      }
-
-      const metadataPacket = body.options?.metadata
-        ? handleMetadataPacket(
-          body.options?.metadata,
-          body.options?.metadataType ?? "application/json",
-          this.metadataMaximumSize
-        )
-        : undefined;
-
-      const tags = (
-        body.options?.tags
-          ? typeof body.options.tags === "string"
-            ? [body.options.tags]
-            : body.options.tags
-          : []
-      ).filter((tag) => tag.trim().length > 0);
-
-      const depth = parentRun ? parentRun.depth + 1 : 0;
-
-      const workerQueueResult = await this.queueConcern.getWorkerQueue(
-        environment,
-        body.options?.region
-      );
-      const workerQueue = workerQueueResult?.masterQueue;
-      const enableFastPath = workerQueueResult?.enableFastPath ?? false;
-
-      // Build annotations for this run
-      const triggerSource = options.triggerSource ?? "api";
-      const triggerAction = options.triggerAction ?? "trigger";
-      const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
-      const annotations = {
-        triggerSource,
-        triggerAction,
-        rootTriggerSource: parentAnnotations?.rootTriggerSource ?? triggerSource,
-        rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
-        taskKind: taskKind ?? "STANDARD",
-      };
-
-      try {
-        return await this.traceEventConcern.traceRun(
-          triggerRequest,
-          parentRun?.taskEventStore,
-          async (event, store) => {
-            event.setAttribute("queueName", queueName);
-            span.setAttribute("queueName", queueName);
-            event.setAttribute("runId", runFriendlyId);
-            span.setAttribute("runId", runFriendlyId);
-
-            // Short-circuit when mollifier is globally off (the default
-            // for every deployment that hasn't opted in). Avoids the
-            // GateInputs allocation, the deps spread inside `evaluateGate`,
-            // and the `mollifier.decisions{outcome=pass_through}` OTel
-            // increment on every trigger — `triggerTask` is the
-            // highest-throughput code path in the system. The check goes
-            // through a DI'd predicate so unit tests that inject a custom
-            // `evaluateGate` can also override the gate-on check (the
-            // default reads `env.TRIGGER_MOLLIFIER_ENABLED`, which is "0"
-            // in CI where no .env file is present).
-            const mollifierOutcome: GateOutcome | null = this.isMollifierGloballyEnabled()
-              ? await this.evaluateGate({
-                  envId: environment.id,
-                  orgId: environment.organizationId,
-                  taskId,
-                  orgFeatureFlags:
-                    (environment.organization.featureFlags as Record<string, unknown> | null) ??
-                    null,
-                  options: {
-                    debounce: body.options?.debounce,
-                    oneTimeUseToken: options.oneTimeUseToken,
-                    parentTaskRunId: body.options?.parentRunId,
-                    resumeParentOnCompletion: body.options?.resumeParentOnCompletion,
-                  },
-                })
-              : null;
-
-            // When the gate says mollify, write the engine.trigger input
-            // snapshot into the Redis buffer and return a synthesised
-            // TriggerTaskServiceResult. The customer never waits on
-            // Postgres; the drainer materialises the run later by replaying
-            // engine.trigger against the snapshot. The run span has already
-            // been opened by traceRun above (PARTIAL event in ClickHouse),
-            // so its traceId/spanId live in the snapshot and the drainer's
-            // `mollifier.drained` span parents on the same trace — buffered
-            // runs become visible in the dashboard's trace view immediately,
-            // not only after the drainer fires.
-            if (mollifierOutcome?.action === "mollify") {
-              const mollifierBuffer = this.getMollifierBuffer();
-              if (mollifierBuffer && !body.options?.debounce) {
-                event.setAttribute("mollifier.reason", mollifierOutcome.decision.reason);
-                event.setAttribute("mollifier.count", String(mollifierOutcome.decision.count));
-                event.setAttribute(
-                  "mollifier.threshold",
-                  String(mollifierOutcome.decision.threshold)
-                );
-                event.setAttribute("taskRunId", runFriendlyId);
+                    // Synthetic result is structurally narrower than the full
+                    // TaskRun; the route handler only reads
+                    // `result.run.friendlyId`. traceRun flushes the PARTIAL
+                    // run-span event to ClickHouse on callback return.
+                    return result as unknown as TriggerTaskServiceResult;
+                  }
+                  if (!mollifierBuffer) {
+                    logger.warn(
+                      "mollifier gate said mollify but buffer is null — falling through to pass-through"
+                    );
+                  }
+                }
 
                 const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 
-                const engineTriggerInput = this.#buildEngineTriggerInput({
+                const baseEngineInput = this.#buildEngineTriggerInput({
                   runFriendlyId,
                   environment,
                   idempotencyKey,
@@ -456,167 +528,95 @@ export class RunEngineTriggerTaskService {
                   traceId: event.traceId,
                   spanId: event.spanId,
                   parentSpanId:
-                    options.parentAsLinkType === "replay"
-                      ? undefined
-                      : event.traceparent?.spanId,
+                    options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
                   taskEventStore: store,
                 });
 
-                const result = await mollifyTrigger({
-                  runFriendlyId,
-                  environmentId: environment.id,
-                  organizationId: environment.organizationId,
-                  engineTriggerInput,
-                  decision: mollifierOutcome.decision,
-                  buffer: mollifierBuffer,
-                  // Idempotency-key triple wires the buffer's SETNX into
-                  // the trigger-time dedup symmetric with PG.
-                  idempotencyKey,
-                  taskIdentifier: taskId,
-                });
-
-                logger.debug("mollifier.buffered", {
-                  runId: runFriendlyId,
-                  envId: environment.id,
-                  orgId: environment.organizationId,
-                  taskId,
-                  reason: mollifierOutcome.decision.reason,
-                });
-
-                // Synthetic result is structurally narrower than the full
-                // TaskRun; the route handler only reads
-                // `result.run.friendlyId`. traceRun flushes the PARTIAL
-                // run-span event to ClickHouse on callback return.
-                return result as unknown as TriggerTaskServiceResult;
-              }
-              if (!mollifierBuffer) {
-                logger.warn(
-                  "mollifier gate said mollify but buffer is null — falling through to pass-through"
-                );
-              }
-            }
-
-            const payloadPacket = await this.payloadProcessor.process(triggerRequest);
-
-            const baseEngineInput = this.#buildEngineTriggerInput({
-              runFriendlyId,
-              environment,
-              idempotencyKey,
-              idempotencyKeyExpiresAt,
-              body,
-              options,
-              queueName,
-              lockedQueueId,
-              workerQueue,
-              enableFastPath,
-              lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
-              delayUntil,
-              ttl,
-              metadataPacket,
-              tags,
-              depth,
-              parentRun: parentRun ?? undefined,
-              annotations,
-              planType,
-              taskId,
-              payloadPacket,
-              traceContext: this.#propagateExternalTraceContext(
-                event.traceContext,
-                parentRun?.traceContext,
-                event.traceparent?.spanId
-              ),
-              traceId: event.traceId,
-              spanId: event.spanId,
-              parentSpanId:
-                options.parentAsLinkType === "replay" ? undefined : event.traceparent?.spanId,
-              taskEventStore: store,
-            });
-
-            const taskRun = await this.engine.trigger(
-              {
-                ...baseEngineInput,
-                // onDebounced is a closure over webapp state (triggerRequest +
-                // traceEventConcern) and can't be serialised into the mollifier
-                // snapshot. The pass-through path attaches it here; the drainer
-                // path replays without it. The debounce and triggerAndWait gate
-                // bypasses ensure neither reaches the mollify branch.
-                onDebounced:
-                  body.options?.debounce && body.options?.resumeParentOnCompletion
-                    ? async ({ existingRun, waitpoint, debounceKey }) => {
-                      return await this.traceEventConcern.traceDebouncedRun(
-                        triggerRequest,
-                        parentRun?.taskEventStore,
-                        {
-                          existingRun,
-                          debounceKey,
-                          incomplete: waitpoint.status === "PENDING",
-                          isError: waitpoint.outputIsError,
-                        },
-                        async (spanEvent) => {
-                          const spanId =
-                            options?.parentAsLinkType === "replay"
-                              ? spanEvent.spanId
-                              : spanEvent.traceparent?.spanId
-                                ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
-                                : spanEvent.spanId;
-                          return spanId;
+                const taskRun = await this.engine.trigger(
+                  {
+                    ...baseEngineInput,
+                    // onDebounced is a closure over webapp state (triggerRequest +
+                    // traceEventConcern) and can't be serialised into the mollifier
+                    // snapshot. The pass-through path attaches it here; the drainer
+                    // path replays without it. The debounce and triggerAndWait gate
+                    // bypasses ensure neither reaches the mollify branch.
+                    onDebounced:
+                      body.options?.debounce && body.options?.resumeParentOnCompletion
+                        ? async ({ existingRun, waitpoint, debounceKey }) => {
+                          return await this.traceEventConcern.traceDebouncedRun(
+                            triggerRequest,
+                            parentRun?.taskEventStore,
+                            {
+                              existingRun,
+                              debounceKey,
+                              incomplete: waitpoint.status === "PENDING",
+                              isError: waitpoint.outputIsError,
+                            },
+                            async (spanEvent) => {
+                              const spanId =
+                                options?.parentAsLinkType === "replay"
+                                  ? spanEvent.spanId
+                                  : spanEvent.traceparent?.spanId
+                                    ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
+                                    : spanEvent.spanId;
+                              return spanId;
+                            }
+                          );
                         }
-                      );
-                    }
-                    : undefined,
-              },
-              this.prisma
+                        : undefined,
+                  },
+                  this.prisma
+                );
+
+                // If the returned run has a different friendlyId, it was debounced.
+                // For triggerAndWait: stop the outer span since a replacement debounced span was created via onDebounced.
+                // For regular trigger: let the span complete normally - no replacement span needed since the
+                // original run already has its span from when it was first created.
+                if (
+                  taskRun.friendlyId !== runFriendlyId &&
+                  body.options?.debounce &&
+                  body.options?.resumeParentOnCompletion
+                ) {
+                  event.stop();
+                }
+
+                const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
+
+                if (error) {
+                  event.failWithError(error);
+                }
+
+                const result = { run: taskRun, error, isCached: false };
+
+                if (result?.error) {
+                  throw new ServiceValidationError(
+                    taskRunErrorToString(taskRunErrorEnhancer(result.error))
+                  );
+                }
+
+                return result;
+              }
             );
-
-            // If the returned run has a different friendlyId, it was debounced.
-            // For triggerAndWait: stop the outer span since a replacement debounced span was created via onDebounced.
-            // For regular trigger: let the span complete normally - no replacement span needed since the
-            // original run already has its span from when it was first created.
-            if (
-              taskRun.friendlyId !== runFriendlyId &&
-              body.options?.debounce &&
-              body.options?.resumeParentOnCompletion
-            ) {
-              event.stop();
+          } catch (error) {
+            if (error instanceof RunDuplicateIdempotencyKeyError) {
+              //retry calling this function, because this time it will return the idempotent run
+              return await this.call({
+                taskId,
+                environment,
+                body,
+                options: { ...options, runFriendlyId },
+                attempt: attempt + 1,
+              });
             }
 
-            const error = taskRun.error ? TaskRunError.parse(taskRun.error) : undefined;
-
-            if (error) {
-              event.failWithError(error);
-            }
-
-            const result = { run: taskRun, error, isCached: false };
-
-            if (result?.error) {
+            if (error instanceof RunOneTimeUseTokenError) {
               throw new ServiceValidationError(
-                taskRunErrorToString(taskRunErrorEnhancer(result.error))
+                `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
               );
             }
 
-            return result;
+            throw error;
           }
-        );
-      } catch (error) {
-        if (error instanceof RunDuplicateIdempotencyKeyError) {
-          //retry calling this function, because this time it will return the idempotent run
-          return await this.call({
-            taskId,
-            environment,
-            body,
-            options: { ...options, runFriendlyId },
-            attempt: attempt + 1,
-          });
-        }
-
-        if (error instanceof RunOneTimeUseTokenError) {
-          throw new ServiceValidationError(
-            `Cannot trigger ${taskId} with a one-time use token as it has already been used.`
-          );
-        }
-
-        throw error;
-      }
         },
       );
       // Pipeline returned successfully — publish the claim if we held

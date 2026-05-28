@@ -225,7 +225,7 @@ export class IdempotencyKeyConcern {
     // Pre-gate claim — closes the PG+buffer race during gate transition.
     // All same-key triggers serialise here before evaluateGate decides
     // PG-pass-through vs mollify. Skipped for triggerAndWait
-    // (resumeParentOnCompletion) — that path bypasses the gate via F4
+    // (resumeParentOnCompletion) — that path bypasses the gate entirely
     // and its existing PG-side dedup is sufficient.
     if (!request.body.options?.resumeParentOnCompletion) {
       const ttlSeconds = Math.max(
