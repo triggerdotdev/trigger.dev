@@ -294,6 +294,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
 
     if (buffered) {
+      // Preselect the root span on the initial page load when the URL
+      // doesn't already carry `?span=`. The sibling redirect routes
+      // (runs.$runParam.ts, @.runs.$runParam.ts,
+      // projects.v3.$projectRef.runs.$runParam.ts) all do this, but
+      // direct navigation to the canonical project-scoped URL never
+      // hit those redirects — leaving the right detail panel collapsed.
+      // Skip on `_data` requests (Remix data fetches): they're
+      // client-driven follow-ups and the client URL is what matters,
+      // not the loader's view of it.
+      if (
+        !url.searchParams.has("span") &&
+        !url.searchParams.has("_data") &&
+        buffered.run.spanId
+      ) {
+        url.searchParams.set("span", buffered.run.spanId);
+        throw redirect(url.pathname + "?" + url.searchParams.toString());
+      }
+
       const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
       const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
 
@@ -307,6 +325,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
 
     throw error;
+  }
+
+  // Preselect the root span on the initial page load when the URL
+  // doesn't already carry `?span=`. See the comment on the equivalent
+  // block in the buffered fallback above — the sibling redirect routes
+  // do this, but direct navigation to the canonical project-scoped URL
+  // never hits them, leaving the right detail panel collapsed.
+  if (
+    !url.searchParams.has("span") &&
+    !url.searchParams.has("_data") &&
+    result.run.spanId
+  ) {
+    url.searchParams.set("span", result.run.spanId);
+    throw redirect(url.pathname + "?" + url.searchParams.toString());
   }
 
   //resizable settings
