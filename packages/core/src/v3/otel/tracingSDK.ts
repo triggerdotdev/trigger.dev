@@ -171,13 +171,12 @@ export class TracingSDK {
     );
 
     const externalTraceId = idGenerator.generateTraceId();
-    const externalTraceContext = traceContext.getExternalTraceContext();
 
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchSpanProcessor(
-              new ExternalSpanExporterWrapper(exporter, externalTraceId, externalTraceContext),
+              new ExternalSpanExporterWrapper(exporter, externalTraceId),
               {
                 maxExportBatchSize: parseInt(
                   getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
@@ -192,7 +191,7 @@ export class TracingSDK {
               }
             )
           : new SimpleSpanProcessor(
-              new ExternalSpanExporterWrapper(exporter, externalTraceId, externalTraceContext)
+              new ExternalSpanExporterWrapper(exporter, externalTraceId)
             )
       );
     }
@@ -245,11 +244,7 @@ export class TracingSDK {
       logProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
           ? new BatchLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(
-                externalLogExporter,
-                externalTraceId,
-                externalTraceContext
-              ),
+              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId),
               {
                 maxExportBatchSize: parseInt(
                   getEnvVar("TRIGGER_OTEL_LOG_MAX_EXPORT_BATCH_SIZE") ?? "64"
@@ -264,11 +259,7 @@ export class TracingSDK {
               }
             )
           : new SimpleLogRecordProcessor(
-              new ExternalLogRecordExporterWrapper(
-                externalLogExporter,
-                externalTraceId,
-                externalTraceContext
-              )
+              new ExternalLogRecordExporterWrapper(externalLogExporter, externalTraceId)
             )
       );
     }
@@ -417,23 +408,23 @@ function setLogLevel(level: TracingDiagnosticLogLevel) {
   diag.setLogger(new DiagConsoleLogger(), diagLogLevel);
 }
 
-class ExternalSpanExporterWrapper {
-  private readonly _isExternallySampled: boolean;
-
+export class ExternalSpanExporterWrapper {
   constructor(
     private underlyingExporter: SpanExporter,
-    private externalTraceId: string,
-    private externalTraceContext:
-      | { traceId: string; spanId: string; traceFlags: number; tracestate?: string }
-      | undefined
-  ) {
-    this._isExternallySampled = externalTraceContext
-      ? isTraceFlagSampled(externalTraceContext.traceFlags)
-      : !!externalTraceId;
-  }
+    private externalTraceId: string
+  ) {}
 
   private transformSpan(span: ReadableSpan): ReadableSpan | undefined {
-    if (!this._isExternallySampled) {
+    // Read external context live, so per-run reassignment of
+    // standardTraceContextManager.traceContext is honoured on warm-started
+    // workers that reuse a single TracingSDK across runs.
+    const externalTraceContext = traceContext.getExternalTraceContext();
+
+    const isExternallySampled = externalTraceContext
+      ? isTraceFlagSampled(externalTraceContext.traceFlags)
+      : !!this.externalTraceId;
+
+    if (!isExternallySampled) {
       return;
     }
 
@@ -441,8 +432,8 @@ class ExternalSpanExporterWrapper {
       return;
     }
 
-    const externalTraceId = this.externalTraceContext
-      ? this.externalTraceContext.traceId
+    const externalTraceId = externalTraceContext
+      ? externalTraceContext.traceId
       : this.externalTraceId;
 
     const isAttemptSpan = span.attributes[SemanticInternalAttributes.SPAN_ATTEMPT];
@@ -457,15 +448,15 @@ class ExternalSpanExporterWrapper {
       };
     }
 
-    if (isAttemptSpan && this.externalTraceContext) {
+    if (isAttemptSpan && externalTraceContext) {
       parentSpanContext = {
         ...parentSpanContext,
         traceId: externalTraceId,
-        spanId: this.externalTraceContext.spanId,
-        traceState: this.externalTraceContext.tracestate
-          ? new TraceState(this.externalTraceContext.tracestate)
+        spanId: externalTraceContext.spanId,
+        traceState: externalTraceContext.tracestate
+          ? new TraceState(externalTraceContext.tracestate)
           : undefined,
-        traceFlags: this.externalTraceContext.traceFlags,
+        traceFlags: externalTraceContext.traceFlags,
       };
     } else if (isAttemptSpan) {
       parentSpanContext = undefined;
@@ -502,28 +493,27 @@ class ExternalSpanExporterWrapper {
 }
 
 class ExternalLogRecordExporterWrapper {
-  private readonly _isExternallySampled: boolean;
-
   constructor(
     private underlyingExporter: LogRecordExporter,
-    private externalTraceId: string,
-    private externalTraceContext:
-      | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
-      | undefined
-  ) {
-    this._isExternallySampled = externalTraceContext
-      ? isTraceFlagSampled(externalTraceContext.traceFlags)
-      : !!externalTraceId;
-  }
+    private externalTraceId: string
+  ) {}
 
   export(logs: any[], resultCallback: (result: any) => void): void {
-    if (!this._isExternallySampled) {
+    const externalTraceContext = traceContext.getExternalTraceContext();
+
+    const isExternallySampled = externalTraceContext
+      ? isTraceFlagSampled(externalTraceContext.traceFlags)
+      : !!this.externalTraceId;
+
+    if (!isExternallySampled) {
       this.underlyingExporter.export([], resultCallback);
 
       return;
     }
 
-    const modifiedLogs = logs.map(this.transformLogRecord.bind(this));
+    const modifiedLogs = logs.map((log) =>
+      this.transformLogRecord(log, externalTraceContext)
+    );
 
     this.underlyingExporter.export(modifiedLogs, resultCallback);
   }
@@ -532,11 +522,16 @@ class ExternalLogRecordExporterWrapper {
     return this.underlyingExporter.shutdown();
   }
 
-  transformLogRecord(logRecord: ReadableLogRecord): ReadableLogRecord {
+  transformLogRecord(
+    logRecord: ReadableLogRecord,
+    externalTraceContext:
+      | { traceId: string; spanId: string; tracestate?: string; traceFlags: number }
+      | undefined
+  ): ReadableLogRecord {
     // Capture externalTraceId for use within the proxy's scope.
     // Use externalTraceContext.traceId if available, otherwise fall back to generated externalTraceId
-    const externalTraceId = this.externalTraceContext
-      ? this.externalTraceContext.traceId
+    const externalTraceId = externalTraceContext
+      ? externalTraceContext.traceId
       : this.externalTraceId;
 
     // If there's no spanContext, or if the externalTraceId is not set, return the original logRecord.
