@@ -217,23 +217,32 @@ export function createDrainerHandler(deps: {
         }
 
         // Admin-only audit trail emitted once engine.trigger has
-        // landed a PG row. `recordRunDebugLog` flips this to
-        // `TaskEventKind.LOG`, which the trace view + logs download
-        // already gate behind admin
+        // landed a PG row. `recordRunDebugLog` flips this to the
+        // admin-gated debug kind (TaskEventKind.LOG in the PG store /
+        // DEBUG_EVENT in the ClickHouse store) which the trace view +
+        // logs download already strip for non-admins
         // (`eventRepository.server.ts:108`,
-        // `resources.runs.$runParam.logs.download.ts:118`). Encoding
-        // the buffered window as `startTime` + `duration` makes the
-        // event render at the historical instant inside the run's
-        // existing trace — admins see "Mollifier buffered for Xms"
-        // sitting between trigger and dequeue. Best-effort: the
-        // helper has its own try/catch and returns a result, so it
-        // never throws into the materialisation path. Failures are
-        // logged but not surfaced because the customer-visible run
-        // has already landed.
+        // `resources.runs.$runParam.logs.download.ts:118`).
+        //
+        // Placement: emit as a zero-duration marker AT materialisation
+        // time, not as a back-dated bar spanning the buffered window.
+        // `engine.trigger` rewrites the run's root span at
+        // materialisation (it adopts the synth root via traceId/spanId
+        // carryover but updates start_time to "now"), so the trace
+        // renderer treats materialisation time as t=0. A back-dated
+        // event with startTime = bufferedAt would land before that t=0
+        // and get clipped from the tree. Same pattern as the
+        // `[engine] QUEUED` markers. The window itself is preserved
+        // in metadata so admins can read it off the span detail pane.
+        //
+        // Best-effort: `recordRunDebugLog` has its own try/catch and
+        // returns a result, so it never throws into the materialisation
+        // path. Failures are logged but not surfaced because the
+        // customer-visible run has already landed.
         if (triggerSucceeded) {
           const debugResult = await recordRunDebugLog(
             RunId.fromFriendlyId(input.runId),
-            `Mollifier buffered for ${dwellMs}ms before materialising`,
+            `Mollifier buffered ${dwellMs}ms before materialising`,
             {
               attributes: {
                 runId: input.runId,
@@ -244,8 +253,6 @@ export function createDrainerHandler(deps: {
                   "mollifier.attempts": input.attempts,
                 },
               },
-              startTime: input.createdAt,
-              duration: dwellMs * 1_000_000,
               parentId: snapshotSpanId,
             }
           );

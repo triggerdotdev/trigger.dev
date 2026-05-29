@@ -497,14 +497,18 @@ describe("createDrainerHandler", () => {
     // Internal cuid derived from the friendlyId, mirroring what
     // `findRunForEventCreation` queries on.
     expect(callRunId).toBe("z");
-    expect(message).toMatch(/Mollifier buffered for \d+ms/);
-    // Encodes the historical buffered window so the trace view places
-    // the LOG event between trigger and dequeue (not at "now").
-    expect(options.startTime).toBe(bufferedAt);
-    expect(options.duration).toBeGreaterThan(0);
+    expect(message).toMatch(/Mollifier buffered \d+ms before materialising/);
+    // Emitted as a marker at materialisation time (no `startTime` /
+    // `duration` overrides) — engine.trigger has just rewritten the
+    // root span's start_time to "now", so back-dating the event would
+    // clip it off-screen in the trace renderer. The historical window
+    // is preserved in metadata so admins can still read it.
+    expect(options.startTime).toBeUndefined();
+    expect(options.duration).toBeUndefined();
     expect(options.parentId).toBe("snapspan");
     expect(options.attributes.metadata["mollifier.bufferedAt"]).toBe(bufferedAt.toISOString());
     expect(options.attributes.metadata["mollifier.attempts"]).toBe(2);
+    expect(options.attributes.metadata["mollifier.dwellMs"]).toBeGreaterThan(0);
   });
 
   it("does NOT emit the admin LOG event when engine.trigger fails non-retryably", async () => {
